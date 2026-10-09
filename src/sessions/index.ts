@@ -33,6 +33,7 @@ import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
+import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 
 export type ProjectTransitionKind =
   | "launch"
@@ -1370,7 +1371,7 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
   // at the child boundary even if a long-lived tmux server retained the vars.
-  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), `${SESSION_ENV_MARKER}=${session.id}`, inner.command, ...inner.args] };
 }
 
 function buildProviderLaunch(
@@ -1562,7 +1563,7 @@ function buildFixtureSessionLaunch(session: AgentSession, workspace?: string): {
     }
     args.push("--db", getWorkspacePaths(workspace).databaseFile);
   }
-  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, "node", ...args] };
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, `${SESSION_ENV_MARKER}=${session.id}`, "node", ...args] };
 }
 
 /**

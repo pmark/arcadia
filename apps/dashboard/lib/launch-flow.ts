@@ -11,7 +11,10 @@
  *      nothing. It must name this very Action and say it is ready; otherwise
  *      the flow stops with the reason and offers no Launch button.
  *   3. Only an explicit confirmation POSTs the launch with the preview's
- *      fingerprint. Nothing here launches without that step.
+ *      fingerprint. Nothing here launches without that step. That same
+ *      confirmation (`confirmOperatorLaunch`) mints the Session's one-shot
+ *      post-exit authorization: validate, commit, push and one DRAFT PR, never
+ *      a merge (Decision 0096). The dialog lists this before the button.
  */
 import type { SessionLaunchPreviewResponse } from "./arcadia-cli";
 
@@ -153,7 +156,8 @@ export async function confirmLaunch(
   const response = await fetchImpl(`/api/projects/${encodeURIComponent(target.projectId)}/session-launch`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ requestId: step.requestId, previewFingerprint: step.preview.previewFingerprint })
+    // The dialog listed what Launch also authorizes (Decision 0096); pressing it is the confirmation.
+    body: JSON.stringify({ requestId: step.requestId, previewFingerprint: step.preview.previewFingerprint, confirmOperatorLaunch: true })
   });
   const body = await readJson(response);
   if (!response.ok) return { kind: "error", message: errorOf(body, "The launch was refused.") };

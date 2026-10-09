@@ -53,7 +53,13 @@ export type RemotePreservationAuthorization =
    * source's body also carries the Validation evidence section and the
    * completion-settlement line (validationEvidence.ts); literal text does not.
    */
-  | { authorized: true; qaPlan: string | OperatorQaPlanSource };
+  | { authorized: true; qaPlan: string | OperatorQaPlanSource }
+  /**
+   * An operator-launched Session's exit before its outcome is known (Decision
+   * 0096): the commit is pushed and recorded `PUSHED`, and no pull request is
+   * opened. The draft PR follows only an accepted completion.
+   */
+  | { authorized: true; pushOnly: true };
 
 export interface CandidatePreservationRequest {
   requestId: string;
@@ -696,6 +702,21 @@ export function preserveCandidate(
   const remote = deps.remote;
   if (!remote || !remote.hasRemote(repositoryPath)) {
     return localOnly("no reachable remote is configured");
+  }
+
+  if ("pushOnly" in request.remotePreservation) {
+    preservationStage("preserve.push");
+    hooks.beforePush?.();
+    const { remote: remoteName } = remote.push({ repositoryPath, branch: request.branch });
+    hooks.afterPush?.();
+    return persistReceipt(db, {
+      ...base,
+      preservationState: "PUSHED",
+      pushedRemote: remoteName,
+      pullRequestNumber: null,
+      pullRequestUrl: null,
+      retryAction: `Branch ${request.branch} is pushed; open a draft pull request once the Session's outcome is accepted.`
+    });
   }
 
   // --- Remote preservation (AC4) -------------------------------------------

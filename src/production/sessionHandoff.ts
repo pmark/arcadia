@@ -9,6 +9,7 @@ import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { policyAuthorizesRemotePreservation, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
+import { findOperatorLaunchAuthorization, operatorLaunchAuthorityFor } from "../sessions/operatorLaunch.js";
 
 /**
  * The A-to-B seam the plan's critical path leaves open: a managed-production
@@ -63,6 +64,16 @@ export interface SessionHandoffInput {
   /** Recover a worker-accepted terminal completion after Off withheld preservation. */
   terminalRecovery?: boolean;
   /**
+   * Preserve under a confirmed operator Launch's one-shot authorization
+   * (Decision 0096) when production does not itself authorize this Action.
+   * `commit` validates, commits and pushes the branch without a pull request
+   * (the exit, outcome not yet known); `publish` runs for a Session already
+   * reconciled `accepted_completion` and opens or updates the draft PR. Both
+   * are refused unless the Session's own unexpired, unused authorization names
+   * this exact Session and Action.
+   */
+  operatorLaunch?: { authorizationId: string; phase: "commit" | "publish"; requestId?: string };
+  /**
    * The independent-verdict gate the managed tick always supplies: checked
    * after the policy and grant, before any Git write. When given, only the
    * exact head its current code review and QA verdicts bind is integrated.
@@ -78,6 +89,19 @@ export interface SessionHandoffInput {
 
 function actionKey(session: AgentSession): string {
   return `${session.project_slug}/${session.action_id}`;
+}
+
+/** Whether the Active production policy delegates host-side validation for exactly this Session's Project, Plan and Action. */
+export function productionAuthorizesValidation(
+  policy: Pick<ProductionPolicyRecord, "desiredState" | "scope">,
+  session: AgentSession
+): boolean {
+  const scope = policy.scope;
+  return policy.desiredState === "active" &&
+    !!scope?.projects.includes(session.project_slug) &&
+    scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) &&
+    scope.actions.includes(actionKey(session)) &&
+    scope.mechanicalTransitions.includes("validation");
 }
 
 /** The exact command that lands this candidate when no grant authorizes the host to. */
@@ -126,14 +150,18 @@ export function preserveSessionCandidate(
     return { kind: "refused", reason: `Preservation requires a readable production policy: ${policyRead.reason}` };
   }
   const policy = policyRead.policy;
-  const scope = policy.scope;
-  const validationAuthorized =
-    policy.desiredState === "active" &&
-    !!scope?.projects.includes(session.project_slug) &&
-    scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) &&
-    scope.actions.includes(actionKey(session)) &&
-    scope.mechanicalTransitions.includes("validation");
-  if (!validationAuthorized) {
+  const productionAuthorized = productionAuthorizesValidation(policy, session);
+  // Production authority, when it covers this Action, governs exactly as it
+  // always has; an operator Launch's authorization only fills the gap when it
+  // does not (production Inactive, or the Action outside its scope).
+  const operatorAuthority = !productionAuthorized && input.operatorLaunch
+    ? operatorLaunchAuthorityFor(db, session, input.now, input.operatorLaunch.authorizationId)
+    : null;
+  if (operatorAuthority && !operatorAuthority.ok) {
+    return { kind: "refused", reason: operatorAuthority.reason };
+  }
+  const operator = operatorAuthority?.ok ? input.operatorLaunch! : null;
+  if (!productionAuthorized && !operator) {
     return {
       kind: "refused",
       reason:
@@ -147,7 +175,7 @@ export function preserveSessionCandidate(
   // host validation; check that first, so a refusal only the operator can
   // clear does not re-run validation every tick.
   const remote = deps.remote ?? systemPreservationRemote;
-  const unstackable = policyAuthorizesRemotePreservation(policy, actionKey(session))
+  const unstackable = (productionAuthorized && policyAuthorizesRemotePreservation(policy, actionKey(session))) || operator?.phase === "publish"
     ? stackedBaseRefusal(db, { repoRoot, session, baseBranch, now: input.now }, remote)
     : null;
   if (unstackable) return { kind: "refused", reason: unstackable };
@@ -159,24 +187,32 @@ export function preserveSessionCandidate(
     // identical-refusal count with any prior `arcadia preserve` calls the
     // agent itself made from inside the Session before its tmux died -- one
     // repository-wide budget per Session, whichever path checks it.
-    validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session, input.terminalRecovery === true));
+    validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session, input.terminalRecovery === true,
+      operator ? { authorizationId: operator.authorizationId, at: input.now } : undefined));
   } catch (error) {
     return refusedPreservation(error);
   }
 
   const currentPolicy = readProductionPolicySafely(db);
-  if (currentPolicy.status !== "ok" || currentPolicy.policy.desiredState !== "active"
+  if (operator) {
+    const still = operatorLaunchAuthorityFor(db, session, input.now, operator.authorizationId);
+    if (!still.ok) return { kind: "refused", reason: `Operator launch authority changed during host validation; preservation is withheld (${still.reason}).` };
+  } else if (currentPolicy.status !== "ok" || currentPolicy.policy.desiredState !== "active"
     || currentPolicy.policy.epoch !== policy.epoch || currentPolicy.policy.revision !== policy.revision) {
     return { kind: "refused", reason: "Production authority changed during host validation; preservation is withheld." };
   }
 
-  const remotePreservation: RemotePreservationAuthorization =
-    policyAuthorizesRemotePreservation(policy, actionKey(session))
-      ? { authorized: true, qaPlan: operatorQaPlanSource({
-          actionKey: actionKey(session),
-          action: validation.binding?.actionDefinition,
-          validationCommands: validation.binding?.commands
-        }) }
+  const qaPlan = () => operatorQaPlanSource({
+    actionKey: actionKey(session),
+    action: validation.binding?.actionDefinition,
+    validationCommands: validation.binding?.commands
+  });
+  const remotePreservation: RemotePreservationAuthorization = operator
+    ? operator.phase === "publish"
+      ? { authorized: true, qaPlan: qaPlan() }
+      : { authorized: true, pushOnly: true }
+    : policyAuthorizesRemotePreservation(policy, actionKey(session))
+      ? { authorized: true, qaPlan: qaPlan() }
       : { authorized: false, reason: "The Active policy does not authorize remote preservation." };
 
   const preserve = deps.preserve ?? preserveCandidate;
@@ -187,7 +223,7 @@ export function preserveSessionCandidate(
     const receipt: CandidatePreservationReceipt = guardPreservationTimeouts(db, session.id, input.now, () => preserve(
       db,
       {
-        requestId: `worker-tick-preserve-${session.id}`,
+        requestId: operator?.requestId ?? `worker-tick-preserve-${session.id}`,
         repositoryPath: repoRoot,
         candidateWorktreePath: session.worktree_path,
         branch: session.branch,
@@ -348,6 +384,17 @@ export function integrateSessionCandidate(
   const checkedOut = tryGit(session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
   if (checkedOut === null || checkedOut.trim() !== branch) {
     return refusal(`The Session worktree is no longer on its own branch ${branch}.`, merge);
+  }
+
+  // A candidate preserved under an operator Launch's authorization (Decision
+  // 0096) was never delegated to production's validation, so a production grant
+  // that merely names integration must not carry it into the base branch. Only
+  // production itself delegating validation for this Action lifts that.
+  if (findOperatorLaunchAuthorization(db, session.id)) {
+    const policyRead = readProductionPolicySafely(db);
+    if (policyRead.status !== "ok" || !productionAuthorizesValidation(policyRead.policy, session)) {
+      return refusal("The candidate was preserved under an operator Launch authorization (Decision 0096), which never authorizes integration; merge it through its pull request.", merge);
+    }
   }
 
   const authorized = integrationAuthority(db, session, now);

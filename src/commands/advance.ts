@@ -22,6 +22,7 @@ import {
   type ProjectTransition
 } from "../sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
+import { findOperatorLaunchAuthorization, type OperatorLaunchSource } from "../sessions/operatorLaunch.js";
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
 import { reconcileSessionExit, type ReconcileSessionExitResult } from "../sessions/reconciliation.js";
 
@@ -226,6 +227,8 @@ export interface SessionLaunchCommandData {
    * Action was settled instead of launching a Session. See
    * `attemptAutoSettlePendingCompletion`. */
   autoSettled?: AutoSettlePendingCompletionResult;
+  /** Present when this confirmed Launch minted the Session's one-shot post-exit authorization (Decision 0096). */
+  operatorLaunch?: { authorizationId: string; source: OperatorLaunchSource; expiresAt: string };
 }
 
 /**
@@ -244,6 +247,12 @@ export function runSessionLaunchCommand(options: {
   requestId: string;
   previewFingerprint?: string;
   standingPolicy?: boolean;
+  /**
+   * A confirmed operator Launch (Decision 0096): the dashboard route after its
+   * confirmation step, or the CLI after an interactive-terminal confirmation.
+   * Mints the one-shot post-exit authorization for the new Session.
+   */
+  operatorLaunch?: { source: OperatorLaunchSource; env?: NodeJS.ProcessEnv };
   /** Per-launch wall-clock limit override in minutes (bounded Session lifetime). */
   timeLimitMinutes?: number;
 }): CommandSuccess<SessionLaunchCommandData> {
@@ -288,11 +297,16 @@ export function runSessionLaunchCommand(options: {
       requestId: options.requestId,
       previewFingerprint: options.previewFingerprint,
       standingPolicy: options.standingPolicy,
+      ...(options.operatorLaunch ? { operatorLaunch: options.operatorLaunch } : {}),
       ...(options.timeLimitMinutes !== undefined ? { timeLimitMs: Math.round(options.timeLimitMinutes * 60_000) } : {}),
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
     });
-    return { reused: result.reused, session: sessionView(result.session), admission: result.admission };
+    const authorization = options.operatorLaunch ? findOperatorLaunchAuthorization(db, result.session.id) : null;
+    return {
+      reused: result.reused, session: sessionView(result.session), admission: result.admission,
+      ...(authorization ? { operatorLaunch: { authorizationId: authorization.id, source: authorization.source, expiresAt: authorization.expires_at } } : {})
+    };
   });
 
   return createSuccess({ command: "session.launch", workspace: workspacePath, data });
@@ -318,6 +332,9 @@ export function renderSessionLaunchSuccess(response: CommandSuccess<SessionLaunc
     `Reattach: ${session.reattachCommand}`,
     ...(data.admission
       ? [`Admission: ${data.admission.id} · epoch ${data.admission.epoch} · ${data.admission.status}`]
+      : []),
+    ...(data.operatorLaunch
+      ? [`Operator launch authorization: ${data.operatorLaunch.authorizationId} (${data.operatorLaunch.source}) · validate, commit, push and draft PR once at exit · expires ${data.operatorLaunch.expiresAt}`]
       : [])
   ];
 }

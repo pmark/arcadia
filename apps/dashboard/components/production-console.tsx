@@ -938,6 +938,7 @@ function LaunchDialog({
                   <li>Agent: {step.preview.selection.provider} · {step.preview.selection.model} · effort {step.preview.selection.effort}.</li>
                 ) : null}
                 <li>Holds the repository until it exits: nothing else launches there meanwhile.</li>
+                <li>Also authorizes, once and for this one Action: when the Session exits Arcadia validates, commits and pushes its branch and, only if the work is accepted as complete, opens a <strong>draft</strong> pull request. It never merges or turns production on, and the authorization expires after 24 hours.</li>
                 <li>Uses provider tokens ({action.tokenImpact ?? "unknown"} token impact). Pausing is not available yet; stopping it means reattaching on the Mac.</li>
               </ul>
               {step.refusal ? <PartError title="Launch withheld" message={step.refusal} /> : null}

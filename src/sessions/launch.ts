@@ -42,6 +42,7 @@ import {
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
+import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
 export interface GuardedLaunchInput {
   db: Database.Database;
@@ -63,6 +64,16 @@ export interface GuardedLaunchInput {
    * `previewFingerprint` or `standingPolicy` must be given.
    */
   standingPolicy?: boolean;
+  /**
+   * A confirmed operator Launch (Decision 0096): mint the one-shot
+   * authorization for the Session this call creates, so its exit is
+   * validated, committed, pushed and (on accepted completion) opened as a
+   * draft PR without production Active. The caller has already confirmed it
+   * (the dashboard route's confirmation step, or `--operator-launch` at an
+   * interactive terminal). Only with `previewFingerprint`; never from inside
+   * an Arcadia Session; a reused Session mints nothing. `env` is test-only.
+   */
+  operatorLaunch?: { source: OperatorLaunchSource; env?: NodeJS.ProcessEnv };
   /**
    * With `standingPolicy`, the production epoch the caller observed. A
    * differing current epoch refuses at admission (`stale_epoch`) before any
@@ -155,6 +166,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     throw validationError(
       "A launch must carry either an operator-approved preview fingerprint or the standing production policy grant."
     );
+  }
+
+  if (input.operatorLaunch) {
+    if (input.standingPolicy) {
+      throw validationError("An operator launch authorization is minted only by a confirmed, fingerprinted Launch, never under the standing production policy.");
+    }
+    // Refused before anything is reserved or started.
+    refuseInsideArcadiaSession(input.operatorLaunch.env);
   }
 
   const repoRoot = path.resolve(input.repoRoot);
@@ -728,10 +747,23 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // (unattended), so hand `launchPreparedSession` the row as it now stands.
   const launching = admission ? { ...prepared, admission_request_id: admission.requestId } : prepared;
 
+  // The confirmed Launch's one-shot authorization is bound to this exact
+  // Session (and so its Action) and recorded before the process may start.
+  if (input.operatorLaunch) {
+    mintOperatorLaunchAuthorization(input.db, {
+      session: prepared, source: input.operatorLaunch.source, requestId: input.requestId,
+      env: input.operatorLaunch.env, now
+    });
+  }
+
   let launched: AgentSession;
   try {
     launched = launchPreparedSession(input.db, launching, tmux, registry, input.workspace);
   } catch (error) {
+    // A Session that never started carries no authorization.
+    if (input.operatorLaunch) {
+      voidOperatorLaunchAuthorization(input.db, prepared.id, `the Session never started: ${error instanceof Error ? error.message : String(error)}`, now);
+    }
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a
     // Session that never ran, and the retry this failure exists to allow is
