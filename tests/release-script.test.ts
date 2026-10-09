@@ -28,7 +28,8 @@ const roots: string[] = [];
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  // retries: a detached `git gc --auto` can still be writing under the root.
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 const GIT_ENV = {
@@ -37,7 +38,11 @@ const GIT_ENV = {
   GIT_AUTHOR_NAME: "Test",
   GIT_AUTHOR_EMAIL: "test@example.com",
   GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com"
+  GIT_COMMITTER_EMAIL: "test@example.com",
+  // No background `git gc --auto` after a push racing the temp-dir cleanup.
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "gc.auto",
+  GIT_CONFIG_VALUE_0: "0"
 };
 
 function git(cwd: string, args: string[], date?: string): string {
