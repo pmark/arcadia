@@ -26,9 +26,53 @@ vendor model string is written anywhere else on the handoff path.
 | --- | --- | --- | --- | --- | --- |
 | heavy | `gpt-6.1-sol` | `opus` | `opencode-go/gpt-5.6-luna` | `e3_deep` | A genuine redesign, a new cross-cutting mechanism, or resolving a named ambiguity/Decision the Action itself must work through. Not "this is a new feature" — most new features are standard. |
 | standard | `gpt-5.6-terra` | `sonnet` | `opencode-go/deepseek-v4.1-flash` | `e2_standard` | The default for every Action unless it qualifies for heavy. Ordinary feature work, refactors, bug fixes, and the tests that ship with them stay here — Arcadia dispatches one session per Action, so there is no cheaper tier to fall back to mid-session. |
-| light | `gpt-5.6-luna` | `haiku` | `opencode-go/glm-5.3-flash` | `e1_brief` | Mechanical, well-specified work whose acceptance criteria leave little judgment: a rename, a bounded test addition, a doc-and-config sync. |
+| light | `gpt-6-luna` | `haiku` | `opencode-go/glm-5.3-flash` | `e1_brief` | Mechanical, well-specified work whose acceptance criteria leave little judgment: a rename, a bounded test addition, a doc-and-config sync. |
 
-The rules that make it agent-agnostic:
+### Sessions start on the light tier and call in help
+
+Operator direction, 2026-10-09: "Use gpt-6-luna by default with Codex and Haiku
+with Claude. I want the smallest possible model to initiate each of the
+sessions, and then they can call in help from bigger models, different models,
+when necessary."
+
+So the table above is two things now: the **escalation** ladder (what a plan's
+`recommended_model` names) and, separately, the **start** model. Every
+coding-agent Session (`arcadia go --launch`, `arcadia session launch`, the
+dashboard launch, the managed-production tick) starts on the `sessionStartTier`
+model for its provider, whatever tier the plan names. The plan's tier becomes
+the escalation target written into the Action brief.
+
+- **Setting.** `sessionStartTier` in the bundled registry
+  (`src/codingAgents/modelTiers.ts`), default `"light"`. A workspace changes it,
+  without code, in `config/coding-agent-models.json`:
+  `{ "sessionStartTier": "standard" }`, or `"plan"` to start on the plan's own
+  tier as before.
+- **Explicit `--model` still wins** and is never re-resolved; the brief still
+  names the plan's tier as the escalation target when it differs.
+- **Effort** starts at the light tier's own default (`e1_brief`) unless
+  `--effort` is given; the plan's effort belongs to the plan's model and is not
+  applied to the smaller one.
+- `arcadia go` prints the start model and the escalation model.
+- The managed-production packet still binds the plan's tier model; a Session may
+  start on the start-tier model for the same provider (nothing else is accepted
+  in `prepareSession`), and the packet's model is its escalation target.
+
+**Calling in help** (a short section in the Action brief, present only when the
+start model differs from the plan's):
+
+| Agent | In-session path | Otherwise |
+| --- | --- | --- |
+| claude (headless) | Spawn a subagent with the Agent tool and `model: "<sonnet or opus>"`. The headless settings allow `Agent`; Claude Code lists it as needing no permission, and the subagent's own tools stay under the same allow list. | Stop; draft an Agent Ask. |
+| codex | `spawn_agent` with `model: "<escalation model>"` (built-in, in-process, `multi_agent` stable in codex-cli 0.160.1; the brief is the explicit instruction its tool description requires). A nested `codex exec` is not used: the `workspace-write` sandbox has no network for child processes. | Stop; draft an Agent Ask. |
+| opencode | None Arcadia can vouch for. | Stop; draft an Agent Ask. |
+
+The fallback is always the same and honest: stop, `arcadia agent-ask draft` (or
+`preview`) with `intent: proposal`, `requested_authority: propose`, asking for a
+relaunch at the plan's tier; never guess past what can be verified. The Codex
+`gpt-6-luna` string was confirmed in the operator's Codex models cache
+(`~/.codex/models_cache.json`) on 2026-10-09.
+
+The rules that make the tiers agent-agnostic:
 
 - **New plans declare a tier** — `recommended_model: standard` (or `light` or
   `heavy`) — and are valid for any agent.
@@ -67,12 +111,11 @@ exactly one model is pinned here rather than delegated to an unvalidated
 
 **No tier 3/4 exists at this layer.** Cheaper, faster model families are real
 and useful, but "boilerplate/unit tests" is not a unit Arcadia can route
-separately from the Action that contains it today. Using a cheap model here
-for "simple" work would require Arcadia to gain intra-session model
-switching, which does not exist — that capability, if ever wanted, is a
-deferred item with its own trigger (a real workload where Action-level
-granularity is provably too coarse), not something to route around by
-mislabeling a whole Action "simple."
+separately from the Action that contains it. Arcadia still has no intra-session
+model switch: the Session itself runs on one model for its duration. What it
+has instead is the start-small/escalate pattern above, where the Session
+delegates a hard sub-problem to a bigger model through the provider's own
+subagent tool. Do not route around it by mislabeling a whole Action "simple."
 
 ## 2. Intelligence capability routes (non-agent AI calls)
 

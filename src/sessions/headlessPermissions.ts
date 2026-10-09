@@ -43,6 +43,15 @@ export const HEADLESS_AGENT_ASK_DRAFT_RULES: readonly string[] = Object.freeze([
   "Bash(pnpm arcadia agent-ask draft:*)"
 ]);
 
+/**
+ * The Agent (formerly Task) tool, so a Session that started on the smallest
+ * model can call in a bigger one for a hard sub-problem ("Calling in help" in
+ * the Action brief). Claude Code's docs list Agent as needing no permission, so
+ * this rule is belt and braces for headless runs; a subagent's own tool calls
+ * stay under the same allow list and `acceptEdits` posture as its parent.
+ */
+export const HEADLESS_SUBAGENT_RULE = "Agent";
+
 /** Split one declared validation command into the simple commands Claude matches individually. */
 function simpleCommands(command: string): string[] {
   return command.split(/&&|\|\||;|\|/).map((part) => part.trim()).filter((part) => part.length > 0);
@@ -62,6 +71,7 @@ export function headlessClaudeAllowList(validationCommands: readonly string[]): 
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
   for (const rule of HEADLESS_AGENT_ASK_DRAFT_RULES) rules.add(rule);
+  rules.add(HEADLESS_SUBAGENT_RULE);
   return [...rules];
 }
 

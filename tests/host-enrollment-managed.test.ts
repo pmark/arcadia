@@ -195,11 +195,11 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
       admission: { requestId: "enroll:claude:runtime-0001:admission", status: "committed" }
     });
     expect(receipt.canonicalBrief).toContain("Current action: define-contract");
-    // The enrolling brief and the launched Session's brief both name the
-    // identity the selected model (sonnet, Claude's standard tier) commits under.
+    // The enrolling brief names the identity the selected model (sonnet, Claude's standard
+    // tier) commits under; the launched Session starts on the light tier, so its brief names that.
     expectIdentityBlock(receipt.canonicalBrief, "claude", "standard");
     expect(f.tmux.launches).toHaveLength(1);
-    expectIdentityBlock(String(f.tmux.launches[0].args.at(-1)), "claude", "standard");
+    expectIdentityBlock(String(f.tmux.launches[0].args.at(-1)), "claude", "light");
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, enrollments: 1, pending: 0 });
 
     expect(enroll(f)).toEqual(receipt);

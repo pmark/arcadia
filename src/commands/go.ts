@@ -64,7 +64,8 @@ import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
 import {
   loadModelTierRegistry,
-  resolveHandoffModel,
+  resolveEscalationTarget,
+  resolveSessionStart,
   type ModelTier
 } from "../codingAgents/modelTiers.js";
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
@@ -198,6 +199,8 @@ export interface GoCommandData {
     tier: ModelTier | null;
     source: "explicit" | "tier" | "concrete" | "fallback";
     note: string | null;
+    /** The plan's tier model a smaller start Session calls in for hard sub-problems. */
+    escalation?: { model: string; effort: string | null; tier: ModelTier | null } | null;
   } | null;
   dispatch: DispatchResolution;
   /**
@@ -627,9 +630,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           effort: options.effort ?? dispatch.context?.planRecommendedReasoningEffort ?? null,
           tier: null,
           source: "explicit" as const,
-          note: null
+          note: null,
+          escalation: resolveEscalationTarget({
+            agent: options.agent,
+            recommendedModel: planModel,
+            currentModel: options.model,
+            registry: loadModelTierRegistry(workspacePath)
+          })
         }
-      : resolveHandoffModel({
+      : resolveSessionStart({
           agent: options.agent,
           recommendedModel: planModel,
           explicitEffort: options.effort ?? null,
@@ -1414,6 +1423,12 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     lines.push(`Model: ${data.nextWorktree.model}${data.nextWorktree.effort ? ` (${data.nextWorktree.effort} effort)` : ""}`);
     if (data.modelResolution?.note) lines.push(`  ${data.modelResolution.note}`);
     else if (data.modelResolution?.tier) lines.push(`  Resolved the ${data.modelResolution.tier} tier for ${data.nextWorktree.agent}.`);
+    const escalation = data.modelResolution?.escalation;
+    lines.push(
+      escalation
+        ? `  Starts on ${data.nextWorktree.model}; escalation model for hard sub-problems: ${escalation.model}${escalation.tier ? ` (${escalation.tier} tier)` : ""}.`
+        : `  Starts on ${data.nextWorktree.model}; no escalation model (already the plan's model).`
+    );
     lines.push(`Launch: ${data.nextWorktree.command}`);
     if (data.identity?.length) lines.push(...data.identity);
   }

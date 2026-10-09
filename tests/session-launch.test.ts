@@ -134,17 +134,19 @@ describe("launchGuardedHostSession", () => {
     expect(tmux.launches[0].args.slice(0, -1)).toEqual([
       "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR",
       "-u", "ARCADIA_REQUIRE_INLINE_WORKSPACE",
-      "GIT_AUTHOR_NAME=Owen Mason",
-      "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
-      "GIT_COMMITTER_NAME=Owen Mason",
-      "GIT_COMMITTER_EMAIL=owen.mason@agents.arcadia.local",
+      "GIT_AUTHOR_NAME=Owen Swift",
+      "GIT_AUTHOR_EMAIL=owen.swift@agents.arcadia.local",
+      "GIT_COMMITTER_NAME=Owen Swift",
+      "GIT_COMMITTER_EMAIL=owen.swift@agents.arcadia.local",
       "opencode",
       "run",
       "--model",
-      "opencode-go/deepseek-v4.1-flash",
+      // The packet binds deepseek (the plan's tier); the Session starts on the light model.
+      "opencode-go/glm-5.3-flash",
       "--variant",
-      "high"
+      "low"
     ]);
+    expect(tmux.launches[0].args.at(-1)).toContain("Escalation target: opencode-go/deepseek-v4.1-flash");
     const brief = tmux.launches[0].args.at(-1)!;
     expect(brief).toContain("Action: define-contract");
     expect(brief).toContain("The contract exists.");
@@ -157,8 +159,8 @@ describe("launchGuardedHostSession", () => {
 
   it("translates an abstract reasoning effort to the provider value at spawn", () => {
     for (const [provider, model, profileName, command, expected] of [
-      ["codex-cli", "gpt-5.6-terra", "codex_build", "codex", ["--config", 'model_reasoning_effort="high"']],
-      ["claude-code-cli", "sonnet", "claude_build", "claude", ["--effort", "high"]]
+      ["codex-cli", "gpt-5.6-terra", "codex_build", "codex", ["--model", "gpt-6-luna", "--config", 'model_reasoning_effort="low"']],
+      ["claude-code-cli", "sonnet", "claude_build", "claude", ["--model", "haiku", "--effort", "low"]]
     ] as const) {
       const fixture = preparedFixture({ provider, model, profileName, command, effort: "e3_deep" });
       const tmux = new FakeTmux();
@@ -166,6 +168,7 @@ describe("launchGuardedHostSession", () => {
 
       doLaunch(fixture, tmux, preview.previewFingerprint);
       expect(tmux.launches[0].args).toEqual(expect.arrayContaining([...expected]));
+      expect(tmux.launches[0].args).not.toContain("e1_brief");
       expect(tmux.launches[0].args).not.toContain("e3_deep");
       // A fingerprint launch is headless like a standing-policy one: same builder, same flags.
       const args = tmux.launches[0].args;
@@ -263,7 +266,8 @@ describe("launchGuardedHostSession", () => {
     const preview = preview1(fixture);
 
     doLaunch(fixture, tmux, preview.previewFingerprint);
-    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--config", 'model_reasoning_effort="high"']));
+    // Smallest model first: the start tier's own effort, not the packet's provider-native one.
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--model", "gpt-6-luna", "--config", 'model_reasoning_effort="low"']));
   });
 
   it("translates an effort recomputed from an Action's execution requirement, not only a packet-verbatim value", () => {
@@ -285,7 +289,7 @@ describe("launchGuardedHostSession", () => {
 
     const tmux = new FakeTmux();
     doLaunch(fixture, tmux, preview.previewFingerprint);
-    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--config", 'model_reasoning_effort="high"']));
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--config", 'model_reasoning_effort="low"']));
     expect(tmux.launches[0].args).not.toContain("e3_deep");
   });
 
@@ -332,8 +336,12 @@ describe("launchGuardedHostSession", () => {
       })
     );
     expect(result.session.provider).toBe("claude-code-cli");
-    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--effort", "high"]));
+    expect(tmux.launches[0].args).toEqual(expect.arrayContaining(["--model", "haiku", "--effort", "low"]));
     expect(tmux.launches[0].args).not.toContain("e3_deep");
+    // The headless settings let the Session spawn a subagent on the bigger model, and the brief says how.
+    expect(JSON.parse(readFileSync(sessionSettingsPath(fixture.workspace, result.session.id), "utf8")).permissions.allow).toContain("Agent");
+    expect(tmux.launches[0].args.at(-1)).toContain('Escalation target: sonnet.');
+    expect(tmux.launches[0].args.at(-1)).toContain('spawn a subagent with the Agent tool and `model: "sonnet"`');
   });
 
   it("rejects a stale or altered preview fingerprint for a brand-new launch", () => {
@@ -1881,7 +1889,8 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(pnpm lint)",
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
-          "Bash(pnpm arcadia agent-ask draft:*)"
+          "Bash(pnpm arcadia agent-ask draft:*)",
+          "Agent"
         ]
       }
     });
@@ -1894,7 +1903,8 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(node scripts/\\*.mjs)",
       "Bash(echo \\(a\\))",
       "Bash(arcadia agent-ask draft:*)",
-      "Bash(pnpm arcadia agent-ask draft:*)"
+      "Bash(pnpm arcadia agent-ask draft:*)",
+      "Agent"
     ]);
   });
 

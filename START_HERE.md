@@ -1073,6 +1073,17 @@ unreconciled Project Session refuses activation. Activation starts no process
 and grants no merge, deployment, spending or unattended-production authority.
 Select a model supported by the agent that will launch the next session.
 
+Sessions start small. Whatever tier the plan names, `arcadia go --launch`,
+`session launch`, the dashboard and the production tick start the Session on the
+light model of its provider (Codex `gpt-6-luna`, Claude `haiku`, opencode
+`opencode-go/glm-5.3-flash`); an explicit `--model` still wins. `arcadia go`
+prints `Starts on <model>; escalation model for hard sub-problems: <model>`, and
+the Action brief's "Calling in help" section tells the Session how to call in the
+plan's tier (a Claude subagent, Codex `spawn_agent`) or, if it cannot, to draft a
+proposal Agent Ask for a relaunch at that tier. Change the start tier per
+workspace with `{ "sessionStartTier": "standard" }` (or `"plan"` for the old
+behavior) in `config/coding-agent-models.json`. See `docs/model-selection.md`.
+
 To mark a governed Action done, preview a `complete` Ask targeting
 `action/<id>` with `candidate_revision` (the Candidate's exact git sha) and
 `evidence`: one entry per declared acceptance criterion, verbatim and in the

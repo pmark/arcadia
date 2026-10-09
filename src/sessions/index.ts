@@ -12,7 +12,7 @@ import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity, type AgentGi
 import { readProjectPartners } from "./partners.js";
 import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { readClaudeCodeTokenFile } from "../codingAgents/claudeCodeToken.js";
-import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { loadModelTierRegistry, sessionStartBinding, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
@@ -542,7 +542,11 @@ export function prepareSession(input: {
       requestedProvider: expectedProvider
     });
   }
-  if (selected.model !== input.model) {
+  // The packet binds the plan's tier model; a Session may instead start on the
+  // registry's start-tier model for the same provider (smallest model first),
+  // with the packet's model as its escalation target. Nothing else is accepted.
+  const startModel = input.agent === FIXTURE_AGENT ? null : sessionStartBinding(input.agent, loadModelTierRegistry(input.workspace))?.model ?? null;
+  if (selected.model !== input.model && startModel !== input.model) {
     throw validationError("The pinned model does not match the packet's selected provider binding.", { selectedModel: selected.model, requestedModel: input.model });
   }
   if (selected.mappingId !== invocation.provider_mapping_id || selected.bindingId !== invocation.provider_binding_id) {
@@ -621,7 +625,7 @@ export function prepareSession(input: {
       plan_path: context.planPath, plan_slug: context.activePlan, action_id: context.action.id, work_item_id: workItem.id,
       packet_id: invocation.id, packet_path: invocation.prompt_path, packet_sha256: packetHash,
       authorizing_decisions_json: JSON.stringify(decisions), execution_profile_json: invocation.execution_profile_json,
-      provider_profile: invocation.agent_profile, provider: selected.provider, model: selected.model, effort: input.effort,
+      provider_profile: invocation.agent_profile, provider: selected.provider, model: input.model, effort: input.effort,
       provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
       base_revision: input.baseRevision, launch_revision: input.launchRevision ?? input.baseRevision,
       branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
@@ -1392,6 +1396,8 @@ function buildProviderLaunch(
     // The same identity the launch environment below commits under, so the
     // name the agent is told and the name on its commits cannot diverge.
     identity,
+    model: session.model,
+    registry,
     partners: readProjectPartners(db, {
       projectSlug: session.project_slug,
       excludeSessionId: session.id,
