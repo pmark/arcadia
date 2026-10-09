@@ -810,6 +810,18 @@ describe("leak-check error JSON", () => {
     expect(classifyLeakChanges(true, fields)).toEqual({ codexTrustEntry: true, otherChanges: [] });
   });
 
+  it("does not read fields from a LEAK_CHECK_UNVERIFIABLE failure", () => {
+    const failure = JSON.stringify({ ok: false, error: { code: "LEAK_CHECK_UNVERIFIABLE", message: "x", details: { changes: [{ field: "hashes.codexConfig" }] } } });
+    const fields = leakCheckChangedFields(parseCliJson("", failure));
+    expect(fields).toBeNull();
+    expect(classifyLeakChanges(true, fields).otherChanges).toEqual(["(the leak check reported a change but its fields could not be read)"]);
+  });
+
+  it("keeps non-Codex fields as possible stop conditions", () => {
+    const failure = JSON.stringify({ ok: false, error: { code: "WORKSPACE_LEAK_DETECTED", message: "x", details: { changes: [{ field: "hashes.codexConfig" }, { field: "some.other" }] } } });
+    expect(classifyLeakChanges(true, leakCheckChangedFields(parseCliJson("", failure)))).toEqual({ codexTrustEntry: true, otherChanges: ["some.other"] });
+  });
+
   it("prefers stdout JSON and yields null fields when neither stream is JSON", () => {
     expect(parseCliJson('{"ok":true}', "noise")).toEqual({ ok: true });
     expect(leakCheckChangedFields(parseCliJson("plain", "Error [X]: y"))).toBeNull();

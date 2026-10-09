@@ -366,6 +366,8 @@ export function parseCliJson(stdout: string, stderr: string): any {
 
 /** The changed leak-check fields in a `workspace leak-check --baseline --json` result, or null when they cannot be read. */
 export function leakCheckChangedFields(json: any): string[] | null {
+  // Only a WORKSPACE_LEAK_DETECTED failure carries attributable changes; LEAK_CHECK_UNVERIFIABLE must stay unreadable.
+  if (json?.error?.code !== "WORKSPACE_LEAK_DETECTED") return null;
   const changes = json?.error?.details?.changes;
   return Array.isArray(changes) ? changes.map((change: { field?: unknown }) => String(change?.field ?? "?")) : null;
 }
