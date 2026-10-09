@@ -140,6 +140,26 @@ export function readExperimentWorkspace(workspacePath: string): ExperimentWorksp
  * routing; a malformed `ask` block fails loudly rather than reading as "on".
  */
 export function askRoutingV2Enabled(workspacePath: string): boolean {
+  return readAskRoutingV2(workspacePath);
+}
+
+/**
+ * The same flag for the ask command, which must never lose an Ask to a broken config file: an unreadable or malformed
+ * `config/arcadia.json` (or `ask` block) reads as the default (on) and returns a `warning` for the receipt.
+ */
+export function askRoutingV2Setting(workspacePath: string): { enabled: boolean; warning: string | null } {
+  try {
+    return { enabled: readAskRoutingV2(workspacePath), warning: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      enabled: true,
+      warning: `ask.routing.v2 could not be read, so the default (on) was used: ${reason}`
+    };
+  }
+}
+
+function readAskRoutingV2(workspacePath: string): boolean {
   const configPath = path.join(path.resolve(workspacePath), "config", "arcadia.json");
   if (!existsSync(configPath)) return true;
   let parsed: unknown;

@@ -17,7 +17,8 @@ import {
   SUPPRESSED_DUPLICATE_PREFIX,
   isTrivialAcknowledgement
 } from "../ask/suppression.js";
-import { askRoutingV2Enabled } from "../workspace/config.js";
+import { findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
+import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
@@ -34,7 +35,6 @@ import {
   createMilestoneForProject,
   createReviewItem,
   createWorkItemWithOptionalArtifact,
-  findOpenAskQuestionDuplicate,
   getActiveMilestoneForProject,
   getProjectMetadata,
   getMilestone,
@@ -146,11 +146,26 @@ export interface AskCommandData {
    * `duplicate:<review id>`, and `openQuestionId` is the still-open question an exact duplicate repeats.
    */
   suppressed?: { reason: string; openQuestionId: string | null };
+  /** Present only when `config/arcadia.json` could not be read for `ask.routing.v2`: the default (on) was used. */
+  routingWarning?: string;
   processingReceipt: AskProcessingReceipt | null;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  // A broken config file must never lose an Ask: routing falls back to the default and the receipt says so.
+  const routingSetting = askRoutingV2Setting(workspacePath);
+  const response = runAskCommandWithRouting(options, workspacePath, routingSetting.enabled);
+  if (!routingSetting.warning) return response;
+  process.stderr.write(`warning: ${routingSetting.warning}\n`);
+  return {
+    ...response,
+    data: { ...response.data, routingWarning: routingSetting.warning },
+    warnings: [...response.warnings, routingSetting.warning]
+  };
+}
+
+function runAskCommandWithRouting(options: AskOptions, workspacePath: string, flagEnabled: boolean): CommandSuccess<AskCommandData> {
   const normalizedInput = normalizeAskInput(options.request);
   const submittedRequest = normalizedInput.askText;
   const askRules = withDatabase(workspacePath, (db) =>
@@ -199,13 +214,13 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   validatePhase3Registries(registries);
   const approvedFromReview = Boolean(options.approvedReviewItemId);
   // ask.routing.v2: an agent-written Ask (agent.ask, codex.*) keeps the earlier routing, as does a workspace that turned the flag off.
-  const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && askRoutingV2Enabled(workspacePath);
+  const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && flagEnabled;
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
   const { intake, workspaceContext, selectedProject } = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
     const selected = resolveProjectReference(db, options.project) ?? ruleMatch?.rule.destination ?? null;
     return {
-      intake: resolveIntake(request, workspaceContext),
+      intake: resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 }),
       workspaceContext,
       selectedProject: selected ? { id: selected.id, name: selected.name } : null
     };
@@ -313,7 +328,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
           };
         }
         const since = new Date(Date.now() - DUPLICATE_ASK_WINDOW_MS).toISOString();
-        const duplicate = findOpenAskQuestionDuplicate(db, request, since);
+        const duplicate = findOpenAskQuestionDuplicate(db, request, since, routedProjectId);
         return duplicate
           ? {
               reason: `${SUPPRESSED_DUPLICATE_PREFIX}${duplicate.id}`,
@@ -1794,7 +1809,7 @@ function decisionNeededForIntake(intake: IntakeResult): string {
 
 function recommendationForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult, routingV2 = false): string {
   if (isUnmatchedAskQuestion(intake, stewardship, routingV2)) {
-    return "Approve to create it as work (execution still needs its own approval), reject to drop it, or send it again with --back-burner to keep it as an idea.";
+    return "Approve to create it as work (approving never starts an executor; running it is a separate approval), reject to drop it, or send it again with --back-burner to keep it as an idea.";
   }
 
   if (stewardship.recommendedExecutionPath === "Clarify First") {

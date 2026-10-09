@@ -28,6 +28,7 @@ import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGa
 import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
+import { askQuestionOrigin, type AskOrigin } from "../ask/askQuestion.js";
 
 type UnsettledAsk = ReturnType<typeof listUnsettledAgentAskProposals>[number];
 
@@ -512,49 +513,27 @@ function withDecisionReviewPaths(found: TodoItem[], rows: ReviewItemSummary[], p
   });
 }
 
-/** Where an Ask-originated question came from: its Ask and the ingress its capture envelope names, when stored. */
-interface AskOrigin {
-  askId: string;
-  via: string | null;
-}
-
 /**
- * The review_items that are Ask questions: raised by an Ask (`ask_request_id`) that routed to Clarify First and made
- * no Action. Keyed by review_item id. A review_item an Ask raised for another reason (a gated Action, a repository
- * path) is a Decision, not an Ask question, and is listed as before.
+ * The review_items that are Ask questions (see `askQuestionOrigin`), keyed by review_item id. A review_item an Ask
+ * raised for another reason is a Decision, and is listed as before.
  */
 function askOriginsOf(db: Parameters<typeof listActionableReviewItems>[0], rows: ReviewItemSummary[]): Map<string, AskOrigin> {
-  const lookup = db.prepare(
-    `SELECT ar.id, ar.work_item_id, ar.stewardship_json, ce.ingress_source
-       FROM ask_requests ar
-       LEFT JOIN ask_capture_envelopes ce ON ce.id = ar.capture_id
-      WHERE ar.id = ?`
-  );
   const origins = new Map<string, AskOrigin>();
   for (const row of rows) {
-    if (!row.ask_request_id) continue;
-    const ask = lookup.get(row.ask_request_id) as
-      | { id: string; work_item_id: string | null; stewardship_json: string | null; ingress_source: string | null }
-      | undefined;
-    if (!ask || ask.work_item_id || !ask.stewardship_json) continue;
-    try {
-      const stewardship = JSON.parse(ask.stewardship_json) as { recommendedExecutionPath?: unknown };
-      if (stewardship.recommendedExecutionPath !== "Clarify First") continue;
-    } catch {
-      continue;
-    }
-    origins.set(row.id, { askId: ask.id, via: ask.ingress_source });
+    const origin = askQuestionOrigin(db, row.ask_request_id);
+    if (origin) origins.set(row.id, origin);
   }
   return origins;
 }
 
 /**
- * The ask-origin answer: one reply settles the question. Approving creates the Ask as an Action (execution still needs
- * its own approval); the other replies are alternatives. Each is an existing command, never invented.
+ * The ask-origin answer: one reply settles the question. Approving creates the Ask as an Action and never starts an
+ * executor (`review approve` refuses to run one for an Ask question, whatever flag it is given); the other replies are
+ * alternatives. Each is an existing command, never invented.
  */
 function askQuestionAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answerVia"> {
   return {
-    answer: `arcadia review approve ${item.id}`,
+    answer: `arcadia review approve ${item.id} --no-execute`,
     answerVia: [
       `reject if it is not wanted: arcadia review reject ${item.id}`,
       `defer for later: arcadia review defer ${item.id}`,

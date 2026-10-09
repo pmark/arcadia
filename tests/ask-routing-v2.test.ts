@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { handleArcadiaMessage } from "../apps/discord-bot/src/events/messageCreate.js";
 import type { ArcadiaCli } from "../apps/discord-bot/src/arcadia/cli.js";
+import { requiresReviewApproveCommand } from "../apps/discord-bot/src/commands/requiresReview.js";
 import { runAskCommand } from "../src/commands/ask.js";
+import { runReviewApproveCommand, runReviewResolveReplyCommand } from "../src/commands/review.js";
 import { runAskCoverageCommand } from "../src/commands/askCoverage.js";
 import { renderTodoSuccess, runTodoCommand, TODO_ASK_CAP, TODO_OTHER_CAP, type TodoCommandOptions } from "../src/commands/todo.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -12,7 +14,7 @@ import { createProjectWithInitialWork, createReviewItem, upsertProjectMetadata }
 import { intakeRoutingFlags, isImperativeRequest, resolveIntake, type IntakeWorkspaceContext } from "../src/intake/index.js";
 import { ACKNOWLEDGEMENTS, isTrivialAcknowledgement } from "../src/ask/suppression.js";
 import { formatOperatorTodoLines } from "../src/orientation/operatorTodoLines.js";
-import { askRoutingV2Enabled } from "../src/workspace/config.js";
+import { askRoutingV2Enabled, askRoutingV2Setting } from "../src/workspace/config.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const NOW = new Date();
@@ -95,7 +97,7 @@ describe("ask.routing.v2: an operator Ask is never shelved unseen", () => {
       kind: "review_item",
       askQuestion: true,
       origin: `ask:${asked.data.ask?.id} via:ask`,
-      answer: `arcadia review approve ${asked.data.reviewItemId}`
+      answer: `arcadia review approve ${asked.data.reviewItemId} --no-execute`
     });
     expect(listed?.answerVia).toContain(`reject if it is not wanted: arcadia review reject ${asked.data.reviewItemId}`);
     expect(listed?.title).toContain(text);
@@ -233,12 +235,18 @@ describe("intake: the operator's own phrasings are work, and two flags are recor
     "Let me rename an item",
     "It would be good if the sidebar remembered its width"
   ])("recognises %j as a request for work", (phrase) => {
-    expect(isImperativeRequest(phrase)).toBe(true);
+    expect(isImperativeRequest(phrase, true)).toBe(true);
+  });
+
+  it("recognises the new phrasings only for an operator Ask under ask.routing.v2", () => {
+    expect(isImperativeRequest("It would be good if Arcadia loaded the sidebar faster")).toBe(false);
+    expect(isImperativeRequest("I want to pin a message")).toBe(false);
+    expect(isImperativeRequest("Let me rename an item")).toBe(true);
   });
 
   it("does not take a statement that merely contains those words for a request", () => {
-    expect(isImperativeRequest("Someone said I should be able to")).toBe(false);
-    expect(isImperativeRequest("The outlet would be good if")).toBe(false);
+    expect(isImperativeRequest("Someone said I should be able to", true)).toBe(false);
+    expect(isImperativeRequest("The outlet would be good if", true)).toBe(false);
   });
 
   it("captures the operator's example as work, not as a shelved thought", () => {
@@ -519,5 +527,144 @@ describe("the morning packet counts the Ask questions", () => {
       runTodoCommand({ workspace: path.join(temp("missing"), "none"), now: NOW, repoRoot: repo, fixtureRoots: [] }).data
     );
     expect(degraded.join("\n")).toContain("Ask questions and Ask-origin tasks are unavailable");
+  });
+});
+
+const WISH = "It would be good if Arcadia loaded the sidebar faster";
+
+describe("ask.routing.v2: the rollback and agent-sourced Asks are exact, wish phrasings included", () => {
+  it("sends a wish phrase to Plan First for an operator Ask with the flag on", () => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: WISH });
+    expect(asked.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(asked.data.backBurnerItemId).toBeNull();
+  });
+
+  it("keeps the earlier route for a wish phrase when the flag is off", () => {
+    const workspace = workspaceWithArcadia();
+    setRoutingV2(workspace, false);
+    const asked = runAskCommand({ workspace, request: WISH });
+    expect(asked.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
+    expect(asked.data.stewardship.intentType).toBe("Back Burner Idea");
+    expect(asked.data.workItem).toBeNull();
+    expect(asked.data.backBurnerItemId).toMatch(/^bb_/);
+  });
+
+  it.each(["agent.ask", "codex.dogfood"])("keeps the earlier route for a wish phrase from %s", (sourceIngress) => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: WISH, sourceIngress });
+    expect(asked.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
+    expect(asked.data.workItem).toBeNull();
+    expect(asked.data.backBurnerItemId).toMatch(/^bb_/);
+  });
+});
+
+describe("answering an Ask question never starts an executor", () => {
+  function runCount(workspace: string): number {
+    return (withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get()) as { n: number }).n;
+  }
+  function question(workspace: string, text = "Sourdough starter notes for Sunday"): string {
+    const asked = runAskCommand({ workspace, request: text });
+    expect(asked.data.reviewItemId).toMatch(/^review_/);
+    return asked.data.reviewItemId as string;
+  }
+
+  it("lists a --no-execute answer command", () => {
+    const workspace = workspaceWithArcadia();
+    const id = question(workspace);
+    expect(todo(workspace).data.items.find((item) => item.askQuestion)?.answer).toBe(`arcadia review approve ${id} --no-execute`);
+  });
+
+  it("creates no Run through `review approve`, by default or with an explicit execute", () => {
+    for (const execute of [undefined, true, false]) {
+      const workspace = workspaceWithArcadia();
+      const id = question(workspace);
+      const approved = runReviewApproveCommand({ workspace, id, execute });
+      expect(approved.data.run, String(execute)).toBeNull();
+      expect(approved.data.item.status, String(execute)).toBe("approved");
+      expect(runCount(workspace), String(execute)).toBe(0);
+    }
+  });
+
+  it("creates no Run when the Ask question has no Project at all", () => {
+    const workspace = temp("noproj");
+    initWorkspace(workspace);
+    const id = question(workspace);
+    expect(runReviewApproveCommand({ workspace, id, execute: true }).data.run).toBeNull();
+    expect(runCount(workspace)).toBe(0);
+  });
+
+  it("creates no Run through the Discord reply path (review resolve-reply approve)", () => {
+    const workspace = workspaceWithArcadia();
+    const id = question(workspace);
+    const replied = runReviewResolveReplyCommand({ workspace, id, reply: "approve" });
+    expect(replied.data.run).toBeNull();
+    expect(runCount(workspace)).toBe(0);
+  });
+
+  it("creates no Run through the Discord approve command, which asks for execution explicitly", async () => {
+    const workspace = workspaceWithArcadia();
+    const id = question(workspace);
+    const cli = {
+      reviewApproveWithExecute: async (reviewId: string) => ({
+        ok: true,
+        command: "review.approve",
+        data: runReviewApproveCommand({ workspace, id: reviewId, execute: true }).data
+      })
+    } as unknown as ArcadiaCli;
+    await requiresReviewApproveCommand(cli, id, {
+      arcadiaWorkspace: workspace,
+      discordBotToken: "t",
+      discordClientId: "c",
+      discordGuildId: "g",
+      discordChannelId: "ch",
+      arcadiaCliPath: null,
+      pollIntervalSeconds: 60
+    });
+    expect(runCount(workspace)).toBe(0);
+  });
+});
+
+describe("ask.routing.v2: duplicates are per Project, and a broken config never loses an Ask", () => {
+  it("does not treat a re-send that adds --project as a duplicate", () => {
+    const workspace = workspaceWithArcadia();
+    const text = "Sourdough starter notes for Sunday";
+    const first = runAskCommand({ workspace, request: text });
+    const named = runAskCommand({ workspace, request: text, project: "Arcadia" });
+    expect(named.data.suppressed).toBeUndefined();
+    expect(named.data.reviewItemId).toMatch(/^review_/);
+    expect(named.data.reviewItemId).not.toBe(first.data.reviewItemId);
+    const again = runAskCommand({ workspace, request: text, project: "Arcadia" });
+    expect(again.data.suppressed?.openQuestionId).toBe(named.data.reviewItemId);
+  });
+
+  it("only treats an Ask question as a duplicate target, not a Decision an Ask raised for another reason", () => {
+    const workspace = workspaceWithArcadia();
+    const text = "Sourdough starter notes for Sunday";
+    const first = runAskCommand({ workspace, request: text });
+    withDatabase(workspace, (db) =>
+      db.prepare("UPDATE ask_requests SET stewardship_json = json_set(stewardship_json, '$.recommendedExecutionPath', 'Requires Review') WHERE id = ?").run(first.data.ask?.id)
+    );
+    const second = runAskCommand({ workspace, request: text });
+    expect(second.data.suppressed).toBeUndefined();
+  });
+
+  it("fails open on a malformed config/arcadia.json: default on, one warning in the receipt", () => {
+    const workspace = workspaceWithArcadia();
+    setRoutingV2(workspace, "off");
+    const setting = askRoutingV2Setting(workspace);
+    expect(setting.enabled).toBe(true);
+    expect(setting.warning).toContain("ask.routing.v2 must be a boolean");
+
+    const asked = runAskCommand({ workspace, request: "Sourdough starter notes for Sunday" });
+    expect(asked.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
+    expect(asked.data.reviewItemId).toMatch(/^review_/);
+    expect(asked.data.routingWarning).toContain("could not be read");
+    expect(asked.warnings.filter((warning) => warning.includes("ask.routing.v2"))).toHaveLength(1);
+
+    writeFileSync(path.join(workspace, "config", "arcadia.json"), "{ not json");
+    const unreadable = runAskCommand({ workspace, request: "The sidebar is broken on mobile" });
+    expect(unreadable.data.reviewItemId).toMatch(/^review_/);
+    expect(unreadable.data.routingWarning).toContain("not valid JSON");
   });
 });

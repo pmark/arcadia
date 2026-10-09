@@ -2662,8 +2662,10 @@ The default view has two sections. **Yours** holds everything described below pl
 a **Your Asks need one answer (N)** group: the newest five questions your Asks
 raised, with the full N always printed (`counts.askQuestions`) and never hidden by
 the five-item cap on other items (`--all` lists every one). Each carries the
-command that answers it: `arcadia review approve <id>` to create it as work,
-with `reject`, `defer` and the Discord reply listed beside it. **Agents are doing**
+command that answers it: `arcadia review approve <id> --no-execute` to create it as
+work (approving an Ask question never starts an executor, whatever flag or Discord
+command is used; running the work is a separate approval), with `reject`, `defer`
+and the Discord reply listed beside it. **Agents are doing**
 is one count line of in-flight agent work (prepared or running Sessions, pending or
 running managed Runs); `--agents` lists them. A line `Back Burner: N incubating
 (M new in 7 days)` shows how big the shelf is without making it a to-do. With no
@@ -2676,8 +2678,9 @@ An Ask that matches no execution pattern is **never** shelved silently. It becom
 a question in `arcadia todo` (Clarify First); only an intake classification of
 Idea, or `arcadia ask --back-burner`, puts an Ask in the Back Burner. A reply such
 as `yes` that names no Decision also asks which one you meant. Phrasings like "I
-should be able to ...", "I want (to be able) to ...", "let me ..." and "it would be
-good if ..." are work requests. Two messages create no question and say why in their
+should be able to ...", "I want (to be able) to ..." and "it would be good if ..." are
+work requests for an operator Ask under this flag (off, or agent-written, they read
+as before). Two messages create no question and say why in their
 receipt: a whole message that is only `thanks`, `thank you`, `ok`, `okay`, `got it`,
 `ack` or emoji (bare `done` is not on the list, because it can be a completion
 report), and an exact repeat of a question that is still open within 24 hours.
@@ -2686,7 +2689,8 @@ vanished, and counts the deterministic `recurrence` and `planning` intake flags.
 Agent-written Asks (`agent.ask`, `codex.*`) keep the earlier routing.
 
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
-workspace's `config/arcadia.json`; the flag defaults to on.
+workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot
+be read never loses an Ask: the default is used and the receipt carries a warning.
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
 run. It lists seven sources per Project: **open Decisions**, **pending Agent

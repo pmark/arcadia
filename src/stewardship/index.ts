@@ -134,7 +134,7 @@ function intentTypeForInput(
     case "CaptureThought":
       // An imperative request for a known Project is work to plan, not an idea
       // to shelve; without a Project it still needs clarifying first.
-      if (!isImperativeRequest(input.rawInput)) {
+      if (!isImperativeRequest(input.rawInput, input.routingV2 === true)) {
         return input.routingV2 && !isExplicitIdea(input) ? "Project Work" : "Back Burner Idea";
       }
       return hasTargetProject(input) ? "Planning Request" : "Project Work";
@@ -361,7 +361,7 @@ function isExplicitIdea(input: StewardIntentInput): boolean {
 }
 
 function commandShapedMissingTarget(input: StewardIntentInput): boolean {
-  return !hasTargetProject(input) && isImperativeRequest(input.rawInput);
+  return !hasTargetProject(input) && isImperativeRequest(input.rawInput, input.routingV2 === true);
 }
 
 function normalize(value: string): string {

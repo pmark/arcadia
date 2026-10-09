@@ -1533,32 +1533,6 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
 }
 
 /**
- * The open or deferred Ask question (a review_item an Ask raised) whose source
- * text is exactly `text` and which was created at or after `sinceIso`. The
- * comparison is exact on the trimmed text: "exact duplicate" means the same
- * words, not a similar request.
- */
-export function findOpenAskQuestionDuplicate(
-  db: Database.Database,
-  text: string,
-  sinceIso: string
-): { id: string; slug: string | null; created_at: string } | null {
-  return (
-    (db
-      .prepare(
-        `SELECT id, slug, created_at FROM review_items
-         WHERE ask_request_id IS NOT NULL
-           AND status IN ('open', 'deferred')
-           AND TRIM(source_input) = ?
-           AND created_at >= ?
-         ORDER BY created_at DESC, id DESC
-         LIMIT 1`
-      )
-      .get(text.trim(), sinceIso) as { id: string; slug: string | null; created_at: string } | undefined) ?? null
-  );
-}
-
-/**
  * Operator Asks in a window by routing outcome, for the Ask report. An Ask
  * suppressed as an acknowledgement or duplicate created no question, so it is
  * counted apart: it must never read as an Ask that vanished. Asks written by
