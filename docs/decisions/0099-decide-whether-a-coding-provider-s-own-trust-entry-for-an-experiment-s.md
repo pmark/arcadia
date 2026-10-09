@@ -4,7 +4,7 @@ type: decision
 id: "0099"
 slug: decide-whether-a-coding-provider-s-own-trust-entry-for-an-experiment-s
 project: arcadia
-status: open
+status: approved
 question: Decide whether a coding provider's own trust entry for an experiment's temporary folder (Codex adds [projects."<temp path>"] trust_level="trusted" to ~/.codex/config.toml) counts as Decision 0082's stop condition. Nothing changes by raising this Decision.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Not a stop condition: provider trust entries for the experiment's own temp folders are allowed"
+decided: 2026-10-09
 ---
 
 # Decision 0099: Decide whether a coding provider's own trust entry for an experiment's temporary folder (Codex adds [projects."<temp path>"] trust_level="trusted" to ~/.codex/config.toml) counts as Decision 0082's stop condition. Nothing changes by raising this Decision.
