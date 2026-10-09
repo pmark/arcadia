@@ -502,6 +502,8 @@ export function prepareSession(input: {
   baseRevision: string;
   /** The worktree HEAD to verify immediately before launch; defaults to `baseRevision` when omitted (an ordinary fresh worktree, where the two are identical). */
   launchRevision?: string;
+  /** Per-launch wall-clock limit override in ms, written in the same insert as the lease. */
+  timeLimitMs?: number;
   branch: string;
   worktreePath: string;
   now: Date;
@@ -628,7 +630,7 @@ export function prepareSession(input: {
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
       created_at: timestamp, updated_at: timestamp,
       last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null,
-      admission_request_id: null, time_limit_ms: null, stop_reason: null,
+      admission_request_id: null, time_limit_ms: input.timeLimitMs ?? null, stop_reason: null,
       is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);

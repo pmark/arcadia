@@ -569,16 +569,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       effort,
       baseRevision: sessionBaseRevision,
       launchRevision: sessionLaunchRevision,
+      timeLimitMs: input.timeLimitMs,
       branch: nextWorktree.branch,
       worktreePath: nextWorktree.path,
       now,
       tmux,
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
-    if (input.timeLimitMs !== undefined) {
-      input.db.prepare("UPDATE agent_sessions SET time_limit_ms = ? WHERE id = ?").run(input.timeLimitMs, prepared.id);
-      prepared = { ...prepared, time_limit_ms: input.timeLimitMs };
-    }
     if (input.reuseOwnLeaseOnly && admission) {
       // Enrollment only: bind the lease to this request's admission at once,
       // so a crash before the commit below still leaves positive evidence the
@@ -810,6 +807,11 @@ function reusedLease(
       throw lineageRefusal(error);
     }
   };
+  // A per-launch time limit applies to a reused lease too, before it may start.
+  if (input.timeLimitMs !== undefined && lease.time_limit_ms !== input.timeLimitMs) {
+    input.db.prepare("UPDATE agent_sessions SET time_limit_ms = ? WHERE id = ?").run(input.timeLimitMs, lease.id);
+    lease = { ...lease, time_limit_ms: input.timeLimitMs };
+  }
   const session = reuseOrRefuseLease(input.db, lease, preview, tmux, registry, providerSignIn, input.workspace, input.onProviderSignInConfirmed, ensureAttempt);
   if (session.status === "running") {
     markAttemptRunning(input.db, liveMutationOwner(input.db, requirementIdFor(session.project_slug, session.plan_slug, session.action_id)), now);

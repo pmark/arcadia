@@ -27,6 +27,13 @@ import { scanPane, type PaneSignalClass } from "./sessionSignals.js";
 /** Pane classes that a Session cannot resolve by itself or by waiting. */
 export const BLOCKING_PANE_CLASSES: readonly PaneSignalClass[] = ["permission_prompt", "auth_failure", "provider_limit"];
 
+/** How many trailing non-blank pane lines may carry a blocking message. */
+export const BLOCKING_TAIL_LINES = 6;
+
+function lastLines(text: string, count: number): string {
+  return text.split(/\r?\n/).filter((line) => line.trim() !== "").slice(-count).join("\n");
+}
+
 export type SessionStopKind = "time_limit" | "blocking_signal";
 
 export interface SessionStopDecision {
@@ -56,6 +63,13 @@ export function decideSessionStop(input: {
   stalled: boolean;
   paneText: string | null;
   stallDeadlineMs?: number;
+  /**
+   * A headless Session (one with a recorded log) has no interactive prompt to
+   * wait on, and its pane shows tool output: an agent reading code that
+   * contains "Do you want to proceed" must not look blocked. Permission
+   * prompts are ignored for it.
+   */
+  headless?: boolean;
 }): SessionStopDecision | null {
   const startedMs = new Date(input.session.prepared_at).getTime();
   const runningMs = input.now.getTime() - startedMs;
@@ -63,8 +77,12 @@ export function decideSessionStop(input: {
     return { kind: "time_limit", reason: `Session time limit of ${Math.round(input.limitMs / 60_000)} minutes reached (running ${Math.round(runningMs / 60_000)} minutes).` };
   }
   if (!input.stalled) return null;
-  const scan = scanPane(input.paneText);
-  const blocking = scan.classes.find((paneClass) => BLOCKING_PANE_CLASSES.includes(paneClass));
+  // Only the last few lines: a blocking Session is silent and sits on its
+  // message, so the message is at the very end; older output is not evidence.
+  const scan = scanPane(input.paneText === null ? null : lastLines(input.paneText, BLOCKING_TAIL_LINES));
+  const blocking = scan.classes.find(
+    (paneClass) => BLOCKING_PANE_CLASSES.includes(paneClass) && !(input.headless && paneClass === "permission_prompt")
+  );
   if (!blocking) return null;
   const deadline = input.stallDeadlineMs ?? PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs;
   return {
@@ -83,13 +101,15 @@ export function enforceSessionLifetime(
   db: Database.Database,
   input: {
     session: AgentSession;
-    tmux: Pick<TmuxAdapter, "capturePane" | "killSession">;
+    tmux: Pick<TmuxAdapter, "hasSession" | "capturePane" | "killSession">;
     now: Date;
     stalled: boolean;
     stallDeadlineMs?: number;
+    headless?: boolean;
   }
-): SessionStopDecision | null {
-  if (!input.tmux.killSession) return null;
+): { stopped: SessionStopDecision | null; failed: SessionStopDecision | null } {
+  const none = { stopped: null, failed: null };
+  if (!input.tmux.killSession) return none;
   const paneText = input.tmux.capturePane ? input.tmux.capturePane(input.session.tmux_session_name) : null;
   const decision = decideSessionStop({
     session: input.session,
@@ -97,12 +117,19 @@ export function enforceSessionLifetime(
     limitMs: resolveSessionTimeLimitMs(db, input.session),
     stalled: input.stalled,
     paneText,
-    stallDeadlineMs: input.stallDeadlineMs
+    stallDeadlineMs: input.stallDeadlineMs,
+    headless: input.headless
   });
-  if (!decision) return null;
+  if (!decision) return none;
   // Written first: if the tick dies between here and the reconcile, the next
   // tick still finds the reason on the Session row.
   db.prepare("UPDATE agent_sessions SET stop_reason = ?, updated_at = ? WHERE id = ?").run(decision.reason, input.now.toISOString(), input.session.id);
   input.tmux.killSession(input.session.tmux_session_name);
-  return decision;
+  if (input.tmux.hasSession(input.session.tmux_session_name)) {
+    // The kill did not take: this is not a stop. Withdraw the reason so a
+    // later, unrelated exit is not mislabelled; the next tick retries.
+    db.prepare("UPDATE agent_sessions SET stop_reason = NULL, updated_at = ? WHERE id = ?").run(input.now.toISOString(), input.session.id);
+    return { stopped: null, failed: decision };
+  }
+  return { stopped: decision, failed: null };
 }

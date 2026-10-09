@@ -2059,13 +2059,19 @@ stay) when (1) its wall-clock limit passes — `arcadia session launch
 --time-limit-minutes N` for one launch, else the active production scope's
 `sessionTimeLimitMs`, else 120 minutes (the default also applies when no policy
 is readable or production is Inactive) — or (2) its pane shows a permission
-prompt, auth failure or provider limit that did not change for the 20-minute
-stall deadline. The tick then reconciles it like any other exit: the Session
-exit receipt's reason starts `Stopped by Arcadia:` with the cause, and the lease
-is released. A Session that is still producing output or Run activity is never
+prompt, auth failure or provider limit in its last few pane lines that did not
+change for the 20-minute stall deadline (a headless Session's pane is tool
+output, so a permission-prompt match is ignored for it). A stop counts only when
+tmux confirms the Session is gone; a kill that did not take is logged and retried
+next tick. The tick then preserves and reconciles it on the following tick like
+any other exit: the Session exit receipt's reason starts `Stopped by Arcadia:`
+with the cause, and the lease is released. A Session that is still producing output or Run activity is never
 stopped before its limit; a silent Session with no blocking message is only
 flagged stalled until the limit. Look at the exit receipt for what to do next
 (`arcadia session reconcile <id>` shows it).
+
+**Rollout:** on the first deploy of this build, any live Session older than the
+120-minute default (and with no longer override) is stopped on the first tick.
 
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance

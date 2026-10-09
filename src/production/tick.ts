@@ -36,6 +36,7 @@ import type { CandidatePreservationReceipt } from "../sessions/candidatePreserva
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
@@ -1515,6 +1516,9 @@ export function runManagedProductionTick(
     let alertLease: ReturnType<typeof getRepositoryLease> = null;
     try {
       const lease = getRepositoryLease(db, repoRoot);
+      // A Session stopped this tick is preserved and reconciled on the next
+      // one, so SIGHUP'd children can finish writing first.
+      let stoppedThisTick = false;
       if (lease && tmux.hasSession(lease.tmux_session_name)) {
         // tmux is alive; check whether it is actually moving. Neither branch
         // here touches `lease`/`status`, so the repository lease this Session
@@ -1547,21 +1551,29 @@ export function runManagedProductionTick(
         // whose pane shows a blocking condition that persisted past the stall
         // deadline. Only `tmux kill-session`; the dead-session branch below
         // then preserves, reconciles (writing the receipt with this reason)
-        // and releases the lease in this same tick.
+        // and releases the lease on the next tick. The kill must be confirmed
+        // (tmux no longer reports the Session) before it counts as a stop.
         {
-          const stop = enforceSessionLifetime(db, { session: lease, tmux, now, stalled: activity.stalled, stallDeadlineMs: PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs });
-          if (stop) {
+          const { stopped, failed } = enforceSessionLifetime(db, {
+            session: lease, tmux, now, stalled: activity.stalled,
+            stallDeadlineMs: PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs,
+            headless: existsSync(sessionLogPath(workspace, lease.id))
+          });
+          if (stopped) {
+            stoppedThisTick = true;
             recordEvent(db, {
               eventType: "managed_production.session_stopped",
               projectId: project.id,
-              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name, kind: stop.kind, reason: stop.reason },
+              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name, kind: stopped.kind, reason: stopped.reason },
               at: now.toISOString()
             });
-            log(`Stopped Session ${lease.id} for ${project.slug}: ${stop.reason}`);
+            log(`Stopped Session ${lease.id} for ${project.slug}: ${stopped.reason} Its exit is preserved and reconciled next tick.`);
+          } else if (failed) {
+            log(`Could not stop Session ${lease.id} for ${project.slug} (${failed.reason}): tmux still reports it alive; retrying next tick.`);
           }
         }
       }
-      if (lease && !tmux.hasSession(lease.tmux_session_name)) {
+      if (lease && !stoppedThisTick && !tmux.hasSession(lease.tmux_session_name)) {
         alertLease = lease;
         // Preserve the dead Session's candidate before reconciliation marks it
         // terminal (validation runs against the still-active lease), then
