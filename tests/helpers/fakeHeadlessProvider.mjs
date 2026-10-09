@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Stand-in for the `codex` and `opencode` CLIs in the headless-provider test. It never reaches a model.
 // FAKE_ORPHAN=1 additionally leaves a descendant holding the output pipes.
-// FAKE_PROVIDER_MODE (or FAKE_PROVIDER_MODE_codex / _opencode): success | settle | no-ask | bad-marker | uncommitted | fail | timeout | not-logged-in | partial-ask
+// FAKE_PROVIDER_MODE (or FAKE_PROVIDER_MODE_codex / _opencode): success | settle | sandboxed | no-ask | bad-marker | uncommitted | fail | timeout | not-logged-in | partial-ask
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -9,7 +9,7 @@ import path from "node:path";
 const name = path.basename(process.argv[1]);
 const args = process.argv.slice(2);
 const mode = process.env[`FAKE_PROVIDER_MODE_${name}`] ?? process.env.FAKE_PROVIDER_MODE ?? "success";
-if (process.env.FAKE_PROVIDER_CALLS) appendFileSync(process.env.FAKE_PROVIDER_CALLS, JSON.stringify({ name, args: args.map((a) => (a.length > 80 ? a.slice(0, 80) + "..." : a)), cwd: process.cwd(), arcadiaWorkspace: process.env.ARCADIA_WORKSPACE ?? null, operatorId: process.env.ARCADIA_OPERATOR_SCRIPT_ID ?? null, author: process.env.GIT_AUTHOR_NAME ?? null }) + "\n");
+if (process.env.FAKE_PROVIDER_CALLS) appendFileSync(process.env.FAKE_PROVIDER_CALLS, JSON.stringify({ name, args: args.map((a) => (a.length > 400 ? a.slice(0, 400) + "..." : a)), cwd: process.cwd(), arcadiaWorkspace: process.env.ARCADIA_WORKSPACE ?? null, operatorId: process.env.ARCADIA_OPERATOR_SCRIPT_ID ?? null, author: process.env.GIT_AUTHOR_NAME ?? null, pwd: process.env.PWD ?? null, opencodeConfig: process.env.OPENCODE_CONFIG_CONTENT ?? null }) + "\n");
 
 // Arcadia checks the installed provider's help text for the headless flags before it launches (src/sessions/launchPreflight.ts).
 if (name === "codex" && args[0] === "exec" && args.includes("--help")) { console.log("Usage: codex exec [OPTIONS]\n  --json\n  --sandbox <MODE>\n  --model <MODEL>\n  --cd <DIR>"); process.exit(0); }
@@ -39,9 +39,9 @@ if (mode === "timeout") {
 } else {
   // A descendant that outlives the provider and keeps its output pipes open (same process group, so the runner can sweep it).
   if (process.env.FAKE_ORPHAN) spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" }).unref();
-  const line =mode === "bad-marker" ? "wrong marker" : "headless provider marker";
+  const line = mode === "bad-marker" ? "wrong marker" : "headless provider marker";
   writeFileSync(path.join(cwd, "MARKER.md"), line + "\n");
-  if (mode !== "uncommitted") {
+  if (mode !== "uncommitted" && mode !== "sandboxed") {
     run("git", ["add", "MARKER.md"]);
     run("git", ["-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "Write MARKER.md"]);
   }
@@ -59,6 +59,12 @@ if (mode === "timeout") {
     };
     // The same fixed launcher shape the brief names: draft it and leave it for the host.
     run("arcadia", ["agent-ask", "draft", JSON.stringify(ask)]);
+    if (mode === "sandboxed") {
+      // Codex's workspace-write sandbox cannot create Git's index.lock, so the agent follows the brief's step 2 and the broker has no worker.
+      // The shape of codex --json's command_execution event, with the broker's real refusal text.
+      console.log(JSON.stringify({ type: "item.completed", item: { id: "item_14", type: "command_execution", command: "/bin/zsh -lc /Users/x/.local/bin/arcadia-preserve-broker-codex",
+        aggregated_output: JSON.stringify({ ok: false, command: "go-broker", error: { code: "VALIDATION_ERROR", message: "Protected preservation request path is unavailable. The preservation route heartbeat is stale (84s old, limit 15s)" } }), exit_code: 1, status: "failed" } }));
+    }
     if (mode === "settle") {
       // What the shipped brief asks for first: settle the Ask (preview, then apply the exact fingerprint).
       const settleArgs = ["agent-ask", "settle", "--proposal", ask.request_id, "--request-id", `settle-${ask.request_id}`, "--disposition", "accepted", "--json"];
