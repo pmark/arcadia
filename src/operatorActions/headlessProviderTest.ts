@@ -356,6 +356,22 @@ function makeContext(options: HeadlessTestOptions): Context {
   };
 }
 
+/** The CLI writes success JSON to stdout and failure JSON (`--json`) to stderr (src/cli/response.ts), so read stdout first, then stderr. */
+export function parseCliJson(stdout: string, stderr: string): any {
+  for (const text of [stdout, stderr]) {
+    try { return JSON.parse(text); } catch { /* not JSON output */ }
+  }
+  return null;
+}
+
+/** The changed leak-check fields in a `workspace leak-check --baseline --json` result, or null when they cannot be read. */
+export function leakCheckChangedFields(json: any): string[] | null {
+  // Only a WORKSPACE_LEAK_DETECTED failure carries attributable changes; LEAK_CHECK_UNVERIFIABLE must stay unreadable.
+  if (json?.error?.code !== "WORKSPACE_LEAK_DETECTED") return null;
+  const changes = json?.error?.details?.changes;
+  return Array.isArray(changes) ? changes.map((change: { field?: unknown }) => String(change?.field ?? "?")) : null;
+}
+
 interface CliResult { status: number | null; stdout: string; stderr: string; json: any }
 
 /** Run one Arcadia CLI command against an explicit workspace; the live workspace is never resolved. */
@@ -366,8 +382,7 @@ function arcadia(context: Context, workspace: string | null, args: string[], ext
     maxBuffer: 64 * 1024 * 1024,
     env: { ...sanitizedEnv(context.env), PATH: context.searchPath, ...(workspace ? { ARCADIA_WORKSPACE: workspace, ARCADIA_REQUIRE_INLINE_WORKSPACE: "1" } : {}), ...extraEnv }
   });
-  let json: any = null;
-  try { json = JSON.parse(run.stdout); } catch { /* not JSON output */ }
+  const json = parseCliJson(run.stdout ?? "", run.stderr ?? "");
   return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "", json };
 }
 
@@ -1177,8 +1192,7 @@ function liveSnapshot(context: Context, args: string[]): LiveSnapshot {
   if (context.options.liveLeakCheck === false) return { ok: false, changed: null, changedFields: null, detail: "skipped" };
   const run = arcadia(context, null, ["workspace", "leak-check", ...args, "--json"]);
   if (run.status === null) return { ok: false, changed: null, changedFields: null, detail: "leak-check did not run" };
-  const changes = run.json?.error?.details?.changes;
-  const changedFields = Array.isArray(changes) ? changes.map((change: { field?: unknown }) => String(change?.field ?? "?")) : null;
+  const changedFields = leakCheckChangedFields(run.json);
   return { ok: run.status === 0, changed: args.includes("--baseline") ? run.status !== 0 : null, changedFields, detail: (run.stdout.trim() || run.stderr.trim()).slice(0, 6000) };
 }
 
