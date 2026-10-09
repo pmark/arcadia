@@ -6,7 +6,8 @@ import { runAskCommand } from "../src/commands/ask.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkRunCommand } from "../src/commands/work.js";
 import { recoverOrphanedRuns, reduceExecutionOutcome } from "../src/commands/worker.js";
-import { withDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
+import { queueApprovedPlanningRun } from "../src/execution/planningAuthorization.js";
 import {
   countRows,
   createProjectWithInitialWork,
@@ -66,6 +67,55 @@ describe("Decision-gated planning", () => {
     })).toThrow(/requires an approved Decision/);
     expect(withDatabase(workspace, (db) => countRows(db, "execution_runs"))).toBe(0);
     expect(withDatabase(workspace, (db) => listReviewItems(db, "open"))).toHaveLength(1);
+  });
+
+  it("planning approval survives another writer committing mid-transaction", () => {
+    // The worker and the dashboard commit continuously while an operator
+    // approves. A deferred transaction that has read but not yet written
+    // fails with SQLITE_BUSY_SNAPSHOT if anyone commits in between (#1102).
+    const workspace = fixtureWorkspace();
+    const response = runAskCommand({ workspace, request: "Prepare a plan for adding Pinterest publishing to Rebuster." });
+    const approving = openDatabase(workspace);
+    const competing = openDatabase(workspace);
+    competing.pragma("busy_timeout = 0");
+    let interleaved = false;
+    const intercepted = new Proxy(approving, {
+      get(target, property) {
+        if (property === "prepare") {
+          return (sql: string) => {
+            const statement = target.prepare(sql);
+            if (!/^\s*select/i.test(sql)) return statement;
+            return new Proxy(statement, {
+              get(inner, method) {
+                const value = Reflect.get(inner, method);
+                if (typeof value !== "function") return value;
+                return (...args: unknown[]) => {
+                  const result = value.apply(inner, args);
+                  if (!interleaved && target.inTransaction) {
+                    interleaved = true;
+                    // A competing commit lands after the approval's first read.
+                    // With the write lock already held it is refused; with a
+                    // deferred snapshot it succeeds and poisons the approval.
+                    try { competing.exec("UPDATE projects SET updated_at = updated_at || 'x'"); } catch { /* refused: fine */ }
+                  }
+                  return result;
+                };
+              }
+            });
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    try {
+      const queued = queueApprovedPlanningRun(intercepted, workspace, { decisionId: response.data.reviewItemId!, execute: true });
+      expect(interleaved).toBe(true);
+      expect(queued.run?.id).toBeTruthy();
+    } finally {
+      approving.close();
+      competing.close();
+    }
   });
 
   it("truthful outcome reducer never completes failed execution or Validation", () => {

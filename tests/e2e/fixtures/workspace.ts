@@ -116,7 +116,11 @@ export async function createE2EWorkspace(): Promise<E2EWorkspace> {
     ARCADIA_WORKSPACE: root,
     ARCADIA_CONFIG_PATH: path.join(root, "isolated-user-config.json"),
     HOME: root,
-    CI: "1"
+    CI: "1",
+    // The dashboard spawns one CLI per read. Spawned through tsx, parallel
+    // page loads across the Playwright workers starve each other of CPU and
+    // the first data paint slips past the expect budget (#1102).
+    ARCADIA_DASHBOARD_CLI: "built"
   };
   const dashboardLog = path.join(root, "dashboard.log");
   const workerLog = path.join(root, "worker-process.log");
