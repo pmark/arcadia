@@ -2,16 +2,19 @@ import { validationError, projectNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import type Database from "better-sqlite3";
+import { withDatabase, writeTransaction } from "../db/connection.js";
 import {
   createAskRequest,
   getBackBurnerItem,
   getReviewItem,
   getReviewItemBySlug,
   getWorkItem,
+  updateBackBurnerItem,
   updateReviewItemStatus,
   updateWorkItem
 } from "../db/repositories.js";
+import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { ASK_CORRECTION_TYPES, ASK_HEARD_HINT, buildAskHeard, type AskCorrectionType, type AskHeard } from "../ask/heard.js";
 import {
@@ -21,9 +24,10 @@ import {
   type AskRecord,
   type AskRecordKind
 } from "../ask/supersession.js";
+import type { ReviewItemSummary } from "../domain/types.js";
 import { loadPhase3Registries } from "../intent/registries.js";
 import { runAskCommand } from "./ask.js";
-import { runBackBurnerArchiveCommand, runBackBurnerPromoteCommand } from "./backBurner.js";
+import { runBackBurnerPromoteCommand } from "./backBurner.js";
 import { runReviewResolveReplyCommand } from "./review.js";
 import { runStatusCommand } from "./status.js";
 
@@ -130,23 +134,29 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
 
   const created = createReplacement(workspacePath, context, effectiveType, project, options);
 
-  // The replacement exists; record the link before closing the old record so the trail never shows a gap.
-  const supersession = withDatabase(workspacePath, (db) =>
-    recordSupersession(db, {
-      oldAskRequestId: context.askId,
-      newAskRequestId: created.newAskId,
-      targetType: effectiveType,
-      projectId: project?.id ?? null,
-      oldKind: previous.kind,
-      oldRecordId: previous.id,
-      newKind: created.kind,
-      newRecordId: created.recordId,
-      oldDisposition: created.promotedOld ? "promoted" : dispositionFor(previous.kind),
-      source,
-      actor: options.actor?.trim() || null
+  // The replacement is made by writers that each own their connection and files (the Ask pipeline, Back Burner
+  // promote, review resolve-reply), so it cannot join a transaction. Everything this command owns after that, the
+  // supersession link and the closing of the old record, commits together or not at all: the trail never shows a
+  // link with the old record still open, or a closed record with no link.
+  const { supersession, disposition } = withDatabase(workspacePath, (db) =>
+    writeTransaction(db, () => {
+      const retired = created.promotedOld ? "promoted" : retireOldRecord(db, previous, context, created.newAskId, effectiveType);
+      const link = recordSupersession(db, {
+        oldAskRequestId: context.askId,
+        newAskRequestId: created.newAskId,
+        targetType: effectiveType,
+        projectId: project?.id ?? null,
+        oldKind: previous.kind,
+        oldRecordId: previous.id,
+        newKind: created.kind,
+        newRecordId: created.recordId,
+        oldDisposition: retired,
+        source,
+        actor: options.actor?.trim() || null
+      });
+      return { supersession: link, disposition: retired };
     })
   );
-  const disposition = created.promotedOld ? "promoted" : retireOldRecord(workspacePath, previous, context, created.newAskId, effectiveType);
 
   return createSuccess({
     command: "ask.correct",
@@ -193,8 +203,9 @@ function normalizeType(raw: string | undefined): AskCorrectionType | null {
 
 /**
  * A correction to `answer` resolves a Decision, so from Discord it needs a verified sender: the allowlist must be
- * configured and must include the author. The Discord bot checks the same thing before it calls this command; this is
- * the second lock, so a replayed or hand-built Discord-sourced call cannot skip it.
+ * configured and must include the author. The Discord bot is the real gate: it knows the authenticated author. This
+ * check only repeats the rule on caller-asserted input (`--source` and `--actor` are claims by whoever runs the
+ * command, and the CLI cannot verify them); it stops a mistaken or incomplete Discord-sourced call, not a hostile local one.
  */
 export function requireVerifiedAnswerAuthor(source: AskCorrectionSource, actor: string | undefined): void {
   if (source !== "discord") return;
@@ -272,19 +283,6 @@ function rerouteTypeFor(record: AskRecord): AskCorrectionType | "reroute" {
   if (record.kind === "work") return "work";
   if (record.kind === "idea") return "idea";
   return "reroute";
-}
-
-function dispositionFor(kind: AskRecordKind): string {
-  switch (kind) {
-    case "question":
-      return "closed";
-    case "idea":
-      return "archived";
-    case "work":
-      return "deferred";
-    default:
-      return "unchanged";
-  }
 }
 
 interface Replacement {
@@ -442,12 +440,7 @@ function correctToAnswer(workspacePath: string, context: CorrectionContext, opti
   if (context.record.kind === "question" && context.record.id === target.id) {
     throw validationError("An Ask cannot answer the question it raised itself.", { ref: reference });
   }
-  if (target.resolved_intent === "ProjectProposalApproval") {
-    throw validationError("A project proposal approval starts a build, so a correction cannot answer it.", {
-      ref: reference,
-      remedy: `Approve it deliberately with arcadia review approve ${target.slug ?? target.id}.`
-    });
-  }
+  assertAnswerableByCorrection(workspacePath, target);
 
   const resolution = runReviewResolveReplyCommand({
     workspace: workspacePath,
@@ -472,17 +465,55 @@ function correctToAnswer(workspacePath: string, context: CorrectionContext, opti
       status: "planned"
     })
   );
-  const created = `answer recorded on Decision ${resolution.data.item.slug ?? target.id}`;
+  const slug = resolution.data.item.slug ?? target.id;
+  const created = `answer recorded on Decision ${slug}`;
   return {
     newAskId: ask.id,
     kind: "decision",
     recordId: target.id,
-    summary: `${created}. ${resolution.data.confirmation}`,
+    // Not the review writer's confirmation: for an approval it says "Resuming execution", and a correction starts none.
+    summary: `${created} (${resolution.data.action}). No execution was started.`,
     heard: correctionHeard("answer", created),
     promotedOld: false,
     artifacts: resolution.artifacts,
     warnings: resolution.warnings
   };
+}
+
+const ACTION_CLARIFICATION_INTENT = "ActionClarification";
+
+/** Decisions that approve an executor, a build or a derived follow-up: never answered by a correction. */
+const EXECUTION_APPROVAL_INTENTS = new Set([
+  "ReviewExecutionPending",
+  "CodexBuildPacketApproval",
+  "ProjectProposalApproval",
+  "CodexPlanningRunApproval",
+  "CodexPlanningArtifactAcceptance",
+  "CodexPlanningRetryApproval",
+  "codex_planning_artifact_validation"
+]);
+
+/**
+ * An answer correction may target only a question: an Ask question, an ActionClarification, or an ordinary open
+ * Decision that an Ask raised and that is not tied to an Action, plan, Artifact or packet. Anything derived (the
+ * execution-pending follow-up an approval leaves, a build or planning approval) would, on approval, create a second
+ * pending Decision or a duplicate Action; those are approved deliberately with `arcadia review approve`.
+ */
+function assertAnswerableByCorrection(workspacePath: string, target: ReviewItemSummary): void {
+  const askQuestion = withDatabase(workspacePath, (db) => askQuestionOrigin(db, target)) !== null;
+  if (askQuestion || target.resolved_intent === ACTION_CLARIFICATION_INTENT) return;
+  const derived =
+    EXECUTION_APPROVAL_INTENTS.has(target.resolved_intent) ||
+    Boolean(target.work_item_id || target.plan_id || target.artifact_id || target.codex_invocation_id || target.doc_ref);
+  if (derived) {
+    throw validationError(
+      `The Decision ${target.slug ?? target.id} (${target.resolved_intent}) approves execution or follows another record, so a correction cannot answer it.`,
+      {
+        ref: target.slug ?? target.id,
+        remedy: `Decide it deliberately: arcadia review approve ${target.slug ?? target.id} (or reject / defer).`
+      }
+    );
+  }
 }
 
 function correctionHeard(type: AskHeard["type"], created: string): AskHeard {
@@ -497,7 +528,7 @@ function correctionHeard(type: AskHeard["type"], created: string): AskHeard {
 
 /** Closes the record the correction replaced. Closed, archived or deferred: never deleted. */
 function retireOldRecord(
-  workspacePath: string,
+  db: Database.Database,
   record: AskRecord,
   context: CorrectionContext,
   newAskId: string,
@@ -505,27 +536,27 @@ function retireOldRecord(
 ): string {
   const note = `Superseded by Ask correction ${newAskId} (${target}).`;
   if (record.kind === "question" && record.id) {
-    withDatabase(workspacePath, (db) => updateReviewItemStatus(db, record.id as string, { status: "rejected", decisionNote: note }));
+    updateReviewItemStatus(db, record.id, { status: "rejected", decisionNote: note });
     return "closed";
   }
   if (record.kind === "idea" && record.id) {
-    const still = withDatabase(workspacePath, (db) => getBackBurnerItem(db, record.id as string));
+    // The same repository writer `arcadia back-burner archive` uses.
+    const still = getBackBurnerItem(db, record.id);
     if (still && (still.status === "incubating" || still.status === "opportunistic")) {
-      runBackBurnerArchiveCommand({ workspace: workspacePath, id: record.id });
+      updateBackBurnerItem(db, record.id, { status: "archived" });
     }
     return "archived";
   }
   if (record.kind === "work" && record.id) {
-    withDatabase(workspacePath, (db) => {
-      const item = getWorkItem(db, record.id as string);
-      if (!item) return;
+    const item = getWorkItem(db, record.id);
+    if (item) {
       updateWorkItem(db, item.id, { status: "deferred", nextAction: note });
       // Decisions the replaced Ask raised for that Action are no longer wanted either.
       const open = db
         .prepare("SELECT id FROM review_items WHERE ask_request_id = ? AND status IN ('open', 'deferred')")
         .all(context.askId) as Array<{ id: string }>;
       for (const decision of open) updateReviewItemStatus(db, decision.id, { status: "rejected", decisionNote: note });
-    });
+    }
     return "deferred";
   }
   return "unchanged";

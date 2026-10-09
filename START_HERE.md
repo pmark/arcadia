@@ -2721,7 +2721,10 @@ correction never starts an executor: no Run is queued.
 name, `arcadia ask correct <ask_id> --type answer --ref <decision id or slug>` or
 `type: answer ref: R12` in Discord. Arcadia never picks the Decision for you, and
 from Discord the reply is accepted only when `DISCORD_ALLOWED_USER_IDS` is set and
-lists you; otherwise it is refused and nothing changes. The `task` type arrives with
+lists you; otherwise it is refused and nothing changes. Only a question can be
+answered this way (an Ask question, a clarification, or an ordinary open Decision);
+an execution approval or a follow-up Decision such as "Execute approved work" is
+refused, and you decide it with `arcadia review approve`. The `task` type arrives with
 a later Action.
 
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the

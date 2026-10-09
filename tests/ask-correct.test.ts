@@ -400,6 +400,128 @@ describe("arcadia ask correct: answer corrections are explicit and verified", ()
     expect(count(workspace, "ask_supersessions")).toBe(0);
   });
 
+  it("refuses to answer a derived or execution-approval Decision, and creates no work_item or review_item", () => {
+    const { workspace } = workspaceWithProjects();
+    const workItemId = row<{ id: string }>(workspace, "SELECT id FROM work_items LIMIT 1").id;
+    const kinds = ["ReviewExecutionPending", "CodexBuildPacketApproval", "ProjectProposalApproval", "CodexPlanningRunApproval", "CodexPlanningRetryApproval"];
+    const refs = withDatabase(workspace, (db) =>
+      kinds.map((resolvedIntent) => {
+        const item = createReviewItem(db, {
+          workItemId,
+          decisionNeeded: `Approve ${resolvedIntent}?`,
+          recommendation: "Approve",
+          sourceInput: "Add a deterministic fixture for Arcadia.",
+          proposedAction: "Add a deterministic fixture for Arcadia.",
+          resolvedIntent,
+          confidenceLabel: "high",
+          confidence: 1,
+          missingFields: [],
+          context: {}
+        });
+        return { kind: resolvedIntent, ref: item.slug ?? item.id, id: item.id };
+      })
+    );
+    // An ordinary-looking intent is still refused when it is tied to an Action.
+    const tied = withDatabase(workspace, (db) =>
+      createReviewItem(db, {
+        workItemId,
+        decisionNeeded: "Tied?",
+        sourceInput: "x",
+        proposedAction: "x",
+        resolvedIntent: "CaptureThought",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {}
+      })
+    );
+    refs.push({ kind: "tied to an Action", ref: tied.slug ?? tied.id, id: tied.id });
+
+    const asked = runAskCommand({ workspace, request: "approve" });
+    const workItems = count(workspace, "work_items");
+    const reviews = count(workspace, "review_items");
+    const runs = count(workspace, "execution_runs");
+
+    for (const { kind, ref, id } of refs) {
+      expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "answer", ref }), kind)
+        .toThrow(/cannot answer it/);
+      expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", id), kind).toEqual({ status: "open" });
+    }
+    expect(count(workspace, "work_items")).toBe(workItems);
+    expect(count(workspace, "review_items")).toBe(reviews);
+    expect(count(workspace, "execution_runs")).toBe(runs);
+    expect(count(workspace, "ask_supersessions")).toBe(0);
+  });
+
+  it("refuses the real execution-pending Decision an approval leaves behind (no duplicate Action)", () => {
+    const { workspace } = workspaceWithProjects();
+    const question = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    runReviewApproveCommand({ workspace, id: question.data.reviewItemId as string, execute: false });
+    const pending = row<{ id: string; slug: string }>(workspace, "SELECT id, slug FROM review_items WHERE resolved_intent = 'ReviewExecutionPending'");
+    const second = runAskCommand({ workspace, request: "approve" });
+    const workItems = count(workspace, "work_items");
+    const reviews = count(workspace, "review_items");
+
+    expect(() => runAskCorrectCommand({ workspace, askId: second.data.ask?.id as string, type: "answer", ref: pending.slug }))
+      .toThrow(/approves execution/);
+    expect(count(workspace, "work_items")).toBe(workItems);
+    expect(count(workspace, "review_items")).toBe(reviews);
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", pending.id)).toEqual({ status: "open" });
+  });
+
+  it("may answer another Ask's question, which creates its Action once and queues no Run", () => {
+    const { workspace } = workspaceWithProjects();
+    const first = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const second = runAskCommand({ workspace, request: "approve" });
+    const runs = count(workspace, "execution_runs");
+    const corrected = runAskCorrectCommand({ workspace, askId: second.data.ask?.id as string, type: "answer", ref: first.data.reviewItemId as string });
+    expect(corrected.data.created.id).toBe(first.data.reviewItemId);
+    expect(count(workspace, "execution_runs")).toBe(runs);
+    expect(count(workspace, "review_items", "resolved_intent = 'ReviewExecutionPending'")).toBe(1);
+  });
+
+  it("never claims execution in the correction summary", () => {
+    const { workspace } = workspaceWithProjects();
+    const decision = withDatabase(workspace, (db) =>
+      createReviewItem(db, {
+        decisionNeeded: "Add a deterministic fixture for Arcadia?",
+        sourceInput: "Add a deterministic fixture for Arcadia.",
+        proposedAction: "Add a deterministic fixture for Arcadia.",
+        resolvedIntent: "CaptureThought",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {}
+      })
+    );
+    const asked = runAskCommand({ workspace, request: "approve" });
+    const corrected = runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "answer", ref: decision.slug ?? decision.id });
+    const text = [corrected.data.created.summary, ...renderAskCorrectSuccess(corrected)].join("\n");
+    expect(text).not.toMatch(/resum|executing|execution queued/i);
+    expect(text).toContain("No execution was started.");
+  });
+
+  it("states a work correction that needs review as such in the receipt", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const corrected = runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "work" });
+    const queue = row<{ queue: string }>(workspace, "SELECT queue FROM work_items WHERE id = ?", corrected.data.created.id).queue;
+    expect(queue).toBe("requires_review");
+    expect(corrected.data.heard.line).toContain(`Action ${corrected.data.created.id} (needs review)`);
+    expect(corrected.data.heard.line).toMatch(HEARD_LINE);
+  });
+
+  it("closes the old record and records the link together or not at all", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    withDatabase(workspace, (db) =>
+      db.exec("CREATE TRIGGER fail_retire BEFORE UPDATE ON review_items BEGIN SELECT RAISE(ABORT, 'boom'); END")
+    );
+    expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "idea" })).toThrow(/boom/);
+    expect(count(workspace, "ask_supersessions")).toBe(0);
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", asked.data.reviewItemId)).toEqual({ status: "open" });
+  });
+
   it("refuses a reference that is missing, already decided or the Ask's own question", () => {
     const { workspace } = workspaceWithProjects();
     const decision = pendingDecision(workspace);

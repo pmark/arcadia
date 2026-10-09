@@ -1,4 +1,5 @@
 import type { AskCommandData } from "../commands/ask.js";
+import { isRequiresReviewValue } from "../domain/constants.js";
 
 /** What Arcadia heard an Ask as. `unclear` is a question it could not place; `none` is an Ask that created nothing. */
 export type AskHeardType = "work" | "idea" | "answer" | "status" | "unclear" | "none";
@@ -65,7 +66,9 @@ export function buildAskHeard(data: HeardInput): AskHeard {
     created = `Back Burner item ${data.backBurnerItemId} ${where}`;
   } else if (data.workItem) {
     type = "work";
-    created = `Action ${data.workItem.id} ${where}${data.reviewItemId ? `, Decision ${decision}` : ""}`;
+    // An Action filed as "Requires Review" still waits on the operator, so say that rather than imply it is ready.
+    const needsReview = isRequiresReviewValue(data.workItem.queue) || isRequiresReviewValue(data.workItem.work_classification);
+    created = `Action ${data.workItem.id}${needsReview ? " (needs review)" : ""} ${where}${data.reviewItemId ? `, Decision ${decision}` : ""}`;
   } else if (data.reviewItemId) {
     const question = data.stewardship.recommendedExecutionPath === "Clarify First";
     type = question ? "unclear" : "work";

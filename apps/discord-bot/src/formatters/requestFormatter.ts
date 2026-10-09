@@ -21,7 +21,8 @@ export function heardLine(data: AskData): string {
     created = `Back Burner item ${data.backBurnerItemId} ${place}`;
   } else if (data.workItem) {
     type = "work";
-    created = `Action ${data.workItem.id} ${place}`;
+    const needsReview = data.workItem.queue === "requires_review" || data.workItem.work_classification === "requires_review";
+    created = `Action ${data.workItem.id}${needsReview ? " (needs review)" : ""} ${place}`;
   } else if (data.reviewItemId) {
     const question = data.stewardship?.recommendedExecutionPath === "Clarify First";
     type = question ? "unclear" : "work";
