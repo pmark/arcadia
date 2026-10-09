@@ -167,16 +167,16 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/commands/ask.ts", "src/commands/go.ts", "apps/discord-bot/src/events/messageCreate.ts"]
   - id: stop-asks-vanishing
     title: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
     expected_artifact: Evidence satisfying Agent Ask stop-asks-vanishing
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-ask-intent-dispatch-20261008-r3
+    source: Agent Ask amend-stop-asks-vanishing-done-ack-20261009
     acceptance_criteria:
-      - Behind a config flag ask.routing.v2, which defaults on and can be turned off to restore today's routing, an operator Ask that matches no execution pattern goes to Clarify First instead of the Back Burner. Clarify First means a review_item that arcadia todo lists, carrying an ask-origin answer command. The Back Burner still receives an Ask only when the intake classification is Idea or the operator passes --back-burner. A Review Response with no resolvable reference also goes to Clarify First. Agent-sourced Asks (agent.ask envelopes) keep today's routing. Only a whole message that exactly matches a closed acknowledgement list ('thanks', 'thank you', 'ok', 'okay', 'got it', 'ack', 'done', or emoji only), after trimming whitespace and punctuation and ignoring case, creates no new question. So does an exact duplicate of an open Ask question within 24 hours. Their receipts say why, and the report counts them as suppressed, apart from the vanish rate. A message such as 'ok, ship X' is never suppressed.
+      - Behind a config flag ask.routing.v2, which defaults on and can be turned off to restore today's routing, an operator Ask that matches no execution pattern goes to Clarify First instead of the Back Burner. Clarify First means a review_item that arcadia todo lists, carrying an ask-origin answer command. The Back Burner still receives an Ask only when the intake classification is Idea or the operator passes --back-burner. A Review Response with no resolvable reference also goes to Clarify First. Agent-sourced Asks (agent.ask envelopes) keep today's routing. Only a whole message that exactly matches a closed acknowledgement list ('thanks', 'thank you', 'ok', 'okay', 'got it', 'ack', or emoji only; a bare 'done' is not suppressed because it may be a completion report), after trimming whitespace and punctuation and ignoring case, creates no new question. So does an exact duplicate of an open Ask question within 24 hours. Their receipts say why, and the report counts them as suppressed, apart from the vanish rate. A message such as 'ok, ship X' is never suppressed.
       - The intake patterns in src/intake/index.ts recognise 'I should be able to', 'I want (to be able) to', 'let me' and 'it would be good if'. With these, the operator's example 'I should be able to Ask Arcadia to schedule a recurring action' is captured as work. Intake also records two deterministic flags in extractedFields. recurrence is set when the text says every, daily, weekly, monthly, recurring or schedule. planning is set when the existing planningRecommended pattern matches. ask_requests stores both flags so the report can count them.
       - "arcadia todo renders two section headers. 'Yours' holds the existing operator items and a 'Your Asks need one answer (N)' group: the newest 5 Ask-originated questions, with the full count always shown and never hidden by the other-items cap. 'Agents are doing' is one count line of in-flight agent work, naming arcadia todo --agents, which this Action adds to list that work. A counts line reads 'Back Burner: N incubating (M new in 7 days)'. The morning packet counts the Ask questions. Existing Back Burner items are not moved or changed. With no resolvable workspace, the degraded output states that Ask questions and Ask-origin tasks are unavailable."
       - "Tests cover:\n- the routing change for each classification;\n- the review-reply fallback;\n- the new phrasings;\n- the recurrence and planning flags;\n- trivial-acknowledgement and duplicate suppression;\n- an agent-sourced Ask keeping its route;\n- the flag-off rollback;\n- both todo sections and the counts line.\nType, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact."
@@ -185,7 +185,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/backBurner/surfacing.ts", "src/orientation/operatorTodoLines.ts"]
   - id: ask-receipt-and-one-reply-correction
     title: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
