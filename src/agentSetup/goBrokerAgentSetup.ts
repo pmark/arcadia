@@ -72,6 +72,7 @@ export interface AgentSetupStatus {
     codexWorktreeDirectories: boolean;
     codexNativeProfile: boolean;
     noLegacyCodexSandbox: boolean;
+    codexDefaultPermissions: boolean;
     codexProfileGuardrails: boolean;
     codexRule: boolean;
     noLegacyCodexRules: boolean;
@@ -245,6 +246,8 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexConfig, expectedCodexWorktreeRoots(options.home)),
     codexNativeProfile: hasNativeUnattendedProfile(codexConfig, expectedCodexWorktreeRoots(options.home)),
     noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexConfig),
+    // Codex refuses to load a config that defines [permissions.*] profiles without a default.
+    codexDefaultPermissions: !hasCodexPermissionProfiles(codexConfig) || hasTopLevelTomlKey(codexConfig, "default_permissions"),
     codexProfileGuardrails: !paths.codexProfileConfigs.some((file) =>
       codexProfileName(file) === "arcadia-unattended" && hasLegacyCodexSandbox(readOptional(file))
     ),
@@ -588,7 +591,19 @@ function setTopLevelTomlValues(content: string, values: Record<string, string>):
   return `${lines.join("\n").replace(/^\n+|\n+$/g, "")}\n`;
 }
 
+/** Built-in Codex permission profile equivalent to each retired `sandbox_mode`. */
+const CODEX_SANDBOX_MODE_PERMISSIONS: Record<string, string> = {
+  "workspace-write": ":workspace",
+  "read-only": ":read-only",
+  "danger-full-access": ":danger-full-access"
+};
+
 function setCodexPermissionProfile(content: string, home: string): string {
+  // Codex refuses a config with [permissions.*] profiles but no top-level default_permissions,
+  // so carry the retired sandbox_mode forward as its built-in profile; never overwrite a choice.
+  const defaultPermissions = hasTopLevelTomlKey(content, "default_permissions")
+    ? null
+    : CODEX_SANDBOX_MODE_PERMISSIONS[topLevelTomlValue(content, "sandbox_mode") ?? ""] ?? ":workspace";
   let withoutManagedProfile = removeTomlTable(removeTopLevelTomlKeys(content, ["sandbox_mode"]), "sandbox_workspace_write")
     .split("\n")
     .filter((line) => line !== CODEX_MANAGED_PROFILE_COMMENT)
@@ -600,7 +615,8 @@ function setCodexPermissionProfile(content: string, home: string): string {
     "permissions.arcadia-unattended"
   ]) withoutManagedProfile = removeTomlTable(withoutManagedProfile, table);
   const withTopLevel = setTopLevelTomlValues(withoutManagedProfile, {
-    approval_policy: "on-request"
+    approval_policy: "on-request",
+    ...(defaultPermissions === null ? {} : { default_permissions: defaultPermissions })
   });
   const roots = expectedCodexWorktreeRoots(home);
   return `${withTopLevel.replace(/\n+$/, "")}\n\n${[
@@ -646,10 +662,21 @@ function topLevelTomlValue(content: string, key: string): string | null {
   const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
   for (let index = 0; index < boundary; index += 1) {
-    const match = lines[index].match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`));
-    if (match) return match[1];
+    const match = lines[index].match(new RegExp(`^\\s*${key}\\s*=\\s*(?:"([^"]+)"|'([^']+)')`));
+    if (match) return match[1] ?? match[2];
   }
   return null;
+}
+
+function hasTopLevelTomlKey(content: string, key: string): boolean {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const boundary = firstTable < 0 ? lines.length : firstTable;
+  return lines.slice(0, boundary).some((line) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`).test(line));
+}
+
+function hasCodexPermissionProfiles(content: string): boolean {
+  return /^\s*\[permissions\.[^\]]+\]/m.test(content);
 }
 
 function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[]): boolean {
