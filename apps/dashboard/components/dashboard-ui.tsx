@@ -1151,6 +1151,24 @@ export function SessionCard({ session }: { session: DashboardAgentSession }) {
         <Field label="Lifecycle" value={session.observedStatus} />
         <Field label="Observed" value={formatDateTime(session.observedAt)} />
       </dl>
+      {session.unreconciled ? (
+        <div role="alert" className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-950">
+          <p className="font-semibold">Exited, not reconciled</p>
+          <p className="mt-1">
+            The process ended{session.unreconciled.exitStatus === null ? "" : ` (exit code ${session.unreconciled.exitStatus})`} at {formatDateTime(session.unreconciled.since)} and the worker has not reconciled it. Run this on the host:
+          </p>
+          <div className="mt-2">
+            <CopyCommandButton label="Reconcile" command={session.unreconciled.reconcileCommand} />
+          </div>
+        </div>
+      ) : null}
+      {session.operatorLaunch ? (
+        <p className="mt-2 text-xs text-muted">
+          Operator launch authorization: {session.operatorLaunch.usedAt
+            ? `used (${session.operatorLaunch.outcome ?? "recorded"}; draft PR ${session.operatorLaunch.publishState})`
+            : `unused, expires ${formatDateTime(session.operatorLaunch.expiresAt)}`}
+        </p>
+      ) : null}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <CopyCommandButton label="Reattach" command={session.reattachCommand} />
         {session.resumeCommand ? <CopyCommandButton label="Resume" command={session.resumeCommand} /> : null}

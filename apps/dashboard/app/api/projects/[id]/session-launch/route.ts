@@ -10,6 +10,10 @@ import { isSameOriginRequest } from "../../../../../lib/originGuard";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/** What a confirmed Launch authorizes (Decision 0096, option 1): shown before the operator confirms, never a merge. */
+const OPERATOR_LAUNCH_CONSEQUENCE =
+  "Confirming also authorizes Arcadia, once and for this one Action, to validate, commit and push the Session's branch when it exits and, only if the work is accepted as complete, open a DRAFT pull request. It never merges, integrates or turns production on. The authorization expires after 24 hours or at the Session's first exit.";
+
 /** Starts no process — returns the fingerprint an operator launch request must present. */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -20,7 +24,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
     const continuation = await loadProjectContinuation(id);
     const preview = await previewGuardedSessionLaunch(continuation.data.repoRoot, requestId);
-    return NextResponse.json(preview.data);
+    return NextResponse.json({ ...preview.data, operatorLaunchConsequence: OPERATOR_LAUNCH_CONSEQUENCE });
   } catch (error) {
     return errorResponse(error);
   }
@@ -41,11 +45,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   try {
     const { id } = await context.params;
-    let body: { requestId?: unknown; previewFingerprint?: unknown };
+    let body: { requestId?: unknown; previewFingerprint?: unknown; confirmOperatorLaunch?: unknown };
     try {
       const parsed = await request.json();
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("request body must be an object");
-      body = parsed as { requestId?: unknown; previewFingerprint?: unknown };
+      body = parsed as { requestId?: unknown; previewFingerprint?: unknown; confirmOperatorLaunch?: unknown };
     } catch {
       return NextResponse.json({ error: "A valid JSON request body is required.", details: null }, { status: 400 });
     }
@@ -55,8 +59,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "requestId and previewFingerprint are required.", details: null }, { status: 400 });
     }
 
+    // Decision 0096: `confirmOperatorLaunch: true` is the operator's explicit
+    // confirmation, after seeing that this Launch also authorizes the host to
+    // validate, commit, push and open a DRAFT PR for this one Action when the
+    // Session exits (never a merge). It is a browser-UI action: only a browser
+    // sends `Sec-Fetch-Site: same-origin`, and `isSameOriginRequest` alone also
+    // passes a header-less local request (an agent's curl, in a Session or a
+    // non-interactive shell). Such a request is refused outright: nothing is
+    // launched and nothing is minted.
+    const confirmed = body.confirmOperatorLaunch === true;
+    if (confirmed && request.headers.get("sec-fetch-site") !== "same-origin") {
+      return NextResponse.json(
+        {
+          error: "An operator launch authorization can only be confirmed from the dashboard in a browser; this request did not come from one, so nothing was launched.",
+          details: { conflict: true, code: "operator_launch_not_from_browser" }
+        },
+        { status: 403 }
+      );
+    }
+
     const continuation = await loadProjectContinuation(id);
-    const launch = await launchGuardedSession(continuation.data.repoRoot, requestId, previewFingerprint);
+    const launch = await launchGuardedSession(continuation.data.repoRoot, requestId, previewFingerprint, {
+      operatorLaunch: confirmed
+    });
 
     return NextResponse.json({
       message: launch.data.reused

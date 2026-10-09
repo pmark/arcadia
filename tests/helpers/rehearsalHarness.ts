@@ -96,12 +96,12 @@ import {
  */
 export const HOST_SEATBELT = process.env.ARCADIA_PRESERVATION_HOST_TEST === "1";
 
-export function unsandboxedValidator(db: Parameters<typeof validatePreservationCandidate>[0], workspace: string, lease: AgentSession, terminalRecovery = false): ReturnType<typeof validatePreservationCandidate> {
+export function unsandboxedValidator(db: Parameters<typeof validatePreservationCandidate>[0], workspace: string, lease: AgentSession, terminalRecovery = false, operatorLaunch?: Parameters<typeof preservationAuthority>[4]): ReturnType<typeof validatePreservationCandidate> {
   // `terminalRecovery` is passed through exactly as validatePreservationCandidate
   // does: dropping it made every terminal-recovery retry (a preservation retried
   // after its first attempt failed) refuse "Preservation Session binding is
   // stale" here, a refusal the real validator never gives.
-  const binding = preservationAuthority(db, workspace, lease, terminalRecovery);
+  const binding = preservationAuthority(db, workspace, lease, terminalRecovery, operatorLaunch);
   const tree = snapshotCandidate(lease.worktree_path);
   const checkDefinition = bindCheckDefinitions(lease.repository_path, lease.base_revision, tree, binding.commands);
   const evidenceDirectory = path.join(workspace, "artifacts", "preservation", lease.id);

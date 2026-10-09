@@ -35,7 +35,8 @@ import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { extractPlanningReviewFields } from "../stewardship/artifactValidator.js";
 import { buildAgentQueue, type AgentQueue } from "../dispatch/queue.js";
-import { listActiveAgentSessions, sessionView, type AgentSession } from "../sessions/index.js";
+import { listActiveAgentSessions, sessionView, systemTmux, type AgentSession, type TmuxAdapter } from "../sessions/index.js";
+import { findOperatorLaunchAuthorization } from "../sessions/operatorLaunch.js";
 import { selectDailyAdvantage, type DashboardDailyAdvantage } from "./dailyAdvantage.js";
 import { readReviewFocus, type DashboardReviewFocus } from "./reviewFocus.js";
 
@@ -129,7 +130,19 @@ export interface DashboardAgentSession {
   exitReason: string | null;
   /** The pull request the Session's preserved candidate opened, from its newest preservation receipt; null when none. */
   pullRequestUrl: string | null;
+  /**
+   * Set when this Session's process has exited but it has not been reconciled
+   * within {@link UNRECONCILED_EXIT_BOUND_MS} (the worker is down, or the tick
+   * is refusing it). `reconcileCommand` is the manual fallback; reconciling is
+   * idempotent. Null while the exit is recent or the Session is live.
+   */
+  unreconciled: { since: string; exitStatus: number | null; reconcileCommand: string } | null;
+  /** The Session's one-shot operator launch authorization (Decision 0096), when a confirmed Launch minted one. */
+  operatorLaunch: { expiresAt: string; usedAt: string | null; outcome: string | null; publishState: string } | null;
 }
+
+/** How long an exited Session may wait for the worker's tick to reconcile it before the dashboard flags it. */
+export const UNRECONCILED_EXIT_BOUND_MS = 5 * 60_000;
 
 export interface DashboardManagedAction {
   workItemId: string;
@@ -802,8 +815,21 @@ function toDashboardRun(run: ExecutionRunSummary): DashboardRun {
   };
 }
 
-function toDashboardAgentSession(db: Database.Database, session: AgentSession): DashboardAgentSession {
-  const view = sessionView(session);
+function shellWord(value: string): string {
+  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+export function toDashboardAgentSession(db: Database.Database, session: AgentSession, now: Date = new Date(), tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux): DashboardAgentSession {
+  const view = sessionView(session, tmux);
+  const exitedAt = Date.parse(session.ended_at ?? session.updated_at);
+  const unreconciled = session.status === "running" && view.observedStatus === "exited" && !Number.isNaN(exitedAt) && now.getTime() - exitedAt >= UNRECONCILED_EXIT_BOUND_MS
+    ? {
+        since: session.ended_at ?? session.updated_at,
+        exitStatus: session.exit_status ?? null,
+        reconcileCommand: `arcadia session reconcile ${session.id} --repo ${shellWord(session.repository_path)}`
+      }
+    : null;
+  const authorization = findOperatorLaunchAuthorization(db, session.id);
   const project = db.prepare("SELECT name FROM projects WHERE id = ?").get(session.project_id) as { name: string } | undefined;
   return {
     id: session.id,
@@ -834,7 +860,11 @@ function toDashboardAgentSession(db: Database.Database, session: AgentSession): 
     phoneLimitationNotice: view.phoneLimitationNotice,
     endedAt: session.ended_at,
     exitStatus: session.exit_status,
-    ...sessionExitFacts(db, session)
+    ...sessionExitFacts(db, session),
+    unreconciled,
+    operatorLaunch: authorization
+      ? { expiresAt: authorization.expires_at, usedAt: authorization.used_at, outcome: authorization.outcome, publishState: authorization.publish_state }
+      : null
   };
 }
 

@@ -4,7 +4,8 @@
 // The recording shell wrapper (`wrapRecordedLaunch` in
 // src/sessions/sessionRecording.ts) runs this after the provider process
 // ends, so `agent_sessions.exit_status` holds the real exit code for every
-// provider, not only the fixture. It writes that one column and nothing else;
+// provider, not only the fixture. It writes the exit code and the exit time
+// (`ended_at`, which reconciliation keeps) and nothing else;
 // the Session's status stays with reconciliation.
 //
 //   node record-session-exit.mjs --db <sqlite file> --session-id <id> --exit-status <int>
@@ -36,8 +37,8 @@ function main() {
   try {
     db.pragma("busy_timeout = 15000");
     const result = db
-      .prepare("UPDATE agent_sessions SET exit_status = ?, updated_at = ? WHERE id = ?")
-      .run(exitStatus, new Date().toISOString(), sessionId);
+      .prepare("UPDATE agent_sessions SET exit_status = ?, ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE id = ?")
+      .run(exitStatus, new Date().toISOString(), new Date().toISOString(), sessionId);
     if (result.changes !== 1) throw new Error(`No Session ${sessionId} to record exit status ${exitStatus} for.`);
   } finally {
     db.close();
