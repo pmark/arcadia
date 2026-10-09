@@ -2688,6 +2688,42 @@ report), and an exact repeat of a question that is still open within 24 hours.
 vanished, and counts the deterministic `recurrence` and `planning` intake flags.
 Agent-written Asks (`agent.ask`, `codex.*`) keep the earlier routing.
 
+### What Arcadia heard, and fixing it with one reply
+
+Every `arcadia ask` result, and every Discord reply to an Ask, opens with one line
+before any detail:
+
+```
+Heard: work (high, rule) -> Action work_1 in Arcadia . wrong? reply type: work|idea|answer|status
+```
+
+The type is `work`, `idea`, `answer` or `status`; an Ask Arcadia could not place is
+`unclear` (the question it left in `arcadia todo`) and one that created nothing is
+`none`. The stewardship detail that used to follow is still available: add
+`--verbose` for the text, or `--json`, which always carries all of it.
+
+If the line is wrong, correct it once:
+
+- CLI: `pnpm arcadia ask correct <ask_id> --type <work|idea|answer|status> [--project <slug>]`.
+  `--project` alone moves the Ask without changing its type. The `ask_…` id is on
+  the receipt (`Ask:`).
+- Discord: reply to the receipt message with `type: work`, `project: <slug>`, or
+  both (`type: work project: songbook`).
+
+A correction re-routes only through the writers Arcadia already has (the Ask
+pipeline, Back Burner promote or archive, review resolve-reply). The record it
+replaces is closed (a question is rejected, an idea archived or promoted, an
+unstarted Action deferred), linked to the new one as superseded, and never deleted;
+the original capture is kept. `pnpm arcadia ask show <id>` displays the link. A
+correction never starts an executor: no Run is queued.
+
+`type: answer` is stricter: the Ask is read as the answer to a pending Decision you
+name, `arcadia ask correct <ask_id> --type answer --ref <decision id or slug>` or
+`type: answer ref: R12` in Discord. Arcadia never picks the Decision for you, and
+from Discord the reply is accepted only when `DISCORD_ALLOWED_USER_IDS` is set and
+lists you; otherwise it is refused and nothing changes. The `task` type arrives with
+a later Action.
+
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
 workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot
 be read never loses an Ask: the default is used and the receipt carries a warning.

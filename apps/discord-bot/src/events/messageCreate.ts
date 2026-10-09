@@ -1,15 +1,19 @@
 import type { Message } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
-import { formatRequest } from "../formatters/requestFormatter.js";
+import { formatAskCorrection, formatRequest } from "../formatters/requestFormatter.js";
 import { logJson } from "../logging.js";
 import {
+  askReceiptMessageStatePath,
   discordSubmissionStatePath,
+  loadAskReceiptMessageState,
   loadReviewMessageState,
+  recordAskReceiptMessage,
   recordDiscordSubmission,
   reviewMessageStatePath
 } from "../notifications/state.js";
 import { safeReact } from "../replyRouter/router.js";
+import { parseAskCorrectionReply } from "./askCorrection.js";
 
 export async function handleArcadiaMessage(
   message: Message,
@@ -21,6 +25,7 @@ export async function handleArcadiaMessage(
   }
 
   const replyReviewId = await reviewIdFromReply(message, config.arcadiaWorkspace);
+  let operation = replyReviewId ? "Decision reply" : "ask";
   try {
     if (replyReviewId) {
       const response = await cli.reviewResolveReply(message.content, replyReviewId, { actor: message.author.id });
@@ -53,6 +58,32 @@ export async function handleArcadiaMessage(
       return;
     }
 
+    // A reply to an Ask receipt that starts with `type:` or `project:` corrects that Ask; any other reply is a new Ask.
+    const receiptAskId = await askIdFromReceiptReply(message, config.arcadiaWorkspace);
+    const correction = receiptAskId ? parseAskCorrectionReply(message.content) : null;
+    if (receiptAskId && correction) {
+      operation = "correction";
+      // Answering a Decision needs a verified sender: DISCORD_ALLOWED_USER_IDS must be set and name the author. An
+      // unset list lets the free-text path through, but never lets a reply resolve a Decision.
+      const allowed = config.allowedUserIds ?? [];
+      if (correction.type === "answer" && (allowed.length === 0 || !allowed.includes(message.author.id))) {
+        await message.reply(
+          "**Arcadia correction refused**\nAn answer correction needs a verified author: set DISCORD_ALLOWED_USER_IDS to include you, " +
+            "or run `arcadia ask correct <ask_id> --type answer --ref <decision>` from the CLI. Nothing was changed."
+        );
+        return;
+      }
+      const corrected = await cli.askCorrect(receiptAskId, {
+        type: correction.type,
+        project: correction.project,
+        ref: correction.ref,
+        actor: message.author.id
+      });
+      const sent = await message.reply(formatAskCorrection(corrected.data));
+      await rememberReceipt(sent, corrected.data.newAskId, message, config);
+      return;
+    }
+
     const response = await cli.ask(message.content, {
       sourceIngress: "discord.message",
       replyReviewId: null
@@ -64,9 +95,11 @@ export async function handleArcadiaMessage(
         runId: response.data.run?.id ?? null
       });
     }
-    await message.reply(formatRequest(response.data));
+    const sent = await message.reply(formatRequest(response.data));
+    if (response.data.ask) {
+      await rememberReceipt(sent, response.data.ask.id, message, config);
+    }
   } catch (error) {
-    const operation = replyReviewId ? "Decision reply" : "ask";
     await message.reply(`Arcadia ${operation} failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -99,4 +132,40 @@ async function reviewIdFromReply(message: Message, workspace: string): Promise<s
 
   const state = await loadReviewMessageState(reviewMessageStatePath(workspace));
   return state.messages[messageId]?.reviewId ?? null;
+}
+
+/** The Ask a reply's parent message is the receipt of, from the receipt-to-Ask mapping the bot recorded. */
+async function askIdFromReceiptReply(message: Message, workspace: string): Promise<string | null> {
+  const messageId = message.reference?.messageId;
+  if (!messageId) {
+    return null;
+  }
+
+  const state = await loadAskReceiptMessageState(askReceiptMessageStatePath(workspace));
+  return state.messages[messageId]?.askId ?? null;
+}
+
+/**
+ * Records that the receipt just posted names this Ask, so a reply to it can correct it. A failure to record is logged
+ * and never fails the reply the operator already has.
+ */
+async function rememberReceipt(
+  sent: { id?: string } | null | undefined,
+  askId: string,
+  message: Message,
+  config: BotConfig
+): Promise<void> {
+  if (!sent?.id) {
+    return;
+  }
+  try {
+    await recordAskReceiptMessage(askReceiptMessageStatePath(config.arcadiaWorkspace), {
+      askId,
+      channelId: message.channelId,
+      messageId: sent.id,
+      createdAt: new Date().toISOString()
+    });
+  } catch (error) {
+    logJson("warn", { msg: "could not record Ask receipt message", askId, error: error instanceof Error ? error.message : String(error) });
+  }
 }

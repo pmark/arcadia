@@ -1,4 +1,52 @@
-import type { AskData } from "../arcadia/types.js";
+import type { AskCorrectData, AskData } from "../arcadia/types.js";
+
+/** The correction hint every receipt closes with; matches `ASK_HEARD_HINT` in the CLI. */
+const HEARD_HINT = "wrong? reply type: work|idea|answer|status";
+
+/**
+ * The one line every Ask reply opens with. It comes from the CLI's `heard` field; a CLI that predates it gets the
+ * same line built from what the response does carry, so no reply ever opens without it.
+ */
+export function heardLine(data: AskData): string {
+  if (data.heard?.line) {
+    return data.heard.line;
+  }
+  const confidence = data.intake?.confidenceLabel ?? "low";
+  const where = data.workItem?.project_name ?? data.intake?.project?.name ?? data.project?.name ?? null;
+  const place = where ? `in ${where}` : "unscoped";
+  let type: string;
+  let created: string;
+  if (data.backBurnerItemId) {
+    type = "idea";
+    created = `Back Burner item ${data.backBurnerItemId} ${place}`;
+  } else if (data.workItem) {
+    type = "work";
+    created = `Action ${data.workItem.id} ${place}`;
+  } else if (data.reviewItemId) {
+    const question = data.stewardship?.recommendedExecutionPath === "Clarify First";
+    type = question ? "unclear" : "work";
+    created = question
+      ? `question ${data.decisionSlug ?? data.reviewItemId} in Clarify First ${place}`
+      : `Decision ${data.decisionSlug ?? data.reviewItemId} to review ${place}`;
+  } else {
+    type = "none";
+    created = "nothing created";
+  }
+  return `Heard: ${type} (${confidence}, rule) -> ${created} . ${HEARD_HINT}`;
+}
+
+/** What the bot posts after a correction reply: the new receipt line, then what was superseded. */
+export function formatAskCorrection(data: AskCorrectData): string {
+  const replaced = data.previous.id ? `${data.previous.kind} ${data.previous.id}` : `Ask ${data.correctedAskId}`;
+  return [
+    data.heard.line,
+    "**Arcadia correction applied**",
+    `Ask: \`${data.newAskId}\` replaces \`${data.correctedAskId}\``,
+    `Now: ${data.targetType} - ${data.created.summary}`,
+    `Superseded: ${replaced} (${data.previous.disposition}); nothing was deleted`,
+    "Run: Not run"
+  ].join("\n");
+}
 
 export function formatRequest(data: AskData): string {
   const codexInvocation = data.codexInvocations[0] ?? null;
@@ -13,6 +61,7 @@ export function formatRequest(data: AskData): string {
     : "Run detail: Use /arcadia runs after work starts.";
 
   const lines = [
+    heardLine(data),
     data.workItem ? "**Arcadia request created**" : "**Arcadia ask handled**",
     `Ask: \`${data.ask?.id ?? "None"}\``,
     `Stewardship: ${data.stewardship ? `${data.stewardship.intentType} -> ${data.stewardship.recommendedExecutionPath}` : "Unavailable"}`,

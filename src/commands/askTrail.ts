@@ -4,6 +4,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { supersessionsReplacing, supersessionThatCreated, type AskSupersession } from "../ask/supersession.js";
 
 export interface AskTrailOptions {
   workspace: string;
@@ -24,6 +25,20 @@ export interface AskTrailOutcome {
   status: string | null;
   summary: string | null;
   projectName: string | null;
+  /** Set when an `ask correct` replaced this record: the Ask that replaced it and the record it created. */
+  supersededBy?: { askId: string; recordId: string | null } | null;
+}
+
+/** One `arcadia ask correct` link, as the trail shows it. */
+export interface AskTrailSupersession {
+  /** The Ask that was replaced (for `supersededBy`) or the Ask that replaced this one (for `supersedes`). */
+  askId: string;
+  targetType: string;
+  record: { kind: string; id: string | null };
+  oldRecord: { kind: string; id: string | null; disposition: string };
+  source: string;
+  actor: string | null;
+  at: string;
 }
 
 export interface AskTrailAsk {
@@ -36,6 +51,10 @@ export interface AskTrailAsk {
   reason: string | null;
   projectName: string | null;
   outcomes: AskTrailOutcome[];
+  /** Corrections that replaced this Ask, oldest first. Empty for an Ask nobody corrected. */
+  supersededBy: AskTrailSupersession[];
+  /** The correction that created this Ask, when it is itself a replacement. */
+  supersedes: AskTrailSupersession | null;
 }
 
 export interface AskTrailData {
@@ -150,6 +169,16 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
     if (item.promoted_work_item_id) outcomes.push(...actionOutcome(db, item.promoted_work_item_id));
   }
 
+  const replacedBy = supersessionsReplacing(db, ask.id);
+  const replaces = supersessionThatCreated(db, ask.id);
+  for (const link of replacedBy) {
+    for (const outcome of outcomes) {
+      if (link.oldRecordId && outcome.id === link.oldRecordId) {
+        outcome.supersededBy = { askId: link.newAskRequestId, recordId: link.newRecordId };
+      }
+    }
+  }
+
   return {
     id: ask.id,
     resolvedIntent: ask.resolved_intent,
@@ -159,7 +188,21 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
     executionPath: stewardship.recommendedExecutionPath ?? null,
     reason: stewardship.classificationReason ?? null,
     projectName: stewardship.relatedProject?.name ?? null,
-    outcomes: outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index)
+    outcomes: outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index),
+    supersededBy: replacedBy.map((link) => trailSupersession(link, link.newAskRequestId)),
+    supersedes: replaces ? trailSupersession(replaces, replaces.oldAskRequestId) : null
+  };
+}
+
+function trailSupersession(link: AskSupersession, askId: string): AskTrailSupersession {
+  return {
+    askId,
+    targetType: link.targetType,
+    record: { kind: link.newKind, id: link.newRecordId },
+    oldRecord: { kind: link.oldKind, id: link.oldRecordId, disposition: link.oldDisposition },
+    source: link.source,
+    actor: link.actor,
+    at: link.createdAt
   };
 }
 
@@ -224,8 +267,26 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
     if (ask.outcomes.length === 0) lines.push("  Produced: nothing yet");
     for (const outcome of ask.outcomes) {
       const detail = [outcome.status, outcome.projectName].filter(Boolean).join(", ");
-      lines.push(`  → ${outcome.kind} ${outcome.id}${detail ? ` (${detail})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
+      const replaced = outcome.supersededBy
+        ? ` [superseded by ${outcome.supersededBy.recordId ?? "Ask"} via ${outcome.supersededBy.askId}]`
+        : "";
+      lines.push(`  → ${outcome.kind} ${outcome.id}${detail ? ` (${detail})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}${replaced}`);
+    }
+    for (const link of ask.supersededBy) {
+      lines.push(`  Superseded by ${link.askId}: corrected to ${link.targetType} (${link.source}, ${link.at}); ${describeOld(link)} -> ${describeNew(link)}`);
+    }
+    if (ask.supersedes) {
+      const link = ask.supersedes;
+      lines.push(`  Supersedes ${link.askId}: corrected to ${link.targetType} (${link.source}, ${link.at}); ${describeOld(link)} -> ${describeNew(link)}`);
     }
   }
   return lines;
+}
+
+function describeOld(link: AskTrailSupersession): string {
+  return `${link.oldRecord.kind}${link.oldRecord.id ? ` ${link.oldRecord.id}` : ""} ${link.oldRecord.disposition}`;
+}
+
+function describeNew(link: AskTrailSupersession): string {
+  return link.record.id ? `${link.record.kind} ${link.record.id}` : "nothing created";
 }

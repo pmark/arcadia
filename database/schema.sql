@@ -218,6 +218,27 @@ CREATE TABLE IF NOT EXISTS ask_requests (
   FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL
 );
 
+-- A correction ("arcadia ask correct") links the Ask it replaces to the Ask that replaced it. Never cascades: the
+-- original capture and records are kept, and this table only records which record superseded which.
+CREATE TABLE IF NOT EXISTS ask_supersessions (
+  id TEXT PRIMARY KEY,
+  old_ask_request_id TEXT NOT NULL,
+  new_ask_request_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  project_id TEXT,
+  old_kind TEXT NOT NULL,
+  old_record_id TEXT,
+  new_kind TEXT NOT NULL,
+  new_record_id TEXT,
+  old_disposition TEXT NOT NULL,
+  source TEXT NOT NULL,
+  actor TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_supersessions_old ON ask_supersessions(old_ask_request_id);
+CREATE INDEX IF NOT EXISTS idx_ask_supersessions_new ON ask_supersessions(new_ask_request_id);
+
 CREATE TABLE IF NOT EXISTS ask_capture_envelopes (
   id TEXT PRIMARY KEY,
   request_id TEXT NOT NULL UNIQUE,
