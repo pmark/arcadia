@@ -905,8 +905,14 @@ export function settleAgentAsk(db: Database.Database, input: {
         // re-applies these transforms to fresh base content; it never re-derives
         // current_action from fresh queue state, which could silently retarget a
         // different Action than the one this settlement resolved and previewed.
+        // Only the active Plan carries a `current_action` (docs/managed-documents.md:
+        // "omit unless this is the active plan"), so completing an Action in any
+        // other Plan records its progress and leaves that Plan's pointer field
+        // exactly as it was (Issue #1061).
         const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId),
-          planComplete ? { status: "complete", current_action: null, updated } : { current_action: nextResolution.actionId, updated });
+          planComplete
+            ? { status: "complete", current_action: null, updated }
+            : completingActivePlan ? { current_action: nextResolution.actionId, updated } : { updated });
         const projectTransform = (current: string): string => setTopLevelFields(current,
           activatedNext
             ? { active_plan: activatedNext.planSlug, current_action: activatedNext.actionId, updated }
@@ -916,8 +922,10 @@ export function settleAgentAsk(db: Database.Database, input: {
           effects.push(`Plan ${targetPlan.slug} is complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`);
         } else if (planComplete) {
           effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
-        } else {
+        } else if (completingActivePlan) {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
+        } else {
+          effects.push(`Next ready Action in this inactive Plan: ${project.slug}/${nextResolution.actionId}. No pointer written; ${targetPlan.slug} is not the active Plan.`);
         }
         if (completingActivePlan) {
           pointerProjectSlug = project.slug;
@@ -957,7 +965,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           actionId, candidateRevision: head, evidence, requestId: proposal.normalized.requestId,
           note: activatedNext
             ? `Plan complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`
-            : nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
+            : nextResolution.kind === "planComplete" ? "Plan complete; every Action is done."
+              : completingActivePlan ? nextResolution.note : `Next ready Action in this inactive Plan: ${nextResolution.actionId}.`
         });
         fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletion(completionLogBefore), reappend: appendCompletion });
         completionActionId = actionId;
@@ -1275,7 +1284,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             const freshDependent = freshPlan.actions.find((candidate) => candidate.id === dependentId)!;
             next = setActionDependsOn(next, dependentId, withRemainderAdded(freshDependent.dependsOn, freshSafeRemainderIdsFor(dependentId)));
           }
-          return setTopLevelFields(next, { current_action: resolveNextFromPlan(current).actionId, updated });
+          // A non-active Plan carries no `current_action` (Issue #1061).
+          return setTopLevelFields(next, completingActivePlan ? { current_action: resolveNextFromPlan(current).actionId, updated } : { updated });
         };
         const projectTransform = (current: string, planCurrent: string = planBefore): string =>
           setTopLevelFields(current, { current_action: resolveNextFromPlan(planCurrent).actionId, updated });
@@ -1286,7 +1296,9 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (dependentIds.length > 0) {
           effects.push(`Rewired ${dependentIds.length} dependent Action${dependentIds.length === 1 ? "" : "s"} in ${targetPlan.slug} to also depend on the remainder: ${dependentIds.join(", ")}.`);
         }
-        effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
+        effects.push(completingActivePlan
+          ? `${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`
+          : `Next ready Action in this inactive Plan: ${project.slug}/${nextResolution.actionId}. No pointer written; ${targetPlan.slug} is not the active Plan.`);
 
         if (completingActivePlan) {
           pointerProjectSlug = project.slug;
@@ -2534,13 +2546,16 @@ function describeActionAmendment(
 }
 
 const LEGACY_LIST_FALLBACK_EFFECT =
-  "The Ask's original request text is unavailable, so omitted dependencies/references could not be told from explicit empty lists and are treated as explicit empty lists (legacy replace behavior).";
+  "The Ask's original request text is unavailable or does not reproduce the recorded fingerprint, so omitted dependencies/references could not be told from explicit empty lists and are treated as explicit empty lists (legacy replace behavior).";
 
 /**
  * Fill in `omittedLists` on a stored proposal that predates it by re-parsing
- * the request text captured with it, exactly as normalization does. Returns
- * true only when the text could not be used, so settlement falls back to the
- * old replace behavior and says so in the preview Effects.
+ * the request text captured with it, exactly as normalization does. A new
+ * proposal always carries the key (an empty list when nothing was omitted), so
+ * only a true legacy proposal is re-parsed. The re-parse is trusted only when
+ * it reproduces the proposal's recorded fingerprint, so it is provably the
+ * same Ask. Returns true when the text could not be used, so settlement falls
+ * back to the old replace behavior and says so in the preview Effects.
  */
 function hydrateOmittedLists(db: Database.Database, proposal: AgentAskProposal): boolean {
   const normalized = proposal.normalized;
@@ -2548,13 +2563,8 @@ function hydrateOmittedLists(db: Database.Database, proposal: AgentAskProposal):
   const row = db.prepare("SELECT original_text FROM ask_capture_envelopes WHERE id = ?")
     .get(proposal.captureId) as { original_text: string } | undefined;
   if (!row) return true;
-  let parsed: NormalizedAgentAsk;
-  try {
-    parsed = normalizeAgentAsk({ request: row.original_text, requestId: normalized.requestId, project: normalized.project });
-  } catch {
-    return true;
-  }
-  if (parsed.format !== "strict" || parsed.requestId !== normalized.requestId || parsed.actions.length !== normalized.actions.length) return true;
+  const parsed = reparseAskMatchingProposal(row.original_text, proposal);
+  if (!parsed || parsed.format !== "strict" || parsed.actions.length !== normalized.actions.length) return true;
   if (parsed.omittedLists) normalized.omittedLists = parsed.omittedLists;
   parsed.actions.forEach((action, index) => {
     if (action.omittedLists) normalized.actions[index].omittedLists = action.omittedLists;
@@ -2936,17 +2946,27 @@ function archiveCanonicalDraftAskFile(
  * The Project is the proposal's resolved slug, as preview hashed it.
  */
 function askFileMatchesProposal(content: string, proposal: AgentAskProposal): boolean {
+  return reparseAskMatchingProposal(content, proposal) !== null;
+}
+
+/**
+ * The normalization of `content` when it is provably the Ask this proposal
+ * recorded (same request id, same preview fingerprint); null otherwise. Shared
+ * by the draft-file check and the legacy `omittedLists` re-derivation so both
+ * trust a re-parse only when it reproduces the recorded fingerprint.
+ */
+function reparseAskMatchingProposal(content: string, proposal: AgentAskProposal): NormalizedAgentAsk | null {
   for (const request of new Set([content, content.trim(), `${content.trim()}\n`])) {
     let parsed: NormalizedAgentAsk;
     try {
       parsed = normalizeAgentAsk({ request, requestId: proposal.normalized.requestId, project: proposal.normalized.project });
     } catch {
-      return false;
+      return null;
     }
-    if (parsed.requestId !== proposal.normalized.requestId) return false;
-    if (agentAskFingerprint(request, { ...parsed, project: proposal.normalized.project }) === proposal.fingerprint) return true;
+    if (parsed.requestId !== proposal.normalized.requestId) return null;
+    if (agentAskFingerprint(request, { ...parsed, project: proposal.normalized.project }) === proposal.fingerprint) return parsed;
   }
-  return false;
+  return null;
 }
 
 /** Register the move of one settled Ask file into `.arcadia/asks/archive/`; returns its repository-relative source path. */

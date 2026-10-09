@@ -740,12 +740,17 @@ describe("Agent Ask complete", () => {
     expect(applied.data.receipt.applied).toBe(true);
     expect(applied.data.receipt.effects.join(" ")).toContain("Marked Action demo/side-one done");
     expect(applied.data.receipt.effects.join(" ")).toContain("is not the active Plan");
+    expect(applied.data.receipt.effects.join(" ")).toContain("Next ready Action in this inactive Plan: demo/side-two.");
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("Pointer:");
+    expect(readFileSync(path.join(repo, "docs/plans/side-plan.md"), "utf8")).not.toContain("current_action");
+    expect(execFileSync("git", ["log", "-1", "--format=%B"], { cwd: repo, encoding: "utf8" })).not.toContain("Pointer:");
 
     const docs = discoverDocs(repo).docs;
     // The non-active Plan records its own progress.
+    // Only the active Plan carries a pointer (Issue #1061): none is written here.
     expect(docs.find((doc) => doc.type === "plan" && doc.slug === "side-plan")).toMatchObject({
       status: "draft",
-      currentAction: "side-two",
+      currentAction: null,
       actions: [
         expect.objectContaining({ id: "side-one", status: "done" }),
         expect.objectContaining({ id: "side-two", status: "open" })
@@ -758,6 +763,31 @@ describe("Agent Ask complete", () => {
     // The queue never moved: complete arranges no order, in either Plan.
     expect(applied.data.receipt.queueActionKeys).toEqual([]);
     expect(readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8")).toContain("Completed demo/side-one");
+  });
+
+  it("leaves an inactive Plan's existing current_action exactly as it was when completing an Action there (Issue #1061)", () => {
+    const { workspace, repo } = fixture({ withInactivePlan: true });
+    const sidePath = path.join(repo, "docs/plans/side-plan.md");
+    writeFileSync(sidePath, readFileSync(sidePath, "utf8").replace("milestone: Parallel work", "milestone: Parallel work\ncurrent_action: side-two"), "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Give the inactive Plan a pointer"], { cwd: repo });
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+    const request = completeAsk("complete-inactive-keeps-pointer", "first", head)
+      .replace("target_ref: action/first", "target_ref: plan/side-plan#side-one")
+      .replace('criterion: "First proof exists."', 'criterion: "Side proof exists."');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-inactive-keeps-pointer", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-inactive-keeps-pointer", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("Pointer:");
+    expect(readFileSync(sidePath, "utf8")).toContain("current_action: side-two");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(projectDoc());
+    expect(execFileSync("git", ["log", "-1", "--format=%B"], { cwd: repo, encoding: "utf8" })).not.toContain("Pointer:");
   });
 
   it("refuses a Plan-scoped completion whose Plan does not exist", () => {

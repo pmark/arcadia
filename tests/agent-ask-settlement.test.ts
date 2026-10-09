@@ -1200,6 +1200,114 @@ describe("Agent Ask settlement", () => {
     expect(existingBlock).toContain("depends_on: []");
   });
 
+  it("keeps explicit empty lists cleared when a legacy proposal is re-derived (Issue #1092)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const proposal = runAgentAskPreviewCommand({ workspace, request: clearPlanActionAsk("ask-legacy-explicit-empty") });
+    stripOmittedLists(workspace, proposal.data.proposal.id);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-explicit-empty", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("original request text is unavailable"))).toBe(false);
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("depends_on: [finished] → []"))).toBe(true);
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("references cleared"))).toBe(true);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-explicit-empty", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+    expect(existingBlock).toContain("references: []");
+    expect(existingBlock).not.toContain("docs/stale.md");
+  });
+
+  it("re-derives omitted lists for a legacy single-target action-intent proposal (Issue #1092)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    // `dependencies: []` is explicit and clears; `references` is omitted and stays.
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-legacy-action", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    stripOmittedLists(workspace, proposal.data.proposal.id);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-action", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on: [finished] → []; references unchanged (omitted)."
+    );
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("original request text is unavailable"))).toBe(false);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-action", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("does not trust a stored request that fails the proposal's fingerprint when re-deriving (Issue #1092)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-legacy-mismatch", "project: demo", "intent: plan",
+      "desired_result: Tighten acceptance only", "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.", "    acceptance:", "      - Sharper proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    stripOmittedLists(workspace, proposal.data.proposal.id);
+    // The stored text still parses, with the same request id and action count,
+    // but is not the text the proposal's fingerprint was computed from.
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE ask_capture_envelopes SET original_text = ? WHERE request_id = ?")
+        .run(request.replace("Sharper proof exists.", "Different proof exists."), "ask-legacy-mismatch");
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-mismatch", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("does not reproduce the recorded fingerprint"))).toBe(true);
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("depends_on: [finished] → []"))).toBe(true);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-mismatch", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+  });
+
+  it("marks a fully explicit new proposal so it is not re-parsed or reported unavailable (Issue #1092)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-all-explicit", "project: demo", "intent: plan",
+      "desired_result: Clear stale Action metadata", "acceptance: []", "dependencies: []", "references: []",
+      "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Continue without stale metadata", "    acceptance:",
+      "      - Existing proof remains valid.", "    dependencies: []", "    references: []",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(proposal.data.proposal.normalized.omittedLists).toEqual([]);
+    expect(proposal.data.proposal.normalized.actions[0].omittedLists).toEqual([]);
+    // With the stored request unusable a re-parse would be impossible; a marked
+    // proposal must not need one and must not claim the text is unavailable.
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE ask_capture_envelopes SET original_text = ? WHERE request_id = ?").run("unavailable", "ask-all-explicit");
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-all-explicit", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("unavailable"))).toBe(false);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-all-explicit", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+    expect(existingBlock).toContain("references: []");
+  });
+
   it("refuses a Plan amendment whose cycle runs through a retained, omitted dependency edge (Issue #1079)", () => {
     const { workspace, repo } = fixture();
     staleMetadataPlan(repo);
