@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { canonicalPath, getSession, type AgentSession } from "../sessions/index.js";
+import { createSystemPreservationRemote } from "../sessions/candidatePreservation.js";
+import { verifyFixtureStandingExit, type FixtureStandingBasis } from "../sessions/fixtureStandingLaunch.js";
 import { findAcceptedTerminalCompletion } from "../sessions/reconciliation.js";
 import {
   listPendingOperatorLaunchPublications,
@@ -58,16 +60,35 @@ function pullRequestFor(db: Database.Database, sessionId: string): { url: string
   }
 }
 
+/**
+ * Decision 0100: a `fixture_standing` authorization re-checks, right before the
+ * push and again before the pull request, that the window is still open and the
+ * repository still points only at registered fixtures; `gh` is then pinned to
+ * that repository. Any other authorization passes through untouched.
+ */
+function fixtureExitGate(
+  authorization: OperatorLaunchAuthorization, repoRoot: string, now: Date, deps: PreserveSessionDeps
+): { ok: true; deps: PreserveSessionDeps } | { ok: false; reason: string } {
+  if (authorization.source !== "fixture_standing") return { ok: true, deps };
+  const standing = authorization.standing_json ? JSON.parse(authorization.standing_json) as FixtureStandingBasis : null;
+  if (!standing) return { ok: false, reason: "A standing fixture authorization carries no Decision 0100 basis; nothing is pushed or opened." };
+  const check = verifyFixtureStandingExit(standing, repoRoot, now);
+  if (!check.ok) return check;
+  return { ok: true, deps: deps.remote || !check.ghRepo ? deps : { ...deps, remote: createSystemPreservationRemote({ ghRepo: check.ghRepo }) } };
+}
+
 /** Validate, commit and push the branch (no pull request), under the Session's authorization, before reconciliation. */
 export function preserveOperatorLaunchExit(
   input: { db: Database.Database; workspace: string; repoRoot: string; session: AgentSession; authorization: OperatorLaunchAuthorization; now: Date },
   deps: PreserveSessionDeps
 ): PreservationStep {
   const { db, workspace, repoRoot, session, authorization, now } = input;
+  const gate = fixtureExitGate(authorization, repoRoot, now, deps);
+  if (!gate.ok) return { kind: "refused", reason: gate.reason };
   return preserveSessionCandidate({
     db, workspace, repoRoot, session, now,
     operatorLaunch: { authorizationId: authorization.id, phase: "commit" }
-  }, deps);
+  }, gate.deps);
 }
 
 export interface OperatorLaunchConclusion {
@@ -83,10 +104,13 @@ function publish(
   deps: PreserveSessionDeps
 ): { step: PreservationStep; state: OperatorLaunchPublishState; pullRequest: { url: string | null; number: number | null } } {
   const { db, workspace, repoRoot, session, authorization, now } = input;
+  const gate = fixtureExitGate(authorization, repoRoot, now, deps);
+  // A refused fixture gate is final (the window or the remotes will not heal): no retry.
+  if (!gate.ok) return { step: { kind: "refused", reason: gate.reason }, state: "failed", pullRequest: { url: null, number: null } };
   const step = preserveSessionCandidate({
     db, workspace, repoRoot, session, now, terminalRecovery: true,
     operatorLaunch: { authorizationId: authorization.id, phase: "publish", requestId: publishRequestId(session.id) }
-  }, deps);
+  }, gate.deps);
   const pullRequest = pullRequestFor(db, session.id);
   // A PR url exists only when the draft PR was really opened or updated.
   const state: OperatorLaunchPublishState = step.kind === "preserved" && step.state === "IN PR" && pullRequest.url ? "done" : "pending";

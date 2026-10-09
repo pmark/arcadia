@@ -333,18 +333,29 @@ Only once Decision 0100 is answered. `arcadia session launch --fixture-standing
 one-shot authorization without the terminal confirmation. It refuses with a named
 code (nothing launched, nothing minted) unless all hold:
 
-- Decision 0100 in the `arcadia` Project is answered "Standing fixture launch,
-  with merge on green" or "Standing fixture launch, you merge"
-  (`fixture_standing_decision_unanswered`);
+- Decision 0100 is answered "Standing fixture launch, with merge on green" or
+  "Standing fixture launch, you merge" in the COMMITTED `origin/main` (only
+  `main` when origin has no such ref; the receipt names which, plus the commit)
+  of the `arcadia` Project registered in the LIVE workspace (the user-config
+  default). The working tree and any workspace the caller passes are never
+  trusted (`fixture_standing_decision_unanswered`,
+  `fixture_standing_workspace_not_live`; the launch workspace must be the live
+  one or an experiment workspace);
 - today (UTC) is on or before 2026-10-18 (`fixture_standing_expired`);
-- the target repository's configured Git remotes are all in
+- every Git remote's effective fetch and push target is in
   `FIXTURE_REMOTE_ALLOWLIST` (`src/sessions/fixtureStandingLaunch.ts`, today
-  `pmark/arcadia-three-action-rehearsal-20261004`), or the workspace is an
-  experiment workspace and the repository is inside its allowed root; Arcadia's
-  own repository and any other Project are refused
-  (`fixture_standing_not_a_fixture`);
+  `pmark/arcadia-three-action-rehearsal-20261004`) and no `url.*.insteadOf` or
+  `pushInsteadOf` rewrite exists in any config scope; or the workspace is an
+  experiment workspace, the repository is inside its allowed root and has no
+  remote or only allowlisted ones. Arcadia's own repository and any other Project
+  are refused (`fixture_standing_not_a_fixture`);
 - `--agent-identity` is given (`fixture_standing_agent_identity_required`) and the
   shell is not inside an Arcadia Session (`operator_launch_inside_session`).
+
+The exit re-checks the window and the remotes before the push and again before
+the pull request, and pins every `gh` call to the fixture with `--repo`; a mint's
+24-hour TTL can outlive 2026-10-18, and a refused exit pushes and opens nothing
+(the receipt says why).
 
 The mint records `source: fixture_standing`, the Decision id and answer, the
 agent and the fixture basis in the `authorization_minted` event and, at exit, in

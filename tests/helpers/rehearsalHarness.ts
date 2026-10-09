@@ -913,11 +913,11 @@ export class FakeGitHub {
     hasRemote: (repositoryPath) => git(repositoryPath, ["remote"]).split("\n").includes("origin"),
     push: ({ repositoryPath, branch, commitSha }) => {
       this.pushes.push({ branch, commitSha: commitSha ?? null });
-      git(repositoryPath, ["push", "-q", "origin", `${commitSha ?? `refs/heads/${branch}`}:refs/heads/${branch}`]);
+      git(repositoryPath, ["push", "-q", this.origin, `${commitSha ?? `refs/heads/${branch}`}:refs/heads/${branch}`]);
       return { remote: "origin" };
     },
     // `git ls-remote --heads origin`, as the system adapter runs it.
-    listBranchTips: ({ repositoryPath }) => git(repositoryPath, ["ls-remote", "--heads", "origin"]).split("\n").flatMap((line) => {
+    listBranchTips: ({ repositoryPath }) => git(repositoryPath, ["ls-remote", "--heads", this.origin]).split("\n").flatMap((line) => {
       const match = /^([0-9a-f]{40})\trefs\/heads\/(.+)$/.exec(line.trim());
       return match ? [{ branch: match[2], sha: match[1] }] : [];
     }),
