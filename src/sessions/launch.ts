@@ -1,7 +1,6 @@
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
-import { providerLabel } from "../codingAgents/adapters.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
@@ -30,6 +29,7 @@ import {
   type TmuxAdapter
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
+import { checkLaunchPrerequisites, refuseUnlessSignedIn } from "./launchPreflight.js";
 import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
 import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementForSession, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
@@ -85,6 +85,12 @@ export interface GuardedLaunchInput {
   agentWorktreeRoot?: string;
   /** Test-only override for the standing-policy provider capacity observation. */
   capacityObservation?: ProviderCapacityObservation;
+  /**
+   * Test-only: an environment (a stubbed PATH) to run the provider binary,
+   * permission-posture and sign-in preflight against. Omitted, those checks
+   * run against the real environment and are skipped under Vitest.
+   */
+  preflightEnv?: NodeJS.ProcessEnv;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
   /**
@@ -146,7 +152,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
   const registry = loadModelTierRegistry(input.workspace);
-  const providerSignIn = input.providerSignIn ?? checkProviderSignIn;
+  // Every launch step that spawns the provider (a fresh launch, a reused or
+  // resumed lease) is gated on this one probe, so the provider binary and its
+  // headless permission posture are checked right before sign-in does, with
+  // nothing reserved yet: a missing prerequisite costs the next tick nothing.
+  const signInProbe = input.providerSignIn ?? ((provider: string, workspace: string) => checkProviderSignIn(provider, workspace, input.preflightEnv));
+  const providerSignIn = (provider: string, workspace: string): ProviderSignInStatus | null => {
+    checkLaunchPrerequisites({ provider, headless: true, env: input.preflightEnv });
+    return signInProbe(provider, workspace);
+  };
   const onProviderSignInConfirmed = input.onProviderSignInConfirmed;
 
   const preview = buildLaunchPreview({
@@ -270,7 +284,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // reserves a concurrency slot and before any worktree or lease is created:
   // a signed-out provider must take no admission and no lease, so the next
   // tick can retry it for free once sign-in is restored.
-  checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
+  refuseUnlessSignedIn(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
 
   // The one mutation-owning development attempt this launch runs under. Its
   // refusals (a passed or exhausted lineage, a live owner whose Session still
@@ -853,23 +867,8 @@ function resumeOrReturn(
   if (isAlreadyRunning) {
     return getSession(db, session.id) ?? session;
   }
-  checkSignInOrRefuse(session.provider, providerSignIn(session.provider, workspace), onProviderSignInConfirmed);
+  refuseUnlessSignedIn(session.provider, providerSignIn(session.provider, workspace), onProviderSignInConfirmed);
   return launchPreparedSession(db, session, tmux, registry, workspace);
-}
-
-function checkSignInOrRefuse(
-  provider: string,
-  signIn: ProviderSignInStatus | null,
-  onConfirmed?: (provider: string) => void
-): void {
-  if (!signIn) return;
-  if (!signIn.signedIn) {
-    throw validationError(
-      `Provider "${providerLabel(provider)}" is not signed in for this worker. ${signIn.remedy}`,
-      { code: "provider_not_signed_in", conflict: true, provider }
-    );
-  }
-  onConfirmed?.(provider);
 }
 
 function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {

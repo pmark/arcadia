@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -29,7 +29,8 @@ import {
   normalizeProductionScope,
   type ProductionScope
 } from "../src/production/policy.js";
-import { getRepositoryLease, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
+import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
@@ -54,10 +55,10 @@ class FakeTmux implements TmuxAdapter {
   collision = false;
   failLaunch = false;
   live = new Set<string>();
-  launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
+  launches: Array<{ name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }> = [];
   available() { return this.isAvailable; }
   hasSession(name: string) { return this.collision || this.live.has(name); }
-  launch(input: { name: string; cwd: string; command: string; args: string[] }) {
+  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }) {
     if (this.failLaunch) throw new Error("synthetic spawn failure");
     this.launches.push(input);
     this.live.add(input.name);
@@ -165,8 +166,13 @@ describe("launchGuardedHostSession", () => {
       doLaunch(fixture, tmux, preview.previewFingerprint);
       expect(tmux.launches[0].args).toEqual(expect.arrayContaining([...expected]));
       expect(tmux.launches[0].args).not.toContain("e3_deep");
-      // No standing-policy admission, so an operator is at the terminal: Claude stays interactive.
-      expect(tmux.launches[0].args).not.toContain("--print");
+      // A fingerprint launch is headless like a standing-policy one: same builder, same flags.
+      const args = tmux.launches[0].args;
+      expect(args.slice(args.indexOf(command))).toEqual(
+        command === "claude"
+          ? expect.arrayContaining(["--print", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--settings"])
+          : expect.arrayContaining(["exec", "--json", "--sandbox", "workspace-write"])
+      );
     }
   });
 
@@ -1673,13 +1679,206 @@ function liveAdmissionCount(fixture: ReturnType<typeof preparedFixture>): number
   ).length;
 }
 
+/**
+ * A directory of stub provider executables, so the preflight runs against a
+ * hermetic PATH instead of this host's real `claude` and `codex`. Each stub
+ * prints the help text, sign-in verdict or exit code its options describe.
+ */
+function stubProviders(options: {
+  claude?: { help?: string; loggedIn?: boolean } | false;
+  codex?: { help?: string; loggedIn?: boolean } | false;
+}): NodeJS.ProcessEnv {
+  const bin = mkdtempSync(path.join(tmpdir(), "arcadia-stub-providers-"));
+  roots.push(bin);
+  const claudeHelp = "--print --output-format <format> --permission-mode <mode> --settings <file-or-json> --verbose";
+  const codexHelp = "--json --sandbox <SANDBOX_MODE>";
+  if (options.claude !== false) {
+    const claude = options.claude ?? {};
+    writeFileSync(path.join(bin, "claude"), [
+      "#!/bin/sh",
+      `if [ "$1" = "--help" ]; then printf '%s\\n' '${claude.help ?? claudeHelp}'; exit 0; fi`,
+      `if [ "$1" = "auth" ]; then echo '{"loggedIn": ${claude.loggedIn === false ? "false" : "true"}}'; exit ${claude.loggedIn === false ? 1 : 0}; fi`,
+      "exit 0"
+    ].join("\n"));
+    chmodSync(path.join(bin, "claude"), 0o755);
+  }
+  if (options.codex !== false && options.codex !== undefined) {
+    const codex = options.codex;
+    writeFileSync(path.join(bin, "codex"), [
+      "#!/bin/sh",
+      `if [ "$1" = "exec" ]; then printf '%s\\n' '${codex.help ?? codexHelp}'; exit 0; fi`,
+      `if [ "$1" = "login" ]; then echo 'login status'; exit ${codex.loggedIn === false ? 1 : 0}; fi`,
+      "exit 0"
+    ].join("\n"));
+    chmodSync(path.join(bin, "codex"), 0o755);
+  }
+  return { PATH: bin };
+}
+
+describe("launch preflight and headless permission posture", () => {
+  function refusal(run: () => unknown): ArcadiaError {
+    try {
+      run();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ArcadiaError);
+      return error as ArcadiaError;
+    }
+    throw new Error("expected the launch to be refused");
+  }
+
+  function expectNothingReserved(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux) {
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+    expect(existsSync(path.join(fixture.root, "req-1"))).toBe(false);
+  }
+
+  it("refuses with provider_binary_missing, before reserving anything, when the provider executable is not on PATH", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const error = refusal(() => doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, stubProviders({ claude: false })));
+    expect(error.details).toMatchObject({ code: "provider_binary_missing", conflict: true, provider: "claude-code-cli", executable: "claude" });
+    expect(error.message).toContain('"claude" executable was not found');
+    expectNothingReserved(fixture, tmux);
+  });
+
+  it("refuses with permission_posture_missing when the installed claude cannot carry the headless flags", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const env = stubProviders({ claude: { help: "--print --output-format --permission-mode --verbose" } });
+    const error = refusal(() => doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, env));
+    expect(error.details).toMatchObject({ code: "permission_posture_missing", conflict: true, unsupportedFlags: ["--settings"] });
+    expectNothingReserved(fixture, tmux);
+  });
+
+  it("refuses with provider_not_signed_in when Claude Code has neither a token file nor a login", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const env = stubProviders({ claude: { loggedIn: false } });
+    const error = refusal(() => doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, env));
+    expect(error.details).toMatchObject({ code: "provider_not_signed_in", conflict: true, provider: "claude-code-cli" });
+    expectNothingReserved(fixture, tmux);
+  });
+
+  it("accepts a Claude Code token file as its auth, without consulting the login", () => {
+    const fixture = preparedFixture();
+    const tokenFile = getWorkspacePaths(fixture.workspace).claudeCodeTokenFile;
+    writeFileSync(tokenFile, "stub-token\n", { mode: 0o600 });
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const env = stubProviders({ claude: { loggedIn: false } });
+    expect(doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, env).session.status).toBe("running");
+  });
+
+  it("refuses a codex launch for a missing login or a missing sandbox flag, and launches when both are present", () => {
+    const selection = { provider: "codex-cli", model: "gpt-5.6-terra", profileName: "codex_build", command: "codex" };
+
+    const signedOut = preparedFixture(selection);
+    const signedOutTmux = new FakeTmux();
+    const signedOutError = refusal(() => doLaunch(signedOut, signedOutTmux, preview1(signedOut).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: { loggedIn: false } })));
+    expect(signedOutError.details).toMatchObject({ code: "provider_not_signed_in", provider: "codex-cli" });
+    expectNothingReserved(signedOut, signedOutTmux);
+
+    const noSandbox = preparedFixture(selection);
+    const noSandboxTmux = new FakeTmux();
+    const noSandboxError = refusal(() => doLaunch(noSandbox, noSandboxTmux, preview1(noSandbox).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: { help: "--json" } })));
+    expect(noSandboxError.details).toMatchObject({ code: "permission_posture_missing", unsupportedFlags: ["--sandbox"] });
+    expectNothingReserved(noSandbox, noSandboxTmux);
+
+    const missing = preparedFixture(selection);
+    const missingTmux = new FakeTmux();
+    const missingError = refusal(() => doLaunch(missing, missingTmux, preview1(missing).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: false })));
+    expect(missingError.details).toMatchObject({ code: "provider_binary_missing", executable: "codex" });
+
+    const ready = preparedFixture(selection);
+    const readyTmux = new FakeTmux();
+    expect(doLaunch(ready, readyTmux, preview1(ready).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: {} })).session.status).toBe("running");
+    expect(readyTmux.launches[0].args).toEqual(expect.arrayContaining(["exec", "--json", "--sandbox", "workspace-write"]));
+  });
+
+  it("launches a ready Claude headless: the argv carries stream-json with --verbose and the per-Session settings file", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const result = doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, stubProviders({ claude: {} }));
+
+    const args = tmux.launches[0].args;
+    const claude = args.indexOf("claude");
+    const settingsFile = sessionSettingsPath(fixture.workspace, result.session.id);
+    expect(args.slice(claude, claude + 10)).toEqual([
+      "claude", "--print", "--output-format", "stream-json", "--verbose",
+      "--permission-mode", "acceptEdits", "--settings", settingsFile, "--model"
+    ]);
+    // Every headless launch is recorded; the pane keeps streaming the same output.
+    expect(tmux.launches[0].record).toEqual({
+      sessionId: result.session.id,
+      logFile: sessionLogPath(fixture.workspace, result.session.id),
+      databaseFile: getWorkspacePaths(fixture.workspace).databaseFile
+    });
+    expect(sessionView(result.session, tmux).reattachCommand).toBe(`tmux attach-session -t ${result.session.tmux_session_name}`);
+  });
+
+  it("allows only the Project's validation commands and `arcadia agent-ask draft`, in a workspace file no shared settings file feeds", () => {
+    const fixture = preparedFixture();
+    withDatabase(fixture.workspace, (db) => {
+      const project = db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string };
+      upsertProjectMetadata(db, {
+        projectId: project.id,
+        repoPath: fixture.repo,
+        validationCommands: ["pnpm exec tsc --noEmit && pnpm lint", "node -e \"process.exit(0)\""]
+      });
+    });
+    const tmux = new FakeTmux();
+    const result = doLaunch(fixture, tmux, preview1(fixture).previewFingerprint, "req-1", undefined, undefined, stubProviders({ claude: {} }));
+
+    const file = sessionSettingsPath(fixture.workspace, result.session.id);
+    expect(file.startsWith(fixture.workspace + path.sep)).toBe(true);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    const settings = JSON.parse(readFileSync(file, "utf8"));
+    expect(settings).toEqual({
+      permissions: {
+        defaultMode: "acceptEdits",
+        allow: [
+          "Bash(pnpm exec tsc --noEmit)",
+          "Bash(pnpm lint)",
+          "Bash(node -e \"process.exit\\(0\\)\")",
+          "Bash(arcadia agent-ask draft:*)",
+          "Bash(pnpm arcadia agent-ask draft:*)"
+        ]
+      }
+    });
+    // Exactly that list: no commit, push, settle, broker or arbitrary shell.
+  });
+
+  it("go --launch is headless by default and the explicit --interactive opt-in keeps the TUI, unrecorded", () => {
+    const headless = preparedFixture();
+    const headlessTmux = new FakeTmux();
+    const launched = doLaunch(headless, headlessTmux, preview1(headless).previewFingerprint, "req-1", undefined, undefined, stubProviders({ claude: {} }));
+
+    // The same prepared Session, launched interactively by an operator at the terminal.
+    const interactiveTmux = new FakeTmux();
+    withDatabase(headless.workspace, (db) =>
+      launchPreparedSession(db, launched.session, interactiveTmux, undefined, headless.workspace, { interactive: true })
+    );
+    const args = interactiveTmux.launches[0].args;
+    expect(args).not.toContain("--print");
+    expect(args).not.toContain("--output-format");
+    expect(args).not.toContain("--settings");
+    expect(interactiveTmux.launches[0].record).toBeUndefined();
+    expect(headlessTmux.launches[0].record).toBeDefined();
+  });
+});
+
 function doLaunch(
   fixture: ReturnType<typeof preparedFixture>,
   tmux: FakeTmux,
   previewFingerprint: string,
   requestId = "req-1",
   worktreeSuffix?: string,
-  providerSignIn?: (provider: string) => { signedIn: boolean; remedy: string } | null
+  providerSignIn?: (provider: string) => { signedIn: boolean; remedy: string } | null,
+  preflightEnv?: NodeJS.ProcessEnv
 ): GuardedLaunchResult {
   return withDatabase(fixture.workspace, (db) =>
     launchGuardedHostSession({
@@ -1694,7 +1893,8 @@ function doLaunch(
       now: fixture.now,
       tmux,
       agentWorktreeRoot: path.join(fixture.root, worktreeSuffix ?? requestId),
-      providerSignIn
+      providerSignIn,
+      preflightEnv
     })
   );
 }

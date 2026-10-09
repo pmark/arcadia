@@ -3954,8 +3954,9 @@ Origin: every item has "origin" (a string from a field its source records, else 
       .option("--model <model>", "Override the plan's recommended_model for the next agent session")
       .option("--effort <level>", "Override the plan's recommended_reasoning_effort for the next agent session")
       .option("--workspace <path>", "Workspace path used for the Session receipt", defaultWorkspace())
-      .option("--launch", "Explicitly launch Claude Code in a detached tmux Session")
-  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; json?: boolean }) =>
+      .option("--launch", "Explicitly launch the agent in a detached tmux Session, headless by default: output streams to a Session log under the workspace and the provider exit code is recorded")
+      .option("--interactive", "With --launch: start the interactive TUI (reattach with tmux) instead of the headless run; no log or exit status is recorded")
+  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; interactive?: boolean; json?: boolean }) =>
     runCliAction("go", options, () => {
       if (options.agent !== undefined && !SESSION_AGENTS.includes(options.agent as SessionAgent)) {
         throw validationError(`--agent must be ${SESSION_AGENTS.join(", ")}.`, { agent: options.agent });

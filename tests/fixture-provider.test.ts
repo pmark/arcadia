@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,11 +34,14 @@ import {
   sessionAgentForProvider,
   SESSION_AGENTS,
   launchPreparedSession,
+  systemTmux,
   type FixtureOutcome,
   type TmuxAdapter
 } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
+import { findExecutable } from "../src/sessions/launchPreflight.js";
 import { reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { sessionLogPath, sessionRecordingFor, wrapRecordedLaunch, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -273,7 +276,7 @@ describe("the fixture script itself (scripts/fixture-coding-agent.mjs)", () => {
     expect(git(session.worktree_path, ["status", "--porcelain"]).trim()).toBe("");
   });
 
-  it("exits nonzero for the crashed outcome without touching the worktree or the database", () => {
+  it("dies to SIGKILL mid-line for the crashed outcome without touching the worktree or the database", () => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-fixture-script-crash-"));
     roots.push(root);
     git(root, ["init", "-q", "-b", "main"]);
@@ -283,15 +286,176 @@ describe("the fixture script itself (scripts/fixture-coding-agent.mjs)", () => {
     git(root, ["add", "."]);
     git(root, ["commit", "-m", "initial"]);
 
-    let caught: { status: number | null } | undefined;
+    let caught: { status: number | null; signal?: string | null; stdout?: string } | undefined;
     try {
       runFixtureScript(["--worktree", root, "--file", FIXTURE_EDIT_FILE, "--duration", "0", "--outcome", "crashed", "--session-id", "session_test"]);
     } catch (error) {
-      caught = error as { status: number | null };
+      caught = error as { status: number | null; signal?: string | null; stdout?: string };
     }
-    expect(caught?.status).toBe(1);
+    expect(caught?.status).toBeNull();
+    expect(caught?.signal).toBe("SIGKILL");
+    // It was writing when it died: the output ends mid-line.
+    expect(String(caught?.stdout)).toContain("was writing when it cra");
+    expect(String(caught?.stdout).endsWith("\n")).toBe(false);
     expect(git(root, ["status", "--porcelain"]).trim()).toBe("");
   });
+});
+
+/**
+ * Runs the launch the way `systemTmux.launch` hands it to tmux -- through the
+ * real recording wrapper (`wrapRecordedLaunch`) -- but as a plain synchronous
+ * child process, so the wrapper, the fixture agent and the exit recorder are
+ * exercised for real on every machine, tmux or not.
+ */
+class WrapperRunTmux extends FakeTmux {
+  runs: Array<{ status: number | null; signal: string | null }> = [];
+  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }) {
+    super.launch(input);
+    const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
+    const result = spawnSync(run.command, run.args, { cwd: input.cwd, encoding: "utf8" });
+    this.runs.push({ status: result.status, signal: result.signal });
+  }
+}
+
+function exitStatusOf(workspace: string, sessionId: string): number | null {
+  return withDatabase(workspace, (db) => getSession(db, sessionId)!.exit_status);
+}
+
+function launchedFixture(outcome: FixtureOutcome, tmux: WrapperRunTmux) {
+  const fixture = preparedFixture(outcome, "0");
+  const session = prepareFixtureSession(fixture, tmux);
+  withDatabase(fixture.workspace, (db) => launchPreparedSession(db, session, tmux, undefined, fixture.workspace));
+  return { fixture, session, log: sessionLogPath(fixture.workspace, session.id) };
+}
+
+describe("headless fixture-cli launch records its output and exit through the real wrapper", () => {
+  it("a clean exit records exit_status 0 and leaves the Session log, outside the repository", () => {
+    const tmux = new WrapperRunTmux();
+    const { fixture, session, log } = launchedFixture("completed", tmux);
+
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(0);
+    expect(tmux.runs).toEqual([{ status: 0, signal: null }]);
+    const text = readFileSync(log, "utf8");
+    expect(text).toContain(`fixture session ${session.id} started (completed)`);
+    expect(text).toContain(`fixture session ${session.id} completed`);
+    expect(text).toContain("arcadia: provider exited with status 0");
+    // Named by session id, under the workspace, never in the repository or the candidate worktree.
+    expect(path.basename(log)).toBe(`${session.id}.log`);
+    expect(log.startsWith(fixture.workspace + path.sep)).toBe(true);
+    expect(log.startsWith(fixture.repo + path.sep)).toBe(false);
+    expect(log.startsWith(session.worktree_path + path.sep)).toBe(false);
+    expect(existsSync(`${log}.status`)).toBe(false);
+  });
+
+  it("a non-zero exit records the provider's exit code, and stdout and stderr both reach the log", () => {
+    const tmux = new WrapperRunTmux();
+    const { fixture, session, log } = launchedFixture("failed", tmux);
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(1);
+    expect(readFileSync(log, "utf8")).toMatch(/fixture session .* failed\narcadia: provider exited with status 1/);
+
+    // An exit code the fixture does not choose itself: the wrapper, not the provider, records it.
+    const other = preparedFixture("completed", "0");
+    const otherSession = prepareFixtureSession(other, new FakeTmux());
+    const recording = sessionRecordingFor(other.workspace, otherSession.id);
+    const run = wrapRecordedLaunch({ command: "sh", args: ["-c", "echo to-stdout; echo to-stderr >&2; exit 3"] }, recording);
+    expect(spawnSync(run.command, run.args).status).toBe(3);
+    expect(exitStatusOf(other.workspace, otherSession.id)).toBe(3);
+    const combined = readFileSync(recording.logFile, "utf8");
+    expect(combined).toContain("to-stdout");
+    expect(combined).toContain("to-stderr");
+  });
+
+  it("a crash mid-output keeps the log, records the kill, and is distinguishable from a clean exit", () => {
+    const tmux = new WrapperRunTmux();
+    const { fixture, session, log } = launchedFixture("crashed", tmux);
+
+    // SIGKILL surfaces as 137 to the wrapper, which survives to record it.
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(137);
+    expect(tmux.runs).toEqual([{ status: 137, signal: null }]);
+    expect(existsSync(log)).toBe(true);
+    const text = readFileSync(log, "utf8");
+    expect(text).toContain("was writing when it cra");
+    expect(text).toContain("arcadia: provider exited with status 137");
+  });
+
+  it("refuses to run a provider it cannot log, recording a distinct status instead of losing the output silently", () => {
+    const fixture = preparedFixture("completed", "0");
+    const session = prepareFixtureSession(fixture, new FakeTmux());
+    const blocker = path.join(fixture.root, "not-a-directory");
+    writeFileSync(blocker, "a file where a directory is needed\n");
+    const run = wrapRecordedLaunch(
+      { command: "sh", args: ["-c", "echo must-not-run > ran.txt"] },
+      { sessionId: session.id, logFile: path.join(blocker, "x.log"), databaseFile: getWorkspacePaths(fixture.workspace).databaseFile }
+    );
+    expect(spawnSync(run.command, run.args, { cwd: fixture.root }).status).toBe(73);
+    expect(existsSync(path.join(fixture.root, "ran.txt"))).toBe(false);
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(73);
+  });
+
+  it.each(["/bin/sh", "/bin/bash", "bash", "zsh"])("the wrapper runs unchanged under %s", (shell) => {
+    const resolved = shell.startsWith("/") ? (existsSync(shell) ? shell : null) : findExecutable(shell);
+    if (!resolved) return;
+    const fixture = preparedFixture("completed", "0");
+    const session = prepareFixtureSession(fixture, new FakeTmux());
+    const recording = sessionRecordingFor(fixture.workspace, session.id);
+    const run = wrapRecordedLaunch({ command: "sh", args: ["-c", "echo ran-under-shell; exit 5"] }, recording);
+    // The wrapper is `sh -c <script> ...`; run that same script under the shell being checked.
+    expect(spawnSync(resolved, run.args).status).toBe(5);
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(5);
+    expect(readFileSync(recording.logFile, "utf8")).toContain("ran-under-shell");
+  });
+});
+
+function tmuxAvailable(): boolean {
+  try {
+    execFileSync("tmux", ["-V"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The same three outcomes through a real tmux server and `systemTmux`. Skipped
+// where tmux is not installed; the block above covers the wrapper logic
+// everywhere, this proves tmux hands the wrapper's arguments through intact.
+describe.skipIf(!tmuxAvailable())("headless fixture-cli launch through real tmux", () => {
+  const tmuxSessions: string[] = [];
+  afterEach(() => {
+    for (const name of tmuxSessions.splice(0)) {
+      try { execFileSync("tmux", ["kill-session", "-t", name], { stdio: "ignore" }); } catch { /* already gone */ }
+    }
+  });
+
+  async function runThroughTmux(outcome: FixtureOutcome) {
+    const fixture = preparedFixture(outcome, "0");
+    const session = prepareFixtureSession(fixture, new FakeTmux());
+    tmuxSessions.push(session.tmux_session_name);
+    withDatabase(fixture.workspace, (db) => launchPreparedSession(db, session, systemTmux, undefined, fixture.workspace));
+    const deadline = Date.now() + 30_000;
+    while (systemTmux.hasSession(session.tmux_session_name) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(systemTmux.hasSession(session.tmux_session_name)).toBe(false);
+    return { fixture, session, log: sessionLogPath(fixture.workspace, session.id) };
+  }
+
+  it("a clean exit: exit_status 0 and the log outlives the tmux session", async () => {
+    const { fixture, session, log } = await runThroughTmux("completed");
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(0);
+    expect(readFileSync(log, "utf8")).toContain(`fixture session ${session.id} completed`);
+  }, 40_000);
+
+  it("a non-zero exit: the failure status is recorded", async () => {
+    const { fixture, session, log } = await runThroughTmux("failed");
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(1);
+    expect(readFileSync(log, "utf8")).toContain("arcadia: provider exited with status 1");
+  }, 40_000);
+
+  it("a crash mid-output: the partial log is kept and the kill is recorded", async () => {
+    const { fixture, session, log } = await runThroughTmux("crashed");
+    expect(exitStatusOf(fixture.workspace, session.id)).toBe(137);
+    expect(readFileSync(log, "utf8")).toContain("was writing when it cra");
+  }, 40_000);
 });
 
 function runFixtureScript(args: string[]): string {

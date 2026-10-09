@@ -16,7 +16,9 @@
 //     configured exit status through the narrowly gated
 //     `applyFixtureExitStatus` write, then exits 1: `failed_execution`.
 //   crashed   -- makes no changes and never self-reports anything, simulating
-//     a process that died without a trace: `missing_evidence`.
+//     a process that died without a trace: it writes half a line and kills
+//     itself with SIGKILL. The launch wrapper records 137 and keeps the partial
+//     Session log.
 //   stalled   -- makes no changes and then hangs forever, producing no further
 //     tmux pane output and no further Run/receipt activity, so the existing
 //     stall-detection machinery (`observeSessionActivity`) is what notices it,
@@ -26,7 +28,7 @@
 // Action add-fixture-coding-agent-provider.
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -59,11 +61,15 @@ async function main() {
     throw new Error(`--duration must be a non-negative number of seconds; got "${args.duration}".`);
   }
 
+  // Synchronous writes: the process may exit (or be killed) immediately after,
+  // and the Session log the launch wrapper tees must hold every line.
+  writeSync(1, `fixture session ${sessionId} started (${outcome})\n`);
   await sleep(duration * 1000);
 
   switch (outcome) {
     case "completed": {
       appendFileSync(path.join(worktree, file), `fixture session ${sessionId} completed\n`);
+      writeSync(1, `fixture session ${sessionId} completed\n`);
       execFileSync("git", ["add", "--", file], { cwd: worktree, stdio: "ignore" });
       execFileSync(
         "git",
@@ -80,13 +86,17 @@ async function main() {
     case "failed": {
       const db = requireArg(args, "db");
       reportExitStatus(db, sessionId, 1);
+      writeSync(2, `fixture session ${sessionId} failed\n`);
       process.exit(1);
       break;
     }
     case "crashed": {
       // No self-report: a genuine crash never gets the chance to record
-      // anything about itself.
-      process.exit(1);
+      // anything about itself. It dies mid-output, mid-line, to a signal (the
+      // launch wrapper records 137), so the Session log is the only trace.
+      writeSync(1, `fixture session ${sessionId} was writing when it cra`);
+      process.kill(process.pid, "SIGKILL");
+      await new Promise(() => {});
       break;
     }
     case "stalled": {
