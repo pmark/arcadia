@@ -57,6 +57,7 @@ export function applyMigrations(db: Database.Database): void {
   // After the requires_review rebuild, which recreates ask_requests and drops its indexes.
   ensureAskTraceColumns(db);
   ensureAskRoutingColumns(db);
+  ensureAskSupersessionsTable(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
@@ -1549,6 +1550,34 @@ function ensureAskRoutingColumns(db: Database.Database): void {
   if (!columns.has("suppressed_reason")) {
     db.prepare("ALTER TABLE ask_requests ADD COLUMN suppressed_reason TEXT").run();
   }
+}
+
+/**
+ * `arcadia ask correct` links the Ask it replaces to the Ask that replaced it. Additive; deliberately no foreign keys
+ * or cascades, so no deletion elsewhere can remove the record of a correction, and the legacy `ask_requests` rebuild
+ * is never blocked by it.
+ */
+function ensureAskSupersessionsTable(db: Database.Database): void {
+  db.exec(`
+CREATE TABLE IF NOT EXISTS ask_supersessions (
+  id TEXT PRIMARY KEY,
+  old_ask_request_id TEXT NOT NULL,
+  new_ask_request_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  project_id TEXT,
+  old_kind TEXT NOT NULL,
+  old_record_id TEXT,
+  new_kind TEXT NOT NULL,
+  new_record_id TEXT,
+  old_disposition TEXT NOT NULL,
+  source TEXT NOT NULL,
+  actor TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_supersessions_old ON ask_supersessions(old_ask_request_id);
+CREATE INDEX IF NOT EXISTS idx_ask_supersessions_new ON ask_supersessions(new_ask_request_id);
+  `);
 }
 
 function ensureAskRequestStewardshipColumn(db: Database.Database): void {

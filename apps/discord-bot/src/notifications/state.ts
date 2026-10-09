@@ -39,6 +39,23 @@ export interface ReviewMessageRecord {
   createdAt: string;
 }
 
+/** A posted Ask receipt, so a reply to that message can correct the Ask it names. */
+export interface AskReceiptMessageRecord {
+  askId: string;
+  channelId: string;
+  messageId: string;
+  createdAt: string;
+}
+
+export interface AskReceiptMessageState {
+  messages: Record<string, AskReceiptMessageRecord>;
+  updatedAt: string;
+}
+
+export function askReceiptMessageStatePath(workspace: string): string {
+  return path.join(workspace, "database", "discord-ask-receipts.json");
+}
+
 export function notificationStatePath(workspace: string): string {
   return path.join(workspace, "database", "discord-notifications.json");
 }
@@ -121,6 +138,59 @@ export async function loadReviewMessageState(filePath: string): Promise<ReviewMe
     }
     throw error;
   }
+}
+
+export async function loadAskReceiptMessageState(filePath: string): Promise<AskReceiptMessageState> {
+  try {
+    return normalizeAskReceiptMessageState(JSON.parse(await readFile(filePath, "utf8")));
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return emptyAskReceiptMessageState();
+    }
+    throw error;
+  }
+}
+
+/** Records which Ask a posted receipt message names, the way {@link recordReviewMessage} does for Decisions. */
+export async function recordAskReceiptMessage(
+  filePath: string,
+  record: AskReceiptMessageRecord,
+  now = new Date().toISOString()
+): Promise<AskReceiptMessageState> {
+  const state = await loadAskReceiptMessageState(filePath);
+  const nextState: AskReceiptMessageState = {
+    messages: { ...state.messages, [record.messageId]: record },
+    updatedAt: now
+  };
+  await writeJsonAtomically(filePath, nextState);
+  return nextState;
+}
+
+function emptyAskReceiptMessageState(now = new Date().toISOString()): AskReceiptMessageState {
+  return { messages: {}, updatedAt: now };
+}
+
+function normalizeAskReceiptMessageState(raw: unknown): AskReceiptMessageState {
+  if (!raw || typeof raw !== "object") {
+    return emptyAskReceiptMessageState();
+  }
+  const record = raw as Partial<AskReceiptMessageState>;
+  const messages = record.messages && typeof record.messages === "object"
+    ? Object.fromEntries(
+        Object.entries(record.messages).filter((entry): entry is [string, AskReceiptMessageRecord] => {
+          const value = entry[1] as Partial<AskReceiptMessageRecord> | null;
+          return Boolean(value) && typeof value === "object" &&
+            typeof value?.askId === "string" &&
+            typeof value?.channelId === "string" &&
+            typeof value?.messageId === "string" &&
+            typeof value?.createdAt === "string";
+        })
+      )
+    : {};
+  return {
+    messages,
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString()
+  };
 }
 
 export async function saveNotificationState(filePath: string, state: NotificationState): Promise<void> {

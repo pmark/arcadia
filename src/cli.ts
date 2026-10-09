@@ -19,6 +19,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { renderAskCorrectSuccess, runAskCorrectCommand } from "./commands/askCorrect.js";
 import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askCoverage.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
@@ -841,6 +842,7 @@ export function buildProgram(): Command {
       .option("--tag <tags...>", "Facet tags for grouping")
       .option("--reply-review-id <review-id>", "Review id from adapter reply context")
       .option("--run-safe", "Immediately run deterministic safe steps")
+      .option("--verbose", "Also print the stewardship, interpretation and Ask rule detail (--json always includes it)")
   ).action((request: string, options: {
     workspace: string;
     project?: string;
@@ -857,6 +859,7 @@ export function buildProgram(): Command {
     tag?: string[];
     replyReviewId?: string;
     runSafe?: boolean;
+    verbose?: boolean;
     json?: boolean;
   }) => runCliAction(
     "ask",
@@ -869,7 +872,7 @@ export function buildProgram(): Command {
       facetTags: options.tag as BackBurnerFacetTag[] | undefined,
       adapterMetadata: options.replyReviewId ? { reviewId: options.replyReviewId } : undefined
     }),
-    renderAskSuccess
+    (response) => renderAskSuccess(response, { verbose: options.verbose })
   ));
 
   addJsonOption(
@@ -899,6 +902,35 @@ export function buildProgram(): Command {
       if (!id) throw validationError("An id is required: arcadia ask show <capture_…|request id|ask_…>, or arcadia ask show --coverage.", {});
       return runAskShowCommand({ ...options, id });
     }, renderAskTrailSuccess);
+  });
+
+  addJsonOption(
+    ask
+      .command("correct")
+      .description("Re-route an Ask Arcadia heard wrongly, through the existing writers only; the record it replaces is closed, linked as superseded and never deleted")
+      .argument("<ask_id>", "ask_… id from the 'Heard:' receipt line (or its capture id)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--type <type>", "What the Ask should have been: work, idea, answer or status")
+      .option("--project <project>", "Move the Ask to this Project (id, slug or name)")
+      .option("--ref <decision>", "With --type answer: the pending Decision (id or slug) the Ask answers; never inferred")
+      .option("--source <source>", "Where the correction came from: cli (default) or discord", "cli")
+      .option("--actor <id>", "The authenticated sender, when the source knows it (a Discord author id)")
+  ).action((askId: string, _options: unknown, command: Command) => {
+    const options: { workspace: string; type?: string; project?: string; ref?: string; source?: string; actor?: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction("ask.correct", options, () => {
+      if (options.source !== undefined && options.source !== "cli" && options.source !== "discord") {
+        throw validationError("--source must be cli or discord.", { source: options.source });
+      }
+      return runAskCorrectCommand({
+        workspace: options.workspace,
+        askId,
+        type: options.type,
+        project: options.project,
+        ref: options.ref,
+        source: options.source,
+        actor: options.actor
+      });
+    }, renderAskCorrectSuccess);
   });
 
   addJsonOption(

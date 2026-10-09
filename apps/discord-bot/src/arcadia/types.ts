@@ -188,8 +188,30 @@ export interface CodexInvocation {
   status: string;
 }
 
+/** The receipt line `arcadia ask` opens with: what was heard, and where it went. */
+export interface AskHeardData {
+  type: string;
+  confidence: string;
+  source: string;
+  created: string;
+  line: string;
+}
+
+export interface AskCorrectData {
+  askId: string;
+  correctedAskId: string;
+  newAskId: string;
+  targetType: string;
+  previous: { kind: string; id: string | null; disposition: string };
+  created: { kind: string; id: string | null; summary: string };
+  supersessionId: string;
+  heard: AskHeardData;
+  queuedRun: false;
+}
+
 export interface AskData {
   ask: AskRequest | null;
+  heard?: AskHeardData;
   stewardship?: {
     intentType: string;
     recommendedExecutionPath: string;

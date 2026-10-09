@@ -18,6 +18,7 @@ import {
   isTrivialAcknowledgement
 } from "../ask/suppression.js";
 import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
+import { buildAskHeard, type AskHeard } from "../ask/heard.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
@@ -115,6 +116,13 @@ export interface AskOptions {
   surfaceCondition?: BackBurnerSurfaceCondition;
   sourceRef?: string;
   facetTags?: BackBurnerFacetTag[];
+  /**
+   * `arcadia ask correct`: re-route a captured Ask. `work` skips every other route (suppression, Clarify First, Back
+   * Burner, direct answers) and creates the Action; `idea` shelves it in Back Burner; `reroute` runs the ordinary
+   * routing again (for a Project change). Whichever it is, the Ask never resolves a Decision, is never suppressed as a
+   * duplicate, and queues no Run.
+   */
+  correctionRoute?: "work" | "idea" | "reroute";
 }
 
 export interface AskCommandData {
@@ -149,13 +157,16 @@ export interface AskCommandData {
   /** Present only when `config/arcadia.json` could not be read for `ask.routing.v2`: the default (on) was used. */
   routingWarning?: string;
   processingReceipt: AskProcessingReceipt | null;
+  /** The one-line receipt that opens every result; see `buildAskHeard`. Set by `runAskCommand`. */
+  heard?: AskHeard;
 }
 
 export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   // A broken config file must never lose an Ask: routing falls back to the default and the receipt says so.
   const routingSetting = askRoutingV2Setting(workspacePath);
-  const response = runAskCommandWithRouting(options, workspacePath, routingSetting.enabled);
+  const routed = runAskCommandWithRouting(options, workspacePath, routingSetting.enabled);
+  const response: CommandSuccess<AskCommandData> = { ...routed, data: { ...routed.data, heard: buildAskHeard(routed.data) } };
   if (!routingSetting.warning) return response;
   process.stderr.write(`warning: ${routingSetting.warning}\n`);
   return {
@@ -212,7 +223,12 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
 
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
-  const approvedFromReview = Boolean(options.approvedReviewItemId);
+  // A work correction takes the approved-Decision path: it skips Clarify First and Back Burner and creates the Action.
+  const forceWork = options.correctionRoute === "work";
+  const correcting = options.correctionRoute !== undefined;
+  // Work and idea corrections never take a direct answer route (status, project create/update, listings).
+  const skipDirectRoutes = options.correctionRoute === "work" || options.correctionRoute === "idea";
+  const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
   // ask.routing.v2: an agent-written Ask (agent.ask, codex.*) keeps the earlier routing, as does a workspace that turned the flag off.
   const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && flagEnabled;
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
@@ -259,7 +275,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     selectedProject,
     routingV2
   });
-  const stewardship: GoalStewardshipResult = options.captureAsIdea
+  const stewardship: GoalStewardshipResult = options.captureAsIdea || options.correctionRoute === "idea"
     ? {
         ...computedStewardship,
         intentType: "Back Burner Idea",
@@ -318,7 +334,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
 
   // Under ask.routing.v2 only two things create no question: a whole-message acknowledgement and an exact repeat of
   // a question still open. Each leaves a receipt that says why, and the report counts it apart from a vanished Ask.
-  const suppression = routingV2 && !ruleMatch && !approvedFromReview && !options.captureAsIdea && !parsedReviewResponse.hasReviewReference
+  const suppression = routingV2 && !ruleMatch && !approvedFromReview && !correcting && !options.captureAsIdea && !parsedReviewResponse.hasReviewReference
     ? withDatabase(workspacePath, (db): { reason: string; summary: string; reviewItemId: string | null } | null => {
         if (isTrivialAcknowledgement(request)) {
           return {
@@ -394,7 +410,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
   // A reply tied to a known Decision belongs to the review workflow even when
   // it is free-form prose. Clarification answers are intentionally not one of
   // the short approve/reject/defer tokens recognized by the parser.
-  if (parsedReviewResponse.hasReviewReference && !options.project && !ruleMatch) {
+  if (!correcting && parsedReviewResponse.hasReviewReference && !options.project && !ruleMatch) {
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
@@ -458,6 +474,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     ? projectProposalSpecForTemplate(intake.action.template?.id)
     : null;
   if (
+    !skipDirectRoutes &&
     intake.confidenceLabel === "high" &&
     intake.action.kind === "instantiate_project" &&
     intake.action.projectName &&
@@ -519,7 +536,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     });
   }
 
-  if (intake.action.kind === "show_status" && intake.confidenceLabel === "high") {
+  if (!skipDirectRoutes && intake.action.kind === "show_status" && intake.confidenceLabel === "high") {
     const status = runStatusCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
@@ -565,7 +582,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     });
   }
 
-  if (intake.action.kind === "show_review" && intake.confidenceLabel === "high") {
+  if (!skipDirectRoutes && intake.action.kind === "show_review" && intake.confidenceLabel === "high") {
     const review = runReviewRequiredCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
@@ -611,6 +628,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
   }
 
   if (
+    !skipDirectRoutes &&
     (intake.confidenceLabel === "high" || approvedFromReview) &&
     intake.action.kind === "create_project" &&
     intake.action.projectName
@@ -675,6 +693,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
   }
 
   if (
+    !skipDirectRoutes &&
     (intake.confidenceLabel === "high" || approvedFromReview) &&
     intake.action.kind === "update_entity_attribute" &&
     intake.action.entityType === "project" &&
@@ -716,6 +735,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
   }
 
   if (
+    !skipDirectRoutes &&
     (intake.confidenceLabel === "high" || approvedFromReview) &&
     intake.action.kind === "show_project" &&
     intake.action.projectId
@@ -768,7 +788,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     });
   }
 
-  if ((intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
+  if (!skipDirectRoutes && (intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
     const { ask, projects } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
@@ -811,7 +831,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     });
   }
 
-  if (stewardship.recommendedExecutionPath === "Back Burner" && !options.approvedReviewItemId) {
+  if (stewardship.recommendedExecutionPath === "Back Burner" && !approvedFromReview) {
     const { ask, backBurnerItem } = withDatabase(workspacePath, (db) => {
       const projectId = routedProjectId;
       if (projectId && !getProject(db, projectId)) {
@@ -880,7 +900,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
     (stewardship.recommendedExecutionPath === "Clarify First" ||
       stewardship.recommendedExecutionPath === "Requires Review") &&
     !usingRegistryFallback &&
-    !options.approvedReviewItemId
+    !approvedFromReview
   ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
@@ -945,6 +965,7 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
         review: null,
         reviewItemId: reviewItem.id,
         decisionId: reviewItem.id,
+        decisionSlug: reviewItem.slug,
         backBurnerItemId: null
       }
     });
@@ -1364,25 +1385,50 @@ function requireAttributeValue(action: UpdateEntityAttributeAction): string {
   return action.value;
 }
 
-export function renderAskSuccess(response: CommandSuccess<AskCommandData>): string[] {
-  const lines = [
-    `Stewardship intent: ${response.data.stewardship.intentType}`,
-    `Execution path: ${response.data.stewardship.recommendedExecutionPath}`,
-    `Stewardship reason: ${response.data.stewardship.classificationReason}`,
-    `Planning recommended: ${response.data.stewardship.planningRecommended ? "yes" : "no"}`,
-    `Clarification required: ${response.data.stewardship.clarificationRequired ? "yes" : "no"}`,
-    `Review required: ${response.data.stewardship.reviewRequired ? "yes" : "no"}`,
-    `Codex goal: ${response.data.stewardship.generatedCodexGoalText ?? "None"}`,
-    `Ask: ${response.data.ask?.id ?? "None"}`,
-    `Interpreted as: ${response.data.intake.resolvedIntent}`,
-    `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`,
-    `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? response.data.projectSummary?.name ?? "None"}`,
-    `Attribute: ${renderResolvedAttribute(response.data.intake)}`,
-    `Value: ${renderResolvedAttributeValue(response.data.intake)}`,
-    `Outcome: ${response.data.project?.goal ?? "None"}`,
-    `Action: ${response.data.intake.proposedAction}`,
-    `Result: ${response.data.result.summary}`
-  ];
+export interface RenderAskOptions {
+  /** Also print the stewardship, interpretation and Ask rule detail. `--json` always carries it. */
+  verbose?: boolean;
+}
+
+/**
+ * Every result opens with the one `Heard:` line, then the essentials: ids, the Project and what was created. The
+ * stewardship and rule detail follows only with `--verbose`; `--json` carries all of it.
+ */
+export function renderAskSuccess(response: CommandSuccess<AskCommandData>, options: RenderAskOptions = {}): string[] {
+  const heard = response.data.heard ?? buildAskHeard(response.data);
+  const lines = [heard.line];
+
+  if (options.verbose) {
+    lines.push(
+      `Stewardship intent: ${response.data.stewardship.intentType}`,
+      `Execution path: ${response.data.stewardship.recommendedExecutionPath}`,
+      `Stewardship reason: ${response.data.stewardship.classificationReason}`,
+      `Planning recommended: ${response.data.stewardship.planningRecommended ? "yes" : "no"}`,
+      `Clarification required: ${response.data.stewardship.clarificationRequired ? "yes" : "no"}`,
+      `Review required: ${response.data.stewardship.reviewRequired ? "yes" : "no"}`,
+      `Codex goal: ${response.data.stewardship.generatedCodexGoalText ?? "None"}`
+    );
+  }
+  lines.push(`Ask: ${response.data.ask?.id ?? "None"}`);
+  if (options.verbose) {
+    lines.push(
+      `Interpreted as: ${response.data.intake.resolvedIntent}`,
+      `Confidence: ${response.data.intake.confidenceLabel} (${response.data.intake.confidence.toFixed(2)})`
+    );
+  }
+  lines.push(
+    `Project: ${response.data.intake.project?.name ?? response.data.workItem?.project_name ?? response.data.project?.name ?? response.data.projectSummary?.name ?? "None"}`
+  );
+  if (options.verbose || response.data.intake.action.kind === "update_entity_attribute") {
+    lines.push(
+      `Attribute: ${renderResolvedAttribute(response.data.intake)}`,
+      `Value: ${renderResolvedAttributeValue(response.data.intake)}`
+    );
+  }
+  if (options.verbose) {
+    lines.push(`Outcome: ${response.data.project?.goal ?? "None"}`, `Action: ${response.data.intake.proposedAction}`);
+  }
+  lines.push(`Result: ${response.data.result.summary}`);
 
   if (response.data.workItem) {
     lines.push(`Action: ${response.data.workItem.id}`);
@@ -1416,7 +1462,7 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
     lines.push(...response.data.projects.map((project) => `- ${project.name} (${project.status})`));
   }
 
-  if (response.data.processingReceipt) {
+  if (options.verbose && response.data.processingReceipt) {
     const receipt = response.data.processingReceipt;
     lines.push(
       `Ask rule: ${receipt.ruleId} v${receipt.ruleVersion}`,

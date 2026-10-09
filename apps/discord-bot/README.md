@@ -135,6 +135,16 @@ or tells you that one focused follow-up question is coming. Approval Decisions
 still require an explicit approve/reject/defer response; a free-text reply
 cannot authorize execution.
 
+Every reply to a free-text message opens with a `Heard:` line saying what Arcadia
+took the message for and where it went. If that is wrong, reply to the receipt
+message with `type: work|idea|answer|status`, `project: <slug>`, or both. The bot
+maps the receipt message to its Ask (`database/discord-ask-receipts.json`) and
+calls `arcadia ask correct`, which re-routes through the existing writers, links
+the new record to the old as superseded and queues no Run. `type: answer ref: <decision>`
+resolves that pending Decision through `arcadia review resolve-reply` and is accepted
+only when `DISCORD_ALLOWED_USER_IDS` is set and includes the author; `task` is not
+a type yet.
+
 ## Notifications
 
 The bot polls Arcadia and notifies the configured channel when:

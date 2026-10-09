@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
+  AskCorrectData,
   AskData,
   AgentAskNotificationsData,
   OperatorPingsData,
@@ -149,6 +150,28 @@ export class ArcadiaCli {
       ...(askOptions.sourceIngress ? ["--source-ingress", askOptions.sourceIngress] : []),
       ...(askOptions.replyReviewId ? ["--reply-review-id", askOptions.replyReviewId] : []),
       ...(askOptions.runSafe ? ["--run-safe"] : []),
+      "--json"
+    ]), { surface: "discord" });
+  }
+
+  /**
+   * `arcadia ask correct`: re-route an Ask by operator reply. `actor` is the authenticated Discord author id; the CLI
+   * records it and, for `--type answer`, checks it against DISCORD_ALLOWED_USER_IDS again.
+   */
+  askCorrect(
+    askId: string,
+    correction: { type?: string | null; project?: string | null; ref?: string | null; actor?: string | null }
+  ): Promise<ArcadiaJsonSuccess<AskCorrectData>> {
+    return this.runJson<AskCorrectData>(this.withWorkspaceAfter(2, [
+      "ask",
+      "correct",
+      askId,
+      ...(correction.type ? ["--type", correction.type] : []),
+      ...(correction.project ? ["--project", correction.project] : []),
+      ...(correction.ref ? ["--ref", correction.ref] : []),
+      "--source",
+      "discord",
+      ...(correction.actor ? ["--actor", correction.actor] : []),
       "--json"
     ]), { surface: "discord" });
   }
