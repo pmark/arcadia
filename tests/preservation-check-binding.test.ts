@@ -700,7 +700,9 @@ describe("preservation check-definition binding — Python review follow-ups to 
     const f = repo({ "checks/check.py": "import json\n" });
     for (const command of [
       "python3 - < checks/check.py", "cat checks/check.py | python3", "python3 < checks/check.py", "python3 <checks/check.py",
-      "python3 -u - < checks/check.py", "env python3.13t - < checks/check.py", "python3 -"
+      "python3 -u - < checks/check.py", "env python3.13t - < checks/check.py", "python3 -",
+      // A redirect operand that looks like an informational flag is not one.
+      "cat checks/check.py | python3 2> -h", "python3 < checks/check.py > --version", "python3 2> --help < checks/check.py"
     ]) {
       expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
         .toThrow(expect.objectContaining({ message: expect.stringMatching(/no script file argument/), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));

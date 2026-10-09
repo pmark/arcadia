@@ -456,6 +456,8 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
     const python = PYTHON_INTERPRETER.test(executableName);
     const interpreted = python || SCRIPT_INTERPRETERS.has(executableName);
     if (interpreted) {
+      let redirected = false;
+      let informational = false;
       for (let i = index + 1; i < tokens.length; i += 1) {
         if (python && /^-[A-Za-z]*[cm]/.test(tokens[i])) {
           throw validationError(
@@ -468,11 +470,15 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
         // names check.py, while `python3 < check.py` reads the script itself
         // from stdin (#1103). Skip the operator's separate operand.
         if (python && /^\d*[<>]/.test(tokens[i])) {
+          redirected = true;
           if (/^\d*(?:<<<|<<-?|<>|>>|>\||[<>])&?$/.test(tokens[i])) i += 1;
           continue;
         }
         if (python && tokens[i] === "-") break;
         if (tokens[i].startsWith("-")) {
+          // Only a real option token before any redirection counts as informational;
+          // a redirect operand such as `2> -h` never does.
+          if (python && !redirected && /^(?:-V+|--version|-h|--help|-\?)$/.test(tokens[i])) informational = true;
           // Options that take the next token as their value must not be mistaken for the script.
           if (python && (tokens[i] === "-W" || tokens[i] === "-X" || tokens[i] === "--check-hash-based-pycs")) i += 1;
           continue;
@@ -483,7 +489,7 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       // A Python interpreter with no script argument reads its program from
       // stdin (`python3 -`, `cat f | python3`, `python3 < f`), which no bound
       // file describes. Informational flags run nothing and are allowed.
-      if (python && !target && !tokens.slice(index + 1).some(token => /^(?:-V+|--version|-h|--help|-\?)$/.test(token))) {
+      if (python && !target && !informational) {
         throw validationError(
           `Declared preservation check \`${command}\` runs Python with no script file argument, so the program comes from standard input, which this binding cannot resolve to a bound script file. ` +
           `Run a plain script file instead, ${ISOLATION_ADVICE}`,
