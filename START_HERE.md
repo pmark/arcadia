@@ -316,8 +316,6 @@ system light or dark theme. From top to bottom:
   names the agent and the consequences, and nothing starts until you press
   **Launch Session**. A preview that names a different Action, or is not
   ready, withholds the button.
-- **To-do**: the same list as `arcadia todo --all`, with its Approve, Accept
-  and Reject controls.
 
 The page reads `arcadia production status`, `dashboard runs --sessions 8`,
 `advance queue` and `schedule status`, and writes only through the existing

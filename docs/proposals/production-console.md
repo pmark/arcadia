@@ -13,8 +13,9 @@ authority and changes no queue, pointer or production setting.
    `/runs` Sessions section once the operator has used `/production` for a
    while. `/work-queue` keeps reordering and `/path` keeps the route to the
    target, since neither is about driving production.
-2. **Order:** global strip, Sessions, Queue, To-do. On the desktop the to-do
-   list sits in a right column. The live work comes first because it is what
+2. **Order:** global strip, Sessions, Queue. The page holds production concerns only; operator
+   to-dos stay on /runs and /review (operator direction, 2026-10-09). On the desktop Sessions and
+   Queue sit side by side. The live work comes first because it is what
    changes minute to minute.
 3. **Safe concurrent batches are numbered waves over the schedule's lanes.**
    `schedule status` already groups the ready set into one lane per
