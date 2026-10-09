@@ -530,6 +530,11 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       reason = `${reason} ${attempt.reason}`;
     }
   }
+  // Arcadia itself ended this Session (time limit or a persistent blocking pane
+  // signal; see `src/production/sessionLifetime.ts`): the receipt says why.
+  if (session.stop_reason && outcome !== "accepted_completion") {
+    reason = `Stopped by Arcadia: ${session.stop_reason} ${reason}`;
+  }
   const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
   const suppressHandoff = outcome === "incomplete_resumable" && input.suppressLeaseHandoff;
@@ -543,7 +548,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     artifact_id: evidence.artifactId,
     decision_id: evidence.decisionId,
     candidate_revision: evidence.candidateRevision,
-    evidence_json: JSON.stringify(evidence),
+    evidence_json: JSON.stringify(session.stop_reason ? { ...evidence, stopReason: session.stop_reason } : evidence),
     next_action_json: JSON.stringify(nextMove),
     lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
     superseded_by_session_id: null,

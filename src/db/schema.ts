@@ -93,6 +93,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentSessionStallColumns(db);
   ensureAgentSessionAdmissionColumn(db);
   ensureAgentSessionLaunchRevisionColumn(db);
+  ensureAgentSessionLifetimeColumns(db);
   ensureAgentSessionSimulatedColumn(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
@@ -532,6 +533,22 @@ function ensureAgentSessionLaunchRevisionColumn(db: Database.Database): void {
   if (!columns.has("launch_revision")) {
     db.prepare(`ALTER TABLE agent_sessions ADD COLUMN launch_revision TEXT`).run();
   }
+}
+
+/**
+ * Bounded session lifetime. `time_limit_ms` is the per-launch wall-clock limit
+ * override (NULL means the policy value or the default applies). `stop_reason`
+ * is written, before the tmux session is killed, when Arcadia itself ends a
+ * Session (time limit or a persistent blocking pane signal); the exit
+ * reconciliation copies it onto the Session exit receipt. See
+ * `src/production/sessionLifetime.ts`.
+ */
+function ensureAgentSessionLifetimeColumns(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("time_limit_ms")) db.prepare(`ALTER TABLE agent_sessions ADD COLUMN time_limit_ms INTEGER`).run();
+  if (!columns.has("stop_reason")) db.prepare(`ALTER TABLE agent_sessions ADD COLUMN stop_reason TEXT`).run();
 }
 
 /**

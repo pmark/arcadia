@@ -2031,7 +2031,12 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         "--standing-policy",
         "Launch under the standing managed-production policy grant instead of an operator-approved fingerprint"
       )
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; json?: boolean }) =>
+      .option("--time-limit-minutes <n>", "Wall-clock limit for this Session in minutes (overrides policy and the 120-minute default); Arcadia ends the tmux session past it", (value: string) => {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("--time-limit-minutes must be a positive number.");
+        return minutes;
+      })
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; timeLimitMinutes?: number; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
@@ -2040,7 +2045,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         repo: options.repo,
         requestId: options.requestId,
         previewFingerprint: options.previewFingerprint,
-        standingPolicy: options.standingPolicy
+        standingPolicy: options.standingPolicy,
+        timeLimitMinutes: options.timeLimitMinutes
       }),
       renderSessionLaunchSuccess
     )
