@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
   renderAgentAskSettleSuccess
 } from "../src/commands/agentAsk.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
+import { agentAskFingerprint, normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
@@ -1115,6 +1117,138 @@ describe("Agent Ask settlement", () => {
     const existingBlock = settled.match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
     expect(existingBlock).toContain("depends_on: [finished]");
     expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("keeps omitted lists on bundle children under intent: action (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-bundle-omit", "project: demo", "intent: action",
+      "desired_result: Tighten existing proof", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.", "    acceptance:", "      - Sharper proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-omit", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on unchanged (omitted); references unchanged (omitted)."
+    );
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-bundle-omit", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: [finished]");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("re-derives omitted lists from the stored request for a proposal recorded without omittedLists (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-legacy-omit", "project: demo", "intent: plan",
+      "desired_result: Tighten acceptance only", "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.", "    acceptance:", "      - Sharper proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    stripOmittedLists(workspace, proposal.data.proposal.id);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-omit", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on unchanged (omitted); references unchanged (omitted)."
+    );
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("original request text is unavailable"))).toBe(false);
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-omit", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: [finished]");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("falls back to replacing the lists, and says so, when a legacy proposal's request text is unavailable (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-legacy-fallback", "project: demo", "intent: plan",
+      "desired_result: Tighten acceptance only", "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.", "    acceptance:", "      - Sharper proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    stripOmittedLists(workspace, proposal.data.proposal.id);
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE ask_capture_envelopes SET original_text = ? WHERE request_id = ?").run("unavailable", "ask-legacy-fallback");
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-fallback", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects.some((effect) => effect.includes("original request text is unavailable"))).toBe(true);
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on: [finished] → []; references cleared."
+    );
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy-fallback", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const existingBlock = readFileSync(planPath, "utf8").match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+  });
+
+  it("refuses a Plan amendment whose cycle runs through a retained, omitted dependency edge (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    staleMetadataPlan(repo);
+    // `existing` omits dependencies and keeps depends_on [finished]; `finished`
+    // is explicitly made to depend on `existing`, closing a loop through the kept edge.
+    const request = [
+      "agent_ask: v1", "request_id: ask-retained-cycle", "project: demo", "intent: plan",
+      "desired_result: Loop through a kept edge", "target_ref: plan/demo-plan", "actions:",
+      "  - target_ref: action/existing", "    desired_result: Keep existing work moving.", "    acceptance:", "      - Proof exists.",
+      "  - target_ref: action/finished", "    desired_result: Revisit finished work.", "    acceptance:", "      - Revisit proof exists.",
+      "    dependencies:", "      - existing",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-retained-cycle", disposition: "accepted", revision: 1
+    })).toThrow(/dependency cycle/);
+  });
+
+  it("refuses an action-intent bundle whose cycle runs through a retained, omitted dependency edge (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-retained-cycle-bundle", "project: demo", "intent: action",
+      "desired_result: Loop through a kept edge", "actions:",
+      "  - target_ref: action/existing", "    desired_result: Keep existing work moving.", "    acceptance:", "      - Proof exists.",
+      "  - target_ref: action/finished", "    desired_result: Revisit finished work.", "    acceptance:", "      - Revisit proof exists.",
+      "    dependencies:", "      - existing",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-retained-cycle-bundle", disposition: "accepted", revision: 1
+    })).toThrow(/dependency cycle/);
+  });
+
+  it("leaves the Ask fingerprint unchanged by omittedLists (Issue #1079)", () => {
+    const request = [
+      "agent_ask: v1", "request_id: ask-fingerprint", "project: demo", "intent: plan", "desired_result: Tighten acceptance only",
+      "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing", "    desired_result: Keep it moving.",
+      "    acceptance:", "      - Proof exists.", "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const normalized = normalizeAgentAsk({ request });
+    expect(normalized.omittedLists).toEqual(["dependencies", "references"]);
+    expect(normalized.actions[0].omittedLists).toEqual(["dependencies", "references"]);
+    // The shape recorded before omittedLists existed: same keys, minus the new field.
+    const legacy = JSON.parse(JSON.stringify(normalized, (key, value) => (key === "omittedLists" ? undefined : value)));
+    const legacyFingerprint = createHash("sha256").update(JSON.stringify({ request, normalized: legacy })).digest("hex");
+    expect(agentAskFingerprint(request, normalized)).toBe(legacyFingerprint);
   });
 
   // Explicit ids were honored on the `action` bundle path while both Plan paths
@@ -2232,6 +2366,15 @@ function staleMetadataPlan(repo: string): string {
   execFileSync("git", ["add", "."], { cwd: repo });
   execFileSync("git", ["commit", "-qm", "Add stale Action metadata"], { cwd: repo });
   return planPath;
+}
+
+/** Rewrite a stored proposal as one recorded before `omittedLists` existed. */
+function stripOmittedLists(workspace: string, proposalId: string): void {
+  withDatabase(workspace, (db) => {
+    const row = db.prepare("SELECT proposal_json FROM agent_ask_proposals WHERE id = ?").get(proposalId) as { proposal_json: string };
+    const legacy = JSON.stringify(JSON.parse(row.proposal_json), (key, value) => (key === "omittedLists" ? undefined : value));
+    db.prepare("UPDATE agent_ask_proposals SET proposal_json = ? WHERE id = ?").run(legacy, proposalId);
+  });
 }
 
 function clearPlanActionAsk(requestId: string): string {
