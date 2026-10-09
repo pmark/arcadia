@@ -286,6 +286,44 @@ If integration is refused, keep the operator escalation that `arcadia
 production status` now shows for it (from `archive-settled-ask-by-canonical-name`),
 with its exact blocker and remedy text.
 
+Open **Production** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/production>
+(on this Mac: <http://127.0.0.1:3020/production>) to drive and monitor
+production from one page, at phone width or on the desktop. It follows the
+system light or dark theme. From top to bottom:
+
+- **Managed production**: the state Arcadia reports (for example `Inactive ·
+  Idle`), desired state, policy revision and epoch, the concurrency the scope
+  allows, the worker heartbeat and any launch escalations. **Turn production
+  Off…** and **Turn production On…** each show their consequence and wait for
+  a confirmation; On first shows exactly what the saved configuration would
+  replay, and refuses with the reason if anything drifted. **Pause all** is
+  shown disabled with "not available yet": no backend can yet hold every
+  launch without revoking the production grant.
+- **Sessions**: each live Session with its state (Launching, Running,
+  Stalled, or Exited · not reconciled), elapsed time and a live log tail that
+  refreshes every 3 seconds; below them, recently finished Sessions with exit
+  code, reconciled outcome and pull request. The log is
+  `<workspace>/.arcadia/sessions/<session id>.log`, which headless launches
+  record; a Session without one says so. Per-Session **Pause** is disabled
+  for the same reason as Pause all; use **Copy Reattach** on the Mac.
+- **Queue**: every planned Action in queue order. **Batches** groups the ready
+  Actions so each batch holds at most one Action per repository (one Session
+  lease per repository), so a batch can run side by side; within a repository
+  Actions run in queue order. **Queue order** lists everything with a state
+  chip and what it waits on. **Launch…** on a ready Action previews first: if
+  the Action is not its Project's current pointer, step 1 previews and
+  applies that pointer move only when you confirm; the launch preview then
+  names the agent and the consequences, and nothing starts until you press
+  **Launch Session**. A preview that names a different Action, or is not
+  ready, withholds the button.
+- **To-do**: the same list as `arcadia todo --all`, with its Approve, Accept
+  and Reject controls.
+
+The page reads `arcadia production status`, `dashboard runs --sessions 8`,
+`advance queue` and `schedule status`, and writes only through the existing
+production, work-queue and session-launch routes. Work Queue, Runs, Flight
+Deck and Path stay available and are linked at the bottom.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every

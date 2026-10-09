@@ -1,6 +1,6 @@
 "use client";
 
-import { TerminalSquare } from "lucide-react";
+import { Gauge, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { ApprovalQueue } from "../../components/approval-queue";
@@ -20,6 +20,10 @@ export default function RunsPage() {
   return (
     <DashboardChrome title="Runs" refreshing={false} lastLoadedAt={null} onRefresh={() => setApprovalRefreshSignal((signal) => signal + 1)}>
       <ApprovalQueue refreshSignal={approvalRefreshSignal} />
+      <Link href="/production" className="mb-3 flex items-center justify-between rounded-md border border-line bg-panel p-4 shadow-soft transition hover:border-steel">
+        <span><span className="block font-semibold">Production</span><span className="mt-1 block text-sm text-muted">Production switch, the queue in batches, Launch, and live Session logs on one page.</span></span>
+        <Gauge className="h-5 w-5 shrink-0 text-steel" aria-hidden="true" />
+      </Link>
       <Link href="/actions" className="mb-6 flex items-center justify-between rounded-md border border-line bg-panel p-4 shadow-soft transition hover:border-steel">
         <span><span className="block font-semibold">Operator actions</span><span className="mt-1 block text-sm text-muted">Run a bounded script and stay on its result page.</span></span>
         <TerminalSquare className="h-5 w-5 shrink-0 text-steel" aria-hidden="true" />

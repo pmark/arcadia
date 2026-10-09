@@ -2443,7 +2443,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .description("Emit the lean Runs-page read model: active Sessions and Runs, plus recent history on request")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--limit <n>", "Recent Runs to include (default 0: none)")
-  ).action((options: { workspace: string; limit?: string; json?: boolean }) =>
+      .option("--sessions <n>", "Recent finished agent Sessions to include, with exit code, outcome and PR (default 0: none)")
+  ).action((options: { workspace: string; limit?: string; sessions?: string; json?: boolean }) =>
     runCliAction("dashboard.runs", options, () => runDashboardRunsCommand(options), renderDashboardRunsSuccess)
   );
 

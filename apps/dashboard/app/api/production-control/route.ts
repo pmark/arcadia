@@ -18,7 +18,7 @@ import { readManagedRunWorker } from "../../../lib/system-status";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type Part = "core" | "queue" | "alerts";
+type Part = "core" | "queue" | "alerts" | "reactivate-preview";
 
 // Queue and capacity projections take seconds to compute; serve the last result
 // immediately and refresh behind it.
@@ -29,6 +29,13 @@ const SLOW_TTL_MS = 15_000;
 export async function GET(request: Request) {
   try {
     const part = (new URL(request.url).searchParams.get("part") ?? "core") as Part;
+
+    // What On would replay, for the confirmation step. Writes nothing; the POST
+    // re-previews and binds to these revisions, so drift between the two is a 409.
+    if (part === "reactivate-preview") {
+      const { data } = await previewProductionReactivation();
+      return NextResponse.json(data);
+    }
 
     if (part === "queue") {
       const schedule = await cachedStale("production-control:queue", SLOW_TTL_MS, () => loadScheduleSummary()).catch(

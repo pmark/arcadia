@@ -497,13 +497,16 @@ export interface RunsSnapshotResponse {
     activeAgentSessions: DashboardAgentSession[];
     activeExecutionRuns: DashboardRun[];
     recentRuns: DashboardRun[];
+    /** Finished Sessions with exit facts; absent from a CLI older than `--sessions`. */
+    recentAgentSessions?: DashboardAgentSession[];
   };
 }
 
-/** Lean Runs-page read model; `recentLimit` 0 skips history. */
-export async function loadRunsSnapshot(recentLimit = 0): Promise<ArcadiaJsonSuccess<RunsSnapshotResponse>> {
+/** Lean Runs-page read model; `recentLimit` 0 skips history, `sessionLimit` 0 skips finished Sessions. */
+export async function loadRunsSnapshot(recentLimit = 0, sessionLimit = 0): Promise<ArcadiaJsonSuccess<RunsSnapshotResponse>> {
   const args = ["dashboard", "runs"];
   if (recentLimit > 0) args.push("--limit", String(recentLimit));
+  if (sessionLimit > 0) args.push("--sessions", String(sessionLimit));
   return runArcadiaCliJson<RunsSnapshotResponse>(args);
 }
 

@@ -25,7 +25,7 @@ vi.mock("../../../lib/arcadia-cli", () => ({
 }));
 vi.mock("../../../lib/system-status", () => ({ readManagedRunWorker: vi.fn() }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 function toggle(action: string, extra: Record<string, unknown> = {}): Request {
   return new Request("http://arcadia.test/api/production-control", {
@@ -143,5 +143,19 @@ describe("POST /api/production-control On", () => {
     );
     expect(response.status).toBe(403);
     expect(cli.previewProductionReactivation).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/production-control?part=reactivate-preview", () => {
+  it("returns what On would replay for the confirmation step, and changes nothing", async () => {
+    const preview = { ready: true, refusals: [], expected, configuration: null };
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview } });
+
+    const response = await GET(new Request("http://arcadia.test/api/production-control?part=reactivate-preview"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ preview });
+    expect(cli.reactivateProduction).not.toHaveBeenCalled();
+    expect(cli.deactivateProduction).not.toHaveBeenCalled();
   });
 });
