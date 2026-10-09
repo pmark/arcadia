@@ -3870,6 +3870,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--project <project>", "Only this Project (id or slug)")
       .option("--all", "Show every non-blocking item, and the stale ones, instead of the first five (open Decisions newest first, then the rest oldest first)")
       .option("--stale", "List only stale items (positive evidence they no longer wait on you), with the evidence")
+      .option("--agents", "List the in-flight agent work (Sessions and managed Runs) that the default view only counts under Agents are doing")
       .addHelpText(
         "after",
         `
@@ -3877,6 +3878,7 @@ Done when (the rule per kind; derived each run, never stored):
   decision     the Decision document is no longer open
   agent_ask    the proposal is settled
   review_item  the review item is resolved or approved (no longer open or deferred)
+  ask question  a review_item an Ask raised (listed under "Your Asks need one answer"): the same rule; answer: arcadia review approve|reject|defer <id>
   operator_task  the task is closed or declined in .arcadia/operator-tasks.jsonl (no longer waiting)
   escalation:<kind>  the production tick no longer holds the Action: it clears the row once the cause is gone
   clarify      the work item is clarified, done, or has an open review item (answer: arcadia clarify --work <id> --apply)
@@ -3886,7 +3888,7 @@ Limit: Decisions raised only on unmerged candidate branches are not listed: todo
 Origin: every item has "origin" (a string from a field its source records, else null); see START_HERE.md.
 `
       )
-  ).action((options: { workspace?: string; project?: string; all?: boolean; stale?: boolean; json?: boolean }) =>
+  ).action((options: { workspace?: string; project?: string; all?: boolean; stale?: boolean; agents?: boolean; json?: boolean }) =>
     runCliAction("todo", options, () => runTodoCommand(options), renderTodoSuccess)
   );
 

@@ -281,7 +281,7 @@ export const INTAKE_TEMPLATES: IntakeTemplateDefinition[] = [
 ];
 
 export interface IntakeClassifier {
-  classify(rawInput: string, resolved: Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep">): {
+  classify(rawInput: string, resolved: Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep">, options?: IntakeOptions): {
     classification: IntakeClassification;
     reason: string;
     suggestedNextStep: string | null;
@@ -289,14 +289,47 @@ export interface IntakeClassifier {
 }
 
 export const deterministicIntakeClassifier: IntakeClassifier = {
-  classify(rawInput, resolved) {
-    return classifyDeterministically(rawInput, resolved);
+  classify(rawInput, resolved, options) {
+    return classifyDeterministically(rawInput, resolved, options?.operatorPhrasings === true);
   }
 };
 
-export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext): IntakeResult {
-  const resolved = resolveIntakeWithoutClassification(rawInput, context);
-  const classification = deterministicIntakeClassifier.classify(rawInput, resolved);
+/** Behaviour that only `ask.routing.v2` turns on, so the earlier routing stays exact when it is off. */
+export interface IntakeOptions {
+  /**
+   * Recognise "I should be able to", "I want (to be able) to" and "it would be good if" as work requests. Set only
+   * for an operator Ask under `ask.routing.v2`; an agent-written Ask or a workspace with the flag off reads as before.
+   */
+  operatorPhrasings?: boolean;
+}
+
+/**
+ * The words that make an Ask recurring work (Plan Action stop-asks-vanishing).
+ * A deterministic flag only: nothing here schedules anything.
+ */
+const RECURRENCE_PATTERN = /\b(?:every|daily|weekly|monthly|recurring|schedule)\b/;
+
+/**
+ * The words that make work worth planning before it is built. Stewardship uses
+ * the same pattern for `planningRecommended`, so the intake flag cannot drift
+ * from it.
+ */
+export const PLANNING_RECOMMENDED_PATTERN =
+  /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|post|deploy|deployment|credentials?|paid|scheduler|automation|release|multi[- ]step|end[- ]to[- ]end)\b/;
+
+/** The deterministic `recurrence` and `planning` flags, as extractedFields entries (`"true"` when set). */
+export function intakeRoutingFlags(rawInput: string): { recurrence?: "true"; planning?: "true" } {
+  const normalized = normalizeText(rawInput);
+  return {
+    ...(RECURRENCE_PATTERN.test(normalized) ? { recurrence: "true" as const } : {}),
+    ...(PLANNING_RECOMMENDED_PATTERN.test(normalized) ? { planning: "true" as const } : {})
+  };
+}
+
+export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext, options: IntakeOptions = {}): IntakeResult {
+  const resolvedCore = resolveIntakeWithoutClassification(rawInput, context);
+  const resolved = { ...resolvedCore, extractedFields: { ...resolvedCore.extractedFields, ...intakeRoutingFlags(rawInput) } };
+  const classification = deterministicIntakeClassifier.classify(rawInput, resolved, options);
   return {
     ...resolved,
     classification: classification.classification,
@@ -535,7 +568,7 @@ function resolveIntakeWithoutClassification(
 
 type IntakeResultCore = Omit<IntakeResult, "classification" | "classificationReason" | "suggestedNextStep">;
 
-function classifyDeterministically(rawInput: string, resolved: IntakeResultCore): {
+function classifyDeterministically(rawInput: string, resolved: IntakeResultCore, operatorPhrasings = false): {
   classification: IntakeClassification;
   reason: string;
   suggestedNextStep: string | null;
@@ -603,7 +636,7 @@ function classifyDeterministically(rawInput: string, resolved: IntakeResultCore)
     };
   }
 
-  if (/\b(?:idea|maybe|might|could|someday|eventually|explore|consider|worth)\b/.test(normalized) && !isImperativeRequest(rawInput)) {
+  if (/\b(?:idea|maybe|might|could|someday|eventually|explore|consider|worth)\b/.test(normalized) && !isImperativeRequest(rawInput, operatorPhrasings)) {
     return {
       classification: "Idea",
       reason: "The input is exploratory and does not require an immediate decision.",
@@ -1438,16 +1471,21 @@ function missingProjectFields(project: { reference: IntakeResolvedReference | nu
 
 const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert|review|test|document|design|verify|audit)\b(?!\s+(?:could|would|should|might|may|can|is|are|was|were|has|have|needs?|seems?|feels?)\b)/;
 
+// The operator saying what they want, not commanding it: "I should be able to
+// ...", "I want (to be able) to ...", "let me ...", "it would be good if ...".
+// It is work to do exactly as an imperative is, so it must never be shelved.
+const OPERATOR_WISH_REQUEST = /^(?:i\s+should\s+be\s+able\s+to|i\s+want(?:\s+to\s+be\s+able)?\s+to|let\s+me|it\s+would\s+be\s+good\s+if)\b/;
+
 // An imperative request names work to do even when no template recognizes it.
 // A verb-shaped word followed by a modal or linking verb is a noun-led
 // statement ("Design could be improved"), not a command.
 // Any line counts — the opening sentence or a bullet — because operators often
 // lead with context and list the actual requests underneath.
-export function isImperativeRequest(rawInput: string): boolean {
+export function isImperativeRequest(rawInput: string, operatorPhrasings = false): boolean {
   return rawInput
     .split(/\r?\n/)
     .map((line) => normalizeText(line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")))
-    .some((line) => IMPERATIVE_REQUEST.test(line));
+    .some((line) => IMPERATIVE_REQUEST.test(line) || (operatorPhrasings && OPERATOR_WISH_REQUEST.test(line)));
 }
 
 function normalizeText(value: string): string {

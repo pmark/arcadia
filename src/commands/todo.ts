@@ -27,6 +27,8 @@ import { ACTION_CLARIFICATION_INTENT } from "./review.js";
 import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGate.js";
 import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
+import { listActiveAgentSessions } from "../sessions/index.js";
+import { askQuestionOrigin, type AskOrigin } from "../ask/askQuestion.js";
 
 type UnsettledAsk = ReturnType<typeof listUnsettledAgentAskProposals>[number];
 
@@ -35,6 +37,8 @@ export const AGENT_ASK_CAVEAT =
   "Agent Asks are listed while unsettled. Stale means positive evidence only (every targeted Action done in a Plan, or an explicit Supersedes line); an Ask without it is shown even if no longer wanted.";
 /** Non-blocking items the default view shows before pointing at `--all`. */
 export const TODO_OTHER_CAP = 5;
+/** Ask-originated questions the default view lists; their full count is always shown, whatever this cap hides. */
+export const TODO_ASK_CAP = 5;
 
 export interface TodoCommandOptions {
   /** Workspace path, or undefined to let Arcadia resolve it. */
@@ -43,6 +47,8 @@ export interface TodoCommandOptions {
   project?: string;
   /** Show every non-blocking item and the stale ones instead of the first few. */
   all?: boolean;
+  /** List the in-flight agent work that the default view only counts under "Agents are doing". */
+  agents?: boolean;
   /** List only the stale items, each with the evidence that makes it stale. */
   stale?: boolean;
   /** Injected for deterministic output in tests. */
@@ -102,6 +108,32 @@ export interface TodoItem {
   evidence?: TodoEvidence[];
   /** Present only when positive evidence says the item no longer waits on the operator. */
   staleReason?: string;
+  /**
+   * True for a question an operator Ask raised (a review_item with an `ask_request_id` whose Ask routed to Clarify
+   * First): it is listed in the "Your Asks need one answer" group and carries an ask-origin answer command.
+   */
+  askQuestion?: boolean;
+}
+
+/** One piece of in-flight agent work: a prepared or running Session, or a managed Run waiting or running. */
+export interface AgentWorkItem {
+  kind: "session" | "run";
+  id: string;
+  project: string;
+  /** The Action a Session works; a Run's work item. */
+  action: string | null;
+  status: string;
+  /** Who is doing it: `<provider> <model>` for a Session, the executor for a Run. */
+  agent: string;
+  since: string;
+}
+
+/** Back Burner shelf size, so the shelf is visible without being a to-do. */
+export interface TodoBackBurnerCounts {
+  /** Items still on the shelf (incubating or opportunistic; promoted and archived items are not counted). */
+  incubating: number;
+  /** Shelf items created in the 7 days before `asOf`. */
+  newInSevenDays: number;
 }
 
 export interface TodoCounts {
@@ -113,6 +145,14 @@ export interface TodoCounts {
   stale: number;
   /** Stale items left out of `items` in this view. */
   staleHidden: number;
+  /** Live Ask-originated questions in total (never reduced by the other-items cap or the Ask cap). */
+  askQuestions: number;
+  /** Ask-originated questions left out of `items` because the Ask cap applies. */
+  askHidden: number;
+  /** In-flight agent work (Sessions and Runs), or null when it could not be read. */
+  agentsDoing: number | null;
+  /** The Back Burner shelf, or null when it could not be read. */
+  backBurner: TodoBackBurnerCounts | null;
   /** Totals by kind across every live item found, shown or not. */
   byKind: { decision: number; agent_ask: number; review_item: number; operator_task: number; escalation: number; clarify: number; plan_action: number };
   /** Live non-blocking items left out of `items` because the cap applies. */
@@ -127,11 +167,15 @@ export interface TodoCounts {
 
 export interface TodoData {
   schema: typeof TODO_SCHEMA;
-  view: "default" | "all" | "stale";
+  view: "default" | "all" | "stale" | "agents";
   /** `workspace` is the workspace's name (its directory name); `workspacePath` is where it lives. Both null when none resolved. */
   asOf: { at: string; workspace: string | null; workspacePath: string | null };
   counts: TodoCounts;
   items: TodoItem[];
+  /** In-flight agent work: listed only with `--agents`; the default view counts it in `counts.agentsDoing`. */
+  agentWork: AgentWorkItem[];
+  /** Non-null when no workspace was readable: Ask questions and Ask-origin tasks are then unavailable, not zero. */
+  askUnavailable: string | null;
   /** One line per source this run could not read. Empty means every source was read. */
   unavailable: string[];
 }
@@ -469,6 +513,36 @@ function withDecisionReviewPaths(found: TodoItem[], rows: ReviewItemSummary[], p
   });
 }
 
+/**
+ * The review_items that are Ask questions (see `askQuestionOrigin`), keyed by review_item id. A review_item an Ask
+ * raised for another reason is a Decision, and is listed as before.
+ */
+function askOriginsOf(db: Parameters<typeof listActionableReviewItems>[0], rows: ReviewItemSummary[]): Map<string, AskOrigin> {
+  const origins = new Map<string, AskOrigin>();
+  for (const row of rows) {
+    const origin = askQuestionOrigin(db, row);
+    if (origin) origins.set(row.id, origin);
+  }
+  return origins;
+}
+
+/**
+ * The ask-origin answer: one reply settles the question. Approving creates the Ask as an Action and never starts an
+ * executor (`review approve` refuses to run one for an Ask question, whatever flag it is given); the other replies are
+ * alternatives. Each is an existing command, never invented.
+ */
+function askQuestionAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answerVia"> {
+  return {
+    answer: `arcadia review approve ${item.id} --no-execute`,
+    answerVia: [
+      `reject if it is not wanted: arcadia review reject ${item.id}`,
+      `defer for later: arcadia review defer ${item.id}`,
+      `keep it as an idea instead: arcadia ask --back-burner "<text>", then arcadia review reject ${item.id}`,
+      `Discord: reply approve, reject or defer to the requires-review notification for ${item.id}`
+    ]
+  };
+}
+
 function reviewAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answerVia"> {
   if (item.resolved_intent === ACTION_CLARIFICATION_INTENT) {
     return {
@@ -496,7 +570,8 @@ function reviewTodoItems(
   rows: ReviewItemSummary[],
   projectSlug: string,
   evidence: ProjectEvidence | undefined,
-  selected: SelectedAction | null
+  selected: SelectedAction | null,
+  askOrigins: Map<string, AskOrigin> = new Map()
 ): TodoItem[] {
   const built: TodoItem[] = [];
   const seenWork = new Map<string, number>();
@@ -524,6 +599,12 @@ function reviewTodoItems(
       ...reviewAnswer(row),
       ...(staleReason ? { staleReason } : {})
     };
+    const askOrigin = askOrigins.get(row.id);
+    if (askOrigin && !todo.blocking) {
+      todo.askQuestion = true;
+      todo.origin = `ask:${askOrigin.askId}${askOrigin.via ? ` via:${askOrigin.via}` : ""}`;
+      Object.assign(todo, askQuestionAnswer(row));
+    }
 
     const workId = row.work_item_id;
     const prior = workId ? seenWork.get(workId) : undefined;
@@ -816,6 +897,8 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   let fixture: TodoCounts["fixture"] = { projects: 0, items: 0 };
   let noRepoPath: TodoCounts["noRepoPath"] = { projects: 0, items: 0 };
   let agentFlaggedHidden = 0;
+  let agentWork: AgentWorkItem[] | null = null;
+  let backBurner: TodoBackBurnerCounts | null = null;
   let workspacePath: string | null = null;
 
   let resolved: string | null = null;
@@ -833,6 +916,8 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       fixture = read.fixture;
       noRepoPath = read.noRepoPath;
       agentFlaggedHidden = read.agentFlaggedHidden;
+      agentWork = read.agentWork;
+      backBurner = read.backBurner;
       workspacePath = resolved;
     } catch (error) {
       if (error instanceof ArcadiaError && error.code === "PROJECT_NOT_FOUND") throw error;
@@ -848,14 +933,25 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
     items = readDecisionsOnly(options.repoRoot ?? invocationRoot(), options.project, unavailable);
   }
 
-  const view: TodoData["view"] = options.stale ? "stale" : options.all ? "all" : "default";
+  const view: TodoData["view"] = options.agents ? "agents" : options.stale ? "stale" : options.all ? "all" : "default";
   const live = items.filter((item) => !item.staleReason);
   const staleItems = items.filter((item) => item.staleReason).sort(byAge);
   const blocking = live.filter((item) => item.blocking).sort(byEscalationsFirst);
   const other = live.filter((item) => !item.blocking).sort(byDecisionsFirst);
-  const shownOther = view === "default" ? other.slice(0, TODO_OTHER_CAP) : other;
+  // Ask questions are their own group, newest first, with their own cap: the other-items cap never hides one, and
+  // their full count is in `counts.askQuestions` whatever the view lists.
+  const askQuestions = other.filter((item) => item.askQuestion).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key));
+  const otherNonAsk = other.filter((item) => !item.askQuestion);
+  const shownAsks = view === "default" ? askQuestions.slice(0, TODO_ASK_CAP) : askQuestions;
+  const shownOther = view === "default" ? otherNonAsk.slice(0, TODO_OTHER_CAP) : otherNonAsk;
   const shown =
-    view === "stale" ? staleItems : view === "all" ? [...blocking, ...shownOther, ...staleItems] : [...blocking, ...shownOther];
+    view === "agents"
+      ? []
+      : view === "stale"
+        ? staleItems
+        : view === "all"
+          ? [...blocking, ...shownAsks, ...shownOther, ...staleItems]
+          : [...blocking, ...shownAsks, ...shownOther];
 
   return createSuccess({
     command: "todo",
@@ -878,12 +974,18 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
           clarify: live.filter((item) => item.kind === "clarify").length,
           plan_action: live.filter((item) => item.kind === "plan_action").length
         },
-        hidden: view === "stale" ? 0 : other.length - shownOther.length,
+        hidden: view === "stale" ? 0 : otherNonAsk.length - shownOther.length,
+        askQuestions: askQuestions.length,
+        askHidden: view === "stale" ? 0 : askQuestions.length - shownAsks.length,
+        agentsDoing: agentWork ? agentWork.length : null,
+        backBurner,
         agentFlaggedHidden,
         fixture,
         noRepoPath
       },
       items: shown,
+      agentWork: view === "agents" ? (agentWork ?? []) : [],
+      askUnavailable: workspacePath ? null : "Ask questions and Ask-origin tasks are unavailable: no workspace could be read.",
       unavailable
     }
   });
@@ -893,7 +995,14 @@ function readWithWorkspace(
   workspacePath: string,
   options: TodoCommandOptions,
   unavailable: string[]
-): { items: TodoItem[]; fixture: TodoCounts["fixture"]; noRepoPath: TodoCounts["noRepoPath"]; agentFlaggedHidden: number } {
+): {
+  items: TodoItem[];
+  fixture: TodoCounts["fixture"];
+  noRepoPath: TodoCounts["noRepoPath"];
+  agentFlaggedHidden: number;
+  agentWork: AgentWorkItem[] | null;
+  backBurner: TodoBackBurnerCounts | null;
+} {
   const roots = options.fixtureRoots ?? defaultFixtureRoots();
   return withReadOnlyDatabase(workspacePath, (db) => {
     let projects = listProjects(db).filter((project) => project.status !== "completed");
@@ -911,6 +1020,7 @@ function readWithWorkspace(
       (row) => !options.project || (row.project_id !== null && scopeIds.has(row.project_id))
     ).length;
     const reviewRowsOf = (projectId: string): ReviewItemSummary[] => reviewRows.filter((row) => row.project_id === projectId);
+    const askOrigins = askOriginsOf(db, reviewRows);
     const context: StaleContext = {
       askFacts: askFactsOf(proposals),
       askIngress: askIngressOf(db, proposals),
@@ -930,7 +1040,10 @@ function readWithWorkspace(
     // A blocking item (a stalled production loop, the selected Action's gate) is always listed, whatever the
     // Project; only the non-blocking items of a collapsed Project become a count.
     const take = (slug: string, collapse: false | "fixture" | "noRepoPath", found: TodoItem[]): void => {
-      const collapsed = collapse ? found.filter((item) => !(item.blocking && !item.staleReason)) : [];
+      // An Ask question is never collapsed into a count because its Project has no repo_path: that is how an Ask vanishes.
+      const collapsed = collapse
+        ? found.filter((item) => !((item.blocking || (item.askQuestion && collapse === "noRepoPath")) && !item.staleReason))
+        : [];
       items.push(...found.filter((item) => !collapsed.includes(item)));
       if (collapse === "fixture") {
         fixtureProjects.add(slug.toLowerCase());
@@ -957,7 +1070,7 @@ function readWithWorkspace(
         // Agent Asks, review_items, unclarified captures and escalations need no repository: list them without Decisions or Plan evidence.
         const found = [
           ...collect(classifyAsksOnly(proposals, project.slug), context),
-          ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null),
+          ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null, askOrigins),
           ...clarifyItems(db, project.id, project.slug)
         ];
         take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
@@ -986,7 +1099,7 @@ function readWithWorkspace(
       }
       // Never blocking when no gate was resolved; Plan evidence is used when it was read.
       const evidence = context.evidence.get(project.slug.toLowerCase());
-      found.push(...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, evidence, selected));
+      found.push(...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, evidence, selected, askOrigins));
       found = withDecisionReviewPaths(found, reviewRowsOf(project.id), project.slug, evidence);
       try {
         found.push(...operatorTaskItems(repoPath, project.slug, found, evidence, selected));
@@ -1025,16 +1138,82 @@ function readWithWorkspace(
       take(
         "unknown",
         false,
-        reviewTodoItems(db, reviewRows.filter((row) => !row.project_id || !listedProjectIds.has(row.project_id)), "unknown", undefined, null)
+        reviewTodoItems(db, reviewRows.filter((row) => !row.project_id || !listedProjectIds.has(row.project_id)), "unknown", undefined, null, askOrigins)
       );
     }
     return {
       items,
       fixture: { projects: fixtureProjects.size, items: fixtureItems },
       noRepoPath: { projects: noRepoProjects.size, items: noRepoItems },
-      agentFlaggedHidden
+      agentFlaggedHidden,
+      agentWork: readAgentWork(db, options.project ? projects.map((project) => project.slug) : null, unavailable),
+      backBurner: readBackBurnerCounts(db, options.now ?? new Date(), unavailable)
     };
   });
+}
+
+/**
+ * The agent work in flight: Sessions prepared or running, and managed Runs pending or running. Read-only. A source
+ * that cannot be read is a line in `unavailable` and a null count, never a silent zero.
+ */
+function readAgentWork(db: Parameters<typeof listProjects>[0], onlyProjects: string[] | null, unavailable: string[]): AgentWorkItem[] | null {
+  try {
+    const wanted = onlyProjects ? new Set(onlyProjects.map((slug) => slug.toLowerCase())) : null;
+    const sessions: AgentWorkItem[] = listActiveAgentSessions(db)
+      .filter((session) => !wanted || wanted.has(session.project_slug.toLowerCase()))
+      .map((session) => ({
+        kind: "session" as const,
+        id: session.id,
+        project: session.project_slug,
+        action: session.action_id,
+        status: session.status,
+        agent: `${session.provider} ${session.model}`,
+        since: session.started_at ?? session.prepared_at
+      }));
+    const runs = (
+      db
+        .prepare(
+          `SELECT er.id, er.status, er.executor_name, er.created_at, er.work_item_id, p.slug AS project_slug
+             FROM execution_runs er
+             LEFT JOIN work_items wi ON wi.id = er.work_item_id
+             LEFT JOIN projects p ON p.id = wi.project_id
+            WHERE er.status IN ('pending_execution', 'running')
+            ORDER BY er.created_at ASC, er.id ASC`
+        )
+        .all() as Array<{ id: string; status: string; executor_name: string | null; created_at: string; work_item_id: string | null; project_slug: string | null }>
+    )
+      .filter((run) => !wanted || (run.project_slug !== null && wanted.has(run.project_slug.toLowerCase())))
+      .map((run) => ({
+        kind: "run" as const,
+        id: run.id,
+        project: run.project_slug ?? "unknown",
+        action: run.work_item_id,
+        status: run.status,
+        agent: run.executor_name ?? "unknown executor",
+        since: run.created_at
+      }));
+    return [...sessions, ...runs].sort((a, b) => a.since.localeCompare(b.since) || a.id.localeCompare(b.id));
+  } catch (error) {
+    unavailable.push(`agent work unavailable: ${workspaceRemedy(error)}`);
+    return null;
+  }
+}
+
+/** The shelf: Back Burner items not promoted or archived, and how many arrived in the 7 days before `now`. */
+function readBackBurnerCounts(db: Parameters<typeof listProjects>[0], now: Date, unavailable: string[]): TodoBackBurnerCounts | null {
+  try {
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS incubating, COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS fresh
+           FROM back_burner_items WHERE status IN ('incubating', 'opportunistic')`
+      )
+      .get(since) as { incubating: number; fresh: number };
+    return { incubating: row.incubating, newInSevenDays: row.fresh };
+  } catch (error) {
+    unavailable.push(`Back Burner counts unavailable: ${workspaceRemedy(error)}`);
+    return null;
+  }
 }
 
 function classifyAsksOnly(proposals: UnsettledAsk[], projectSlug: string) {
@@ -1116,8 +1295,21 @@ function describe(item: TodoItem): string[] {
   ];
 }
 
+function describeAgentWork(work: AgentWorkItem): string {
+  return `${work.kind} ${work.id} — ${work.project}${work.action ? `/${work.action}` : ""} · ${work.status} · ${work.agent} · since ${work.since}`;
+}
+
 export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] {
-  const { counts, items, unavailable, asOf, view } = response.data;
+  const { counts, items, unavailable, asOf, view, agentWork, askUnavailable } = response.data;
+  if (view === "agents") {
+    const lines = [
+      `Agents are doing: ${counts.agentsDoing ?? "unavailable"} in flight (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
+    ];
+    if (agentWork.length > 0) lines.push("", ...agentWork.map((work) => `  ${describeAgentWork(work)}`));
+    else if (counts.agentsDoing === 0) lines.push("", "No Session is prepared or running and no managed Run is pending or running.");
+    if (unavailable.length > 0) lines.push("", ...unavailable);
+    return lines;
+  }
   const staleCount =
     view === "default" ? `stale hidden: ${counts.staleHidden}` : view === "all" ? `stale: ${counts.stale} (shown)` : `stale: ${counts.stale}`;
   const lines = [
@@ -1129,10 +1321,16 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
 
   const stale = items.filter((item) => item.staleReason);
   const blocking = items.filter((item) => item.blocking && !item.staleReason);
-  const other = items.filter((item) => !item.blocking && !item.staleReason);
+  const asks = items.filter((item) => !item.blocking && !item.staleReason && item.askQuestion);
+  const other = items.filter((item) => !item.blocking && !item.staleReason && !item.askQuestion);
 
+  if (view !== "stale") lines.push("", "Yours");
   if (blocking.length > 0) {
     lines.push("", "Blocking:", ...blocking.flatMap((item) => describe(item).map((line) => `  ${line}`)));
+  }
+  if (view !== "stale" && (counts.askQuestions > 0 || asks.length > 0)) {
+    lines.push("", `Your Asks need one answer (${counts.askQuestions}):`, ...asks.flatMap((item) => describe(item).map((line) => `  ${line}`)));
+    if (counts.askHidden > 0) lines.push(`  ${counts.askHidden} more Ask question(s): --all`);
   }
   if (other.length > 0) {
     lines.push("", "Other (Decisions newest first, then oldest first):", ...other.flatMap((item) => describe(item).map((line) => `  ${line}`)));
@@ -1168,6 +1366,19 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
     lines.push("", "No item has positive evidence of being stale.");
   } else if (items.length === 0 && unavailable.length === 0) {
     lines.push("", "Nothing is waiting on you in the sources this view reads (open Decisions, pending Agent Asks, open and deferred review items, waiting operator tasks, production escalations, unclarified captures, Plan Actions waiting on you).");
+  }
+  if (askUnavailable) lines.push("", askUnavailable);
+  if (view !== "stale") {
+    if (counts.backBurner) {
+      lines.push("", `Back Burner: ${counts.backBurner.incubating} incubating (${counts.backBurner.newInSevenDays} new in 7 days)`);
+    }
+    lines.push(
+      "",
+      "Agents are doing",
+      counts.agentsDoing === null
+        ? "  in-flight agent work is unavailable (see below)"
+        : `  ${counts.agentsDoing} in flight: arcadia todo --agents lists them`
+    );
   }
   if (unavailable.length > 0) {
     lines.push("", ...unavailable);

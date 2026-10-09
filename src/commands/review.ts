@@ -59,6 +59,7 @@ import {
   type ProjectIdeaPromotionReceipt
 } from "../projects/planningPromotion.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
+import { askQuestionOrigin } from "../ask/askQuestion.js";
 
 export interface RequiresReviewPacket {
   id: string;
@@ -1076,7 +1077,12 @@ export function runReviewApproveCommand(
       }
     });
   }
-  if (options.execute !== false) {
+  // An Ask question (raised by an Ask that routed to Clarify First) is answered, never executed: approving it creates
+  // the Action and leaves a separate execution Decision. No flag, slash command or reply path starts an executor for it.
+  const answeringAskQuestion = Boolean(
+    specialized && withDatabase(workspacePath, (db) => askQuestionOrigin(db, specialized))
+  );
+  if (options.execute !== false && !answeringAskQuestion) {
     return runReviewApproveExecuteCommand({ ...options, workspace: workspacePath });
   }
 

@@ -29,7 +29,11 @@ function clip(text: string, max: number = MAX_TITLE_CHARS): string {
  */
 export function formatOperatorTodoLines(todo: TodoData, cap: number = OPERATOR_TODO_PACKET_CAP): string[] {
   if (todo.unavailable.length > 0 && todo.items.length === 0 && todo.counts.blocking === 0 && todo.counts.other === 0) {
-    return [operatorTodoUnavailableLine(todo.unavailable[0] ?? "no source could be read")];
+    // Without a workspace the Ask questions cannot be counted: say so rather than leave a zero to be read as "none".
+    return [
+      operatorTodoUnavailableLine(todo.unavailable[0] ?? "no source could be read"),
+      ...(todo.askUnavailable ? ["Ask questions and Ask-origin tasks are unavailable"] : [])
+    ];
   }
 
   const { counts } = todo;
@@ -44,6 +48,9 @@ export function formatOperatorTodoLines(todo: TodoData, cap: number = OPERATOR_T
 
   const unlisted = counts.blocking - Math.min(ordered.length, cap);
   if (unlisted > 0) lines.push(`${unlisted} more: arcadia todo`);
+  // Ask questions are counted, not listed: the packet stays short and `arcadia todo` holds the answer commands.
+  const asks = counts.askQuestions ?? 0;
+  if (asks > 0) lines.push(`${asks} Ask question${asks === 1 ? "" : "s"} need one answer: arcadia todo`);
   if (todo.unavailable.length > 0) lines.push(`partial: ${todo.unavailable.length} source(s) unreadable`);
   return lines;
 }

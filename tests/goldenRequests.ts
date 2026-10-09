@@ -11,6 +11,8 @@ export interface GoldenRequestExample {
   expectedProject: string | null;
   expectedRoutingOutcome: GoldenRoutingOutcome;
   expectedBackBurner: boolean;
+  /** Where the Ask went before `ask.routing.v2`, restored when the flag is off. Absent when v2 changes nothing. */
+  rollback?: { outcome: GoldenRoutingOutcome; backBurner: boolean };
 }
 
 export const goldenRequestExamples: GoldenRequestExample[] = [
@@ -125,13 +127,16 @@ export const goldenRequestExamples: GoldenRequestExample[] = [
     expectedBackBurner: false
   },
   {
+    // Still never executed. Under ask.routing.v2 it is a question for the operator instead of a Back Burner item
+    // arcadia todo never read.
     name: "question remains non-execution",
     input: "Should Rebuster try Pinterest?",
     expectedClassification: "Question",
     expectedIntent: "CaptureThought",
     expectedProject: "Rebuster",
-    expectedRoutingOutcome: "captured",
-    expectedBackBurner: true
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false,
+    rollback: { outcome: "captured", backBurner: true }
   },
   {
     name: "Arcadia feedback remains protected",
@@ -139,7 +144,8 @@ export const goldenRequestExamples: GoldenRequestExample[] = [
     expectedClassification: "ArcadiaFeedback",
     expectedIntent: "CaptureThought",
     expectedProject: "Arcadia",
-    expectedRoutingOutcome: "captured",
-    expectedBackBurner: true
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false,
+    rollback: { outcome: "captured", backBurner: true }
   }
 ];

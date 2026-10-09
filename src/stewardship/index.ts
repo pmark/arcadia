@@ -1,4 +1,4 @@
-import { isImperativeRequest, type IntakeResult, type IntakeWorkspaceContext } from "../intake/index.js";
+import { isImperativeRequest, PLANNING_RECOMMENDED_PATTERN, type IntakeResult, type IntakeWorkspaceContext } from "../intake/index.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
 
 export const STEWARDSHIP_INTENT_TYPES = [
@@ -56,6 +56,13 @@ export interface StewardIntentInput {
   // rule's destination. It outranks one found in the text, as routing does,
   // and gives the request a target even when the text names none.
   selectedProject?: StewardshipRelatedProject | null;
+  /**
+   * `ask.routing.v2` for this Ask: an operator Ask that matches no execution
+   * pattern, or a Review Response with no resolvable reference, asks one
+   * question (Clarify First) instead of being shelved in the Back Burner. Off
+   * for agent-sourced Asks and when the operator turned the flag off.
+   */
+  routingV2?: boolean;
 }
 
 export function stewardIntent(input: StewardIntentInput): GoalStewardshipResult {
@@ -127,7 +134,9 @@ function intentTypeForInput(
     case "CaptureThought":
       // An imperative request for a known Project is work to plan, not an idea
       // to shelve; without a Project it still needs clarifying first.
-      if (!isImperativeRequest(input.rawInput)) return "Back Burner Idea";
+      if (!isImperativeRequest(input.rawInput, input.routingV2 === true)) {
+        return input.routingV2 && !isExplicitIdea(input) ? "Project Work" : "Back Burner Idea";
+      }
       return hasTargetProject(input) ? "Planning Request" : "Project Work";
   }
 }
@@ -143,7 +152,9 @@ function executionPathForInput(
   }
 
   if (intentType === "Review Response") {
-    return input.reviewResponseHasReference ? "Execute Directly" : "Back Burner";
+    if (input.reviewResponseHasReference) return "Execute Directly";
+    // With no Decision to answer, shelving the reply would lose it; ask which one it meant.
+    return input.routingV2 ? "Clarify First" : "Back Burner";
   }
 
   if (input.approvedFromReview) {
@@ -159,7 +170,9 @@ function executionPathForInput(
   }
 
   if (input.intake.action.kind === "capture_thought") {
-    return commandShapedMissingTarget(input) ? "Clarify First" : "Back Burner";
+    if (commandShapedMissingTarget(input)) return "Clarify First";
+    // Only an Idea is shelved. Anything else that matched nothing is the operator's to answer.
+    return input.routingV2 && !isExplicitIdea(input) ? "Clarify First" : "Back Burner";
   }
 
   if (input.intake.missingFields.length > 0) {
@@ -194,7 +207,7 @@ function planningRecommendedForInput(
     return false;
   }
 
-  return /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|post|deploy|deployment|credentials?|paid|scheduler|automation|release|multi[- ]step|end[- ]to[- ]end)\b/.test(normalized) ||
+  return PLANNING_RECOMMENDED_PATTERN.test(normalized) ||
     input.resolved.approvalGates.length > 1;
 }
 
@@ -264,6 +277,16 @@ function classificationReasonForInput(
   executionPath: StewardshipExecutionPath,
   planningRecommended: boolean
 ): string {
+  if (
+    executionPath === "Clarify First" &&
+    input.routingV2 &&
+    (input.intake.action.kind === "capture_thought" || intentType === "Review Response")
+  ) {
+    return intentType === "Review Response"
+      ? "The input looks like a reply but names no Decision to answer, so Arcadia asks which one it meant rather than shelving it."
+      : "The input matched no execution pattern and is not an idea, so Arcadia asks one question rather than shelving it.";
+  }
+
   if (executionPath === "Clarify First") {
     return `The input is action-shaped but missing required context: ${input.intake.missingFields.join(", ") || "target"}.`;
   }
@@ -332,8 +355,13 @@ function hasTargetProject(input: StewardIntentInput): boolean {
   return Boolean(input.selectedProject || input.intake.project);
 }
 
+/** The only Ask routing v2 still shelves: the intake classified it as an Idea. (An explicit back-burner flag is applied by the caller.) */
+function isExplicitIdea(input: StewardIntentInput): boolean {
+  return input.intake.classification === "Idea";
+}
+
 function commandShapedMissingTarget(input: StewardIntentInput): boolean {
-  return !hasTargetProject(input) && isImperativeRequest(input.rawInput);
+  return !hasTargetProject(input) && isImperativeRequest(input.rawInput, input.routingV2 === true);
 }
 
 function normalize(value: string): string {

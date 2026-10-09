@@ -332,7 +332,7 @@ describe("ask show --coverage", () => {
     expect(ok.ok).toBe(true);
     expect(ok.command).toBe("ask.coverage");
     expect(Object.keys(ok.data).sort()).toEqual([
-      "directChat", "excludedAgent", "headline", "intake", "notes", "schema", "surfaces", "unclassified", "window"
+      "directChat", "excludedAgent", "headline", "intake", "notes", "routing", "schema", "surfaces", "unclassified", "window"
     ]);
     expect(ok.data.schema).toBe("arcadia-ask-coverage-v1");
     expect(ok.data.directChat).toBe("direct chat: not measured");
