@@ -122,7 +122,7 @@ export function runSessionReconcileCommand(options: {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
   const result = withDatabase(workspacePath, (db) =>
-    reconcileSessionExit({ db, sessionId: options.session, requestId: options.requestId, repoRoot })
+    reconcileSessionExit({ db, sessionId: options.session, requestId: options.requestId, repoRoot, workspace: workspacePath })
   );
   return createSuccess({ command: "session.reconcile", workspace: workspacePath, data: result });
 }
