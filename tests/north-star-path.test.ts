@@ -183,6 +183,19 @@ describe("each step's reason and link", () => {
     expect(byTitle["The gate action"]).toMatchObject({ reason: "Completes gate: The tracked gate", reasonSource: "derived" });
   });
 
+  it("collapses a multi-line why to one line and truncates a long one to 300 characters", () => {
+    const multi = seededWorkspace({ secondWhy: "First line of a block scalar.\n\n  Second line,\n  third line.\n" });
+    const second = steps(trackedLeg(multi).nodes).find((step) => step.title === "Second")!;
+    expect(second.reason).toBe("First line of a block scalar. Second line, third line.");
+    expect(second.reasonSource).toBe("declared");
+
+    const long = seededWorkspace({ secondWhy: `${"word ".repeat(100)}end` });
+    const truncated = steps(trackedLeg(long).nodes).find((step) => step.title === "Second")!.reason;
+    expect(truncated.length).toBeLessThanOrEqual(300);
+    expect(truncated.endsWith("\u2026")).toBe(true);
+    expect(truncated).not.toMatch(/\n/);
+  });
+
   it("treats a blank why as undeclared rather than showing an empty reason", () => {
     const workspace = seededWorkspace({ secondWhy: "   " });
     const second = steps(trackedLeg(workspace).nodes).find((step) => step.title === "Second")!;

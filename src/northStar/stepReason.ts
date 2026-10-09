@@ -15,9 +15,24 @@ export interface StepReason {
   reasonSource: StepReasonSource;
 }
 
+/** The longest reason a surface shows, ellipsis included; a longer `why` is cut deterministically. */
+export const STEP_REASON_MAX_LENGTH = 300;
+
+/**
+ * One line, at most {@link STEP_REASON_MAX_LENGTH} characters. A hand-written
+ * Plan may declare `why: |` over several lines or at any length, and every
+ * surface prints a reason on a single line.
+ */
+export function oneLineReason(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > STEP_REASON_MAX_LENGTH
+    ? `${collapsed.slice(0, STEP_REASON_MAX_LENGTH - 1).trimEnd()}\u2026`
+    : collapsed;
+}
+
 /** The author's `why` when there is one, otherwise the derived sentence. */
 export function stepReason(declaredWhy: string | null | undefined, derived: string): StepReason {
-  const why = declaredWhy?.trim();
+  const why = declaredWhy ? oneLineReason(declaredWhy) : "";
   return why ? { reason: why, reasonSource: "declared" } : { reason: derived, reasonSource: "derived" };
 }
 

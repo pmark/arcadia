@@ -54,7 +54,10 @@ export interface NormalizedAgentAskOption { label: string; consequence: string; 
  */
 export type AgentAskEvidenceStatus = "met" | "failed" | "skipped";
 export interface NormalizedAgentAskEvidence { criterion: string; status: AgentAskEvidenceStatus; note: string | null; }
-export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[];
+  /** The single Action's `why` for an `action` Ask with no `actions` list; absent otherwise (bundles carry `actions[].why`). */
+  why?: string;
+  actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -67,7 +70,7 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
   sourcePath: string | null;
 }
 
-export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question", "why"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
 export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
 export const ACTION_WHY_MAX_LENGTH = 300;
@@ -153,6 +156,10 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (intent === "split" && acceptance.length === 0) {
     throw validationError("A split Agent Ask requires acceptance naming the narrowed criteria the finished slice actually met.");
   }
+  const topLevelWhy = actionWhyField(data.why, null);
+  if (topLevelWhy.why !== undefined && (intent !== "action" || actions.length > 0)) {
+    throw validationError("Agent Ask top-level why is only supported for an action Ask without an actions list; put the reason on each actions[].why.");
+  }
   const gateQuestion = optionalText(data.gate_question);
   if (gateQuestion !== null && intent !== "decision") {
     throw validationError("Agent Ask gate_question is only supported for decision intent.");
@@ -160,7 +167,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 /**
@@ -284,7 +291,7 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?
   }
   if (normalized.requestedAuthority === "apply_if_approved") requiredDecisions.push("Accept the exact preview before apply.");
   const targetKind = normalized.intent === "auto" ? (resolved?.kind ?? "interpretation") : normalized.intent;
-  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null }];
+  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null, ...(normalized.why ? { why: normalized.why } : {}) }];
   const effects = proposedItems.map((item) => {
     const itemTargetRef = resolved ? resolved.targetRef : (item.targetRef ?? normalized.targetRef);
     const operation = resolved ? "update" : normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
@@ -321,11 +328,12 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
   });
 }
 /** `{ why }` when the Ask declared a non-empty one, `{}` otherwise; one sentence, so never multi-line. */
-function actionWhyField(value: unknown, index: number): { why?: string } {
+function actionWhyField(value: unknown, index: number | null): { why?: string } {
   const why = optionalText(value);
   if (why === null) return {};
   if (/[\r\n]/.test(why) || why.length > ACTION_WHY_MAX_LENGTH) {
-    throw validationError(`Agent Ask actions[${index}].why must be one sentence on a single line of at most ${ACTION_WHY_MAX_LENGTH} characters.`, { index, length: why.length });
+    const where = index === null ? "why" : `actions[${index}].why`;
+    throw validationError(`Agent Ask ${where} must be one sentence on a single line of at most ${ACTION_WHY_MAX_LENGTH} characters.`, { index, length: why.length });
   }
   return { why };
 }

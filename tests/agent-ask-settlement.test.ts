@@ -956,7 +956,7 @@ describe("Agent Ask settlement", () => {
     });
 
     const planText = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
-    expect(planText).toContain("why: The release cannot be trusted without it.");
+    expect(planText).toContain('why: "The release cannot be trusted without it."');
     const docs = discoverDocs(repo);
     expect(docs.errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
     const plan = docs.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
@@ -1000,6 +1000,79 @@ describe("Agent Ask settlement", () => {
       preview: secondPreview.data.receipt.previewFingerprint, apply: true
     });
     expect(existingWhy()).toBe("Nothing downstream can start until this is sharper.");
+  });
+
+  it("carries a top-level why onto a single created Action and onto a single amended Action", () => {
+    const { workspace, repo } = fixture();
+    const settle = (requestId: string, request: string, revision: number, extra: Record<string, unknown>) => {
+      const proposal = runAgentAskPreviewCommand({ workspace, request });
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision, ...extra
+      });
+      runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision, ...extra,
+        preview: preview.data.receipt.previewFingerprint, apply: true
+      });
+      return preview;
+    };
+    const whyOf = (id: string): string | null | undefined =>
+      discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")
+        ?.actions.find((action) => action.id === id)?.why;
+
+    // The legacy synthesized single Action (no actions list, no target_ref).
+    settle("why-single-create",
+      `${askForIntent("why-single-create", "action", "Prove the single path", undefined, ["Single proof exists."])}why: The single path is the common one.\n`,
+      1, { responsibility: "agent", top: true });
+    expect(whyOf("prove-the-single-path")).toBe("The single path is the common one.");
+
+    // The top-level target_ref amendment branch, previewed with the change and then written.
+    const preview = settle("why-single-amend",
+      `${askForIntent("why-single-amend", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])}why: Nothing downstream can start without it.\n`,
+      2, {});
+    expect(preview.data.receipt.effects.join(" ")).toContain("why changed");
+    expect(whyOf("existing")).toBe("Nothing downstream can start without it.");
+  });
+
+  it("round-trips a why that bare YAML would turn into a non-string (create, amend, draft Plan)", () => {
+    const { workspace, repo } = fixture();
+    const values = ["[x] done", "{a}", "true", "null", "123"];
+    const whyOf = (slug: string, id: string): string | null | undefined =>
+      discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === slug)
+        ?.actions.find((action) => action.id === id)?.why;
+    const bundle = (requestId: string, rows: Array<{ id: string; target?: string; why: string }>, intent = "action"): string => [
+      "agent_ask: v1", `request_id: ${requestId}`, "project: demo", `intent: ${intent}`,
+      ...(intent === "plan" ? ["target_ref: plan/demo-plan"] : []),
+      "desired_result: Quote every reason", "actions:",
+      ...rows.flatMap((row) => [
+        ...(row.target ? [`  - target_ref: action/${row.target}`] : [`  - id: ${row.id}`]),
+        `    desired_result: Action ${row.id}`, `    why: ${JSON.stringify(row.why)}`,
+        "    acceptance:", `      - Criterion ${row.id}.`
+      ]),
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const apply = (requestId: string, request: string, revision: number, extra: Record<string, unknown>) => {
+      const proposal = runAgentAskPreviewCommand({ workspace, request });
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision, ...extra
+      });
+      runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision, ...extra,
+        preview: preview.data.receipt.previewFingerprint, apply: true
+      });
+    };
+
+    const created = values.map((why, index) => ({ id: `quoted-${index}`, why }));
+    apply("why-quote-create", bundle("why-quote-create", created), 1, { responsibility: "agent", top: true });
+    for (const row of created) expect(whyOf("demo-plan", row.id)).toBe(row.why);
+
+    const rotated = created.map((row, index) => ({ id: row.id, target: row.id, why: values[(index + 1) % values.length] }));
+    apply("why-quote-amend", bundle("why-quote-amend", rotated, "plan"), 2, {});
+    for (const row of rotated) expect(whyOf("demo-plan", row.id)).toBe(row.why);
+
+    const draft = values.map((why, index) => ({ id: `draft-${index}`, why }));
+    apply("why-quote-draft", bundle("why-quote-draft", draft, "plan").replace("target_ref: plan/demo-plan\n", ""), 2, { responsibility: "agent" });
+    const drafted = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "quote-every-reason")!;
+    expect(drafted.actions.map((action) => action.why)).toEqual(values);
   });
 
   it("writes a per-Action why into a new draft Plan", () => {

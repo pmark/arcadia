@@ -223,9 +223,22 @@ describe("Agent Ask v1", () => {
     expect(() => runAgentAskPreviewCommand({ workspace, request: ask(`"${"x".repeat(301)}"`) })).toThrow("at most 300");
   });
 
-  it("still refuses a top-level why, which would belong to no Action", () => {
+  it("accepts a top-level why only for a single-Action action Ask, and lists it in the preview", () => {
     const workspace = initializedWorkspace();
-    expect(() => runAgentAskPreviewCommand({ workspace, request: `${strictAsk("why-top", "action")}why: Because.\n` })).toThrow("unknown fields");
+    const result = runAgentAskPreviewCommand({ workspace, request: `${strictAsk("why-top", "action")}why: Because the release depends on it.\n` });
+    expect(result.data.proposal.normalized.why).toBe("Because the release depends on it.");
+    expect(result.data.proposal.effects[0].fields).toMatchObject({ why: "Because the release depends on it." });
+
+    // With an actions list the reason belongs on each Action, and elsewhere it belongs to nothing.
+    const bundle = `${strictAsk("why-top-bundle", "action")}why: Because.\nactions:\n  - desired_result: Build proof\n    acceptance:\n      - Proof exists\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request: bundle })).toThrow("top-level why is only supported");
+    expect(() => runAgentAskPreviewCommand({ workspace, request: `${strictAsk("why-top-log", "log")}why: Because.\n` })).toThrow("top-level why is only supported");
+  });
+
+  it("refuses a top-level target_ref Ask that also lists actions, so a per-Action why can never be previewed and then dropped", () => {
+    const workspace = initializedWorkspace();
+    const request = `${strictAsk("why-target-bundle", "action")}target_ref: action/existing\nactions:\n  - desired_result: Build proof\n    why: Because.\n    acceptance:\n      - Proof exists\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request })).toThrow("cannot also amend one Action target_ref");
   });
 
   it("accepts Plan-shaped Actions with shared references and per-Action amendment targets", () => {

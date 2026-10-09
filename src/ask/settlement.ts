@@ -388,12 +388,12 @@ export function settleAgentAsk(db: Database.Database, input: {
             path: activePlanPath,
             before: planBefore,
             after: withPlanUpdated(amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
-              amendedDependencies, amendedReferences, proposal.normalized.requestId, input.responsibility))
+              amendedDependencies, amendedReferences, proposal.normalized.requestId, input.responsibility, proposal.normalized.why))
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
           effects.push(`Field changes for ${queueActionKey}: ${describeActionAmendment(plan.actions.find((action) => action.id === actionId)!, {
             desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
-            dependencies: amendedDependencies, references: amendedReferences
+            dependencies: amendedDependencies, references: amendedReferences, why: proposal.normalized.why
           })}.`);
           if (legacyListFallback) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
           if (input.responsibility) {
@@ -406,7 +406,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             ? proposal.normalized.actions
             : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
               dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null,
-              omittedLists: proposal.normalized.omittedLists ?? [] }];
+              omittedLists: proposal.normalized.omittedLists ?? [],
+              ...(proposal.normalized.why ? { why: proposal.normalized.why } : {}) }];
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
@@ -2134,6 +2135,16 @@ export function markAgentAskNotificationSent(db: Database.Database, settlementId
   }
 }
 
+/**
+ * `why` is prose, so it is always written as a double-quoted scalar. A bare
+ * `yamlScalar` leaves `[x] done`, `{a}`, `true`, `null` or `123` unquoted, and
+ * those re-parse as a list, mapping, boolean, null or number, so the settled
+ * `why` would silently disappear.
+ */
+function quotedWhy(why: string): string {
+  return JSON.stringify(why.trim());
+}
+
 /** Append one Action block to a managed Plan's block-form `actions:` list. Shared with production scheduling's discovery path. */
 export function appendPlanAction(content: string, action: {
   id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; references: string[]; source: string;
@@ -2163,7 +2174,7 @@ export function appendPlanAction(content: string, action: {
     "    clarification: clarified",
     "    confidence: high",
     `    source: ${yamlScalar(action.source)}`,
-    ...(action.why ? [`    why: ${yamlScalar(action.why)}`] : []),
+    ...(action.why ? [`    why: ${quotedWhy(action.why)}`] : []),
     "    acceptance_criteria:",
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
@@ -2509,7 +2520,7 @@ function newDraftPlan(
     "    clarification: clarified",
     "    confidence: high",
     `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`,
-    ...(action.why ? [`    why: ${yamlScalar(action.why)}`] : []),
+    ...(action.why ? [`    why: ${quotedWhy(action.why)}`] : []),
     "    acceptance_criteria:",
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
@@ -2637,7 +2648,7 @@ function amendAction(
   // An amendment that declares a `why` sets it; one that omits it leaves the
   // checked-in value alone. Function replacers keep `$` in prose literal.
   if (why) {
-    const whyLine = `    why: ${yamlScalar(why)}`;
+    const whyLine = `    why: ${quotedWhy(why)}`;
     block = /^ {4}why:/m.test(block)
       ? block.replace(/^ {4}why:.*$/m, () => whyLine)
       : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n${whyLine}`);
