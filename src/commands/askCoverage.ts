@@ -3,10 +3,11 @@ import type Database from "better-sqlite3";
 import { ingressSourceKind, type IngressSourceKind } from "../ask/replyCapture.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import type { DecisionDoc } from "../docs/types.js";
+import { validationError } from "../cli/errors.js";
 import { parseTimeBound } from "../timeline/time.js";
 import { defaultIngressRoot, listProcessedIngressSidecars } from "./ingress.js";
 
@@ -38,7 +39,18 @@ export interface AskCoverageSurface {
   /** Count of the independent canonical record; null when the surface has none or it could not be read. */
   canonical: number | null;
   denominator: "known" | "unknown" | "unavailable";
-  /** captured / canonical, rounded to three places; null when the denominator is unknown or zero. */
+  /**
+   * Ingress only: canonical sidecars whose Ask capture envelope was found by shared id. Null when
+   * the sidecars carry no usable id, in which case `captured` is the numerator. When set it is the
+   * numerator, so the ratio cannot exceed 100%.
+   */
+  matched: number | null;
+  /**
+   * True only for an operator-intake surface with a known denominator. False means this surface's
+   * captured count must not be read against the Ingress percentage (Discord has no denominator).
+   */
+  comparableToIntakeCoverage: boolean;
+  /** (matched ?? captured) / canonical, rounded to three places; null when the denominator is unknown or zero. */
   coverage: number | null;
   canonicalRecord: string;
   note: string | null;
@@ -62,6 +74,8 @@ export interface AskCoverageData {
     coverage: number | null;
     /** Operator-intake envelopes on surfaces with no independent record: captured N, denominator unknown. */
     capturedDenominatorUnknown: number;
+    /** Always false: the denominator-unknown count is not comparable to the coverage percentage. */
+    capturedDenominatorUnknownComparable: false;
   };
   surfaces: AskCoverageSurface[];
   /** agent.ask and codex.* envelopes: never operator input. */
@@ -114,7 +128,14 @@ export function runAskCoverageCommand(options: AskCoverageOptions): CommandSucce
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const now = options.now ?? new Date();
   const since = parseTimeBound(options.since?.trim() || DEFAULT_COVERAGE_WINDOW, now, "--since");
-  const data = withDatabase(workspacePath, (db) =>
+  if (since.getTime() > now.getTime()) {
+    throw validationError("--since is in the future; the window would be empty.", {
+      flag: "--since",
+      since: since.toISOString(),
+      until: now.toISOString()
+    });
+  }
+  const data = withReadOnlyDatabase(workspacePath, (db) =>
     buildAskCoverage(db, { since, until: now, ingressRoot: options.ingressRoot ?? defaultIngressRoot() })
   );
   return createSuccess({ command: "ask.coverage", workspace: workspacePath, data });
@@ -158,8 +179,16 @@ export function buildAskCoverage(
   }
 
   const notes: string[] = [];
-  const canonicalFor = (id: CoverageSurfaceId): { count: number | null; state: "known" | "unknown" | "unavailable"; note: string | null } => {
-    if (id === "discord") return { count: null, state: "unknown", note: "Captured N, denominator unknown." };
+  const canonicalFor = (
+    id: CoverageSurfaceId
+  ): { count: number | null; state: "known" | "unknown" | "unavailable"; note: string | null; matched?: number } => {
+    if (id === "discord") {
+      return {
+        count: null,
+        state: "unknown",
+        note: "Captured N, denominator unknown. Not comparable to the Ingress percentage: this count says nothing about coverage."
+      };
+    }
     if (id === "review-replies") {
       const row = db
         .prepare("SELECT COUNT(*) AS count FROM review_items WHERE status IN ('approved', 'rejected') AND decided_at >= ? AND decided_at <= ?")
@@ -175,10 +204,32 @@ export function buildAskCoverage(
     if (sidecars === null) {
       return { count: null, state: "unavailable", note: `Ingress root not found: ${input.ingressRoot}. Pass --ingress-root.` };
     }
+    const counted = sidecars.filter((item) => item.status !== "skipped" && inWindow(item.timestamp));
+    // Match by shared id when every counted sidecar names one; otherwise fall back to comparing counts.
+    if (!counted.every((item) => (item.captureIds ?? []).length > 0)) {
+      return {
+        count: counted.length,
+        state: "known",
+        note: "Empty skipped requests are not counted. A file captured but not yet processed raises captured above canonical."
+      };
+    }
+    const envelopes = db
+      .prepare("SELECT id, request_id AS requestId, captured_at AS capturedAt FROM ask_capture_envelopes WHERE ingress_source LIKE 'ingress:%'")
+      .all() as Array<{ id: string; requestId: string; capturedAt: string }>;
+    const envelopeIds = new Set(envelopes.flatMap((envelope) => [envelope.id, envelope.requestId]));
+    const sidecarIds = new Set(sidecars.flatMap((item) => item.captureIds ?? []));
+    const matched = counted.filter((item) => (item.captureIds ?? []).some((captureId) => envelopeIds.has(captureId))).length;
+    const unprocessed = envelopes.filter(
+      (envelope) => inWindow(envelope.capturedAt) && !sidecarIds.has(envelope.id) && !sidecarIds.has(envelope.requestId)
+    ).length;
     return {
-      count: sidecars.filter((item) => item.status !== "skipped" && inWindow(item.timestamp)).length,
+      count: counted.length,
+      matched,
       state: "known",
-      note: "Empty skipped requests are not counted. A file captured but not yet processed raises captured above canonical."
+      note: [
+        "Processed files are matched to Ask capture envelopes by shared id, so the ratio cannot exceed 100%. Empty skipped requests are not counted.",
+        unprocessed > 0 ? `${unprocessed} captured envelope${unprocessed === 1 ? "" : "s"} in the window have no processed file yet.` : null
+      ].filter(Boolean).join(" ")
     };
   };
 
@@ -195,14 +246,19 @@ export function buildAskCoverage(
       captured,
       canonical: canonical.count,
       denominator: canonical.state,
-      coverage: canonical.count !== null && canonical.count > 0 ? Math.round((captured / canonical.count) * 1000) / 1000 : null,
+      matched: canonical.matched ?? null,
+      comparableToIntakeCoverage: definition.kind === "intake" && canonical.state === "known",
+      coverage:
+        canonical.count !== null && canonical.count > 0
+          ? Math.round(((canonical.matched ?? captured) / canonical.count) * 1000) / 1000
+          : null,
       canonicalRecord: definition.canonicalRecord,
       note: canonical.note
     };
   });
 
   const measuredIntake = surfaces.filter((surface) => surface.countsAsIntake && surface.denominator === "known");
-  const intakeCaptured = measuredIntake.reduce((sum, surface) => sum + surface.captured, 0);
+  const intakeCaptured = measuredIntake.reduce((sum, surface) => sum + (surface.matched ?? surface.captured), 0);
   const intakeCanonical = measuredIntake.reduce((sum, surface) => sum + (surface.canonical ?? 0), 0);
   const unmeasured = surfaces
     .filter((surface) => surface.countsAsIntake && surface.denominator !== "known")
@@ -223,7 +279,8 @@ export function buildAskCoverage(
       captured: intakeCaptured,
       canonical: intakeCanonical,
       coverage: intakeCanonical > 0 ? Math.round((intakeCaptured / intakeCanonical) * 1000) / 1000 : null,
-      capturedDenominatorUnknown: unmeasured
+      capturedDenominatorUnknown: unmeasured,
+      capturedDenominatorUnknownComparable: false
     },
     surfaces,
     excludedAgent,
@@ -292,11 +349,12 @@ export function renderAskCoverageSuccess(response: CommandSuccess<AskCoverageDat
     const label = `${surface.label} (${surface.kind === "intake" ? "operator intake" : "provenance-only, not counted as intake"})`;
     if (surface.denominator === "known" && surface.canonical !== null) {
       const percent = surface.coverage === null ? "n/a" : `${(surface.coverage * 100).toFixed(1)}%`;
-      lines.push(`${label}: captured ${surface.captured} of ${surface.canonical} canonical (${percent})`);
+      const matchedText = surface.matched === null ? "" : `, ${surface.matched} matched by id`;
+      lines.push(`${label}: captured ${surface.captured} of ${surface.canonical} canonical (${percent}${matchedText})`);
     } else if (surface.denominator === "unavailable") {
       lines.push(`${label}: captured ${surface.captured}, denominator unavailable`);
     } else {
-      lines.push(`${label}: captured ${surface.captured}, denominator unknown`);
+      lines.push(`${label}: captured ${surface.captured}, denominator unknown (not comparable to the Ingress percentage)`);
     }
     for (const [source, count] of Object.entries(surface.sources)) lines.push(`    ${source}: ${count}`);
     if (surface.note) lines.push(`    ${surface.note}`);
@@ -307,7 +365,7 @@ export function renderAskCoverageSuccess(response: CommandSuccess<AskCoverageDat
       ? `Measured operator intake (${data.intake.surfaces.join(", ")}): captured ${data.intake.captured} of ${data.intake.canonical} canonical` +
           (data.intake.coverage === null ? "" : ` (${(data.intake.coverage * 100).toFixed(1)}%)`)
       : "Measured operator intake: no surface with a readable canonical record",
-    `Operator intake with denominator unknown: ${data.intake.capturedDenominatorUnknown} captured`,
+    `Operator intake with denominator unknown: ${data.intake.capturedDenominatorUnknown} captured (not comparable to the percentage above)`,
     `Excluded, agent-written (agent.ask, codex.*): ${data.excludedAgent.total}${formatBySource(data.excludedAgent)}`,
     `Not classified (not counted): ${data.unclassified.total}${formatBySource(data.unclassified)}`,
     "",

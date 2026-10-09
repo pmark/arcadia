@@ -3,7 +3,7 @@ import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
 
 export interface AskTrailOptions {
   workspace: string;
@@ -69,14 +69,14 @@ interface AskRow {
  */
 export function runAskTrailCommand(options: AskTrailOptions): CommandSuccess<AskTrailData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
+  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
   return createSuccess({ command: "ask-trail", workspace: workspacePath, data });
 }
 
 /** The canonical `ask show` name; `ask-trail` remains a read-only compatibility alias. */
 export function runAskShowCommand(options: AskTrailOptions): CommandSuccess<AskTrailData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
+  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
   return createSuccess({ command: "ask.show", workspace: workspacePath, data });
 }
 
