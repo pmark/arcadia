@@ -128,8 +128,9 @@ merge it anyway, so asking spends attention and protects nothing.
   and that any `Closes #<ISSUE>` Issue is closed. Restart managed services when
   the merged change is runtime code, and confirm they came back. Under heavy
   machine load (parallel test suites) `scripts/services.sh restart` can fail on
-  Intelligence's readiness window and then stop every service (#1129): retry
-  once, and if it fails again bootstrap each
+  Intelligence's readiness window and then stop every service (#1129). The
+  script already makes 2 attempts (`ARCADIA_RESTART_ATTEMPTS`); if both fail,
+  run it once more, and if that fails bootstrap each
   `~/Library/LaunchAgents/com.arcadia.local.<key>.<service>.plist` directly with
   `launchctl bootstrap gui/$(id -u) <plist>`, wait, and check
   `scripts/services.sh status`. Avoid running many test suites around a
@@ -144,7 +145,8 @@ merge it anyway, so asking spends attention and protects nothing.
   push, open the PR, and run the independent review as usual, then stop at the
   handoff and leave the merge and the Decision's answer to the operator. This
   includes records PRs that only *raise* a Decision or only *record* an answer
-  the operator gave in chat (2026-10-09, three such PRs were merged in error).
+  the operator gave in chat (on 2026-10-09 #1117, #1121 and #1128 were merged in
+  error).
   Merge one only when the operator explicitly instructs it in chat, and quote
   that instruction in the PR comment.
 - **This is a merge authorization only.** It does not authorize deployment,

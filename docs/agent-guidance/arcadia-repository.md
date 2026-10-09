@@ -152,10 +152,17 @@ approval authority. See `docs/working-copy-safety.md`.
 
 `arcadia decision approve` (and the other `decision` writers) commit to the
 Project's configured repository, the primary checkout, not the worktree they
-are run from (#1122). Until that is fixed: confirm the primary checkout is
-clean and on `main` first, push the resulting commit with
-`git push origin HEAD:refs/heads/<branch>`, open its PR, then return the primary
-checkout with `git reset --keep origin/main` once the push is confirmed.
+are run from (#1122). Until that is fixed, and only for this bug, this is a
+narrow exception to AGENTS.md Preservation:
+1. Run `git fetch` and confirm the primary checkout is clean and on `main`.
+2. Run the writer, then confirm `git log origin/main..main` shows only the
+   decision commit.
+3. Push it with `git push origin HEAD:refs/heads/<branch>` and open its PR.
+4. Once the push is confirmed, return the primary checkout with
+   `git reset --keep origin/main`.
+
+Never do this when the primary checkout holds any other unpushed commit or
+dirty file.
 
 ### Automatic production conflict recovery
 
