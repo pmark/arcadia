@@ -2159,3 +2159,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-09 — Agent Ask pr-opened-arcadia-pr1147
+
+- **Did:** PR #1147 makes /production feel instant: the queue now says "Reading the queue… N s" instead of blank grey bars, core polls answer in milliseconds instead of 2.5-5 s, and a services restart pre-warms the page. https://github.com/pmark/arcadia/pull/1147
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
