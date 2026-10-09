@@ -538,3 +538,167 @@ describe("preservation check-definition binding \u2014 Python bytecode and exten
     expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 check.py"])).not.toThrow();
   });
 });
+
+describe("preservation check-definition binding — Python importable-set changes (#1100)", () => {
+  const run = ["python3 check.py"];
+  const refused = expect.objectContaining({
+    message: expect.stringMatching(/importable Python entry/),
+    details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, importable: true })
+  });
+
+  it("refuses indirect stdlib shadowing: a candidate selectors module beside a check importing subprocess", () => {
+    const f = repo({ "check.py": "import subprocess\nsubprocess.run(['true'])\n", "README.md": "docs\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    for (const entry of ["selectors.py", "selectors.pyc", "selectors.so", "selectors.cpython-312-darwin.so", "__pycache__/selectors.cpython-312.pyc", "selectors/__init__.py"]) {
+      const candidate = candidateTree(f, { [entry]: "print('PWNED')\n" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, run), entry).toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, importable: true }) }));
+    }
+    const candidate = candidateTree(f, { "selectors.py": "print('PWNED')\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, run)).toThrow(refused);
+  });
+
+  it("refuses removal or change of an importable entry in the script directory", () => {
+    const f = repo({ "check.py": "import json\n", "unused.py": "x = 1\n", "pkg/__init__.py": "", "pkg/inner.py": "x = 1\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "unused.py": "x = 2\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "pkg/inner.py": "x = 2\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "pkg/new.so": "x" }), run)).toThrow(refused);
+    f.git(["reset", "-q", "--hard", f.baseCommit]); f.git(["rm", "-q", "unused.py"]); f.git(["commit", "-qm", "remove"]);
+    const removed = f.git(["rev-parse", "HEAD^{tree}"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, removed, run)).toThrow(expect.objectContaining({ message: expect.stringMatching(/removed `unused.py`/) }));
+  });
+
+  it("refuses an unbound package submodule rewrite under `from helper import rule`", () => {
+    const f = repo({ "check.py": "from helper import rule\nrule.verify()\n", "helper/__init__.py": "", "helper/rule.py": "def verify():\n    pass\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    const rewritten = candidateTree(f, { "helper/rule.py": "def verify():\n    print('PWNED')\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, run)).toThrow(refused);
+    const nested = repo({ "check.py": "from helper import rule\n", "helper/__init__.py": "", "helper/rule.py": "", "helper/deep/__init__.py": "", "helper/deep/x.py": "" });
+    expect(() => bindCheckDefinitions(nested.dir, nested.base, candidateTree(nested, { "helper/deep/x.py": "y = 1\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(nested.dir, nested.base, candidateTree(nested, { "helper/deep/__pycache__/x.cpython-312.pyc": "y" }), run)).toThrow(refused);
+  });
+
+  it("refuses changes for a script in a subdirectory, including a namespace package import", () => {
+    const f = repo({ "tools/check.py": "from ns import rule\nimport os\n", "tools/ns/rule.py": "x = 1\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 tools/check.py"])).not.toThrow();
+    for (const changes of [{ "tools/ns/rule.py": "x = 2\n" }, { "tools/selectors.py": "x = 2\n" }]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, changes), ["python3 tools/check.py"])).toThrow(refused);
+    }
+  });
+
+
+  it("still binds an unchanged directory and ignores changes outside an isolated checks/ directory", () => {
+    const f = repo({
+      "checks/check.py": "import subprocess\nfrom helper import rule\nrule.verify()\n",
+      "checks/helper/__init__.py": "", "checks/helper/rule.py": "def verify():\n    pass\n", "checks/README.md": "docs\n",
+      "README.md": "docs\n"
+    });
+    const run = ["python3 checks/check.py"];
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    const unrelated = candidateTree(f, {
+      "README.md": "changed docs\n", "checks/README.md": "check docs\n", "checks/helper/README.md": "pkg docs\n",
+      "data/fixture.json": "{}\n", "other/module.py": "x = 1\n", "other/deep/more.so": "x", "notes.txt": "n\n"
+    });
+    expect(() => bindCheckDefinitions(f.dir, f.base, unrelated, run)).not.toThrow();
+  });
+});
+
+describe("preservation check-definition binding — Python review follow-ups to #1101", () => {
+  // Like candidateTree, but also writes symlinks.
+  function candidateWithLinks(f: ReturnType<typeof repo>, files: Record<string, string>, links: Record<string, string>) {
+    f.git(["reset", "-q", "--hard", f.baseCommit]);
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(f.dir, file)), { recursive: true });
+      writeFileSync(path.join(f.dir, file), content);
+    }
+    for (const [file, target] of Object.entries(links)) {
+      mkdirSync(path.dirname(path.join(f.dir, file)), { recursive: true });
+      symlinkSync(target, path.join(f.dir, file));
+    }
+    f.git(["add", "."]); f.git(["commit", "-qm", "candidate"]);
+    return f.git(["rev-parse", "HEAD^{tree}"]);
+  }
+  const refusedImportable = expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, importable: true }) });
+  const refusedCode = expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) });
+
+  it("B1: refuses a candidate symlinked directory that stands in for a stdlib module", () => {
+    const f = repo({ "check.py": "import subprocess\n" });
+    const candidate = candidateWithLinks(f, { "lib/sel/__init__.py": "print('PWNED')\n" }, { selectors: "lib/sel" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["python3 check.py"])).toThrow(refusedImportable);
+    const isolated = repo({ "checks/check.py": "import subprocess\n" });
+    const linked = candidateWithLinks(isolated, { "checks/lib/sel/__init__.py": "print('PWNED')\n" }, { "checks/selectors": "lib/sel" });
+    expect(() => bindCheckDefinitions(isolated.dir, isolated.base, linked, ["python3 checks/check.py"])).toThrow(refusedImportable);
+    const nonPython = candidateWithLinks(isolated, {}, { "checks/subprocess_data": "data.txt" });
+    expect(() => bindCheckDefinitions(isolated.dir, isolated.base, nonPython, ["python3 checks/check.py"])).toThrow(refusedImportable);
+  });
+
+  it("B1: refuses a symlink that leaves the scanned directory even when unchanged", () => {
+    const f = repo({ "checks/check.py": "import json\n", "shared/mod.py": "x = 1\n" }, { "checks/shared": "../shared" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/points outside the scanned directory/) }));
+    const inside = repo({ "checks/check.py": "import json\n", "checks/real/mod.py": "x = 1\n" }, { "checks/alias": "real" });
+    expect(() => bindCheckDefinitions(inside.dir, inside.base, inside.base, ["python3 checks/check.py"])).not.toThrow();
+  });
+
+  it("B2: refuses a candidate namespace package an optional stdlib import would pick up", () => {
+    const f = repo({ "checks/check.py": "import subprocess\n" });
+    const run = ["python3 checks/check.py"];
+    for (const changes of [
+      { "checks/msvcrt/keep.txt": "x" },
+      { "checks/_winapi/CREATE_NEW_CONSOLE.py": "CREATE_NEW_CONSOLE = 1\n" },
+      { "checks/deep/er/new.py": "x = 1\n" }
+    ]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, changes), run), Object.keys(changes)[0]).toThrow(refusedImportable);
+    }
+    const root = repo({ "check.py": "import subprocess\n" });
+    expect(() => bindCheckDefinitions(root.dir, root.base, candidateTree(root, { "msvcrt/keep.txt": "x" }), ["python3 check.py"])).toThrow(refusedImportable);
+  });
+
+  it("B3: treats an extensionless script run by python, or with a python shebang, as Python", () => {
+    const f = repo({ "checks/check": "import subprocess\n", "checks/direct": "#!/usr/bin/env python3\nimport subprocess\n" });
+    for (const command of ["python3 checks/check", "python3.12 checks/check", "python -W ignore checks/check", "checks/direct"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+      const target = command.endsWith("direct") ? "direct" : "check";
+      const shadowed = candidateTree(f, { "checks/selectors.py": "print('PWNED')\n" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, shadowed, [command]), command).toThrow(refusedImportable);
+      const rewritten = candidateTree(f, { [`checks/${target}`]: "print('neutered')\n" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(expect.objectContaining({ details: expect.objectContaining({ path: `checks/${target}` }) }));
+    }
+    const lazy = repo({ "checks/check": "import helper\n", "checks/helper.py": "x = 1\n" });
+    expect(() => bindCheckDefinitions(lazy.dir, lazy.base, candidateTree(lazy, { "checks/helper.py": "x = 2\n" }), ["python3 checks/check"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "checks/helper.py" }) }));
+  });
+
+  it("refuses a Python check command that sets PYTHON*= or uses -m or -c", () => {
+    const f = repo({ "checks/check.py": "import json\n", "checks/direct": "#!/usr/bin/python3\nimport json\n" });
+    for (const command of [
+      "PYTHONPATH=/tmp python3 checks/check.py", "env PYTHONHOME=/tmp python3 checks/check.py", "export PYTHONPATH=/tmp && python3 checks/check.py",
+      "PYTHONPATH=/tmp checks/direct", "python3 -m checks.check", "python3 -c 'import json'", "python3 -Ic 'import json'"
+    ]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).toThrow(refusedCode);
+    }
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 -m checks.check"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/-m/) }));
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["PYTHONPATH=/tmp python3 checks/check.py"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/PYTHON\*=/) }));
+    // A non-Python command with an unrelated PYTHON-prefixed word is not a Python check.
+    const js = repo({ "check.mjs": "console.log('ok');\n" });
+    expect(() => bindCheckDefinitions(js.dir, js.base, js.base, ["PYTHONPATH=/tmp node check.mjs"])).not.toThrow();
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"])).not.toThrow();
+  });
+
+  it("refuses a bound Python source that edits the import path or loads modules dynamically", () => {
+    for (const body of ["import sys\nsys.path.insert(0, '/tmp')\n", "import importlib\n", "__import__('os')\n", "import runpy\n", "from sys import path\n"]) {
+      const f = repo({ "checks/check.py": body });
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]), body)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/sys\.path.*importlib.*__import__.*runpy/), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));
+    }
+    const helper = repo({ "checks/check.py": "import helper\n", "checks/helper.py": "import importlib\n" });
+    expect(() => bindCheckDefinitions(helper.dir, helper.base, helper.base, ["python3 checks/check.py"])).toThrow(refusedCode);
+  });
+
+  it("advises an isolated checks/ directory in the refusal text", () => {
+    const f = repo({ "check.py": "import json\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "selectors.py": "x = 1\n" }), ["python3 check.py"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/isolated directory \(for example `checks\/`\)/) }));
+  });
+});
