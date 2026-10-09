@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import type { IntakeResult } from "../intake/index.js";
+import type { StewardshipExecutionPath } from "../stewardship/index.js";
 import { askQuestionOrigin } from "./askQuestion.js";
 import { ingressSourceKind } from "./replyCapture.js";
 
@@ -118,7 +120,8 @@ export function recordAnswerCorrection(
 /**
  * The operator memo for exactly this text, or null. The newest operator correction decides, whatever its type: if it
  * names something a memo may not apply (an `answer`, a Project-only `reroute`), the memo stands down, so a newer
- * correction retires an older one. Rows from a model are invisible.
+ * correction retires an older one. Rows from a model are invisible. Corrections made in the same millisecond are
+ * ordered by insertion (`rowid`), so the one recorded last always wins.
  */
 export function findAskMemo(db: Database.Database, text: string): AskMemo | null {
   if (!hasAskCorrectionsTable(db)) return null;
@@ -129,7 +132,7 @@ export function findAskMemo(db: Database.Database, text: string): AskMemo | null
     .prepare(
       `SELECT id, ask_request_id, corrected_type, corrected_project, source, created_at FROM ask_corrections
         WHERE text_hash = ? AND normalized_text = ? AND source IN (${sources})
-        ORDER BY created_at DESC, id DESC LIMIT 1`
+        ORDER BY created_at DESC, rowid DESC LIMIT 1`
     )
     .get(askTextHash(normalized), normalized, ...OPERATOR_CORRECTION_SOURCES) as
     | {
@@ -151,4 +154,20 @@ export function findAskMemo(db: Database.Database, text: string): AskMemo | null
     createdAt: row.created_at,
     date: row.created_at.slice(0, 10)
   };
+}
+
+/**
+ * Whether a memo must stand down for an Ask whose ordinary route (what the patterns decide with no memo) is
+ * `ordinaryPath`. A memo may replace the Clarify First and Back Burner outcomes, and the pattern outcome otherwise, but it
+ * never lets an Ask skip Requires Review or Blocked. It also stands down for an intake that matched a concrete intent,
+ * needs review and is not safe to execute, even when a missing field routes it to Clarify First ("deploy the site to
+ * production" with no Project). A `capture_thought` intake matched no intent at all, so it is always flagged that way and
+ * is exactly what a memo exists to replace. Pure, so the golden-set replay and `arcadia ask` share one rule.
+ */
+export function memoStandsDown(
+  ordinaryPath: StewardshipExecutionPath,
+  intake: Pick<IntakeResult, "action" | "reviewRequired" | "safeToExecute">
+): boolean {
+  const needsReview = intake.action.kind !== "capture_thought" && intake.reviewRequired && !intake.safeToExecute;
+  return ordinaryPath === "Requires Review" || ordinaryPath === "Blocked" || needsReview;
 }

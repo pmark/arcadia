@@ -21,6 +21,7 @@ import {
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskCorrectSuccess, runAskCorrectCommand } from "./commands/askCorrect.js";
 import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askCoverage.js";
+import { renderAskReportSuccess, runAskReportCommand } from "./commands/askReport.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
@@ -931,6 +932,22 @@ export function buildProgram(): Command {
         actor: options.actor
       });
     }, renderAskCorrectSuccess);
+  });
+
+  addJsonOption(
+    ask
+      .command("report")
+      .description("Report how well Ask routing is doing per operator source: vanish rate, corrections, questions, Back Burner arrivals, memo hits, recurrence and planning flags (read-only)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--since <time>", "Window start, an ISO time or a look-back (30m, 6h, 7d, 2w); default 7d")
+  ).action((_options: unknown, command: Command) => {
+    const options: { workspace: string; since?: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction(
+      "ask.report",
+      options,
+      () => runAskReportCommand({ workspace: options.workspace, since: options.since }),
+      renderAskReportSuccess
+    );
   });
 
   addJsonOption(

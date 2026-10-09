@@ -62,6 +62,7 @@ export function applyMigrations(db: Database.Database): void {
   // After the legacy rebuilds above, which recreate ask_requests from its original columns.
   ensureAskClassificationColumns(db);
   ensureAskCorrectionsTable(db);
+  ensureReviewApprovalClaimsTable(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
@@ -1614,6 +1615,25 @@ function ensureAskClassificationColumns(db: Database.Database): void {
   if (!columns.has("corrected_type")) {
     db.prepare("ALTER TABLE ask_requests ADD COLUMN corrected_type TEXT").run();
   }
+}
+
+/**
+ * The claim an approval of a Decision holds while it turns the Decision into an Action (`review approve`). The Action
+ * and its claim commit together, so a concurrent approval or a retry finds the claim instead of creating a second
+ * Action. A lease bounds a crashed attempt. Additive, no foreign keys: the row is bookkeeping, never a record.
+ */
+function ensureReviewApprovalClaimsTable(db: Database.Database): void {
+  db.exec(`
+CREATE TABLE IF NOT EXISTS review_approval_claims (
+  review_item_id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  work_item_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  lease_expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+  `);
 }
 
 /**
