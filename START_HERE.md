@@ -351,6 +351,8 @@ not infer that first portfolio priority. The same read and mutation contract is
 available through `arcadia advance queue`, `reorder`, `arrange`, `make-next`,
 and `undo`.
 
+> **Deprecated 2026-10-09:** the `/runs` page is deprecated, replaced by `/production`, `/actions`, `/review` and an upcoming `/todo` page; the operator-script library behind it is unchanged until a replacement is governed.
+
 Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
 this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 **To-do** (Accept/Reject for Agent Asks, Approve for Decisions, and any
