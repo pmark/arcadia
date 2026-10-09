@@ -335,8 +335,15 @@ code (nothing launched, nothing minted) unless all hold:
 
 - Decision 0100 is answered "Standing fixture launch, with merge on green" or
   "Standing fixture launch, you merge" on `main` of github.com/pmark/arcadia
-  itself, fetched with `gh api` (hardcoded host, repository and path, sanitized
-  environment) and recorded with the blob sha GitHub returned. No local ref,
+  itself, fetched with `gh api` (hardcoded host, repository and path). `gh` runs
+  from an absolute, realpath-resolved system path (`/opt/homebrew/bin`,
+  `/usr/local/bin` or `/usr/bin`; never PATH; refused under the home or a temp
+  directory or if group/world-writable) with the passwd-entry HOME and
+  `GH_CONFIG_DIR`, a fixed PATH and no token variables, so it uses the
+  operator's stored `gh` login. The returned `sha` must equal the git blob hash
+  of the returned content and is recorded. The Decision is verified at launch
+  only: a later revert of the answer does not revoke an already-minted 24-hour
+  authorization (the exit re-checks the window and remotes). No local ref,
   working tree, workspace database or user config is consulted, and any
   fetch/parse failure refuses (`fixture_standing_decision_unanswered`,
   `fixture_standing_decision_unverifiable`);

@@ -8,7 +8,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { createSystemPreservationRemote } from "../src/sessions/candidatePreservation.js";
-import { checkFixtureRemotes, githubRepositoryOf, verifyFixtureStandingLaunch, type FetchDecisionFile } from "../src/sessions/fixtureStandingLaunch.js";
+import { checkFixtureRemotes, createGithubDecisionFetcher, gitBlobSha, githubRepositoryOf, resolveTrustedGh, verifyFixtureStandingLaunch, type FetchDecisionFile, type GhFetchDeps } from "../src/sessions/fixtureStandingLaunch.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { ensureOperatorLaunchSchema, findOperatorLaunchAuthorization, SESSION_ENV_MARKER } from "../src/sessions/operatorLaunch.js";
@@ -48,13 +48,13 @@ function decisionDoc(status: string, answer: string | null): string {
 
 /** What GitHub's main holds for Decision 0100, per rehearsal; absent means GitHub answers with an error. */
 const githubDecisions = new WeakMap<Rehearsal, { status: string; answer: string | null } | "error">();
-const GITHUB_BLOB_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 
 function fetchFor(rehearsal: Rehearsal): FetchDecisionFile {
   return () => {
     const state = githubDecisions.get(rehearsal);
     if (!state || state === "error") throw new Error("gh api failed (exit 1): HTTP 404");
-    return { content: Buffer.from(decisionDoc(state.status, state.answer)).toString("base64").replace(/(.{60})/g, "$1\n"), sha: GITHUB_BLOB_SHA };
+    const bytes = Buffer.from(decisionDoc(state.status, state.answer));
+    return { content: bytes.toString("base64").replace(/(.{60})/g, "$1\n"), sha: gitBlobSha(bytes) };
   };
 }
 
@@ -204,7 +204,7 @@ describe("--fixture-standing refusals (each before anything is launched)", () =>
     expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unverifiable");
     githubDecisions.set(rehearsal, "error");
     expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unverifiable");
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, () => ({ content: "!!not-yaml", sha: GITHUB_BLOB_SHA })), "fixture_standing_decision_unverifiable");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, () => ({ content: "!!not-yaml", sha: "abc" })), "fixture_standing_decision_unverifiable");
     expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, () => ({ content: "", sha: "" })), "fixture_standing_decision_unverifiable");
   });
 
@@ -336,7 +336,7 @@ describe("B1: Decision 0100 is verified only against GitHub's main", () => {
     seedDecision(rehearsal, "approved", ANSWER_MERGE);
     const session = launch(rehearsal, { agentIdentity: "a" }, {});
     expect(JSON.parse(authorization(rehearsal, session)!.standing_json!)).toMatchObject({
-      decisionSource: "github.com/pmark/arcadia@main", decisionBlobSha: GITHUB_BLOB_SHA, decisionAnswer: ANSWER_MERGE
+      decisionSource: "github.com/pmark/arcadia@main", decisionBlobSha: gitBlobSha(Buffer.from(decisionDoc("approved", ANSWER_MERGE))), decisionAnswer: ANSWER_MERGE
     });
   });
 
@@ -438,5 +438,72 @@ describe("B3: an experiment workspace's fixture still needs clean remotes", () =
     expect(verify().fixtureBasis).toBe("experiment_workspace");
     git(fx, ["remote", "add", "origin", "https://github.com/pmark/arcadia.git"]);
     expect(() => verify()).toThrow(/fixture_standing_not_a_fixture/);
+  });
+});
+
+describe("the real GitHub fetch cannot be steered by the caller's environment", () => {
+  const body = (bytes: Buffer, sha = gitBlobSha(bytes)) => JSON.stringify({
+    content: bytes.toString("base64"), sha, encoding: "base64",
+    path: "docs/decisions/0100-decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without.md"
+  });
+  function deps(overrides: Partial<GhFetchDeps> = {}, calls: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = [], stdout = body(Buffer.from(decisionDoc("approved", ANSWER_MERGE)))): GhFetchDeps {
+    return {
+      spawn: ((command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
+        calls.push({ command, args, env: options.env });
+        return { status: 0, stdout, stderr: "", error: undefined };
+      }) as unknown as GhFetchDeps["spawn"],
+      realpath: (candidate) => candidate,
+      mode: () => 0o755,
+      home: () => "/Users/passwd-home",
+      untrustedRoots: () => ["/tmp", "/private/var/folders"],
+      candidates: ["/opt/homebrew/bin/gh"],
+      ...overrides
+    };
+  }
+
+  it("runs the absolute gh path with the passwd home, a fixed PATH and no token variables, ignoring PATH, HOME and GH_* in the caller's environment", () => {
+    const saved = { ...process.env };
+    process.env.PATH = "/tmp/evil:/usr/bin";
+    process.env.HOME = "/tmp/hostile-home";
+    process.env.GH_TOKEN = "t";
+    process.env.GITHUB_TOKEN = "t";
+    process.env.GH_HOST = "evil.example";
+    process.env.GH_CONFIG_DIR = "/tmp/hostile-gh";
+    const calls: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
+    try {
+      const file = createGithubDecisionFetcher(deps({}, calls))();
+      expect(gitBlobSha(Buffer.from(file.content, "base64"))).toBe(file.sha);
+    } finally {
+      process.env = saved;
+    }
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe("/opt/homebrew/bin/gh");
+    expect(calls[0].args.slice(0, 3)).toEqual(["api", "--hostname", "github.com"]);
+    expect(calls[0].env).toMatchObject({ HOME: "/Users/passwd-home", GH_CONFIG_DIR: "/Users/passwd-home/.config/gh", PATH: "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" });
+    for (const key of ["GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_REPO"]) expect(calls[0].env[key]).toBeUndefined();
+  });
+
+  it("refuses a gh under the home or a temp directory, or one that is group/world-writable (or in such a directory)", () => {
+    expect(() => resolveTrustedGh(deps({ realpath: () => "/Users/passwd-home/bin/gh" }))).toThrow(/no trusted gh/);
+    expect(() => resolveTrustedGh(deps({ realpath: () => "/private/var/folders/x/gh" }))).toThrow(/no trusted gh/);
+    expect(() => resolveTrustedGh(deps({ mode: () => 0o775 }))).toThrow(/no trusted gh/);
+    expect(() => resolveTrustedGh(deps({ mode: (candidate) => (candidate === "/opt/homebrew/bin" ? 0o777 : 0o755) }))).toThrow(/no trusted gh/);
+    expect(() => resolveTrustedGh(deps({ mode: () => null }))).toThrow(/no trusted gh/);
+    expect(resolveTrustedGh(deps())).toBe("/opt/homebrew/bin/gh");
+  });
+
+  it("a symlinked gh is judged by where it resolves", () => {
+    expect(() => resolveTrustedGh(deps({ realpath: () => "/tmp/fake/gh" }))).toThrow(/no trusted gh/);
+  });
+
+  it("refuses when the returned sha is not the git blob hash of the returned content, and never spawns without a trusted gh", () => {
+    const bytes = Buffer.from(decisionDoc("approved", ANSWER_MERGE));
+    const rehearsal = fixture();
+    const mismatched = createGithubDecisionFetcher(deps({}, [], body(bytes, "0".repeat(40))));
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, mismatched), "fixture_standing_decision_unverifiable");
+    const calls: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
+    const untrusted = createGithubDecisionFetcher(deps({ mode: () => 0o777 }, calls));
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, untrusted), "fixture_standing_decision_unverifiable");
+    expect(calls).toHaveLength(0);
   });
 });

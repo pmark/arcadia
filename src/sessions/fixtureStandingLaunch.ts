@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { realpathSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -120,31 +123,92 @@ export type FetchDecisionFile = () => GithubDecisionFile;
 export const FIXTURE_STANDING_DECISION_FILE = "docs/decisions/0100-decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without.md";
 export const FIXTURE_STANDING_DECISION_SOURCE = "github.com/pmark/arcadia@main";
 
-/**
- * The real fetch: `gh api` against github.com with a sanitized environment, so
- * GH_HOST, GH_REPO, GH_CONFIG_DIR, proxy variables and the like cannot redirect
- * it. Only PATH, HOME, TMPDIR and a GitHub token (which authenticates to the
- * hardcoded host only) pass through.
- */
-export const fetchDecisionFromGithub: FetchDecisionFile = () => {
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of ["PATH", "HOME", "TMPDIR", "GH_TOKEN", "GITHUB_TOKEN"]) {
-    if (process.env[key] !== undefined) env[key] = process.env[key];
-  }
-  const result = spawnSync(
-    "gh",
-    ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${FIXTURE_STANDING_DECISION_FILE}?ref=main`],
-    { encoding: "utf8", env, timeout: 30_000 }
-  );
-  if (result.error || result.status !== 0) {
-    throw new Error(`gh api failed (${result.error?.message ?? `exit ${String(result.status)}`}): ${(result.stderr ?? "").trim().slice(0, 300)}`);
-  }
-  const parsed = JSON.parse(result.stdout) as { content?: unknown; sha?: unknown; encoding?: unknown; path?: unknown };
-  if (typeof parsed.content !== "string" || typeof parsed.sha !== "string" || parsed.encoding !== "base64" || parsed.path !== FIXTURE_STANDING_DECISION_FILE) {
-    throw new Error("GitHub returned an unexpected contents response.");
-  }
-  return { content: parsed.content, sha: parsed.sha };
+/** `gh` is only ever run from one of these absolute paths; PATH is never consulted. */
+export const TRUSTED_GH_CANDIDATES: readonly string[] = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
+
+export interface GhFetchDeps {
+  spawn: typeof spawnSync;
+  realpath(candidate: string): string;
+  /** Mode bits of `candidate` (following symlinks), or null when it does not exist. */
+  mode(candidate: string): number | null;
+  /** The passwd-entry home directory, not $HOME. */
+  home(): string;
+  /** Directories a trusted `gh` must not live in, besides the home directory. */
+  untrustedRoots(): string[];
+  candidates: readonly string[];
+}
+
+function realTemporaryRoots(): string[] {
+  const roots = ["/tmp", "/private/tmp", "/var/tmp", "/var/folders", "/private/var/folders", os.tmpdir()];
+  return roots.flatMap((root) => {
+    try { return [root, realpathSync(root)]; } catch { return [root]; }
+  });
+}
+
+const systemGhDeps: GhFetchDeps = {
+  spawn: spawnSync,
+  realpath: (candidate) => realpathSync(candidate),
+  mode: (candidate) => { try { return statSync(candidate).mode; } catch { return null; } },
+  home: () => os.userInfo().homedir,
+  untrustedRoots: realTemporaryRoots,
+  candidates: TRUSTED_GH_CANDIDATES
 };
+
+/** The first candidate that resolves, outside the home and temp directories, and is not group/world-writable (nor its directory). */
+export function resolveTrustedGh(deps: GhFetchDeps): string {
+  const home = deps.home();
+  const forbidden = [home, ...deps.untrustedRoots()];
+  for (const candidate of deps.candidates) {
+    let real: string;
+    try { real = deps.realpath(candidate); } catch { continue; }
+    if (forbidden.some((root) => real === root || real.startsWith(`${root.replace(/\/$/, "")}/`))) continue;
+    const fileMode = deps.mode(real);
+    const dirMode = deps.mode(path.dirname(real));
+    if (fileMode === null || dirMode === null || (fileMode & 0o022) !== 0 || (dirMode & 0o022) !== 0) continue;
+    return real;
+  }
+  throw new Error(`no trusted gh binary found (looked for ${deps.candidates.join(", ")})`);
+}
+
+/** Git's blob object id of `bytes`, which GitHub reports as the contents API `sha`. */
+export function gitBlobSha(bytes: Buffer): string {
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+
+/**
+ * The real fetch: `gh api` against github.com. The binary is an absolute,
+ * realpath-resolved system path (never PATH); HOME and GH_CONFIG_DIR come from
+ * the passwd entry rather than the caller's environment, so a hostile $HOME,
+ * config.yml or hosts.yml cannot redirect it; PATH is fixed; no token variable
+ * passes through (the operator's stored gh login is used).
+ */
+export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): FetchDecisionFile {
+  return () => {
+    const gh = resolveTrustedGh(deps);
+    const home = deps.home();
+    const env: NodeJS.ProcessEnv = {
+      HOME: home,
+      GH_CONFIG_DIR: path.join(home, ".config", "gh"),
+      PATH: `/usr/bin:/bin:/usr/sbin:/sbin:${path.dirname(gh)}`
+    };
+    if (process.env.TMPDIR !== undefined) env.TMPDIR = process.env.TMPDIR;
+    const result = deps.spawn(
+      gh,
+      ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${FIXTURE_STANDING_DECISION_FILE}?ref=main`],
+      { encoding: "utf8", env, timeout: 30_000 }
+    );
+    if (result.error || result.status !== 0) {
+      throw new Error(`gh api failed (${result.error?.message ?? `exit ${String(result.status)}`}): ${String(result.stderr ?? "").trim().slice(0, 300)}`);
+    }
+    const parsed = JSON.parse(String(result.stdout)) as { content?: unknown; sha?: unknown; encoding?: unknown; path?: unknown };
+    if (typeof parsed.content !== "string" || typeof parsed.sha !== "string" || parsed.encoding !== "base64" || parsed.path !== FIXTURE_STANDING_DECISION_FILE) {
+      throw new Error("GitHub returned an unexpected contents response.");
+    }
+    return { content: parsed.content, sha: parsed.sha };
+  };
+}
+
+export const fetchDecisionFromGithub: FetchDecisionFile = createGithubDecisionFetcher();
 
 interface VerifiedDecision { answer: string; blobSha: string }
 
@@ -162,7 +226,9 @@ function readAuthoritativeDecision(fetchDecision: FetchDecisionFile): VerifiedDe
     return unverifiable(error instanceof Error ? error.message : String(error));
   }
   if (typeof file.content !== "string" || typeof file.sha !== "string" || !file.sha) return unverifiable("the response carried no content or blob sha");
-  const text = Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf8");
+  const bytes = Buffer.from(file.content.replace(/\s/g, ""), "base64");
+  if (gitBlobSha(bytes) !== file.sha) return unverifiable("the returned sha is not the git blob hash of the returned content");
+  const text = bytes.toString("utf8");
   const { doc } = parseDoc(FIXTURE_STANDING_DECISION_FILE, FIXTURE_STANDING_DECISION_FILE, text);
   if (!doc || doc.type !== "decision" || doc.id !== FIXTURE_STANDING_DECISION_ID || doc.project.toLowerCase() !== FIXTURE_STANDING_DECISION_PROJECT) {
     return unverifiable("it does not parse as the arcadia Project's Decision 0100");
