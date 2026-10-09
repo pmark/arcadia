@@ -536,9 +536,22 @@ describe("arcadia ask command", () => {
     const bareWorkspace = initializedWorkspace();
     runAskCommand({ workspace: bareWorkspace, request: "Build Pinterest posting support for Unknown App." });
     const bare = runAskCommand({ workspace: bareWorkspace, request: "A" });
-    expect(bare.data.result.status).toBe("captured");
-    expect(bare.data.backBurnerItemId).toMatch(/^bb_/);
-    expect(runReviewRequiredCommand({ workspace: bareWorkspace }).data.items).toHaveLength(1);
+    // ask.routing.v2: a bare reply that names no Decision asks which one it meant instead of vanishing into the Back Burner.
+    expect(bare.data.result.status).toBe("requires_review");
+    expect(bare.data.backBurnerItemId).toBeNull();
+    expect(bare.data.reviewItemId).toMatch(/^review_/);
+    expect(runReviewRequiredCommand({ workspace: bareWorkspace }).data.items).toHaveLength(2);
+
+    // Rolled back (ask.routing.v2 false), it is preserved in the Back Burner exactly as before.
+    const rolledBack = initializedWorkspace();
+    const configPath = path.join(rolledBack, "config", "arcadia.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(configPath, JSON.stringify({ ...config, ask: { routing: { v2: false } } }, null, 2));
+    runAskCommand({ workspace: rolledBack, request: "Build Pinterest posting support for Unknown App." });
+    const earlier = runAskCommand({ workspace: rolledBack, request: "A" });
+    expect(earlier.data.result.status).toBe("captured");
+    expect(earlier.data.backBurnerItemId).toMatch(/^bb_/);
+    expect(runReviewRequiredCommand({ workspace: rolledBack }).data.items).toHaveLength(1);
   });
 
   it("routes context-backed review replies through ask", () => {
@@ -558,6 +571,45 @@ describe("arcadia ask command", () => {
   });
 
   it("routes the Golden Request Suite through ask", () => {
+    const workspace = goldenWorkspace();
+    for (const example of goldenRequestExamples) {
+      const result = runAskCommand({ workspace, request: example.input });
+      expect(result.data.intake.classification, example.name).toBe(example.expectedClassification);
+      expect(result.data.intake.resolvedIntent, example.name).toBe(example.expectedIntent);
+      expect(result.data.intake.project?.name ?? null, example.name).toBe(example.expectedProject);
+      expect(result.data.result.status, example.name).toBe(example.expectedRoutingOutcome);
+
+      if (example.expectedBackBurner) {
+        expect(result.data.backBurnerItemId, example.name).toMatch(/^bb_/);
+        expect(result.data.reviewItemId, example.name).toBeNull();
+      } else {
+        expect(result.data.backBurnerItemId, example.name).toBeNull();
+        expect(result.data.reviewItemId, example.name).toMatch(/^review_/);
+      }
+    }
+  });
+
+  it("restores the earlier Golden Request Suite routing when ask.routing.v2 is false", () => {
+    const workspace = goldenWorkspace();
+    const configPath = path.join(workspace, "config", "arcadia.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(configPath, JSON.stringify({ ...config, ask: { routing: { v2: false } } }, null, 2));
+
+    for (const example of goldenRequestExamples) {
+      const expected = example.rollback ?? { outcome: example.expectedRoutingOutcome, backBurner: example.expectedBackBurner };
+      const result = runAskCommand({ workspace, request: example.input });
+      expect(result.data.result.status, example.name).toBe(expected.outcome);
+      if (expected.backBurner) {
+        expect(result.data.backBurnerItemId, example.name).toMatch(/^bb_/);
+        expect(result.data.reviewItemId, example.name).toBeNull();
+      } else {
+        expect(result.data.backBurnerItemId, example.name).toBeNull();
+        expect(result.data.reviewItemId, example.name).toMatch(/^review_/);
+      }
+    }
+  });
+
+  function goldenWorkspace(): string {
     const workspace = initializedWorkspace();
     withDatabase(workspace, (db) => {
       const arcadia = createProjectWithInitialWork(db, {
@@ -591,23 +643,8 @@ describe("arcadia ask command", () => {
       });
       upsertProjectMetadata(db, { projectId: midiOpener.project.id, aliases: ["MIDI Opener", "midi opener app"] });
     });
-
-    for (const example of goldenRequestExamples) {
-      const result = runAskCommand({ workspace, request: example.input });
-      expect(result.data.intake.classification, example.name).toBe(example.expectedClassification);
-      expect(result.data.intake.resolvedIntent, example.name).toBe(example.expectedIntent);
-      expect(result.data.intake.project?.name ?? null, example.name).toBe(example.expectedProject);
-      expect(result.data.result.status, example.name).toBe(example.expectedRoutingOutcome);
-
-      if (example.expectedBackBurner) {
-        expect(result.data.backBurnerItemId, example.name).toMatch(/^bb_/);
-        expect(result.data.reviewItemId, example.name).toBeNull();
-      } else {
-        expect(result.data.backBurnerItemId, example.name).toBeNull();
-        expect(result.data.reviewItemId, example.name).toMatch(/^review_/);
-      }
-    }
-  });
+    return workspace;
+  }
 
   it("only shows actionable Requires Review records", () => {
     const workspace = initializedWorkspace();

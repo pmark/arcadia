@@ -294,8 +294,32 @@ export const deterministicIntakeClassifier: IntakeClassifier = {
   }
 };
 
+/**
+ * The words that make an Ask recurring work (Plan Action stop-asks-vanishing).
+ * A deterministic flag only: nothing here schedules anything.
+ */
+const RECURRENCE_PATTERN = /\b(?:every|daily|weekly|monthly|recurring|schedule)\b/;
+
+/**
+ * The words that make work worth planning before it is built. Stewardship uses
+ * the same pattern for `planningRecommended`, so the intake flag cannot drift
+ * from it.
+ */
+export const PLANNING_RECOMMENDED_PATTERN =
+  /\b(?:architecture|architect|migration|redesign|roadmap|strategy|workflow|integration|publishing|posting|publish|post|deploy|deployment|credentials?|paid|scheduler|automation|release|multi[- ]step|end[- ]to[- ]end)\b/;
+
+/** The deterministic `recurrence` and `planning` flags, as extractedFields entries (`"true"` when set). */
+export function intakeRoutingFlags(rawInput: string): { recurrence?: "true"; planning?: "true" } {
+  const normalized = normalizeText(rawInput);
+  return {
+    ...(RECURRENCE_PATTERN.test(normalized) ? { recurrence: "true" as const } : {}),
+    ...(PLANNING_RECOMMENDED_PATTERN.test(normalized) ? { planning: "true" as const } : {})
+  };
+}
+
 export function resolveIntake(rawInput: string, context: IntakeWorkspaceContext): IntakeResult {
-  const resolved = resolveIntakeWithoutClassification(rawInput, context);
+  const resolvedCore = resolveIntakeWithoutClassification(rawInput, context);
+  const resolved = { ...resolvedCore, extractedFields: { ...resolvedCore.extractedFields, ...intakeRoutingFlags(rawInput) } };
   const classification = deterministicIntakeClassifier.classify(rawInput, resolved);
   return {
     ...resolved,
@@ -1438,6 +1462,11 @@ function missingProjectFields(project: { reference: IntakeResolvedReference | nu
 
 const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert|review|test|document|design|verify|audit)\b(?!\s+(?:could|would|should|might|may|can|is|are|was|were|has|have|needs?|seems?|feels?)\b)/;
 
+// The operator saying what they want, not commanding it: "I should be able to
+// ...", "I want (to be able) to ...", "let me ...", "it would be good if ...".
+// It is work to do exactly as an imperative is, so it must never be shelved.
+const OPERATOR_WISH_REQUEST = /^(?:i\s+should\s+be\s+able\s+to|i\s+want(?:\s+to\s+be\s+able)?\s+to|let\s+me|it\s+would\s+be\s+good\s+if)\b/;
+
 // An imperative request names work to do even when no template recognizes it.
 // A verb-shaped word followed by a modal or linking verb is a noun-led
 // statement ("Design could be improved"), not a command.
@@ -1447,7 +1476,7 @@ export function isImperativeRequest(rawInput: string): boolean {
   return rawInput
     .split(/\r?\n/)
     .map((line) => normalizeText(line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")))
-    .some((line) => IMPERATIVE_REQUEST.test(line));
+    .some((line) => IMPERATIVE_REQUEST.test(line) || OPERATOR_WISH_REQUEST.test(line));
 }
 
 function normalizeText(value: string): string {

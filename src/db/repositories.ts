@@ -1505,17 +1505,22 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
     prompt_packet_path: nullable(input.promptPacketPath),
     status: validateAskRequestStatus(input.status),
     created_at: timestamp,
-    updated_at: timestamp
+    updated_at: timestamp,
+    recurrence_flag: input.recurrenceFlag ? 1 : 0,
+    planning_flag: input.planningFlag ? 1 : 0,
+    suppressed_reason: nullable(input.suppressedReason)
   };
 
   db.prepare(
     `INSERT INTO ask_requests (
       id, raw_request, resolved_intent, registry_version, output_kind, stewardship_json, work_item_id,
-      capture_id, plan_id, prompt_packet_path, status, created_at, updated_at
+      capture_id, plan_id, prompt_packet_path, status, created_at, updated_at,
+      recurrence_flag, planning_flag, suppressed_reason
     ) VALUES (
       @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @stewardship_json, @work_item_id,
       @capture_id,
-      @plan_id, @prompt_packet_path, @status, @created_at, @updated_at
+      @plan_id, @prompt_packet_path, @status, @created_at, @updated_at,
+      @recurrence_flag, @planning_flag, @suppressed_reason
     )`
   ).run(askRequest);
 
@@ -1525,6 +1530,84 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
   }
 
   return created;
+}
+
+/**
+ * The open or deferred Ask question (a review_item an Ask raised) whose source
+ * text is exactly `text` and which was created at or after `sinceIso`. The
+ * comparison is exact on the trimmed text: "exact duplicate" means the same
+ * words, not a similar request.
+ */
+export function findOpenAskQuestionDuplicate(
+  db: Database.Database,
+  text: string,
+  sinceIso: string
+): { id: string; slug: string | null; created_at: string } | null {
+  return (
+    (db
+      .prepare(
+        `SELECT id, slug, created_at FROM review_items
+         WHERE ask_request_id IS NOT NULL
+           AND status IN ('open', 'deferred')
+           AND TRIM(source_input) = ?
+           AND created_at >= ?
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`
+      )
+      .get(text.trim(), sinceIso) as { id: string; slug: string | null; created_at: string } | undefined) ?? null
+  );
+}
+
+/**
+ * Operator Asks in a window by routing outcome, for the Ask report. An Ask
+ * suppressed as an acknowledgement or duplicate created no question, so it is
+ * counted apart: it must never read as an Ask that vanished. Asks written by
+ * an agent are not operator Asks; the caller's `isOperatorSource` excludes them.
+ */
+export interface AskRoutingTally {
+  asks: number;
+  suppressed: { total: number; acknowledgement: number; duplicate: number };
+  recurrence: number;
+  planning: number;
+}
+
+export function askRoutingTally(
+  db: Database.Database,
+  sinceIso: string,
+  untilIso: string,
+  isOperatorSource: (ingressSource: string | null) => boolean
+): AskRoutingTally {
+  const rows = db
+    .prepare(
+      `SELECT ar.suppressed_reason, ar.recurrence_flag, ar.planning_flag, ce.ingress_source
+       FROM ask_requests ar
+       LEFT JOIN ask_capture_envelopes ce ON ce.id = ar.capture_id
+       WHERE ar.created_at >= ? AND ar.created_at <= ?`
+    )
+    .all(sinceIso, untilIso) as Array<{
+      suppressed_reason: string | null;
+      recurrence_flag: number;
+      planning_flag: number;
+      ingress_source: string | null;
+    }>;
+  const tally: AskRoutingTally = {
+    asks: 0,
+    suppressed: { total: 0, acknowledgement: 0, duplicate: 0 },
+    recurrence: 0,
+    planning: 0
+  };
+  for (const row of rows) {
+    if (!isOperatorSource(row.ingress_source)) continue;
+    tally.asks += 1;
+    if (row.recurrence_flag) tally.recurrence += 1;
+    if (row.planning_flag) tally.planning += 1;
+    if (row.suppressed_reason) {
+      tally.suppressed.total += 1;
+      if (row.suppressed_reason.startsWith("duplicate")) tally.suppressed.duplicate += 1;
+      else tally.suppressed.acknowledgement += 1;
+    }
+  }
+  return tally;
 }
 
 /**

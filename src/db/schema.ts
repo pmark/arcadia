@@ -56,6 +56,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureRequiresReviewCompatibility(db);
   // After the requires_review rebuild, which recreates ask_requests and drops its indexes.
   ensureAskTraceColumns(db);
+  ensureAskRoutingColumns(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
@@ -1528,6 +1529,26 @@ function ensureProductionOperatorEscalationsTable(db: Database.Database): void {
       last_seen_at TEXT NOT NULL
     );
   `);
+}
+
+/**
+ * The deterministic `recurrence` and `planning` intake flags an Ask carried, and
+ * why an acknowledgement or duplicate created no question (`suppressed_reason`),
+ * so a report can count each without parsing prose. Additive; old rows read 0 / NULL.
+ */
+function ensureAskRoutingColumns(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(ask_requests)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("recurrence_flag")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN recurrence_flag INTEGER NOT NULL DEFAULT 0").run();
+  }
+  if (!columns.has("planning_flag")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN planning_flag INTEGER NOT NULL DEFAULT 0").run();
+  }
+  if (!columns.has("suppressed_reason")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN suppressed_reason TEXT").run();
+  }
 }
 
 function ensureAskRequestStewardshipColumn(db: Database.Database): void {

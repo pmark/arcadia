@@ -251,6 +251,12 @@ export interface AskRequest {
   status: AskRequestStatus;
   created_at: string;
   updated_at: string;
+  /** 1 when intake saw recurrence words (every, daily, weekly, monthly, recurring, schedule). */
+  recurrence_flag: number;
+  /** 1 when intake saw the planning-recommended pattern. */
+  planning_flag: number;
+  /** Why this Ask created no new question (`acknowledgement` or `duplicate:<review id>`); null for every other Ask. */
+  suppressed_reason: string | null;
 }
 
 export type ReviewItemStatus = "open" | "approved" | "rejected" | "deferred";
@@ -737,6 +743,9 @@ export interface CreateAskRequestInput {
   planId?: string | null;
   promptPacketPath?: string | null;
   status: AskRequestStatus;
+  recurrenceFlag?: boolean;
+  planningFlag?: boolean;
+  suppressedReason?: string | null;
 }
 
 export interface CreateReviewItemInput {

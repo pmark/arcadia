@@ -164,9 +164,9 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
+      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
@@ -220,13 +220,15 @@ describe("arcadia todo", () => {
     const workspace = fixtureWorkspace(repo);
 
     const capped = run({ workspace, now: NOW });
-    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 2, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
+    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 2, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
       "decision:demo/0008", "decision:demo/0007", "decision:demo/0006", "decision:demo/0005", "decision:demo/0004"
     ]);
     const lines = render(capped.data);
     expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0, review items 0, operator tasks 0, escalations 0, clarify 0, plan actions 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
-    expect(lines.at(-1)).toBe("2 more: --all");
+    // The cap note closes the Yours section; the Agents are doing section follows it.
+    expect(lines.indexOf("2 more: --all")).toBeGreaterThan(lines.indexOf("Yours"));
+    expect(lines.indexOf("2 more: --all")).toBeLessThan(lines.indexOf("Agents are doing"));
     expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (Decisions newest first, then oldest first):"));
 
     const all = run({ workspace, now: NOW, all: true });
@@ -288,7 +290,7 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
 
     expect(data.asOf).toMatchObject({ workspace: null, workspacePath: null });
-    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
+    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: null, backBurner: null, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
     expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001", "decision:demo/0002"]);
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: no workspace at .*arcadia init <path>/)]);
     const lines = render(data);
@@ -379,7 +381,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
     ]);
     expect(data.counts).toEqual({
       blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0,
-      agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+      agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
     });
     expect(data.items.every((item) => item.staleReason === undefined)).toBe(true);
     const lines = render(data);
@@ -546,12 +548,12 @@ describe("arcadia todo: positive-evidence staleness", () => {
   it("golden: the stale view as JSON", () => {
     const workspace = fixtureWorkspace(staleRepo(), [asks[0]]);
     expect(run({ workspace, now: NOW, stale: true }).data).toEqual({
-      schema: "arcadia-todo-v1",
+      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
       view: "stale",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
         blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0,
-        agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+        agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
       },
       items: [
         {
@@ -715,9 +717,9 @@ describe("arcadia todo: review_items", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 1, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
+      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 1, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
         {
           key: "review_item:demo/review-clarify", kind: "review_item", title: "Which database should the demo use?", project: "demo", blocking: false,
@@ -1009,7 +1011,7 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
 
     expect(data.counts).toEqual({
       blocking: 3, other: 1, stale: 0, staleHidden: 0,
-      byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 2, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+      byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 2, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
     });
     // Escalations lead the blocking section (oldest first), then the blocking Decision; the alert Decision follows.
     expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
@@ -1404,13 +1406,13 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1",
+      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
       view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
         blocking: 1, other: 2, stale: 0, staleHidden: 0,
         byKind: { decision: 0, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 1, plan_action: 2 },
-        hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+        hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
       },
       items: [
         {

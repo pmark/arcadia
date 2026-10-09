@@ -4,7 +4,7 @@ import { ingressSourceKind, type IngressSourceKind } from "../ask/replyCapture.j
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { askRoutingTally, getProjectMetadata, listProjects, type AskRoutingTally } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import type { DecisionDoc } from "../docs/types.js";
 import { validationError } from "../cli/errors.js";
@@ -82,6 +82,12 @@ export interface AskCoverageData {
   excludedAgent: AskCoverageSourceCounts;
   /** Sources the vocabulary does not classify (`ask`, `cli.ask`, ...): not counted anywhere. */
   unclassified: AskCoverageSourceCounts;
+  /**
+   * Operator Asks routed in the window (any source that is not agent-written or provenance-only). Suppressed Asks
+   * (an acknowledgement, or an exact repeat of an open question) created no question and are counted apart: they are
+   * not Asks that vanished. `recurrence` and `planning` count the deterministic intake flags the Ask rows recorded.
+   */
+  routing: AskRoutingTally;
   notes: string[];
 }
 
@@ -285,6 +291,10 @@ export function buildAskCoverage(
     surfaces,
     excludedAgent,
     unclassified,
+    routing: askRoutingTally(db, sinceIso, untilIso, (source) => {
+      const kind = source === null ? null : ingressSourceKind(source);
+      return kind !== "agent" && kind !== "provenance";
+    }),
     notes
   };
 }
@@ -368,6 +378,9 @@ export function renderAskCoverageSuccess(response: CommandSuccess<AskCoverageDat
     `Operator intake with denominator unknown: ${data.intake.capturedDenominatorUnknown} captured (not comparable to the percentage above)`,
     `Excluded, agent-written (agent.ask, codex.*): ${data.excludedAgent.total}${formatBySource(data.excludedAgent)}`,
     `Not classified (not counted): ${data.unclassified.total}${formatBySource(data.unclassified)}`,
+    `Operator Asks routed: ${data.routing.asks} · suppressed, created no question: ${data.routing.suppressed.total}` +
+      ` (acknowledgement ${data.routing.suppressed.acknowledgement}, duplicate ${data.routing.suppressed.duplicate})` +
+      ` · recurrence flagged ${data.routing.recurrence} · planning flagged ${data.routing.planning}`,
     "",
     ...data.notes
   );

@@ -1607,11 +1607,13 @@ The Morning Packet also carries an **Operator to-do** section: the same
 counts `pnpm arcadia todo` prints, then each blocking item (at most five) with
 the command that answers it, escalation items first and marked `STOPPED:` so the
 packet states what halted production overnight (`arcadia todo` raises an
-`escalation:*` item for each stalled production Action), and `N more: arcadia todo` for
-the rest. It is built read-only in-process when the packet composes, so it
+`escalation:*` item for each stalled production Action), `N more: arcadia todo` for
+the rest, and a count line `N Ask questions need one answer: arcadia todo` when your Asks
+have raised any. It is built read-only in-process when the packet composes, so it
 rides the existing scheduled delivery with no new message or schedule. If the
-to-do data cannot be built the section is the single line
-`to-do unavailable: <reason>` and the packet still composes.
+to-do data cannot be built the section is the line
+`to-do unavailable: <reason>` (followed by a line saying Ask questions and Ask-origin
+tasks are unavailable) and the packet still composes.
 
 Each newly composed Morning Packet also includes a clearly labelled, bounded
 local-AI perspective: one headline and one paragraph explaining what the
@@ -2652,8 +2654,39 @@ pnpm arcadia todo                      # blocking items, then five others: open 
 pnpm arcadia todo --all                # every other item too, stale last
 pnpm arcadia todo --stale              # only items with positive evidence they are done
 pnpm arcadia todo --project arcadia    # one Project
+pnpm arcadia todo --agents             # the in-flight agent work the default view only counts
 pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 ```
+
+The default view has two sections. **Yours** holds everything described below plus
+a **Your Asks need one answer (N)** group: the newest five questions your Asks
+raised, with the full N always printed (`counts.askQuestions`) and never hidden by
+the five-item cap on other items (`--all` lists every one). Each carries the
+command that answers it: `arcadia review approve <id>` to create it as work,
+with `reject`, `defer` and the Discord reply listed beside it. **Agents are doing**
+is one count line of in-flight agent work (prepared or running Sessions, pending or
+running managed Runs); `--agents` lists them. A line `Back Burner: N incubating
+(M new in 7 days)` shows how big the shelf is without making it a to-do. With no
+resolvable workspace the output says Ask questions and Ask-origin tasks are
+unavailable instead of printing zero.
+
+### Where an Ask goes: `ask.routing.v2`
+
+An Ask that matches no execution pattern is **never** shelved silently. It becomes
+a question in `arcadia todo` (Clarify First); only an intake classification of
+Idea, or `arcadia ask --back-burner`, puts an Ask in the Back Burner. A reply such
+as `yes` that names no Decision also asks which one you meant. Phrasings like "I
+should be able to ...", "I want (to be able) to ...", "let me ..." and "it would be
+good if ..." are work requests. Two messages create no question and say why in their
+receipt: a whole message that is only `thanks`, `thank you`, `ok`, `okay`, `got it`,
+`ack` or emoji (bare `done` is not on the list, because it can be a completion
+report), and an exact repeat of a question that is still open within 24 hours.
+`arcadia ask show --coverage` counts those as suppressed, apart from Asks that
+vanished, and counts the deterministic `recurrence` and `planning` intake flags.
+Agent-written Asks (`agent.ask`, `codex.*`) keep the earlier routing.
+
+To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
+workspace's `config/arcadia.json`; the flag defaults to on.
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
 run. It lists seven sources per Project: **open Decisions**, **pending Agent
@@ -2694,6 +2727,7 @@ already records, never synthesized:
 | `decision` | `plan:<slug> action:<id>`, whichever it has | the Decision's `plan` and `action` frontmatter; `null` when it names neither |
 | `agent_ask` | `request:<request_id>`, then ` via:<source>` | the proposal's `request_id`, and `ingress_source` of the capture envelope its `capture_id` names (omitted when that envelope is not stored) |
 | `review_item` | its `resolved_intent`, for example `ActionClarification` | the review item row |
+| `review_item` (an Ask question) | `ask:<ask_id>`, then ` via:<source>` | the Ask that raised it, and `ingress_source` of its capture envelope when stored |
 | `operator_task` | `action:<id>` or `decision:<id>` | the ledger entry's `origin` |
 | `escalation:<kind>` | `action:<id>` | the id part of `production_operator_escalations.action_key` (the kind is already in `kind`) |
 | `clarify` | `capture:<capture_id>`, then ` via:<source>` | the work item's `capture_id`, and `ingress_source` of that capture envelope when stored |

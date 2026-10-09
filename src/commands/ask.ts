@@ -10,6 +10,14 @@ import {
   type AskProcessingReceipt
 } from "../ask/rules.js";
 import { captureAskEnvelope, type AskCaptureEnvelope, type CaptureAttachmentInput } from "../ask/captureEnvelope.js";
+import { ingressSourceKind } from "../ask/replyCapture.js";
+import {
+  DUPLICATE_ASK_WINDOW_MS,
+  SUPPRESSED_ACKNOWLEDGEMENT,
+  SUPPRESSED_DUPLICATE_PREFIX,
+  isTrivialAcknowledgement
+} from "../ask/suppression.js";
+import { askRoutingV2Enabled } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
@@ -26,6 +34,7 @@ import {
   createMilestoneForProject,
   createReviewItem,
   createWorkItemWithOptionalArtifact,
+  findOpenAskQuestionDuplicate,
   getActiveMilestoneForProject,
   getProjectMetadata,
   getMilestone,
@@ -132,6 +141,11 @@ export interface AskCommandData {
   decisionId: string | null;
   decisionSlug?: string | null;
   backBurnerItemId: string | null;
+  /**
+   * Present only when `ask.routing.v2` created no question for this Ask: `reason` is `acknowledgement` or
+   * `duplicate:<review id>`, and `openQuestionId` is the still-open question an exact duplicate repeats.
+   */
+  suppressed?: { reason: string; openQuestionId: string | null };
   processingReceipt: AskProcessingReceipt | null;
 }
 
@@ -184,6 +198,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
   const approvedFromReview = Boolean(options.approvedReviewItemId);
+  // ask.routing.v2: an agent-written Ask (agent.ask, codex.*) keeps the earlier routing, as does a workspace that turned the flag off.
+  const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && askRoutingV2Enabled(workspacePath);
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
   const { intake, workspaceContext, selectedProject } = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
@@ -212,7 +228,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       approvedFromReview,
       reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
       reviewResponseHasResponse: parsedReviewResponse.hasResponse,
-      selectedProject
+      selectedProject,
+      routingV2
     }),
     approvedFromReview
   );
@@ -224,7 +241,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     approvedFromReview,
     reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
     reviewResponseHasResponse: parsedReviewResponse.hasResponse,
-    selectedProject
+    selectedProject,
+    routingV2
   });
   const stewardship: GoalStewardshipResult = options.captureAsIdea
     ? {
@@ -238,6 +256,11 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         classificationReason: "Explicit idea capture is deterministically routed to Back Burner."
       }
     : computedStewardship;
+  // Every Ask row records the deterministic intake flags, so a report can count them without re-reading prose.
+  const askRoutingFlags = {
+    recurrenceFlag: intake.extractedFields.recurrence === "true",
+    planningFlag: intake.extractedFields.planning === "true"
+  };
   const routing = withDatabase(workspacePath, (db) => {
     const explicit = resolveProjectReference(db, options.project);
     if (options.project && !explicit) {
@@ -278,6 +301,81 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   }
   let run: ExecutionRunSummary | null = null;
 
+  // Under ask.routing.v2 only two things create no question: a whole-message acknowledgement and an exact repeat of
+  // a question still open. Each leaves a receipt that says why, and the report counts it apart from a vanished Ask.
+  const suppression = routingV2 && !ruleMatch && !approvedFromReview && !options.captureAsIdea && !parsedReviewResponse.hasReviewReference
+    ? withDatabase(workspacePath, (db): { reason: string; summary: string; reviewItemId: string | null } | null => {
+        if (isTrivialAcknowledgement(request)) {
+          return {
+            reason: SUPPRESSED_ACKNOWLEDGEMENT,
+            summary: "Suppressed: the whole message is an acknowledgement, so no new question was created.",
+            reviewItemId: null
+          };
+        }
+        const since = new Date(Date.now() - DUPLICATE_ASK_WINDOW_MS).toISOString();
+        const duplicate = findOpenAskQuestionDuplicate(db, request, since);
+        return duplicate
+          ? {
+              reason: `${SUPPRESSED_DUPLICATE_PREFIX}${duplicate.id}`,
+              summary: `Suppressed: an identical question (${duplicate.slug ?? duplicate.id}) is already open, so no new question was created.`,
+              reviewItemId: duplicate.id
+            }
+          : null;
+      })
+    : null;
+  if (suppression) {
+    const suppressedStewardship: GoalStewardshipResult = {
+      ...stewardship,
+      recommendedExecutionPath: "Blocked",
+      planningRecommended: false,
+      clarificationRequired: false,
+      reviewRequired: false,
+      generatedCodexGoalText: null,
+      classificationReason: suppression.summary
+    };
+    const ask = withDatabase(workspacePath, (db) => {
+      const ask = createAskRequest(db, {
+        ...askRoutingFlags,
+        captureId: captureEnvelope.id,
+        rawRequest: options.request,
+        resolvedIntent: resolved.intentId,
+        registryVersion: registries.intents.version,
+        outputKind: "suppressed",
+        stewardshipJson: stewardshipJson(suppressedStewardship),
+        status: "planned",
+        suppressedReason: suppression.reason
+      });
+      return ask;
+    });
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        captureEnvelope,
+        processingReceipt,
+        ask,
+        stewardship: suppressedStewardship,
+        intake,
+        resolvedIntent: resolved,
+        result: { status: "ignored", summary: suppression.summary },
+        workItem: null,
+        plan: null,
+        approvalGates: [],
+        codexInvocations: [],
+        run: null,
+        project: null,
+        projectSummary: null,
+        projects: null,
+        status: null,
+        review: null,
+        reviewItemId: null,
+        decisionId: null,
+        backBurnerItemId: null,
+        suppressed: { reason: suppression.reason, openQuestionId: suppression.reviewItemId }
+      }
+    });
+  }
+
   // A reply tied to a known Decision belongs to the review workflow even when
   // it is free-form prose. Clarification answers are intentionally not one of
   // the short approve/reject/defer tokens recognized by the parser.
@@ -293,6 +391,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: "ReviewResponse",
@@ -358,6 +457,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
     const ask = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: intake.resolvedIntent,
@@ -408,6 +508,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const status = runStatusCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -453,6 +554,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const review = runReviewRequiredCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -504,6 +606,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
     const ask = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -572,6 +675,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       const project = applyProjectAttributeUpdate(db, action);
 
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -609,6 +713,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       }
 
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -651,6 +756,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   if ((intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
     const { ask, projects } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -697,6 +803,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         throw projectNotFound(projectId);
       }
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -762,6 +869,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -773,8 +881,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       const reviewItem = createReviewItem(db, {
         askRequestId: ask.id,
         projectId: routedProjectId,
-        decisionNeeded: decisionNeededForStewardship(intake, stewardship),
-        recommendation: recommendationForStewardship(intake, stewardship),
+        decisionNeeded: decisionNeededForStewardship(intake, stewardship, routingV2),
+        recommendation: recommendationForStewardship(intake, stewardship, routingV2),
         sourceInput: intake.rawInput,
         proposedAction: intake.proposedAction,
         resolvedIntent: intake.resolvedIntent,
@@ -880,6 +988,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         nextAction: missingRepositoryPathMessage
       });
       const ask = createAskRequest(db, {
+        ...askRoutingFlags,
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -1011,6 +1120,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     }
 
     const ask = createAskRequest(db, {
+        ...askRoutingFlags,
       captureId: captureEnvelope.id,
       rawRequest: options.request,
       resolvedIntent: resolved.intentId,
@@ -1266,6 +1376,11 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>): stri
 
   if (response.data.reviewItemId) {
     lines.push(`Decision created: ${response.data.decisionSlug ?? response.data.reviewItemId}`);
+  }
+
+  if (response.data.suppressed) {
+    lines.push(`Suppressed: ${response.data.suppressed.reason}`);
+    if (response.data.suppressed.openQuestionId) lines.push(`Open question: ${response.data.suppressed.openQuestionId}`);
   }
 
   if (response.data.backBurnerItemId) {
@@ -1615,7 +1730,25 @@ function metadataString(metadata: Record<string, unknown> | undefined, key: stri
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function decisionNeededForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult): string {
+/** An Ask routing v2 turned into one question: it matched no execution pattern (or was a reply naming no Decision). */
+function isUnmatchedAskQuestion(intake: IntakeResult, stewardship: GoalStewardshipResult, routingV2: boolean): boolean {
+  return (
+    routingV2 &&
+    stewardship.recommendedExecutionPath === "Clarify First" &&
+    (intake.action.kind === "capture_thought" || stewardship.intentType === "Review Response")
+  );
+}
+
+function askExcerpt(rawInput: string): string {
+  const flat = rawInput.replace(/\s+/g, " ").trim();
+  return flat.length > 140 ? `${flat.slice(0, 139)}…` : flat;
+}
+
+function decisionNeededForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult, routingV2 = false): string {
+  if (isUnmatchedAskQuestion(intake, stewardship, routingV2)) {
+    return `What should Arcadia do with this? "${askExcerpt(intake.rawInput)}"`;
+  }
+
   if (stewardship.recommendedExecutionPath === "Clarify First") {
     if (intake.resolvedIntent === "UpdateEntityAttribute") {
       return decisionNeededForIntake(intake);
@@ -1659,7 +1792,11 @@ function decisionNeededForIntake(intake: IntakeResult): string {
   return reviewNextAction(intake);
 }
 
-function recommendationForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult): string {
+function recommendationForStewardship(intake: IntakeResult, stewardship: GoalStewardshipResult, routingV2 = false): string {
+  if (isUnmatchedAskQuestion(intake, stewardship, routingV2)) {
+    return "Approve to create it as work (execution still needs its own approval), reject to drop it, or send it again with --back-burner to keep it as an idea.";
+  }
+
   if (stewardship.recommendedExecutionPath === "Clarify First") {
     return "Clarify the missing target or outcome, then approve only if the stewarded intent is correct.";
   }

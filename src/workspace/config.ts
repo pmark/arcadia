@@ -74,6 +74,15 @@ export interface WorkspaceExperimentConfig {
   decision?: string;
 }
 
+/**
+ * `ask.routing.v2` (Plan Action stop-asks-vanishing): operator Asks that match
+ * no execution pattern go to Clarify First, never silently to the Back Burner.
+ * It defaults to on; `false` restores the earlier routing (the rollback).
+ */
+export interface WorkspaceAskConfig {
+  routing?: { v2?: boolean };
+}
+
 export interface WorkspaceArcadiaConfig {
   name?: string;
   version?: number;
@@ -83,6 +92,7 @@ export interface WorkspaceArcadiaConfig {
   codingAgent?: WorkspaceCodingAgentConfig;
   redAlertDiagnosis?: WorkspaceRedAlertDiagnosisConfig;
   experiment?: WorkspaceExperimentConfig;
+  ask?: WorkspaceAskConfig;
 }
 
 /** The resolved facts about an experiment workspace, with absolute paths. */
@@ -121,6 +131,47 @@ export function readExperimentWorkspace(workspacePath: string): ExperimentWorksp
   const experiment = parseExperimentConfig(block, configPath);
   if (!experiment) return null;
   return { workspacePath: root, allowedRepoRoot: path.resolve(root, experiment.allowedRepoRoot) };
+}
+
+/**
+ * Whether `ask.routing.v2` is on for a workspace. On when the config file, the
+ * `ask` block or the flag is absent; only an explicit `false` turns it off.
+ * Only the `ask` block is parsed, so an unrelated config problem cannot change
+ * routing; a malformed `ask` block fails loudly rather than reading as "on".
+ */
+export function askRoutingV2Enabled(workspacePath: string): boolean {
+  const configPath = path.join(path.resolve(workspacePath), "config", "arcadia.json");
+  if (!existsSync(configPath)) return true;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw validationError("Workspace configuration is not valid JSON.", {
+      configPath,
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+  const block = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>).ask
+    : undefined;
+  return parseAskConfig(block, configPath)?.routing?.v2 !== false;
+}
+
+function parseAskConfig(value: unknown, configPath: string): WorkspaceAskConfig | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw validationError("Workspace ask configuration must be a JSON object.", { configPath });
+  }
+  const routing = (value as Record<string, unknown>).routing;
+  if (routing === undefined) return {};
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) {
+    throw validationError("Workspace ask.routing must be a JSON object.", { configPath });
+  }
+  const v2 = (routing as Record<string, unknown>).v2;
+  if (v2 !== undefined && typeof v2 !== "boolean") {
+    throw validationError("Workspace ask.routing.v2 must be a boolean.", { configPath });
+  }
+  return { routing: { v2: typeof v2 === "boolean" ? v2 : undefined } };
 }
 
 export function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -194,9 +245,10 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
   const codingAgent = parseCodingAgentConfig(config.codingAgent, configPath);
   const redAlertDiagnosis = parseRedAlertDiagnosisConfig(config.redAlertDiagnosis, configPath);
   const experiment = parseExperimentConfig(config.experiment, configPath);
+  const ask = parseAskConfig(config.ask, configPath);
   const memoryValue = config.memory;
   if (memoryValue === undefined) {
-    return { ...config, codingAgent, redAlertDiagnosis, experiment };
+    return { ...config, codingAgent, redAlertDiagnosis, experiment, ask };
   }
   if (!memoryValue || typeof memoryValue !== "object" || Array.isArray(memoryValue)) {
     throw validationError("Workspace memory configuration must be a JSON object.", { configPath });
@@ -216,7 +268,8 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
     },
     codingAgent,
     redAlertDiagnosis,
-    experiment
+    experiment,
+    ask
   };
 }
 
