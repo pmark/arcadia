@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
-import { normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
+import { evidenceHasPlaceholder, normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
 
@@ -99,8 +99,9 @@ function findMatchingCompleteAskDrafts(
   return matches;
 }
 
-function evidenceCoversCriteriaVerbatim(evidence: NormalizedAgentAsk["evidence"], declared: string[]): boolean {
+export function evidenceCoversCriteriaVerbatim(evidence: NormalizedAgentAsk["evidence"], declared: string[]): boolean {
   if (declared.length === 0 || evidence.length !== declared.length) return false;
+  if (evidenceHasPlaceholder(evidence)) return false;
   return evidence.every((entry, index) => entry.criterion === declared[index] && entry.status === "met");
 }
 

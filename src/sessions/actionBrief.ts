@@ -3,6 +3,7 @@ import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
+import { EVIDENCE_PLACEHOLDER_MARKER } from "../ask/agentAsk.js";
 import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
@@ -54,6 +55,83 @@ export interface ActionBriefInput {
    */
   model?: string | null;
   registry?: ModelTierRegistry;
+  /**
+   * The Session runs headless (no operator at its terminal). Claude's headless
+   * allow list and Codex's `workspace-write` sandbox both refuse `git commit`
+   * and the preservation broker, so such a Session gets the draft-only
+   * completion recipe. opencode's posture is unmanaged, so it keeps the
+   * generic protocol.
+   */
+  headless?: boolean;
+}
+
+/** Whether this Session's posture is one that cannot commit or preserve (host-owned). */
+function sessionCannotCommit(input: ActionBriefInput): boolean {
+  return input.headless === true && (input.agent === "claude" || input.agent === "codex");
+}
+
+const COMPLETION_REQUEST_ID_PATTERN = /Agent Ask request id[:\s]+`?(complete-[a-z0-9][a-z0-9-]*)(?![A-Za-z0-9_-])/;
+
+/** The completion request id the Action text names, else a deterministic default tied to the candidate's HEAD. */
+function completionRequestId(actionId: string, nextAction: string | null, title: string, head: string): string {
+  const named = COMPLETION_REQUEST_ID_PATTERN.exec(`${nextAction ?? ""}\n${title}`)?.[1];
+  return (named ?? `complete-${actionId}-${head.slice(0, 12)}`).slice(0, 120);
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The draft-only completion block for a Session that cannot commit: one exact
+ * `arcadia agent-ask draft` invocation carrying a prefilled strict `complete`
+ * Ask. `candidate_revision` is the worktree's HEAD because `agent-ask draft`
+ * refuses any other revision; the host commits the candidate on exit and its
+ * draft settler accepts that revision as an ancestor of the preserved commit.
+ */
+function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string; title: string; nextAction: string | null; acceptanceCriteria: string[] }, head: string): string[] {
+  const ask = {
+    agent_ask: "v1",
+    request_id: completionRequestId(action.id, action.nextAction, action.title, head),
+    project: input.projectSlug,
+    intent: "complete",
+    target_ref: `action/${action.id}`,
+    candidate_revision: head,
+    evidence: action.acceptanceCriteria.map((criterion) => ({
+      criterion,
+      status: "met",
+      note: `${EVIDENCE_PLACEHOLDER_MARKER} the command you ran and what you observed for this criterion>`
+    })),
+    desired_result: `Mark ${action.id} complete.`
+  };
+  // Claude's headless allow list omits the broker, so it is refused; Codex's
+  // broker can preserve when the worker heartbeat is fresh, so Codex tries it first.
+  const preservation = input.agent === "codex"
+    ? [
+        `  2. Request protected preservation through the existing fixed launcher: arcadia-preserve-broker-${input.agent}`,
+        "     Do not run raw git add, git commit or git push, and do not try to change permissions. If the broker",
+        "     refuses (for example a stale preservation heartbeat), do not retry or work around it: the host",
+        "     commits and preserves your candidate when you exit.",
+        "  3. Record completion with exactly this one command, with each `note` placeholder replaced by real",
+        "     evidence (keep every `criterion` and `status` as given; change nothing else). If the broker",
+        "     preserved your work, HEAD moved: set `candidate_revision` to the output of `git rev-parse HEAD` first:"
+      ]
+    : [
+        `  2. git add, git commit, git push and arcadia-preserve-broker-${input.agent} are host-owned in this Session and`,
+        "     will be refused. Do not run them or try to change permissions; the host commits and preserves your",
+        "     candidate when you exit.",
+        "  3. Record completion by running exactly this one command, with each `note` placeholder replaced by real",
+        "     evidence (keep every `criterion` and `status` as given; change nothing else):"
+      ];
+  return [
+    ...preservation,
+    "",
+    `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} ${shellSingleQuote(JSON.stringify(ask))}`,
+    "",
+    "     It validates the Ask and writes .arcadia/asks/agent-ask-<request_id>.yaml. Leave that file in place and",
+    "     do not write Ask files by hand or commit it: the host settles it after preserving the candidate.",
+    "  4. Exit. The host reconciles the Session only once its process has ended."
+  ];
 }
 
 /**
@@ -136,10 +214,17 @@ export function renderActionBrief(input: ActionBriefInput): string {
     : null;
   if (input.model && escalation) lines.push(...renderCallingInHelp({ agent: input.agent, model: input.model, escalation }));
   lines.push(...renderGuidanceRetrieval(input.repoRoot, input.agent, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
-  lines.push(
+  const protocolHead = [
     "",
     "Completion protocol — finish by:",
-    "  1. Run the repository's declared validation and make it pass.",
+    "  1. Run the repository's declared validation and make it pass."
+  ];
+  if (sessionCannotCommit(input)) {
+    lines.push(...protocolHead, ...renderDraftOnlyCompletion(input, action, candidateHead(input)));
+    return lines.join("\n");
+  }
+  lines.push(
+    ...protocolHead,
     `  2. Request protected preservation through the existing fixed launcher: arcadia-preserve-broker-${input.agent}`,
     "  3. Settle a `complete` Agent Ask with `candidate_revision` equal to this worktree's HEAD and one",
     "     `met` evidence entry per acceptance criterion above, verbatim and in order.",
@@ -151,6 +236,15 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "  4. Exit. The host reconciles the Session only once its process has ended."
   );
   return lines.join("\n");
+}
+
+/** The candidate worktree's HEAD (what `agent-ask draft` binds a complete Ask to), else the base revision. */
+function candidateHead(input: ActionBriefInput): string {
+  try {
+    return execFileSync("git", ["-C", input.repoRoot, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim() || input.baseRevision;
+  } catch {
+    return input.baseRevision;
+  }
 }
 
 /**

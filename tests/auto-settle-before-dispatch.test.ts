@@ -5,12 +5,14 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   attemptAutoSettlePendingCompletion,
+  evidenceCoversCriteriaVerbatim,
   AUTO_SETTLE_EVIDENCE_INCOMPLETE,
   AUTO_SETTLE_NO_DRAFT,
   AUTO_SETTLE_REVISION_CHANGED,
   AUTO_SETTLE_SETTLED,
   AUTO_SETTLE_STALE_REVISION
 } from "../src/ask/autoSettleBeforeDispatch.js";
+import { EVIDENCE_PLACEHOLDER_MARKER } from "../src/ask/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
@@ -326,3 +328,13 @@ function planDoc(options: { withOpenDecision?: boolean } = {}): string {
     "    depends_on: []", "    decisions: []", "    references: []",
     "questions: []", "---", "", "# Demo plan", ""].join("\n");
 }
+
+describe("evidenceCoversCriteriaVerbatim", () => {
+  it("does not treat evidence with an unfilled placeholder note as covering the criteria", () => {
+    const criteria = ["The contract exists."];
+    const filled = [{ criterion: "The contract exists.", status: "met" as const, note: "ran it; passed" }];
+    const unfilled = [{ criterion: "The contract exists.", status: "met" as const, note: `${EVIDENCE_PLACEHOLDER_MARKER} the command you ran>` }];
+    expect(evidenceCoversCriteriaVerbatim(filled, criteria)).toBe(true);
+    expect(evidenceCoversCriteriaVerbatim(unfilled, criteria)).toBe(false);
+  });
+});
