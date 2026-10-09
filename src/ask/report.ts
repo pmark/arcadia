@@ -25,6 +25,17 @@ export const SCHEDULE_REVIVAL_THRESHOLD = 3;
 /** How many vanished Ask ids the text report names before pointing at `--json`. */
 export const VANISHED_IDS_SHOWN = 10;
 
+/** Output kinds of an Ask that answered directly and created no Action (see `outputKindForIntake` and the project routes in `arcadia ask`). */
+export const ACTED_OUTPUT_KINDS: readonly string[] = [
+  "status_summary",
+  "status_report",
+  "review_packets",
+  "project_summary",
+  "project_list",
+  "project_update",
+  "project_created"
+];
+
 export type AskOutcome = "listed" | "acted" | "answered" | "idea" | "vanished";
 
 export interface AskReportCounts {
@@ -56,6 +67,10 @@ export interface AskReportCounts {
   backBurnerOperatorFiled: number;
   /** Asks routed by an operator's earlier correction of the same words. */
   memoHits: number;
+  /** Operator memos in force whose originating Ask came in through this source (all time, not only the window). */
+  memos: number;
+  /** Of those memos, how many no golden case backs; null when the golden set could not be read. */
+  notBackedByGolden: number | null;
   /** Asks flagged recurrence (every, daily, weekly, monthly, recurring or schedule). */
   recurrence: number;
   /** Asks flagged planning. */
@@ -137,6 +152,9 @@ interface IdeaRow {
 
 const EXPLICIT_IDEA_REASON = /^Explicit idea capture/;
 
+/** Where a memo whose originating Ask has no stored capture came from. */
+export const UNKNOWN_SOURCE = "(unknown source)";
+
 /** Operator input is everything that is not agent-written or a reply that only records words behind another write. */
 export function isOperatorSource(source: string): boolean {
   const kind = ingressSourceKind(source);
@@ -159,7 +177,7 @@ function stewardshipOf(json: string | null): { path: string | null; reason: stri
 const rate = (numerator: number, denominator: number): number | null =>
   denominator > 0 ? Math.round((numerator / denominator) * 1000) / 1000 : null;
 
-function emptyCounts(): AskReportCounts {
+function emptyCounts(golden: boolean): AskReportCounts {
   return {
     asks: 0,
     suppressed: 0,
@@ -175,6 +193,8 @@ function emptyCounts(): AskReportCounts {
     backBurnerArrivals: 0,
     backBurnerOperatorFiled: 0,
     memoHits: 0,
+    memos: 0,
+    notBackedByGolden: golden ? 0 : null,
     recurrence: 0,
     planning: 0
   };
@@ -206,9 +226,10 @@ export function askOutcome(input: {
   if (input.workItemId && input.listed.has(`work_items:${input.workItemId}`)) return "listed";
   if (input.outputKind === "review_response") return "answered";
   if (input.reviews.some((review) => review.status === "approved" || review.status === "rejected")) return "answered";
-  // An Action or a direct answer is Arcadia having acted, whatever its output kind says about its review state.
+  // An Action is Arcadia having acted, whatever its output kind says about its review state; a direct answer is too, but
+  // only the kinds named here. An output kind this list does not know counts as vanished, never as silently acted.
   if (input.workItemId) return "acted";
-  if (input.outputKind && !["back_burner", "requires_review", "suppressed"].includes(input.outputKind)) return "acted";
+  if (input.outputKind && ACTED_OUTPUT_KINDS.includes(input.outputKind)) return "acted";
   if (input.ideas.some((idea) => idea.operatorFiled)) return "idea";
   return "vanished";
 }
@@ -249,10 +270,11 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
 
   const reviewsOf = db.prepare("SELECT id, ask_request_id, status FROM review_items WHERE ask_request_id = ?");
   const ideasOf = db.prepare("SELECT id, ask_request_id, classification FROM back_burner_items WHERE ask_request_id = ?");
+  const goldenKeys = input.golden ? new Set(input.golden.map((golden) => backingKey(golden.expected_type, golden.text))) : null;
   const bySource = new Map<string, AskReportCounts>();
-  const total = emptyCounts();
+  const total = emptyCounts(goldenKeys !== null);
   const bump = (source: string, apply: (counts: AskReportCounts) => void): void => {
-    const counts = bySource.get(source) ?? emptyCounts();
+    const counts = bySource.get(source) ?? emptyCounts(goldenKeys !== null);
     apply(counts);
     apply(total);
     bySource.set(source, counts);
@@ -310,12 +332,26 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
     });
   }
 
+  // Each memo belongs to the source its originating Ask came in through. A source with memos but no Ask in the window
+  // still gets a row, so a correction is never hidden by a quiet week.
+  const memos = currentMemos(db);
+  for (const memo of memos) {
+    const unbacked = goldenKeys !== null && !goldenKeys.has(backingKey(memo.type, memo.text));
+    const count = (counts: AskReportCounts): void => {
+      counts.memos += 1;
+      if (unbacked) counts.notBackedByGolden = (counts.notBackedByGolden ?? 0) + 1;
+    };
+    count(total);
+    if (!isOperatorSource(memo.source)) continue;
+    const counts = bySource.get(memo.source) ?? emptyCounts(goldenKeys !== null);
+    count(counts);
+    bySource.set(memo.source, counts);
+  }
+
   const sources = [...bySource.entries()]
     .map(([source, counts]) => ({ source, ...finish(counts) }))
     .sort((a, b) => b.asks - a.asks || a.source.localeCompare(b.source));
 
-  const memos = currentMemos(db);
-  const goldenKeys = input.golden ? new Set(input.golden.map((golden) => backingKey(golden.expected_type, golden.text))) : null;
   const groups = new Map<string, { type: string; pattern: string; memos: number }>();
   for (const memo of memos) {
     const pattern = tokenPattern(memo.text);
@@ -333,8 +369,8 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
   const finished = finish(total);
   const notes = [
     "An Ask is one captured operator Ask with an Ask record; a correction re-routes the same Ask. Agent-written Asks and replies that only record words behind another write are excluded.",
-    `Vanish rate: of classified Asks at least one hour old, the share with no open record listed by arcadia todo and no acted, answered or operator-filed Idea outcome. It reads each Ask where it stands now. Suppressed Asks (an acknowledgement or an exact repeat of an open question) created no question and are counted apart. Target zero.`,
-    "Classification metrics (questions, memo hits, recurrence, planning) read the Ask as first heard. Corrections and memos are counted across all time, not only the window.",
+    `Vanish rate: of classified Asks at least one hour old, the share with no open record listed by arcadia todo and no acted, answered or operator-filed Idea outcome. It is judged at report time, reading each Ask where it stands now. Suppressed Asks (an acknowledgement or an exact repeat of an open question) are excluded from it and counted apart. Target zero.`,
+    "Classification metrics (questions, memo hits, recurrence, planning) read the Ask as first heard. Memos, and the ones no golden case backs, are counted across all time, not only the window, and belong to the source of the Ask that was corrected.",
     ...input.todoNotes
   ];
   if (input.golden === null) notes.push("The golden set could not be read from this checkout, so corrections not yet backed by a golden case are unknown. Run from an Arcadia checkout.");
@@ -352,7 +388,7 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
     },
     corrections: {
       memos: memos.length,
-      notBackedByGolden: goldenKeys ? memos.filter((memo) => !goldenKeys.has(backingKey(memo.type, memo.text))).length : null,
+      notBackedByGolden: finished.notBackedByGolden,
       golden: { path: input.goldenPath, cases: input.golden ? input.golden.length : null }
     },
     patternHints,
@@ -364,21 +400,31 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
  * The operator memos in force: for each exact text, the newest operator correction decides, and it counts only if it
  * names a type a memo may route to (the rule `findAskMemo` applies). Rows a model recorded are never read.
  */
-function currentMemos(db: Database.Database): Array<{ text: string; type: string }> {
+function currentMemos(db: Database.Database): Array<{ text: string; type: string; source: string }> {
   if (!hasAskCorrectionsTable(db)) return [];
   const sources = OPERATOR_CORRECTION_SOURCES.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT text_hash, normalized_text, corrected_type FROM ask_corrections
+      `SELECT text_hash, normalized_text, corrected_type, ask_request_id FROM ask_corrections
         WHERE source IN (${sources}) ORDER BY created_at DESC, id DESC`
     )
-    .all(...OPERATOR_CORRECTION_SOURCES) as Array<{ text_hash: string; normalized_text: string; corrected_type: string }>;
+    .all(...OPERATOR_CORRECTION_SOURCES) as Array<{
+    text_hash: string;
+    normalized_text: string;
+    corrected_type: string;
+    ask_request_id: string;
+  }>;
+  const sourceOf = db.prepare(
+    `SELECT ce.ingress_source FROM ask_requests ar JOIN ask_capture_envelopes ce ON ce.id = ar.capture_id WHERE ar.id = ?`
+  );
   const seen = new Set<string>();
-  const memos: Array<{ text: string; type: string }> = [];
+  const memos: Array<{ text: string; type: string; source: string }> = [];
   for (const row of rows) {
     if (seen.has(row.text_hash)) continue;
     seen.add(row.text_hash);
-    if ((MEMO_ROUTE_TYPES as readonly string[]).includes(row.corrected_type)) memos.push({ text: row.normalized_text, type: row.corrected_type });
+    if (!(MEMO_ROUTE_TYPES as readonly string[]).includes(row.corrected_type)) continue;
+    const origin = sourceOf.get(row.ask_request_id) as { ingress_source: string } | undefined;
+    memos.push({ text: row.normalized_text, type: row.corrected_type, source: origin?.ingress_source ?? UNKNOWN_SOURCE });
   }
   return memos;
 }

@@ -54,7 +54,7 @@ export function runAskReportCommand(options: AskReportOptions): CommandSuccess<A
   const collapsed = todo.counts.fixture.items + todo.counts.noRepoPath.items;
   if (collapsed > 0) {
     todoNotes.push(
-      `arcadia todo collapses ${collapsed} item(s) of fixture Projects or Projects with no repo_path into counts; an Ask whose only record is one of them counts as vanished here, as it does not appear in the list.`
+      `arcadia todo collapses ${collapsed} item(s) of fixture Projects or Projects with no repo_path into counts. An Ask whose only open record is one of them is not listed, so it counts as vanished here unless it was acted on (an Action exists), answered, or filed as an Idea on purpose.`
     );
   }
   if (todo.unavailable.length > 0) {
@@ -88,7 +88,10 @@ function countLines(counts: AskReportCounts, indent: string): string[] {
     `${indent}Corrected ÷ classified: ${percent(counts.corrected, counts.classified, counts.correctedRate)}`,
     `${indent}Questions ÷ Asks: ${percent(counts.questions, counts.asks, counts.questionRate)}`,
     `${indent}Back Burner arrivals: ${counts.backBurnerArrivals} (filed on purpose ${counts.backBurnerOperatorFiled}, shelved as a fallback ${counts.backBurnerArrivals - counts.backBurnerOperatorFiled})`,
-    `${indent}Memo hits: ${counts.memoHits} · flagged recurrence ${counts.recurrence} · flagged planning ${counts.planning}`
+    `${indent}Memo hits: ${counts.memoHits} · flagged recurrence ${counts.recurrence} · flagged planning ${counts.planning}`,
+    `${indent}Corrections (memos in force, all time): ${counts.memos} · not yet backed by a golden case: ${
+      counts.notBackedByGolden === null ? "unknown (golden set unreadable)" : counts.notBackedByGolden
+    }`
   ];
   if (counts.vanishedAskIds.length > 0) {
     const shown = counts.vanishedAskIds.slice(0, VANISHED_IDS_SHOWN);
@@ -109,9 +112,9 @@ export function renderAskReportSuccess(response: CommandSuccess<AskReportData>):
   }
   lines.push(
     `Schedule revival trigger: ${data.schedule.recurrence} Ask(s) flagged recurrence, ${data.schedule.threshold} or more revives it: ${data.schedule.revivalTriggerMet ? "MET" : "not met"}`,
-    `Corrections: ${data.corrections.memos} memo(s) in force (all time); not yet backed by a golden case: ${
-      data.corrections.notBackedByGolden === null ? "unknown (golden set unreadable)" : data.corrections.notBackedByGolden
-    }${data.corrections.golden.path ? ` (${data.corrections.golden.cases} case(s) in ${data.corrections.golden.path})` : ""}`
+    `Golden set: ${
+      data.corrections.golden.path ? `${data.corrections.golden.cases} case(s) in ${data.corrections.golden.path}` : "not readable from this checkout"
+    }`
   );
   for (const hint of data.patternHints) {
     lines.push(

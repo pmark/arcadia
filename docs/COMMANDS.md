@@ -756,7 +756,10 @@ more) and `planning`, and the operator memos no golden case backs (all time, rea
 from `tests/fixtures/ask-golden.jsonl` in the current checkout). When 3 or more
 memos share a corrected type and the same first three words, it says so as a hint
 for a reviewed rule and golden case; no rule is ever generated. Vanished Asks are
-named by id only. `--json` schema: `arcadia-ask-report-v1`.
+named by id only. The vanish rate is judged at report time and excludes suppressed
+Asks. Memos and the count no golden case backs are attributed per source (the source
+of the Ask that was corrected), as well as in total. The command is read-only and
+records no activity. `--json` schema: `arcadia-ask-report-v1`.
 
 Ingress files are matched to envelopes by shared id: a sidecar's Ask response
 capture id or request id, else the request id Ingress derives from its source and

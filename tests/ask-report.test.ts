@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordAskCorrection } from "../src/ask/corrections.js";
 import { GOLDEN_RELATIVE_PATH } from "../src/ask/goldenCases.js";
 import { MEMO_PATTERN_THRESHOLD, backingKey, tokenPattern } from "../src/ask/memoPattern.js";
-import { SCHEDULE_REVIVAL_THRESHOLD, askOutcome } from "../src/ask/report.js";
+import { ACTED_OUTPUT_KINDS, SCHEDULE_REVIVAL_THRESHOLD, askOutcome } from "../src/ask/report.js";
 import { buildProgram } from "../src/cli.js";
 import { runAskCommand } from "../src/commands/ask.js";
 import { runAskCorrectCommand } from "../src/commands/askCorrect.js";
@@ -106,6 +106,11 @@ describe("askOutcome: where one Ask stands", () => {
     expect(askOutcome({ ...base, reviews: [{ id: "review_1", status: "open" }] })).toBe("vanished");
     expect(askOutcome({ ...base, outputKind: "back_burner", ideas: [{ operatorFiled: false }] })).toBe("vanished");
     expect(askOutcome(base)).toBe("vanished");
+  });
+
+  it("counts only output kinds it knows as acted: an unknown kind is a vanish, not a silent success", () => {
+    for (const kind of ACTED_OUTPUT_KINDS) expect(askOutcome({ ...base, outputKind: kind })).toBe("acted");
+    expect(askOutcome({ ...base, outputKind: "some_future_kind" })).toBe("vanished");
   });
 });
 
@@ -232,6 +237,7 @@ describe("arcadia ask report", () => {
     const unbacked = report(workspace).data;
     expect(unbacked.corrections.memos).toBe(4);
     expect(unbacked.corrections.notBackedByGolden).toBeNull();
+    expect(unbacked.total.notBackedByGolden).toBeNull();
     expect(unbacked.patternHints).toEqual([{ type: "work", pattern: "sourdough starter notes", memos: 3, backedByGolden: false }]);
 
     const repo = repoWithGolden([
@@ -245,6 +251,32 @@ describe("arcadia ask report", () => {
     const text = renderAskReportSuccess(runAskReportCommand({ workspace, fixtureRoots: [], repoRoot: repo })).join("\n");
     expect(text).toContain('3 memos share corrected type work and the token pattern "sourdough starter notes"');
     expect(text).toContain("No rule is generated automatically");
+  });
+
+  it("reports corrections no golden case backs per operator source, from the source of the Ask that was corrected", () => {
+    const workspace = workspaceWithArcadia();
+    const fromDiscord = sendOld(workspace, "Orchard path lighting notes", { sourceIngress: "discord.message" });
+    const fromIngress = sendOld(workspace, "Lantern festival volunteer notes", { sourceIngress: "ingress:notes" });
+    const alsoIngress = sendOld(workspace, "Harvest supper seating chart", { sourceIngress: "ingress:notes" });
+    runAskCorrectCommand({ workspace, askId: fromDiscord.data.ask?.id as string, type: "idea" });
+    runAskCorrectCommand({ workspace, askId: fromIngress.data.ask?.id as string, type: "work" });
+    runAskCorrectCommand({ workspace, askId: alsoIngress.data.ask?.id as string, type: "work" });
+    // A golden case backs the work correction that begins "lantern festival volunteer".
+    const repo = repoWithGolden([
+      JSON.stringify({ id: "backs-lantern", text: "Lantern festival volunteer rota, paraphrased", expected_type: "work" })
+    ]);
+
+    const data = report(workspace, { repoRoot: repo }).data;
+    const bySource = Object.fromEntries(data.sources.map((source) => [source.source, [source.memos, source.notBackedByGolden]]));
+    expect(bySource).toEqual({ "discord.message": [1, 1], "ingress:notes": [2, 1] });
+    expect(data.total).toMatchObject({ memos: 3, notBackedByGolden: 2 });
+    expect(data.corrections).toMatchObject({ memos: 3, notBackedByGolden: 2 });
+    const text = renderAskReportSuccess(runAskReportCommand({ workspace, fixtureRoots: [], repoRoot: repo })).join("\n");
+    expect(text).toContain("Corrections (memos in force, all time): 2 · not yet backed by a golden case: 1");
+
+    // Without the golden set the count is unknown, per source too.
+    const unknown = report(workspace).data;
+    expect(unknown.sources.every((source) => source.notBackedByGolden === null)).toBe(true);
   });
 
   it("is read-only, and its window rejects the future", () => {
@@ -266,6 +298,9 @@ describe("arcadia ask report", () => {
   it("runs as arcadia ask report with --json and --since", async () => {
     const workspace = workspaceWithArcadia();
     sendOld(workspace, "Notes on fermenting hot sauce next weekend");
+    const activityRows = () =>
+      withDatabase(workspace, (db) => (db.prepare("SELECT COUNT(*) AS n FROM activity_events").get() as { n: number }).n);
+    const activityBefore = activityRows();
     let stdout = "";
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
       stdout += String(chunk);
@@ -280,6 +315,8 @@ describe("arcadia ask report", () => {
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.ok).toBe(true);
     expect(parsed.command).toBe("ask.report");
+    // The CLI path records no activity: the report is read-only end to end.
+    expect(activityRows()).toBe(activityBefore);
     expect(parsed.data.schema).toBe("arcadia-ask-report-v1");
     expect(parsed.data.total.asks).toBe(1);
     expect(Object.keys(parsed.data).sort()).toEqual([

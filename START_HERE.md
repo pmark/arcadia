@@ -2769,7 +2769,10 @@ no golden case backs. Vanished Asks are listed by `ask_…` id only; trace one w
 `arcadia ask show <id>`. Run it from an Arcadia checkout so it can read the golden
 set. When three or more memos share a corrected type and the same first three words,
 the report says so: that is a hint for an agent to propose a deterministic rule and
-a golden case in a reviewed PR. Nothing is ever generated automatically.
+a golden case in a reviewed PR. Nothing is ever generated automatically. The vanish
+rate is judged at report time (each Ask where it stands now) and leaves suppressed
+Asks out. Corrections are attributed to the source of the Ask that was corrected, so
+each source block shows its own memos and how many no golden case backs.
 
 The golden set is `tests/fixtures/ask-golden.jsonl`: one JSON object per line with
 `id`, a paraphrased or synthetic `text` (never real Ask text), `expected_type`
@@ -2781,7 +2784,10 @@ and open a PR; the reviewed merge is the approval. The test replays every case
 through the pure intake, memo and stewardship functions and also through the real
 `arcadia ask`, so CI fails when either routes a known Ask differently. A golden case
 backs a correction when it has the same type and opens with the same first three
-words, so start a case for a flagged pattern with those words.
+words. Those words come from real Ask text, so write the case as a paraphrase or
+synthetic example that merely begins with the same three generic words (for example
+"I want to ..."), and never copy a real Ask, its Project names or its details into the
+repository.
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
 run. It lists seven sources per Project: **open Decisions**, **pending Agent
