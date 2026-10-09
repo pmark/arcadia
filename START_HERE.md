@@ -3066,6 +3066,8 @@ and writes a receipt to `releases/receipts.jsonl`.
 **Failover.** If the demo misbehaves, `scripts/release.sh use <tag>` switches to
 any tag listed as `built` at once, with no build and no smoke test, and
 `scripts/release.sh status` confirms it. `use` refuses a tag that is not built.
+`use` also pins the demo: the nightly job stays paused (it will not redeploy the
+newest tag over your failover) until the next `scripts/release.sh deploy <tag>`.
 
 **Limits.** A release is older code than the database's newest migration:
 additive migrations are harmless, but a destructive migration must ship with a

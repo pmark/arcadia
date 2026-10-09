@@ -23,6 +23,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const script = path.resolve(__dirname, "..", "scripts", "release.sh");
 const roots: string[] = [];
+// launchd runs the nightly job with /bin/bash (3.2 on macOS), so test with it
+// rather than whatever newer bash the developer has first on PATH.
+const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -193,7 +196,7 @@ esac`);
     ARCADIA_DEMO_PORT: "39030",
     ARCADIA_DEMO_STAGING_PORT: stagingPort,
     ARCADIA_WORKSPACE: path.join(root, "workspace"),
-    ARCADIA_DEMO_SMOKE_BUDGET: "1",
+    ARCADIA_DEMO_SMOKE_BUDGET: "5",
     ARCADIA_DEMO_SMOKE_INTERVAL: "1",
     ARCADIA_DEMO_HEALTH_BUDGET: "2",
     // The hook is a recorder: no test ever sends a real ping.
@@ -215,7 +218,7 @@ esac`);
     bin,
     home,
     run: (args, extra = {}) => {
-      const result = spawnSync("bash", [script, ...args], { encoding: "utf8", env: { ...baseEnv, ...extra } });
+      const result = spawnSync(BASH, [script, ...args], { encoding: "utf8", env: { ...baseEnv, ...extra } });
       return { status: result.status, stdout: result.stdout, stderr: result.stderr };
     },
     tagAt,
@@ -303,7 +306,8 @@ describe("scripts/release.sh (Issue #1116)", () => {
     // ...and has been stopped again before the swap.
     expect(existsSync(path.join(env.fake, "staging.up"))).toBe(false);
 
-    const probed = env.log("curl.log").filter((line) => line.startsWith("39031/"));
+    // The first probe can race the server booting, so collapse consecutive retries.
+    const probed = env.log("curl.log").filter((line, i, all) => line.startsWith("39031/") && line !== all[i - 1]);
     expect(probed).toEqual(["39031/now", "39031/actions", "39031/review", "39031/projects", "39031/api/snapshot"]);
     expect(kickstarts(env)).toEqual([`kickstart -k gui/${process.getuid?.() ?? 0}/com.arcadia.demo.dashboard`]);
 
@@ -442,6 +446,27 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(env.log("pnpm.log")).toHaveLength(pnpmBefore);
     expect(env.log("notify.log")).toEqual([]);
     expect(env.receipts().at(-1)).toMatchObject({ command: "nightly", outcome: "noop", tag: "V2.0-rc" });
+  });
+
+  it("nightly does not undo a failover; an explicit deploy resumes it", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    expect(env.run(["deploy", "v1.1.0"]).status).toBe(0);
+    expect(env.run(["use", "v1.0.0"]).status).toBe(0);
+    expect(env.run(["status"]).stdout).toContain("Pinned:    v1.0.0");
+    const kicks = kickstarts(env).length;
+
+    // V2.0-rc is the newest release tag, but the operator failed over on purpose.
+    const paused = env.run(["nightly"]);
+    expect(paused.status).toBe(0);
+    expect(paused.stdout).toContain("nightly is paused");
+    expect(env.current()).toBe("v1.0.0");
+    expect(kickstarts(env)).toHaveLength(kicks);
+    expect(env.log("notify.log")).toEqual([]);
+
+    expect(env.run(["deploy", "v1.1.0"]).status).toBe(0);
+    expect(env.run(["nightly"]).status).toBe(0);
+    expect(env.current()).toBe("V2.0-rc");
   });
 
   it("nightly fetches tags, deploys the newest, and notifies; a failing one notifies attention", () => {

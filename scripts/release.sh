@@ -62,6 +62,7 @@ TAG_PATTERN='^(v[0-9]|rel-|release-)'
 CURRENT="$RELEASES/current"
 RECEIPTS="$RELEASES/receipts.jsonl"
 LOCK_DIR="$RELEASES/.lock"
+PIN_FILE="$RELEASES/.pinned" # written by `use`; pauses nightly until the next `deploy`
 LOG_DIR="$RELEASES/logs"
 
 # mise refuses configs it has not been told to trust, and every release is a
@@ -415,6 +416,7 @@ do_deploy() {
     receipt failed "$tag" "$FAIL_REASON" "$previous" "$(current_tag)"
     return 1
   fi
+  rm -f "$PIN_FILE" # an explicit deploy resumes nightly deploys
   receipt ok "$tag" "deployed ($RESTART_STATE)" "$previous" "$tag"
 }
 
@@ -486,7 +488,8 @@ cmd_status() {
   code="$(http_code "http://127.0.0.1:$DEMO_PORT/now" 5)"
   if [[ "$code" == "200" ]]; then say "Serving:   yes (http://127.0.0.1:$DEMO_PORT/now -> 200)"; else say "Serving:   NO (http://127.0.0.1:$DEMO_PORT/now -> $code)"; fi
   if agent_loaded; then say "Agent:     $LABEL loaded"; else say "Agent:     $LABEL not loaded"; fi
-  if [[ -s "$RECEIPTS" ]]; then say "Last receipt: $(tail -n 1 "$RECEIPTS")"; else say "Last receipt: none"; fi
+  if [[ -s "$PIN_FILE" ]]; then say "Pinned:    $(cat "$PIN_FILE") (nightly paused; 'deploy <tag>' resumes it)"; fi
+  if [[ -s "$RECEIPTS" ]]; then say "Last receipt:$(tail -n 1 "$RECEIPTS")"; else say "Last receipt: none"; fi
 }
 
 cmd_build() {
@@ -520,6 +523,7 @@ cmd_use() {
   previous="$(current_tag)"
   FAIL_REASON=""
   if activate "$tag"; then
+    printf "%s\n" "$tag" > "$PIN_FILE" # a failover pins the tag: nightly must not undo it
     receipt ok "$tag" "failover ($RESTART_STATE)" "$previous" "$tag"
     return 0
   fi
@@ -534,8 +538,13 @@ cmd_nightly() {
   if ! git -C "$REPO" fetch --tags --quiet; then
     warn "git fetch --tags failed; continuing with the tags already present."
   fi
-  newest="$(release_tags | sed -n 1p)"
   cur="$(current_tag)"
+  if [[ -s "$PIN_FILE" ]]; then
+    say "Pinned to $(cat "$PIN_FILE") by 'use'; nightly is paused. Run 'deploy <tag>' to resume."
+    receipt noop "$(cat "$PIN_FILE")" "pinned by use; nightly paused" "$cur" "$cur"
+    return 0
+  fi
+  newest="$(release_tags | sed -n 1p)"
   if [[ -z "$newest" ]]; then
     receipt noop "" "no release tag matches $TAG_PATTERN" "$cur" "$cur"
     say "No release tags; nothing to do."
@@ -695,6 +704,9 @@ cat > "$agents/$NIGHTLY_LABEL.plist" <<'PLIST'
     <key>ARCADIA_RELEASES_DIR</key><string>$(xml_escape "$RELEASES")</string>
     <key>ARCADIA_RELEASE_REPO</key><string>$(xml_escape "${REPO:-<arcadia repo>}")</string>
     <key>ARCADIA_MISE_BIN</key><string>$(xml_escape "$mise")</string>
+    <key>ARCADIA_DEMO_PORT</key><string>$DEMO_PORT</string>
+    <key>ARCADIA_DEMO_STAGING_PORT</key><string>$STAGING_PORT</string>
+    <key>ARCADIA_DEMO_LABEL</key><string>$(xml_escape "$LABEL")</string>
   </dict>
 </dict>
 </plist>
