@@ -36,7 +36,7 @@ function todo(items: TodoItem[], overrides: Partial<TodoData> = {}, counts: Part
       staleHidden: 0,
       byKind: { decision: items.length, agent_ask: 0 },
       hidden: 0,
-      fixture: { projects: 0, items: 0 },
+      agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 },
       ...counts
     },
     items,

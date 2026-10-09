@@ -2659,7 +2659,8 @@ pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 run. It lists seven sources per Project: **open Decisions**, **pending Agent
 Ask proposals**, **open or deferred review items** (these include
 ActionClarification questions; items an agent has flagged for agent review wait
-on the agent, not you, and are left out), **waiting operator tasks** (the
+on the agent, not you, and are left out but counted: `counts.agentFlaggedHidden`,
+printed as `agent-flagged hidden: N` on the counts line when N is above zero), **waiting operator tasks** (the
 repo-local ledger `.arcadia/operator-tasks.jsonl`) and **production
 escalations** (`production_operator_escalations` rows, read-only), **unclarified
 captures** (kind `clarify`) and **Plan Actions that wait on you** (kind
@@ -2668,7 +2669,10 @@ captures** (kind `clarify`) and **Plan Actions that wait on you** (kind
 otherwise *other*, using the same gate; a review item is blocking only when it
 is linked (by its own or its work item's `plan/<plan>#<action>` reference, Plan
 included, since Action ids can repeat across Plans) to the Action that gate
-selected, never recomputed. An operator task is blocking only when its origin is
+selected, never recomputed. The gate names only that selected Action and the
+Decisions that hold it; it does not name any other Action's open question, so a
+clarification review item on a not-selected `question_open` Action stays an alert
+until that Action is the one `arcadia next` selects (then it is blocking). An operator task is blocking only when its origin is
 that Action. A production escalation is always blocking: its row says the
 production loop is stalled, even when no Decision or Ask exists. Blocking
 escalations are listed first.
@@ -2771,8 +2775,9 @@ default view shows the first five others.
 The counts line shows live totals and what the view hides, for example
 `0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0, operator tasks 0, escalations 0, clarify 0, plan actions 0)`.
 In `--json` these are `counts.byKind` (`decision`, `agent_ask`, `review_item`,
-`operator_task`, `escalation`, `clarify`, `plan_action`); the schema stays
-`arcadia-todo-v1` and the change is additive.
+`operator_task`, `escalation`, `clarify`, `plan_action`) and `counts.agentFlaggedHidden`
+(the deferred review items an agent flagged for agent review, in the Projects in
+scope; none is listed); the schema stays `arcadia-todo-v1` and the change is additive.
 The printed answer commands omit `--workspace`: add it when you use a
 non-default workspace. The Agent Ask answer contains a
 `<settlement-request-id>` placeholder you must fill in before running it.
@@ -2782,7 +2787,9 @@ non-default workspace. The Agent Ask answer contains a
 exists in a Plan of its Project with status `done`; an Ask naming only absent
 Actions is an un-adopted proposal and is never stale. An Ask is also stale when
 another unsettled Ask's rationale has an explicit `Supersedes: <proposal ids>`
-line naming it (two Asks naming each other cancel out). A review item is stale
+line naming it, and only when the superseding Ask is in the same Project and not
+settled `rejected` (Asks naming each other in a cycle of any length, two or more,
+cancel out: no member of the cycle is hidden). A review item is stale
 when its work item is done or its `doc_ref` names an answered (approved or
 rejected) Decision. An open Decision is
 stale when its `action` is done. The default view hides stale items;

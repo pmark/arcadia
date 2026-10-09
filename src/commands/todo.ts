@@ -14,6 +14,7 @@ import {
   getProjectMetadata,
   getWorkItem,
   listActionableReviewItems,
+  listAgentReviewFlaggedItems,
   listProjects
 } from "../db/repositories.js";
 import { resolveDispatch, resolveReadySet, type ReadySetResolution } from "../docs/dispatch.js";
@@ -116,6 +117,8 @@ export interface TodoCounts {
   byKind: { decision: number; agent_ask: number; review_item: number; operator_task: number; escalation: number; clarify: number; plan_action: number };
   /** Live non-blocking items left out of `items` because the cap applies. */
   hidden: number;
+  /** Deferred review_items an agent has flagged for agent review: they wait on the agent, so none is listed; counted here so the exclusion is never silent. */
+  agentFlaggedHidden: number;
   /** Items of fixture Projects, counted here instead of listed. */
   fixture: { projects: number; items: number };
   /** Items of Projects with no repo_path, counted here instead of listed: nothing about them can be checked against a repository. */
@@ -271,6 +274,8 @@ function askIngressOf(db: Parameters<typeof listUnsettledAgentAskProposals>[0], 
 interface SupersessionSource {
   id: string;
   requestId: string;
+  /** The Project the proposal names: a superseder only counts for an Ask of its own Project. */
+  project: string;
   rationale: string | null;
   /** The settlement's disposition, or null while unsettled. */
   disposition: string | null;
@@ -287,8 +292,14 @@ function listSupersessionSources(db: Parameters<typeof listUnsettledAgentAskProp
     )
     .all() as Array<{ id: string; request_id: string; proposal_json: string; disposition: string | null }>;
   return rows.map((row) => {
-    const proposal = JSON.parse(row.proposal_json) as { normalized?: { rationale?: string | null } };
-    return { id: row.id, requestId: row.request_id, rationale: proposal.normalized?.rationale ?? null, disposition: row.disposition };
+    const proposal = JSON.parse(row.proposal_json) as { normalized?: { project?: string | null; rationale?: string | null } };
+    return {
+      id: row.id,
+      requestId: row.request_id,
+      project: proposal.normalized?.project ?? "",
+      rationale: proposal.normalized?.rationale ?? null,
+      disposition: row.disposition
+    };
   });
 }
 
@@ -299,8 +310,10 @@ const SUPERSEDES = /(?:^|[.;]\s+)[ \t>*-]*Supersedes:[ \t]*([^\n]*?)(?:\.(?=\s|$
  * Proposal id -> the proposal that explicitly supersedes it. Only a
  * `Supersedes: <proposal ids>` clause in an Ask's own stored rationale counts
  * (ids may be proposal ids or request ids), and only from an Ask that is
- * unsettled or settled `accepted`: a rejected Ask never hides another. Two
- * Asks that name each other cancel out.
+ * unsettled or settled `accepted`: a rejected Ask never hides another. The
+ * superseder must be in the same Project as the Ask it names. Asks that name
+ * each other in a cycle of any length (two, three or more) cancel out: no
+ * member of a cycle is superseded by anything.
  */
 function supersessionsOf(rows: SupersessionSource[]): Map<string, string> {
   const index = new Map<string, string>();
@@ -308,20 +321,37 @@ function supersessionsOf(rows: SupersessionSource[]): Map<string, string> {
     index.set(row.id, row.id);
     index.set(row.requestId, row.id);
   }
+  const projectOf = new Map(rows.map((row) => [row.id, row.project.toLowerCase()]));
   const names = new Map<string, Set<string>>();
   for (const row of rows) {
     if (row.disposition !== null && row.disposition !== "accepted") continue;
     for (const match of (row.rationale ?? "").matchAll(SUPERSEDES)) {
       for (const token of match[1].split(/[\s,;]+/).filter(Boolean)) {
         const target = index.get(token);
-        if (target && target !== row.id) names.set(row.id, (names.get(row.id) ?? new Set()).add(target));
+        if (target && target !== row.id && projectOf.get(target) === projectOf.get(row.id)) {
+          names.set(row.id, (names.get(row.id) ?? new Set()).add(target));
+        }
       }
     }
   }
+  // An Ask that can reach itself through the Supersedes lines sits on a cycle.
+  const onCycle = (start: string): boolean => {
+    const seen = new Set<string>();
+    const pending = [...(names.get(start) ?? [])];
+    while (pending.length > 0) {
+      const next = pending.pop() as string;
+      if (next === start) return true;
+      if (seen.has(next)) continue;
+      seen.add(next);
+      pending.push(...(names.get(next) ?? []));
+    }
+    return false;
+  };
+  const cyclic = new Set([...names.keys()].filter(onCycle));
   const superseded = new Map<string, string>();
   for (const [superseder, targets] of names) {
     for (const target of targets) {
-      if (names.get(target)?.has(superseder)) continue;
+      if (cyclic.has(target)) continue;
       if (!superseded.has(target)) superseded.set(target, superseder);
     }
   }
@@ -785,6 +815,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   let items: TodoItem[] = [];
   let fixture: TodoCounts["fixture"] = { projects: 0, items: 0 };
   let noRepoPath: TodoCounts["noRepoPath"] = { projects: 0, items: 0 };
+  let agentFlaggedHidden = 0;
   let workspacePath: string | null = null;
 
   let resolved: string | null = null;
@@ -801,6 +832,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       items = read.items;
       fixture = read.fixture;
       noRepoPath = read.noRepoPath;
+      agentFlaggedHidden = read.agentFlaggedHidden;
       workspacePath = resolved;
     } catch (error) {
       if (error instanceof ArcadiaError && error.code === "PROJECT_NOT_FOUND") throw error;
@@ -808,6 +840,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       // Decisions in the checkout in hand are still read below.
       unavailable.push(`workspace sources unavailable: ${workspaceRemedy(error)}`);
       items = [];
+      agentFlaggedHidden = 0;
     }
   }
 
@@ -846,6 +879,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
           plan_action: live.filter((item) => item.kind === "plan_action").length
         },
         hidden: view === "stale" ? 0 : other.length - shownOther.length,
+        agentFlaggedHidden,
         fixture,
         noRepoPath
       },
@@ -859,7 +893,7 @@ function readWithWorkspace(
   workspacePath: string,
   options: TodoCommandOptions,
   unavailable: string[]
-): { items: TodoItem[]; fixture: TodoCounts["fixture"]; noRepoPath: TodoCounts["noRepoPath"] } {
+): { items: TodoItem[]; fixture: TodoCounts["fixture"]; noRepoPath: TodoCounts["noRepoPath"]; agentFlaggedHidden: number } {
   const roots = options.fixtureRoots ?? defaultFixtureRoots();
   return withReadOnlyDatabase(workspacePath, (db) => {
     let projects = listProjects(db).filter((project) => project.status !== "completed");
@@ -871,6 +905,11 @@ function readWithWorkspace(
 
     const proposals = listUnsettledAgentAskProposals(db);
     const reviewRows = listActionableReviewItems(db);
+    // Agent-flagged review_items are never listed; they are counted for the Projects in scope (every item when no Project is named).
+    const scopeIds = new Set(projects.map((project) => project.id));
+    const agentFlaggedHidden = listAgentReviewFlaggedItems(db).filter(
+      (row) => !options.project || (row.project_id !== null && scopeIds.has(row.project_id))
+    ).length;
     const reviewRowsOf = (projectId: string): ReviewItemSummary[] => reviewRows.filter((row) => row.project_id === projectId);
     const context: StaleContext = {
       askFacts: askFactsOf(proposals),
@@ -992,7 +1031,8 @@ function readWithWorkspace(
     return {
       items,
       fixture: { projects: fixtureProjects.size, items: fixtureItems },
-      noRepoPath: { projects: noRepoProjects.size, items: noRepoItems }
+      noRepoPath: { projects: noRepoProjects.size, items: noRepoItems },
+      agentFlaggedHidden
     };
   });
 }
@@ -1083,6 +1123,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
   const lines = [
     `Operator to-do: ${counts.blocking} blocking · ${counts.other} other · ${staleCount}` +
       ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask}, review items ${counts.byKind.review_item}, operator tasks ${counts.byKind.operator_task}, escalations ${counts.byKind.escalation}, clarify ${counts.byKind.clarify}, plan actions ${counts.byKind.plan_action})` +
+      (counts.agentFlaggedHidden > 0 ? ` · agent-flagged hidden: ${counts.agentFlaggedHidden}` : "") +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
 
@@ -1104,6 +1145,9 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
   }
   if (counts.staleHidden > 0) {
     lines.push("", `${counts.staleHidden} stale hidden: --stale lists them with the evidence`);
+  }
+  if (counts.agentFlaggedHidden > 0) {
+    lines.push("", `${counts.agentFlaggedHidden} review item(s) flagged for agent review hidden: they wait on an agent, not you`);
   }
   if (counts.fixture.projects > 0 || counts.fixture.items > 0) {
     lines.push(
