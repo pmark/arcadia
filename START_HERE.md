@@ -3037,8 +3037,11 @@ never touches it.
   page shells out to that release's own compiled CLI, never to the moving
   checkout. Demo actions are real writes to the shared workspace.
 - **Release tags:** a tag starting with a version number (`v1.2.0`), `rel-` or
-  `release-`, case-insensitive; the newest by creation date wins. Cut one with
-  `git tag v1.2.0 && git push origin v1.2.0`.
+  `release-`, case-insensitive; the newest by creation date wins. Cut one from
+  green `main` as an annotated tag (the creation date is the tag's own):
+  `git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0`. Only tags that are
+  ancestors of `origin/main` are deployed, and names with anything beyond
+  letters, digits and `. _ + -` are ignored.
 - **Nightly:** the `com.arcadia.demo.nightly` LaunchAgent runs
   `scripts/release.sh nightly` at 04:00. It fetches tags, deploys the newest
   release tag if it is not already current, and pings you with the outcome.
@@ -3059,9 +3062,12 @@ scripts/release.sh install-plan      # print (never run) the install commands
 requires `/now`, `/actions`, `/review`, `/projects` and `/api/snapshot` to
 answer HTTP 200 within the budget (`ARCADIA_DEMO_SMOKE_BUDGET`, 90 seconds).
 Only then does it swap `current` and restart the agent, which takes about two
-seconds. A failed build, a failed smoke check, a failed restart or a swapped
-demo that does not answer leaves the previous release serving, exits non-zero
-and writes a receipt to `releases/receipts.jsonl`.
+seconds, and checks that :3030 serves this release's own build (its static
+manifest URL, `/now` and `/api/snapshot`). A failed build, a failed smoke
+check, a failed restart or a swapped demo that does not answer restores and
+re-checks the previous release, exits non-zero and writes a receipt to
+`releases/receipts.jsonl`. A build whose tag was later force-moved is rebuilt by
+`deploy` and refused by `use`.
 
 **Failover.** If the demo misbehaves, `scripts/release.sh use <tag>` switches to
 any tag listed as `built` at once, with no build and no smoke test, and

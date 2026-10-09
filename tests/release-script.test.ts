@@ -72,7 +72,8 @@ fs.writeFileSync(dir + "/staging.json", JSON.stringify({
 }));
 fs.writeFileSync(dir + "/staging.up", String(process.pid));
 const stop = () => { try { fs.unlinkSync(dir + "/staging.up"); } catch {} process.exit(0); };
-process.on("SIGTERM", stop);
+// A server that ignores SIGTERM must still be stopped (with SIGKILL).
+process.on("SIGTERM", fs.existsSync(dir + "/ignore_term") ? () => {} : stop);
 process.on("SIGINT", stop);
 setInterval(() => {}, 1000);
 `;
@@ -104,7 +105,10 @@ const DAYS: Array<[string, string]> = [
   // though they are newer than every release.
   ["archive/old", "2026-06-01T12:00:00Z"],
   ["feature-x", "2026-07-01T12:00:00Z"],
-  ["nightly-notes", "2026-07-02T12:00:00Z"]
+  ["nightly-notes", "2026-07-02T12:00:00Z"],
+  // A release-shaped tag whose name is not a safe directory name: newest of
+  // all, and must never be picked.
+  ["rel-a/b", "2026-08-01T12:00:00Z"]
 ];
 
 function makeEnv(): Env {
@@ -124,6 +128,8 @@ function makeEnv(): Env {
   writeFileSync(path.join(repo, "README.md"), "fixture\n");
   mkdirSync(path.join(repo, "apps", "dashboard"), { recursive: true });
   writeFileSync(path.join(repo, "apps", "dashboard", "package.json"), "{}\n");
+  // Present so every command runs through the (stubbed) mise, as in production.
+  writeFileSync(path.join(repo, "mise.toml"), '[tools]\nnode = "22"\n');
   git(repo, ["add", "."]);
   git(repo, ["commit", "-q", "-m", "base"], "2025-12-01T12:00:00Z");
   git(repo, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
@@ -150,10 +156,15 @@ case "$1" in
     if [ -f "$FAKE_DIR/fail_build" ] && { [ "$(cat "$FAKE_DIR/fail_build")" = "*" ] || [ "$(cat "$FAKE_DIR/fail_build")" = "$(basename "$PWD")" ]; }; then
       echo "boom: tsc failed" >&2; exit 1
     fi
-    mkdir -p dist/src && echo "// cli" > dist/src/cli.js
+    mkdir -p dist/src
+    # a stand-in CLI that records \`ping\` invocations
+    cat > dist/src/cli.js <<'JS'
+const fs = require("fs");
+if (process.argv[2] === "ping") fs.appendFileSync(process.env.FAKE_DIR + "/ping.log", process.argv.slice(2).join(" ") + "\\n");
+JS
     exit 0 ;;
   exec)
-    mkdir -p .next && echo build-id > .next/BUILD_ID
+    mkdir -p .next && echo "id-$(basename "$(dirname "$(dirname "$PWD")")")" > .next/BUILD_ID
     exit 0 ;;
 esac
 exit 1`);
@@ -170,7 +181,19 @@ if [ "$port" = "$FAKE_STAGING_PORT" ]; then
   printf 200; exit 0
 fi
 if [ -f "$FAKE_DIR/demo_code" ]; then printf '%s' "$(cat "$FAKE_DIR/demo_code")"; exit 0; fi
+# demo_build: the build id the running demo process serves. Another release's
+# static assets 404 on it, like the outgoing process answering for the old build.
+case "$urlpath" in
+  /_next/static/*)
+    if [ -f "$FAKE_DIR/demo_build" ] && [ "$urlpath" != "/_next/static/$(cat "$FAKE_DIR/demo_build")/_buildManifest.js" ]; then printf 404; exit 0; fi ;;
+esac
 printf 200`);
+  // mise -C <dir> exec -- <command...>: log it, then run the command in <dir>.
+  shim(bin, "mise", `
+echo "$*" >> "$FAKE_DIR/mise.log"
+dir="$2"
+shift 4
+cd "$dir" && exec "$@"`);
   shim(bin, "launchctl", `
 echo "$*" >> "$FAKE_DIR/launchctl.log"
 case "$1" in
@@ -196,12 +219,15 @@ esac`);
     ARCADIA_DEMO_PORT: "39030",
     ARCADIA_DEMO_STAGING_PORT: stagingPort,
     ARCADIA_WORKSPACE: path.join(root, "workspace"),
-    ARCADIA_DEMO_SMOKE_BUDGET: "5",
+    // Generous so a loaded CI runner cannot fail a healthy deploy; tests that
+    // expect a timeout shorten them.
+    ARCADIA_DEMO_SMOKE_BUDGET: "30",
     ARCADIA_DEMO_SMOKE_INTERVAL: "1",
-    ARCADIA_DEMO_HEALTH_BUDGET: "2",
+    ARCADIA_DEMO_HEALTH_BUDGET: "30",
+    ARCADIA_DEMO_STOP_GRACE: "1",
     // The hook is a recorder: no test ever sends a real ping.
     ARCADIA_RELEASE_NOTIFY_CMD: path.join(bin, "notify"),
-    ARCADIA_MISE_BIN: path.join(bin, "no-mise")
+    ARCADIA_MISE_BIN: path.join(bin, "mise")
   };
 
   const readLines = (name: string): string[] => {
@@ -238,6 +264,14 @@ esac`);
   };
 }
 
+/** A release tag that exists on the remote only: main advances, the tag is created on origin. */
+function publishTag(env: Env, tag: string, date: string): void {
+  writeFileSync(path.join(env.repo, "README.md"), `${tag}\n`);
+  git(env.repo, ["commit", "-q", "-am", `release ${tag}`], date);
+  git(env.repo, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+  git(env.origin, ["tag", tag, git(env.repo, ["rev-parse", "HEAD"])]);
+}
+
 const kickstarts = (env: Env): string[] => env.log("launchctl.log").filter((line) => line.startsWith("kickstart"));
 
 describe("scripts/release.sh (Issue #1116)", () => {
@@ -254,6 +288,7 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(result.stdout).not.toContain("archive/old");
     expect(result.stdout).not.toContain("feature-x");
     expect(result.stdout).not.toContain("nightly-notes");
+    expect(result.stdout).not.toContain("rel-a/b");
   });
 
   it("refuses tags outside the release pattern or with unsafe names", () => {
@@ -350,7 +385,7 @@ describe("scripts/release.sh (Issue #1116)", () => {
     env.setFlag("fail_paths", "/review\n");
     const probesBefore = env.log("curl.log").length;
 
-    const result = env.run(["deploy", "v1.1.0"]);
+    const result = env.run(["deploy", "v1.1.0"], { ARCADIA_DEMO_SMOKE_BUDGET: "2" });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("smoke check failed: /review returned HTTP 500");
     expect(env.current()).toBe("v1.0.0");
@@ -387,7 +422,7 @@ describe("scripts/release.sh (Issue #1116)", () => {
     const env = makeEnv();
     expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
     env.setFlag("demo_code", "500");
-    const result = env.run(["deploy", "v1.1.0"]);
+    const result = env.run(["deploy", "v1.1.0"], { ARCADIA_DEMO_HEALTH_BUDGET: "2" });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("did not answer on :39030");
     expect(env.current()).toBe("v1.0.0");
@@ -402,7 +437,7 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(result.status).toBe(0);
     expect(env.current()).toBe("v1.0.0");
     expect(kickstarts(env)).toHaveLength(0);
-    expect(result.stderr).toContain("not loaded");
+    expect(result.stderr).toContain("not installed");
   });
 
   it("fails over instantly to a built tag with no build or smoke step", () => {
@@ -501,6 +536,164 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(notes[1]).toMatch(/^attention\|Demo deploy of v3\.1\.0 FAILED: build failed/);
   });
 
+  it("nightly pings through the release's own mise toolchain by default", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "V2.0-rc"]).status).toBe(0);
+    publishTag(env, "v3.0.0", "2026-08-02T12:00:00Z");
+
+    // No hook: the default `ping send`, run via `mise -C <current> exec -- node <current>/dist/src/cli.js`.
+    const result = env.run(["nightly"], { ARCADIA_RELEASE_NOTIFY_CMD: "", ARCADIA_AGENT: "claude" });
+    expect(result.status).toBe(0);
+    const current = path.join(env.releases, "current");
+    const via = env.log("mise.log").filter((line) => line.includes(" ping send "));
+    expect(via).toHaveLength(1);
+    expect(via[0]).toBe(
+      `-C ${current} exec -- node ${current}/dist/src/cli.js ping send --kind fyi --agent claude ` +
+        `--workspace ${path.join(env.root, "workspace")} -- Demo is now serving v3.0.0 (was V2.0-rc) on :39030.`
+    );
+    expect(env.log("ping.log")).toEqual([
+      `ping send --kind fyi --agent claude --workspace ${path.join(env.root, "workspace")} -- Demo is now serving v3.0.0 (was V2.0-rc) on :39030.`
+    ]);
+  });
+
+  it("nightly records and pings when it cannot take the lock or find the repository", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    // A live process (this one) holds the lock.
+    mkdirSync(path.join(env.releases, ".lock"));
+    writeFileSync(path.join(env.releases, ".lock", "pid"), `${process.pid}\n`);
+    const locked = env.run(["nightly"]);
+    expect(locked.status).toBe(1);
+    expect(locked.stderr).toContain("another release operation is running");
+    expect(env.receipts().at(-1)).toMatchObject({ command: "nightly", outcome: "failed", current: "v1.0.0" });
+    expect(env.log("notify.log")[0]).toMatch(/^attention\|Demo nightly could not run: another release operation/);
+    expect(existsSync(path.join(env.releases, ".lock"))).toBe(true); // not ours: left alone
+    rmSync(path.join(env.releases, ".lock"), { recursive: true });
+
+    const noRepo = env.run(["nightly"], { ARCADIA_RELEASE_REPO: path.join(env.root, "missing") });
+    expect(noRepo.status).toBe(1);
+    expect(env.log("notify.log")).toHaveLength(2);
+    expect(env.log("notify.log")[1]).toMatch(/^attention\|Demo nightly could not run: cannot resolve the primary repository/);
+    expect(env.current()).toBe("v1.0.0");
+  });
+
+  it("only deploys tags that are ancestors of origin/main", () => {
+    const env = makeEnv();
+    // A release-shaped tag on a side branch that never reached main.
+    git(env.repo, ["checkout", "-q", "-b", "side"]);
+    env.tagAt("v9.0.0", "2026-08-05T12:00:00Z");
+    git(env.repo, ["checkout", "-q", "main"]);
+
+    const result = env.run(["deploy", "v9.0.0"]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("not an ancestor of origin/main");
+    expect(existsSync(path.join(env.releases, "v9.0.0"))).toBe(false);
+    expect(env.current()).toBeNull();
+    expect(env.receipts().at(-1)).toMatchObject({ tag: "v9.0.0", outcome: "failed" });
+
+    // ...and nightly, which would pick it as the newest tag, refuses it too.
+    const nightly = env.run(["nightly"]);
+    expect(nightly.status).not.toBe(0);
+    expect(env.log("notify.log")[0]).toMatch(/^attention\|Demo deploy of v9.0.0 FAILED: v9.0.0 is not an ancestor/);
+  });
+
+  it("refuses to serve or reuse a build whose tag has since moved", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    expect(env.run(["deploy", "v1.1.0"]).status).toBe(0);
+    const built = git(env.repo, ["rev-parse", "refs/tags/v1.0.0^{commit}"]);
+
+    // v1.0.0 is force-moved to a newer commit on main.
+    writeFileSync(path.join(env.repo, "README.md"), "moved\n");
+    git(env.repo, ["commit", "-q", "-am", "moved"], "2026-08-10T12:00:00Z");
+    git(env.repo, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    git(env.repo, ["tag", "-f", "v1.0.0"]);
+    const moved = git(env.repo, ["rev-parse", "refs/tags/v1.0.0^{commit}"]);
+    expect(moved).not.toBe(built);
+
+    const use = env.run(["use", "v1.0.0"]);
+    expect(use.status).toBe(2);
+    expect(use.stderr).toContain("refusing to serve a stale build");
+    expect(env.current()).toBe("v1.1.0");
+
+    // Not serving, so deploy rebuilds it from the new commit.
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    expect(env.current()).toBe("v1.0.0");
+    expect(readFileSync(path.join(env.releases, "v1.0.0", ".release-ok"), "utf8")).toContain(`sha=${moved}`);
+
+    // Serving v1.0.0 while the tag moves again: refuse to rebuild in place.
+    writeFileSync(path.join(env.repo, "README.md"), "moved again\n");
+    git(env.repo, ["commit", "-q", "-am", "moved again"], "2026-08-11T12:00:00Z");
+    git(env.repo, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    git(env.repo, ["tag", "-f", "v1.0.0"]);
+    const again = env.run(["deploy", "v1.0.0"]);
+    expect(again.status).not.toBe(0);
+    expect(again.stderr).toContain("the tag moved since it was built");
+    expect(env.current()).toBe("v1.0.0");
+  });
+
+  it("force-kills a staging server that ignores SIGTERM", () => {
+    const env = makeEnv();
+    env.setFlag("ignore_term");
+    const result = env.run(["deploy", "v1.0.0"]);
+    expect(result.status).toBe(0);
+    const pid = Number(readFileSync(path.join(env.fake, "staging.up"), "utf8"));
+    expect(() => process.kill(pid, 0)).toThrow(); // gone, not left holding the port
+  });
+
+  it("checks the demo for this release's build id, so the outgoing process cannot pass", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    // The demo keeps answering as v1.0.0 even after the swap and kickstart.
+    env.setFlag("demo_build", "id-v1.0.0");
+    const result = env.run(["deploy", "v1.1.0"], { ARCADIA_DEMO_HEALTH_BUDGET: "2" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("did not answer on :39030");
+    // The restored v1.0.0 is verified too, and does serve.
+    expect(result.stderr).toContain("restored v1.0.0");
+    expect(result.stderr).not.toContain("NOT answering");
+    expect(env.current()).toBe("v1.0.0");
+    const probed = env.log("curl.log").filter((line) => line.startsWith("39030/"));
+    expect(probed).toContain("39030/_next/static/id-v1.1.0/_buildManifest.js");
+    expect(probed).toContain("39030/_next/static/id-v1.0.0/_buildManifest.js");
+    expect(probed).toContain("39030/api/snapshot");
+  });
+
+  it("says so when the restored release is not answering either", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    env.setFlag("demo_code", "500");
+    const result = env.run(["deploy", "v1.1.0"], { ARCADIA_DEMO_HEALTH_BUDGET: "2" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("restored v1.0.0 but it is NOT answering");
+  });
+
+  it("treats an installed but unloaded agent as a failure, not a pre-install skip", () => {
+    const env = makeEnv();
+    expect(env.run(["deploy", "v1.0.0"]).status).toBe(0);
+    mkdirSync(path.join(env.home, "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(path.join(env.home, "Library", "LaunchAgents", "com.arcadia.demo.dashboard.plist"), "<plist/>");
+    env.clearFlag("loaded");
+    const result = env.run(["deploy", "v1.1.0"]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("exists but com.arcadia.demo.dashboard is not loaded");
+    expect(env.current()).toBe("v1.0.0");
+    expect(kickstarts(env)).toHaveLength(1);
+  });
+
+  it("prune leaves worktrees that are not releases alone", () => {
+    const env = makeEnv();
+    expect(env.run(["build", "v1.0.0"]).status).toBe(0);
+    // Someone else's worktree whose directory is temporarily gone (an unmounted
+    // volume, say): a repo-wide `git worktree prune` would forget it.
+    const foreign = path.join(env.root, "somebody-elses-worktree");
+    git(env.repo, ["worktree", "add", "-q", "--detach", foreign, "v1.1.0"]);
+    rmSync(foreign, { recursive: true });
+
+    expect(env.run(["prune"]).status).toBe(0);
+    expect(git(env.repo, ["worktree", "list", "--porcelain"])).toContain(`worktree ${foreign}`);
+  });
+
   it("prune keeps the newest 3 good builds plus current and removes the other worktrees", () => {
     const env = makeEnv();
     for (const tag of ["v1.0.0", "v1.1.0", "rel-2", "release-3", "V2.0-rc"]) {
@@ -546,10 +739,19 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(out).toContain("arcadia-demo/dashboard.out.log");
     expect(out).toContain("launchctl bootstrap");
     expect(out).toContain("tailscale serve --bg --https=443 http://127.0.0.1:3030");
+    // The nightly job runs the script from the serving release, not the primary checkout.
+    expect(out).toMatch(/<string>\/bin\/bash<\/string>\s*<string>\/Users\/pmark\/Dev\/MR\/Arcadia\/releases\/current\/scripts\/release\.sh<\/string>\s*<string>nightly<\/string>/);
 
     expect(existsSync(path.join(env.fake, "launchctl.log"))).toBe(false);
     expect(existsSync(path.join(env.fake, "tailscale.log"))).toBe(false);
     expect(existsSync(path.join(env.home, "Library"))).toBe(false);
     expect(existsSync(env.releases)).toBe(false);
+  });
+
+  it("install-plan escapes XML metacharacters in paths", () => {
+    const env = makeEnv();
+    const result = env.run(["install-plan"], { ARCADIA_WORKSPACE: "/tmp/a&b<c>\"d" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("<key>ARCADIA_WORKSPACE</key><string>/tmp/a&amp;b&lt;c&gt;&quot;d</string>");
   });
 });

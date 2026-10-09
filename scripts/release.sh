@@ -56,6 +56,7 @@ SMOKE_PATHS="${ARCADIA_DEMO_SMOKE_PATHS:-/now /actions /review /projects /api/sn
 SMOKE_BUDGET="${ARCADIA_DEMO_SMOKE_BUDGET:-90}"       # seconds, all pages together
 SMOKE_INTERVAL="${ARCADIA_DEMO_SMOKE_INTERVAL:-2}"    # seconds between probes
 HEALTH_BUDGET="${ARCADIA_DEMO_HEALTH_BUDGET:-60}"     # seconds for :3030 after a swap
+STOP_GRACE="${ARCADIA_DEMO_STOP_GRACE:-5}"            # seconds the staging server gets to exit before SIGKILL
 KEEP_BUILDS="${ARCADIA_RELEASE_KEEP:-3}"
 TAG_PATTERN='^(v[0-9]|rel-|release-)'
 
@@ -101,7 +102,7 @@ need_repo() {
   [[ -n "$REPO" && -d "$REPO" ]] || die "Cannot resolve the primary repository; set ARCADIA_RELEASE_REPO." 2
 }
 
-for numeric in SMOKE_BUDGET SMOKE_INTERVAL HEALTH_BUDGET KEEP_BUILDS DEMO_PORT STAGING_PORT; do
+for numeric in STOP_GRACE SMOKE_BUDGET SMOKE_INTERVAL HEALTH_BUDGET KEEP_BUILDS DEMO_PORT STAGING_PORT; do
   [[ "${!numeric}" =~ ^[0-9]+$ ]] || die "$numeric must be a non-negative integer, got: ${!numeric}" 2
 done
 
@@ -111,13 +112,10 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 json_escape() { printf '%s' "$1" | tr '\n\t' '  ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 
+# sed rather than ${s//&/...}: bash 5.2 reads an unquoted & in a replacement as
+# "the matched text", and bash 3.2 keeps quotes put around it.
 xml_escape() {
-  local s="$1"
-  s="${s//&/&amp;}"
-  s="${s//</&lt;}"
-  s="${s//>/&gt;}"
-  s="${s//\"/&quot;}"
-  printf '%s' "$s"
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
 }
 
 # receipt <outcome> <tag> <reason> [previous] [current]
@@ -136,9 +134,13 @@ current_tag() {
   if [[ -L "$CURRENT" ]]; then basename "$(readlink "$CURRENT")"; fi
 }
 
+TAG_ALPHABET='^[A-Za-z0-9._+-]+$'
+
+# Release tags newest first. Tags outside the safe alphabet (for example
+# rel-a/b) are skipped here, so no consumer can pick one as a directory name.
 release_tags() {
   git -C "$REPO" for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags \
-    | grep -iE "$TAG_PATTERN" || true
+    | grep -iE "$TAG_PATTERN" | grep -E "$TAG_ALPHABET" || true
 }
 
 # A tag becomes a directory name and a command argument, so it is held to a
@@ -146,7 +148,7 @@ release_tags() {
 check_tag_name() {
   local tag="$1"
   [[ -n "$tag" ]] || usage
-  if [[ ! "$tag" =~ ^[A-Za-z0-9._+-]+$ ]] || ! printf '%s\n' "$tag" | grep -qiE "$TAG_PATTERN"; then
+  if [[ ! "$tag" =~ $TAG_ALPHABET ]] || ! printf '%s\n' "$tag" | grep -qiE "$TAG_PATTERN"; then
     die "Not a release tag: $tag (must match $TAG_PATTERN, letters, digits and . _ + - only)" 2
   fi
 }
@@ -158,6 +160,25 @@ check_tag_exists() {
 
 is_built() { [[ -f "$RELEASES/$1/.release-ok" ]]; }
 
+tag_sha() { git -C "$REPO" rev-parse --verify --quiet "refs/tags/$1^{commit}" 2>/dev/null || true; }
+built_sha() { sed -n 's/^sha=//p' "$RELEASES/$1/.release-ok" 2>/dev/null | head -n 1; }
+
+# A tag that was force-moved after its build no longer names the built commit.
+# A tag that has since been deleted cannot be compared, so it counts as matching.
+built_matches_tag() {
+  local now
+  now="$(tag_sha "$1")"
+  [[ -z "$now" || "$now" == "$(built_sha "$1")" ]]
+}
+
+# Tags are cut from green main (Decision 0095): refuse anything that is not an
+# ancestor of the main ref, or when the ref cannot be read to prove it.
+MAIN_REF="${ARCADIA_RELEASE_MAIN_REF:-origin/main}"
+tag_on_main() {
+  git -C "$REPO" rev-parse --verify --quiet "$MAIN_REF^{commit}" >/dev/null 2>&1 || return 2
+  git -C "$REPO" merge-base --is-ancestor "refs/tags/$1" "$MAIN_REF" 2>/dev/null
+}
+
 http_code() { # url [max-seconds]
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "${2:-10}" "$1" 2>/dev/null || true)"
@@ -166,10 +187,10 @@ http_code() { # url [max-seconds]
 
 pid_alive() { [[ -n "${1:-}" ]] && kill -0 "$1" 2>/dev/null; }
 
-kill_tree() {
-  local pid="$1" child
-  for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child"; done
-  kill "$pid" 2>/dev/null || true
+kill_tree() { # pid [signal]
+  local pid="$1" sig="${2:-TERM}" child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child" "$sig"; done
+  kill "-$sig" "$pid" 2>/dev/null || true
 }
 
 # --- lock and cleanup ---------------------------------------------------------
@@ -179,6 +200,7 @@ cleanup() {
   if [[ "$LOCK_HELD" -eq 1 ]]; then rm -rf "$LOCK_DIR"; LOCK_HELD=0; fi
 }
 
+# acquire_lock: returns 3 with FAIL_REASON set when another operation holds it.
 acquire_lock() {
   mkdir -p "$RELEASES"
   trap cleanup EXIT
@@ -192,12 +214,16 @@ acquire_lock() {
     fi
     holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
     if pid_alive "$holder"; then
-      die "Another release operation is running (pid $holder); try again when it finishes." 3
+      FAIL_REASON="another release operation is running (pid $holder); try again when it finishes"
+      return 3
     fi
     rm -rf "$LOCK_DIR" # stale: its owner is gone
   done
-  die "Could not take the release lock at $LOCK_DIR." 3
+  FAIL_REASON="could not take the release lock at $LOCK_DIR"
+  return 3
 }
+
+lock_or_die() { acquire_lock || die "$FAIL_REASON" 3; }
 
 # --- toolchain ----------------------------------------------------------------
 # Resolved like restart-arcadia-services' restart-services.sh: mise pins the Node
@@ -233,8 +259,9 @@ rt() {
 build_steps() { # tag dir
   local tag="$1" dir="$2" app="$2/apps/dashboard"
   STEP="worktree"
-  git -C "$REPO" worktree prune || return 1
-  git -C "$REPO" worktree add --detach "$dir" "refs/tags/$tag" || return 1
+  # --force tolerates a stale registration of this exact path. There is no
+  # repo-wide `worktree prune`: it would also drop other people's worktrees.
+  git -C "$REPO" worktree add --force --detach "$dir" "refs/tags/$tag" || return 1
   STEP="install"
   rt "$dir" "$dir" pnpm install --frozen-lockfile --prefer-offline || return 1
   STEP="pnpm build"
@@ -251,12 +278,16 @@ build_steps() { # tag dir
 # build_release <tag>: sets FAIL_REASON and returns 1 on failure.
 build_release() {
   local tag="$1" dir="$RELEASES/$tag" log="$RELEASES/logs/build-$1.log" sha
-  if is_built "$tag"; then say "$tag is already built."; return 0; fi
+  if is_built "$tag" && built_matches_tag "$tag"; then say "$tag is already built."; return 0; fi
   mkdir -p "$LOG_DIR"
   : > "$log"
   if [[ -e "$dir" ]]; then
-    if [[ "$(current_tag)" == "$tag" ]]; then FAIL_REASON="$tag is current but has no build marker; refusing to rebuild it in place"; return 1; fi
-    # An earlier attempt died part-way. Reclaim only a registered worktree.
+    if [[ "$(current_tag)" == "$tag" ]]; then
+      FAIL_REASON="$tag is serving but $(is_built "$tag" && echo "the tag moved since it was built ($(built_sha "$tag" | cut -c1-9) -> $(tag_sha "$tag" | cut -c1-9))" || echo "it has no build marker"); refusing to rebuild it in place"
+      return 1
+    fi
+    # A half-built attempt, or a tag that moved after its build. Reclaim only a
+    # registered worktree.
     git -C "$REPO" worktree remove --force "$dir" >>"$log" 2>&1 \
       || { FAIL_REASON="$dir exists and is not a removable worktree; remove it by hand"; return 1; }
   fi
@@ -305,7 +336,15 @@ start_staging() { # dir
 
 stop_staging() {
   if [[ -n "$STAGING_PID" ]]; then
+    local ticks=0
     kill_tree "$STAGING_PID"
+    # Give it a bounded grace period to exit on SIGTERM, then force it, so a
+    # server that ignores SIGTERM can neither hang us in `wait` nor keep :3031.
+    while pid_alive "$STAGING_PID" && [[ "$ticks" -lt $(( STOP_GRACE * 10 )) ]]; do
+      sleep 0.1
+      ticks=$((ticks + 1))
+    done
+    if pid_alive "$STAGING_PID"; then kill_tree "$STAGING_PID" KILL; fi
     wait "$STAGING_PID" 2>/dev/null || true
     STAGING_PID=""
   fi
@@ -341,27 +380,49 @@ swap_current() { # tag
   local tmp="$RELEASES/.current.$$"
   if [[ -e "$CURRENT" && ! -L "$CURRENT" ]]; then die "$CURRENT exists and is not a symlink; refusing to replace it." 2; fi
   ln -sfn "$1" "$tmp" || return 1
-  # mv -h / -T rename over the symlink itself instead of moving into its target.
-  if [[ "$(uname -s)" == "Darwin" ]]; then mv -fh "$tmp" "$CURRENT"; else mv -fT "$tmp" "$CURRENT"; fi || return 1
+  # /bin/mv, not whatever mv is first on PATH; -h / -T rename over the symlink
+  # itself instead of moving into the directory it points at.
+  if [[ "$(uname -s)" == "Darwin" ]]; then /bin/mv -fh "$tmp" "$CURRENT"; else /bin/mv -fT "$tmp" "$CURRENT"; fi || return 1
 }
 
 agent_loaded() { launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; }
 
+PLIST_FILE="${ARCADIA_DEMO_PLIST:-$HOME/Library/LaunchAgents/$LABEL.plist}"
 RESTART_STATE=""
+RESTART_ERROR=""
 restart_demo() {
+  RESTART_ERROR=""
   if agent_loaded; then
-    launchctl kickstart -k "gui/$(id -u)/$LABEL" || return 1
+    if ! launchctl kickstart -k "gui/$(id -u)/$LABEL"; then
+      RESTART_ERROR="launchctl kickstart of $LABEL failed"
+      return 1
+    fi
     RESTART_STATE="restarted"
+  elif [[ -e "$PLIST_FILE" ]]; then
+    # Installed but not loaded is a broken demo, not a pre-install state.
+    RESTART_ERROR="$PLIST_FILE exists but $LABEL is not loaded in launchd (launchctl bootstrap it)"
+    return 1
   else
-    warn "LaunchAgent $LABEL is not loaded (not installed yet?); the symlink moved but nothing was restarted. See: scripts/release.sh install-plan"
-    RESTART_STATE="skipped-not-loaded"
+    warn "LaunchAgent $LABEL is not installed; the symlink moved but nothing was restarted. See: scripts/release.sh install-plan"
+    RESTART_STATE="skipped-not-installed"
   fi
 }
 
-wait_serving() {
+# serving <tag>: the demo answers for THIS release. The static manifest URL
+# carries the release's own build id, so the outgoing process cannot satisfy it.
+serving() {
+  local tag="$1" build_id
+  build_id="$(cat "$RELEASES/$tag/apps/dashboard/.next/BUILD_ID" 2>/dev/null || true)"
+  [[ -n "$build_id" ]] || return 1
+  [[ "$(http_code "http://127.0.0.1:$DEMO_PORT/_next/static/$build_id/_buildManifest.js" 10)" == "200" ]] || return 1
+  [[ "$(http_code "http://127.0.0.1:$DEMO_PORT/now" 10)" == "200" ]] || return 1
+  [[ "$(http_code "http://127.0.0.1:$DEMO_PORT/api/snapshot" 30)" == "200" ]]
+}
+
+wait_serving() { # tag
   local deadline
   deadline=$(( $(date +%s) + HEALTH_BUDGET ))
-  while [[ "$(http_code "http://127.0.0.1:$DEMO_PORT/now" 10)" != "200" ]]; do
+  until serving "$1"; do
     [[ "$(date +%s)" -lt "$deadline" ]] || return 1
     sleep "$SMOKE_INTERVAL"
   done
@@ -371,21 +432,31 @@ restore_previous() { # previous-tag
   if [[ -n "$1" ]]; then swap_current "$1"; else rm -f "$CURRENT"; fi
 }
 
+# After a rollback, restart and confirm the restored release really serves.
+rollback_note() { # previous-tag
+  if [[ -z "$1" ]]; then echo "no previous release to restore"; return; fi
+  restart_demo || true
+  if [[ "$RESTART_STATE" != "restarted" ]] || wait_serving "$1"; then
+    echo "restored $1"
+  else
+    echo "restored $1 but it is NOT answering on :$DEMO_PORT either; run: scripts/release.sh status"
+  fi
+}
+
 # activate <tag>: swap `current`, restart the demo agent, and verify it serves.
-# Any failure puts the previous release back and returns 1.
+# Any failure puts the previous release back (and checks it) and returns 1.
 activate() {
   local tag="$1" previous
   previous="$(current_tag)"
   if ! swap_current "$tag"; then FAIL_REASON="could not swap the current symlink to $tag"; return 1; fi
   if ! restart_demo; then
     restore_previous "$previous"
-    FAIL_REASON="launchctl kickstart of $LABEL failed; $( [[ -n "$previous" ]] && echo "restored $previous" || echo "no previous release to restore")"
+    FAIL_REASON="$RESTART_ERROR; $( [[ -n "$previous" ]] && echo "restored $previous" || echo "no previous release to restore")"
     return 1
   fi
-  if [[ "$RESTART_STATE" == "restarted" ]] && ! wait_serving; then
+  if [[ "$RESTART_STATE" == "restarted" ]] && ! wait_serving "$tag"; then
     restore_previous "$previous"
-    restart_demo || true
-    FAIL_REASON="$tag did not answer on :$DEMO_PORT within ${HEALTH_BUDGET}s after the swap; $( [[ -n "$previous" ]] && echo "restored $previous" || echo "no previous release to restore")"
+    FAIL_REASON="$tag did not answer on :$DEMO_PORT within ${HEALTH_BUDGET}s after the swap; $(rollback_note "$previous")"
     return 1
   fi
   say "Now serving $tag (${RESTART_STATE})."
@@ -396,6 +467,17 @@ do_deploy() {
   local tag="$1" previous
   previous="$(current_tag)"
   FAIL_REASON=""
+  local on_main=0
+  tag_on_main "$tag" || on_main=$?
+  if [[ "$on_main" -ne 0 ]]; then
+    if [[ "$on_main" -eq 2 ]]; then
+      FAIL_REASON="cannot verify $tag: $MAIN_REF does not exist in $REPO (git fetch, or set ARCADIA_RELEASE_MAIN_REF)"
+    else
+      FAIL_REASON="$tag is not an ancestor of $MAIN_REF; release tags are cut from green main"
+    fi
+    receipt failed "$tag" "$FAIL_REASON" "$previous" "$(current_tag)"
+    return 1
+  fi
   if ! build_release "$tag"; then
     receipt failed "$tag" "$FAIL_REASON" "$previous" "$(current_tag)"
     return 1
@@ -432,12 +514,16 @@ notify() {
     "$ARCADIA_RELEASE_NOTIFY_CMD" "$kind" "$message" || warn "notify hook failed (ignored)"
     return 0
   fi
+  # Both routes run under the release's own mise toolchain: under launchd the
+  # bare PATH finds a different Node than the one the native sqlite module was
+  # built for, and the ping would fail on an ABI mismatch.
   if [[ -f "$CURRENT/dist/src/cli.js" ]]; then
-    node "$CURRENT/dist/src/cli.js" ping send --kind "$kind" --agent "${ARCADIA_AGENT:-release-manager}" \
-      --workspace "$WORKSPACE" -- "$message" >/dev/null || warn "ping failed (ignored)"
+    rt "$CURRENT" "$CURRENT" node "$CURRENT/dist/src/cli.js" ping send --kind "$kind" \
+      --agent "${ARCADIA_AGENT:-release-manager}" --workspace "$WORKSPACE" -- "$message" >/dev/null \
+      || warn "ping failed (ignored): $message"
   elif cli="$(command -v arcadia 2>/dev/null)" && [[ -n "$cli" ]]; then
-    "$cli" ping send --kind "$kind" --agent "${ARCADIA_AGENT:-release-manager}" \
-      --workspace "$WORKSPACE" -- "$message" >/dev/null || warn "ping failed (ignored)"
+    rt "$REPO" "$REPO" "$cli" ping send --kind "$kind" --agent "${ARCADIA_AGENT:-release-manager}" \
+      --workspace "$WORKSPACE" -- "$message" >/dev/null || warn "ping failed (ignored): $message"
   else
     warn "no arcadia CLI to send the ping with (ignored): $message"
   fi
@@ -489,7 +575,7 @@ cmd_status() {
   if [[ "$code" == "200" ]]; then say "Serving:   yes (http://127.0.0.1:$DEMO_PORT/now -> 200)"; else say "Serving:   NO (http://127.0.0.1:$DEMO_PORT/now -> $code)"; fi
   if agent_loaded; then say "Agent:     $LABEL loaded"; else say "Agent:     $LABEL not loaded"; fi
   if [[ -s "$PIN_FILE" ]]; then say "Pinned:    $(cat "$PIN_FILE") (nightly paused; 'deploy <tag>' resumes it)"; fi
-  if [[ -s "$RECEIPTS" ]]; then say "Last receipt:$(tail -n 1 "$RECEIPTS")"; else say "Last receipt: none"; fi
+  if [[ -s "$RECEIPTS" ]]; then say "Last receipt: $(tail -n 1 "$RECEIPTS")"; else say "Last receipt: none"; fi
 }
 
 cmd_build() {
@@ -497,7 +583,7 @@ cmd_build() {
   local tag="${1:-}"
   check_tag_name "$tag"
   check_tag_exists "$tag"
-  acquire_lock
+  lock_or_die
   if build_release "$tag"; then return 0; fi
   die "$FAIL_REASON"
 }
@@ -506,8 +592,10 @@ cmd_deploy() {
   need_repo
   local tag="${1:-}"
   check_tag_name "$tag"
+  # Best effort: the ancestry check below wants an up-to-date main.
+  git -C "$REPO" fetch --tags --quiet 2>/dev/null || warn "git fetch --tags failed; using the refs already present."
   check_tag_exists "$tag"
-  acquire_lock
+  lock_or_die
   if do_deploy "$tag"; then return 0; fi
   warn "Deploy of $tag failed: $FAIL_REASON"
   warn "Still serving: $(current_tag || true)"
@@ -518,8 +606,9 @@ cmd_use() {
   need_repo
   local tag="${1:-}" previous
   check_tag_name "$tag"
+  lock_or_die
   is_built "$tag" || die "$tag is not built (no $RELEASES/$tag/.release-ok); run: scripts/release.sh deploy $tag" 2
-  acquire_lock
+  built_matches_tag "$tag" || die "$tag was built from $(built_sha "$tag" | cut -c1-9) but the tag now points at $(tag_sha "$tag" | cut -c1-9); refusing to serve a stale build. Run: scripts/release.sh deploy $tag" 2
   previous="$(current_tag)"
   FAIL_REASON=""
   if activate "$tag"; then
@@ -531,14 +620,24 @@ cmd_use() {
   die "use $tag failed: $FAIL_REASON"
 }
 
+nightly_fail() { # reason current
+  receipt failed "" "$1" "$2" "$2"
+  notify attention "Demo nightly could not run: $1. Still serving ${2:-nothing}."
+  die "Nightly failed: $1" 1
+}
+
 cmd_nightly() {
-  need_repo
-  acquire_lock
   local newest cur
+  cur="$(current_tag)"
+  # The unattended job must never fail silently: a missing repo or a held lock
+  # is recorded and pinged like any other failed deploy.
+  if [[ -z "$REPO" || ! -d "$REPO" ]]; then
+    nightly_fail "cannot resolve the primary repository (set ARCADIA_RELEASE_REPO)" "$cur"
+  fi
+  acquire_lock || nightly_fail "$FAIL_REASON" "$cur"
   if ! git -C "$REPO" fetch --tags --quiet; then
     warn "git fetch --tags failed; continuing with the tags already present."
   fi
-  cur="$(current_tag)"
   if [[ -s "$PIN_FILE" ]]; then
     say "Pinned to $(cat "$PIN_FILE") by 'use'; nightly is paused. Run 'deploy <tag>' to resume."
     receipt noop "$(cat "$PIN_FILE")" "pinned by use; nightly paused" "$cur" "$cur"
@@ -567,7 +666,7 @@ cmd_nightly() {
 
 cmd_prune() {
   need_repo
-  acquire_lock
+  lock_or_die
   local cur keep name dir kept=0 removed=0 tag
   cur="$(current_tag)"
   keep=" "
@@ -595,7 +694,6 @@ cmd_prune() {
       fi
     done
   fi
-  git -C "$REPO" worktree prune
   receipt ok "" "pruned $removed, kept$keep" "$cur" "$cur"
   say "Pruned $removed release(s)."
 }
@@ -603,13 +701,14 @@ cmd_prune() {
 cmd_install_plan() {
   local mise mise_dir uid_cmd='$(id -u)' agents="$HOME/Library/LaunchAgents" logs="$HOME/Library/Logs/arcadia-demo"
   local app="$CURRENT/apps/dashboard" next_entry="$CURRENT/apps/dashboard/node_modules/next/dist/bin/next"
-  local path_env script
+  local path_env script nightly_script
   mise="$(resolve_mise || true)"
   if [[ -z "$mise" ]]; then mise="/opt/homebrew/bin/mise"; MISE_NOTE=" (mise was not found on this machine; fix this path)"; else MISE_NOTE=""; fi
   mise_dir="$(dirname "$mise")"
   path_env="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   case ":$path_env:" in *":$mise_dir:"*) ;; *) path_env="$mise_dir:$path_env" ;; esac
   script="${REPO:-<arcadia repo>}/scripts/release.sh"
+  nightly_script="$CURRENT/scripts/release.sh"
 
   cat <<EOF
 # Stable demo deployment: install plan
@@ -620,7 +719,7 @@ cmd_install_plan() {
 #
 # Demo server  : $LABEL, next start -H 0.0.0.0 -p $DEMO_PORT, from $CURRENT
 # Workspace    : $WORKSPACE (shared with the development dashboard)
-# Nightly job  : $NIGHTLY_LABEL at 04:00, runs: $script nightly
+# Nightly job  : $NIGHTLY_LABEL at 04:00, runs: $nightly_script nightly (the script inside the serving release)
 # Releases dir : $RELEASES
 $( [[ -n "$MISE_NOTE" ]] && echo "# mise        : $mise$MISE_NOTE" || echo "# mise        : $mise" )
 
@@ -675,6 +774,8 @@ launchctl bootstrap "gui/$uid_cmd" "$agents/$LABEL.plist"
 
 # --- 4. The nightly agent ($NIGHTLY_LABEL) -------------------------------------------
 # Fetches tags at 04:00 and deploys the newest release tag if it is not current.
+# It runs the script from the serving release, so cut the first release tag from
+# a main that already contains scripts/release.sh.
 # git fetch needs credentials that launchd can reach (an https remote with the
 # keychain works; an ssh remote needs an agent socket launchd does not have).
 cat > "$agents/$NIGHTLY_LABEL.plist" <<'PLIST'
@@ -686,7 +787,7 @@ cat > "$agents/$NIGHTLY_LABEL.plist" <<'PLIST'
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>$(xml_escape "$script")</string>
+    <string>$(xml_escape "$nightly_script")</string>
     <string>nightly</string>
   </array>
   <key>StartCalendarInterval</key>
