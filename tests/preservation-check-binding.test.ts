@@ -849,4 +849,23 @@ describe("preservation check-definition binding \u2014 residual fail-closed form
     }
     refuses(["node -r x checks/check.mjs", "node --require x checks/check.mjs", "node --import=x checks/check.mjs"], /preloads a module/);
   });
+
+  it("X1/X14 (main refused by accident; head before the fix bound nothing): refuses node --env-file in every form", () => {
+    refuses(["node --env-file .env checks/check.mjs", "node --env-file=.env checks/check.mjs", "node --env-file-if-exists .env checks/check.mjs", "node --env-file-if-exists=.env checks/check.mjs"], /environment file/);
+  });
+
+  it("X4 (main bound nothing; head before the fix bound nothing): refuses a quoted word containing a redirect character", () => {
+    refuses(["node 'checks/a>b.mjs'", "node \"checks/a<b.mjs\"", "sh 'checks/a>>b.sh'"], /quoted word containing a redirection/);
+  });
+
+  it("X3/X5/X6: refuses bare node/deno/bun reading stdin, keeps a fully quoted node path bound, skips exec -a's value", () => {
+    refuses(["cat checks/check.mjs | node", "cat x | deno", "cat x | bun", "node -", "node checks/'check'.mjs"]);
+    const f = fixture();
+    const rewritten = candidateTree(f, { "checks/check.mjs": "process.exit(1);\n" });
+    for (const command of ["node 'checks/check.mjs'", "exec -a name node checks/check.mjs"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modifiedFile("checks/check.mjs"));
+    }
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["node --test checks/check.mjs"])).not.toThrow();
+  });
 });

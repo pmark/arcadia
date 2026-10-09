@@ -412,9 +412,12 @@ const REDIRECT_TOKEN = /^\d*(?:<<<|<<-?|<>|>>|>\||<|>)$/;
  * it is glued to (`check.py>out.txt`, `2>&1`, `<in`, #1108 P8) so the script
  * name is never hidden inside it. A leading file descriptor stays with its
  * operator (`2>`); the operand becomes the next token. */
-function segmentTokens(segment: string): string[] {
+function segmentTokens(segment: string, refuseWord: (word: string) => ArcadiaError): string[] {
   const tokens: string[] = [];
   for (const word of segment.trim().split(/\s+/).filter(Boolean)) {
+    // A quoted word holding a redirect character (`'checks/a>b.mjs'`) would be
+    // split inside its quotes and bind nothing; refuse it before splitting (#1109 X4).
+    if (/['"]/.test(word) && /[<>]/.test(word)) throw refuseWord(word);
     const pieces = word.split(REDIRECT_SPLIT);
     pieces.forEach((piece, index) => {
       if (index % 2 === 1) {
@@ -460,7 +463,7 @@ const LAUNCHER_CHDIR_OPTION: Record<string, RegExp> = {
  * flag until the first one that takes a value, which is the rest of the token
  * or, when last, the next token. `chdir` letters move the wrapped command's
  * directory; `env -S` splits a string into a command this binding never sees. */
-const LAUNCHER_SHORT_VALUE_LETTERS: Record<string, string> = { env: "uCS", sudo: "ugpChrtUD", nice: "n", stdbuf: "ioe" };
+const LAUNCHER_SHORT_VALUE_LETTERS: Record<string, string> = { env: "uCS", sudo: "ugpChrtUD", nice: "n", stdbuf: "ioe", exec: "a" };
 const LAUNCHER_SHORT_CHDIR_LETTERS: Record<string, string> = { env: "C", sudo: "D" };
 function launcherCluster(launcher: string, token: string): { chdir: boolean; split: boolean; consumesNext: boolean } {
   const result = { chdir: false, split: false, consumesNext: false };
@@ -491,7 +494,7 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
   // Segments run in command order, so a `cd` in one affects every later one.
   let changedDirectory = false;
   for (const segment of command.split(SHELL_SEGMENT)) {
-    const tokens = segmentTokens(segment);
+    const tokens = segmentTokens(segment, word => unresolvableRefusal("has a quoted word containing a redirection character, which this binding cannot split reliably", word, baseRevision));
     let index = 0;
     let launcher: string | null = null;
     // A launcher that itself changes directory (`env -C dir`, `sudo -D dir`)
@@ -543,11 +546,14 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       let informational = false;
       let noScript = false;
       let sawRun = false;
+      let sawToken = false;
+      let stdinDash = false;
       const awkFiles: string[] = [];
       const hereDocument = tokens.slice(index + 1).find(token => REDIRECT_TOKEN.test(token) && token.includes("<<"));
       if (hereDocument) throw refuseOption(executableName, hereDocument, "feeds the interpreter a here-document or here-string");
       for (let i = index + 1; i < tokens.length; i += 1) {
         const token = tokens[i];
+        if (!REDIRECT_TOKEN.test(token)) sawToken = true;
         // Redirections are not the script: `python3 check.py < data` still
         // names check.py, while `python3 < check.py` and `sh < check.sh` read
         // the program itself from stdin (#1103, #1047). Skip the operator's
@@ -588,13 +594,15 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
           if (/^[-+][A-Za-z]*[oO]$/.test(token)) i += 1;
           if (/^[-+]/.test(token)) continue;
         } else if (kind === "node") {
-          if (/^(?:-r.*|--(?:require|import|loader|experimental-loader)(?:=.*)?)$/.test(token)) {
-            throw refuseOption(executableName, token, "preloads a module this binding does not bind");
+          if (/^(?:-r.*|--(?:require|import|loader|experimental-loader|env-file|env-file-if-exists)(?:=.*)?)$/.test(token)) {
+            // `--env-file` can set NODE_OPTIONS=--require from a candidate-written file (#1109 X1, X14).
+            throw refuseOption(executableName, token, "preloads a module or loads an environment file this binding does not bind");
           }
           // Inline code runs from the command text, with no script file to bind.
           if (/^(?:-[A-Za-z]*[ep]|--eval(?:=.*)?|--print(?:=.*)?)$/.test(token)) { noScript = true; break; }
+          if (token === "-") { stdinDash = true; break; }
           if (/^(?:-v|-h|--version|--help)$/.test(token)) informational = true;
-          if (/^(?:-C|--conditions|--input-type|--env-file|--title|--disable-warning)$/.test(token)) i += 1;
+          if (/^(?:-C|--conditions|--input-type|--title|--disable-warning)$/.test(token)) i += 1;
           if (token.startsWith("-")) continue;
         } else if (kind === "perl") {
           if (/^-[A-Za-z]*[eEIMmxdD]/.test(token)) throw refuseOption(executableName, token, "runs inline code, preloads a module, or changes the include path or directory");
@@ -632,7 +640,9 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       // file describes. So does a shell, perl or ruby with none, and any
       // interpreter fed by a `<` redirect instead of a script (`sh < check.sh`).
       // Informational flags run nothing and are allowed.
-      const readsStdin = python || kind === "shell" || kind === "perl" || kind === "ruby" || stdinRedirect;
+      // `cat f | node`, `deno`, `bun` with no argument at all read stdin too (#1109 X3).
+      const bareRuntime = !sawToken && (kind === "node" || executableName === "deno" || executableName === "bun");
+      const readsStdin = python || kind === "shell" || kind === "perl" || kind === "ruby" || stdinRedirect || bareRuntime || stdinDash;
       if (!target && !noScript && !informational && kind !== "awk" && readsStdin) {
         throw validationError(
           `Declared preservation check \`${command}\` runs ${python ? "Python" : `\`${executableName}\``} with no script file argument, so the program comes from standard input, which this binding cannot resolve to a bound script file. ` +
