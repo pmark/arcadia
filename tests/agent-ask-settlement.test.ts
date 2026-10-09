@@ -878,6 +878,7 @@ describe("Agent Ask settlement", () => {
     const proposal = runAgentAskPreviewCommand({
       workspace,
       request: askForIntent("amend-block-lists", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+        .replace("dependencies: []", "dependencies: []\nreferences: []")
     });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-block-lists",
@@ -1030,6 +1031,10 @@ describe("Agent Ask settlement", () => {
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-plan-action",
       disposition: "accepted", revision: 1
     });
+    // The destructive change is visible before apply, not only in the diff (Issue #1079).
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on: [finished] \u2192 []; references cleared."
+    );
     runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-plan-action",
       disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
@@ -1039,6 +1044,77 @@ describe("Agent Ask settlement", () => {
     expect(existingBlock).toContain("depends_on: []");
     expect(existingBlock).toContain("references: []");
     expect(existingBlock).not.toContain("docs/stale.md");
+  });
+
+  it("keeps an amended Action's dependencies and references when the Plan Ask omits them (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = [
+      "agent_ask: v1", "request_id: ask-omit-lists", "project: demo", "intent: plan",
+      "desired_result: Tighten acceptance only", "target_ref: plan/demo-plan", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.", "    acceptance:",
+      "      - Sharper proof exists.", "      - Second criterion exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-omit-lists", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (2 criteria); depends_on unchanged (omitted); references unchanged (omitted)."
+    );
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-omit-lists", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const settled = readFileSync(planPath, "utf8");
+    const existingBlock = settled.match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("- Sharper proof exists.");
+    expect(existingBlock).toContain("depends_on: [finished]");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("clears only the list an action-intent amendment writes as an explicit empty list (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    // `dependencies: []` is explicit and clears; `references` is omitted and stays.
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("amend-clear-deps-only", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-deps-only", disposition: "accepted", revision: 1
+    });
+    expect(preview.data.receipt.effects).toContain(
+      "Field changes for demo/existing: next_action changed; acceptance changed (1 criterion); depends_on: [finished] \u2192 []; references unchanged (omitted)."
+    );
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-clear-deps-only", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const settled = readFileSync(planPath, "utf8");
+    const existingBlock = settled.match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: []");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
+  });
+
+  it("keeps both lists when an action-intent amendment omits them entirely (Issue #1079)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = staleMetadataPlan(repo);
+    const request = askForIntent("amend-omit-both", "action", "Improve existing proof", "action/existing", ["Improved proof exists."])
+      .replace("dependencies: []\n", "");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-omit-both", disposition: "accepted", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-omit-both", disposition: "accepted", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const settled = readFileSync(planPath, "utf8");
+    const existingBlock = settled.match(/ {2}- id: existing[\s\S]*?(?= {2}- id: finished)/)?.[0] ?? "";
+    expect(existingBlock).toContain("depends_on: [finished]");
+    expect(existingBlock).toContain("references: [docs/stale.md]");
   });
 
   // Explicit ids were honored on the `action` bundle path while both Plan paths
@@ -2137,6 +2213,25 @@ function activePlanAsk(requestId: string): string {
     "    dependencies:", "      - existing", "    references:", "      - src/release.ts",
     "requested_authority: apply_if_approved", ""
   ].join("\n");
+}
+
+/** Give the fixture's `existing` Action a done prerequisite and a stale reference, committed; returns the Plan path. */
+function staleMetadataPlan(repo: string): string {
+  const planPath = path.join(repo, "docs/plans/demo-plan.md");
+  const finished = [
+    "  - id: finished", "    title: Finished prerequisite", "    status: done",
+    "    responsibility: codex", "    effort: session", "    next_action: Preserve proof.",
+    "    expected_artifact: Finished proof", "    clarification: clarified", "    confidence: high",
+    "    acceptance_criteria:", "      - Finished proof exists.", "    depends_on: []",
+    "    decisions: []", "    references: []"
+  ].join("\n");
+  writeFileSync(planPath, readFileSync(planPath, "utf8")
+    .replace("    depends_on: []", "    depends_on: [finished]")
+    .replace("    references: []", "    references: [docs/stale.md]")
+    .replace("questions: []", `${finished}\nquestions: []`), "utf8");
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Add stale Action metadata"], { cwd: repo });
+  return planPath;
 }
 
 function clearPlanActionAsk(requestId: string): string {
