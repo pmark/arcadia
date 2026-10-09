@@ -116,6 +116,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ask: ALLOWED,
   "ask show": ALLOWED,
   "ask correct": ALLOWED,
+  "ask report": exempt("Reads the resolved workspace database read-only, todo's own projection and the checked-in golden set; writes and records nothing."),
   "ask-trail": ALLOWED,
   "ask-rule test": ALLOWED,
   "agent-ask preview": ALLOWED,

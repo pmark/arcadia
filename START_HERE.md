@@ -2025,6 +2025,34 @@ the worktree itself and wraps Claude Code in tmux—it does not use Claude Code'
 worktree-owning tmux mode. A separately admitted repository may hold its own
 Session.
 
+**Launches are headless and recorded.** `go --launch`, `arcadia session launch`
+and the dashboard's session launch run the provider non-interactively, exactly
+as a standing-policy launch does: `claude --print --output-format stream-json
+--verbose --permission-mode acceptEdits --settings <per-Session file>
+--setting-sources ""`,
+`codex exec --json --sandbox workspace-write`, and `opencode run` (which takes
+its permissions from your own opencode configuration; Arcadia manages none).
+The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
+its log: your Project's declared validation commands, exactly as declared, and
+`arcadia agent-ask draft`, nothing else. `--setting-sources ""` stops Claude
+merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
+`.claude/settings.json`) into it, so a headless Claude Session loads no user or
+project settings or hooks. Two limits: `acceptEdits` also auto-approves
+mkdir/rm/mv/cp/sed in the working directory, and the allow list is not a security
+boundary, because validation commands run project code the agent can edit.
+Combined output is appended to `<workspace>/.arcadia/sessions/<session-id>.log`,
+and the provider's exit code is written to `agent_sessions.exit_status` (visible
+as `exit N` in the Session timeline), so a crash is distinguishable from a clean
+exit after tmux is gone. The tmux pane streams the same output; the printed
+reattach command attaches to it (you can watch, but there is no TUI to type
+into). A launch refuses before it reserves anything, naming the reason, when the
+provider binary is not on PATH (`provider_binary_missing`), the provider is not
+signed in (`provider_not_signed_in`: Claude Code token file or login, `codex
+login`), or the installed provider lacks the headless flags
+(`permission_posture_missing`). To work in the provider's TUI instead, add
+`--interactive` to `go --launch`; that Session is not logged and records no
+exit code.
+
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance
 criterion verbatim and in the plan's own order, the candidate worktree and
@@ -2752,21 +2780,60 @@ the ordinary route for those words is Requires Review or Blocked, and when the w
 match a concrete request that needs review and is not safe to execute even though a
 missing field routes them to a question (for example "deploy the site to production"
 with no Project). So a memo can replace a question about words nothing matched, or a
-shelved idea, but never skip a review.
+shelved idea, but never skip a review: a memo on words nothing matched makes only a
+Requires Review Action for the operator. Any process able to run the `ask correct` CLI
+creates an operator-sourced memo, so that command carries the same trust as the rest
+of the CLI. The routing flag below turns memos off together with the rest of the
+routing.
 
 Approving an Ask question makes exactly one Action, even if two approvals run at once
-or an approval fails part way and you run it again: the second attempt either waits
-("another approval is in progress") or picks up the Action the first one made. If you
-archived, closed, deferred or corrected that Action in between, the retry refuses and
-creates nothing; reject the question and send the request again if the work is still
-wanted. Any process able to run the
-`ask correct` CLI creates an operator-sourced memo, so that command carries the same
-trust as the rest of the CLI. The routing flag below turns memos off together with
-the rest of the routing.
+or an approval fails part way. A second approval that starts while the first is still
+in progress is refused and creates nothing ("run it again" once the first ends); it
+does not wait. Run it again after a failed attempt and it picks up the Action the
+first attempt made. If you archived, closed, deferred or corrected that Action in
+between, the retry refuses and creates nothing; reject the question and send the
+request again if the work is still wanted.
 
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
 workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot
 be read never loses an Ask: the default is used and the receipt carries a warning.
+
+### Is Ask routing getting better? `arcadia ask report` and the golden set
+
+```
+pnpm arcadia ask report [--since 7d] [--json]
+```
+
+Read-only. Per operator source (agent-written Asks and replies that only record
+words behind another write are left out) it prints: the **vanish rate** (target
+zero: Asks at least an hour old with no open record that `arcadia todo` lists and no
+acted, answered or on-purpose Idea outcome; suppressed Asks are counted apart);
+corrected ÷ classified; questions ÷ Asks; Back Burner arrivals (filed on purpose
+versus shelved as a fallback); memo hits; Asks flagged `recurrence` (three or more
+revive the deferred Schedule capability) and `planning`; and how many corrections
+no golden case backs. Vanished Asks are listed by `ask_…` id only; trace one with
+`arcadia ask show <id>`. Run it from an Arcadia checkout so it can read the golden
+set. When three or more memos share a corrected type and the same first three words,
+the report says so: that is a hint for an agent to propose a deterministic rule and
+a golden case in a reviewed PR. Nothing is ever generated automatically. The vanish
+rate is judged at report time (each Ask where it stands now) and leaves suppressed
+Asks out. Corrections are attributed to the source of the Ask that was corrected, so
+each source block shows its own memos and how many no golden case backs.
+
+The golden set is `tests/fixtures/ask-golden.jsonl`: one JSON object per line with
+`id`, a paraphrased or synthetic `text` (never real Ask text), `expected_type`
+(`work`, `idea`, `status`, `unclear` for the Clarify First question, or `answer`),
+and optionally `expected_path` (the stewardship's execution path, for example
+`Requires Review`), `expected_memo` and seeded `corrections` for memo hit and miss
+cases. To add a case, append a line, run `pnpm vitest run tests/ask-golden.test.ts`
+and open a PR; the reviewed merge is the approval. The test replays every case
+through the pure intake, memo and stewardship functions and also through the real
+`arcadia ask`, so CI fails when either routes a known Ask differently. A golden case
+backs a correction when it has the same type and opens with the same first three
+words. Those words come from real Ask text, so write the case as a paraphrase or
+synthetic example that merely begins with the same three generic words (for example
+"I want to ..."), and never copy a real Ask, its Project names or its details into the
+repository.
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
 run. It lists seven sources per Project: **open Decisions**, **pending Agent
@@ -3033,6 +3100,76 @@ Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
 `package.json`. The restart script installs and validates that toolchain, then
 writes every managed LaunchAgent to start through `mise exec`; login-shell PATH
 state cannot select a different Node ABI.
+
+## Stable demo deployment
+
+The development dashboard (port 3020) runs `next dev` from the primary checkout,
+so every restart cold-compiles each page and every merge changes the code under
+it. For a demo that must work at any moment there is a second, separate
+dashboard: a pre-built release of a **git tag**, served by `next start` on port
+**3030**, reading the same `martianrover` workspace. `scripts/services.sh restart`
+never touches it.
+
+- **URL:** `http://arcadia-1.alpine-rattlesnake.ts.net:3030` (or
+  `http://127.0.0.1:3030` on the Mac). Optionally
+  `https://arcadia-1.alpine-rattlesnake.ts.net/` with no port, through
+  `tailscale serve`.
+- **What serves it:** the `com.arcadia.demo.dashboard` LaunchAgent (KeepAlive)
+  runs `next start` from `/Users/pmark/Dev/MR/Arcadia/releases/current`, a
+  symlink to the active tag. It sets `ARCADIA_DASHBOARD_CLI=built`, so every
+  page shells out to that release's own compiled CLI, never to the moving
+  checkout. Demo actions are real writes to the shared workspace.
+- **Release tags:** a tag starting with a version number (`v1.2.0`), `rel-` or
+  `release-`, case-insensitive; the newest by creation date wins. Cut one from
+  green `main` as an annotated tag (the creation date is the tag's own):
+  `git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0`. Only tags that are
+  ancestors of `origin/main` are deployed, and names with anything beyond
+  letters, digits and `. _ + -` are ignored.
+- **Nightly:** the `com.arcadia.demo.nightly` LaunchAgent runs
+  `scripts/release.sh nightly` at 04:00. It fetches tags, deploys the newest
+  release tag if it is not already current, and pings you with the outcome.
+
+```sh
+scripts/release.sh list              # built releases and available tags
+scripts/release.sh status            # current tag, is :3030 answering, last receipt
+scripts/release.sh deploy v1.2.0     # build, smoke-test on :3031, then swap and restart
+scripts/release.sh build v1.2.0      # build only, without promoting
+scripts/release.sh use v1.1.0        # failover: instant switch to a built tag
+scripts/release.sh nightly           # what the 04:00 job runs
+scripts/release.sh prune             # keep the newest 3 builds plus current
+scripts/release.sh install-plan      # print (never run) the install commands
+```
+
+`deploy` builds the tag in its own detached worktree (frozen-lockfile install,
+`pnpm build`, `next build`), starts that build on staging port 3031, and
+requires `/now`, `/actions`, `/review`, `/projects` and `/api/snapshot` to
+answer HTTP 200 within the budget (`ARCADIA_DEMO_SMOKE_BUDGET`, 90 seconds).
+Only then does it swap `current` and restart the agent, which takes about two
+seconds, and checks that :3030 serves this release's own build (its static
+manifest URL, `/now` and `/api/snapshot`). A failed build, a failed smoke
+check, a failed restart or a swapped demo that does not answer restores and
+re-checks the previous release, exits non-zero and writes a receipt to
+`releases/receipts.jsonl`. A build whose tag was later force-moved is rebuilt by
+`deploy` and refused by `use`.
+
+**Failover.** If the demo misbehaves, `scripts/release.sh use <tag>` switches to
+any tag listed as `built` at once, with no build and no smoke test, and
+`scripts/release.sh status` confirms it. `use` refuses a tag that is not built.
+`use` also pins the demo: the nightly job stays paused (it will not redeploy the
+newest tag over your failover) until the next `scripts/release.sh deploy <tag>`.
+
+**Limits.** A release is older code than the database's newest migration:
+additive migrations are harmless, but a destructive migration must ship with a
+new release tag. The demo shares the live worker, Intelligence service and
+Discord bot, and `/runs` still reads the operator-script library of the primary
+checkout.
+
+**Installing needs an operator Decision.** Loading the LaunchAgents, the nightly
+job and the Tailscale entry, and cutting a release tag, is a deployment that
+CONSTITUTION.md reserves for an explicit Decision. Until it is answered nothing
+is installed; `scripts/release.sh install-plan` prints the exact plists and the
+`launchctl` and `tailscale` commands for you to run, followed by the undo
+commands.
 
 ## Compact agent instructions
 

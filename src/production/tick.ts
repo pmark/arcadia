@@ -1936,7 +1936,9 @@ function attemptProjectLaunch(
       // own the next time this tick runs, so it is worth surfacing in
       // `arcadia production status` rather than only this log line. Any other
       // conflict code supersedes and clears a stale sign-in blocker.
-      if (rawCode === "provider_not_signed_in") {
+      // A missing provider binary or headless permission posture
+      // (`launchPreflight.ts`) is durable for the same reason.
+      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
       } else {
         clearLaunchBlocker(db, input.projectSlug);

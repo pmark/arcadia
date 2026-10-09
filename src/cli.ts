@@ -21,6 +21,7 @@ import {
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskCorrectSuccess, runAskCorrectCommand } from "./commands/askCorrect.js";
 import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askCoverage.js";
+import { renderAskReportSuccess, runAskReportCommand } from "./commands/askReport.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
@@ -931,6 +932,22 @@ export function buildProgram(): Command {
         actor: options.actor
       });
     }, renderAskCorrectSuccess);
+  });
+
+  addJsonOption(
+    ask
+      .command("report")
+      .description("Report how well Ask routing is doing per operator source: vanish rate, corrections, questions, Back Burner arrivals, memo hits, recurrence and planning flags (read-only)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--since <time>", "Window start, an ISO time or a look-back (30m, 6h, 7d, 2w); default 7d")
+  ).action((_options: unknown, command: Command) => {
+    const options: { workspace: string; since?: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction(
+      "ask.report",
+      options,
+      () => runAskReportCommand({ workspace: options.workspace, since: options.since }),
+      renderAskReportSuccess
+    );
   });
 
   addJsonOption(
@@ -3954,8 +3971,9 @@ Origin: every item has "origin" (a string from a field its source records, else 
       .option("--model <model>", "Override the plan's recommended_model for the next agent session")
       .option("--effort <level>", "Override the plan's recommended_reasoning_effort for the next agent session")
       .option("--workspace <path>", "Workspace path used for the Session receipt", defaultWorkspace())
-      .option("--launch", "Explicitly launch Claude Code in a detached tmux Session")
-  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; json?: boolean }) =>
+      .option("--launch", "Explicitly launch the agent in a detached tmux Session, headless by default: output streams to a Session log under the workspace and the provider exit code is recorded")
+      .option("--interactive", "With --launch: start the interactive TUI (reattach with tmux) instead of the headless run; no log or exit status is recorded")
+  ).action((options: { repo?: string; source?: string; agent?: string; apply?: boolean; model?: string; effort?: string; workspace?: string; launch?: boolean; interactive?: boolean; json?: boolean }) =>
     runCliAction("go", options, () => {
       if (options.agent !== undefined && !SESSION_AGENTS.includes(options.agent as SessionAgent)) {
         throw validationError(`--agent must be ${SESSION_AGENTS.join(", ")}.`, { agent: options.agent });

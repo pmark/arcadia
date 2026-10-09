@@ -49,15 +49,15 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Let an operator-launched session for one Action finish with its work preserved and its outcome recorded, without production being Active.
+    next_action: Let an operator-launched session for one Action finish with its work preserved, pushed and opened as a draft PR, without production being Active.
     expected_artifact: Evidence satisfying Agent Ask operator-launch-runs-to-completion
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-reliable-single-session-20261009-r3
+    source: Agent Ask amend-reliable-single-session-gate-0098-20261009-r2
     acceptance_criteria:
-      - "Decision 0096 must be approved before this Action starts, and this Plan must not be activated while 0096 is open, because dispatch cannot yet gate an Action on a Decision (#1126). If it approves the push-and-draft-PR option, an operator Launch of one Action records a one-shot authorization bound to that Action and Session. The authorization expires after 24 hours or at first use. Only a confirmed Launch carries it: the dashboard Launch confirmation, or arcadia session launch --operator-launch confirmed at an interactive TTY. A launch without that confirmation, from inside an Arcadia Session, or from a non-interactive shell carries none, and each mint writes an auditable receipt. When that Session exits, Arcadia runs host-side validation, preserves (commits) the candidate, pushes its branch, reconciles the exit and, only on accepted_completion, opens or updates a draft PR. It does this through the same preserveSessionCandidate path the production tick uses, without production Active and with no integration or merge. If the Decision approves the local-only option, the same applies but nothing is pushed and no PR is opened. If it is rejected or answered Not now, this Action stays blocked and is not implemented."
+      - "Decision 0096 is answered (2026-10-09). An operator's confirmed Launch of one Action records a one-shot authorization bound to that Action and Session. The authorization expires after 24 hours or at first use. Only a confirmed Launch carries it: the dashboard Launch confirmation (minted on the dashboard side, because the route spawns the CLI without a TTY) or arcadia session launch --operator-launch confirmed at an interactive TTY. A launch without that confirmation, from inside an Arcadia Session, or from a non-interactive shell carries none, and each mint writes an auditable receipt. When that Session exits, Arcadia runs host-side validation, preserves (commits) the candidate, pushes its branch, reconciles the exit and, only on accepted_completion, opens or updates a draft PR. It does this through the same preserveSessionCandidate path the production tick uses, without production Active. Review, repair and merge are the next Action's (launched-pr-review-repair-merge)."
       - The existing tick reconcile, which already runs while production is Inactive, is reused, not duplicated. When a Session has exited but has not been reconciled within a bound, the dashboard shows it with arcadia session reconcile <id> as the manual fallback.
-      - Tests cover accepted completion to a draft PR, incomplete-resumable with the work preserved, a refused authorization (wrong Action, expired, already used, unconfirmed or non-interactive launch), and the unreconciled-exit display. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+      - Tests cover accepted completion to a draft PR, incomplete-resumable with the work preserved, a refused authorization (wrong Action, expired, already used, unconfirmed or non-interactive launch), a confirmed dashboard Launch that does mint, and the unreconciled-exit display. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
     depends_on: [headless-observable-session-launch]
     decisions: []
     references: ["CONSTITUTION.md", "src/sessions/index.ts", "src/sessions/launch.ts", "src/sessions/reconciliation.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/production/stallDetection.ts", "src/production/sessionSignals.ts", "apps/dashboard/app/api/projects/[id]/session-launch/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/fast-rehearsal/README.md", "docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1126"]
@@ -70,11 +70,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-single-session-offline
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-reliable-single-session-20261009-r3
+    source: Agent Ask amend-reliable-single-session-per-0096-0097-20261009
     acceptance_criteria:
-      - A fast-rehearsal scenario (tests/fast-rehearsal) runs one Action from a dashboard-equivalent launch request, using the same production code and never a separate imitation. The path covers fixture-cli in a real tmux session, headless logging, exit capture, the bounded-lifetime guard, preservation, reconcile and a draft PR against the fake GitHub. It asserts each receipt and runs in CI in under 5 minutes.
-      - Failure injection covers a crash, a stall killed by the limit, a preflight refusal and a refused authorization. Each ends in its recorded outcome with no lease held. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
-    depends_on: [bounded-session-lifetime, operator-launch-runs-to-completion]
+      - A fast-rehearsal scenario (tests/fast-rehearsal) runs one Action from a dashboard-equivalent confirmed launch request through the session-launch route's confirmed-mint path, using the same production code and never a separate imitation. The path covers fixture-cli in a real tmux session, headless logging, exit capture, the bounded-lifetime guard, preservation, reconcile, a PR against the fake GitHub, the adversarial review posted as PR comments, one repair round and the merge on green. It asserts each receipt and runs in CI in under 5 minutes.
+      - Failure injection covers a crash, a stall killed by the limit, a preflight refusal, a refused authorization, a failing required check that is repaired, a merge conflict that is repaired, and an operator-approval gate that stops before merging. Each ends in its recorded outcome with no lease held. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [bounded-session-lifetime, operator-launch-runs-to-completion, launched-pr-review-repair-merge]
     decisions: []
     references: ["CONSTITUTION.md", "src/sessions/index.ts", "src/sessions/launch.ts", "src/sessions/reconciliation.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/production/stallDetection.ts", "src/production/sessionSignals.ts", "apps/dashboard/app/api/projects/[id]/session-launch/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/fast-rehearsal/README.md", "docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1126"]
   - id: session-board-page
@@ -99,15 +99,48 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove one real Action launched from the page runs to a draft PR with no human intervention, three times in a row.
+    next_action: Prove one real Action launched from the page runs to merged on green with no human intervention, three times in a row.
     expected_artifact: Evidence satisfying Agent Ask prove-single-session-live
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-reliable-single-session-20261009-r3
+    source: Agent Ask amend-reliable-single-session-gate-0098-20261009-r2
     acceptance_criteria:
-      - Three consecutive live runs each launch one small, real, already-clarified Action from the session board with a real provider. Each run ends with the session exiting on its own, its log and exit code recorded, its candidate preserved and a draft PR opened (or, if Decision 0096 approved local-only preservation, a preserved local candidate), with no operator or agent intervention between Launch and draft PR. A failed run resets the count, and its defect is fixed offline first in the fast-rehearsal scenario. The runs may span more than one session; each live session records the runs so far.
-      - The evidence names, for each run, the session id, the Action, the exit code, the reconcile outcome, the PR and the elapsed time. The Actions are genuine queued work chosen by the operator or the queue, never fixtures. Their draft PRs then follow the normal review and merge gate like any other work.
-    depends_on: [prove-single-session-offline, session-board-page]
+      - Three consecutive live runs each launch one small, real, already-clarified Action from the session board with a real provider. Each ends merged to main, with no operator or agent intervention between Launch and merge beyond the sessions the loop itself launches. A run stopped by a correctly fired operator-approval gate neither counts nor resets the count; a wrongly fired gate is a failed run. Along the way, the session exits on its own, its log and exit code are recorded, its candidate is preserved, a draft PR is opened, adversarial review is posted as PR comments, and conflicts and CI failures are repaired. A failed run resets the count, and its defect is fixed offline first in the fast-rehearsal scenario. The runs may span more than one session; each live session records the runs so far.
+      - The evidence names, for each run, the session id, the Action, the exit code, the reconcile outcome, the PR, the review rounds, the merge commit or gate, and the elapsed time. The Actions are genuine queued work chosen by the operator or the queue, never fixtures.
+    depends_on: [prove-single-session-offline, session-board-page, launched-pr-review-repair-merge]
+    decisions: []
+    references: ["CONSTITUTION.md", "src/sessions/index.ts", "src/sessions/launch.ts", "src/sessions/reconciliation.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/production/stallDetection.ts", "src/production/sessionSignals.ts", "apps/dashboard/app/api/projects/[id]/session-launch/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/fast-rehearsal/README.md", "docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1126"]
+  - id: launched-pr-review-repair-merge
+    title: Carry a PR from a confirmed Launch through adversarial review, repair and merge on green, stopping only when an automated gate calls for operator approval.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Carry a PR from a confirmed Launch through adversarial review, repair and merge on green, stopping only when an automated gate calls for operator approval.
+    expected_artifact: Evidence satisfying Agent Ask launched-pr-review-repair-merge
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-reliable-single-session-gate-0098-20261009-r2
+    acceptance_criteria:
+      - "Decision 0098 must be approved before this Action starts, and this Plan must not be activated while 0098 is open, because dispatch cannot yet gate an Action on a Decision (#1126). Per Decision 0098, for a draft PR opened from a confirmed Launch, Arcadia runs an independent, read-only adversarial review of the exact head and posts its verdict and findings as a PR comment. It then launches repair sessions for valid blocking findings, conflicts with the base branch and failing required checks, within at most three review rounds; each push resets the proof. Each review or repair session mints its own receipted one-shot authorization, bound to the PR and the originating Launch receipt. Only once the Decision 0060/0080 conditions hold on the exact head (no unresolved blocking finding, all required checks green, clean merge state) does it mark the PR ready for review and merge it. Gate and outcome pings use the standing PR-lifecycle Discord notification in docs/agent-guidance/pull-requests.md. The work may span more than one session and more than one PR."
+      - Automated gates stop before merging and raise one operator item in arcadia todo and Discord, naming the PR and the reason. Gates are evaluated deterministically on the exact head's diff against its base after every push. They fire when the PR opens, answers or changes any Decision (docs/decisions/**); changes CONSTITUTION.md, AGENTS.md, CLAUDE.md, docs/agents-context.md, docs/agent-guidance/**, .arcadia/** or .claude/** policy, or code implementing launch authorization, this loop or its gate list; touches credentials, secrets, .env files, .github/workflows, required-check or branch-protection configuration, or deployment or production configuration; adds or upgrades a dependency; or deletes or skips tests or lowers a threshold. They also fire when the review marks a finding authority-sensitive, when three rounds are exhausted, or when a check stays red after repair. The gate list is checked-in configuration that is itself gated; review judgment can add a gate, never clear one. A PR the loop cannot classify is not merged. The loop never weakens tests, gates or branch protection, and never force-pushes over another author's commits. The PRs that implement this Plan's authority Actions (headless-observable-session-launch, which sets the Claude allow list; operator-launch-runs-to-completion; launched-pr-review-repair-merge; chain-as-loop-of-single-runs) are themselves operator-merged.
+      - Tests against a fake GitHub cover posting the review comment, a repair round for a blocking finding, a conflict repair, a CI-failure repair, merge on green, each gate stopping with its operator item, and the three-round limit. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [operator-launch-runs-to-completion]
+    decisions: []
+    references: ["CONSTITUTION.md", "src/sessions/index.ts", "src/sessions/launch.ts", "src/sessions/reconciliation.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/production/stallDetection.ts", "src/production/sessionSignals.ts", "apps/dashboard/app/api/projects/[id]/session-launch/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/fast-rehearsal/README.md", "docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1126"]
+  - id: chain-as-loop-of-single-runs
+    title: "Run an Action chain as a loop of single runs: when one launched Action merges, the next ready Action launches from the new main."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Run an Action chain as a loop of single runs: when one launched Action merges, the next ready Action launches from the new main."
+    expected_artifact: Evidence satisfying Agent Ask chain-as-loop-of-single-runs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-reliable-single-session-gate-0098-20261009-r2
+    acceptance_criteria:
+      - "Decision 0098 must be approved before this Action starts, and this Plan must not be activated while 0098 is open, because dispatch cannot yet gate an Action on a Decision (#1126). Per Decisions 0097 and 0098, a confirmed Launch of a chain names its Plan and a maximum number of Actions, capped by checked-in policy (default 3). The chain receipt expires after 24 hours. When an Action launched under it merges to main through launched-pr-review-repair-merge, Arcadia launches the next ready Action of that Plan from the new main; that launch mints its own one-shot authorization, bound to the chain receipt and receipted. The chain stops, with a receipt and one operator item, at the maximum count, at an operator-approval gate, on a failed run, when no ready Action remains, before an Action that lists an unapproved Decision, or when the Plan's Actions or pointer changed since the chain Launch. Because Decision gates in this Plan live in criterion text until #1126 lands, the Plan-activation guard is the effective protection meanwhile; #1126 is the trigger to revisit. No Action ever builds on an unmerged predecessor."
+      - Two consecutive live chains of two real, already-clarified Actions each run from one confirmed chain Launch to both Actions merged. There is no intervention between Launch and the final merge beyond the sessions the loop itself launches. This is the two-Action rehearsal, now on merge-then-next. The evidence names each session, PR, merge commit and the elapsed time. The fast-rehearsal harness first proves the same two-Action chain offline. The work may span more than one session. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [launched-pr-review-repair-merge, prove-single-session-live]
     decisions: []
     references: ["CONSTITUTION.md", "src/sessions/index.ts", "src/sessions/launch.ts", "src/sessions/reconciliation.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/production/stallDetection.ts", "src/production/sessionSignals.ts", "apps/dashboard/app/api/projects/[id]/session-launch/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/fast-rehearsal/README.md", "docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1126"]
 questions: []

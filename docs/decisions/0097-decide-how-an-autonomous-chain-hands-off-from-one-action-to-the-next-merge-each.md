@@ -4,7 +4,7 @@ type: decision
 id: "0097"
 slug: decide-how-an-autonomous-chain-hands-off-from-one-action-to-the-next-merge-each
 project: arcadia
-status: open
+status: approved
 question: "Decide how an autonomous chain hands off from one Action to the next: merge each Action to main before launching the next, keep stacking each Action on its unmerged predecessor, or decide after the single-session proof. Nothing changes by raising this Decision."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Merge-then-next: each Action merges to main before the next launches"
+decided: 2026-10-09
 ---
 
 # Decision 0097: Decide how an autonomous chain hands off from one Action to the next: merge each Action to main before launching the next, keep stacking each Action on its unmerged predecessor, or decide after the single-session proof. Nothing changes by raising this Decision.

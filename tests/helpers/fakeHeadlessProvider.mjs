@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stand-in for the `codex` and `opencode` CLIs in the headless-provider test. It never reaches a model.
-// FAKE_PROVIDER_MODE (or FAKE_PROVIDER_MODE_codex / _opencode): success | no-ask | bad-marker | uncommitted | fail | timeout | not-logged-in | partial-ask
+// FAKE_ORPHAN=1 additionally leaves a descendant holding the output pipes.
+// FAKE_PROVIDER_MODE (or FAKE_PROVIDER_MODE_codex / _opencode): success | settle | no-ask | bad-marker | uncommitted | fail | timeout | not-logged-in | partial-ask
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -10,15 +11,21 @@ const args = process.argv.slice(2);
 const mode = process.env[`FAKE_PROVIDER_MODE_${name}`] ?? process.env.FAKE_PROVIDER_MODE ?? "success";
 if (process.env.FAKE_PROVIDER_CALLS) appendFileSync(process.env.FAKE_PROVIDER_CALLS, JSON.stringify({ name, args: args.map((a) => (a.length > 80 ? a.slice(0, 80) + "..." : a)), cwd: process.cwd(), arcadiaWorkspace: process.env.ARCADIA_WORKSPACE ?? null, operatorId: process.env.ARCADIA_OPERATOR_SCRIPT_ID ?? null, author: process.env.GIT_AUTHOR_NAME ?? null }) + "\n");
 
+// Arcadia checks the installed provider's help text for the headless flags before it launches (src/sessions/launchPreflight.ts).
+if (name === "codex" && args[0] === "exec" && args.includes("--help")) { console.log("Usage: codex exec [OPTIONS]\n  --json\n  --sandbox <MODE>\n  --model <MODEL>\n  --cd <DIR>"); process.exit(0); }
+
 if ((name === "codex" && args[0] === "login") || (name === "opencode" && args[0] === "auth")) {
   if (mode === "not-logged-in") { console.error("Not logged in"); process.exit(1); }
+  // An uncertain credential listing (unknown subcommand, changed format): the runs that follow behave like "success".
+  if (mode === "auth-broken") { console.error("error: unknown command 'auth'"); process.exit(1); }
   console.log(name === "opencode" ? "1 credentials" : "Logged in using ChatGPT");
   process.exit(0);
 }
 
 // Arcadia's own capacity probe also spawns `codex app-server`; anything but a headless run must do nothing, quietly.
-// A headless run only ever acts inside the experiment workspace the test names.
-if (!["exec", "run"].includes(args[0]) || !process.env.ARCADIA_WORKSPACE) process.exit(0);
+if (!["exec", "run"].includes(args[0])) process.exit(0);
+// A headless run only ever acts inside the experiment workspace the test names; without it, fail loudly rather than act.
+if (!process.env.ARCADIA_WORKSPACE) { console.error("[fake] ARCADIA_WORKSPACE is not set: refusing to act where the live workspace could be reached"); process.exit(97); }
 
 const cdIndex = args.indexOf("--cd");
 const cwd = cdIndex >= 0 ? args[cdIndex + 1] : process.cwd();
@@ -30,7 +37,9 @@ if (mode === "timeout") {
   spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" }); // an orphan the runner must also stop
   setInterval(() => {}, 1000);
 } else {
-  const line = mode === "bad-marker" ? "wrong marker" : "headless provider marker";
+  // A descendant that outlives the provider and keeps its output pipes open (same process group, so the runner can sweep it).
+  if (process.env.FAKE_ORPHAN) spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" }).unref();
+  const line =mode === "bad-marker" ? "wrong marker" : "headless provider marker";
   writeFileSync(path.join(cwd, "MARKER.md"), line + "\n");
   if (mode !== "uncommitted") {
     run("git", ["add", "MARKER.md"]);
@@ -50,6 +59,14 @@ if (mode === "timeout") {
     };
     // The same fixed launcher shape the brief names: draft it and leave it for the host.
     run("arcadia", ["agent-ask", "draft", JSON.stringify(ask)]);
+    if (mode === "settle") {
+      // What the shipped brief asks for first: settle the Ask (preview, then apply the exact fingerprint).
+      const settleArgs = ["agent-ask", "settle", "--proposal", ask.request_id, "--request-id", `settle-${ask.request_id}`, "--disposition", "accepted", "--json"];
+      const preview = JSON.parse(run("arcadia", settleArgs));
+      const fingerprint = preview.data.receipt.previewFingerprint;
+      console.log("[fake] settle preview fingerprint", fingerprint);
+      console.log(run("arcadia", [...settleArgs, "--apply", "--preview", fingerprint]).slice(0, 2000));
+    }
   }
   console.log("[fake] done");
 }

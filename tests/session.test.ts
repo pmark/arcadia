@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runGoCommand } from "../src/commands/go.js";
+import type { SessionRecording } from "../src/sessions/sessionRecording.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -40,10 +41,10 @@ class FakeTmux implements TmuxAdapter {
   collision = false;
   live = false;
   failLaunch = false;
-  launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
+  launches: Array<{ name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }> = [];
   available() { return this.isAvailable; }
   hasSession() { return this.collision || this.live; }
-  launch(input: { name: string; cwd: string; command: string; args: string[] }) {
+  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }) {
     if (this.failLaunch) throw new Error("synthetic spawn failure");
     this.launches.push(input);
     this.live = true;
@@ -259,6 +260,48 @@ describe("tmux-backed Sessions", () => {
     expect(transition.reason).toContain("Managed Run run_alias_conflict");
   });
 
+  it("launches headless by default: the same unattended Claude argv, recorded, with the reattach command still meaningful", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const result = launch(fixture, tmux);
+
+    const args = tmux.launches[0].args;
+    expect(args).toEqual(expect.arrayContaining(["--print", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--settings", "--setting-sources", ""]));
+    expect(args.indexOf("--verbose")).toBeGreaterThan(args.indexOf("stream-json"));
+    expect(tmux.launches[0].record).toMatchObject({ sessionId: result.data.session!.id });
+    // The tmux pane streams the same output the log records, so reattaching still shows the run.
+    expect(sessionView(result.data.session!, tmux).reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
+  });
+
+  it("keeps the interactive TUI behind the explicit --interactive opt-in, with no log or exit recording", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    launch(fixture, tmux, "launch", { interactive: true });
+
+    const args = tmux.launches[0].args;
+    expect(args).not.toContain("--print");
+    expect(args).not.toContain("--output-format");
+    expect(args).not.toContain("--settings");
+    expect(tmux.launches[0].record).toBeUndefined();
+  });
+
+  it("refuses --interactive without --launch", () => {
+    const fixture = preparedFixture();
+    expectArcadiaError(() => runGoCommand({ repo: fixture.repo, apply: true, agent: "claude", interactive: true }), "--interactive only applies to --launch");
+  });
+
+  it("refuses a missing provider binary by name before preparing any worktree or Session", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const emptyBin = path.join(fixture.root, "empty-bin");
+    mkdirSync(emptyBin);
+    expectArcadiaError(() => launch(fixture, tmux, "launch", { preflightEnv: { PATH: emptyBin } }), 'the "claude" executable was not found');
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(existsSync(path.join(fixture.root, "launch"))).toBe(false);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get())).toEqual({ n: 0 });
+  });
+
   it("requires the explicit launch authority shape", () => {
     const fixture = preparedFixture();
     expectArcadiaError(() => runGoCommand({ repo: fixture.repo, launch: true, agent: "claude" }), "requires --apply");
@@ -297,7 +340,7 @@ describe("tmux-backed Sessions", () => {
     git(worktree, ["commit", "-m", "change prepared base"]);
 
     expectArcadiaError(
-      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
+      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux, undefined, fixture.workspace)),
       "base revision changed"
     );
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, prepared.id))?.status).toBe("failed");
@@ -334,7 +377,7 @@ describe("tmux-backed Sessions", () => {
     });
 
     expectArcadiaError(
-      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
+      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux, undefined, fixture.workspace)),
       "cannot determine the model tier"
     );
     expect(tmux.launches).toHaveLength(0);
@@ -365,7 +408,7 @@ describe("tmux-backed Sessions", () => {
     }));
 
     expectArcadiaError(
-      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux)),
+      () => withDatabase(fixture.workspace, (db) => launchPreparedSession(db, prepared, tmux, undefined, fixture.workspace)),
       'Action "define-contract" was not found in plan "copy-proof"'
     );
     expect(tmux.launches).toHaveLength(0);
@@ -472,8 +515,9 @@ describe("tmux-backed Sessions", () => {
   });
 });
 
-function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suffix = "launch") {
+function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suffix = "launch", extra: { interactive?: boolean; preflightEnv?: NodeJS.ProcessEnv } = {}) {
   return runGoCommand({
+    ...extra,
     repo: fixture.repo,
     source: fixture.repo,
     apply: true,

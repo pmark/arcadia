@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readClaudeCodeTokenFile } from "./claudeCodeToken.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
@@ -33,9 +33,36 @@ const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
  * conflict path every other sign-out does -- managed production retries it
  * for free instead of spending the Action's repair budget on it.
  */
-export function checkProviderSignIn(provider: string, workspace?: string): ProviderSignInStatus | null {
-  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace);
+export function checkProviderSignIn(provider: string, workspace?: string, env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
+  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace, env);
+  if (provider === "codex-cli") return checkCodexSignIn(env);
   return null;
+}
+
+/**
+ * `codex login status` exits 0 only when a Codex login exists. A probe that
+ * cannot start at all (the binary is missing, a timeout) is a broken worker
+ * environment and throws, exactly like the Claude Code probe; a confirmed
+ * non-zero exit is a confirmed sign-out.
+ */
+function checkCodexSignIn(env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
+  // Same rule as the Claude Code probe: tests inject `env` (a stubbed PATH) to
+  // exercise it and otherwise never depend on this host's real Codex login.
+  if (process.env.VITEST && !env) return null;
+  const remedy = 'Sign in to Codex on this worker host: run "codex login", then retry.';
+  const result = spawnSync("codex", ["login", "status"], {
+    encoding: "utf8",
+    timeout: SIGN_IN_CHECK_TIMEOUT_MS,
+    ...(env ? { env } : {})
+  });
+  if (result.error || result.status === null) {
+    throw new Error(
+      `Could not check Codex sign-in on this worker (${result.error ? describeProbeFailure(result.error) : `the probe was killed by signal ${result.signal}`}). ` +
+      "This is a worker environment problem, not a confirmed sign-out, so it will not resolve on its own.",
+      result.error ? { cause: result.error } : undefined
+    );
+  }
+  return { signedIn: result.status === 0, remedy };
 }
 
 /**
@@ -51,11 +78,12 @@ export function checkProviderSignIn(provider: string, workspace?: string): Provi
  * read from `stdout` whether or not the process exited zero; only when no
  * verdict can be read at all is this treated as a probe failure.
  */
-function checkClaudeCodeSignIn(workspace?: string): ProviderSignInStatus | null {
+function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
   // Tests must not depend on this host's real Claude Code sign-in state.
   // A test that specifically exercises the preflight injects an explicit
-  // `providerSignIn` override instead of relying on this default.
-  if (process.env.VITEST) return null;
+  // `providerSignIn` override, or an `env` pointing at a stubbed `claude`,
+  // instead of relying on this default.
+  if (process.env.VITEST && !env) return null;
 
   const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
 
@@ -78,7 +106,8 @@ function checkClaudeCodeSignIn(workspace?: string): ProviderSignInStatus | null 
     const raw = execFileSync("claude", ["auth", "status", "--json"], {
       encoding: "utf8",
       timeout: SIGN_IN_CHECK_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      ...(env ? { env } : {})
     });
     const confirmed = readLoggedInVerdict(raw);
     if (confirmed === null) {

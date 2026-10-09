@@ -59,8 +59,18 @@ export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/share/mise/shim
 
 cd "$REPOSITORY"
 
+# Run the helper in the background and forward SIGINT/SIGTERM to it, so a /runs stop or a closed terminal reaches the helper
+# (which stops the provider's whole process group and still writes a receipt) instead of orphaning a running provider.
 STATUS=0
-mise exec -- node --import tsx scripts/headless-provider-test.ts "$RUN_DIRECTORY" "$RUN_ID" "$SCRIPT_ID" ${KEEP[@]+"${KEEP[@]}"} || STATUS=$?
+mise exec -- node --import tsx scripts/headless-provider-test.ts "$RUN_DIRECTORY" "$RUN_ID" "$SCRIPT_ID" ${KEEP[@]+"${KEEP[@]}"} &
+CHILD=$!
+forward_signal() { kill -TERM "$CHILD" 2>/dev/null || true; }
+trap forward_signal INT TERM
+wait "$CHILD" || STATUS=$?
+while kill -0 "$CHILD" 2>/dev/null; do
+  wait "$CHILD" || STATUS=$?
+done
+trap - INT TERM
 
 # The helper writes its own receipt and handoff; cover only the case where it died before it could.
 if [[ ! -s "$RECEIPT_PATH" ]]; then

@@ -6,11 +6,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { runGoCommand } from "../commands/go.js";
-import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { withDatabase } from "../db/connection.js";
 import { getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { seedFixtureActionBuildPacket } from "../fixtures/zeroPromptRehearsal.js";
-import { buildSessionLaunch, getSession, type AgentSession, type TmuxAdapter } from "../sessions/index.js";
+import { getSession, type AgentSession, type TmuxAdapter } from "../sessions/index.js";
+import { recordExitScriptPath, type SessionRecording } from "../sessions/sessionRecording.js";
 
 /**
  * The headless-provider test behind the operator action
@@ -110,6 +110,8 @@ export interface HeadlessTestOptions {
   env?: NodeJS.ProcessEnv;
   /** Test seam: the extra directories appended to PATH (default: the usual operator tool directories). */
   toolDirectories?: string[];
+  /** Test seam: where SIGINT/SIGTERM arrive from (default: this process). */
+  signalSource?: Pick<NodeJS.EventEmitter, "on" | "off">;
   /** Test seam: kill grace after the timeout. */
   killGraceMs?: number;
   out?: (line: string) => void;
@@ -249,10 +251,6 @@ function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: env ?? process.env }).trim();
 }
 
-function tryGit(cwd: string, args: string[]): string | null {
-  try { return git(cwd, args); } catch { return null; }
-}
-
 // eslint-disable-next-line no-control-regex -- strips terminal colour codes from provider output
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
@@ -275,6 +273,10 @@ interface Context {
   log: (line: string) => void;
   tsxImport: string;
   cli: string;
+  /** Set when the launcher received SIGINT/SIGTERM; no later provider is started. */
+  interrupted: string | null;
+  /** Stops the provider process group currently running, if any. */
+  stopActive: ((signal: NodeJS.Signals) => void) | null;
 }
 
 function makeContext(options: HeadlessTestOptions): Context {
@@ -293,7 +295,9 @@ function makeContext(options: HeadlessTestOptions): Context {
   return {
     options, env, now: options.now ?? (() => new Date()), log, tsxImport,
     searchPath: buildPath(env.PATH, [], options.toolDirectories),
-    cli: path.join(repoRoot, "src", "cli.ts")
+    cli: path.join(repoRoot, "src", "cli.ts"),
+    interrupted: null,
+    stopActive: null
   };
 }
 
@@ -327,7 +331,7 @@ function mustArcadia(context: Context, workspace: string | null, args: string[],
 
 const PROVIDER_BINARY: Record<ProviderName, string> = { codex: "codex", opencode: "opencode" };
 
-export interface ProviderPrecondition { ok: boolean; message: string; binary: string | null }
+export interface ProviderPrecondition { ok: boolean; message: string; binary: string | null; warning?: string }
 
 export function checkProviderPrecondition(context: Pick<Context, "searchPath" | "env">, provider: ProviderName): ProviderPrecondition {
   const name = PROVIDER_BINARY[provider];
@@ -337,12 +341,19 @@ export function checkProviderPrecondition(context: Pick<Context, "searchPath" | 
   const probe = spawnSync(binary, args, { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"], env: { ...sanitizedEnv(context.env), PATH: context.searchPath } });
   const output = `${probe.stdout ?? ""}${probe.stderr ?? ""}`.replace(ANSI, "").trim();
   const command = `${name} ${args.join(" ")}`;
-  if (probe.error || probe.status !== 0) {
-    return { ok: false, binary, message: `${command} failed (${probe.error ? probe.error.message : `exit ${probe.status}`}): ${output.slice(0, 200) || "no output"}; sign in as the operator (${provider === "codex" ? "codex login" : "opencode auth login"}) and rerun` };
+  const failure = probe.error ? probe.error.message : probe.status !== 0 ? `exit ${probe.status}` : null;
+  if (provider === "codex") {
+    if (failure) return { ok: false, binary, message: `${command} failed (${failure}): ${output.slice(0, 200) || "no output"}; sign in as the operator (codex login) and rerun` };
+    return { ok: true, binary, message: `${command} succeeded` };
   }
-  // `opencode auth list` exits 0 with nothing stored; "N credentials" is its summary line.
-  if (provider === "opencode" && /\b0 credentials\b/i.test(output)) {
+  // OpenCode's credential listing is not a documented contract. Refuse only on its one clear signal, "0 credentials";
+  // anything else uncertain (an unknown subcommand, a changed format) warns and lets the attempt itself decide.
+  if (!failure && /\b0 credentials\b/i.test(output)) {
     return { ok: false, binary, message: `${command} lists no credentials; sign in with opencode auth login and rerun` };
+  }
+  if (failure) {
+    const warning = `${command} could not confirm a sign-in (${failure}: ${output.slice(0, 120) || "no output"}); proceeding, the attempt itself will show whether OpenCode is signed in`;
+    return { ok: true, binary, message: warning, warning };
   }
   return { ok: true, binary, message: `${command} succeeded` };
 }
@@ -366,10 +377,14 @@ function writeHeartbeat(workspace: string, now: number): void {
   writeFileSync(file, JSON.stringify({ schema: HEARTBEAT_SCHEMA, at: now, sessions: [], goRequests: true, goRequestsAt: now }));
 }
 
-function writeArcadiaShim(directory: string, context: Context): void {
+const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+function writeArcadiaShim(directory: string, workspace: string, context: Context): void {
   mkdirSync(directory, { recursive: true });
   const shim = path.join(directory, "arcadia");
-  writeFileSync(shim, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} --import ${JSON.stringify(context.tsxImport)} ${JSON.stringify(context.cli)} "$@"\n`);
+  // The shim pins the experiment workspace itself, so no `arcadia` command the provider runs can fall back to the live default
+  // even if the provider's shell drops its environment; REQUIRE_INLINE makes an unnamed fallback fail instead of resolving.
+  writeFileSync(shim, `#!/bin/sh\nARCADIA_WORKSPACE=${shellQuote(workspace)}\nARCADIA_REQUIRE_INLINE_WORKSPACE=1\nexport ARCADIA_WORKSPACE ARCADIA_REQUIRE_INLINE_WORKSPACE\nexec ${shellQuote(process.execPath)} --import ${shellQuote(context.tsxImport)} ${shellQuote(context.cli)} "$@"\n`);
   chmodSync(shim, 0o755);
 }
 
@@ -415,10 +430,10 @@ function createFixture(context: Context, workspace: string, date: string, model:
 }
 
 class RecordingTmux implements TmuxAdapter {
-  launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
+  launches: Array<{ name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }> = [];
   available(): boolean { return true; }
   hasSession(): boolean { return false; }
-  launch(input: { name: string; cwd: string; command: string; args: string[] }): void { this.launches.push(input); }
+  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }): void { this.launches.push(input); }
 }
 
 function computeGitdirReport(context: Context, worktree: string): GitdirReport {
@@ -498,6 +513,11 @@ async function runProviderProcess(context: Context, input: {
     const killGroup = (signal: NodeJS.Signals) => {
       try { process.kill(-child.pid!, signal); } catch { try { child.kill(signal); } catch { /* already gone */ } }
     };
+    context.stopActive = (signal) => {
+      appendFileSync(input.logPath, `\n[headless-provider-test] ${signal} received by the test; stopping the process group\n`);
+      killGroup(signal);
+      setTimeout(() => killGroup("SIGKILL"), graceMs).unref();
+    };
     const timer = setTimeout(() => {
       timedOut = true;
       appendFileSync(input.logPath, `\n[headless-provider-test] timeout after ${input.timeoutMs} ms; stopping the process group\n`);
@@ -508,20 +528,35 @@ async function runProviderProcess(context: Context, input: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      // Sweep any orphan the provider left behind in its group.
-      killGroup("SIGKILL");
+      context.stopActive = null;
       resolve({ exitCode, signal, timedOut, durationMs: Date.now() - started });
     };
     child.once("error", (error) => {
       appendFileSync(input.logPath, `[headless-provider-test] could not start ${input.command}: ${error.message}\n`);
       finish(null, null);
     });
-    child.once("close", (code, signal) => finish(code, signal));
+    // The process exiting is the result. A descendant that kept the output pipes open must not look like a hang or a timeout:
+    // sweep the group so those handles close, give the pipes a moment to drain, then resolve.
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      killGroup("SIGKILL");
+      const drain = setTimeout(() => finish(code, signal), 2_000);
+      drain.unref();
+      child.once("close", () => { clearTimeout(drain); finish(code, signal); });
+    });
   });
 }
 
+function rawGit(cwd: string, args: string[]): string | null {
+  try { return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); } catch { return null; }
+}
+
+/** Completion states a work item reaches once its `complete` Ask settled. */
+const DONE_STATES = new Set(["done", "completed", "complete"]);
+
 function evaluate(context: Context, result: ProviderResult, input: {
-  workspace: string; worktree: string; baseRevision: string; run: { exitCode: number | null; signal: string | null; timedOut: boolean; durationMs: number }; timeoutMs: number;
+  workspace: string; worktree: string; baseRevision: string; branch: string;
+  run: { exitCode: number | null; signal: string | null; timedOut: boolean; durationMs: number }; timeoutMs: number;
 }): void {
   const { worktree } = input;
   const criteria: CriterionResult[] = [];
@@ -539,33 +574,61 @@ function evaluate(context: Context, result: ProviderResult, input: {
   add("validation", `${FIXTURE_VALIDATION} passes`, validation.status === 0 && marker === expected,
     validation.status === 0 ? (marker === expected ? "fixture check ok" : "check passes only because MARKER.md is absent or wrong") : (validation.stderr || validation.stdout || "check failed").trim().slice(0, 200));
 
-  const commits = tryGit(worktree, ["rev-list", "--count", `${input.baseRevision}..HEAD`]);
-  const committedMarker = tryGit(worktree, ["show", "HEAD:MARKER.md"]);
-  const commitCount = commits === null ? 0 : Number(commits);
-  add("commit", "a commit with MARKER.md exists on the candidate branch",
-    commitCount >= 1 && committedMarker !== null && committedMarker + "\n" === expected,
-    commits === null ? "git could not read the candidate branch" : `${commitCount} commit(s) beyond the base; HEAD ${committedMarker === null ? "has no MARKER.md" : "carries MARKER.md"}`);
+  // A drafted completion Ask legitimately sits untracked under .arcadia/asks/ until the host settles it; nothing else may be dirty.
+  const dirty = rawGit(worktree, ["status", "--porcelain", "--", ".", ":(exclude).arcadia/asks"]);
+  const dirtyAll = rawGit(worktree, ["status", "--porcelain"]);
+  const commits = rawGit(worktree, ["rev-list", "--count", `${input.baseRevision}..HEAD`]);
+  const committedMarker = rawGit(worktree, ["show", "HEAD:MARKER.md"]);
+  const branch = rawGit(worktree, ["branch", "--show-current"])?.trim() ?? null;
+  const commitCount = commits === null ? 0 : Number(commits.trim());
+  const onBranch = branch === input.branch;
+  add("commit", "a clean commit with MARKER.md exists on the candidate branch",
+    commitCount >= 1 && committedMarker === expected && onBranch && dirty !== null && dirty.trim() === "",
+    commits === null ? "git could not read the candidate branch"
+      : `${commitCount} commit(s) beyond the base on ${branch ?? "no branch"}${onBranch ? "" : ` (expected ${input.branch})`}; HEAD ${committedMarker === null ? "has no MARKER.md" : committedMarker === expected ? "carries the exact MARKER.md" : "carries a different MARKER.md"}; ` +
+        `${dirty === null ? "status unreadable" : dirty.trim() === "" ? "tree clean" : `uncommitted changes: ${dirty.trim().split("\n").slice(0, 3).join("; ")}`}`);
 
-  const asks = findDraftedAsks(worktree);
   const wanted = planCriteria(worktree);
+  const criterionComplete = (ask: Record<string, unknown>): boolean => {
+    const evidence: Array<{ criterion?: string; status?: string }> = Array.isArray(ask.evidence) ? ask.evidence : [];
+    return evidence.length === wanted.length && wanted.every((criterion, index) => evidence[index]?.criterion === criterion && evidence[index]?.status === "met");
+  };
+  const head = rawGit(worktree, ["rev-parse", "HEAD"])?.trim() ?? null;
+  const actionStatus = withDatabase(input.workspace, (db) => getWorkItemByDocRef(db, `plan/${FIXTURE_PLAN}#${FIXTURE_ACTION}`)?.status ?? null);
   let askDetail = "no Agent Ask file under .arcadia/asks/";
   let askPass = false;
-  for (const file of asks) {
+  for (const file of findDraftedAsks(worktree)) {
+    const relative = path.relative(worktree, file);
     const ask = readAsk(file);
-    if (!ask || ask.intent !== "complete") { askDetail = `${path.relative(worktree, file)} is not a complete-intent Ask`; continue; }
+    if (!ask || ask.intent !== "complete") { askDetail = `${relative} is not a complete-intent Ask`; continue; }
     result.askFile = file;
-    const evidence: Array<{ criterion?: string; status?: string }> = Array.isArray(ask.evidence) ? ask.evidence : [];
-    const criterionComplete = evidence.length === wanted.length && wanted.every((criterion, index) => evidence[index]?.criterion === criterion && evidence[index]?.status === "met");
-    const head = tryGit(worktree, ["rev-parse", "HEAD"]);
-    const revisionMatches = typeof ask.candidate_revision === "string" && head !== null && (head === ask.candidate_revision);
-    const preview = arcadia(context, input.workspace, ["agent-ask", "preview", "--file", file, "--dir", worktree, "--json"]);
-    const accepted = preview.status === 0 && preview.json?.ok === true;
-    askPass = criterionComplete && revisionMatches && accepted;
-    askDetail = `${path.relative(worktree, file)}: ${criterionComplete ? "every criterion met, verbatim and in order" : `evidence does not match the ${wanted.length} declared criteria`}; ` +
-      `candidate_revision ${revisionMatches ? "equals HEAD" : "does not equal HEAD"}; preview ${accepted ? "accepted" : `refused (${(preview.json?.error?.message ?? preview.stderr.trim().split("\n").slice(-1)[0] ?? "").slice(0, 160)})`}`;
+    const complete = criterionComplete(ask);
+    const revision = typeof ask.candidate_revision === "string" ? ask.candidate_revision : null;
+    const settled = relative.split(path.sep).includes("archive");
+    if (!settled) {
+      // Drafted and left for the host: the Ask names the candidate's HEAD and preview accepts it.
+      const preview = arcadia(context, input.workspace, ["agent-ask", "preview", "--file", file, "--dir", worktree, "--json"]);
+      const accepted = preview.status === 0 && preview.json?.ok === true;
+      const revisionMatches = revision !== null && head !== null && head === revision;
+      askPass = complete && revisionMatches && accepted;
+      askDetail = `drafted ${relative}: ${complete ? "every criterion met, verbatim and in order" : `evidence does not match the ${wanted.length} declared criteria`}; ` +
+        `candidate_revision ${revisionMatches ? "equals HEAD" : "does not equal HEAD"}; preview ${accepted ? "accepted" : `refused (${(preview.json?.error?.message ?? preview.stderr.trim().split("\n").slice(-1)[0] ?? "").slice(0, 160)})`}`;
+    } else {
+      // Settled by the agent (the brief's first choice): settlement archived the Ask in its own commit, so HEAD moved past the
+      // candidate revision. Accept it when that revision is still an ancestor holding the exact MARKER.md, the Action is complete
+      // in the experiment database and the tree is entirely clean.
+      const ancestor = revision !== null && spawnSync("git", ["-C", worktree, "merge-base", "--is-ancestor", revision, "HEAD"]).status === 0;
+      const atRevision = revision !== null ? rawGit(worktree, ["show", `${revision}:MARKER.md`]) : null;
+      const done = actionStatus !== null && DONE_STATES.has(actionStatus);
+      const clean = dirtyAll !== null && dirtyAll.trim() === "";
+      askPass = complete && ancestor && atRevision === expected && done && clean;
+      askDetail = `settled ${relative}: ${complete ? "every criterion met, verbatim and in order" : `evidence does not match the ${wanted.length} declared criteria`}; ` +
+        `candidate_revision ${ancestor ? "is an ancestor of HEAD" : "is not an ancestor of HEAD"} and ${atRevision === expected ? "holds the exact MARKER.md" : "does not hold the exact MARKER.md"}; ` +
+        `Action status in the experiment database: ${actionStatus ?? "unknown"}; tree ${clean ? "clean" : "not clean"}`;
+    }
     if (askPass) break;
   }
-  add("ask", "a criterion-complete completion Agent Ask was drafted and preview accepts it", askPass, askDetail);
+  add("ask", "a criterion-complete completion Agent Ask was drafted (preview accepts it) or settled (Action complete)", askPass, askDetail);
   result.criteria = criteria;
 }
 
@@ -613,7 +676,7 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     const recording = new RecordingTmux();
     const go = runGoCommand({
       repo: fixture, apply: true, agent: provider, launch: true, model, workspace,
-      agentWorktreeRoot: path.join(attemptRoot, "worktrees"), tmux: recording
+      agentWorktreeRoot: path.join(workspace, "projects", "worktrees"), tmux: recording
     });
     const session: AgentSession | null = go.data.session;
     if (!session) throw new Refusal("prepare", "go --apply prepared no Session for the fixture Action");
@@ -621,32 +684,42 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     result.candidateBranch = session.branch;
     result.candidateWorktree = worktree;
     result.effort = session.effort;
-    context.log(`prepare (${provider}): candidate ${session.branch} at ${worktree} (go --apply --agent ${provider}; process boundary recorded, nothing started)`);
+    context.log(`prepare (${provider}): candidate ${session.branch} at ${worktree} (go --apply --agent ${provider} --launch; process boundary recorded, nothing started yet)`);
 
-    // The shipped builder, with the admission marker a standing-policy launch carries, returns the unattended argv.
-    const unattended: AgentSession = { ...session, admission_request_id: `${context.options.scriptId}:${context.options.runId}` };
-    const launch = withDatabase(workspace, (db) => buildSessionLaunch(db, unattended, loadModelTierRegistry(workspace), workspace));
-    result.command = [launch.command, ...launch.args.map((arg) => (arg.length > 120 ? `${arg.slice(0, 40).replaceAll("\n", " ")}...[${arg.length} chars]` : arg))].join(" ");
+    // `go --launch` is headless by default: the recorded launch is the shipped builder's unattended argv
+    // (codex exec ... --sandbox workspace-write, opencode run ...), exactly what a standing-policy launch runs.
+    const launched = recording.launches.at(-1);
+    if (!launched) throw new Refusal("prepare", "go --launch recorded no launch for the Session");
+    result.command = [launched.command, ...launched.args.map((arg) => (arg.length > 120 ? `${arg.slice(0, 40).replaceAll("\n", " ")}...[${arg.length} chars]` : arg))].join(" ");
     context.log(`launch (${provider}): ${result.command}`);
+    // Run the argv directly rather than through tmux's recording wrapper: this test waits on the provider process itself, and a
+    // descendant that keeps the wrapper's pipe open must not look like a hang. The wrapper's one durable effect, the provider's
+    // exit code in agent_sessions.exit_status, is recorded below with the shipped script, so reconcile sees what it sees in production.
+    const runnable = { command: launched.command, args: launched.args };
 
     result.gitdir = computeGitdirReport(context, worktree);
     context.log(`gitdir (${provider}): worktree gitdir ${result.gitdir.worktreeGitDir} inside writable roots: ${result.gitdir.worktreeGitDirInsideWritableRoots}; common gitdir ${result.gitdir.commonGitDir} inside: ${result.gitdir.commonGitDirInsideWritableRoots}`);
 
     const shimDirectory = path.join(attemptRoot, "bin");
-    writeArcadiaShim(shimDirectory, context);
+    writeArcadiaShim(shimDirectory, workspace, context);
     const env: NodeJS.ProcessEnv = {
       ...sanitizedEnv(context.env), PATH: buildPath(context.env.PATH, [shimDirectory], context.options.toolDirectories),
       // Both the provider and anything it runs resolve this experiment workspace, never the live default.
       ARCADIA_WORKSPACE: workspace
     };
+    if (context.interrupted) throw new Refusal("interrupted", `${context.interrupted} received before the provider started`);
     context.log(`run (${provider}): headless, cap ${formatCap(timeoutMs)}, log ${logPath}`);
-    const run = await runProviderProcess(context, { provider, command: launch.command, args: launch.args, cwd: worktree, env, logPath, timeoutMs });
+    const run = await runProviderProcess(context, { provider, command: runnable.command, args: runnable.args, cwd: worktree, env, logPath, timeoutMs });
     result.exitCode = run.exitCode;
     result.signal = run.signal;
     result.timedOut = run.timedOut;
     result.durationMs = run.durationMs;
+    if (launched.record) {
+      const recorded = spawnSync(process.execPath, [recordExitScriptPath(), "--db", launched.record.databaseFile, "--session-id", session.id, "--exit-status", String(run.exitCode ?? 1)], { encoding: "utf8" });
+      if (recorded.status !== 0) context.log(`could not record the exit status for the Session: ${recorded.stderr.trim()}`);
+    }
 
-    evaluate(context, result, { workspace, worktree, baseRevision: session.base_revision, run, timeoutMs });
+    evaluate(context, result, { workspace, worktree, baseRevision: session.base_revision, branch: session.branch, run, timeoutMs });
 
     // Information only: what the host would make of the finished Session.
     const reconcile = arcadia(context, workspace, ["session", "reconcile", session.id, "--repo", fixture, "--request-id", `${context.options.runId}-${provider}`, "--json"]);
@@ -756,25 +829,50 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
     const snapshot = liveSnapshot(context, ["--record", before]);
     context.log(`live workspace snapshot (read-only): ${snapshot.ok ? "recorded" : snapshot.detail}`);
 
-    for (const provider of order) {
-      const result = await runProviderAttempt(context, provider, tempRoot, date);
-      if (options.keep) result.workspaceKept = path.join(tempRoot, provider);
-      providers.push(result);
-      context.log("");
-      context.log(formatTable([result]));
-      context.log("");
-      if (result.outcome === "PASS") break;
-      if (provider !== order[order.length - 1]) context.log(`${provider} did not pass; trying ${order[order.indexOf(provider) + 1]} on a fresh fixture.`);
+    // SIGINT/SIGTERM (a /runs stop, a closed terminal) stop the provider's whole process group, skip any fallback and still write the receipt.
+    const live = context;
+    const onSignal = (signal: NodeJS.Signals) => () => {
+      live.interrupted = signal;
+      live.log(`${signal} received: stopping the provider and finishing with a receipt`);
+      live.stopActive?.("SIGTERM");
+    };
+    const source = options.signalSource ?? process;
+    const handlers: Array<[NodeJS.Signals, () => void]> = (["SIGINT", "SIGTERM"] as const).map((signal) => [signal, onSignal(signal)]);
+    for (const [signal, handler] of handlers) source.on(signal, handler);
+    try {
+      for (const provider of order) {
+        if (context.interrupted) break;
+        const result = await runProviderAttempt(context, provider, tempRoot, date);
+        if (options.keep) result.workspaceKept = path.join(tempRoot, provider);
+        providers.push(result);
+        context.log("");
+        context.log(formatTable([result]));
+        context.log("");
+        if (result.outcome === "PASS") break;
+        if (provider !== order[order.length - 1] && !context.interrupted) context.log(`${provider} did not pass; trying ${order[order.indexOf(provider) + 1]} on a fresh fixture.`);
+      }
+    } finally {
+      for (const [signal, handler] of handlers) source.off(signal, handler);
     }
 
     const after = snapshot.ok ? liveSnapshot(context, ["--baseline", before]) : snapshot;
-    context.log(snapshot.ok ? `live workspace comparison (information only): ${after.changed ? "differs - other sessions or services may have written; see receipt" : "unchanged"}` : "live workspace comparison: skipped");
+    // Decision 0082's stop condition is any change to the live workspace attributable to an experiment, so a difference is
+    // never waved through: other sessions legitimately write there, but each change must be attributed before the next experiment.
+    const liveChanged = snapshot.ok ? after.changed : null;
+    context.log(snapshot.ok
+      ? liveChanged
+        ? "LIVE WORKSPACE CHANGED during this run: attribute every change (other sessions or services, versus this experiment) before any further experiment; an experiment-caused write is a Decision 0082 stop condition. See live-workspace-before.json and the receipt."
+        : "live workspace comparison: unchanged"
+      : "live workspace comparison: skipped");
     context.log("== Summary ==");
     context.log(formatTable(providers));
     const passed = providers.find((result) => result.outcome === "PASS");
-    const outcome = passed ? "succeeded" : "failed";
-    const reason = passed ? `${passed.provider} completed the fixture Action headlessly` : "no provider passed every criterion";
-    return finish(outcome, "complete", reason, { liveWorkspaceSnapshot: { recorded: snapshot.ok, changedDuringRun: snapshot.ok ? after.changed : null, detail: after.detail }, tempRoot: options.keep ? tempRoot : null });
+    const outcome = context.interrupted ? "failed" : passed ? "succeeded" : "failed";
+    const reason = context.interrupted ? `interrupted by ${context.interrupted}` : passed ? `${passed.provider} completed the fixture Action headlessly` : "no provider passed every criterion";
+    return finish(outcome, context.interrupted ? "interrupted" : "complete", reason, {
+      liveWorkspaceSnapshot: { recorded: snapshot.ok, changedDuringRun: liveChanged, actionRequired: liveChanged ? "attribute before any further experiment (Decision 0082 stop condition)" : null, detail: after.detail },
+      tempRoot: options.keep ? tempRoot : null
+    });
   } catch (error) {
     const stage = error instanceof Refusal ? error.stage : "unexpected";
     const reason = error instanceof Error ? error.message : String(error);

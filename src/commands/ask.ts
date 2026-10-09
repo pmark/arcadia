@@ -22,7 +22,7 @@ import {
 import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
 import { buildAskHeard, type AskHeard } from "../ask/heard.js";
 import { claimApprovalForAction, recordApprovalClaim } from "../ask/approvalClaim.js";
-import { findAskMemo, type AskMemo } from "../ask/corrections.js";
+import { findAskMemo, memoStandsDown, type AskMemo } from "../ask/corrections.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
@@ -319,8 +319,7 @@ function runAskCommandWithRouting(
   // what a memo exists to replace; stewardship routes it before it looks at review flags too.
   if (memo) {
     const ordinary = deriveStewardship(false, selectProject(options.project)).computedStewardship.recommendedExecutionPath;
-    const needsReview = intake.action.kind !== "capture_thought" && intake.reviewRequired && !intake.safeToExecute;
-    if (ordinary === "Requires Review" || ordinary === "Blocked" || needsReview) memo = null;
+    if (memoStandsDown(ordinary, intake)) memo = null;
   }
   if (memo) trace.memo = memo;
   const route: AskRoute | undefined = options.correctionRoute ?? memo?.type;
@@ -607,7 +606,8 @@ function runAskCommandWithRouting(
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
-        outputKind: resolved.outputKind,
+        // A status memo answers with status whatever the patterns made of these words; the report reads this kind.
+        outputKind: "status_summary",
         stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
       })
@@ -1627,7 +1627,7 @@ export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): Inta
   return { projects, recentActivity };
 }
 
-function resolvedIntentForStewardship(
+export function resolvedIntentForStewardship(
   intake: IntakeResult,
   stewardship: GoalStewardshipResult,
   approvedFromReview = false
@@ -1667,7 +1667,7 @@ function resolvedIntentForStewardship(
   return resolvedIntentFromIntake(intake, approvedFromReview);
 }
 
-function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
+export function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
   if ((!approvedFromReview && intake.confidenceLabel !== "high") || intake.resolvedIntent === "CaptureThought") {
     return {
       intentId: intake.resolvedIntent,
