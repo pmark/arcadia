@@ -138,6 +138,9 @@ export interface ManagedProductionTickProjectResult {
   launch: ManagedProductionLaunchAttempt | null;
 }
 
+/** Superseded terminal candidates already reported by this worker process (Issue #1158). */
+const reportedSupersededTerminalCandidates = new Set<string>();
+
 /**
  * A terminal Session no longer holds the repository lease. Rediscover its
  * unfinished handoff from the existing exit, preservation and settlement
@@ -187,7 +190,13 @@ function recoverTerminalHandoff(
     if (exit.outcome !== "accepted_completion" && !latestCandidateSettlementCommit(db, session, repoRoot)) continue;
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
-      log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      // Reported once per worker process per (Session, Action input revision):
+      // the candidate is skipped identically on every tick (Issue #1158).
+      const reportKey = `${session.id}\u0000${action ? requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action }).inputRevision : ""}`;
+      if (!reportedSupersededTerminalCandidates.has(reportKey)) {
+        reportedSupersededTerminalCandidates.add(reportKey);
+        log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      }
       continue;
     }
     pending.push(session);
