@@ -70,6 +70,7 @@ interface CorrectionContext {
   requestId: string;
   originalText: string;
   ingressSource: string;
+  askCreatedAt: string;
   record: AskRecord;
 }
 
@@ -96,8 +97,8 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
     const askId = resolveAskId(db, options.askId.trim());
     const liveAskId = currentAskId(db, askId);
     const ask = db
-      .prepare("SELECT id, capture_id FROM ask_requests WHERE id = ?")
-      .get(liveAskId) as { id: string; capture_id: string | null } | undefined;
+      .prepare("SELECT id, capture_id, created_at FROM ask_requests WHERE id = ?")
+      .get(liveAskId) as { id: string; capture_id: string | null; created_at: string } | undefined;
     const capture = ask?.capture_id
       ? (db
           .prepare("SELECT id, request_id, original_text, ingress_source FROM ask_capture_envelopes WHERE id = ?")
@@ -115,6 +116,7 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
       requestId: capture.request_id,
       originalText: capture.original_text,
       ingressSource: capture.ingress_source,
+      askCreatedAt: ask.created_at,
       record: describeAskRecord(db, ask.id)
     };
   });
@@ -128,11 +130,14 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
     : null;
 
   const previous = context.record;
-  assertCorrectable(previous, type, project?.id ?? null);
   // `--project` alone keeps what the Ask was heard as and moves it.
   const effectiveType: AskCorrectionType | "reroute" = type ?? rerouteTypeFor(previous);
 
-  const created = createReplacement(workspacePath, context, effectiveType, project, options);
+  // A correction is idempotent per (Ask, target type, Project): if an earlier attempt made its replacement and then
+  // failed before linking it, reuse that replacement instead of creating a second Action or idea.
+  const resumed = withDatabase(workspacePath, (db) => findUnlinkedReplacement(db, context, effectiveType, project?.id ?? null, options.ref));
+  if (!resumed) assertCorrectable(previous, type, project?.id ?? null);
+  const created = resumed ?? createReplacement(workspacePath, context, effectiveType, project, options);
 
   // The replacement is made by writers that each own their connection and files (the Ask pipeline, Back Burner
   // promote, review resolve-reply), so it cannot join a transaction. Everything this command owns after that, the
@@ -494,25 +499,31 @@ const EXECUTION_APPROVAL_INTENTS = new Set([
 ]);
 
 /**
- * An answer correction may target only a question: an Ask question, an ActionClarification, or an ordinary open
- * Decision that an Ask raised and that is not tied to an Action, plan, Artifact or packet. Anything derived (the
+ * An answer correction may target only a question an Ask raised: an Ask question (the marker), or an
+ * ActionClarification or ordinary open Decision with `ask_request_id` set, the Decision not tied to an Action, plan,
+ * Artifact or packet. Anything else, system-raised or derived (the
  * execution-pending follow-up an approval leaves, a build or planning approval) would, on approval, create a second
  * pending Decision or a duplicate Action; those are approved deliberately with `arcadia review approve`.
  */
 function assertAnswerableByCorrection(workspacePath: string, target: ReviewItemSummary): void {
   const askQuestion = withDatabase(workspacePath, (db) => askQuestionOrigin(db, target)) !== null;
-  if (askQuestion || target.resolved_intent === ACTION_CLARIFICATION_INTENT) return;
-  const derived =
-    EXECUTION_APPROVAL_INTENTS.has(target.resolved_intent) ||
-    Boolean(target.work_item_id || target.plan_id || target.artifact_id || target.codex_invocation_id || target.doc_ref);
-  if (derived) {
-    throw validationError(
-      `The Decision ${target.slug ?? target.id} (${target.resolved_intent}) approves execution or follows another record, so a correction cannot answer it.`,
-      {
-        ref: target.slug ?? target.id,
-        remedy: `Decide it deliberately: arcadia review approve ${target.slug ?? target.id} (or reject / defer).`
-      }
-    );
+  if (askQuestion) return;
+  const ref = target.slug ?? target.id;
+  const refuse = (why: string): never => {
+    throw validationError(`The Decision ${ref} (${target.resolved_intent}) ${why}, so a correction cannot answer it.`, {
+      ref,
+      remedy: `Decide it deliberately: arcadia review approve ${ref} (or reject / defer), or arcadia review resolve-reply "<reply>" --id ${ref}.`
+    });
+  };
+  if (EXECUTION_APPROVAL_INTENTS.has(target.resolved_intent)) refuse("approves execution or follows another record");
+  // Only a Decision or clarification an Ask raised: system-raised Decisions (scheduling breaker, candidate QA
+  // sign-off, PR blast radius, ...) carry no Ask, and approving one would create a stray Action and execution Decision.
+  if (!target.ask_request_id) refuse("was not raised by an Ask");
+  if (
+    target.resolved_intent !== ACTION_CLARIFICATION_INTENT &&
+    (target.work_item_id || target.plan_id || target.artifact_id || target.codex_invocation_id || target.doc_ref)
+  ) {
+    refuse("is tied to an Action, plan, Artifact or packet");
   }
 }
 
@@ -526,6 +537,111 @@ function correctionHeard(type: AskHeard["type"], created: string): AskHeard {
   };
 }
 
+/**
+ * Re-reads the old record inside the write transaction. Someone may have answered the question, started the Action or
+ * promoted the idea since the first look; closing it now would overwrite their decision. If it is no longer pending,
+ * the retirement and the supersession link are both abandoned (the transaction rolls back) and the state is reported.
+ */
+function assertStillRetirable(db: Database.Database, record: AskRecord, replacementAskId: string): void {
+  if (!record.id) return;
+  let current: { status: string } | undefined;
+  let pending: readonly string[];
+  if (record.kind === "question") {
+    current = db.prepare("SELECT status FROM review_items WHERE id = ?").get(record.id) as typeof current;
+    pending = ["open", "deferred"];
+  } else if (record.kind === "idea") {
+    current = db.prepare("SELECT status FROM back_burner_items WHERE id = ?").get(record.id) as typeof current;
+    pending = ["incubating", "opportunistic"];
+  } else if (record.kind === "work") {
+    current = db.prepare("SELECT status FROM work_items WHERE id = ?").get(record.id) as typeof current;
+    pending = ["open"];
+  } else {
+    return;
+  }
+  if (!current || !pending.includes(current.status)) {
+    throw validationError(
+      `The ${record.kind} ${record.slug ?? record.id} is now ${current?.status ?? "missing"}, changed while the correction ran, so it was left as it is and not superseded.`,
+      {
+        id: record.id,
+        status: current?.status ?? null,
+        replacementAskId,
+        remedy: "Nothing was linked. Check the replacement Ask (arcadia ask show), then re-run the correction if it is still wanted."
+      }
+    );
+  }
+}
+
+/**
+ * An earlier attempt of the same correction may have made its replacement and failed before linking it. Finds that
+ * Ask: on the same capture, newer than the Ask being corrected, neither replaced nor a replacement, and shaped like
+ * this target. Reusing it keeps a retry from creating a second Action, idea or answer.
+ */
+function findUnlinkedReplacement(
+  db: Database.Database,
+  context: CorrectionContext,
+  target: AskCorrectionType | "reroute",
+  projectId: string | null,
+  ref: string | undefined
+): Replacement | null {
+  const candidates = db
+    .prepare(
+      `SELECT id, output_kind FROM ask_requests
+        WHERE capture_id = ? AND id != ? AND created_at >= ? AND suppressed_reason IS NULL
+          AND id NOT IN (SELECT old_ask_request_id FROM ask_supersessions)
+          AND id NOT IN (SELECT new_ask_request_id FROM ask_supersessions)
+        ORDER BY created_at DESC, id DESC`
+    )
+    .all(context.captureId, context.askId, context.askCreatedAt) as Array<{ id: string; output_kind: string }>;
+  for (const candidate of candidates) {
+    const record = describeAskRecord(db, candidate.id);
+    const inProject = !projectId || record.projectId === projectId;
+    const promotedOld = context.record.kind === "idea" && target === "work";
+    if (target === "work" && record.kind === "work" && inProject) {
+      return resumedReplacement(candidate.id, "action", record.id, "work", `Action ${record.id}`, promotedOld);
+    }
+    if (target === "idea" && record.kind === "idea" && inProject) {
+      return resumedReplacement(candidate.id, "back_burner_item", record.id, "idea", `Back Burner item ${record.id}`, false);
+    }
+    if (target === "reroute" && projectId && inProject && (record.kind === "question" || record.kind === "idea" || record.kind === "work")) {
+      const kind = record.kind === "question" ? "decision" : record.kind === "idea" ? "back_burner_item" : "action";
+      const type = record.kind === "question" ? "unclear" : record.kind === "idea" ? "idea" : "work";
+      return resumedReplacement(candidate.id, kind, record.id, type, `${kind} ${record.id}`, false);
+    }
+    if (target === "status" && record.kind === "none" && candidate.output_kind === "correction") {
+      return resumedReplacement(candidate.id, "none", null, "status", "status shown (nothing created)", false);
+    }
+    if (target === "answer" && candidate.output_kind === "review_response" && ref?.trim()) {
+      const decided = (db.prepare("SELECT id, status FROM review_items WHERE id = ? OR slug = ?").get(ref.trim(), ref.trim()) as
+        | { id: string; status: string }
+        | undefined);
+      if (decided && decided.status !== "open" && decided.status !== "deferred") {
+        return resumedReplacement(candidate.id, "decision", decided.id, "answer", `answer recorded on Decision ${ref.trim()}`, false);
+      }
+    }
+  }
+  return null;
+}
+
+function resumedReplacement(
+  newAskId: string,
+  kind: string,
+  recordId: string | null,
+  type: AskHeard["type"],
+  created: string,
+  promotedOld: boolean
+): Replacement {
+  return {
+    newAskId,
+    kind,
+    recordId,
+    summary: `${created} (reused: an earlier attempt of this correction had already made it)`,
+    heard: correctionHeard(type, created),
+    promotedOld,
+    artifacts: [],
+    warnings: ["An earlier attempt of this correction had already made the replacement; it was reused, not duplicated."]
+  };
+}
+
 /** Closes the record the correction replaced. Closed, archived or deferred: never deleted. */
 function retireOldRecord(
   db: Database.Database,
@@ -535,6 +651,7 @@ function retireOldRecord(
   target: AskCorrectionType | "reroute"
 ): string {
   const note = `Superseded by Ask correction ${newAskId} (${target}).`;
+  assertStillRetirable(db, record, newAskId);
   if (record.kind === "question" && record.id) {
     updateReviewItemStatus(db, record.id, { status: "rejected", decisionNote: note });
     return "closed";

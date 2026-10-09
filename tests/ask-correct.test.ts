@@ -15,6 +15,7 @@ import { renderAskTrailSuccess, runAskShowCommand } from "../src/commands/askTra
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
+  createAskRequest,
   createProjectWithInitialWork,
   createReviewItem,
   upsertProjectMetadata
@@ -89,10 +90,22 @@ function row<T>(workspace: string, sql: string, ...params: unknown[]): T {
   return withDatabase(workspace, (db) => db.prepare(sql).get(...params)) as T;
 }
 
-/** A pending Decision the operator could be answering: an ordinary open review_item with its own slug. */
+/** An Ask row to stand as the Ask that raised a Decision; only its id matters. */
+function raisingAsk(db: Parameters<typeof createAskRequest>[0]): string {
+  return createAskRequest(db, {
+    rawRequest: "export retention",
+    resolvedIntent: "CaptureThought",
+    registryVersion: 1,
+    outputKind: "requires_review",
+    status: "requires_review"
+  }).id;
+}
+
+/** A pending Decision the operator could be answering: an ordinary open review_item an Ask raised. */
 function pendingDecision(workspace: string): { id: string; slug: string } {
   return withDatabase(workspace, (db) => {
     const item = createReviewItem(db, {
+      askRequestId: raisingAsk(db),
       decisionNeeded: "Which retention window should the export use?",
       recommendation: "90 days",
       sourceInput: "export retention",
@@ -307,6 +320,7 @@ describe("arcadia ask correct: each target", () => {
     const { workspace } = workspaceWithProjects();
     const decision = withDatabase(workspace, (db) =>
       createReviewItem(db, {
+        askRequestId: raisingAsk(db),
         decisionNeeded: "Add a deterministic fixture for Arcadia?",
         recommendation: "Approve",
         sourceInput: "Add a deterministic fixture for Arcadia.",
@@ -407,6 +421,7 @@ describe("arcadia ask correct: answer corrections are explicit and verified", ()
     const refs = withDatabase(workspace, (db) =>
       kinds.map((resolvedIntent) => {
         const item = createReviewItem(db, {
+          askRequestId: raisingAsk(db),
           workItemId,
           decisionNeeded: `Approve ${resolvedIntent}?`,
           recommendation: "Approve",
@@ -453,6 +468,99 @@ describe("arcadia ask correct: answer corrections are explicit and verified", ()
     expect(count(workspace, "ask_supersessions")).toBe(0);
   });
 
+  it.each(["SchedulingCircuitBreaker", "CandidateQaSignoff", "PrBlastRadiusAssessment"])(
+    "refuses a system-raised %s Decision (no Ask raised it), creating no work_item or review_item",
+    (resolvedIntent) => {
+      const { workspace } = workspaceWithProjects();
+      const system = withDatabase(workspace, (db) =>
+        createReviewItem(db, {
+          decisionNeeded: `Decide ${resolvedIntent}?`,
+          recommendation: "Approve",
+          sourceInput: "Add a deterministic fixture for Arcadia.",
+          proposedAction: "Add a deterministic fixture for Arcadia.",
+          resolvedIntent,
+          confidenceLabel: "high",
+          confidence: 1,
+          missingFields: [],
+          context: {}
+        })
+      );
+      const asked = runAskCommand({ workspace, request: "approve" });
+      const workItems = count(workspace, "work_items");
+      const reviews = count(workspace, "review_items");
+
+      expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "answer", ref: system.slug ?? system.id }))
+        .toThrow(/was not raised by an Ask/);
+      expect(count(workspace, "work_items")).toBe(workItems);
+      expect(count(workspace, "review_items")).toBe(reviews);
+      expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", system.id)).toEqual({ status: "open" });
+    }
+  );
+
+  it("does not overwrite a question answered while the correction ran, and links nothing", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    // The status correction inserts one Ask row; answering the question at that moment is the race.
+    withDatabase(workspace, (db) =>
+      db.exec(
+        `CREATE TRIGGER concurrent_answer AFTER INSERT ON ask_requests WHEN NEW.output_kind = 'correction'
+         BEGIN UPDATE review_items SET status = 'approved' WHERE id = '${asked.data.reviewItemId}'; END`
+      )
+    );
+
+    expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "status" }))
+      .toThrow(/is now approved, changed while the correction ran/);
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", asked.data.reviewItemId)).toEqual({ status: "approved" });
+    expect(count(workspace, "ask_supersessions")).toBe(0);
+  });
+
+  it("is idempotent: a retry after a failed link reuses the replacement, so exactly one Action exists", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const before = count(workspace, "work_items");
+    withDatabase(workspace, (db) =>
+      db.exec("CREATE TRIGGER fail_link BEFORE INSERT ON ask_supersessions BEGIN SELECT RAISE(ABORT, 'link failed'); END")
+    );
+    expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "work" })).toThrow(/link failed/);
+    expect(count(workspace, "work_items")).toBe(before + 1);
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", asked.data.reviewItemId)).toEqual({ status: "open" });
+
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER fail_link"));
+    const retried = runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "work" });
+
+    expect(count(workspace, "work_items")).toBe(before + 1);
+    expect(count(workspace, "ask_supersessions")).toBe(1);
+    expect(retried.data.previous).toMatchObject({ kind: "question", disposition: "closed" });
+    expect(row<{ new_record_id: string }>(workspace, "SELECT new_record_id FROM ask_supersessions").new_record_id).toBe(retried.data.created.id);
+    expect(row<{ id: string }>(workspace, "SELECT id FROM work_items WHERE id = ?", retried.data.created.id)).toBeTruthy();
+    // A second plain run now has nothing left to correct.
+    expect(() => runAskCorrectCommand({ workspace, askId: asked.data.ask?.id as string, type: "work" })).toThrow(/already an Action/);
+  });
+
+  it("is idempotent for an idea and for a promotion too", () => {
+    const { workspace } = workspaceWithProjects();
+    const question = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const ideasBefore = count(workspace, "back_burner_items");
+    withDatabase(workspace, (db) =>
+      db.exec("CREATE TRIGGER fail_link BEFORE INSERT ON ask_supersessions BEGIN SELECT RAISE(ABORT, 'link failed'); END")
+    );
+    expect(() => runAskCorrectCommand({ workspace, askId: question.data.ask?.id as string, type: "idea" })).toThrow(/link failed/);
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER fail_link"));
+    runAskCorrectCommand({ workspace, askId: question.data.ask?.id as string, type: "idea" });
+    expect(count(workspace, "back_burner_items")).toBe(ideasBefore + 1);
+
+    const idea = runAskCommand({ workspace, request: IDEA_TEXT });
+    const worksBefore = count(workspace, "work_items");
+    withDatabase(workspace, (db) =>
+      db.exec("CREATE TRIGGER fail_link BEFORE INSERT ON ask_supersessions BEGIN SELECT RAISE(ABORT, 'link failed'); END")
+    );
+    expect(() => runAskCorrectCommand({ workspace, askId: idea.data.ask?.id as string, type: "work" })).toThrow(/link failed/);
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER fail_link"));
+    const retried = runAskCorrectCommand({ workspace, askId: idea.data.ask?.id as string, type: "work" });
+    expect(count(workspace, "work_items")).toBe(worksBefore + 1);
+    expect(retried.data.previous.disposition).toBe("promoted");
+  });
+
   it("refuses the real execution-pending Decision an approval leaves behind (no duplicate Action)", () => {
     const { workspace } = workspaceWithProjects();
     const question = runAskCommand({ workspace, request: UNCLEAR_TEXT });
@@ -484,6 +592,7 @@ describe("arcadia ask correct: answer corrections are explicit and verified", ()
     const { workspace } = workspaceWithProjects();
     const decision = withDatabase(workspace, (db) =>
       createReviewItem(db, {
+        askRequestId: raisingAsk(db),
         decisionNeeded: "Add a deterministic fixture for Arcadia?",
         sourceInput: "Add a deterministic fixture for Arcadia.",
         proposedAction: "Add a deterministic fixture for Arcadia.",
