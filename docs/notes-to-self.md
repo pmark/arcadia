@@ -284,12 +284,13 @@ Keep normal Git hooks enabled. Verify the recovered tree against the landed comm
 
 ## Test operator scripts behaviorally outside the agent sandbox
 
-keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise, fixture, docs sync, passthrough
+keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise, fixture, docs sync, passthrough, stub codex, codex app-server, headless provider, test-headless-provider-single-action
 
 The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
 Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
 A fake CLI that `process.exit`s right after `process.stdout.write` truncates a pipe answer over 64 KB (the real `advance queue --json`: `jq: parse error: Unfinished string`); set `process.exitCode` and return instead.
 A generated managed document is judged by real Arcadia code, never a canned `errorCount`: the fake's `{ passthrough: "probe" | "cli" }` reply runs the checkout's code (G1's fixture once hid invalid YAML behind a faked docs sync).
+A stub `codex`/`opencode` must exit quietly unless `args[0]` is `exec`/`run`: Arcadia's capacity probe spawns `codex app-server` with the PATH `codex` in the checkout's directory (an always-acting stub once committed a MARKER.md on the checkout's branch). The library checker refuses an operator `.sh` whose text names the Agent Ask command without a declared settlement, so `test-headless-provider-single-action` keeps its logic in `scripts/headless-provider-test.ts`; `mise exec` writes a trust link the agent sandbox denies, so test that entry with `node --import tsx` and the launcher with a fake `mise`.
 
 ## Re-run a passed Action on a reused fixture
 
@@ -317,10 +318,3 @@ Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after
 Its `it.fails` tests are open defects: the fix that flips one changes it to `it`.
 A long serial chain's likely stop is the Grant's 12-hour expiry: an Action finishing after it is preserved but never readied, reviewed or integrated, now shown as `terminal_candidate_not_integrable` "The integration grant expired at ..." (it showed nothing before); see `long-chain-grant-expiry.test.ts`.
 A zero-finding non-pass reviewer verdict ("variance", Issue #1018) is rerun by the tick up to 3 attempts per kind per head (`MAX_VARIANCE_REVIEW_ATTEMPTS`, counted from lineage receipts' `variance`); `world.github.verdict` returns `"variance"` to simulate it (`serial-verdict-variance.test.ts`); the gate's own "code-review: failed; qa: none" wait line during a rerun needs `world.expectError`.
-
-## Press `test-headless-provider-single-action`, or test a provider stub
-
-keys: headless provider, codex exec, opencode run, test-headless-provider-single-action, experiment fixture, unattended argv, buildSessionLaunch, codex app-server, stub codex, heartbeat, agentWorktreeRoot
-
-The operator presses it (agents cannot run Codex or OpenCode): `/runs`, or `artifacts/generated/operator-scripts/test-headless-provider-single-action.sh run [--keep]`. It builds the unattended argv with `buildSessionLaunch` on a Session rebuilt with an `admission_request_id` (`go --apply --launch` through a recording tmux that starts nothing), so the flags cannot drift from a standing-policy launch. Experiment workspaces have no worker, so it writes the `.arcadia/preservation.heartbeat` itself (15 s freshness: write it immediately before `go`) and `accepted_completion` is unreachable; its receipt (`runs/<id>/receipt.json`) is the result.
-Arcadia's own capacity probe spawns `codex app-server` with whatever `codex` is on PATH, in the repo's directory. A stub `codex` must exit quietly unless `args[0]` is `exec`/`run` (one that always acted wrote and committed a MARKER.md on the checkout's branch). The library checker refuses any operator `.sh` whose text contains `agent-ask`/`agent_ask` without a declared settlement, so the logic lives in `scripts/headless-provider-test.ts`, not in the `.sh`. `mise exec` writes a trust link under `~/.local/state/mise`, which the agent sandbox denies: test the entry with `node --import tsx` and the launcher with a fake `mise`.
