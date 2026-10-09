@@ -4,7 +4,7 @@ type: decision
 id: "0095"
 slug: decide-whether-to-install-the-stable-demo-deployment-of-the-arcadia-dashboard
 project: arcadia
-status: open
+status: approved
 question: "Decide whether to install the stable demo deployment of the Arcadia dashboard described in Issue #1116. It would serve on port 3030 against the martianrover workspace, built from release tags, promoted nightly at 04:00 behind a smoke-check gate that keeps the last good build, with one-command failover. Nothing is installed by raising this Decision."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Install it; the release manager may cut rel- tags from green main
+decided: 2026-10-09
 ---
 
 # Decision 0095: Decide whether to install the stable demo deployment of the Arcadia dashboard described in Issue #1116. It would serve on port 3030 against the martianrover workspace, built from release tags, promoted nightly at 04:00 behind a smoke-check gate that keeps the last good build, with one-command failover. Nothing is installed by raising this Decision.

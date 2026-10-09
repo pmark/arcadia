@@ -48,6 +48,7 @@ export interface PathBrief {
     declared: boolean;
     text: string;
     looksLike: string;
+    why: string;
     projectSlug: string | null;
     documentPath: string | null;
   };

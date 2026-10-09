@@ -279,6 +279,38 @@ describe("arcadia ask report", () => {
     expect(unknown.sources.every((source) => source.notBackedByGolden === null)).toBe(true);
   });
 
+  it("counts a status correction and a status memo hit as acted, never as vanished", () => {
+    const workspace = workspaceWithArcadia();
+    const first = sendOld(workspace, "Quick pulse check");
+    const corrected = runAskCorrectCommand({ workspace, askId: first.data.ask?.id as string, type: "status" });
+    expect(corrected.data.heard.type).toBe("status");
+    const repeat = sendOld(workspace, "Quick pulse check");
+    expect(repeat.data.memo).toBeDefined();
+    expect(repeat.data.heard?.type).toBe("status");
+
+    const total = report(workspace).data.total;
+    expect(total).toMatchObject({ asks: 2, eligible: 2, vanished: 0, vanishRate: 0, memoHits: 1, corrected: 1 });
+    // The correction's own record and the memo-routed answer are both stored as acted kinds.
+    const kinds = withDatabase(workspace, (db) =>
+      (db.prepare("SELECT output_kind FROM ask_requests ORDER BY created_at, id").all() as Array<{ output_kind: string }>).map((row) => row.output_kind)
+    );
+    expect(kinds).toContain("correction");
+    expect(kinds).toContain("status_summary");
+  });
+
+  it("leaves a correction of an agent-written Ask out of the memo counts", () => {
+    const workspace = workspaceWithArcadia();
+    const operator = sendOld(workspace, "Orchard path lighting notes");
+    const agent = sendOld(workspace, "Lantern festival volunteer notes", { sourceIngress: "agent.ask" });
+    runAskCorrectCommand({ workspace, askId: operator.data.ask?.id as string, type: "idea" });
+    runAskCorrectCommand({ workspace, askId: agent.data.ask?.id as string, type: "work" });
+
+    const data = report(workspace).data;
+    expect(data.total.memos).toBe(1);
+    expect(data.corrections.memos).toBe(1);
+    expect(data.sources.map((source) => [source.source, source.memos])).toEqual([["ask", 1]]);
+  });
+
   it("is read-only, and its window rejects the future", () => {
     const workspace = workspaceWithArcadia();
     sendOld(workspace, "Notes on fermenting hot sauce next weekend");

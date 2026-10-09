@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
@@ -60,6 +61,7 @@ import {
 } from "../projects/planningPromotion.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
+import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
 import { recordAnswerCorrection } from "../ask/corrections.js";
 
 export interface RequiresReviewPacket {
@@ -1142,23 +1144,40 @@ export function runReviewApproveCommand(
   }
 
   // An earlier attempt may have created the Action and then failed before the approval below committed (the Decision
-  // stayed open). Its Ask is linked on the Decision, so reuse it: a retry never creates a second Action.
+  // stayed open). Its Ask is linked on the Decision, so reuse it: a retry never creates a second Action. An attempt
+  // that failed before that link left a claim instead, which `runAskCommand` resumes (ask/approvalClaim.ts). Either
+  // way an Action the operator has since archived, closed or superseded is refused, not reused and not duplicated.
   const earlierAskId = reviewItem.resulting_ask_request_id;
   const earlierAsk = earlierAskId
-    ? withDatabase(workspacePath, (db) =>
-        db.prepare("SELECT id, work_item_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
+    ? withDatabase(workspacePath, (db) => {
+        const found = db.prepare("SELECT id, work_item_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
           | { id: string; work_item_id: string | null }
-          | undefined
-      )
+          | undefined;
+        if (found?.work_item_id) assertReusableApprovalAction(db, found.work_item_id, found.id);
+        return found;
+      })
     : undefined;
   const reusedAskId = earlierAsk?.work_item_id ? earlierAsk.id : null;
-  const approval = reusedAskId
-    ? null
-    : runAskCommand({
+  const approvalClaimOwner = randomUUID();
+  let approval: ReturnType<typeof runAskCommand> | null = null;
+  if (!reusedAskId) {
+    try {
+      approval = runAskCommand({
         workspace: workspacePath,
         request: reviewItem.source_input,
-        approvedReviewItemId: reviewItem.id
+        approvedReviewItemId: reviewItem.id,
+        approvalClaimOwner
       });
+    } catch (error) {
+      // Free the claim so an immediate retry resumes the Action this attempt made, if it made one.
+      try {
+        withDatabase(workspacePath, (db) => releaseApprovalClaim(db, reviewItem.id, approvalClaimOwner));
+      } catch {
+        // The lease expires on its own; the original failure is the one to report.
+      }
+      throw error;
+    }
+  }
   if (approval && !approval.data.ask) {
     throw validationError("Approved Requires Review Decision did not produce an ask request.", { id: reviewItem.id });
   }
@@ -1180,6 +1199,7 @@ export function runReviewApproveCommand(
       throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
     }
     recordAnswerCorrection(db, item, approvalAskId);
+    deleteApprovalClaim(db, reviewItem.id);
     return {
       updated: item,
       pendingExecutionReview: createPendingExecutionReviewItem(db, item)

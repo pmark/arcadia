@@ -33,7 +33,9 @@ export const ACTED_OUTPUT_KINDS: readonly string[] = [
   "project_summary",
   "project_list",
   "project_update",
-  "project_created"
+  "project_created",
+  // `ask correct --type status` records the status answer under this kind.
+  "correction"
 ];
 
 export type AskOutcome = "listed" | "acted" | "answered" | "idea" | "vanished";
@@ -334,7 +336,9 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
 
   // Each memo belongs to the source its originating Ask came in through. A source with memos but no Ask in the window
   // still gets a row, so a correction is never hidden by a quiet week.
-  const memos = currentMemos(db);
+  // A correction of an agent-written Ask (an agent.ask or codex.* capture) is not operator input: it is left out of every
+  // count here, the totals and the pattern hint included.
+  const memos = currentMemos(db).filter((memo) => isOperatorSource(memo.source));
   for (const memo of memos) {
     const unbacked = goldenKeys !== null && !goldenKeys.has(backingKey(memo.type, memo.text));
     const count = (counts: AskReportCounts): void => {
@@ -342,7 +346,6 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
       if (unbacked) counts.notBackedByGolden = (counts.notBackedByGolden ?? 0) + 1;
     };
     count(total);
-    if (!isOperatorSource(memo.source)) continue;
     const counts = bySource.get(memo.source) ?? emptyCounts(goldenKeys !== null);
     count(counts);
     bySource.set(memo.source, counts);
@@ -370,7 +373,7 @@ export function buildAskReport(db: Database.Database, input: BuildAskReportInput
   const notes = [
     "An Ask is one captured operator Ask with an Ask record; a correction re-routes the same Ask. Agent-written Asks and replies that only record words behind another write are excluded.",
     `Vanish rate: of classified Asks at least one hour old, the share with no open record listed by arcadia todo and no acted, answered or operator-filed Idea outcome. It is judged at report time, reading each Ask where it stands now. Suppressed Asks (an acknowledgement or an exact repeat of an open question) are excluded from it and counted apart. Target zero.`,
-    "Classification metrics (questions, memo hits, recurrence, planning) read the Ask as first heard. Memos, and the ones no golden case backs, are counted across all time, not only the window, and belong to the source of the Ask that was corrected.",
+    "Classification metrics (questions, memo hits, recurrence, planning) read the Ask as first heard. Memos, and the ones no golden case backs, are counted across all time, not only the window, and belong to the source of the Ask that was corrected; a correction of an agent-written Ask is left out.",
     ...input.todoNotes
   ];
   if (input.golden === null) notes.push("The golden set could not be read from this checkout, so corrections not yet backed by a golden case are unknown. Run from an Arcadia checkout.");

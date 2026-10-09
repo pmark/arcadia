@@ -31,6 +31,8 @@ pnpm arcadia now --narrate
 
 Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
 
+The headline is a **Target**, not a claim that it is already true, and the `why:` from `NORTH_STAR.md` is printed with it: the reason defines the target. A gate whose Action is `done` but was split stays *in progress* until every remainder in its `split_into` chain is done, and the next move names the first open remainder.
+
 Open **Flight Deck** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/flight-deck> (on this Mac: <http://127.0.0.1:3020/flight-deck>) for a read-only portfolio board. It groups the existing Work Queue and dashboard snapshot into Project and Plan lanes, with the same five dispatch gates: Needs You, Ready to dispatch, Running, Proving, and Landed. An object whose Plan cannot be derived is shown in that Project's **Unattached** lane rather than being hidden. Refreshing and browsing this board never changes Arcadia state.
 
 For the bounded v6 production trial, use the existing **Grant v6 remaining-stage
@@ -377,6 +379,10 @@ no plan carries any more, and an Action whose next move is still undecided each
 render as a marked gap. That unplanned stretch is usually the real distance to
 the target, and every surface that showed it as empty space taught you to read a
 short list as a short distance.
+
+The path also follows splits: an Action that was narrowed and marked `done`
+brings its open `split_into` remainders onto the path as steps, so a split never
+shortens the distance. The target's `why` is shown at the top of the screen.
 
 Nothing can be added on this screen. It is a projection of `NORTH_STAR.md` and
 the plans behind it — to change the path, change those documents. The same view
@@ -2742,11 +2748,23 @@ applies to an agent-written Ask or to a reply that names a Decision, and never r
 anything. An explicit `--project` on the repeat wins over the remembered Project.
 Correct it again and the newest correction wins, including a newer correction to a
 type a memo cannot apply, which retires the older memo. A memo also stands down when
-the ordinary route for those words is Requires Review or Blocked, so it can replace a
-question or a shelved idea but never skip a review. Any process able to run the
-`ask correct` CLI creates an operator-sourced memo, so that command carries the same
-trust as the rest of the CLI. The routing flag below turns memos off together with
-the rest of the routing.
+the ordinary route for those words is Requires Review or Blocked, and when the words
+match a concrete request that needs review and is not safe to execute even though a
+missing field routes them to a question (for example "deploy the site to production"
+with no Project). So a memo can replace a question about words nothing matched, or a
+shelved idea, but never skip a review: a memo on words nothing matched makes only a
+Requires Review Action for the operator. Any process able to run the `ask correct` CLI
+creates an operator-sourced memo, so that command carries the same trust as the rest
+of the CLI. The routing flag below turns memos off together with the rest of the
+routing.
+
+Approving an Ask question makes exactly one Action, even if two approvals run at once
+or an approval fails part way. A second approval that starts while the first is still
+in progress is refused and creates nothing ("run it again" once the first ends); it
+does not wait. Run it again after a failed attempt and it picks up the Action the
+first attempt made. If you archived, closed, deferred or corrected that Action in
+between, the retry refuses and creates nothing; reject the question and send the
+request again if the work is still wanted.
 
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
 workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot

@@ -59,10 +59,10 @@ export function replayAsk(rawText: string, deps: ReplayDeps): ReplayResult {
   };
 
   // The memo stage, exactly as `arcadia ask` runs it: never for a reply naming a Decision; it stands down when the
-  // Project it remembers is not one intake knows, or when the ordinary route needs Requires Review or is Blocked.
+  // Project it remembers is not one intake knows, when the ordinary route needs Requires Review or is Blocked, or when the intake needs review and is unsafe.
   let memo = parsed.hasReviewReference ? null : deps.memo(request);
   if (memo?.projectId && !deps.context.projects.some((project) => project.id === memo?.projectId)) memo = null;
-  if (memo && memoStandsDown(derive(false, null).recommendedExecutionPath)) memo = null;
+  if (memo && memoStandsDown(derive(false, null).recommendedExecutionPath, intake)) memo = null;
 
   const route = memo?.type;
   const remembered = memo?.projectId ? deps.context.projects.find((project) => project.id === memo?.projectId) : undefined;

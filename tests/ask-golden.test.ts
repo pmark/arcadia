@@ -156,6 +156,22 @@ describe("the replay agrees with the real arcadia ask", () => {
     return workspace;
   }
 
+  it("a memo on words nothing matched makes only a Requires Review Action whose steps are not safe to run", { timeout: 60_000 }, () => {
+    const golden = cases.find((c) => c.id === "memo-hit-work") as GoldenCase;
+    const workspace = freshWorkspace(golden);
+    const asked = runAskCommand({ workspace, request: golden.text });
+    expect(asked.data.intake.action.kind).toBe("capture_thought");
+    expect(asked.data.memo).toBeDefined();
+    expect(asked.data.workItem?.queue).toBe("requires_review");
+    expect(asked.data.run).toBeNull();
+    const steps = asked.data.plan?.steps ?? [];
+    expect(steps.length).toBeGreaterThan(0);
+    for (const step of steps) {
+      expect(["operator", "codex_planning"]).toContain(step.executor_type);
+      expect(step.safe_to_run).toBe(0);
+    }
+  });
+
   it.each(cases.map((golden) => [golden.id, golden] as const))("%s", { timeout: 60_000 }, (_id, golden) => {
     const workspace = freshWorkspace(golden);
     const asked = runAskCommand({ workspace, request: golden.text });
