@@ -33,7 +33,7 @@ export interface NormalizedAgentAskAction {
   dependencies: string[];
   references: string[];
   targetRef: string | null;
-  /** Lists the Ask left out entirely. Absent on proposals recorded before #1079; treated as "none omitted". */
+  /** Lists the Ask left out entirely; always present on new proposals (empty when none), absent only on proposals recorded before #1079/#1092. */
   omittedLists?: AgentAskListField[];
 }
 /** A choice a filed `decision` Ask offers, carried through to the Decision document's own `options` list. */
@@ -164,10 +164,13 @@ export function agentAskFingerprint(request: string, normalized: NormalizedAgent
   const serialized = JSON.stringify({ request, normalized }, (key, value) => (key === "omittedLists" ? undefined : value));
   return createHash("sha256").update(serialized).digest("hex");
 }
-/** `{ omittedLists }` only when something was omitted, so a fully explicit Ask keeps its recorded shape. */
-function omittedListsField(data: Record<string, unknown>): { omittedLists?: AgentAskListField[] } {
-  const omitted = (["dependencies", "references"] as const).filter((field) => data[field] === undefined || data[field] === null);
-  return omitted.length > 0 ? { omittedLists: omitted } : {};
+/**
+ * Always records `omittedLists` (an empty list when nothing was omitted). The
+ * key is the marker that a proposal knows which lists its Ask left out, so
+ * settlement re-parses only legacy proposals that predate it (Issue #1092).
+ */
+function omittedListsField(data: Record<string, unknown>): { omittedLists: AgentAskListField[] } {
+  return { omittedLists: (["dependencies", "references"] as const).filter((field) => data[field] === undefined || data[field] === null) };
 }
 /** The Project fields a `project_update` Ask can actually apply. */
 const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone", "status"]);
