@@ -118,7 +118,8 @@ export function recordAnswerCorrection(
 /**
  * The operator memo for exactly this text, or null. The newest operator correction decides, whatever its type: if it
  * names something a memo may not apply (an `answer`, a Project-only `reroute`), the memo stands down, so a newer
- * correction retires an older one. Rows from a model are invisible.
+ * correction retires an older one. Rows from a model are invisible. Corrections made in the same millisecond are
+ * ordered by insertion (`rowid`), so the one recorded last always wins.
  */
 export function findAskMemo(db: Database.Database, text: string): AskMemo | null {
   if (!hasAskCorrectionsTable(db)) return null;
@@ -129,7 +130,7 @@ export function findAskMemo(db: Database.Database, text: string): AskMemo | null
     .prepare(
       `SELECT id, ask_request_id, corrected_type, corrected_project, source, created_at FROM ask_corrections
         WHERE text_hash = ? AND normalized_text = ? AND source IN (${sources})
-        ORDER BY created_at DESC, id DESC LIMIT 1`
+        ORDER BY created_at DESC, rowid DESC LIMIT 1`
     )
     .get(askTextHash(normalized), normalized, ...OPERATOR_CORRECTION_SOURCES) as
     | {

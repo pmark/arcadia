@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../ask/suppression.js";
 import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
 import { buildAskHeard, type AskHeard } from "../ask/heard.js";
+import { claimApprovalForAction, recordApprovalClaim } from "../ask/approvalClaim.js";
 import { findAskMemo, type AskMemo } from "../ask/corrections.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
@@ -28,7 +30,7 @@ import { milestoneNotFound, projectNotFound, validationError, workItemNotFound }
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, writeTransaction } from "../db/connection.js";
 import {
   createApprovalGate,
   createAskRequest,
@@ -39,6 +41,7 @@ import {
   createReviewItem,
   createWorkItemWithOptionalArtifact,
   getActiveMilestoneForProject,
+  getExecutionPlan,
   getProjectMetadata,
   getMilestone,
   getProject,
@@ -101,6 +104,8 @@ export interface AskOptions {
   milestone?: string;
   runSafe?: boolean;
   approvedReviewItemId?: string;
+  /** Who holds the approval claim for `approvedReviewItemId` (see `ask/approvalClaim.ts`); a fresh one when omitted. */
+  approvalClaimOwner?: string;
   sourceIngress?: string;
   userIdentifier?: string;
   channelIdentifier?: string;
@@ -308,9 +313,14 @@ function runAskCommandWithRouting(
       : null;
   // A memo may replace the Clarify First and Back Burner outcomes, and the pattern outcome otherwise. It never lets an
   // Ask skip Requires Review or Blocked: if the ordinary route for these words is one of those, the memo stands down.
+  // So does an intake that matched a concrete intent, needs review and is not safe to execute, even when a missing
+  // field routes it to Clarify First ("deploy the site to production" with no Project): a memo must never turn that
+  // into an Action. A capture_thought intake matched no intent at all, so it is always flagged that way and is exactly
+  // what a memo exists to replace; stewardship routes it before it looks at review flags too.
   if (memo) {
     const ordinary = deriveStewardship(false, selectProject(options.project)).computedStewardship.recommendedExecutionPath;
-    if (ordinary === "Requires Review" || ordinary === "Blocked") memo = null;
+    const needsReview = intake.action.kind !== "capture_thought" && intake.reviewRequired && !intake.safeToExecute;
+    if (ordinary === "Requires Review" || ordinary === "Blocked" || needsReview) memo = null;
   }
   if (memo) trace.memo = memo;
   const route: AskRoute | undefined = options.correctionRoute ?? memo?.type;
@@ -1023,13 +1033,34 @@ function runAskCommandWithRouting(
     });
   }
 
+  // Approving a Decision claims it in the transaction that makes the Action (see `ask/approvalClaim.ts`).
+  const approvalClaimOwner = options.approvalClaimOwner ?? randomUUID();
   const initial = withDatabase(workspacePath, (db) => {
     ensureBuiltInSkills(db);
+    // One immediate transaction: the Action, its plan, its gates and the approval claim commit together, and the
+    // Decision's status is re-read under the write lock, so a concurrent approval that lost the race creates nothing.
+    return writeTransaction(db, () => {
+    const claim = options.approvedReviewItemId
+      ? claimApprovalForAction(db, { reviewItemId: options.approvedReviewItemId, owner: approvalClaimOwner })
+      : ({ kind: "create" } as const);
     const context = resolveAskContext(db, {
       ...options,
       project: routedProjectId ?? undefined,
       request
     });
+    if (claim.kind === "resume") {
+      // An earlier attempt made the Action and failed before the approval committed: reuse it, never make a second.
+      const workItem = getWorkItem(db, claim.workItemId);
+      const plan = getExecutionPlan(db, claim.planId);
+      if (!workItem || !plan) throw workItemNotFound(claim.workItemId);
+      recordApprovalClaim(db, {
+        reviewItemId: options.approvedReviewItemId as string,
+        owner: approvalClaimOwner,
+        workItemId: workItem.id,
+        planId: plan.id
+      });
+      return { workItem, plan, projectContext: context.projectContext };
+    }
     const created = createWorkItemWithOptionalArtifact(db, {
       projectId: context.projectId,
       milestoneId: context.milestoneId,
@@ -1066,12 +1097,22 @@ function runAskCommandWithRouting(
       });
     }
 
+    if (options.approvedReviewItemId) {
+      recordApprovalClaim(db, {
+        reviewItemId: options.approvedReviewItemId,
+        owner: approvalClaimOwner,
+        workItemId: workItem.id,
+        planId: plan.id
+      });
+    }
+
     return { workItem, plan, projectContext: context.projectContext };
+    });
   });
 
   if (resolved.codexPurpose && initial.projectContext && !initial.projectContext.metadata?.repo_path) {
     const missingRepositoryPathMessage = CODEX_REPO_PATH_REQUIRED_MESSAGE;
-    const data = withDatabase(workspacePath, (db) => {
+    const data = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
       updateWorkItem(db, initial.workItem.id, {
         queue: "requires_review",
         workClassification: "requires_review",
@@ -1128,7 +1169,7 @@ function runAskCommandWithRouting(
         approvalGates: listApprovalGatesForWorkItem(db, initial.workItem.id),
         reviewItem
       };
-    });
+    }));
 
     return createSuccess({
       command: "ask",
@@ -1200,7 +1241,7 @@ function runAskCommandWithRouting(
       })
     : null;
 
-  const data = withDatabase(workspacePath, (db) => {
+  const data = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
     let packetArtifact = null as ReturnType<typeof persistCodexPacketRecords>["packetArtifact"] | null;
     if (codexPacket) {
       packetArtifact = persistCodexPacketRecords(db, {
@@ -1254,7 +1295,7 @@ function runAskCommandWithRouting(
       codexInvocations: listCodexInvocationsForWorkItem(db, initial.workItem.id),
       planningDecision
     };
-  });
+  }));
 
   // A memo routes an Ask the way a correction does: it never runs anything.
   if (options.runSafe && !memo && data.plan.steps.every((step) => step.executor_type === "deterministic" && step.safe_to_run === 1)) {
@@ -1308,16 +1349,24 @@ function runAskCommandWithRouting(
 }
 
 /**
- * Records, in the transaction that creates the Action, which Ask an approval of a Decision produced. The approval
- * itself (status, answer correction, pending execution) commits later in `review approve`; if that fails the Decision
- * stays open, and the retry finds this link and reuses the Action instead of creating a second one.
+ * Records which Ask an approval of a Decision produced, in the transaction that creates the Ask row (a later one than
+ * the Action's: the Action, its plan, its gates and the approval claim commit first, in `initial`). The approval itself
+ * (status, answer correction, pending execution) commits later still, in `review approve`. If an attempt fails after
+ * the Action exists but before this link, the claim lets the retry resume that Action; if it fails after this link, the
+ * retry finds the link and reuses the Action. Either way a retry never creates a second one.
  */
 function linkApprovedDecisionToAsk(db: Database.Database, reviewItemId: string | undefined, askId: string): void {
   if (!reviewItemId) return;
-  db.prepare(
+  const linked = db.prepare(
     `UPDATE review_items SET resulting_ask_request_id = ?
       WHERE id = ? AND status IN ('open', 'deferred') AND resulting_ask_request_id IS NULL`
   ).run(askId, reviewItemId);
+  // The Ask row commits with this link; if the Decision was decided or linked meanwhile, neither is written.
+  if (linked.changes === 0) {
+    throw validationError("Requires Review Decision was decided or linked by another approval, so this attempt wrote nothing.", {
+      id: reviewItemId
+    });
+  }
 }
 
 function actedProjectUpdate(input: {

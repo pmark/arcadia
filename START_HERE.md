@@ -2748,8 +2748,18 @@ applies to an agent-written Ask or to a reply that names a Decision, and never r
 anything. An explicit `--project` on the repeat wins over the remembered Project.
 Correct it again and the newest correction wins, including a newer correction to a
 type a memo cannot apply, which retires the older memo. A memo also stands down when
-the ordinary route for those words is Requires Review or Blocked, so it can replace a
-question or a shelved idea but never skip a review. Any process able to run the
+the ordinary route for those words is Requires Review or Blocked, and when the words
+match a concrete request that needs review and is not safe to execute even though a
+missing field routes them to a question (for example "deploy the site to production"
+with no Project). So a memo can replace a question about words nothing matched, or a
+shelved idea, but never skip a review.
+
+Approving an Ask question makes exactly one Action, even if two approvals run at once
+or an approval fails part way and you run it again: the second attempt either waits
+("another approval is in progress") or picks up the Action the first one made. If you
+archived, closed, deferred or corrected that Action in between, the retry refuses and
+creates nothing; reject the question and send the request again if the work is still
+wanted. Any process able to run the
 `ask correct` CLI creates an operator-sourced memo, so that command carries the same
 trust as the rest of the CLI. The routing flag below turns memos off together with
 the rest of the routing.
