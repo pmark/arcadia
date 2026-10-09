@@ -167,7 +167,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/commands/ask.ts", "src/commands/go.ts", "apps/discord-bot/src/events/messageCreate.ts"]
   - id: stop-asks-vanishing
     title: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
