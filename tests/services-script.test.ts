@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -40,7 +40,7 @@ exit 0
   return { impl, calls };
 }
 
-function runRestart(impl: string, attempts: string) {
+function runRestart(impl: string, attempts: string, extraEnv: Record<string, string> = {}) {
   return spawnSync("bash", [script, "restart"], {
     encoding: "utf8",
     env: {
@@ -50,7 +50,10 @@ function runRestart(impl: string, attempts: string) {
       ARCADIA_RESTART_RETRY_DELAY: "0",
       ARCADIA_RESTART_ATTEMPTS: attempts,
       // Keep the post-restart go-broker step away from the operator's real state.
-      HOME: tempDir("arcadia-services-home-")
+      HOME: tempDir("arcadia-services-home-"),
+      // The dashboard warm-up is covered by its own test.
+      ARCADIA_DASHBOARD_WARM: "0",
+      ...extraEnv
     }
   });
 }
@@ -79,5 +82,28 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart (Issue 
       expect(result.stderr).toContain("ARCADIA_RESTART_ATTEMPTS");
       expect(readFileSync(calls, "utf8")).toBe("");
     }
+  });
+});
+
+describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart dashboard warm-up", () => {
+  it("warms /production and its API reads after a successful restart", async () => {
+    const { impl } = stubImpl(0);
+    const warmed = path.join(path.dirname(impl), "warmed");
+    const curl = path.join(path.dirname(impl), "curl");
+    writeFileSync(curl, `#!/usr/bin/env bash\necho "\${@: -1}" >> "${warmed}"\n`);
+    chmodSync(curl, 0o755);
+    const result = runRestart(impl, "1", { ARCADIA_DASHBOARD_WARM: "1", ARCADIA_DASHBOARD_URL: "http://dash.test" });
+    expect(result.status).toBe(0);
+    // The warm-up is detached; give it a moment to finish.
+    let lines: string[] = [];
+    for (let i = 0; i < 50 && lines.length < 3; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      lines = existsSync(warmed) ? readFileSync(warmed, "utf8").trim().split("\n") : [];
+    }
+    expect(lines).toEqual([
+      "http://dash.test/production",
+      "http://dash.test/api/production-console?part=core",
+      "http://dash.test/api/production-console?part=queue"
+    ]);
   });
 });
