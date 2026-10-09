@@ -136,7 +136,7 @@ test("the Production console drives and monitors production at phone width", asy
   await expect(pauseAll).toBeDisabled();
 
   // The queue in batches: the two ready Actions share one repository, so they are batch 1 and batch 2.
-  await expect(page.getByText(/Batch 1 · 1 Action · can start together now/)).toBeVisible();
+  await expect(page.getByText(/Batch 1 · 1 Action · first in each repository/)).toBeVisible();
   await expect(page.getByText("Ship the pointer Action")).toBeVisible();
   await expect(page.getByText("Ship the second ready Action")).toBeVisible();
 

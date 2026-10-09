@@ -1,4 +1,4 @@
-import { open, stat } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import path from "node:path";
 
 /** First read without an offset: the last 64 KiB is plenty for a live tail. */
@@ -42,7 +42,7 @@ export async function readSessionLogTail(
   const absolute = path.join(workspace, relative);
   let size: number;
   try {
-    const info = await stat(absolute);
+    const info = await lstat(absolute);
     if (!info.isFile()) return { ok: true, value: missing(relative) };
     size = info.size;
   } catch (error) {

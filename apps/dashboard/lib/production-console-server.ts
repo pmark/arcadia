@@ -30,7 +30,8 @@ export async function loadCorePart(): Promise<ConsoleCoreData> {
   const [production, worker, runs] = await Promise.allSettled([
     loadProductionStatus(),
     resolveDashboardWorkspace().then((workspace) => readManagedRunWorker(workspace)),
-    loadRunsSnapshot(0, RECENT_SESSIONS)
+    // A CLI older than `--sessions` refuses the option; keep the live Sessions rather than lose the panel.
+    loadRunsSnapshot(0, RECENT_SESSIONS).catch(() => loadRunsSnapshot(0, 0))
   ]);
   return {
     generatedAt: new Date().toISOString(),

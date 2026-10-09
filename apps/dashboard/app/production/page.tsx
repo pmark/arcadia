@@ -33,29 +33,36 @@ export default function ProductionPage() {
   const [todoSignal, setTodoSignal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const liveRef = useRef(false);
+  // Polls, focus and post-toggle refreshes overlap; only the newest request may update the page.
+  const coreSeq = useRef(0);
+  const queueSeq = useRef(0);
 
   const loadCore = useCallback(async () => {
+    const sequence = ++coreSeq.current;
     try {
       const response = await fetch("/api/production-console?part=core", { cache: "no-store" });
       const body = (await response.json()) as ConsoleCoreData & { error?: string };
+      if (sequence !== coreSeq.current) return;
       if (!response.ok) throw new Error(body.error ?? "Could not read production state.");
       setCore(body);
       setCoreError(null);
       liveRef.current = (body.sessions?.active.length ?? 0) > 0;
     } catch (cause) {
-      setCoreError(cause instanceof Error ? cause.message : String(cause));
+      if (sequence === coreSeq.current) setCoreError(cause instanceof Error ? cause.message : String(cause));
     }
   }, []);
 
   const loadQueue = useCallback(async () => {
+    const sequence = ++queueSeq.current;
     try {
       const response = await fetch("/api/production-console?part=queue", { cache: "no-store" });
       const body = (await response.json()) as ConsoleQueuePart & { error?: string };
+      if (sequence !== queueSeq.current) return;
       if (!response.ok) throw new Error(body.error ?? "Could not read the queue.");
       setQueuePart(body);
       setQueueFetchError(null);
     } catch (cause) {
-      setQueueFetchError(cause instanceof Error ? cause.message : String(cause));
+      if (sequence === queueSeq.current) setQueueFetchError(cause instanceof Error ? cause.message : String(cause));
     }
   }, []);
 

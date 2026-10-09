@@ -140,13 +140,14 @@ export function GlobalStrip({
   }, []);
 
   const send = useCallback(
-    async (action: "activate" | "deactivate") => {
+    async (action: "activate" | "deactivate", expected?: ProductionReactivationPreviewResponse["preview"]["expected"]) => {
       setStep({ kind: "busy" });
       try {
+        // On carries the exact preview the operator confirmed; the route refuses it if anything moved.
         const response = await fetch("/api/production-control", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action })
+          body: JSON.stringify(expected ? { action, expected } : { action })
         });
         const body = (await response.json()) as { error?: string };
         if (!response.ok) throw new Error(body.error ?? `Could not ${action === "activate" ? "turn production On" : "turn production Off"}.`);
@@ -233,8 +234,8 @@ export function GlobalStrip({
               : step.preview.refusals.map((refusal) => `${refusal.reason} ${refusal.remedy}`)
           }
           confirmLabel="Turn On"
-          disabled={!step.preview.ready}
-          onConfirm={() => void send("activate")}
+          disabled={!step.preview.ready || !step.preview.expected}
+          onConfirm={() => void send("activate", step.preview.expected)}
           onCancel={() => setStep({ kind: "idle" })}
         />
       ) : null}
@@ -392,18 +393,46 @@ export function SessionsSection({
             <SessionRow key={session.id} session={session} now={now} pause={core.pause} defaultOpen={index === 0} />
           ))}
           {recent.length > 0 ? (
-            <details className="min-w-0" open={active.length === 0}>
-              <summary className="min-h-11 cursor-pointer py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Recently finished ({recent.length})</summary>
-              <div className="grid min-w-0 gap-2">
-                {recent.map((session) => (
-                  <SessionRow key={session.id} session={session} now={now} pause={core.pause} defaultOpen={false} />
-                ))}
-              </div>
-            </details>
+            <RecentSessions recent={recent} now={now} pause={core.pause} defaultOpen={active.length === 0} />
           ) : null}
         </div>
       )}
     </section>
+  );
+}
+
+/** Open state is decided once, when Sessions first load, so a poll never overrides the operator's own toggle. */
+function RecentSessions({
+  recent,
+  now,
+  pause,
+  defaultOpen
+}: {
+  recent: DashboardAgentSession[];
+  now: Date;
+  pause: PauseCapability;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex min-h-11 items-center gap-1 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted"
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
+        Recently finished ({recent.length})
+      </button>
+      {open ? (
+        <div className="grid min-w-0 gap-2">
+          {recent.map((session) => (
+            <SessionRow key={session.id} session={session} now={now} pause={pause} defaultOpen={false} />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -438,6 +467,7 @@ function SessionRow({
           </span>
           <span className="mt-1 block break-words text-sm font-semibold text-ink">{session.actionTitle ?? session.actionId}</span>
           <span className="mt-0.5 block break-words text-xs text-muted">
+            {session.actionTitle && session.actionTitle !== session.actionId ? `${session.actionId} · ` : ""}
             {session.projectName ?? "Unassigned"} · {session.provider} {session.model}
             {session.effort ? ` · ${session.effort}` : ""}
           </span>
@@ -499,10 +529,14 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const offsetRef = useRef<number | null>(null);
+  const inFlightRef = useRef(false);
   const preRef = useRef<HTMLPreElement>(null);
   const followRef = useRef(true);
 
   const poll = useCallback(async () => {
+    // One request at a time: two polls carrying the same offset would append the same bytes twice.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       const query = offsetRef.current === null ? "" : `?offset=${offsetRef.current}`;
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/log${query}`, { cache: "no-store" });
@@ -514,7 +548,7 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
       }
       const fresh = offsetRef.current === null || body.reset;
       offsetRef.current = body.size;
-      if (fresh && body.truncated) setTruncated(true);
+      if (fresh) setTruncated(body.truncated);
       setText((current) => {
         const next = fresh ? body.text : current + body.text;
         return next.length > LOG_KEEP_CHARS ? next.slice(-LOG_KEEP_CHARS) : next;
@@ -524,6 +558,8 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setState((current) => (current === "loading" ? "error" : current));
+    } finally {
+      inFlightRef.current = false;
     }
   }, [sessionId]);
 
@@ -718,7 +754,7 @@ function BatchesView({
         <div key={wave.wave} className="min-w-0 rounded-md border border-line bg-panel p-3 shadow-soft">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
             Batch {wave.wave} · {wave.actions.length} Action{wave.actions.length === 1 ? "" : "s"}
-            {wave.wave === 1 ? " · can start together now" : ` · after batch ${wave.wave - 1} in each repository`}
+            {wave.wave === 1 ? " · first in each repository" : ` · after batch ${wave.wave - 1} in each repository`}
           </p>
           <ul className="grid min-w-0 gap-2">
             {wave.actions.map((action) => (
@@ -819,6 +855,8 @@ function LaunchDialog({
   onClose: () => void;
   onLaunched: (message: string) => void;
 }) {
+  // Frozen when the dialog opens: the pointer-move preview and its apply must name the same revision.
+  const [frozenRevision] = useState(revision);
   const target: LaunchTarget = {
     projectId: action.projectId ?? "",
     planSlug: action.planSlug ?? "",
@@ -826,7 +864,7 @@ function LaunchDialog({
     actionKey: action.key,
     title: action.title,
     needsMakeNext: action.launch.needsMakeNext,
-    queueRevision: revision
+    queueRevision: frozenRevision
   };
   const [step, setStep] = useState<LaunchStep | null>(null);
   const [busy, setBusy] = useState(true);
@@ -862,7 +900,7 @@ function LaunchDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4" role="presentation">
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" role="presentation">
       <div role="dialog" aria-modal="true" aria-labelledby="launch-title" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-lg border border-line bg-panel p-4 text-ink shadow-soft sm:rounded-lg">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

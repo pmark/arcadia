@@ -146,6 +146,28 @@ describe("POST /api/production-control On", () => {
   });
 });
 
+describe("POST /api/production-control On bound to the preview the operator saw", () => {
+  it("applies when the confirmed preview still matches", async () => {
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview: { ready: true, refusals: [], expected } } });
+    cli.reactivateProduction.mockResolvedValue({ data: {} });
+
+    const response = await POST(toggle("activate", { expected }));
+
+    expect(response.status).toBe(200);
+    expect(cli.reactivateProduction.mock.calls[0][0].expected).toEqual(expected);
+  });
+
+  it("refuses with 409 and activates nothing when the configuration moved after the operator saw it", async () => {
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview: { ready: true, refusals: [], expected } } });
+
+    const response = await POST(toggle("activate", { expected: { ...expected, configurationRevision: 1 } }));
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).details.code).toBe("preview_changed");
+    expect(cli.reactivateProduction).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /api/production-control?part=reactivate-preview", () => {
   it("returns what On would replay for the confirmation step, and changes nothing", async () => {
     const preview = { ready: true, refusals: [], expected, configuration: null };
