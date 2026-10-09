@@ -20,6 +20,7 @@ import { getActiveActionClaim, getActiveWorktreeReservation, getSession, prepare
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -229,6 +230,55 @@ describe("reconcileSessionExit", () => {
       reconcileSessionExit({ db, sessionId, requestId: "reconcile-7", repoRoot: fixture.repo })
     );
     expect(result.receipt.outcome).toBe("failed_execution");
+  });
+
+  it("names a headless Claude authentication failure from the Session log as a provider sign-in failure (Issue #1155)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    tmux.live = false;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(sessionId);
+    });
+    const logFile = sessionLogPath(fixture.workspace, sessionId);
+    mkdirSync(path.dirname(logFile), { recursive: true });
+    writeFileSync(logFile, [
+      JSON.stringify({ type: "system", subtype: "init", model: "haiku" }),
+      JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Failed to authenticate: OAuth session expired and could not be refreshed" }),
+      "arcadia: provider exited with status 1"
+    ].join("\n") + "\n");
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-1155", repoRoot: fixture.repo, workspace: fixture.workspace })
+    );
+    expect(result.receipt.outcome).toBe("failed_execution");
+    expect(result.receipt.reason).toContain("Provider sign-in failure");
+    expect(result.receipt.reason).toContain("claude auth login");
+    expect(JSON.parse(result.receipt.evidence_json!).providerFailure).toMatchObject({ kind: "sign_in", provider: "claude-code-cli" });
+  });
+
+  it("keeps the generic reason when the log has no error result event, or an error result that is not authentication", () => {
+    for (const lines of [
+      [JSON.stringify({ type: "assistant", message: "Failed to authenticate the user in the test" })],
+      [JSON.stringify({ type: "result", is_error: true, result: "Prompt is too long" })]
+    ]) {
+      const fixture = preparedFixture();
+      const tmux = new FakeTmux();
+      const launched = launch(fixture, tmux);
+      const sessionId = launched.data.session!.id;
+      tmux.live = false;
+      withDatabase(fixture.workspace, (db) => {
+        db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(sessionId);
+      });
+      const logFile = sessionLogPath(fixture.workspace, sessionId);
+      mkdirSync(path.dirname(logFile), { recursive: true });
+      writeFileSync(logFile, lines.join("\n") + "\n");
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-1155-neg", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+      expect(result.receipt.reason).toBe("The Session exited with a nonzero status (1).");
+    }
   });
 
   it("persists the receipt even after crashing between transition and receipt insert, by never leaving a partial write (single transaction)", () => {

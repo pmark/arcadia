@@ -78,6 +78,9 @@ function checkCodexSignIn(env?: NodeJS.ProcessEnv): ProviderSignInStatus | null 
  * read from `stdout` whether or not the process exited zero; only when no
  * verdict can be read at all is this treated as a probe failure.
  */
+/** The one-sentence Claude Code sign-in remedy shared by the launch preflight and the exit receipt. */
+export const CLAUDE_CODE_SIGN_IN_REMEDY = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
+
 function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
   // Tests must not depend on this host's real Claude Code sign-in state.
   // A test that specifically exercises the preflight injects an explicit
@@ -85,7 +88,7 @@ function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): Pro
   // instead of relying on this default.
   if (process.env.VITEST && !env) return null;
 
-  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
+  const remedy = CLAUDE_CODE_SIGN_IN_REMEDY;
 
   if (workspace) {
     const paths = getWorkspacePaths(workspace);

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -6,6 +6,9 @@ import { isRequiresReviewValue } from "../domain/constants.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
+import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
+import { scanPane } from "../production/sessionSignals.js";
+import { sessionLogPath } from "./sessionRecording.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
 import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
 import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
@@ -240,7 +243,36 @@ function probeExitEvidence(db: Database.Database, session: AgentSession, repoRoo
   };
 }
 
-export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenceProbe): { outcome: SessionExitOutcome; reason: string } {
+/** Starts the exit reason of a Session that died on provider authentication; the worker log keys on it. */
+export const PROVIDER_SIGN_IN_FAILURE_PREFIX = "Provider sign-in failure";
+
+/**
+ * An unambiguous provider authentication failure in the Session's own log:
+ * for Claude Code stream-json, a `result` event with `is_error: true` whose
+ * text matches the shared `auth_failure` catalog (`sessionSignals.ts`). Only
+ * that event counts, so a transcript that merely discusses authentication
+ * never does. Null when the log is absent, unreadable or shows no such event.
+ */
+export function detectProviderSignInFailure(session: AgentSession, workspace: string | undefined): string | null {
+  if (!workspace || session.provider !== "claude-code-cli") return null;
+  let text: string;
+  try {
+    text = readFileSync(sessionLogPath(workspace, session.id), "utf8");
+  } catch {
+    return null;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("{") || !line.includes('"result"')) continue;
+    try {
+      const event = JSON.parse(line) as { type?: unknown; is_error?: unknown; result?: unknown };
+      if (event.type === "result" && event.is_error === true && typeof event.result === "string"
+        && scanPane(event.result).classes.includes("auth_failure")) return event.result.trim();
+    } catch { /* not a JSON event line */ }
+  }
+  return null;
+}
+
+export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenceProbe, signInFailure: string | null = null): { outcome: SessionExitOutcome; reason: string } {
   if (evidence.actionDoneInPlan) {
     return { outcome: "accepted_completion", reason: "The Action is recorded done in the checked-in Plan." };
   }
@@ -257,6 +289,12 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
   }
   if (evidence.candidateHasChanges) {
     return { outcome: "incomplete_resumable", reason: "The Session exited with an unfinished candidate that can be resumed." };
+  }
+  if (signInFailure && session.exit_status !== null && session.exit_status !== 0) {
+    return {
+      outcome: "failed_execution",
+      reason: `${PROVIDER_SIGN_IN_FAILURE_PREFIX}: Claude Code reported "${signInFailure}" (exit status ${session.exit_status}) before doing any work. ${CLAUDE_CODE_SIGN_IN_REMEDY}`
+    };
   }
   if (session.exit_status !== null && session.exit_status !== 0) {
     return { outcome: "failed_execution", reason: `The Session exited with a nonzero status (${session.exit_status}).` };
@@ -468,6 +506,8 @@ export interface ReconcileSessionExitInput {
    * `incomplete_resumable`, which was never resumable to begin with.
    */
   suppressLeaseHandoff?: { reason: string };
+  /** The workspace, so the Session's provider log can be read to name a provider sign-in failure. */
+  workspace?: string;
   /** Extra receipt accounting, committed atomically with terminal state and the receipt.
    * Called once for a new receipt inside its SQLite transaction; never on replay. */
   onReceiptWrite?: (receipt: SessionExitReceipt) => void;
@@ -506,7 +546,8 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
 
   const repoRoot = path.resolve(input.repoRoot);
   const evidence = probeExitEvidence(db, session, repoRoot);
-  let { outcome, reason } = classifyExitOutcome(session, evidence);
+  const signInFailure = detectProviderSignInFailure(session, input.workspace);
+  let { outcome, reason } = classifyExitOutcome(session, evidence, signInFailure);
   // Proven completion settles onto the Session's own candidate worktree,
   // so once it succeeds the fresh Plan and
   // Project documents live there -- not necessarily at whatever `--repo` this
@@ -548,7 +589,11 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     artifact_id: evidence.artifactId,
     decision_id: evidence.decisionId,
     candidate_revision: evidence.candidateRevision,
-    evidence_json: JSON.stringify(session.stop_reason ? { ...evidence, stopReason: session.stop_reason } : evidence),
+    evidence_json: JSON.stringify({
+      ...evidence,
+      ...(session.stop_reason ? { stopReason: session.stop_reason } : {}),
+      ...(signInFailure && reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX) ? { providerFailure: { kind: "sign_in", provider: session.provider, message: signInFailure } } : {})
+    }),
     next_action_json: JSON.stringify(nextMove),
     lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
     superseded_by_session_id: null,
