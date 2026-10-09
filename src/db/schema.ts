@@ -80,6 +80,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureExecutionRequirementColumn(db);
   ensureAcceptanceCriteriaColumn(db);
   ensureSplitIntoColumn(db);
+  ensureWorkItemWhyColumn(db);
   ensureWorkItemArchiveColumns(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
@@ -796,6 +797,21 @@ function ensureSplitIntoColumn(db: Database.Database): void {
   );
   if (!columns.has("split_into_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN split_into_json TEXT").run();
+  }
+}
+
+/**
+ * Carry a managed plan Action's optional `why` (one sentence on why it matters)
+ * onto the work item, so the Path, Now and dashboard surfaces can state a
+ * step's reason without re-reading plan documents. Nullable and additive: every
+ * existing row reads as "no declared reason" until `docs sync` mirrors one.
+ */
+function ensureWorkItemWhyColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("why")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN why TEXT").run();
   }
 }
 

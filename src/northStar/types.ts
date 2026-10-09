@@ -12,6 +12,8 @@
  * owns, and every number on the Now screen is derived from it.
  */
 
+import type { StepReason } from "./stepReason.js";
+
 export type GateStatus = "done" | "in_progress" | "blocked" | "open" | "unknown";
 
 /**
@@ -64,6 +66,10 @@ export interface ResolvedGate extends NorthStarGate {
   workItemId: string | null;
   nextAction: string | null;
   clarification: string | null;
+  /** Title of the tracked Action; the split parent when `openRemainder` is set. Null when no Action resolves. */
+  actionTitle: string | null;
+  /** The tracked Action's declared `why`, when its plan wrote one. */
+  actionWhy: string | null;
   /** True when the gate's status came from a record rather than the document. */
   derived: boolean;
   /**
@@ -85,6 +91,8 @@ export interface OpenRemainder {
   title: string | null;
   /** The remainder's own work-item status; null when no plan carries it. */
   status: string | null;
+  /** The remainder's declared `why`, when its plan wrote one. */
+  why: string | null;
 }
 
 /**
@@ -101,6 +109,17 @@ export interface TheOneThing {
   unlocks: string;
   projectName: string | null;
   onTarget: boolean;
+  /**
+   * When this names a step (`action`, `clarify`), why that step matters and
+   * where its plan declares it. Null for every kind that is not a step.
+   */
+  step: OneThingStep | null;
+}
+
+/** The planned work item a `TheOneThing` names, with the reason it is on the route. */
+export interface OneThingStep extends StepReason {
+  /** `plan/<slug>#<action-id>`; null only when no plan carries the Action. */
+  docRef: string | null;
 }
 
 export interface AttentionSlice {

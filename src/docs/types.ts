@@ -117,6 +117,13 @@ export interface PlanActionDoc {
   confidence: ClarificationConfidence | null;
   source: string | null;
   /**
+   * One sentence on why this Action matters. Optional: the Path, Now and
+   * dashboard surfaces show it as the step's reason, and derive a reason from
+   * the dependency graph when it is absent. `docs sync` mirrors it onto the
+   * work item's `why` column.
+   */
+  why: string | null;
+  /**
    * The milestone this action belongs to, when it is not the plan's own.
    *
    * A plan may span more than one milestone (Decision 0005). The alternative —

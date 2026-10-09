@@ -244,6 +244,66 @@ describe("the Now brief", () => {
     expect(brief.theOneThing.unlocks).toContain("Already underway");
   });
 
+  it("names the step it picks with a derived reason and the Action's plan reference", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, {
+        title: "Underway",
+        docRef: "plan/p#open-one",
+        status: "in_progress",
+        clarification: "clarified",
+        nextAction: "Finish the underway thing."
+      });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    expect(brief.theOneThing.step).toEqual({
+      docRef: "plan/p#open-one",
+      reason: "Completes gate: Second gate",
+      reasonSource: "derived"
+    });
+  });
+
+  it("carries the Action's declared why when its plan wrote one", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, {
+        title: "Underway",
+        docRef: "plan/p#open-one",
+        status: "in_progress",
+        clarification: "clarified",
+        nextAction: "Finish the underway thing.",
+        why: "The pilot cannot start without it."
+      });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    expect(brief.theOneThing.step).toMatchObject({
+      reason: "The pilot cannot start without it.",
+      reasonSource: "declared"
+    });
+  });
+
+  it("names no step when the one thing is a Decision", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      createReviewItem(db, decisionInput(project.id, "Which way should the intake link work?"));
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    expect(brief.theOneThing.kind).toBe("decision");
+    expect(brief.theOneThing.step).toBeNull();
+  });
+
   it("falls back to an owed Decision when no gate Action is ready", () => {
     const workspace = initializedWorkspace();
     writeNorthStar(workspace, GATE_DOC);
@@ -398,6 +458,11 @@ describe("a gate whose Action was split", () => {
     expect(brief.distance.remaining).toBe(3);
     // The one thing names the remainder, not the already-finished parent step.
     expect(brief.theOneThing.doThis).toBe("done-one-rest: Run the second Action to completion.");
+    expect(brief.theOneThing.step).toEqual({
+      docRef: "plan/p#done-one-rest",
+      reason: "Remainder of Narrowed proof",
+      reasonSource: "derived"
+    });
   });
 
   it("follows a remainder that was itself split, transitively", () => {
@@ -628,6 +693,7 @@ function seedAction(
     clarification?: string;
     nextAction?: string;
     splitInto?: string[];
+    why?: string;
   }
 ): void {
   const { workItem } = createWorkItemWithOptionalArtifact(db, {
@@ -646,6 +712,9 @@ function seedAction(
   );
   if (input.splitInto) {
     db.prepare("UPDATE work_items SET split_into_json = ? WHERE id = ?").run(JSON.stringify(input.splitInto), workItem.id);
+  }
+  if (input.why !== undefined) {
+    db.prepare("UPDATE work_items SET why = ? WHERE id = ?").run(input.why, workItem.id);
   }
 }
 

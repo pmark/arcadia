@@ -10,6 +10,7 @@ import { findUnfinishedSplitRemainder } from "../docs/splitRemainders.js";
 import { parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { daysSinceLastCommit, readRepositoryActivity } from "./attention.js";
+import { completesGate, remainderOf, stepReason } from "./stepReason.js";
 import type {
   AttentionSlice,
   DriftLevel,
@@ -134,6 +135,8 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
         workItemId: null,
         nextAction: null,
         clarification: null,
+        actionTitle: null,
+        actionWhy: null,
         derived: false,
         openRemainder: null
       };
@@ -148,6 +151,8 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
         workItemId: null,
         nextAction: null,
         clarification: null,
+        actionTitle: null,
+        actionWhy: null,
         derived: false,
         openRemainder: null
       };
@@ -169,13 +174,16 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
           : `Restore remainder \`${remainder.ref}\`: \`${gate.actionRef}\` was split into it, but no plan carries it.`,
         // A remainder no plan carries already has a concrete next move: restore it.
         clarification: remainderItem ? remainderItem.clarification_status : "clarified",
+        actionTitle: item.title,
+        actionWhy: item.why,
         derived: true,
         openRemainder: {
           ref: remainder.ref,
           actionId: parseActionDocRef(remainder.ref)?.actionId ?? remainder.ref,
           workItemId: remainderItem?.id ?? null,
           title: remainderItem?.title ?? null,
-          status: remainderItem?.status ?? null
+          status: remainderItem?.status ?? null,
+          why: remainderItem?.why ?? null
         }
       };
     }
@@ -186,6 +194,8 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
       workItemId: item.id,
       nextAction: item.next_action,
       clarification: item.clarification_status,
+      actionTitle: item.title,
+      actionWhy: item.why,
       derived: true,
       openRemainder: null
     };
@@ -243,7 +253,8 @@ function pausedTargetOneThing(projectName: string): TheOneThing {
     doThis: `Reactivate "${projectName}" or point NORTH_STAR.md at an active Project.`,
     unlocks: "Arcadia does not dispatch work to a paused Project, so the target cannot move until one of those happens.",
     projectName,
-    onTarget: true
+    onTarget: true,
+    step: null
   };
 }
 
@@ -263,7 +274,8 @@ function selectTheOneThing(input: {
       doThis: "Write NORTH_STAR.md in the workspace: the target, the project that owns it, and what done looks like.",
       unlocks: "Everything else on this screen becomes measurable.",
       projectName: null,
-      onTarget: true
+      onTarget: true,
+      step: null
     };
   }
 
@@ -298,7 +310,8 @@ function selectTheOneThing(input: {
           ? `One of ${openReviews.length} answers ${targetProjectName ?? "the target"} is waiting on.`
           : `${targetProjectName ?? "The target"} cannot move until this is answered.`,
       projectName: targetProjectName,
-      onTarget: true
+      onTarget: true,
+      step: null
     };
   }
 
@@ -313,7 +326,8 @@ function selectTheOneThing(input: {
       doThis: `Clarify "${subject}" until it names one concrete next move.`,
       unlocks: `${remainingLine(open)} — this one has no defined next step, which is why it keeps getting skipped.`,
       projectName: targetProjectName,
-      onTarget: true
+      onTarget: true,
+      step: stepOfGate(needsClarity)
     };
   }
 
@@ -329,7 +343,8 @@ function selectTheOneThing(input: {
     doThis: northStar.looksLike || `Confirm the target is reached: ${northStar.target}`,
     unlocks: "Every declared gate is done. Verify the finish line, then declare the next target.",
     projectName: targetProjectName,
-    onTarget: true
+    onTarget: true,
+    step: null
   };
 }
 
@@ -368,8 +383,29 @@ function gateAsOneThing(
     doThis: remainder?.workItemId ? `${remainder.actionId}: ${doThis}` : doThis,
     unlocks: prefix ? `${prefix} ${remainingLine(open)}.` : `${remainingLine(open)}.`,
     projectName,
-    onTarget: true
+    onTarget: true,
+    step: stepOfGate(gate)
   };
+}
+
+/**
+ * The step a gate's one-thing names, with its reason and plan reference.
+ *
+ * A split gate's step is its open remainder (the finished parent has nothing
+ * left to do), so the reason and reference are the remainder's when it is
+ * carried by a plan. Either way the sentence is the author's `why` or the
+ * derived one -- the same words the Path shows for that Action.
+ */
+function stepOfGate(gate: ResolvedGate): TheOneThing["step"] {
+  const remainder = gate.openRemainder;
+  if (remainder?.workItemId) {
+    return {
+      docRef: remainder.ref,
+      ...stepReason(remainder.why, remainderOf(gate.actionTitle ?? gate.title))
+    };
+  }
+  if (!gate.workItemId) return null;
+  return { docRef: gate.actionRef, ...stepReason(gate.actionWhy, completesGate(gate.title)) };
 }
 
 function remainingLine(open: ResolvedGate[]): string {
@@ -407,7 +443,8 @@ function selectFifteenMinutes(input: {
     doThis: `Answer ${decision.slug ?? decision.id}: ${decision.decision_needed}`,
     unlocks: `${openReviews.length} answer${openReviews.length === 1 ? "" : "s"} owed — each one frees work already written.`,
     projectName: targetProjectName,
-    onTarget: true
+    onTarget: true,
+    step: null
   };
 }
 

@@ -437,6 +437,13 @@ The path also follows splits: an Action that was narrowed and marked `done`
 brings its open `split_into` remainders onto the path as steps, so a split never
 shortens the distance. The target's `why` is shown at the top of the screen.
 
+Every step also says why it is on the route and which planned Action it is: the
+Action's own `why:` when its plan declares one, otherwise a derived sentence
+("Unblocks …", "Remainder of …", "Completes gate: …") marked *derived*. The step
+title opens that Action, and `arcadia path` prints its `plan/<slug>#<action-id>`
+reference; a gap whose Action no plan carries has nothing to open and says so.
+The Now screen's **Do this now** carries the same reason and link.
+
 Nothing can be added on this screen. It is a projection of `NORTH_STAR.md` and
 the plans behind it — to change the path, change those documents. The same view
 is in the terminal:

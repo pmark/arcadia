@@ -709,6 +709,7 @@ function syncAction(
     open_question: action.question,
     confidence: action.confidence,
     clarification_source: action.source,
+    why: action.why,
     execution_requirement_json: action.execution
       ? JSON.stringify(executionRequirementToPortableValue(action.execution))
       : null,
@@ -747,7 +748,8 @@ function syncAction(
         clarificationSource: desired.clarification_source,
         executionRequirementJson: desired.execution_requirement_json,
         acceptanceCriteriaJson: desired.acceptance_criteria_json,
-        splitIntoJson: desired.split_into_json
+        splitIntoJson: desired.split_into_json,
+        why: desired.why
       });
     }
     return {
@@ -773,7 +775,8 @@ function syncAction(
     ["source", existing.clarification_source, desired.clarification_source],
     ["execution", existing.execution_requirement_json, desired.execution_requirement_json],
     ["acceptance_criteria", existing.acceptance_criteria_json, desired.acceptance_criteria_json],
-    ["split_into", existing.split_into_json, desired.split_into_json]
+    ["split_into", existing.split_into_json, desired.split_into_json],
+    ["why", existing.why, desired.why]
   ];
   const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
 
@@ -808,7 +811,8 @@ function syncAction(
       clarificationSource: desired.clarification_source,
       executionRequirementJson: desired.execution_requirement_json,
       acceptanceCriteriaJson: desired.acceptance_criteria_json,
-      splitIntoJson: desired.split_into_json
+      splitIntoJson: desired.split_into_json,
+      why: desired.why
     });
     if (existing.title !== desired.title) {
       db.prepare("UPDATE work_items SET title = ? WHERE id = ?").run(desired.title, existing.id);
