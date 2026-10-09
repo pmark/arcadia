@@ -420,7 +420,8 @@ export interface GuardedSessionLaunchResponse {
 export async function launchGuardedSession(
   repoPath: string,
   requestId: string,
-  previewFingerprint: string
+  previewFingerprint: string,
+  options: { operatorLaunch?: boolean } = {}
 ): Promise<ArcadiaJsonSuccess<GuardedSessionLaunchResponse>> {
   return runArcadiaCliJson<GuardedSessionLaunchResponse>([
     "session",
@@ -430,7 +431,11 @@ export async function launchGuardedSession(
     "--request-id",
     requestId,
     "--preview-fingerprint",
-    previewFingerprint
+    previewFingerprint,
+    // Decision 0096: only the route passes this, after the operator's explicit
+    // confirmation. The CLI spawned here has no TTY, so the dashboard side
+    // mints; the CLI still refuses it from inside an Arcadia Session.
+    ...(options.operatorLaunch ? ["--operator-launch-dashboard"] : [])
   ]);
 }
 

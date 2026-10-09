@@ -403,6 +403,10 @@ export interface DashboardAgentSession {
   exitOutcome?: string | null;
   exitReason?: string | null;
   pullRequestUrl?: string | null;
+  /** Exited but not reconciled within the bound; `reconcileCommand` is the manual fallback. */
+  unreconciled?: { since: string; exitStatus: number | null; reconcileCommand: string } | null;
+  /** The one-shot operator launch authorization (Decision 0096), when a confirmed Launch minted one. */
+  operatorLaunch?: { expiresAt: string; usedAt: string | null; outcome: string | null; publishState: string } | null;
 }
 
 export interface DashboardReviewFocus {

@@ -2091,6 +2091,31 @@ login`), or the installed provider lacks the headless flags
 `--interactive` to `go --launch`; that Session is not logged and records no
 exit code.
 
+**A confirmed Launch finishes its Session's work without production being
+Active (Decision 0096).** Confirming a Launch also authorizes Arcadia, once and
+for that one Action, to validate, commit and push the Session's branch when it
+exits and, only if the work is reconciled `accepted_completion`, open a DRAFT
+pull request. It never merges, readies a PR, integrates or turns production on;
+review, repair and merge are a separate step. Only a confirmed Launch carries
+this: the dashboard's Launch confirmation (the request's
+`confirmOperatorLaunch: true`, after the preview's `operatorLaunchConsequence`
+is shown), or `arcadia session launch --operator-launch --preview-fingerprint
+<hash>` typed `y` at an interactive terminal. A launch without it, from inside an
+Arcadia Session (`ARCADIA_SESSION_ID` is set in every Session) or from a
+non-interactive shell, carries none and behaves as before (the exit is reconciled
+`incomplete_resumable`, nothing is committed or pushed). The authorization is a
+row in the workspace database bound to that Session and Action, expires after 24
+hours and is used up at the first exit; its mint and use are events
+(`operator_launch.authorization_minted` / `_used`, with the commit, PR and
+outcome in the use receipt). The exit is handled by the worker's existing tick:
+validate, commit and push (state `PUSHED`), reconcile, then on
+`accepted_completion` the draft PR through the same preservation path production
+uses. A draft PR that fails (GitHub down) is retried on later ticks, at most
+three attempts. An incomplete exit keeps its work committed and pushed with no
+PR. If the worker is down, a Session that has exited and stays unreconciled for
+five minutes is flagged on the dashboard's Session card with the command to run
+by hand: `arcadia session reconcile <session-id> --repo <repo>`.
+
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance
 criterion verbatim and in the plan's own order, the candidate worktree and

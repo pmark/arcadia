@@ -36,7 +36,8 @@ import type { CandidatePreservationReceipt } from "../sessions/candidatePreserva
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
-import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
+import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
+import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
 import { developedForSupersededInput, independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
@@ -1522,7 +1523,18 @@ export function runManagedProductionTick(
         // integrate the branch -- now carrying the completion settlement --
         // only under Decision 0058's separately recorded grant. Absent a valid
         // grant this stops after preservation and reports the operator merge.
-        const preservation = preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
+        // A confirmed operator Launch's one-shot authorization (Decision 0096)
+        // stands in for production's validation delegation when production does
+        // not itself cover this Action: validate, commit and push now, the draft
+        // PR after an accepted completion. Production's own path is unchanged.
+        const operatorExit = operatorLaunchForExit(db, lease, now);
+        if (operatorExit?.kind === "refused") log(`Operator launch authority for Session ${lease.id} is not usable: ${operatorExit.reason}`);
+        const operatorAuthorization = operatorExit?.kind === "authorized" ? operatorExit.authorization : null;
+        const preservation: PreservationStep = operatorAuthorization
+          ? preserveOperatorLaunchExit({ db, workspace, repoRoot, session: lease, authorization: operatorAuthorization, now }, options.handoff?.preserve ?? {})
+          : operatorExit?.kind === "refused"
+            ? { kind: "refused", reason: `Host-side validation is not authorized for this Action: ${operatorExit.reason}` }
+            : preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
         // An agent that died between its settlement commit and the receipt
         // left a pending completion (Issue #995): record it first, so the
         // reconciliation below finds the settlement exactly as if the agent
@@ -1590,6 +1602,19 @@ export function runManagedProductionTick(
         handoffSessionId = lease.id;
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
+        if (operatorAuthorization) {
+          try {
+            const conclusion = concludeOperatorLaunchExit({
+              db, workspace, repoRoot, session: lease, authorization: operatorAuthorization, now,
+              commit: preservation, reconcileOutcome: result.receipt.outcome, reconcileReason: result.receipt.reason
+            }, options.handoff?.preserve ?? {});
+            log(`Operator launch authorization ${conclusion.authorizationId} used for Session ${lease.id}: ${conclusion.outcome}; `
+              + `commit ${preservation.kind === "preserved" ? `${preservation.state} ${preservation.commitSha.slice(0, 12)}` : `${preservation.kind} (${preservation.kind === "refused" ? preservation.reason : "no changes"})`}; `
+              + `draft PR ${conclusion.pullRequestUrl ?? (conclusion.publishState === "none" ? "not opened (no accepted completion)" : `not opened yet (${conclusion.publishState})`)}.`);
+          } catch (error) {
+            log(`Operator launch authorization for Session ${lease.id} could not be concluded: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
         safelyRaiseRedAlerts(log, "reconcile clear", () => {
           observeReconcileSuccess(alertCtx);
           observeStall(alertCtx, { session: null, stalled: false, tmux });
@@ -1631,6 +1656,13 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
+        // A draft PR an operator-launched Session's exit could not open is
+        // retried here, bounded (Decision 0096); never throws into the tick.
+        try {
+          retryOperatorLaunchPublications({ db, workspace, repoRoot, now, log }, options.handoff?.preserve ?? {});
+        } catch (error) {
+          log(`Operator launch draft PR retry failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        }
         const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
           { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });
         handoff = recovery?.handoff ?? null;

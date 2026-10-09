@@ -14,8 +14,16 @@ import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
+import { operatorLaunchAuthorityFor } from "./operatorLaunch.js";
 
-export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false) {
+/**
+ * An operator launch authorization (Decision 0096) standing in for the
+ * production policy's validation delegation: the caller names the row and the
+ * time it is checked at, and the binding records only the row's id.
+ */
+export interface OperatorLaunchGrant { authorizationId: string; at: Date }
+
+export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false, operatorLaunch?: OperatorLaunchGrant) {
   const current = db.prepare("SELECT * FROM agent_sessions WHERE id = ?").get(lease.id) as AgentSession | undefined;
   const fields = ["project_id", "project_slug", "repository_path", "worktree_path", "branch", "base_revision", "action_id", "plan_slug", "packet_id", "packet_path", "packet_sha256", "authorizing_decisions_json"] as const;
   const terminal = terminalRecovery ? findAcceptedTerminalCompletion(db, lease) : null;
@@ -45,12 +53,16 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
   if (JSON.stringify(frozen) !== JSON.stringify(commands)) throw validationError("Validation check definitions differ from the authorized immutable packet; prepare and authorize a fresh packet.");
   const policy = readProductionPolicy(db);
   const scope = policy.scope;
-  if (policy.desiredState !== "active" || !policy.authority || !scope?.projects.includes(lease.project_slug) ||
+  // The Session's own operator launch authorization replaces the production
+  // validation delegation, for this exact Session and Action only.
+  const operator = operatorLaunch ? operatorLaunchAuthorityFor(db, lease, operatorLaunch.at, operatorLaunch.authorizationId) : null;
+  if (operator && !operator.ok) throw validationError(`Preservation validation: ${operator.reason}`);
+  if (!operator && (policy.desiredState !== "active" || !policy.authority || !scope?.projects.includes(lease.project_slug) ||
       !scope.plans.includes(`${lease.project_slug}/${lease.plan_slug}`) || !scope.actions.includes(`${lease.project_slug}/${lease.action_id}`) ||
-      !scope.mechanicalTransitions.includes("validation")) {
+      !scope.mechanicalTransitions.includes("validation"))) {
     throw validationError("Preservation validation requires current scoped production validation authority.");
   }
-  return { session: lease.id, terminalExit: terminal?.exitId ?? null, settlement: terminal?.settlementId ?? null,
+  return { ...(operator?.ok ? { operatorLaunch: operator.authorization.id } : {}), session: lease.id, terminalExit: terminal?.exitId ?? null, settlement: terminal?.settlementId ?? null,
     candidateHead: terminal?.candidateHead ?? null, repository: lease.repository_path, worktree: lease.worktree_path, branch: lease.branch,
     base: lease.base_revision, project: lease.project_slug, action: lease.action_id, packetHash, decision,
     commands: commands as string[], actionDefinition: readiness.action, policy };
@@ -66,10 +78,10 @@ export function checkTimedOut(error: Error | undefined): boolean {
 /** Host-owned producer. Candidate checks execute under Seatbelt with an immutable
  * source tree, private scratch, no network and no writes to Git/workspace/source.
  * Unsupported hosts fail closed; this is not a general command execution API. */
-export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false) {
-  const binding = preservationAuthority(db, workspace, lease, terminalRecovery);
+export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false, operatorLaunch?: OperatorLaunchGrant) {
+  const binding = preservationAuthority(db, workspace, lease, terminalRecovery, operatorLaunch);
   return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, base: lease.base_revision, commands: binding.commands }, binding, () => {
-    if (JSON.stringify(preservationAuthority(db, workspace, lease, terminalRecovery)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
+    if (JSON.stringify(preservationAuthority(db, workspace, lease, terminalRecovery, operatorLaunch)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
   });
 }
 

@@ -164,6 +164,7 @@ import {
   runSessionPreviewLaunchCommand,
   runSessionLaunchCommand
 } from "./commands/advance.js";
+import { confirmOperatorLaunchAtTerminal, refuseInsideArcadiaSession, type OperatorLaunchSource } from "./sessions/operatorLaunch.js";
 import { runAssessPrBlastRadiusCommand, renderAssessPrBlastRadiusSuccess } from "./commands/prBlastRadius.js";
 import { renderPrCodeReviewSuccess, renderPrDeclineFindingSuccess, runPrCodeReviewCommand, runPrDeclineFindingCommand } from "./commands/prCodeReview.js";
 import {
@@ -2031,17 +2032,44 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         "--standing-policy",
         "Launch under the standing managed-production policy grant instead of an operator-approved fingerprint"
       )
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; json?: boolean }) =>
+      .option(
+        "--operator-launch",
+        "Also authorize this one Session's exit: validate, commit, push and (on accepted completion only) open a DRAFT pull request, once, within 24 hours (Decision 0096). Needs --preview-fingerprint, an interactive terminal and a typed confirmation; refused inside an Arcadia Session. Never merges."
+      )
+      .addOption(new Option("--operator-launch-dashboard", "Set only by the dashboard's confirmed Launch").hideHelp())
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
-      () => runSessionLaunchCommand({
-        workspace: options.workspace,
-        repo: options.repo,
-        requestId: options.requestId,
-        previewFingerprint: options.previewFingerprint,
-        standingPolicy: options.standingPolicy
-      }),
+      () => {
+        if (options.operatorLaunch && options.operatorLaunchDashboard) {
+          throw validationError("--operator-launch and the dashboard's confirmation flag are mutually exclusive.", {});
+        }
+        if ((options.operatorLaunch || options.operatorLaunchDashboard) && !options.previewFingerprint) {
+          throw validationError("An operator launch authorization needs the previewed --preview-fingerprint.", {});
+        }
+        let operatorLaunch: { source: OperatorLaunchSource } | undefined;
+        if (options.operatorLaunchDashboard) {
+          refuseInsideArcadiaSession();
+          operatorLaunch = { source: "dashboard" };
+        } else if (options.operatorLaunch) {
+          // The Action is named in the prompt, read only after the terminal is known to be interactive.
+          operatorLaunch = {
+            source: confirmOperatorLaunchAtTerminal({
+              actionLabel: () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId })
+                .data.actionDocRef ?? "the previewed Action"
+            })
+          };
+        }
+        return runSessionLaunchCommand({
+          workspace: options.workspace,
+          repo: options.repo,
+          requestId: options.requestId,
+          previewFingerprint: options.previewFingerprint,
+          standingPolicy: options.standingPolicy,
+          ...(operatorLaunch ? { operatorLaunch } : {})
+        });
+      },
       renderSessionLaunchSuccess
     )
   );
