@@ -219,7 +219,8 @@ describe("renderActionBrief", () => {
       expect(codex).toContain("Do not run raw git add, git commit or git push");
       expect(codex).toContain("If the broker\n     refuses for any reason");
       expect(codex).toContain("do not run the broker again and do not work around it, and continue with step 3 anyway");
-      expect(codex).toContain("3. Always do this step, whether or not the broker succeeded.");
+      expect(codex).toContain("3. Do this step whether or not the broker succeeded, but only once your own validation in step 1");
+      expect(codex).toContain("never record a criterion as met that you have not verified");
       expect(codex).not.toContain("host-owned in this Session");
       expect(codex.indexOf("arcadia-preserve-broker-codex")).toBeLessThan(codex.indexOf("arcadia agent-ask draft --dir"));
       expect(headless(repo, "claude", false)).toContain("arcadia-preserve-broker-claude");
