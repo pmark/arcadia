@@ -150,6 +150,11 @@ Treat these as given constraints, not open questions to re-litigate.
 Plan or creating a new one, containing dependency-ordered Actions ready to
 draft, preview, and settle.
 
+Until the dedicated Action fields exist (Action `add-action-role-field` in
+the governed-roles plan), state each planned Action's recommended role, tier,
+size (S/M/L) and operator gate in its title or `desired_result` text, as the
+governed-roles plan does.
+
 **How to run it today:** a coding-agent session (Claude Code, Codex,
 opencode), not a bare chat. Unlike Phase 1, this phase is not usable
 without repository access: it must read `AGENTS.md`, `CONSTITUTION.md`,
