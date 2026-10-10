@@ -1,33 +1,34 @@
 # How Arcadia updates are published and promoted
 
-Status: proposal for operator review (2026-10-10). Nothing here posts anywhere.
-It governs the Mission Control site (ArcadiaMissionControl.com, own repo) and
-drafts kept in this repo. Standing rule: honesty outranks conversion.
+Status: operator decisions recorded 2026-10-10 (see the last section). Nothing
+here posts anywhere. It governs the Mission Control site (ArcadiaMissionControl.com,
+own repo) and drafts kept in this repo. Standing rule: honesty outranks conversion.
 
 ## Recommendations
 
-1. **One site section, two post types.** Section name **Field Notes**, at
-   `/notes/`. Post `type: ship` (short, dated, 100-250 words, what merged and
+1. **One site section, two post types.** Section name **Field Notes** (decided),
+   at `/notes/`. Post `type: ship` (short, dated, 100-250 words, what merged and
    what did not) and `type: essay` (milestone write-ups like the first article).
-   One feed, filterable by type. Reason: one person cannot feed two sections;
-   a single chronological log reads as an honest mission log, and "Blog" invites
-   marketing tone. If ship notes outgrow it, split later into `/changelog/`.
+   One feed, filterable by type. If ship notes outgrow it, split later into
+   `/changelog/`.
 2. **Source of truth is this repo.** Drafts live in `docs/articles/YYYY-MM-DD-slug.md`;
    the site repo pulls or copies merged files. The site never holds text that
    the repo lacks. URL: `/notes/<slug>/`. Feed: `/notes/rss.xml` (full text),
    auto-discovery link in the head.
-3. **Cadence.** Ship note after a meaningful merged batch, at most weekly,
-   skipped when nothing true is worth saying. Essay only at a real milestone
-   (roughly monthly or less). Never publish to hit a schedule.
-4. **Promote almost nothing at first.** Own the feed and the site; put the first
-   essay on a small number of channels (below). No Show HN until others can
-   install Arcadia.
-5. **No auto-posting.** Agents draft the post and per-channel variants. Mark
-   approves or skips each channel from one `/todo` item reached by a Discord
-   deep link. Any automated posting needs a governed Decision.
-6. **First article:** publish on the site and RSS now; submit once to Hacker
-   News as a regular link (not Show HN) only if Mark approves; hold Show HN,
-   Reddit launch posts and similar pushes until installable.
+3. **Default cadence (per post type, agent-managed once authorized).**
+   Ship notes: weekly, only when there is shipped work, never padded; a quiet
+   week means no post. Essays: only at a real milestone, at most monthly.
+   Never publish to hit a schedule.
+4. **Publishing authority.** Until the governed Decision "agents publish Field
+   Notes to the operator's own site automatically, under the honesty gate" is
+   answered and implemented, every post needs the operator's per-post `/todo`
+   approval. After it, agents may publish Field Notes on the Mission Control
+   site only, on the cadence above. The agent fact-check gate stays mandatory
+   in both modes, and the Decision covers no other site or platform.
+5. **No social posting yet.** HN, X, dev.to, Reddit and Lobsters are all held.
+   The only outward channels now are the site, its RSS feed and an email list.
+6. **First article:** publish on the site and RSS (after fact-check and
+   per-post approval); no external submission.
 
 ## Front-matter contract (agents draft against this)
 
@@ -65,6 +66,8 @@ receipt, as done for the first article, with findings resolved; (2) Mark
 approves from `/todo`; (3) status flips to `approved`, then publish.
 
 ## Channels, ranked for a not-yet-installable project
+
+Channel analysis below is retained for when social is authorized; all rows except the site, RSS and email are currently held.
 
 | Rank | Channel | Use for | Rules to respect | Source |
 |---|---|---|---|---|
@@ -111,42 +114,38 @@ Notes on norms:
 
 ## Operating model (minimal operator time)
 
-1. Agent drafts post, receipts file and per-channel variants (HN title, X
-   thread of 3-5 posts, dev.to front matter, email blurb).
-2. Independent agent fact-checks; findings fixed.
-3. One `/todo` item per post with a Discord deep link: "Approve site+RSS" and
-   per-channel Approve / Skip choices showing the exact text and consequence.
-4. Site publish follows the operator's `/todo` approval (it is Mark's own
-   property); agent-published ship notes with no per-post approval would need
-   a future governed Decision;
-   external platforms are posted by Mark by hand or, later, by a narrow
-   governed Decision with an expiry, like Decision 0100.
-5. Metrics, weekly, privacy-respecting: privacy-friendly aggregate page views
+1. Agent drafts the post, its receipts file and, for the email list, an email
+   draft. No per-channel social variants are produced while social is held.
+2. Independent agent fact-checks; findings fixed. Mandatory in every mode.
+3. Until the Decision lands: one `/todo` item per post with a Discord deep
+   link showing the exact text and the consequence of approving or skipping.
+4. After the Decision: agents publish on cadence to the Mission Control site;
+   the operator is notified, and can unpublish. Failed fact-check means no
+   post and an alert, not a retry loop.
+5. Email: the operator signs up for the tool himself (account creation is his
+   step). Agents only draft emails, as drafts and never auto-send.
+6. Metrics, weekly, privacy-respecting: privacy-friendly aggregate page views
    and referrers (no per-person tracking), RSS and email subscriber counts,
-   GitHub stars and issues from strangers, and replies worth answering. Judge
-   by qualified conversations, not totals. Record one line per post.
+   GitHub stars and issues from strangers. Record one line per post.
 
 ## First post
 
-Publish `The single-Action path runs itself` on the site and RSS now, after the
-fact-check, keeping its "fixture only" framing. Optional: one regular HN
-submission and one X thread, both only with Mark's yes. Hold: Show HN, Reddit,
-Lobsters and any "try it" call to action until installable. Hold the dev.to
-cross-post unless Mark wants it; it adds little before there is something to
-install.
+Publish `The single-Action path runs itself` on the site and RSS after the
+fact-check and the operator's approval, keeping its "fixture only" framing.
+No external submission. When social is later authorized, the earlier channel
+analysis above still applies, and Show HN waits for an installable project.
 
-## Open questions for Mark
+## Operator decisions (2026-10-10)
 
-1. **Section name: Field Notes or Mission Log?** Field Notes is plainer;
-   Mission Log fits the brand but can read as theatre. Either is a one-line
-   rename; the URL changes with it.
-2. **Submit the first essay to HN now?** Yes buys early feedback from the
-   target audience but spends a regular-submission shot before install
-   exists; no keeps it for the install milestone.
-3. **Start an email list now?** Yes captures curious readers while install is
-   still a goal; costs one tool signup (an account step you must do yourself)
-   and a privacy notice.
-4. **Allow a later Decision for agent-published ship notes on your own site
-   only?** Saves approvals; external platforms stay manual either way.
-5. **Any X presence?** Needs an account and a few minutes weekly; skipping
-   costs reach but nothing else.
+1. **Section name:** Field Notes at `/notes/`.
+2. **Social:** no Hacker News submission, and no social-media posting at all
+   yet (HN, X, dev.to, Reddit, Lobsters all held).
+3. **Email list:** yes, start one. The signup is the operator's own step;
+   agents draft emails only.
+4. **Automatic publishing:** the operator wants the entire blog (Field Notes
+   on the Mission Control site only) managed automatically on a regular
+   cadence per post type. Pending a governed Decision, being raised now.
+   Until it is answered and implemented, publishing stays per-post operator
+   approval. The default cadence is in Recommendation 3.
+5. **X:** yes eventually, but no presence today. The only handle is @pmark.
+   No posting until the operator says so.
