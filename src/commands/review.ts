@@ -4,6 +4,9 @@ import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { prepareBuildPacketForAcceptedPlan } from "./work.js";
+import { refuseFixturePacket, verifyFixturePacketApproval } from "../sessions/fixturePacketApproval.js";
+import type { FetchDecisionFile } from "../sessions/fixtureStandingLaunch.js";
+import { createId } from "../utils/id.js";
 import { prepareDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -155,6 +158,10 @@ export interface ReviewDecisionCommandOptions {
   trigger?: string;
   /** Required operator feedback when a validated plan is sent back for refinement. */
   feedback?: string;
+  /** Decision 0119: approve a fixture build packet with no execution (agent path). */
+  fixtureStanding?: boolean;
+  /** With fixtureStanding: the invoking agent, recorded in the receipt. */
+  agentIdentity?: string;
 }
 
 export interface ReviewDecisionCommandData {
@@ -758,9 +765,92 @@ function readAcceptedArtifactText(workspacePath: string, artifact: ArtifactSumma
   }
 }
 
+/** What a test may inject into {@link runReviewApproveFixturePacketCommand}; the CLI passes none. */
+export interface FixturePacketApprovalHooks {
+  env?: NodeJS.ProcessEnv;
+  now?: Date;
+  fetchDecision?: FetchDecisionFile;
+}
+
+/**
+ * `arcadia review approve <id> --fixture-standing --agent-identity <name>`
+ * (Decision 0119). Approves ONLY a build-packet Decision of a disposable
+ * fixture Project with no-execute semantics: no Run is queued and no follow-up
+ * execution Decision is created (the Session is launched separately). The
+ * receipt (agent, Decision 0119 blob sha) is stored on the Decision and as an event.
+ */
+export function runReviewApproveFixturePacketCommand(
+  options: ReviewDecisionCommandOptions,
+  hooks: FixturePacketApprovalHooks = {}
+): CommandSuccess<ReviewDecisionCommandData> {
+  if (options.execute === true || options.answer !== undefined) {
+    throw validationError("--fixture-standing approves a build packet with no execution; it cannot be combined with --execute or --answer.", { code: "fixture_packet_flag_conflict" });
+  }
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = hooks.now ?? new Date();
+  const context = withDatabase(workspacePath, (db) => {
+    const item = getReviewItemByIdOrSlug(db, options.id);
+    if (!item) throw validationError("Requires Review Decision was not found.", { id: options.id });
+    if (item.resolved_intent !== "CodexBuildPacketApproval") {
+      refuseFixturePacket("fixture_packet_not_a_build_packet", `Decision ${item.slug ?? item.id} is not a build-packet approval (${item.resolved_intent ?? "unknown"}); planning runs, Grants and other Decisions are never approved this way.`, { id: item.id });
+    }
+    if (item.status !== "open" && item.status !== "deferred") {
+      throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
+    }
+    const project = item.project_id ? getProject(db, item.project_id) : null;
+    const repoPath = project ? getProjectMetadata(db, project.id)?.repo_path?.trim() : undefined;
+    if (!project || !repoPath) {
+      refuseFixturePacket("fixture_packet_not_a_fixture", `Decision ${item.slug ?? item.id} has no Project repository to verify as a fixture.`, { id: item.id });
+    }
+    return { item, projectSlug: project.slug, repoRoot: repoPath };
+  });
+  const basis = verifyFixturePacketApproval({
+    workspace: workspacePath, repoRoot: context.repoRoot, projectSlug: context.projectSlug,
+    agentIdentity: options.agentIdentity, env: hooks.env, now, fetchDecision: hooks.fetchDecision
+  });
+  const updated = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+    // Re-read under the write lock: a concurrent decision must not be approved again.
+    const current = getReviewItem(db, context.item.id);
+    if (!current || (current.status !== "open" && current.status !== "deferred")) {
+      throw validationError("Requires Review Decision is already decided.", { id: context.item.id, status: current?.status ?? null });
+    }
+    const item = updateReviewItemStatus(db, current.id, {
+      status: "approved",
+      decisionNote: `Build packet approved by agent ${basis.agentIdentity} under Decision ${basis.decisionId} (${basis.decisionSource}, blob ${basis.decisionBlobSha}); fixture basis ${basis.fixtureBasis}. No execution queued.`
+    });
+    if (!item) throw validationError("Requires Review Decision was not found.", { id: current.id });
+    mergeReviewItemContext(db, item.id, { fixturePacketApproval: { ...basis, approvedAt: now.toISOString(), project: context.projectSlug } });
+    db.prepare(
+      `INSERT INTO events (id, event_type, source_module, project_id, work_item_id, artifact_id, review_item_id, payload_json, created_at)
+         VALUES (@id, 'review.fixture_packet_approved', 'review', @project_id, @work_item_id, NULL, @review_item_id, @payload_json, @created_at)`
+    ).run({
+      id: createId("event"), project_id: item.project_id, work_item_id: item.work_item_id, review_item_id: item.id,
+      payload_json: JSON.stringify({ schemaVersion: 1, ...basis }), created_at: now.toISOString()
+    });
+    return getReviewItem(db, item.id) as ReviewItemSummary;
+  }));
+  return createSuccess({
+    command: "review.approve",
+    workspace: workspacePath,
+    data: {
+      item: reviewPacketForReviewItem(updated),
+      result: {
+        status: "approved",
+        summary: `Build packet approved by ${basis.agentIdentity} under Decision ${basis.decisionId} (blob ${basis.decisionBlobSha}). No Run queued and no follow-up Decision created.`
+      },
+      approval: null,
+      execution: null,
+      run: null
+    }
+  });
+}
+
 export function runReviewApproveCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
+  if (options.fixtureStanding) {
+    return runReviewApproveFixturePacketCommand(options);
+  }
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const specialized = withDatabase(workspacePath, (db) => getReviewItemByIdOrSlug(db, options.id));
   if (specialized?.resolved_intent === ACTION_CLARIFICATION_INTENT) {

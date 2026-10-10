@@ -3466,12 +3466,25 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
       .option("--answer <text>", "Answer to a clarification Decision (required for those; no executor runs)")
       .option("--clarify", "After a clarification answer is recorded, run `clarify --work <id> --apply` once")
+      .option(
+        "--fixture-standing",
+        "Agent path (Decision 0119, expires 2026-10-18): approve ONLY a build-packet Decision of a registered disposable fixture Project, with no execution and no follow-up Decision. Verifies Decision 0119 on GitHub main; refused for Arcadia's own repository, any other Project, planning runs and inside an Arcadia Session. Needs --agent-identity."
+      )
+      .option("--agent-identity <name>", "With --fixture-standing: the invoking agent, recorded in the approval receipt")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; clarify?: boolean; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; clarify?: boolean; fixtureStanding?: boolean; agentIdentity?: string; json?: boolean }) =>
     runCliAction(
       "review.approve",
       reviewOptionsFromArgv(options),
-      () => runReviewApproveWithClarify({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer, clarify: options.clarify }),
+      () => {
+        if (options.agentIdentity && !options.fixtureStanding) {
+          throw validationError("--agent-identity applies only with --fixture-standing.", {});
+        }
+        if (options.fixtureStanding && options.clarify) {
+          throw validationError("--fixture-standing cannot be combined with --clarify.", {});
+        }
+        return runReviewApproveWithClarify({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer, clarify: options.clarify, fixtureStanding: options.fixtureStanding, agentIdentity: options.agentIdentity });
+      },
       renderReviewApproveWithClarifySuccess
     )
   );
