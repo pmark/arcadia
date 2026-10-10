@@ -43,7 +43,14 @@ describe("Agent Ask split", () => {
     expect(plan).toMatchObject({
       currentAction: "first-remainder",
       actions: [
-        expect.objectContaining({ id: "first", status: "done", acceptanceCriteria: ["First slice done."] }),
+        // Split marks the narrowed Action done through the same canonical
+        // writer `complete` uses, so its next_action is rewritten the same
+        // unambiguous way rather than keeping the narrowed-title text
+        // `amendAction` wrote just before it.
+        expect.objectContaining({
+          id: "first", status: "done", acceptanceCriteria: ["First slice done."],
+          nextAction: "Completed via Agent Ask split-first; no further action."
+        }),
         expect.objectContaining({ id: "second", status: "open" }),
         expect.objectContaining({ id: "first-remainder", status: "open", acceptanceCriteria: ["Second slice done."] })
       ]

@@ -10,6 +10,7 @@ import {
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
+import type { PlanDoc } from "../src/docs/types.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import {
@@ -46,8 +47,13 @@ describe("Agent Ask complete", () => {
     expect(plan).toMatchObject({
       currentAction: "second",
       actions: [
-        expect.objectContaining({ id: "first", status: "done" }),
-        expect.objectContaining({ id: "second", status: "open" })
+        // The completed Action's own next_action no longer reads as a live
+        // instruction; it names the Agent Ask that settled the completion
+        // (the Ask's own request_id, "complete-first" — not the settlement's
+        // separate --request-id "settle-complete-first").
+        expect.objectContaining({ id: "first", status: "done", nextAction: "Completed via Agent Ask complete-first; no further action." }),
+        // The still-open pending Action keeps its own instruction untouched.
+        expect.objectContaining({ id: "second", status: "open", nextAction: "Finish the second Action." })
       ]
     });
     const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
@@ -62,6 +68,81 @@ describe("Agent Ask complete", () => {
       preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
     });
     expect(replay.data.receipt).toEqual(applied.data.receipt);
+    // The replay is a no-op read of the already-settled receipt, not a second
+    // rewrite: the done Action's next_action is still the single unambiguous
+    // completed form, not doubled or re-dated.
+    const replayedPlan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(replayedPlan.actions.find((action) => action.id === "first")).toMatchObject({
+      nextAction: "Completed via Agent Ask complete-first; no further action."
+    });
+  });
+
+  it("rewrites a block-scalar next_action cleanly, without leaving orphaned continuation lines behind (parse.ts accepts | and > forms)", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    // Replace the plain single-line next_action with a YAML literal block
+    // scalar spanning several deeper-indented lines, the same shape a real
+    // multi-line instruction could take.
+    const blockScalarPlan = readFileSync(planPath, "utf8").replace(
+      "    next_action: Finish the first Action.",
+      "    next_action: |\n      Finish the first Action.\n      Bring supporting evidence."
+    );
+    writeFileSync(planPath, blockScalarPlan, "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Rewrite first Action's next_action as a block scalar"], { cwd: repo });
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-block-scalar", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-block-scalar", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-block-scalar", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const rewritten = readFileSync(planPath, "utf8");
+    // The field is a single clean plain-scalar line; none of the old block
+    // scalar's continuation lines survive to fold into it or dangle after it.
+    expect(rewritten).toContain("    next_action: Completed via Agent Ask complete-block-scalar; no further action.\n");
+    expect(rewritten).not.toContain("Bring supporting evidence");
+    expect(rewritten).not.toContain("next_action: |");
+
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "first")).toMatchObject({
+      status: "done", nextAction: "Completed via Agent Ask complete-block-scalar; no further action."
+    });
+    // Every other field and Action in the document survives untouched.
+    expect(plan.actions.find((action) => action.id === "second")).toMatchObject({ status: "open", nextAction: "Finish the second Action." });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("names the completion request id literally even when it contains String.replace metacharacters ($&)", () => {
+    // request_id is normalized by `requiredText` only (agentAsk.ts): any
+    // non-empty trimmed string is legal, including `$&`/`$1`/etc. A string
+    // passed as the second argument to String.replace expands those as
+    // match-reference patterns; only a replacer callback keeps it literal.
+    const { workspace, repo, head } = fixture();
+    const requestId = "complete-first-$&-end";
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk(requestId, "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-dollar-amp", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-dollar-amp", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "first")).toMatchObject({
+      status: "done",
+      nextAction: "Completed via Agent Ask complete-first-$&-end; no further action."
+    });
+    // The pending Action's own instruction is untouched by the literal rewrite.
+    expect(plan.actions.find((action) => action.id === "second")).toMatchObject({ status: "open", nextAction: "Finish the second Action." });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
   it("settles a completion notification naming a short summary and the next scheduled Actions", () => {
@@ -752,8 +833,11 @@ describe("Agent Ask complete", () => {
       status: "draft",
       currentAction: null,
       actions: [
-        expect.objectContaining({ id: "side-one", status: "done" }),
-        expect.objectContaining({ id: "side-two", status: "open" })
+        // A non-active Plan's completed Action is rewritten the same way an
+        // active Plan's is: the canonical rewrite does not depend on
+        // `active_plan`.
+        expect.objectContaining({ id: "side-one", status: "done", nextAction: "Completed via Agent Ask complete-inactive; no further action." }),
+        expect.objectContaining({ id: "side-two", status: "open", nextAction: "Finish the second side Action." })
       ]
     });
     // The active Plan and the Project pointer are byte-for-byte untouched.
@@ -790,6 +874,50 @@ describe("Agent Ask complete", () => {
     expect(execFileSync("git", ["log", "-1", "--format=%B"], { cwd: repo, encoding: "utf8" })).not.toContain("Pointer:");
   });
 
+  it("completes a legacy Action that declares neither clarification nor next_action, leaving both absent", () => {
+    // src/docs/parse.ts makes `clarification`/`next_action` optional unless
+    // `clarification: clarified` (requires next_action) or the Action is the
+    // current pointer (requires clarification itself). A non-active Plan's
+    // Action can be neither and still parse validly; `complete` must keep
+    // accepting it rather than refusing for a field it never had.
+    const { workspace, repo } = fixture({ withInactivePlan: true });
+    const planPath = path.join(repo, "docs/plans/side-plan.md");
+    const legacyPlan = readFileSync(planPath, "utf8").replace(
+      "    next_action: Finish the first side Action.\n    expected_artifact: Side proof\n    clarification: clarified\n    confidence: high\n",
+      "    expected_artifact: Side proof\n"
+    );
+    writeFileSync(planPath, legacyPlan, "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Strip clarification/next_action from side-one (legacy shape)"], { cwd: repo });
+    const legacyHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    const request = completeAsk("complete-legacy", "first", legacyHead)
+      .replace("target_ref: action/first", "target_ref: plan/side-plan#side-one")
+      .replace('criterion: "First proof exists."', 'criterion: "Side proof exists."');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-legacy", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Marked Action demo/side-one done");
+
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "side-plan")!;
+    expect(plan.actions.find((action) => action.id === "side-one")).toMatchObject({
+      status: "done", nextAction: null, clarification: null
+    });
+    // Every other field on the same Action, and the sibling Action, survive untouched.
+    const rewritten = readFileSync(planPath, "utf8");
+    const sideOneBlock = rewritten.split("  - id: side-two")[0];
+    expect(sideOneBlock).toContain("    expected_artifact: Side proof");
+    expect(sideOneBlock).not.toContain("next_action");
+    expect(plan.actions.find((action) => action.id === "side-two")).toMatchObject({ status: "open", nextAction: "Finish the second side Action." });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
   it("refuses a Plan-scoped completion whose Plan does not exist", () => {
     const { workspace, head } = fixture({ withInactivePlan: true });
     const request = completeAsk("complete-missing-plan", "first", head)
@@ -810,12 +938,15 @@ describe("Agent Ask complete", () => {
     })).toThrow(/not unique across this Project's Plans/);
   });
 
-  it("refuses completing an Action that is already done", () => {
-    const { workspace, head } = fixture({ firstDone: true });
+  it("refuses completing an Action that is already done, writing nothing", () => {
+    const { workspace, repo, head } = fixture({ firstDone: true });
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-done", "first", head) });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-done", disposition: "accepted"
     })).toThrow(/already done/);
+    // The refusal happens before any rewrite: the Action's next_action is
+    // exactly what the fixture set it to, not a second completed form.
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("next_action: Finish the first Action.");
   });
 
   it("preserves settled documents when the fingerprint goes stale before apply", () => {
