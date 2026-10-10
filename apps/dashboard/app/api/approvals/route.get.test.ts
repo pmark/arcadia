@@ -13,6 +13,7 @@ vi.mock("../../../lib/arcadia-cli", async () => {
 });
 
 import { GET } from "./route";
+import { invalidateApprovalsCache } from "../../../lib/approvals-feed";
 
 const option = { label: "Approve it", consequence: "Ships.", recommended: true };
 const success = <T>(data: T) => ({ ok: true, command: "x", workspace: "w", data, artifacts: [], warnings: [] });
@@ -31,6 +32,8 @@ const review = {
 };
 
 beforeEach(() => {
+  invalidateApprovalsCache();
+  vi.clearAllMocks();
   loaders.peekAgentAskEligibility.mockReturnValue(new Map());
   loaders.loadPendingAgentAsks.mockResolvedValue(success({ pending: [ask] }));
   loaders.loadOpenDecisions.mockResolvedValue(success({ decisions: [decision] }));
@@ -97,5 +100,14 @@ describe("GET /api/approvals", () => {
   it("lists everything with no eligibility claim when nothing is cached yet", async () => {
     const body = await (await GET()).json();
     expect(body.approvals.find((a: { kind: string }) => a.kind === "agent_ask")).toMatchObject({ acceptable: null, acceptWhy: null });
+  });
+
+  it("serves repeat reads from the shared cache and rebuilds after an invalidation", async () => {
+    await GET();
+    await GET();
+    expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(1);
+    invalidateApprovalsCache();
+    await GET();
+    expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(2);
   });
 });
