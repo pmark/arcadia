@@ -230,7 +230,7 @@ describe("review write transactions take the write lock before reading (#1106)",
     expect(withDatabase(fx.workspace, (db) => getWorkItem(db, fx.workItemId))?.status).toBe("done");
   });
 
-  it("approving a build packet without executing records the pending marker under a competing writer", () => {
+  it("approving a build packet without executing approves it under a competing writer and creates no execution follow-up", () => {
     const fx = fixture();
     const decisionId = withDatabase(fx.workspace, (db) =>
       createReviewItem(db, {
@@ -252,7 +252,7 @@ describe("review write transactions take the write lock before reading (#1106)",
 
     expect(approved.data.item.status).toBe("approved");
     const open = withDatabase(fx.workspace, (db) => listReviewItems(db, "open"));
-    expect(open.some((item) => item.resolved_intent === "ReviewExecutionPending")).toBe(true);
+    expect(open.some((item) => item.resolved_intent === "ReviewExecutionPending")).toBe(false);
   });
 
   it("answering a clarification Decision resets the Action under a competing writer", () => {

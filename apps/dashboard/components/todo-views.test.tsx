@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Approval } from "../lib/approvals";
 import { parseTodoPath, todoHrefOf, todoKeyOf } from "../lib/approvals";
 import { TodoItemView, TodoListView, type TodoCommon } from "./todo-views";
+import { TodoCard } from "./todo-card";
 
 function row(kind: Approval["kind"], project: string, id: string, extra: Partial<Approval> = {}): Approval {
   return {
@@ -12,6 +13,7 @@ function row(kind: Approval["kind"], project: string, id: string, extra: Partial
     evidence: [], sourceEvidence: [], cost: "Deterministic", createdAt: "2026-10-01", readOnly: false, blocking: false,
     staleReason: null, answer: null, answerVia: [], origin: null,
     todoKey: todoKeyOf(kind, project, id), href: todoHrefOf(kind, project, id), requestId: kind === "agent_ask" ? `req-${id}` : null, aliases: kind === "agent_ask" ? [`req-${id}`] : kind === "decision" ? [`slug-${id}`] : [],
+    acceptable: null, acceptWhy: null, buildPacket: false,
     ...extra
   };
 }
@@ -184,5 +186,29 @@ describe("phone constraints", () => {
   it("lists /todo first in the sidebar", () => {
     const sidebar = readFileSync(new URL("sidebar.tsx", dir), "utf8");
     expect(sidebar).toMatch(/const PRIMARY_NAV = \[\n\s+\{ href: "\/todo"/);
+  });
+});
+
+describe("TodoCard build packets and Ask eligibility", () => {
+  const render = (approval: Approval) =>
+    renderToStaticMarkup(<TodoCard approval={approval} expanded={false} pendingId={null} onAct={() => undefined} />);
+
+  it("gives a build packet Approve (no execute) and Reject buttons, not a terminal command", () => {
+    const html = render(row("review_item", "alpha", "rv1", { buildPacket: true, origin: "CodexBuildPacketApproval" }));
+    expect(html).toContain("Approve (no execute)");
+    expect(html).toContain(">Reject<");
+    expect(html).not.toContain("Read-only here");
+  });
+
+  it("disables Accept with the reason and makes Reject primary when accepting would not apply", () => {
+    const html = render(row("agent_ask", "alpha", "p1", { acceptable: false, acceptWhy: "Agent Ask Project has no resolvable active managed Plan." }));
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Likely won(&#x27;|')t apply — Agent Ask Project has no resolvable active managed Plan\.<\/button>/);
+    expect(html).not.toContain(">Accept<");
+    expect(html).toContain(">Reject<");
+  });
+
+  it("keeps the normal Accept when eligibility is unknown or true", () => {
+    expect(render(row("agent_ask", "alpha", "p1"))).toContain(">Accept<");
+    expect(render(row("agent_ask", "alpha", "p1", { acceptable: true }))).toContain(">Accept<");
   });
 });

@@ -66,6 +66,10 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
       </p>
       {approval.readOnly ? (
         <ReadOnlyAnswer approval={approval} />
+      ) : approval.buildPacket ? (
+        <p className="mt-2 text-sm text-muted">
+          Approving records your answer only; it starts nothing. The guarded build Session is launched separately.
+        </p>
       ) : approval.kind === "decision" ? (
         recommendedOption ? (
           <p className="mt-2 text-sm text-muted">
@@ -74,13 +78,28 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
         ) : (
           <p className="mt-2 text-sm text-muted">No option was offered; open the source document to answer.</p>
         )
+      ) : approval.acceptable === false ? (
+        <p className="mt-2 text-sm text-muted">
+          Likely won&apos;t apply — {approval.acceptWhy ?? "the settlement preview was refused"}. This is a hint; applying re-checks. Reject it, or fix what blocks it first.
+        </p>
       ) : askRecommendation ? (
         <p className="mt-2 text-sm text-muted">
           Recommended: <strong className="text-ink">{askRecommendation.label}</strong> — {askRecommendation.consequence}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        {approval.readOnly ? null : approval.kind === "decision" ? (
+        {approval.readOnly ? null : approval.buildPacket ? (
+          <>
+            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Approve", reviewAction: "approve" })} className={PRIMARY_BUTTON}>
+              {pendingId === `${key}:Approve` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Approve (no execute)
+            </button>
+            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Reject", reviewAction: "reject" })} className={SECONDARY_BUTTON}>
+              {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Reject
+            </button>
+          </>
+        ) : approval.kind === "decision" ? (
           recommendedOption ? (
             <button
               type="button"
@@ -94,11 +113,17 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
           ) : null
         ) : (
           <>
-            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Accept", disposition: "accepted" })} className={PRIMARY_BUTTON}>
-              {pendingId === `${key}:Accept` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Accept
-            </button>
-            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Reject", disposition: "rejected" })} className={SECONDARY_BUTTON}>
+            {approval.acceptable === false ? (
+              <button type="button" disabled aria-disabled="true" className={SECONDARY_BUTTON}>
+                Likely won&apos;t apply — {approval.acceptWhy ?? "preview refused"}
+              </button>
+            ) : (
+              <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Accept", disposition: "accepted" })} className={PRIMARY_BUTTON}>
+                {pendingId === `${key}:Accept` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Accept
+              </button>
+            )}
+            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Reject", disposition: "rejected" })} className={approval.acceptable === false ? PRIMARY_BUTTON : SECONDARY_BUTTON}>
               {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
               Reject
             </button>

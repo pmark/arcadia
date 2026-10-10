@@ -1205,23 +1205,25 @@ export function runReviewApproveCommand(
   // Project and Action, and the pending-execution marker below carries both, so
   // there is nothing for intent classification to add.
   if (reviewItem.resolved_intent === "CodexBuildPacketApproval") {
-    // One transaction, so the Decision is never left approved without its
-    // pending-execution marker (which would make a retry refuse as decided).
-    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-      // Re-read under the write lock: a concurrent approval that won the race
-      // must not be approved again or get a second pending-execution marker.
+    // A build packet authorizes a guarded Session that is launched separately
+    // (`arcadia work launch` / the production tick), never an executor run from
+    // this command. So approving it creates no ReviewExecutionPending follow-up:
+    // that item would only surface as a second, meaningless operator to-do (#1189).
+    // The status is re-read under the write lock so a concurrent approval that
+    // won the race is not approved again.
+    const updated = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
       const current = getReviewItem(db, reviewItem.id);
       if (!current || (current.status !== "open" && current.status !== "deferred")) {
         throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: current?.status ?? null });
       }
       const item = updateReviewItemStatus(db, reviewItem.id, {
         status: "approved",
-        decisionNote: "Build packet approved. Execution pending."
+        decisionNote: "Build packet approved. No execution queued; the Session is launched separately."
       });
       if (!item) {
         throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
       }
-      return { updated: item, pendingExecutionReview: createPendingExecutionReviewItem(db, item) };
+      return item;
     }));
     return createSuccess({
       command: "review.approve",
@@ -1230,13 +1232,13 @@ export function runReviewApproveCommand(
         item: reviewPacketForReviewItem(updated),
         result: {
           status: "approved",
-          summary: `Build packet approved. Run pending as Requires Review Decision ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
+          summary: "Build packet approved. No execution queued; the guarded Session launches separately."
         },
         approval: null,
         execution: null,
         run: null
       },
-      warnings: [`Execution was not run. Approve ${pendingExecutionReview.slug ?? pendingExecutionReview.id} to execute the approved work.`]
+      warnings: []
     });
   }
 

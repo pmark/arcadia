@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "../../../lib/originGuard";
 import {
   ArcadiaCliError,
   flagReviewForAgent,
+  loadReviewIntent,
   reassessReviewItem,
   resolveReviewReply,
   reviewApproveWithExecute,
@@ -18,6 +20,8 @@ interface ReviewActionRequest {
   action?: unknown;
   reply?: unknown;
   execute?: unknown;
+  /** Approve without executing (`review approve --no-execute`): what the build-packet control sends. */
+  noExecute?: unknown;
   executor?: unknown;
   trigger?: unknown;
   feedback?: unknown;
@@ -26,11 +30,15 @@ interface ReviewActionRequest {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "Cross-origin review requests are refused.", details: null }, { status: 403 });
+  }
   try {
     const body = (await request.json()) as ReviewActionRequest;
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim() as ReviewAction : "";
     const execute = body.execute === true;
+    const noExecute = body.noExecute === true;
     const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
     const trigger = typeof body.trigger === "string" ? body.trigger.trim() : "";
     const feedback = typeof body.feedback === "string" ? body.feedback.trim() : "";
@@ -43,6 +51,20 @@ export async function POST(request: Request) {
     if (action === "defer" && requireTrigger && !trigger) {
       return NextResponse.json(
         { error: "A deferral requires a named trigger condition before it is accepted.", details: null },
+        { status: 400 }
+      );
+    }
+
+    if (action === "approve" && execute && noExecute) {
+      return NextResponse.json({ error: "execute and noExecute cannot be combined.", details: null }, { status: 400 });
+    }
+
+    // A build packet authorizes a Session launched separately; from the dashboard it may only be approved with noExecute.
+    // Anything else that approves (a bare approve defaults to executing, --execute, a reply) is refused for it. Fails closed.
+    const wouldExecute = (action === "approve" && !noExecute) || action === "resolve";
+    if (wouldExecute && await loadReviewIntent(id) === "CodexBuildPacketApproval") {
+      return NextResponse.json(
+        { error: "A build packet can only be approved without executing (noExecute); the Session is launched separately.", details: { id } },
         { status: 400 }
       );
     }
@@ -83,6 +105,7 @@ export async function POST(request: Request) {
       const response = await runReviewAction({
         id,
         action,
+        noExecute: action === "approve" && noExecute,
         trigger: action === "defer" ? trigger : undefined,
         feedback: action === "reject" ? feedback : undefined
       });

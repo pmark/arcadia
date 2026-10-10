@@ -28,7 +28,8 @@ describe("ApprovalQueue read-only rows and notes", () => {
     expect(source).toMatch(/\{note \? <p role="status"/);
     expect(card).toContain("<ReadOnlyAnswer approval={approval} />");
     // Both settle control branches sit behind the readOnly guard.
-    expect(card).toMatch(/\{approval\.readOnly \? null : approval\.kind === "decision" \? \(/);
+    expect(card).toMatch(/\{approval\.readOnly \? null : approval\.buildPacket \? \(/);
+    expect(card).toMatch(/\) : approval\.kind === "decision" \? \(/);
   });
 
   it("counts only live rows in the heading and folds stale rows into a collapsed group using the same card", () => {
