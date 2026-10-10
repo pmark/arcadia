@@ -79,7 +79,7 @@ function gitOut(repo: string, args: string[]): { status: number; stdout: string 
   return { status: result.status ?? 1, stdout: (result.stdout ?? "").trim() };
 }
 
-export type RemoteCheck = { ok: true; remotes: string[]; repository: string | null } | { ok: false; reason: string; remotes: string[] };
+export type RemoteCheck = { ok: true; remotes: string[]; repository: string | null; /** The verified effective push URL of origin (else the first remote), captured at check time. */ pushUrl: string | null } | { ok: false; reason: string; remotes: string[] };
 
 /**
  * The effective destinations of every remote of `repo`: the configured values
@@ -95,24 +95,26 @@ export function checkFixtureRemotes(repo: string, options: { allowNone: boolean 
   }
   const names = gitOut(repo, ["remote"]).stdout.split("\n").filter(Boolean);
   const urls: string[] = [];
+  const pushByRemote = new Map<string, string>();
   for (const name of names) {
     const configured = gitOut(repo, ["config", "--get-all", `remote.${name}.url`]).stdout.split("\n");
     const pushConfigured = gitOut(repo, ["config", "--get-all", `remote.${name}.pushurl`]).stdout.split("\n");
     const push = gitOut(repo, ["remote", "get-url", "--all", "--push", name]);
     const fetch = gitOut(repo, ["ls-remote", "--get-url", name]);
     if (push.status !== 0 || fetch.status !== 0) return { ok: false, remotes: urls, reason: `remote ${name} cannot be resolved` };
+    pushByRemote.set(name, push.stdout.split("\n")[0].trim());
     urls.push(...configured, ...pushConfigured, ...push.stdout.split("\n"), fetch.stdout);
   }
   const unique = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
   if (unique.length === 0) {
     return options.allowNone && names.length === 0
-      ? { ok: true, remotes: [], repository: null }
+      ? { ok: true, remotes: [], repository: null, pushUrl: null }
       : { ok: false, remotes: [], reason: "it has no Git remote" };
   }
   const repositories = unique.map(githubRepositoryOf);
   const bad = unique.find((_, index) => repositories[index] === null || !FIXTURE_REMOTE_ALLOWLIST.includes(repositories[index]));
   if (bad) return { ok: false, remotes: unique, reason: `remote ${bad} is not in the fixture allowlist (${FIXTURE_REMOTE_ALLOWLIST.join(", ")})` };
-  return { ok: true, remotes: unique, repository: repositories[0] };
+  return { ok: true, remotes: unique, repository: repositories[0], pushUrl: pushByRemote.get("origin") ?? [...pushByRemote.values()][0] ?? null };
 }
 
 /** What GitHub's contents API returns for the Decision file. */
@@ -299,7 +301,7 @@ export function verifyFixtureStandingLaunch(
  * repository's remotes must still be exactly the fixture's. Returns the
  * repository to pass as `gh --repo`, or why the publish is refused.
  */
-export function verifyFixtureStandingExit(standing: FixtureStandingBasis, repoRoot: string, now: Date): { ok: true; ghRepo: string | null } | { ok: false; reason: string } {
+export function verifyFixtureStandingExit(standing: FixtureStandingBasis, repoRoot: string, now: Date): { ok: true; ghRepo: string | null; pushUrl: string | null } | { ok: false; reason: string } {
   if (fixtureStandingExpired(now)) {
     return { ok: false, reason: `Decision ${standing.decisionId}'s standing fixture window ended after ${FIXTURE_STANDING_LAST_DAY} (UTC); nothing is pushed or opened.` };
   }
@@ -307,5 +309,5 @@ export function verifyFixtureStandingExit(standing: FixtureStandingBasis, repoRo
   if (!check.ok) {
     return { ok: false, reason: `The repository is no longer a registered fixture (${check.reason}); nothing is pushed or opened.` };
   }
-  return { ok: true, ghRepo: check.repository };
+  return { ok: true, ghRepo: check.repository, pushUrl: check.pushUrl };
 }

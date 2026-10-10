@@ -8,7 +8,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { createSystemPreservationRemote } from "../src/sessions/candidatePreservation.js";
-import { checkFixtureRemotes, createGithubDecisionFetcher, gitBlobSha, githubRepositoryOf, resolveTrustedGh, verifyFixtureStandingLaunch, type FetchDecisionFile, type GhFetchDeps } from "../src/sessions/fixtureStandingLaunch.js";
+import { checkFixtureRemotes, createGithubDecisionFetcher, gitBlobSha, githubRepositoryOf, resolveTrustedGh, verifyFixtureStandingExit, verifyFixtureStandingLaunch, type FetchDecisionFile, type GhFetchDeps } from "../src/sessions/fixtureStandingLaunch.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { ensureOperatorLaunchSchema, findOperatorLaunchAuthorization, SESSION_ENV_MARKER } from "../src/sessions/operatorLaunch.js";
@@ -505,5 +505,26 @@ describe("the real GitHub fetch cannot be steered by the caller's environment", 
     const untrusted = createGithubDecisionFetcher(deps({ mode: () => 0o777 }, calls));
     expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, untrusted), "fixture_standing_decision_unverifiable");
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("the exit's git operations are bound to the push URL captured by the gate", () => {
+  it("changing origin after the check does not redirect the push or ls-remote", () => {
+    const rehearsal = fixture();
+    const targetA = path.join(rehearsal.root, "target-a.git");
+    const targetB = path.join(rehearsal.root, "target-b.git");
+    git(rehearsal.root, ["init", "-q", "--bare", "-b", "main", targetA]);
+    git(rehearsal.root, ["init", "-q", "--bare", "-b", "main", targetB]);
+    // The gate's capture: the verified effective push URL of origin.
+    const gate = verifyFixtureStandingExit({ decisionId: "0100", fixtureBasis: "registered_fixture_remote" } as never, rehearsal.repo, new Date("2026-10-10T00:00:00Z"));
+    expect(gate).toMatchObject({ ok: true, ghRepo: "pmark/arcadia-three-action-rehearsal-20261004", pushUrl: FIXTURE_REMOTE });
+    // The adapter, bound to a captured URL (here a local bare repository standing in for GitHub).
+    const remote = createSystemPreservationRemote({ pushUrl: targetA });
+    git(rehearsal.repo, ["remote", "set-url", "origin", targetB]); // origin moves after the check
+    const head = git(rehearsal.repo, ["rev-parse", "HEAD"]).trim();
+    remote.push({ repositoryPath: rehearsal.repo, branch: "cand", commitSha: head });
+    expect(git(targetA, ["rev-parse", "refs/heads/cand"]).trim()).toBe(head);
+    expect(spawnSync("git", ["rev-parse", "--verify", "--quiet", "refs/heads/cand"], { cwd: targetB }).status).not.toBe(0);
+    expect(remote.listBranchTips!({ repositoryPath: rehearsal.repo })).toEqual([{ branch: "cand", sha: head }]);
   });
 });

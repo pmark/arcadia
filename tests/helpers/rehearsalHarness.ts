@@ -457,7 +457,7 @@ Disposable fixture plan.
     if (this.options.independentReviewers !== false && !tickReviews) this.review();
     const preserve = {
       ...(HOST_SEATBELT ? {} : { validate: unsandboxedValidator }),
-      ...(tickReviews ? { remote: this.github.remote } : {})
+      ...(tickReviews ? { remote: this.github.remote, fixtureStandingTestRemote: this.github.remote } : {})
     };
     const result = withDatabase(this.workspace, (db) =>
       runManagedProductionTick(db, this.workspace, {

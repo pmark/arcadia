@@ -1059,20 +1059,22 @@ function pullRequestWriteRemedy(branch: string): string {
  * (`--repo`) instead of letting `gh` infer it from the checkout's remotes; the
  * Decision 0100 fixture exit uses this so a changed remote cannot redirect it.
  */
-export function createSystemPreservationRemote(options: { ghRepo?: string } = {}): CandidatePreservationRemote {
+export function createSystemPreservationRemote(options: { ghRepo?: string; pushUrl?: string | null } = {}): CandidatePreservationRemote {
   const repoArgs = options.ghRepo ? ["--repo", options.ghRepo] : [];
+  // With `pushUrl` (captured by the fixture check) push and ls-remote use that URL, not the mutable `origin` name.
+  const target = options.pushUrl ?? "origin";
   return {
   hasRemote(repositoryPath) {
     return tryGit(repositoryPath, ["remote", "get-url", "origin"]) !== null;
   },
   push({ repositoryPath, branch, commitSha }) {
     git(repositoryPath, commitSha
-      ? ["push", "origin", `${commitSha}:refs/heads/${branch}`]
-      : ["push", "--set-upstream", "origin", branch]);
+      ? ["push", target, `${commitSha}:refs/heads/${branch}`]
+      : options.pushUrl ? ["push", target, branch] : ["push", "--set-upstream", "origin", branch]);
     return { remote: "origin" };
   },
   listBranchTips({ repositoryPath }) {
-    return git(repositoryPath, ["ls-remote", "--heads", "origin"]).split("\n").flatMap((line) => {
+    return git(repositoryPath, ["ls-remote", "--heads", target]).split("\n").flatMap((line) => {
       const match = /^([0-9a-f]{40,64})\trefs\/heads\/(.+)$/.exec(line.trim());
       return match ? [{ branch: match[2], sha: match[1] }] : [];
     });

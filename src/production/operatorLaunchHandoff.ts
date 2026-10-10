@@ -74,7 +74,13 @@ function fixtureExitGate(
   if (!standing) return { ok: false, reason: "A standing fixture authorization carries no Decision 0100 basis; nothing is pushed or opened." };
   const check = verifyFixtureStandingExit(standing, repoRoot, now);
   if (!check.ok) return check;
-  return { ok: true, deps: deps.remote || !check.ghRepo ? deps : { ...deps, remote: createSystemPreservationRemote({ ghRepo: check.ghRepo }) } };
+  // The remote is always rebuilt from the verified check (gh pinned to its repository, git pinned to the
+  // captured push URL), so a caller-supplied `deps.remote` is ignored for a standing fixture mint. The only
+  // injection is the explicitly test-named `fixtureStandingTestRemote`.
+  const { fixtureStandingTestRemote, ...rest } = deps;
+  if (fixtureStandingTestRemote) return { ok: true, deps: { ...rest, remote: fixtureStandingTestRemote } };
+  if (!check.ghRepo || !check.pushUrl) return { ok: true, deps: { ...rest, remote: undefined } };
+  return { ok: true, deps: { ...rest, remote: createSystemPreservationRemote({ ghRepo: check.ghRepo, pushUrl: check.pushUrl }) } };
 }
 
 /** Validate, commit and push the branch (no pull request), under the Session's authorization, before reconciliation. */
