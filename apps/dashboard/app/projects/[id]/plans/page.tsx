@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DashboardChrome } from "../../../../components/chrome";
 import { EmptyState, ErrorState, LoadingState } from "../../../../components/dashboard-ui";
-import { PlanListRow, orderPlans } from "../../../../components/plans-list";
+import { PlanListRow, orderPlans, planHref } from "../../../../components/plans-list";
 import type { ProjectPlansResponse } from "../../../../lib/plans-types";
 
 export default function ProjectPlansPage() {
@@ -70,7 +70,7 @@ export default function ProjectPlansPage() {
       ) : (
         <div className="grid min-w-0 gap-3">
           {plans.map((plan) => (
-            <PlanListRow key={plan.slug} plan={plan} detailed />
+            <PlanListRow key={plan.slug} plan={plan} detailed href={data?.project && plan.governed ? planHref(data.project.slug, plan.slug) : undefined} />
           ))}
         </div>
       )}
