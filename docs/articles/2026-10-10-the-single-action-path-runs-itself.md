@@ -13,15 +13,15 @@ Arcadia exists to keep momentum across projects with as little operator attentio
 
 On 2026-10-09 and 10-10 the single-Action path ran in a disposable fixture, not on real project work:
 
-Launch, then a headless coding agent on the smallest model, then host validation, commit and push, then a draft pull request, then independent review, then merge on green.
+Launch, then a headless coding agent on a light-tier model, then host validation, commit and push, then a draft pull request, then independent review, then merge on green.
 
 A nine-Action chain completed: all nine Actions merged, as pull requests #11 to #19 in [pmark/arcadia-three-action-rehearsal-20261004](https://github.com/pmark/arcadia-three-action-rehearsal-20261004). Agents launched every one of them under Decision 0100 (fixture standing launch), with no operator launch confirmation. Every pull request was independently reviewed by an agent and merged by an agent on green. Agents act through the operator's GitHub account.
 
 The operator was not out of the loop for the whole chain, though. The first two Actions (#11, #12) reused build packets approved earlier. The next two (#13, #14) each needed one operator build-packet approval. After Decision 0119 was answered on 2026-10-10, the last five (#15 to #19) ran with no operator action at all.
 
-Worker log receipts put launch to draft PR at about 80 seconds per Action (78 to 88 seconds across the chain). One Action's first session stopped short and its continuation completed it. The models, from session logs: Claude haiku for #11 and #12, Codex gpt-6-luna for #13 to #19.
+Worker log receipts put launch to draft PR at about 80 seconds per Action (78 to 88 seconds across the chain). One Action's first session (chain-step-08) stopped short and its continuation completed it. The models, from session logs: Claude haiku for #11 and #12, Codex gpt-6-luna for #13 to #19.
 
-The runs were not clean at first. Every live defect was reproduced, fixed in a small pull request, independently reviewed and merged. Examples:
+The runs were not clean at first. The defects below were each reproduced, fixed in a small pull request, independently reviewed and merged; others are filed and still open.
 
 - Headless authentication failures are now named clearly ([#1159](https://github.com/pmark/arcadia/pull/1159)).
 - Worker log spam was removed ([#1161](https://github.com/pmark/arcadia/pull/1161)).
