@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Bootstrap managed production to run unattended from the GitHub board
-active_plan: bootstrap-managed-production-to-build-flight-deck
-current_action: preserve-unchanged-baseline-skill-symlinks
-updated: 2026-10-06
+milestone: "Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents."
+active_plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
+current_action: define-governed-role-registry
+updated: 2026-10-10
 ---
 
 # Arcadia

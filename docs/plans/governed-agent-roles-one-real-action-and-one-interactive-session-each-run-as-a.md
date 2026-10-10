@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
 project: arcadia
-status: draft
+status: active
 milestone: "Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-09
+updated: 2026-10-10
 actions:
   - id: define-governed-role-registry
     title: "Add a checked-in governed role registry and a read-only arcadia roles command that lists each role's charter, attempt role, mutation right, delegation right, supervisor and default model tier and effort. Recommended role: implementer, standard tier. Waits on Decisions decide-session-start-role-name-2026-10-09-r2, decide-agent-role-taxonomy-2026-10-09 and decide-which-roles-may-delegate-2026-10-09-r2."
@@ -336,6 +336,9 @@ actions:
     references: ["docs/reviews/2026-10-09-governed-agent-roles-design.md", "docs/harness-engineering.md", "docs/agent-guidance/operator-actions.md"]
 questions: []
 decisions: []
+current_action: define-governed-role-registry
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents.

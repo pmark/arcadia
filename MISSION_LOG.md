@@ -2215,3 +2215,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask activate-governed-agent-roles-2026-10-09
+
+- **Did:** Activated governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a at define-governed-role-registry.
+- **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator explicitly requested activation. Preserve the unfinished work in the existing active Plan and use the exact activation preview before applying.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
