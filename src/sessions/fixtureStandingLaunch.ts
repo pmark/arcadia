@@ -184,7 +184,7 @@ export function gitBlobSha(bytes: Buffer): string {
  * config.yml or hosts.yml cannot redirect it; PATH is fixed; no token variable
  * passes through (the operator's stored gh login is used).
  */
-export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): FetchDecisionFile {
+export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps, decisionFile: string = FIXTURE_STANDING_DECISION_FILE): FetchDecisionFile {
   return () => {
     const gh = resolveTrustedGh(deps);
     const home = deps.home();
@@ -197,7 +197,7 @@ export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): F
     if (process.env.TMPDIR !== undefined) env.TMPDIR = process.env.TMPDIR;
     const result = deps.spawn(
       gh,
-      ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${FIXTURE_STANDING_DECISION_FILE}?ref=main`],
+      ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${decisionFile}?ref=main`],
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- the dashboard build's @types/node needs the cast, the root build does not
       { encoding: "utf8", env: env as NodeJS.ProcessEnv, timeout: 30_000 }
     );
@@ -205,7 +205,7 @@ export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): F
       throw new Error(`gh api failed (${result.error?.message ?? `exit ${String(result.status)}`}): ${String(result.stderr ?? "").trim().slice(0, 300)}`);
     }
     const parsed = JSON.parse(String(result.stdout)) as { content?: unknown; sha?: unknown; encoding?: unknown; path?: unknown };
-    if (typeof parsed.content !== "string" || typeof parsed.sha !== "string" || parsed.encoding !== "base64" || parsed.path !== FIXTURE_STANDING_DECISION_FILE) {
+    if (typeof parsed.content !== "string" || typeof parsed.sha !== "string" || parsed.encoding !== "base64" || parsed.path !== decisionFile) {
       throw new Error("GitHub returned an unexpected contents response.");
     }
     return { content: parsed.content, sha: parsed.sha };
@@ -214,15 +214,34 @@ export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): F
 
 export const fetchDecisionFromGithub: FetchDecisionFile = createGithubDecisionFetcher();
 
-interface VerifiedDecision { answer: string; blobSha: string }
+export interface VerifiedDecision { answer: string; blobSha: string }
+
+/** Which Decision file a verification reads and how its refusals are named. */
+export interface AuthoritativeDecisionSpec {
+  id: string;
+  /** Hardcoded repository path of the Decision file on main. */
+  file: string;
+  answers: readonly string[];
+  source: string;
+  /** Names the refusing flag in messages. */
+  flag: string;
+  /** What the refusal says did not happen. */
+  suffix: string;
+  unverifiableCode: string;
+  unansweredCode: string;
+}
 
 /**
- * Decision 0100 as `main` of github.com/pmark/arcadia holds it right now: the
+ * A Decision as `main` of github.com/pmark/arcadia holds it right now: the
  * only authoritative record. No local ref, working tree or workspace database
  * is consulted, and every failure (network, auth, 404, parse) fails closed.
+ * Shared by Decision 0100's launch and Decision 0119's packet approval.
  */
-function readAuthoritativeDecision(fetchDecision: FetchDecisionFile): VerifiedDecision {
-  const unverifiable = (reason: string): never => refuse("fixture_standing_decision_unverifiable", `Decision ${FIXTURE_STANDING_DECISION_ID} could not be verified on ${FIXTURE_STANDING_DECISION_SOURCE}: ${reason}.`);
+export function readAuthoritativeDecision(spec: AuthoritativeDecisionSpec, fetchDecision: FetchDecisionFile): VerifiedDecision {
+  const fail = (code: string, reason: string, details: Record<string, unknown> = {}): never => {
+    throw validationError(`${spec.flag} refused (${code}): ${reason} ${spec.suffix}`, { code, ...details });
+  };
+  const unverifiable = (reason: string): never => fail(spec.unverifiableCode, `Decision ${spec.id} could not be verified on ${spec.source}: ${reason}.`);
   let file: GithubDecisionFile;
   try {
     file = fetchDecision();
@@ -233,19 +252,30 @@ function readAuthoritativeDecision(fetchDecision: FetchDecisionFile): VerifiedDe
   const bytes = Buffer.from(file.content.replace(/\s/g, ""), "base64");
   if (gitBlobSha(bytes) !== file.sha) return unverifiable("the returned sha is not the git blob hash of the returned content");
   const text = bytes.toString("utf8");
-  const { doc } = parseDoc(FIXTURE_STANDING_DECISION_FILE, FIXTURE_STANDING_DECISION_FILE, text);
-  if (!doc || doc.type !== "decision" || doc.id !== FIXTURE_STANDING_DECISION_ID || doc.project.toLowerCase() !== FIXTURE_STANDING_DECISION_PROJECT) {
-    return unverifiable("it does not parse as the arcadia Project's Decision 0100");
+  const { doc } = parseDoc(spec.file, spec.file, text);
+  if (!doc || doc.type !== "decision" || doc.id !== spec.id || doc.project.toLowerCase() !== FIXTURE_STANDING_DECISION_PROJECT) {
+    return unverifiable(`it does not parse as the arcadia Project's Decision ${spec.id}`);
   }
-  if (doc.status !== "approved" || doc.answer === null || !(FIXTURE_STANDING_ANSWERS as readonly string[]).includes(doc.answer)) {
-    return refuse(
-      "fixture_standing_decision_unanswered",
-      `Decision ${FIXTURE_STANDING_DECISION_ID} on ${FIXTURE_STANDING_DECISION_SOURCE} is ${doc.status} with answer ${JSON.stringify(doc.answer)}; it must be answered "${FIXTURE_STANDING_ANSWERS[0]}" or "${FIXTURE_STANDING_ANSWERS[1]}".`,
+  if (doc.status !== "approved" || doc.answer === null || !spec.answers.includes(doc.answer)) {
+    return fail(
+      spec.unansweredCode,
+      `Decision ${spec.id} on ${spec.source} is ${doc.status} with answer ${JSON.stringify(doc.answer)}; it must be answered ${spec.answers.map((answer) => `"${answer}"`).join(" or ")}.`,
       { status: doc.status, answer: doc.answer }
     );
   }
   return { answer: doc.answer, blobSha: file.sha };
 }
+
+const STANDING_DECISION_SPEC: AuthoritativeDecisionSpec = {
+  id: FIXTURE_STANDING_DECISION_ID,
+  file: FIXTURE_STANDING_DECISION_FILE,
+  answers: FIXTURE_STANDING_ANSWERS,
+  source: FIXTURE_STANDING_DECISION_SOURCE,
+  flag: "--fixture-standing",
+  suffix: "No authorization is minted and nothing is launched.",
+  unverifiableCode: "fixture_standing_decision_unverifiable",
+  unansweredCode: "fixture_standing_decision_unanswered"
+};
 
 /** True once `now` (UTC) is past the last day of Decision 0100's window. */
 export function fixtureStandingExpired(now: Date): boolean {
@@ -269,30 +299,45 @@ export function verifyFixtureStandingLaunch(
   }
 
   // The authoritative record is GitHub's main, not anything local or caller-steered.
-  const decision = readAuthoritativeDecision(input.fetchDecision ?? fetchDecisionFromGithub);
-  const experiment = readExperimentWorkspace(input.workspace);
-  const repo = canonicalPath(path.resolve(input.repoRoot));
-  if (input.projectSlug.toLowerCase() === FIXTURE_STANDING_DECISION_PROJECT) {
-    refuse("fixture_standing_not_a_fixture", "Arcadia's own Project is never a disposable fixture.", { project: input.projectSlug });
-  }
-  const basisBase = {
+  const decision = readAuthoritativeDecision(STANDING_DECISION_SPEC, input.fetchDecision ?? fetchDecisionFromGithub);
+  const target = verifyDisposableFixtureTarget(input.workspace, input.repoRoot, input.projectSlug, (reason, details) =>
+    refuse("fixture_standing_not_a_fixture", reason, details));
+  return {
     decisionId: FIXTURE_STANDING_DECISION_ID, decisionAnswer: decision.answer, decisionSource: FIXTURE_STANDING_DECISION_SOURCE,
-    decisionBlobSha: decision.blobSha, agentIdentity
+    decisionBlobSha: decision.blobSha, agentIdentity, ...target
   };
+}
+
+/**
+ * Whether `repoRoot` of `projectSlug` is a disposable fixture: every remote
+ * allowlisted (or an experiment workspace's repository, Decision 0082), and
+ * never Arcadia's own Project. `notAFixture` throws the caller's named refusal.
+ * Shared by Decision 0100's launch and Decision 0119's packet approval.
+ */
+export function verifyDisposableFixtureTarget(
+  workspace: string,
+  repoRoot: string,
+  projectSlug: string,
+  notAFixture: (reason: string, details: Record<string, unknown>) => never
+): { fixtureBasis: "registered_fixture_remote" | "experiment_workspace"; remotes: string[] } {
+  const experiment = readExperimentWorkspace(workspace);
+  const repo = canonicalPath(path.resolve(repoRoot));
+  if (projectSlug.toLowerCase() === FIXTURE_STANDING_DECISION_PROJECT) {
+    return notAFixture("Arcadia's own Project is never a disposable fixture.", { project: projectSlug });
+  }
   const inExperiment = Boolean(experiment) && isInside(experiment!.allowedRepoRoot, repo);
   const remotes = checkFixtureRemotes(repo, { allowNone: inExperiment });
   if (!remotes.ok) {
-    refuse(
-      "fixture_standing_not_a_fixture",
-      `${input.projectSlug}'s repository is not a registered disposable fixture: ${remotes.reason}. Its remotes must all be allowlisted${experiment ? "" : ", or the workspace must be an experiment workspace (Decision 0082)"}.`,
-      { project: input.projectSlug, remotes: remotes.remotes }
+    return notAFixture(
+      `${projectSlug}'s repository is not a registered disposable fixture: ${remotes.reason}. Its remotes must all be allowlisted${experiment ? "" : ", or the workspace must be an experiment workspace (Decision 0082)"}.`,
+      { project: projectSlug, remotes: remotes.remotes }
     );
   }
-  if (inExperiment) return { ...basisBase, fixtureBasis: "experiment_workspace", remotes: remotes.remotes };
+  if (inExperiment) return { fixtureBasis: "experiment_workspace", remotes: remotes.remotes };
   if (!remotes.repository) {
-    refuse("fixture_standing_not_a_fixture", `${input.projectSlug}'s repository has no allowlisted remote and is not inside an experiment workspace's allowed root.`, { project: input.projectSlug });
+    return notAFixture(`${projectSlug}'s repository has no allowlisted remote and is not inside an experiment workspace's allowed root.`, { project: projectSlug });
   }
-  return { ...basisBase, fixtureBasis: "registered_fixture_remote", remotes: remotes.remotes };
+  return { fixtureBasis: "registered_fixture_remote", remotes: remotes.remotes };
 }
 
 /**
