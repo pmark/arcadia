@@ -2208,3 +2208,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1183
+
+- **Did:** From now on every PR logs who did the work and what it cost: PR #1183 adds the 80/20 arcadia-work-metadata block (role, tier, size, gate, actual tokens and minutes). https://github.com/pmark/arcadia/pull/1183
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
