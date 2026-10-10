@@ -368,6 +368,28 @@ registered name "Three Action Rehearsal" are not counts. Preview with
 .../reset-rehearsal-chain-fixture-run8-2026-10-06.sh --dry-run` before the real
 run: it prints the PROJECT.md diff beside the Plan diff.
 
+### Repeat ONE Action without the chain (single-Action path)
+
+A single-Action run (operator or standing launch, draft pull request, merge on
+green) never touches production, so it must not need the chain reset's
+terminal-Off receipt. Use the library script `reset-single-action-fixture`
+instead: it reopens one Action (default `write-start-marker`, or
+`--action <id>`) with the fresh completion id `complete-<action>-<run-tag>` in
+one non-force commit on fixture main, removes that Action's own prior artifact,
+syncs the Project and positions the Action in the queue. It requires the Arcadia
+checkout clean on main and level with origin, the fixture clone clean and level
+with GitHub main, no live fixture Session and no pending proposal for the
+Action; it reads no production state, Grant or G6/G7/G8 receipt and settles
+nothing. Preview, then run (a terminal, `ARCADIA_WORKSPACE` unset):
+
+```sh
+artifacts/generated/operator-scripts/reset-single-action-fixture.sh --dry-run --run-tag <run-tag> [--action <id>]
+artifacts/generated/operator-scripts/reset-single-action-fixture.sh run --run-tag <run-tag> [--action <id>]
+```
+
+Use a new `--run-tag` (lowercase `a-z0-9-`) for every repeat. Tests:
+`tests/single-action-fixture-reset.test.ts` (unsandboxed).
+
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
 1. Reset the fixture (this session needs the operator's yes in its own chat for
