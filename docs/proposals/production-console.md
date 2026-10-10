@@ -70,3 +70,33 @@ Session now carries `endedAt`, `exitStatus`, `exitOutcome`, `exitReason` and
 `pullRequestUrl`, read from `agent_sessions`, `session_exit_receipts` and
 `candidate_preservation_receipts`. It writes nothing, and it does not change
 what agents may do.
+
+## Next: a Project-first page (2026-10-09)
+
+The operator found the flat Action queue disorienting: Actions with no visible
+Project or Plan, in an order nobody chose on purpose. The page should answer
+three questions, top-down: which Projects are running, on which Plan, and what
+runs next. An adversarial review then tested the design for several Sessions
+at once, so that going from one Session to many changes no concept.
+
+- One card per included Project, numbered in the operator's order. The number
+  is a preference. A separate chip states the fact from the worker's last tick:
+  `Running`, `Next up`, `Waiting for a free Session`, or `Skipped: <reason>`
+  (needs you, repository busy, no ready Action, ceiling reached).
+- Each card shows its Plan, progress toward done, the next Action as
+  `Would pick now · as of <time>`, `Locked in <time>` once a Session starts,
+  and Sessions and tokens this week.
+- A `Needs you` section above the order lists blocking to-dos from
+  `arcadia todo --json`, each with an `Answer` link. Excluded Projects fold
+  into `Not running`. Rehearsal fixtures are marked test only.
+- Order changes use `Move to top` with an Undo toast, because order is a cheap
+  preference until lock-in. Include, Stop running, Plan choice, Sessions at a
+  time, and On/Off each confirm on the page and state their consequence.
+- It works at 375px.
+
+What can ship now as read-only: the cards, latest skip reasons, `Would pick
+now`, Needs you, the Not running fold, and Sessions this week. The controls
+wait on the scheduling Decisions in
+[portfolio-parallel-execution.md](portfolio-parallel-execution.md#scheduling-strategy-operator-preferences-2026-10-09)
+(0115-0118, plus 0103 and 0111) and on a preference record the operator can
+change while production is on.
