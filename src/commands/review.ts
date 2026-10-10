@@ -7,7 +7,7 @@ import { prepareBuildPacketForAcceptedPlan } from "./work.js";
 import { refuseFixturePacket, verifyFixturePacketApproval } from "../sessions/fixturePacketApproval.js";
 import type { FetchDecisionFile } from "../sessions/fixtureStandingLaunch.js";
 import { createId } from "../utils/id.js";
-import { prepareDecisionAnswer } from "./decision.js";
+import { prepareDecisionAnswer, recordDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
@@ -1441,6 +1441,7 @@ function resolveClarificationDecision(
   const recordedAnswer = prepared?.answer ?? recorded;
   const clarificationReset = Boolean(decision.work_item_id);
   let decisionFileWriteStarted = false;
+  let decisionCommitted = false;
   let updated: ReviewItemSummary;
   try {
     updated = withDatabase(workspacePath, (db) =>
@@ -1465,15 +1466,24 @@ function resolveClarificationDecision(
         // committing the transaction fails after this begins, restore the
         // original bytes before rethrowing the transaction's error.
         if (prepared) {
+          // Written and committed together; a commit failure throws, which
+          // rolls the database back and restores the file below.
           decisionFileWriteStarted = true;
-          writeFileSync(prepared.absolutePath, prepared.after, "utf8");
+          recordDecisionAnswer(prepared, {
+            source: "arcadia review approve",
+            retryHint: "answer the clarification again"
+          });
+          decisionCommitted = true;
         }
 
         return next;
       })
     );
   } catch (error) {
-    if (prepared && decisionFileWriteStarted) {
+    // Once the answer is committed, git holds it: restoring `before` would
+    // leave a dirty, reverted file. The item stays open and a retry hits the
+    // already-committed no-op in recordDecisionAnswer.
+    if (prepared && decisionFileWriteStarted && !decisionCommitted) {
       try {
         writeFileSync(prepared.absolutePath, prepared.before, "utf8");
       } catch {
