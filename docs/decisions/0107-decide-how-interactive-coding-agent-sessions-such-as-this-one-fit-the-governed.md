@@ -4,7 +4,7 @@ type: decision
 id: "0107"
 slug: decide-how-interactive-coding-agent-sessions-such-as-this-one-fit-the-governed
 project: arcadia
-status: open
+status: approved
 question: Decide how interactive coding-agent sessions such as this one fit the governed role scheme now, during the crutch phase.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Self-declare with receipts. An interactive session runs arcadia role start (which prints its role brief and records an activity receipt), asks arcadia delegation request before every subagent, and ends with arcadia role end. The operator is its supervisor. No claim or lease is granted
+decided: 2026-10-09
 ---
 
 # Decision 0107: Decide how interactive coding-agent sessions such as this one fit the governed role scheme now, during the crutch phase.

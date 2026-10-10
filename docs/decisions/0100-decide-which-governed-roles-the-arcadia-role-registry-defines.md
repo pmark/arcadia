@@ -4,7 +4,7 @@ type: decision
 id: "0100"
 slug: decide-which-governed-roles-the-arcadia-role-registry-defines
 project: arcadia
-status: open
+status: approved
 question: Decide which governed roles the Arcadia role registry defines.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Seven roles built on the existing lineage: the session-start role, planner, plan-critic, implementer, code-reviewer, qa and researcher (read-only investigation). Supervisor is a relationship, not a role"
+decided: 2026-10-09
 ---
 
 # Decision 0100: Decide which governed roles the Arcadia role registry defines.

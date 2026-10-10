@@ -4,7 +4,7 @@ type: decision
 id: "0113"
 slug: decide-what-a-supervisor-is-and-how-the-supervisor-chain-reaches-the-operator
 project: arcadia
-status: open
+status: approved
 question: Decide what a supervisor is and how the supervisor chain reaches the operator.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: A deterministic assignment, not a running agent. A delegate's supervisor is its lead. A lead's supervisor is the Project supervisor function, carried out today by existing stall detection, peer watch and arcadia todo, with the operator on top
+decided: 2026-10-09
 ---
 
 # Decision 0113: Decide what a supervisor is and how the supervisor chain reaches the operator.

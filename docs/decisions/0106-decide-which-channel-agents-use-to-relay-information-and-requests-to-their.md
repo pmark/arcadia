@@ -4,7 +4,7 @@ type: decision
 id: "0106"
 slug: decide-which-channel-agents-use-to-relay-information-and-requests-to-their
 project: arcadia
-status: open
+status: approved
 question: Decide which channel agents use to relay information and requests to their supervisors and teammates.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Reuse what exists. A delegate returns its result in-process to its lead, a relay to a supervisor is an Agent Ask (intent proposal) citing the delegation or Session id, and the delegation receipt carries the request and verdict. No new channel
+decided: 2026-10-09
 ---
 
 # Decision 0106: Decide which channel agents use to relay information and requests to their supervisors and teammates.

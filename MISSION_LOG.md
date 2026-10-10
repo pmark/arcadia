@@ -2195,6 +2195,20 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1174
+
+- **Did:** Your 13 governed-roles answers are recorded: PR #1174 approves every recommendation (Lead role, depth-1 delegation, 20% reserve, Discord presence proof). https://github.com/pmark/arcadia/pull/1174
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-ready-arcadia-pr1174-approval-boundary-2026-10-09
+
+- **Did:** Merge is yours: PR #1174 records approved Decisions on approval boundaries (reserve, broker, presence proof, delegation), so it is not merged on green. Once checks are green, merging unblocks define-governed-role-registry for arcadia go. https://github.com/pmark/arcadia/pull/1174
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1175
 
 - **Did:** PR #1175 writes down your scheduling strategy and opens Decisions 0115-0118 (Project shares, blocked fall-through, two PRs per repo, OpenCode daily token cap), each with your chat pick as the recommended option. Answer them on the dashboard; the PR waits for you. https://github.com/pmark/arcadia/pull/1175

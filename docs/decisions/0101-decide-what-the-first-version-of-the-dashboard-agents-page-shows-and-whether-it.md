@@ -4,7 +4,7 @@ type: decision
 id: "0101"
 slug: decide-what-the-first-version-of-the-dashboard-agents-page-shows-and-whether-it
 project: arcadia
-status: open
+status: approved
 question: Decide what the first version of the dashboard /agents page shows and whether it can change anything.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Read-only first version: a team tree per Session or interactive session (role, supervisor, delegates and verdicts, model and effort, state, last activity) plus each provider's burn rate, reserve and throttle state, with no controls"
+decided: 2026-10-09
 ---
 
 # Decision 0101: Decide what the first version of the dashboard /agents page shows and whether it can change anything.
