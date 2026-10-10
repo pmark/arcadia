@@ -35,8 +35,14 @@ const OPERATOR_EMAIL = "operator@example.invalid";
 /** Fixture Git ignores the developer's global and system config (signing, hooks, templates). */
 const ISOLATED_GIT = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
+/**
+ * Recent Git (2.55 on CI) has every commit start `git maintenance run --auto --detach`,
+ * which runs `git worktree prune`. In the symlinked-admin test that prune
+ * follows `.git/worktrees/linked` and deletes the fixture's `elsewhere/`
+ * while the test is still building it (Issue #1154, Linux CI).
+ */
 function git(cwd: string, args: string[], env: Record<string, string> = {}): string {
-  return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd, encoding: "utf8", env: { ...process.env, ...ISOLATED_GIT, ...env } }).trim();
+  return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "maintenance.auto=false", ...args], { cwd, encoding: "utf8", env: { ...process.env, ...ISOLATED_GIT, ...env } }).trim();
 }
 
 const agentEnv = (name: string) => {
