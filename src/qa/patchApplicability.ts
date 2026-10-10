@@ -35,9 +35,14 @@
  * pass this check (add Agent Ask data files or archive them, append to the
  * Mission Log, mark the current Action done and move current_action to any
  * well-formed Action id, which can skip Actions or change which Actions are
- * dependency-ready). The code reviewer's correctness judgment and QA's
- * managed-document and approval-boundary criteria (never not-applicable) are
- * the backstops for those.
+ * dependency-ready, and rewrite that same done Action's own `next_action` to
+ * its exact canonical completed form naming any Agent Ask id this same patch
+ * series actually carries — the filename/content checks only establish that
+ * *some* file under `.arcadia/asks/` with that exact id was added or
+ * archived here, never that its content truly describes this Action or
+ * criteria, or that a real operator ever accepted it). The code reviewer's
+ * correctness judgment and QA's managed-document and approval-boundary
+ * criteria (never not-applicable) are the backstops for those.
  */
 
 export type PatchFileClass =
@@ -425,6 +430,20 @@ const PLAN_POINTER = /^current_action: ([A-Za-z0-9][\w.-]*)$/;
 const UPDATED = /^updated: \d{4}-\d{2}-\d{2}$/;
 const ACTION_STATUS = /^ {4}status: (\S+)$/;
 const ACTION_ID = /^ {2}- id: (\S+)$/;
+/** Any single-line `next_action` value, old or new — recognized generically; {@link NEXT_ACTION_CANONICAL_COMPLETED} gates what a new one may say. */
+const NEXT_ACTION_FIELD = /^ {4}next_action:.*$/;
+/**
+ * `markActionDone`'s own rewrite (`src/ask/settlement.ts`): the only shape a
+ * `next_action` line may take on *after* this patch, naming the completion's
+ * own Agent Ask request id. Only the single-line-old-value shape every real
+ * Plan document in this repository uses today is recognized (the adjacency
+ * check below requires the added line to sit immediately after the removed
+ * one); a block-scalar old value's more-indented continuation lines are not
+ * matched by `NEXT_ACTION_FIELD` and fall through to the generic "only ...
+ * may change here" refusal, which is safe (not a regression — no real patch
+ * has ever needed it) rather than permissive.
+ */
+const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent Ask (.+); no further action\.$/;
 
 /**
  * The exact shapes Arcadia's preservation and `agent-ask settle --apply`
@@ -436,8 +455,17 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
   const done = new Map<string, string[]>();
+  const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string }>>();
   const planMoves = new Map<string, string[]>();
   const projectMoves: string[] = [];
+  // Every Agent Ask id this same patch series makes available: drafted
+  // (added, anywhere under .arcadia/asks/, not yet archived), archived by a
+  // same-name rename, or archived directly (added straight into
+  // .arcadia/asks/archive/ — real settlements both only ever add a new Ask
+  // file at either location or rename an existing one into the archive, so
+  // these are the only shapes an id can actually appear under).
+  const availableAskIds = new Set<string>();
+  const ASK_ID = /^\.arcadia\/asks\/(?:archive\/)?agent-ask-(.+)\.(?:ya?ml|json)$/;
   for (const file of files) {
     if (!file.paths.every(isGovernedRecordPath) || file.special || file.executableMode || !file.newPath || !file.oldPath) continue;
     const target = file.newPath;
@@ -453,6 +481,10 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
         target === `.arcadia/asks/archive/${basename(file.oldPath)}`;
       if (!file.created && !archiveMove) violateFile("an Agent Ask may only be added, or moved into .arcadia/asks/archive/ under its own name");
       else if (file.created && removed.length > 0) violateFile("a new Agent Ask cannot remove lines");
+      else {
+        const askId = ASK_ID.exec(target)?.[1];
+        if (askId) availableAskIds.add(askId);
+      }
       continue;
     }
     if (file.renamed || file.oldPath !== target) {
@@ -471,14 +503,30 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
       if (removed.length > 0 || !trailingOnly) violateFile("the Mission Log may only be appended to, at its end");
       continue;
     }
+    // `next_action` is recognized generically here (any single-line value, old
+    // or new) so the structural check below does not refuse on its presence
+    // alone; `NEXT_ACTION_CANONICAL_COMPLETED`, the owner tie, and the
+    // status-done tie enforced in the hunk pass below are what actually gate
+    // what a *new* next_action line may say and which Action it may belong to.
     const keyOf = (line: string): string | null => PLAN_POINTER.test(line) ? "current_action" : UPDATED.test(line) ? "updated"
-      : target !== "PROJECT.md" && ACTION_STATUS.test(line) ? "status" : null;
+      : target !== "PROJECT.md" && ACTION_STATUS.test(line) ? "status"
+      : target !== "PROJECT.md" && NEXT_ACTION_FIELD.test(line) ? "next_action" : null;
     const bad = [...removed, ...added].find((line) => keyOf(line) === null);
     if (bad !== undefined) {
-      violateFile(`only ${target === "PROJECT.md" ? "current_action and updated" : "an Action's status, current_action and updated"} may change here, not \`${bad.trim().slice(0, 80)}\``);
+      violateFile(`only ${target === "PROJECT.md" ? "current_action and updated" : "an Action's status, current_action, updated and a completed next_action"} may change here, not \`${bad.trim().slice(0, 80)}\``);
       continue;
     }
-    for (const key of ["current_action", "updated", "status"]) {
+    // `next_action` is in this count too: the canonical writer only ever
+    // rewrites an *existing* field (absent stays absent, done elsewhere stays
+    // untouched), so an added-only line (no corresponding removed one — an
+    // Action that had no next_action, or an extra forged line beside a real
+    // replacement), a removed-only one (the field deleted outright), or any
+    // other count mismatch is never its shape, whatever the added text says.
+    // This is necessary but not sufficient: the hunk-aware adjacency pass
+    // below still separately requires the single matched pair to sit next to
+    // each other and match the canonical form, so a same-count but
+    // non-adjacent or non-canonical pair still refuses there.
+    for (const key of ["current_action", "updated", "status", "next_action"]) {
       if (removed.filter((line) => keyOf(line) === key).length !== added.filter((line) => keyOf(line) === key).length) {
         violateFile(`${key} must be replaced line for line`);
       }
@@ -493,13 +541,34 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
     planMoves.set(target, [...(planMoves.get(target) ?? []), ...moves]);
     for (const lines of file.hunks) {
       lines.forEach((line, index) => {
-        if (!line.startsWith("-") || !ACTION_STATUS.test(line.slice(1))) return;
-        const next = lines.slice(index + 1).find((candidate) => candidate.startsWith("+"));
-        if (!next || ACTION_STATUS.exec(next.slice(1))?.[1] !== "done") violateFile("an Action's status may only become done");
+        if (!line.startsWith("-")) return;
+        if (ACTION_STATUS.test(line.slice(1))) {
+          const next = lines.slice(index + 1).find((candidate) => candidate.startsWith("+"));
+          if (!next || ACTION_STATUS.exec(next.slice(1))?.[1] !== "done") violateFile("an Action's status may only become done");
+          const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
+          const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
+          if (!id) violateFile("the Action whose status changes is not shown in the hunk's context");
+          else done.set(target, [...(done.get(target) ?? []), id]);
+          return;
+        }
+        // A removed `next_action` line only starts a recognized rewrite at its
+        // first (possibly only) line; a block-scalar old value's own
+        // more-indented continuation lines are already excluded from `keyOf`
+        // recognition here (NEXT_ACTION_FIELD matches only the header shape),
+        // so they fall through to the generic `bad` check above and refuse —
+        // this classifier only recognizes the single-line-old shape every
+        // real Plan document in this repository actually uses today.
+        if (!NEXT_ACTION_FIELD.test(line.slice(1))) return;
+        const next = lines[index + 1];
+        const match = next?.startsWith("+") ? NEXT_ACTION_CANONICAL_COMPLETED.exec(next.slice(1)) : null;
+        if (!match) {
+          violateFile("next_action may only change to its exact canonical completed form, `next_action: Completed via Agent Ask <request-id>; no further action.`");
+          return;
+        }
         const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
         const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
-        if (!id) violateFile("the Action whose status changes is not shown in the hunk's context");
-        else done.set(target, [...(done.get(target) ?? []), id]);
+        if (!id) violateFile("the Action whose next_action changes is not shown in the hunk's context");
+        else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1] }]);
       });
     }
   }
@@ -516,6 +585,37 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
   }
   const allDone = new Set([...done.values()].flat());
   if (projectMoves.some((from) => !allDone.has(from))) violate("PROJECT.md", "PROJECT.md's current_action moved without its Action being marked done");
+  // A canonical next_action rewrite is tied to the actual status transition
+  // (it may only land on an Action this same file's patch also marks done,
+  // never on a pending sibling or an Action done for an unrelated reason) and
+  // fails closed on the request id: it must name an Agent Ask this same
+  // patch series actually carries (drafted, archived by rename, or archived
+  // directly — the id-collection pass above). No request id is ever accepted
+  // on shape alone; one naming no Ask anywhere in the patch is refused,
+  // whether or not the patch touches `.arcadia/asks/` at all.
+  const claimedRequestIds = new Map<string, string>(); // requestId -> the one Action id allowed to claim it
+  for (const [plan, rewritten] of nextActionRewrites) {
+    const completed = new Set(done.get(plan) ?? []);
+    if (rewritten.some((entry) => !completed.has(entry.id))) {
+      violate(plan, "a next_action rewrite to the canonical completed form must name an Action this same patch also marks done");
+      continue;
+    }
+    if (rewritten.some((entry) => !availableAskIds.has(entry.requestId))) {
+      violate(plan, "a next_action rewrite's completion request id must match an Agent Ask this same patch series carries (drafted or archived)");
+      continue;
+    }
+    // One Agent Ask settles one Action: the same request id claimed by two
+    // different Actions' next_action rewrites, in this file or another one
+    // in the same patch, is never legitimate even though both ids resolve.
+    for (const entry of rewritten) {
+      const priorOwner = claimedRequestIds.get(entry.requestId);
+      if (priorOwner !== undefined && priorOwner !== entry.id) {
+        violate(plan, `request id ${entry.requestId} is claimed by more than one Action's next_action rewrite in this patch`);
+      } else {
+        claimedRequestIds.set(entry.requestId, entry.id);
+      }
+    }
+  }
   return violations;
 }
 
