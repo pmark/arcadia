@@ -239,6 +239,32 @@ describe("operator ping todo deep links", () => {
     }
   });
 
+  it("tolerates a concurrent first open that already added the column", () => {
+    const ws = workspace();
+    const db = openDatabase(ws);
+    try {
+      const realPrepare = db.prepare.bind(db);
+      // Simulate the race: the column check sees no todo_key, but the ALTER finds it already added.
+      db.prepare = ((sql: string) => {
+        if (sql.includes("PRAGMA table_info(operator_pings)")) return { all: () => [] };
+        return realPrepare(sql);
+      }) as typeof db.prepare;
+      expect(() => ensureOperatorPingTable(db)).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("treats the same text and channel with a different --todo as a distinct ping", () => {
+    const ws = workspace();
+    const a = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/1" });
+    const b = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/2" });
+    const c = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/2" });
+    expect(b.data.deduplicated).toBe(false);
+    expect(b.data.ping.id).not.toBe(a.data.ping.id);
+    expect(c.data.deduplicated).toBe(true);
+  });
+
   it("appends the item link outside the message cap", () => {
     const long = "x".repeat(OPERATOR_PING_MESSAGE_MAX);
     const text = operatorPingMessage({ ...base, message: long, todoKey: "decision:arcadia/0119" }, null, DASH);

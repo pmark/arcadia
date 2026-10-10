@@ -68,7 +68,12 @@ export function ensureOperatorPingTable(db: Database.Database): void {
   CREATE INDEX IF NOT EXISTS idx_operator_pings_status ON operator_pings(status, created_at);`);
   const columns = db.prepare("PRAGMA table_info(operator_pings)").all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === "todo_key")) {
-    db.exec("ALTER TABLE operator_pings ADD COLUMN todo_key TEXT");
+    try {
+      db.exec("ALTER TABLE operator_pings ADD COLUMN todo_key TEXT");
+    } catch (error) {
+      // A concurrent first open may have added it between the check and the ALTER.
+      if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) throw error;
+    }
   }
 }
 
@@ -78,9 +83,9 @@ export function queueOperatorPing(db: Database.Database, input: OperatorPingInpu
   const createdAt = now.toISOString();
   return writeTransaction(db, () => {
     const duplicate = db.prepare(`SELECT * FROM operator_pings
-      WHERE message = ? AND COALESCE(channel, '') = ? AND created_at >= ?
+      WHERE message = ? AND COALESCE(channel, '') = ? AND COALESCE(todo_key, '') = ? AND created_at >= ?
       ORDER BY created_at DESC LIMIT 1`)
-      .get(fields.message, fields.channel ?? "", new Date(now.getTime() - OPERATOR_PING_DEDUP_WINDOW_MS).toISOString());
+      .get(fields.message, fields.channel ?? "", fields.todoKey ?? "", new Date(now.getTime() - OPERATOR_PING_DEDUP_WINDOW_MS).toISOString());
     if (duplicate) return { ping: toPing(duplicate as PingRow), deduplicated: true, warnings: linkWarnings(fields) };
 
     const recent = db.prepare("SELECT COUNT(*) AS n FROM operator_pings WHERE created_at >= ?")
