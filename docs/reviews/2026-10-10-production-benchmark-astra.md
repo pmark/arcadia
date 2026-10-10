@@ -1,8 +1,11 @@
 # Astra adversarial review: production benchmark
 
-Date: 2026-10-10  
-Reviewer: independent read-only Codex subagent, `gpt-6-astra`, high effort  
-Author/editor: Cody Atlas; operator-directed work, [Issue #1207](https://github.com/pmark/arcadia/issues/1207)  
+Date: 2026-10-10
+
+Reviewer: independent read-only Codex subagent, `gpt-6-astra`, high effort
+
+Author/editor: Cody Atlas; operator-directed work, [Issue #1207](https://github.com/pmark/arcadia/issues/1207)
+
 Reviewed draft: [benchmark](../proposals/production-benchmark.md) and [corpus](../proposals/production-benchmark-corpus.json)
 
 ## Original review boundary and verdict

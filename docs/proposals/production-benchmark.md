@@ -7,10 +7,14 @@ question: Should Arcadia adopt this production benchmark to test inexpensive, hi
 
 # Arcadia production benchmark and commercial direction
 
-Date: 2026-10-10  
-State: proposed benchmark; no execution results or spending authority  
-Intake: [Issue #1207](https://github.com/pmark/arcadia/issues/1207)  
-Companion corpus: [production-benchmark-corpus.json](production-benchmark-corpus.json)  
+Date: 2026-10-10
+
+State: proposed benchmark; no execution results or spending authority
+
+Intake: [Issue #1207](https://github.com/pmark/arcadia/issues/1207)
+
+Companion corpus: [production-benchmark-corpus.json](production-benchmark-corpus.json)
+
 Origin: operator-directed research; [Arcadia-led development](../arcadia-development-orchestration-vision.md) and [operator-scale production boundary](operator-scale-managed-production-boundary.md)
 
 ## Purpose and commercial hypothesis
