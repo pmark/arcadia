@@ -4,6 +4,9 @@ import { defineConfig } from "vitest/config";
 const sourceRoot = path.resolve(import.meta.dirname, "src");
 
 export default defineConfig({
+  // The dashboard tsconfig keeps JSX for Next to compile; component render
+  // tests (renderToStaticMarkup) need it compiled with the automatic runtime.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     // `@pmark/arcadia`'s exports map points at `dist/`, which only exists
     // after `pnpm build`. Vitest resolving it there meant a bare `pnpm test`

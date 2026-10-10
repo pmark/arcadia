@@ -42,8 +42,8 @@ describe("GET /api/approvals", () => {
     expect(body.note).toBeNull();
     expect(body.approvals.map((a: { kind: string; readOnly: boolean }) => [a.kind, a.readOnly])).toEqual([
       ["review_item", true],
-      ["agent_ask", false],
-      ["decision", false]
+      ["decision", false],
+      ["agent_ask", false]
     ]);
     expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(1);
   });
