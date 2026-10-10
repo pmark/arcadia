@@ -2225,3 +2225,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator explicitly requested activation. Preserve the unfinished work in the existing active Plan and use the exact activation preview before applying.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1212
+
+- **Did:** PR #1212 ports the done-Action settlement fix onto current main: a completed Action now reads "Completed via Agent Ask <id>" instead of stale guidance, and the runbook handoff is brought up to date. Independent review and CI are running. https://github.com/pmark/arcadia/pull/1212
+- **Result:** Operator-directed rehearsal release-manager request, recommendation 1. Supersedes dirty PR #1033; no governed Action is completed and the pointer and queue are untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
