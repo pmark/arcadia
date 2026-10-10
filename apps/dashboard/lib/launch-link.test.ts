@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApprovals } from "./approvals";
 import type { OperatorTodoItem } from "./arcadia-cli";
-import { launchHrefOf, parseLaunchParam, resolveLaunchLink } from "./launch-link";
+import { decideLaunchLink, launchHrefOf, parseLaunchParam, resolveLaunchLink } from "./launch-link";
 import type { ConsoleAction } from "./production-console";
 
 function action(key: string, allowed: boolean, disabledReason: string | null = null): ConsoleAction {
@@ -34,6 +34,30 @@ describe("resolveLaunchLink", () => {
   });
   it("says so when the Action is not in the queue", () => {
     expect(resolveLaunchLink(actions, "arcadia/gone")).toMatchObject({ kind: "unavailable", message: expect.stringContaining("arcadia/gone") });
+  });
+});
+
+describe("decideLaunchLink", () => {
+  const actions = [action("arcadia/ready", true), action("arcadia/waiting", false, "Waits.")];
+  const base = { key: "arcadia/ready", handledKey: null, actions, queueFresh: false, askedFresh: false };
+
+  it("opens once: a handled key is idle", () => {
+    expect(decideLaunchLink(base)).toMatchObject({ kind: "open" });
+    expect(decideLaunchLink({ ...base, handledKey: "arcadia/ready" })).toEqual({ kind: "idle" });
+  });
+  it("waits for the queue and for a key", () => {
+    expect(decideLaunchLink({ ...base, actions: null })).toEqual({ kind: "idle" });
+    expect(decideLaunchLink({ ...base, key: null })).toEqual({ kind: "idle" });
+  });
+  it("stale then fresh: a negative verdict from a possibly cached read asks for a fresh one, then the fresh read decides", () => {
+    const missing = { ...base, key: "arcadia/new" };
+    expect(decideLaunchLink(missing)).toEqual({ kind: "refresh" });
+    expect(decideLaunchLink({ ...missing, askedFresh: true })).toEqual({ kind: "idle" });
+    expect(decideLaunchLink({ ...missing, queueFresh: true })).toMatchObject({ kind: "warn" });
+    expect(decideLaunchLink({ ...missing, queueFresh: true, actions: [...actions, action("arcadia/new", true)] })).toMatchObject({ kind: "open" });
+  });
+  it("a changed key is handled again", () => {
+    expect(decideLaunchLink({ ...base, key: "arcadia/waiting", handledKey: "arcadia/ready", queueFresh: true })).toMatchObject({ kind: "warn" });
   });
 });
 

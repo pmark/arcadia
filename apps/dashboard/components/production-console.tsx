@@ -10,7 +10,7 @@ import {
   type LaunchStep,
   type LaunchTarget
 } from "../lib/launch-flow";
-import { resolveLaunchLink } from "../lib/launch-link";
+import { decideLaunchLink } from "../lib/launch-link";
 import {
   CHIP_LABEL,
   formatElapsed,
@@ -623,7 +623,9 @@ export function QueueSection({
   assembled,
   now,
   onLaunched,
-  launchKey = null
+  launchKey = null,
+  queueFresh = false,
+  onRequestFresh
 }: {
   part: ConsoleQueuePart | null;
   assembled: AssembledQueue | null;
@@ -631,6 +633,10 @@ export function QueueSection({
   onLaunched: () => void;
   /** From `/production?launch=<project>/<actionId>`: open that Action's Launch dialog once the queue loads. */
   launchKey?: string | null;
+  /** True when `part` came from a fresh read, not the server's short-cached copy. */
+  queueFresh?: boolean;
+  /** Asks the page for one fresh queue read. */
+  onRequestFresh?: () => void;
 }) {
   const [mountedAt] = useState(() => Date.now());
   const [view, setView] = useState<QueueView>("batches");
@@ -640,14 +646,29 @@ export function QueueSection({
   const [warning, setWarning] = useState<string | null>(null);
   const handledLink = useRef<string | null>(null);
 
-  // A cold deep link: act once per key as soon as the queue is readable. It only opens the dialog; the operator confirms there.
+  const askedFresh = useRef<string | null>(null);
+
+  // A cold deep link: act once per key. It only opens the dialog; the operator confirms there.
   useEffect(() => {
-    if (!launchKey || handledLink.current === launchKey || !assembled || !part?.queue) return;
-    handledLink.current = launchKey;
-    const resolution = resolveLaunchLink(assembled.actions, launchKey);
-    if (resolution.kind === "open") setLaunching(resolution.action);
-    else setWarning(resolution.message);
-  }, [launchKey, assembled, part]);
+    const decision = decideLaunchLink({
+      key: launchKey,
+      handledKey: handledLink.current,
+      actions: part?.queue && assembled ? assembled.actions : null,
+      queueFresh,
+      askedFresh: askedFresh.current === launchKey
+    });
+    if (decision.kind === "open") {
+      handledLink.current = launchKey;
+      setWarning(null);
+      setLaunching(decision.action);
+    } else if (decision.kind === "warn") {
+      handledLink.current = launchKey;
+      setWarning(decision.message);
+    } else if (decision.kind === "refresh") {
+      askedFresh.current = launchKey;
+      onRequestFresh?.();
+    }
+  }, [launchKey, assembled, part, queueFresh, onRequestFresh]);
 
   const launchable = assembled?.actions.filter((action) => action.launch.allowed).length ?? 0;
   return (

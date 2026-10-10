@@ -39,3 +39,30 @@ export function resolveLaunchLink(actions: ConsoleAction[], key: string): Launch
   }
   return { kind: "open", action };
 }
+
+export type LaunchLinkDecision =
+  | { kind: "idle" }
+  | { kind: "open"; action: ConsoleAction }
+  | { kind: "warn"; message: string }
+  /** The queue copy may be the server's short-cached one: read a fresh queue before giving a negative verdict. */
+  | { kind: "refresh" };
+
+/**
+ * What the Queue should do about a deep link now. A key is handled (once-only)
+ * when the dialog opens, or when a negative verdict comes from a fresh read; a
+ * negative verdict from a possibly cached read asks for a fresh one instead, so
+ * a just-created Action is never falsely reported.
+ */
+export function decideLaunchLink(input: {
+  key: string | null;
+  handledKey: string | null;
+  actions: ConsoleAction[] | null;
+  queueFresh: boolean;
+  askedFresh: boolean;
+}): LaunchLinkDecision {
+  if (!input.key || input.handledKey === input.key || !input.actions) return { kind: "idle" };
+  const resolution = resolveLaunchLink(input.actions, input.key);
+  if (resolution.kind === "open") return resolution;
+  if (!input.queueFresh) return input.askedFresh ? { kind: "idle" } : { kind: "refresh" };
+  return { kind: "warn", message: resolution.message };
+}
