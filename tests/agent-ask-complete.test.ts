@@ -118,6 +118,67 @@ describe("Agent Ask complete", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
+  it("keeps the fields after the Action when next_action is the last line of the last Action's block", () => {
+    // The last Action's block runs to the closing `---` and so includes the
+    // top-level fields after `actions:`. A continuation pattern that treats any
+    // line not indented exactly four spaces as part of `next_action` would eat
+    // `questions: []` and the newline before `---` (reviewer finding, PR #1212).
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const original = readFileSync(planPath, "utf8");
+    const withoutSecond = original.slice(0, original.indexOf("  - id: second")) + original.slice(original.indexOf("questions: []"));
+    const nextActionLast = withoutSecond
+      .replace("    next_action: Finish the first Action.\n", "")
+      .replace("    references: []\nquestions: []", "    references: []\n    next_action: Finish the first Action.\nquestions: []");
+    expect(nextActionLast).toContain("    next_action: Finish the first Action.\nquestions: []\n---");
+    writeFileSync(planPath, nextActionLast, "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Single Action with next_action as its last field"], { cwd: repo });
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-next-action-last", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-next-action-last", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-next-action-last", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const rewritten = readFileSync(planPath, "utf8");
+    expect(rewritten).toContain("    next_action: Completed via Agent Ask complete-next-action-last; no further action.\nquestions: []\n---\n");
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "first")).toMatchObject({
+      status: "done", nextAction: "Completed via Agent Ask complete-next-action-last; no further action."
+    });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("writes a request id containing a line break as one quoted next_action line", () => {
+    const { workspace, repo, head } = fixture();
+    // A JSON double-quoted scalar is valid YAML, so the id can carry a real line
+    // break through the Ask envelope that the helper's plain interpolation cannot.
+    const requestId = "complete-first-line\n    why: injected";
+    const request = completeAsk("placeholder-line-break", "first", head)
+      .replace("request_id: placeholder-line-break", `request_id: ${JSON.stringify(requestId)}`);
+    expect(request).toContain(`request_id: ${JSON.stringify(requestId)}`);
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-line-break", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-line-break", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    const rewritten = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(rewritten).not.toMatch(/^ {4}why: injected/m);
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "first")).toMatchObject({ status: "done" });
+    expect(plan.actions.find((action) => action.id === "first")?.nextAction).toContain("Completed via Agent Ask complete-first-line");
+  });
+
   it("names the completion request id literally even when it contains String.replace metacharacters ($&)", () => {
     // request_id is normalized by `requiredText` only (agentAsk.ts): any
     // non-empty trimmed string is legal, including `$&`/`$1`/etc. A string

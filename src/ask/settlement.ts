@@ -2687,12 +2687,22 @@ function markActionDone(content: string, actionId: string, requestId: string): s
     // replace leaves those continuation lines behind, where they silently fold
     // into the new plain scalar instead of being discarded. Consumed the same
     // way `depends_on`/`references` consume their own continuation lines.
+    // A continuation line is one indented deeper than the 4-space key (5+
+    // spaces); blank lines count only when a deeper line follows them. The
+    // field's last line is often the block's last line (for the last Action the
+    // block runs to the closing `---` and includes top-level fields such as
+    // `questions:`), so the match must stop at the first line that is not a
+    // deeper-indented continuation and never consume that line's newline.
     // The replacement is a callback, not a string: `requestId` is a caller-
     // supplied Agent Ask request_id (normalized by `requiredText` only, so a
     // literal `$&`/`$1`/etc is legal input), and `String.replace` expands those
     // patterns in a string replacement. A callback returns it literally.
-    const newNextActionLine = `    next_action: ${yamlScalar(`Completed via Agent Ask ${requestId}; no further action.`)}`;
-    block = block.replace(/^ {4}next_action:.*(?:\r?\n(?! {4}\S).*)*/m, () => newNextActionLine);
+    const completed = `Completed via Agent Ask ${requestId}; no further action.`;
+    // A request_id with a line break would otherwise inject YAML lines into the
+    // Action; a JSON double-quoted scalar is valid YAML and keeps it one line.
+    const completedScalar = /[\r\n]/.test(completed) ? JSON.stringify(completed) : yamlScalar(completed);
+    const newNextActionLine = `    next_action: ${completedScalar}`;
+    block = block.replace(/^ {4}next_action:.*(?:(?:\r?\n[ \t]*(?=\r?\n))*\r?\n {5,}\S.*)*/m, () => newNextActionLine);
   }
   // `block` now carries that same literal requestId text, so this final
   // reinsertion into `content` must also use a callback: a string replacement
