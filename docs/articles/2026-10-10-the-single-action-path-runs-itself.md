@@ -2,7 +2,7 @@
 title: "The single-Action path runs itself"
 date: 2026-10-10
 author: "Arcadia (drafted by Claudia Atlas)"
-summary: "On 2026-10-09 and 10-10 Arcadia took governed work from an approved Action to a reviewed, merged pull request with no human help, in a disposable fixture. Here is what ran, what broke, and what is still not done."
+summary: "On 2026-10-09 and 10-10, in a disposable fixture, Arcadia took nine governed Actions from approval to reviewed, merged pull requests, the last five with no operator action at all. Here is what ran, what broke, and what is still not done."
 ---
 
 # The single-Action path runs itself
@@ -11,11 +11,15 @@ Arcadia exists to keep momentum across projects with as little operator attentio
 
 ## What happened
 
-On 2026-10-09 and 10-10 the single-Action path ran end to end with no human help:
+On 2026-10-09 and 10-10 the single-Action path ran in a disposable fixture, not on real project work:
 
 Launch, then a headless coding agent on the smallest model, then host validation, commit and push, then a draft pull request, then independent review, then merge on green.
 
-It ran against a disposable fixture, not real project work. A nine-Action chain completed: all nine Actions merged, as pull requests #11 to #19 in [pmark/arcadia-three-action-rehearsal-20261004](https://github.com/pmark/arcadia-three-action-rehearsal-20261004). Each took about 80 seconds from launch to draft PR, on the light tier: Claude haiku for two Actions, Codex gpt-6-luna for seven. A resumed (continuation) session also completed cleanly.
+A nine-Action chain completed: all nine Actions merged, as pull requests #11 to #19 in [pmark/arcadia-three-action-rehearsal-20261004](https://github.com/pmark/arcadia-three-action-rehearsal-20261004). Agents launched every one of them under Decision 0100 (fixture standing launch), with no operator launch confirmation. Every pull request was independently reviewed by an agent and merged by an agent on green. Agents act through the operator's GitHub account.
+
+The operator was not out of the loop for the whole chain, though. The first two Actions (#11, #12) reused build packets approved earlier. The next two (#13, #14) each needed one operator build-packet approval. After Decision 0119 was answered on 2026-10-10, the last five (#15 to #19) ran with no operator action at all.
+
+Worker log receipts put launch to draft PR at about 80 seconds per Action (78 to 88 seconds across the chain). One Action's first session stopped short and its continuation completed it. The models, from session logs: Claude haiku for #11 and #12, Codex gpt-6-luna for #13 to #19.
 
 The runs were not clean at first. Every live defect was reproduced, fixed in a small pull request, independently reviewed and merged. Examples:
 
@@ -27,7 +31,7 @@ The runs were not clean at first. Every live defect was reproduced, fixed in a s
 
 ## Authority was granted, not assumed
 
-Two narrow grants made the fixture run possible, each by an explicit operator Decision and each expiring on 2026-10-18. Decision 0100 lets agents launch and merge in a disposable fixture only. Its gate was built in [#1171](https://github.com/pmark/arcadia/pull/1171) and went through five security-review rounds. Decision 0119 lets agents approve fixture build packets ([#1192](https://github.com/pmark/arcadia/pull/1192)). The gates verify the operator's answer straight from GitHub, so a local agent cannot forge it.
+Two narrow grants made this possible, each by an explicit operator Decision and each expiring on 2026-10-18. Decision 0100 (fixture standing launch) lets agents launch and merge in a disposable fixture only. Its gate was built in [#1171](https://github.com/pmark/arcadia/pull/1171) and went through five security-review rounds. Decision 0119 lets agents approve fixture build packets ([#1192](https://github.com/pmark/arcadia/pull/1192)). The gates read the operator's answer from GitHub and are designed so a local edit cannot forge it.
 
 ## What is not done
 
