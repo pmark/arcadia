@@ -5,7 +5,7 @@ import {
   peekAgentAskEligibility
 } from "./arcadia-cli";
 import { buildApprovals, type ApprovalList } from "./approvals";
-import { createSharedCache } from "./shared-cache";
+import { createSharedCache, type SharedCache } from "./shared-cache";
 
 function describeFailure(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -28,7 +28,7 @@ async function buildList(): Promise<ApprovalList> {
   // Whether Accept would apply is read here, server-side, so the page never offers a button the data does not support.
   // It never waits: cached verdicts only, previews run in the background (unknown until one lands).
   const eligibility = pendingAsks ? peekAgentAskEligibility(pendingAsks) : undefined;
-  return buildApprovals({
+  const list = buildApprovals({
     eligibility,
     asks: pendingAsks,
     decisions: decisions.status === "fulfilled" ? decisions.value.data.decisions : null,
@@ -36,11 +36,28 @@ async function buildList(): Promise<ApprovalList> {
     loadError: loaderFailure ? describeFailure(loaderFailure.reason) : undefined,
     todoError: todo.status === "rejected" ? describeFailure(todo.reason) : undefined
   });
+  if (loaderFailure || todo.status === "rejected") degradedLists.add(list);
+  return list;
 }
+
+/** Lists built while a loader failed: served once, never cached. */
+const degradedLists = new WeakSet<ApprovalList>();
 
 /** Rebuilding spawns three CLI processes (seconds on a large backlog), so every poll and tab shares one cached copy. */
 export const APPROVALS_CACHE_TTL_MS = 10_000;
-const approvalsCache = createSharedCache<ApprovalList>({ ttlMs: APPROVALS_CACHE_TTL_MS, load: buildList });
+/** Past this age a copy is rebuilt before it is served, so a tab reopened after a long idle never shows settled items as live. */
+export const APPROVALS_CACHE_MAX_STALE_MS = 60_000;
+
+// Anchored on globalThis: the route handlers and instrumentation can be separate bundles, and a write in one must invalidate the copy the others serve.
+const CACHE_KEY = Symbol.for("arcadia.dashboard.approvalsCache");
+const cacheHost = globalThis as typeof globalThis & { [CACHE_KEY]?: SharedCache<ApprovalList> };
+const approvalsCache = (cacheHost[CACHE_KEY] ??= createSharedCache<ApprovalList>({
+  ttlMs: APPROVALS_CACHE_TTL_MS,
+  maxStaleMs: APPROVALS_CACHE_MAX_STALE_MS,
+  load: buildList,
+  // A degraded list (a loader failed) is served once but never cached.
+  cacheable: (list) => !degradedLists.has(list)
+}));
 
 /** Drop the cached list so the next GET rebuilds it (called after any write that changes it). */
 export function invalidateApprovalsCache(): void {

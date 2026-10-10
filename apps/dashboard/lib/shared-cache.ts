@@ -9,15 +9,25 @@
  * - `invalidate()` (after a write) drops the copy and orphans any rebuild that
  *   began earlier, so the next `get()` waits for a rebuild that started after
  *   the write.
+ * - A copy older than `maxStaleMs` is too old to show: `get()` waits for the
+ *   rebuild (an idle tab must not reopen on hour-old buttons), falling back to
+ *   that copy only if the rebuild fails.
  * - A failed rebuild keeps the previous copy (served stale) and is not cached;
  *   with no copy, the failure reaches every waiting caller.
+ * - `cacheable(data)` false keeps a degraded result out of the cache.
  */
 export interface SharedCache<T> {
   get(): Promise<T>;
   invalidate(): void;
 }
 
-export function createSharedCache<T>(options: { ttlMs: number; load: () => Promise<T>; now?: () => number }): SharedCache<T> {
+export function createSharedCache<T>(options: {
+  ttlMs: number;
+  maxStaleMs?: number;
+  load: () => Promise<T>;
+  cacheable?: (data: T) => boolean;
+  now?: () => number;
+}): SharedCache<T> {
   const now = options.now ?? Date.now;
   let value: { at: number; data: T } | null = null;
   let inFlight: { generation: number; promise: Promise<T> } | null = null;
@@ -28,7 +38,7 @@ export function createSharedCache<T>(options: { ttlMs: number; load: () => Promi
     const started = generation;
     const promise = options.load().then(
       (data) => {
-        if (started === generation) value = { at: now(), data };
+        if (started === generation && (options.cacheable?.(data) ?? true)) value = { at: now(), data };
         return data;
       }
     );
@@ -44,8 +54,11 @@ export function createSharedCache<T>(options: { ttlMs: number; load: () => Promi
   return {
     get() {
       if (value) {
-        if (now() - value.at >= options.ttlMs) rebuild().catch(() => undefined);
-        return Promise.resolve(value.data);
+        const copy = value.data;
+        const age = now() - value.at;
+        if (options.maxStaleMs !== undefined && age >= options.maxStaleMs) return rebuild().catch(() => copy);
+        if (age >= options.ttlMs) rebuild().catch(() => undefined);
+        return Promise.resolve(copy);
       }
       return rebuild();
     },

@@ -77,4 +77,27 @@ describe("createSharedCache", () => {
     expect(await cache.get()).toBe("after-write");
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("waits for a rebuild instead of serving a copy past maxStaleMs, and falls back to it on failure", async () => {
+    let t = 0;
+    const load = vi.fn<() => Promise<string>>()
+      .mockResolvedValueOnce("old")
+      .mockResolvedValueOnce("new")
+      .mockRejectedValueOnce(new Error("boom"));
+    const cache = createSharedCache({ ttlMs: 10, maxStaleMs: 60, load, now: () => t });
+    await cache.get();
+    t = 61;
+    expect(await cache.get()).toBe("new");
+    t = 200;
+    expect(await cache.get()).toBe("new"); // rebuild failed: the old copy is better than an error
+  });
+
+  it("does not cache a result that cacheable rejects", async () => {
+    const load = vi.fn<() => Promise<string>>().mockResolvedValueOnce("degraded").mockResolvedValueOnce("good");
+    const cache = createSharedCache({ ttlMs: 10, load, cacheable: (v) => v !== "degraded", now: () => 0 });
+    expect(await cache.get()).toBe("degraded");
+    expect(await cache.get()).toBe("good");
+    expect(await cache.get()).toBe("good");
+    expect(load).toHaveBeenCalledTimes(2);
+  });
 });
