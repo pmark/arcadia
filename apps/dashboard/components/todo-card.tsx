@@ -114,6 +114,11 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
             Details {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
           </button>
         )}
+        {approval.launchHref ? (
+          <Link href={approval.launchHref} className="inline-flex min-h-11 items-center text-sm font-medium text-steel hover:underline">
+            Open launch dialog
+          </Link>
+        ) : null}
         {showLink ? (
           <Link href={approval.href} className="inline-flex min-h-11 items-center text-sm font-medium text-steel hover:underline">
             Open

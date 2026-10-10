@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GlobalStrip, QueueSection, SessionsSection } from "../../components/production-console";
 import { Sidebar } from "../../components/sidebar";
+import { parseLaunchParam } from "../../lib/launch-link";
 import { assembleQueue, type ConsoleCoreData, type ConsoleQueuePart } from "../../lib/production-console";
 
 /** Sessions and production state: fast while anything is live. */
@@ -31,7 +32,13 @@ export default function ProductionPage() {
   const [queueFetchError, setQueueFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const [launchKey, setLaunchKey] = useState<string | null>(null);
   const liveRef = useRef(false);
+
+  // Read the query on the client (after hydration) so a cold link needs no prior page state.
+  useEffect(() => {
+    setLaunchKey(parseLaunchParam(window.location.search));
+  }, []);
   // Polls, focus and post-toggle refreshes overlap; only the newest request may update the page.
   const coreSeq = useRef(0);
   const queueSeq = useRef(0);
@@ -140,7 +147,7 @@ export default function ProductionPage() {
         <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore(true)} />
         <div className="grid min-w-0 content-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <SessionsSection core={core} now={now} />
-          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} />
+          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} launchKey={launchKey} />
         </div>
         <nav aria-label="Related pages" className="border-t border-line pt-4 text-xs text-muted">
           Older partial views, kept while this page settles in:{" "}

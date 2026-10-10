@@ -10,6 +10,7 @@ import {
   type LaunchStep,
   type LaunchTarget
 } from "../lib/launch-flow";
+import { resolveLaunchLink } from "../lib/launch-link";
 import {
   CHIP_LABEL,
   formatElapsed,
@@ -621,18 +622,32 @@ export function QueueSection({
   part,
   assembled,
   now,
-  onLaunched
+  onLaunched,
+  launchKey = null
 }: {
   part: ConsoleQueuePart | null;
   assembled: AssembledQueue | null;
   now: Date;
   onLaunched: () => void;
+  /** From `/production?launch=<project>/<actionId>`: open that Action's Launch dialog once the queue loads. */
+  launchKey?: string | null;
 }) {
   const [mountedAt] = useState(() => Date.now());
   const [view, setView] = useState<QueueView>("batches");
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [launching, setLaunching] = useState<ConsoleAction | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const handledLink = useRef<string | null>(null);
+
+  // A cold deep link: act once per key as soon as the queue is readable. It only opens the dialog; the operator confirms there.
+  useEffect(() => {
+    if (!launchKey || handledLink.current === launchKey || !assembled || !part?.queue) return;
+    handledLink.current = launchKey;
+    const resolution = resolveLaunchLink(assembled.actions, launchKey);
+    if (resolution.kind === "open") setLaunching(resolution.action);
+    else setWarning(resolution.message);
+  }, [launchKey, assembled, part]);
 
   const launchable = assembled?.actions.filter((action) => action.launch.allowed).length ?? 0;
   return (
@@ -645,6 +660,12 @@ export function QueueSection({
             : null
         }
       />
+      {warning ? (
+        <p role="alert" className="mb-3 rounded-md border border-gold/50 bg-gold/10 p-3 text-sm text-ink">
+          {warning}{" "}
+          <button type="button" className="font-semibold text-steel underline" onClick={() => setWarning(null)}>Dismiss</button>
+        </p>
+      ) : null}
       {notice ? (
         <p role="status" className="mb-3 rounded-md border border-moss/40 bg-moss/5 p-3 text-sm text-ink">
           {notice}
