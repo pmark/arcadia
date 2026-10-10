@@ -3,7 +3,8 @@
 - Type: <ship|essay>
 - Article: docs/articles/<YYYY-MM-DD>-<slug>.md
 - Source repository and pinned revision: <repository>@<SHA>
-- Window: [<UTC start>, <UTC end>); timezone: <IANA timezone>
+- Cadence window: [<UTC week start>, <UTC week end>); timezone: <IANA timezone>
+- Evidence collection: [<last confirmed cutoff or first-run baseline>, <UTC week end>)
 - Previous verified publication/cutoff: <receipt link, or explicit first-run baseline>
 - Eligibility: <new shipped work or proven Milestone; prior publication lookup>
 - Decision: [0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)

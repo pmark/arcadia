@@ -31,6 +31,19 @@ queue, Decision answer or Action status was changed.
   site edits, publication, credential changes or service restarts performed.
 - Content review and delivery cases are follow-up acceptance, not executed proof.
 
+## PR review and notification
+
+- PR: https://github.com/pmark/arcadia/pull/1219.
+- Independent round 1 on cce185783: HOLD. Reviewer found that the exact-week
+  filter would drop older unreported merges after downtime. Corrected the
+  procedure and receipt to distinguish cadence window from collection interval;
+  discovery now starts at the confirmed cutoff. Delta review follows.
+- Primary checkout reflog unchanged after independent review.
+- Standing PR notification: first attempt refused SQLITE_WORKSPACE_WRITE_DENIED.
+  Notes lookup confirmed the ordinary host recovery; same command queued
+  ping_2a24c129dae7404fbf for the configured default channel. Delivery is not
+  assumed from queue acceptance.
+
 ## Friction preserved
 
 - First work monitor output was large (154 copies). It completed successfully;

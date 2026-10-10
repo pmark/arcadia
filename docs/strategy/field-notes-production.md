@@ -33,7 +33,10 @@ isolated candidate. Follow both repositories' instructions before changing
 their files. Run `arcadia work monitor --no-pull-requests` before editing.
 
 For a ship note, take the last completed Monday-to-Monday calendar week in
-the supplied timezone; record its UTC boundaries and use `[start, end)`.
+the supplied timezone; record its UTC boundaries as the cadence window.
+Separately record an evidence collection interval `[last confirmed cutoff,
+completed week end)` in UTC. It may span several weeks after downtime. The
+explicit first-run baseline replaces the cutoff only on the first collection.
 Publish no more than one ship note per calendar week. For an essay, require a
 proven Milestone and no essay already published in the current calendar month.
 Cadence is a ceiling, never a quota. Do not invent a timezone or a first-run
@@ -53,14 +56,16 @@ additional model calls.
 Use existing commands; replace the angle-bracket arguments with resolved values:
 
 ```sh
-gh pr list --repo pmark/arcadia --state merged --search 'merged:>=<UTC-START-DATE>' --limit 100 --json number,title,url,mergedAt,mergeCommit,body
+gh pr list --repo pmark/arcadia --state merged --search 'merged:>=<COLLECTION-CUTOFF-UTC-DATE>' --limit 100 --json number,title,url,mergedAt,mergeCommit,body
 gh pr view <NUMBER> --repo pmark/arcadia --json number,url,state,mergedAt,mergeCommit,body
 git show <MERGE-SHA> --stat
 git show <SOURCE-SHA>:<RECEIPT-PATH>
 ```
 
-The list query is discovery only: filter exact `mergedAt` timestamps to the
-recorded half-open window and eligible cutoff. If the result reaches 100,
+The list query is discovery only: start at the evidence collection cutoff
+and filter exact `mergedAt` timestamps to the recorded half-open collection
+interval, not the shorter cadence window. The UTC date query is coarse;
+include that date and apply the exact timestamp filter afterwards. If the result reaches 100,
 split the date query into bounded ranges or use existing GitHub pagination;
 never assume the first page is complete. Pin the source revision separately
 from the article revision. Verify each merged PR, its actual change and its
