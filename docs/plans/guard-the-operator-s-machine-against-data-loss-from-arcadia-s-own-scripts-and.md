@@ -60,6 +60,41 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/pull/1181", "https://github.com/pmark/arcadia/issues/1154", "docs/working-copy-safety.md"]
+  - id: reconcile-vulnerable-working-copies
+    title: One read-only command classifies every UNSAVED or LOCAL ONLY working copy by outcome, so the operator sees what is safe, what already shipped and what is the only copy.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: One read-only command classifies every UNSAVED or LOCAL ONLY working copy by outcome, so the operator sees what is safe, what already shipped and what is the only copy.
+    expected_artifact: Evidence satisfying Agent Ask reconcile-vulnerable-working-copies
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-reconcile-and-recover-work-to-data-safety-plan-2026-10-09
+    acceptance_criteria:
+      - "A read-only command (for example `arcadia work reconcile`) lists every working copy the monitor reports as unsaved or local only and assigns each exactly one outcome: landed-equivalent (with the settlement or merge evidence that shows its effect shipped), superseded (a newer candidate for the same Action exists), unique work (changes found nowhere else), or unknown, with the evidence for each."
+      - It changes no file, ref, worktree, branch or workspace record, and a test proves the repositories are byte-identical before and after.
+      - Each line names the one next step for that outcome (retire with tidy, recover, or inspect), and the alert from alert-on-unsaved-and-local-only-work links to it.
+    depends_on: [alert-on-unsaved-and-local-only-work]
+    decisions: []
+    references: ["docs/working-copy-safety.md", "docs/proposals/reconcile-problematic-branches-and-worktrees-by-outcome.md"]
+  - id: recover-unique-work-to-draft-prs
+    title: Unique work in a vulnerable working copy is preserved off the machine by an automated version of the recovery playbook, never by cleaning or resetting.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Unique work in a vulnerable working copy is preserved off the machine by an automated version of the recovery playbook, never by cleaning or resetting.
+    expected_artifact: Evidence satisfying Agent Ask recover-unique-work-to-draft-prs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-reconcile-and-recover-work-to-data-safety-plan-2026-10-09
+    acceptance_criteria:
+      - "A preview-then-apply command takes one working copy classified as unique work and, without changing its files: creates a clearly named recovery branch when detached or on the default branch, refuses if a secret scan or the repository's generated-file policy flags any changed path, commits the scope with a message that says whether it is mixed, pushes it, and opens a draft recovery PR."
+      - It never runs clean, reset, checkout of other content, stash, or worktree removal, and a test proves the working tree is byte-identical after apply.
+      - It refuses a working copy that a live Session is writing to, names that Session, and writes a receipt for every apply or refusal.
+      - Replaying recovered commits onto main stays a separate, normal PR step in a fresh worktree, as the playbook requires.
+    depends_on: [reconcile-vulnerable-working-copies]
+    decisions: []
+    references: ["docs/working-copy-safety.md", "docs/proposals/reconcile-problematic-branches-and-worktrees-by-outcome.md"]
 questions: []
 decisions: []
 ---
