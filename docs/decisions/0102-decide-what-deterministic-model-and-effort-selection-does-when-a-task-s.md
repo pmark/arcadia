@@ -4,7 +4,7 @@ type: decision
 id: "0102"
 slug: decide-what-deterministic-model-and-effort-selection-does-when-a-task-s
 project: arcadia
-status: open
+status: approved
 question: Decide what deterministic model and effort selection does when a task's required capability and the remaining budget conflict.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Queue, and never under-provision. The selector never goes below the task's required capability and picks the cheapest compliant model outside the reserve. If none fits, the request queues. Queued means it waits in strict first-in, first-out order per provider, so a later request on the same provider is never admitted ahead of an earlier queued one. It is promoted only when its own requester runs arcadia delegation poll. A requester that does not poll within 5 minutes loses the request (poll_lapsed), and one still not admissible after its bounded wait (default 30 minutes) is declined as queue_timeout, and the lead then continues without the delegate
+decided: 2026-10-09
 ---
 
 # Decision 0102: Decide what deterministic model and effort selection does when a task's required capability and the remaining budget conflict.
