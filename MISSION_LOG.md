@@ -2225,3 +2225,17 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator explicitly requested activation. Preserve the unfinished work in the existing active Plan and use the exact activation preview before applying.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1208
+
+- **Did:** The production benchmark is saved with Astra's findings integrated: website economics, quality, maintenance and deeper application recovery now have explicit criteria. https://github.com/pmark/arcadia/pull/1208
+- **Result:** Standing PR lifecycle notification from docs/agent-guidance/pull-requests.md; records PR opening only, not benchmark acceptance or execution.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-ready-arcadia-pr1208-adoption-choice-2026-10-10
+
+- **Did:** The production benchmark is ready for your review: Astra cleared the revised design and required CI passed. Adopting the experiment and its proposed budget is your choice; this PR defines the protocol and makes no execution grant. https://github.com/pmark/arcadia/pull/1208
+- **Result:** Prepare the standing PR handoff log notification from docs/agent-guidance/pull-requests.md; apply only after independent review and all required checks are clear.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
