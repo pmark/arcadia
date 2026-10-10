@@ -163,7 +163,7 @@ function ProductionPageBody() {
         <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore(true)} />
         <div className="grid min-w-0 content-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <SessionsSection core={core} now={now} />
-          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} launchKey={launchKey} queueFresh={queueFresh} onRequestFresh={requestFreshQueue} />
+          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} launchKey={launchKey} queueFresh={queueFresh} onRequestFresh={requestFreshQueue} production={core?.production ?? null} />
         </div>
         <nav aria-label="Related pages" className="border-t border-line pt-4 text-xs text-muted">
           Older partial views, kept while this page settles in:{" "}

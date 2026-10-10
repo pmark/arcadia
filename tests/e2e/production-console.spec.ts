@@ -135,7 +135,13 @@ test("the Production console drives and monitors production at phone width", asy
   const pauseAll = page.getByRole("button", { name: "Pause all" });
   await expect(pauseAll).toBeDisabled();
 
+  // Projects first: one card per Project, its Plan and the Action production would pick now.
+  const projects = page.getByRole("list", { name: "Projects in the production scope" });
+  await expect(projects.getByText("Arcadia", { exact: true })).toBeVisible();
+  await expect(projects.getByText(/Would pick now:/)).toBeVisible();
+
   // The queue in batches: the two ready Actions share one repository, so they are batch 1 and batch 2.
+  await page.getByRole("tab", { name: "Batches" }).click();
   await expect(page.getByText(/Batch 1 · 1 Action · first in each repository/)).toBeVisible();
   await expect(page.getByText("Ship the pointer Action")).toBeVisible();
   await expect(page.getByText("Ship the second ready Action")).toBeVisible();

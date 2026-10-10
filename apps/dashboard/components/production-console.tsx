@@ -12,16 +12,21 @@ import {
 } from "../lib/launch-flow";
 import { decideLaunchLink } from "../lib/launch-link";
 import {
+  assembleProjects,
   CHIP_LABEL,
   formatElapsed,
+  PROJECT_CHIP_LABEL,
   outcomeLabel,
   summarizeSession,
   type ActionChip,
   type AssembledQueue,
   type ConsoleAction,
   type ConsoleCoreData,
+  type ConsoleProduction,
   type ConsoleQueuePart,
   type PauseCapability,
+  type ProjectCard,
+  type ProjectChip,
   type SessionChip
 } from "../lib/production-console";
 import type { SessionLogTail } from "../lib/session-log";
@@ -612,7 +617,7 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
 // Queue: batches (waves) and queue order
 // ---------------------------------------------------------------------------
 
-type QueueView = "batches" | "order";
+type QueueView = "projects" | "batches" | "order";
 type QueueFilter = "all" | "launchable" | "active" | "waiting" | "attention";
 
 /** The first queue read after a dashboard restart is cold (about 15 s); past this, say so plainly. */
@@ -625,11 +630,14 @@ export function QueueSection({
   onLaunched,
   launchKey = null,
   queueFresh = false,
-  onRequestFresh
+  onRequestFresh,
+  production = null
 }: {
   part: ConsoleQueuePart | null;
   assembled: AssembledQueue | null;
   now: Date;
+  /** Production state, for the scope and escalations the Projects view shows. */
+  production?: ConsoleProduction | null;
   onLaunched: () => void;
   /** From `/production?launch=<project>/<actionId>`: open that Action's Launch dialog once the queue loads. */
   launchKey?: string | null;
@@ -639,7 +647,7 @@ export function QueueSection({
   onRequestFresh?: () => void;
 }) {
   const [mountedAt] = useState(() => Date.now());
-  const [view, setView] = useState<QueueView>("batches");
+  const [view, setView] = useState<QueueView>("projects");
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [launching, setLaunching] = useState<ConsoleAction | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -706,7 +714,7 @@ export function QueueSection({
           ) : null}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div role="tablist" aria-label="Queue view" className="inline-flex rounded-md border border-line bg-panel p-0.5">
-              {(["batches", "order"] as const).map((option) => (
+              {(["projects", "batches", "order"] as const).map((option) => (
                 <button
                   key={option}
                   role="tab"
@@ -715,7 +723,7 @@ export function QueueSection({
                   onClick={() => setView(option)}
                   className={`min-h-9 rounded px-3 text-sm font-medium ${view === option ? "bg-steel/10 text-steel" : "text-muted"}`}
                 >
-                  {option === "batches" ? "Batches" : "Queue order"}
+                  {option === "projects" ? "Projects" : option === "batches" ? "Batches" : "Queue order"}
                 </button>
               ))}
             </div>
@@ -732,7 +740,9 @@ export function QueueSection({
               </label>
             ) : null}
           </div>
-          {view === "batches" ? (
+          {view === "projects" ? (
+            <ProjectsView assembled={assembled} production={production} onLaunch={setLaunching} />
+          ) : view === "batches" ? (
             <BatchesView part={part} assembled={assembled} onLaunch={setLaunching} />
           ) : (
             <OrderView actions={assembled.actions.filter((action) => matches(action, filter))} onLaunch={setLaunching} />
@@ -752,6 +762,115 @@ export function QueueSection({
         />
       ) : null}
     </section>
+  );
+}
+
+function ProjectsView({
+  assembled,
+  production,
+  onLaunch
+}: {
+  assembled: AssembledQueue;
+  production: ConsoleProduction | null;
+  onLaunch: (action: ConsoleAction) => void;
+}) {
+  const [showOut, setShowOut] = useState(false);
+  const cards = assembleProjects(assembled, production);
+  const inScope = cards.filter((card) => card.inScope !== false);
+  const outOfScope = cards.filter((card) => card.inScope === false);
+  // With nothing in scope the fold would leave the view empty, so it starts open.
+  const outOpen = showOut || inScope.length === 0;
+  if (cards.length === 0) return <p className="text-sm text-muted">No Project has an Action in the queue.</p>;
+  return (
+    <div className="grid min-w-0 gap-2">
+      <p className="text-xs text-muted">
+        Ordered by each Project&apos;s first Action in today&apos;s queue. Choosing Project order yourself is pending Decision 0115. Arcadia sequences the Actions inside each Plan.
+      </p>
+      {production?.scopeProjects && inScope.length === 0 ? (
+        <p className="rounded-md border border-gold/50 bg-gold/10 p-3 text-sm text-ink">
+          The production scope admits none of these Projects ({production.scopeProjects.join(", ")}), so turning production On would run none of them.
+        </p>
+      ) : null}
+      {inScope.length > 0 ? <ol className="grid min-w-0 gap-2" aria-label="Projects in the production scope">
+        {inScope.map((card) => <ProjectCardRow key={card.slug} card={card} onLaunch={onLaunch} />)}
+      </ol> : null}
+      {outOfScope.length > 0 ? (
+        <div className="mt-2">
+          {inScope.length === 0 ? (
+            <p className="text-sm font-medium text-muted">Not in the production scope ({outOfScope.length})</p>
+          ) : (
+            <button type="button" onClick={() => setShowOut((value) => !value)} aria-expanded={outOpen} className="flex min-h-9 items-center gap-1 text-sm font-medium text-muted">
+              {outOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+              Not in the production scope ({outOfScope.length})
+            </button>
+          )}
+          {outOpen ? (
+            <ol className="mt-2 grid min-w-0 gap-2" aria-label="Projects outside the production scope">
+              {outOfScope.map((card) => <ProjectCardRow key={card.slug} card={card} onLaunch={onLaunch} />)}
+            </ol>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const PROJECT_CHIP_TONE: Record<ProjectChip, string> = {
+  running: "border-steel/40 bg-steel/10 text-steel",
+  next_up: "border-moss/40 bg-moss/10 text-moss",
+  ready: "border-moss/30 bg-moss/5 text-moss",
+  needs_you: "border-gold/50 bg-gold/10 text-ink",
+  repo_busy: "border-line bg-canvas text-muted",
+  waiting: "border-line bg-canvas text-muted",
+  blocked: "border-clay/40 bg-clay/5 text-clay",
+  nothing_ready: "border-line bg-canvas text-muted"
+};
+
+function humanizeSlug(slug: string): string {
+  const words = slug.replace(/-/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function ProjectCardRow({ card, onLaunch }: { card: ProjectCard; onLaunch: (action: ConsoleAction) => void }) {
+  const next = card.next;
+  return (
+    <li className="grid min-w-0 gap-1.5 rounded-md border border-line bg-panel p-3">
+      <div className="flex min-w-0 items-start gap-2">
+        <p className="min-w-0 flex-1 break-words font-semibold">{card.name}</p>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${PROJECT_CHIP_TONE[card.chip]}`}>{PROJECT_CHIP_LABEL[card.chip]}</span>
+      </div>
+      {card.planSlug ? (
+        <p className="min-w-0 break-words text-sm">
+          {humanizeSlug(card.planSlug)}
+          <span className="text-muted"> · {card.planOpen} open · {card.planReady} ready</span>
+        </p>
+      ) : null}
+      {next ? (
+        <p className="min-w-0 break-words text-sm">
+          <span className="text-muted">{card.chip === "running" ? "Running: " : "Would pick now: "}</span>
+          {next.title}
+        </p>
+      ) : null}
+      {card.reason ? <p className="min-w-0 break-words text-xs text-muted">{card.reason}</p> : null}
+      {card.needs.map((need) => (
+        <p key={need.actionKey} className="min-w-0 break-words rounded border border-gold/50 bg-gold/10 px-2 py-1 text-xs text-ink">
+          <span className="font-semibold">Needs you · {need.actionKey.split("/").slice(1).join("/")}:</span> {need.message}
+          {need.remedy ? <span className="block text-muted">{need.remedy}</span> : null}
+        </p>
+      ))}
+      {card.otherPlans.length > 0 ? (
+        <p className="text-xs text-muted">
+          {card.otherPlans.length} other active Plan{card.otherPlans.length === 1 ? "" : "s"}: {card.otherPlans.map((plan) => `${humanizeSlug(plan.slug)} (${plan.open})`).join(", ")}
+        </p>
+      ) : null}
+      {next?.launch.allowed ? (
+        <div>
+          <button type="button" className={secondaryButton} onClick={() => onLaunch(next)}>
+            <Rocket className="h-4 w-4" aria-hidden="true" /> Launch…
+          </button>
+        </div>
+      ) : null}
+    </li>
   );
 }
 
