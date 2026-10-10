@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # Mission Log: Arcadia
@@ -2191,6 +2191,13 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 ## 2026-10-09 — Agent Ask pr-ready-arcadia-pr1170-decision-answer-2026-10-09
 
 - **Did:** Your call: PR #1170 carries Decisions 0100-0114, so it waits for your merge. Answer 0112 (role name), 0100 (taxonomy) and 0114 (who delegates) first to unblock Action 1. Note: 0105 and 0108 were older drafts I opened by mistake; answer or ignore. https://github.com/pmark/arcadia/pull/1170
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1175
+
+- **Did:** PR #1175 writes down your scheduling strategy and opens Decisions 0115-0118 (Project shares, blocked fall-through, two PRs per repo, OpenCode daily token cap), each with your chat pick as the recommended option. Answer them on the dashboard; the PR waits for you. https://github.com/pmark/arcadia/pull/1175
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
