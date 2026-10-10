@@ -2201,3 +2201,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-ready-arcadia-pr1174-approval-boundary-2026-10-09
+
+- **Did:** Merge is yours: PR #1174 records approved Decisions on approval boundaries (reserve, broker, presence proof, delegation), so it is not merged on green. Once checks are green, merging unblocks define-governed-role-registry for arcadia go. https://github.com/pmark/arcadia/pull/1174
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
