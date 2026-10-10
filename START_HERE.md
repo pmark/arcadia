@@ -357,7 +357,7 @@ Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
 this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 **To-do** (Accept/Reject for Agent Asks, Approve for Decisions, and any
 review items read-only with the command that answers them; the same list as
-`arcadia todo --all`, with stale items folded into a collapsed **Stale** group)
+`arcadia todo --all`, with stale items folded into a collapsed **Done elsewhere** group)
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
@@ -3098,7 +3098,11 @@ settled `rejected` (Asks naming each other in a cycle of any length, two or more
 cancel out: no member of the cycle is hidden). A review item is stale
 when its work item is done or its `doc_ref` names an answered (approved or
 rejected) Decision. An open Decision is
-stale when its `action` is done. The default view hides stale items;
+stale when its `action` is done. An Agent Ask, review item or production
+escalation of a `completed` Project is stale (`its Project <slug> is completed`):
+production never ticks a retired Project again, so its escalation cannot clear
+itself. Retire a finished fixture with `arcadia project update <id> --status completed`.
+The default view hides stale items (on `/todo`, in a collapsed **Done elsewhere** group);
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
 

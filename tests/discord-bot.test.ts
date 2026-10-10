@@ -27,7 +27,7 @@ import {
 } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
 import { formatRunDetail, formatRuns } from "../apps/discord-bot/src/formatters/runFormatter.js";
 import { formatStatus } from "../apps/discord-bot/src/formatters/statusFormatter.js";
-import { evaluateNotifications } from "../apps/discord-bot/src/notifications/poller.js";
+import { agentAskNotificationMessages, evaluateNotifications } from "../apps/discord-bot/src/notifications/poller.js";
 import {
   discordSubmissionStatePath,
   loadDiscordSubmissionState,
@@ -521,6 +521,35 @@ describe("discord bot end-to-end fixture", () => {
 
     expect(evaluation.messages.map((message) => message.key).some((key) => key.startsWith("requires-review:"))).toBe(true);
     expect(evaluation.messages.map((message) => message.content).join("\n")).toContain("Reply with A, B, C");
+  });
+});
+
+describe("discord bot Agent Ask settlement notifications", () => {
+  const settlement = (id: string, disposition: "accepted" | "rejected", extra: Record<string, unknown> = {}) => ({
+    settlementId: id, requestId: `ask-${id}`, desiredResult: `Do ${id}.`, projectSlug: id.startsWith("p") ? "ppn" : "arcadia",
+    disposition, intent: "proposal", effects: ["Preserved the proposal and created no Project or queue changes."],
+    queueActionKey: null, queueActionKeys: [], queuePosition: null, nextActionKey: null, createdAt: "2026-10-10T00:00:00.000Z", ...extra
+  });
+
+  it("sends one message per settlement while rejections are few", () => {
+    const messages = agentAskNotificationMessages([settlement("a1", "accepted"), settlement("a2", "rejected"), settlement("a3", "rejected")]);
+    expect(messages.map((message) => [message.key, message.alsoKeys])).toEqual([
+      ["agent-ask:a1", undefined], ["agent-ask:a2", undefined], ["agent-ask:a3", undefined]
+    ]);
+  });
+
+  it("coalesces a bulk of plain rejections into one message that marks every settlement, keeping others separate", () => {
+    const rejections = Array.from({ length: 20 }, (_, index) => settlement(index % 2 ? `p${index}` : `a${index}`, "rejected"));
+    const recovered = settlement("r1", "rejected", { recovery: { reason: "commit failed", documentsCommitted: false, operationalSync: "skipped", remedy: "Commit by hand." } });
+    const messages = agentAskNotificationMessages([settlement("x1", "accepted"), ...rejections, recovered]);
+
+    expect(messages.map((message) => message.key)).toEqual(["agent-ask:x1", "agent-ask:r1", "agent-ask:a0"]);
+    const batch = messages[2];
+    expect(batch.alsoKeys).toEqual(rejections.slice(1).map((rejection) => `agent-ask:${rejection.settlementId}`));
+    expect(batch.content).toContain("20 Agent Asks settled: rejected");
+    expect(batch.content).toContain("Projects: arcadia 10 · ppn 10");
+    expect(batch.content).toContain("…and 5 more");
+    expect(batch.content.length).toBeLessThanOrEqual(1900);
   });
 });
 

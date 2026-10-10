@@ -38,6 +38,8 @@ export interface NotificationSnapshot {
 export interface NotificationMessage {
   key: string;
   content: string;
+  /** Further notification keys this one message also delivers (a coalesced batch); each is marked sent with it. */
+  alsoKeys?: string[];
 }
 
 export interface NotificationEvaluation {
@@ -92,10 +94,7 @@ export function evaluateNotifications(
   const codexTerminalOrReviewEvents = snapshot.codexTasks
     .map((task) => codexEventForStatus(null, task.status) ? `${task.id}:${codexEventForStatus(null, task.status)}` : null)
     .filter((event): event is string => Boolean(event));
-  const agentAskMessages = (snapshot.agentAskNotifications ?? []).map((notification) => ({
-    key: `agent-ask:${notification.settlementId}`,
-    content: agentAskSettlementMessage(notification, dashboardUrl)
-  }));
+  const agentAskMessages = agentAskNotificationMessages(snapshot.agentAskNotifications ?? [], dashboardUrl);
 
   if (!previous) {
     return {
@@ -294,9 +293,11 @@ export function startNotificationPoller(
           message.content,
           logJson
         );
-        const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(message.key);
-        if (agentAskSettlementId) {
-          await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);
+        for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
+          const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(key);
+          if (agentAskSettlementId) {
+            await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);
+          }
         }
         const reviewId = reviewIdFromNotificationKey(message.key);
         if (reviewId) {
@@ -311,7 +312,9 @@ export function startNotificationPoller(
             });
           }
         }
-        workingState = withNotifiedMessageKey(workingState, message.key, snapshot);
+        for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
+          workingState = withNotifiedMessageKey(workingState, key, snapshot);
+        }
         await saveNotificationState(statePath, workingState);
         logJson("info", { msg: "discord notification sent", key: message.key });
       }
@@ -381,6 +384,48 @@ function reviewIdFromNotificationKey(key: string): string | null {
 
 function agentAskSettlementIdFromNotificationKey(key: string): string | null {
   return key.startsWith("agent-ask:") ? key.slice("agent-ask:".length) : null;
+}
+
+/** At least this many plain rejections pending in one poll are sent as one message, so a bulk disposition cannot flood the phone. */
+export const AGENT_ASK_REJECTION_BATCH_MIN = 3;
+const AGENT_ASK_REJECTION_BATCH_LISTED = 15;
+
+/**
+ * One message per settlement, except that plain rejections (no recovery to act on) coalesce into one message once
+ * there are AGENT_ASK_REJECTION_BATCH_MIN of them: a rejection has nothing further to tap through to, and a bulk
+ * operator disposition of hundreds would otherwise post hundreds of messages. Every settlement is still marked sent.
+ */
+export function agentAskNotificationMessages(notifications: AgentAskNotificationItem[], dashboardUrl?: string): NotificationMessage[] {
+  const single = (notification: AgentAskNotificationItem): NotificationMessage => ({
+    key: `agent-ask:${notification.settlementId}`,
+    content: agentAskSettlementMessage(notification, dashboardUrl)
+  });
+  const quiet = notifications.filter((notification) => notification.disposition === "rejected" && !notification.recovery);
+  if (quiet.length < AGENT_ASK_REJECTION_BATCH_MIN) return notifications.map(single);
+  const batched = new Set(quiet.map((notification) => notification.settlementId));
+  return [
+    ...notifications.filter((notification) => !batched.has(notification.settlementId)).map(single),
+    {
+      key: `agent-ask:${quiet[0].settlementId}`,
+      alsoKeys: quiet.slice(1).map((notification) => `agent-ask:${notification.settlementId}`),
+      content: agentAskRejectionBatchMessage(quiet)
+    }
+  ];
+}
+
+export function agentAskRejectionBatchMessage(rejections: AgentAskNotificationItem[]): string {
+  const perProject = new Map<string, number>();
+  for (const rejection of rejections) perProject.set(rejection.projectSlug, (perProject.get(rejection.projectSlug) ?? 0) + 1);
+  const listed = rejections.slice(0, AGENT_ASK_REJECTION_BATCH_LISTED);
+  const lines = [
+    `${rejections.length} Agent Asks settled: rejected`,
+    `Projects: ${[...perProject].map(([slug, count]) => `${slug} ${count}`).join(" · ")}`,
+    ...listed.map((rejection) => `• ${rejection.projectSlug}: ${(rejection.requestId ?? rejection.settlementId).slice(0, 80)}`),
+    ...(rejections.length > listed.length ? [`…and ${rejections.length - listed.length} more`] : []),
+    "No Project, queue or Action changed."
+  ];
+  const text = lines.join("\n");
+  return text.length > 1900 ? `${text.slice(0, 1899)}…` : text;
 }
 
 export function agentAskSettlementMessage(notification: AgentAskNotificationItem, dashboardUrl?: string): string {

@@ -92,7 +92,7 @@ export function TodoListView({
           {section("Other", groups.others)}
           {groups.stale.length > 0 ? (
             <details className="mt-4">
-              <summary className="min-h-11 cursor-pointer text-sm font-semibold uppercase tracking-[0.14em] text-muted">Stale ({groups.stale.length})</summary>
+              <summary className="min-h-11 cursor-pointer text-sm font-semibold uppercase tracking-[0.14em] text-muted">Done elsewhere ({groups.stale.length})</summary>
               <div className="mt-3 grid min-w-0 grid-cols-1 gap-3">{groups.stale.map(card)}</div>
             </details>
           ) : null}

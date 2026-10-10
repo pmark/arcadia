@@ -32,10 +32,10 @@ describe("TodoListView", () => {
 
   it("shows the blocking count, then groups in order, with stale collapsed", () => {
     expect(html).toContain("1 blocking · 4 waiting on you");
-    const order = ["Blocking (1)", "Decisions (1)", "Agent Asks (1)", "Other (1)", "Stale (1)"].map((label) => html.indexOf(label));
+    const order = ["Blocking (1)", "Decisions (1)", "Agent Asks (1)", "Other (1)", "Done elsewhere (1)"].map((label) => html.indexOf(label));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(html).toMatch(/<details class="mt-4"><summary[^>]*>Stale \(1\)/);
+    expect(html).toMatch(/<details class="mt-4"><summary[^>]*>Done elsewhere \(1\)/);
   });
 
   it("shows full titles, ids, anchors and deep links on every card", () => {

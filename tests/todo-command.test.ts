@@ -856,7 +856,7 @@ describe("arcadia todo: review_items", () => {
     expect(run({ workspace, now: NOW, project: "demo" }).data.items.map((item) => item.key)).toEqual(["review_item:demo/review-norepo"]);
   });
 
-  it("lists a review_item of a completed Project in the 'unknown' bucket instead of dropping it (#1074)", () => {
+  it("keeps a review_item of a completed Project as stale under that Project, never dropping it (#1074)", () => {
     const workspace = fixtureWorkspace(selectableRepo());
     addReviews(workspace, [{ id: "review-live", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Live Project question." }]);
     withDatabase(workspace, (db) => {
@@ -874,9 +874,12 @@ describe("arcadia todo: review_items", () => {
 
     const { data } = run({ workspace, now: NOW });
 
-    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
-      ["review_item:demo/review-live", "demo", false],
-      ["review_item:unknown/review-finished", "unknown", false]
+    // The completed Project is positive evidence: the item is stale (hidden by default, counted), not live and not dropped.
+    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([["review_item:demo/review-live", "demo", false]]);
+    expect(data.counts).toMatchObject({ stale: 1, staleHidden: 1 });
+    const stale = run({ workspace, now: NOW, stale: true }).data.items;
+    expect(stale.map((item) => [item.key, item.project, item.staleReason])).toEqual([
+      ["review_item:finished/review-finished", "finished", "its Project finished is completed"]
     ]);
     // A --project view is that Project's alone.
     expect(keys(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["review_item:demo/review-live"]);
@@ -1088,6 +1091,31 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       ["decision:demo/0001", "demo", true, "arcadia decision approve 0001 --project demo --answer 'Go ahead'"]
     ]);
     expect(keysOf(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["decision:demo/0001"]);
+  });
+
+  it("treats an escalation and an Agent Ask of a completed Project as stale, so a retired Project's rows stop blocking", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "retired-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "retired", desiredResult: "Leftover." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const retired = createProjectWithInitialWork(db, {
+        name: "Retired", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(retired.project.id);
+    });
+    addEscalations(workspace, [
+      { actionKey: "retired/write-marker", kind: "build_packet_approval_pending", message: "The previewed Action is not ready to launch.", remedy: null, firstDetectedAt: "2026-10-08T07:00:00.000Z" },
+      { actionKey: "ghost/lost-step", kind: "dependency_unresolved", message: "Dependency is not resolvable.", remedy: null, firstDetectedAt: "2026-10-08T07:30:00.000Z" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+    // An unknown Project's escalation still blocks; the completed Project's rows are stale, counted, not listed.
+    expect(keysOf(data)).toEqual(["escalation:dependency_unresolved:ghost/lost-step", "decision:demo/0001"]);
+    expect(data.counts).toMatchObject({ blocking: 2, stale: 2, staleHidden: 2 });
+    expect(run({ workspace, now: NOW, stale: true }).data.items.map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:retired/retired-ask", "its Project retired is completed"],
+      ["escalation:build_packet_approval_pending:retired/write-marker", "its Project retired is completed"]
+    ]);
   });
 
   it("lists a waiting operator task with its own title and the canonical command; blocking only for the selected Action", () => {
