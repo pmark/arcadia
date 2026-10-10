@@ -41,7 +41,7 @@
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "808d53c907238c6321f2578e256dc35de1c58d99420c0f98f282c4a8884d5be8"
+      "sha256": "f827b603a67dffa9010d3b3e83827b265c30f51886dc7ea7263f5883af1cc148"
     },
     {
       "id": "learning",
@@ -69,7 +69,7 @@
       "trigger": "new planning cycle, raw outcome, interview, architect",
       "path": "docs/planning-process.md",
       "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
-      "sha256": "90a794689df6fb3f71e13d3fee4f82d24e25ceee05106b55564b6ce27937f6cb"
+      "sha256": "a426d88c54aac5f434a71af6270147c9b69b646d592d272bf328a06faa5f2c22"
     },
     {
       "id": "working-copy",

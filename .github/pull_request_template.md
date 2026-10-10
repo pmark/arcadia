@@ -35,3 +35,26 @@
 ## Risk or follow-up
 
 <!-- State none, or name the exact follow-up and its trigger. -->
+
+## Work metadata (80/20)
+
+<!-- Required. Keep exactly one block; never invent numbers (`unknown` is allowed); update it after each review round, push, and at merge-ready. It grants no authority and is not a merge gate. Purpose: calibrate size and token/time estimates, and model selection, from actuals. -->
+
+<!--
+```arcadia-work-metadata
+version: 1
+action: <plan/slug#action-id, or operator-directed:#<issue>>
+size: S | M | L        # about 30 / 55 / 90 minutes of agent work in one session
+operator_gate: none | <reason the operator must act: merge-authority, decision, operator-step, credentials, spend>
+agents:                # one entry per agent that did work: author, reviewers, fixers
+  - role: lead | planner | plan-critic | development | code-review | qa
+    provider: claude-code | codex | opencode
+    model: <model id>
+    tier: light | standard | heavy
+    tokens: <total processed tokens from the runtime's usage report, or unknown>
+    minutes: <wall minutes, or unknown>
+review_rounds: <n>
+ci_pushes: <n>
+wall_minutes: <request to merge-ready, or unknown>
+```
+-->
