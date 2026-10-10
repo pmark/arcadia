@@ -252,7 +252,7 @@ export function runSessionLaunchCommand(options: {
    * confirmation step, or the CLI after an interactive-terminal confirmation.
    * Mints the one-shot post-exit authorization for the new Session.
    */
-  operatorLaunch?: { source: OperatorLaunchSource; env?: NodeJS.ProcessEnv };
+  operatorLaunch?: { source: OperatorLaunchSource; standing?: { agentIdentity: string }; env?: NodeJS.ProcessEnv };
   /** Per-launch wall-clock limit override in minutes (bounded Session lifetime). */
   timeLimitMinutes?: number;
 }): CommandSuccess<SessionLaunchCommandData> {

@@ -46,6 +46,8 @@ export interface PreserveSessionDeps {
   validate?: typeof validatePreservationCandidate;
   preserve?: typeof preserveCandidate;
   remote?: CandidatePreservationDeps["remote"];
+  /** Test-only: the remote a `fixture_standing` exit uses in place of the one built from its verified check. Production never sets it. */
+  fixtureStandingTestRemote?: CandidatePreservationDeps["remote"];
 }
 
 export interface IntegrateSessionDeps {

@@ -1053,26 +1053,35 @@ function pullRequestWriteRemedy(branch: string): string {
     `Check for an existing pull request first (\`gh pr view ${branch}\`); a retry of the same fixed protected launcher reuses the same request id and commit and updates an existing pull request rather than creating another, but confirm none was opened twice.`;
 }
 
-/** Real network adapter: `git push` plus the `gh` CLI for the draft pull request. */
-export const systemPreservationRemote: CandidatePreservationRemote = {
+/**
+ * Real network adapter: `git push` plus the `gh` CLI for the draft pull request.
+ * With `ghRepo` (`owner/name`) every `gh` call names its repository explicitly
+ * (`--repo`) instead of letting `gh` infer it from the checkout's remotes; the
+ * Decision 0100 fixture exit uses this so a changed remote cannot redirect it.
+ */
+export function createSystemPreservationRemote(options: { ghRepo?: string; pushUrl?: string | null } = {}): CandidatePreservationRemote {
+  const repoArgs = options.ghRepo ? ["--repo", options.ghRepo] : [];
+  // With `pushUrl` (captured by the fixture check) push and ls-remote use that URL, not the mutable `origin` name.
+  const target = options.pushUrl ?? "origin";
+  return {
   hasRemote(repositoryPath) {
     return tryGit(repositoryPath, ["remote", "get-url", "origin"]) !== null;
   },
   push({ repositoryPath, branch, commitSha }) {
     git(repositoryPath, commitSha
-      ? ["push", "origin", `${commitSha}:refs/heads/${branch}`]
-      : ["push", "--set-upstream", "origin", branch]);
+      ? ["push", target, `${commitSha}:refs/heads/${branch}`]
+      : options.pushUrl ? ["push", target, branch] : ["push", "--set-upstream", "origin", branch]);
     return { remote: "origin" };
   },
   listBranchTips({ repositoryPath }) {
-    return git(repositoryPath, ["ls-remote", "--heads", "origin"]).split("\n").flatMap((line) => {
+    return git(repositoryPath, ["ls-remote", "--heads", target]).split("\n").flatMap((line) => {
       const match = /^([0-9a-f]{40,64})\trefs\/heads\/(.+)$/.exec(line.trim());
       return match ? [{ branch: match[2], sha: match[1] }] : [];
     });
   },
   findPullRequest({ repositoryPath, branch }) {
     try {
-      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url,baseRefName,state"], {
+      const output = boundedExec("gh", ["pr", "view", branch, ...repoArgs, "--json", "number,url,baseRefName,state"], {
         cwd: repositoryPath,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"]
@@ -1092,7 +1101,7 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   },
   upsertDraftPullRequest({ repositoryPath, branch, baseBranch, title, body, existing }) {
     if (existing) {
-      boundedExec("gh", ["pr", "edit", String(existing.number), "--body", body], {
+      boundedExec("gh", ["pr", "edit", String(existing.number), ...repoArgs, "--body", body], {
         cwd: repositoryPath,
         stdio: ["ignore", "ignore", "pipe"]
       }, { remedy: pullRequestWriteRemedy(branch) });
@@ -1100,14 +1109,18 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
     }
     const output = boundedExec(
       "gh",
-      ["pr", "create", "--draft", "--base", baseBranch, "--head", branch, "--title", title, "--body", body],
+      ["pr", "create", "--draft", ...repoArgs, "--base", baseBranch, "--head", branch, "--title", title, "--body", body],
       { cwd: repositoryPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
       { remedy: pullRequestWriteRemedy(branch) }
     ).toString().trim();
     const number = Number.parseInt(output.match(/\/pull\/(\d+)/)?.[1] ?? "0", 10);
     return { number, url: output };
   }
-};
+  };
+}
+
+export const systemPreservationRemote: CandidatePreservationRemote = createSystemPreservationRemote();
+
 
 export interface OutstandingCandidate {
   actionId: string;

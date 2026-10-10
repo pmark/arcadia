@@ -326,6 +326,54 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   no launch agent, user config or trust entry names the workspace, then remove
   its directory.
 
+## Fixture standing launch (Decision 0100)
+
+Only once Decision 0100 is answered. `arcadia session launch --fixture-standing
+--agent-identity <name> --preview-fingerprint <hash> ...` mints Decision 0096's
+one-shot authorization without the terminal confirmation. It refuses with a named
+code (nothing launched, nothing minted) unless all hold:
+
+- Decision 0100 is answered "Standing fixture launch, with merge on green" or
+  "Standing fixture launch, you merge" on `main` of github.com/pmark/arcadia
+  itself, fetched with `gh api` (hardcoded host, repository and path). `gh` runs
+  from an absolute, realpath-resolved system path (`/opt/homebrew/bin`,
+  `/usr/local/bin` or `/usr/bin`; never PATH; refused under the home or a temp
+  directory or if group/world-writable) with the passwd-entry HOME and
+  `GH_CONFIG_DIR`, a fixed PATH and no token variables, so it uses the
+  operator's stored `gh` login. The returned `sha` must equal the git blob hash
+  of the returned content and is recorded. The Decision is verified at launch
+  only: a later revert of the answer does not revoke an already-minted 24-hour
+  authorization (the exit re-checks the window and remotes). No local ref,
+  working tree, workspace database or user config is consulted, and any
+  fetch/parse failure refuses (`fixture_standing_decision_unanswered`,
+  `fixture_standing_decision_unverifiable`);
+- today (UTC) is on or before 2026-10-18 (`fixture_standing_expired`);
+- every Git remote's effective fetch and push target is in
+  `FIXTURE_REMOTE_ALLOWLIST` (`src/sessions/fixtureStandingLaunch.ts`, today
+  `pmark/arcadia-three-action-rehearsal-20261004`) and no `url.*.insteadOf` or
+  `pushInsteadOf` rewrite exists in any config scope; or the workspace is an
+  experiment workspace, the repository is inside its allowed root and has no
+  remote or only allowlisted ones. Arcadia's own repository and any other Project
+  are refused (`fixture_standing_not_a_fixture`);
+- `--agent-identity` is given (`fixture_standing_agent_identity_required`) and the
+  shell is not inside an Arcadia Session (`operator_launch_inside_session`).
+
+Run `--fixture-standing` unsandboxed: a sandboxed agent may be denied the
+keychain, and the Decision fetch then fails closed.
+
+The exit re-checks the window and the remotes before the push and again before
+the pull request, and pins every `gh` call to the fixture with `--repo`; a mint's
+24-hour TTL can outlive 2026-10-18, and a refused exit pushes and opens nothing
+(the receipt says why).
+
+The mint records `source: fixture_standing`, the Decision id and answer, the
+agent and the fixture basis in the `authorization_minted` event and, at exit, in
+the receipt. Exit authority is unchanged: validate, commit, push, one draft PR on
+accepted completion, never a merge. Merging a fixture PR on green is a separate
+authority: it needs the answer "with merge on green" plus an independent review
+of the head finding nothing blocking and every check passing. Raising the
+flag does not extend the expiry; a later date needs a new Decision.
+
 ## Claude Code specifics
 
 - `@AGENTS.md` above is a Claude Code import. Codex ignores it and reads

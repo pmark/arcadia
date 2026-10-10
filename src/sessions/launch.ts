@@ -42,6 +42,7 @@ import {
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
+import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
 export interface GuardedLaunchInput {
@@ -73,7 +74,14 @@ export interface GuardedLaunchInput {
    * interactive terminal). Only with `previewFingerprint`; never from inside
    * an Arcadia Session; a reused Session mints nothing. `env` is test-only.
    */
-  operatorLaunch?: { source: OperatorLaunchSource; env?: NodeJS.ProcessEnv };
+  operatorLaunch?: {
+    source: OperatorLaunchSource;
+    /** Required with, and only with, `source: "fixture_standing"` (Decision 0100): the invoking agent, recorded in the receipt. */
+    standing?: { agentIdentity: string };
+    /** Test-only: replaces the GitHub fetch of Decision 0100. Never set by the CLI or the environment. */
+    fetchDecision?: FetchDecisionFile;
+    env?: NodeJS.ProcessEnv;
+  };
   /**
    * With `standingPolicy`, the production epoch the caller observed. A
    * differing current epoch refuses at admission (`stale_epoch`) before any
@@ -174,6 +182,18 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
     // Refused before anything is reserved or started.
     refuseInsideArcadiaSession(input.operatorLaunch.env);
+  }
+  // Decision 0100: a standing fixture mint is verified here, before anything is
+  // reserved, so no caller can mint one without every condition holding.
+  let standingBasis: FixtureStandingBasis | undefined;
+  if (input.operatorLaunch?.source === "fixture_standing") {
+    standingBasis = verifyFixtureStandingLaunch(input.db, {
+      workspace: input.workspace, repoRoot: path.resolve(input.repoRoot), projectSlug: input.projectSlug,
+      agentIdentity: input.operatorLaunch.standing?.agentIdentity, env: input.operatorLaunch.env, now: input.now ?? new Date(),
+      fetchDecision: input.operatorLaunch.fetchDecision
+    });
+  } else if (input.operatorLaunch?.standing) {
+    throw validationError("Only a --fixture-standing launch carries a standing basis.", { code: "operator_launch_standing_mismatch" });
   }
 
   const repoRoot = path.resolve(input.repoRoot);
@@ -752,7 +772,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   if (input.operatorLaunch) {
     mintOperatorLaunchAuthorization(input.db, {
       session: prepared, source: input.operatorLaunch.source, requestId: input.requestId,
-      env: input.operatorLaunch.env, now
+      ...(standingBasis ? { standing: standingBasis } : {}), env: input.operatorLaunch.env, now
     });
   }
 
