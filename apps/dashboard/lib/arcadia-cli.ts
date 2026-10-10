@@ -25,7 +25,7 @@ import type {
 } from "./types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
-import type { ProjectPlansResponse } from "./plans-types";
+import type { PlanProgressData, ProjectPlansResponse } from "./plans-types";
 import type {
   WorkQueue,
   WorkQueueMakeNextResponse,
@@ -542,6 +542,18 @@ export async function loadProjectPlans(
     args.push("--project", projectSlug);
   }
   return runArcadiaCliJson<ProjectPlansResponse>(args);
+}
+
+/**
+ * One Plan's progress with every Action: `arcadia plans --plan <slug> --all`.
+ * Reads the Plan document only, like `loadProjectPlans`.
+ */
+export async function loadPlanProgress(
+  repoPath: string,
+  projectSlug: string,
+  planSlug: string
+): Promise<ArcadiaJsonSuccess<PlanProgressData>> {
+  return runArcadiaCliJson<PlanProgressData>(["plans", "--repo", repoPath, "--project", projectSlug, "--plan", planSlug, "--all"]);
 }
 
 export interface ProjectSetupContextResponse {
