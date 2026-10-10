@@ -38,7 +38,7 @@
 
 ## Work metadata (80/20)
 
-<!-- Required. Keep exactly one block; never invent numbers (`unknown` is allowed); update it after each review round, push, and at merge-ready. It grants no authority and is not a merge gate. Purpose: calibrate size and token/time estimates, and model selection, from actuals. -->
+<!-- Required. When filling in, remove the HTML comment markers around the block below. Roles are the governed registry roles (Decisions 0100 and 0112); `implementer` corresponds to the attempt role `development` and `code-reviewer` to `code-review`. Keep exactly one block; never invent numbers (`unknown` is allowed); update it after each review round, push, and at merge-ready. It grants no authority and is not a merge gate. Purpose: calibrate size and token/time estimates, and model selection, from actuals. -->
 
 <!--
 ```arcadia-work-metadata
@@ -47,7 +47,7 @@ action: <plan/slug#action-id, or operator-directed:#<issue>>
 size: S | M | L        # about 30 / 55 / 90 minutes of agent work in one session
 operator_gate: none | <reason the operator must act: merge-authority, decision, operator-step, credentials, spend>
 agents:                # one entry per agent that did work: author, reviewers, fixers
-  - role: lead | planner | plan-critic | development | code-review | qa
+  - role: lead | planner | plan-critic | implementer | code-reviewer | qa | researcher
     provider: claude-code | codex | opencode
     model: <model id>
     tier: light | standard | heavy
