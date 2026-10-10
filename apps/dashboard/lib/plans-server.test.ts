@@ -17,7 +17,7 @@ vi.mock("../../../src/db/repositories", () => ({
   getProjectMetadata: (_db: null, id: string) => ({ repo_path: repos[id] })
 }));
 
-import { loadAllPlans, loadPlanDetail, PlanNotFound } from "./plans-server";
+import { loadAllPlans, loadPlanDetail, mapLimit, PlanNotFound } from "./plans-server";
 
 const row = (slug: string) => ({ slug, status: "active", governed: true, milestone: "M", isActivePlan: true, actionCounts: null, activationNote: null, relativePath: `docs/plans/${slug}.md` });
 
@@ -49,5 +49,19 @@ describe("plans server", () => {
     expect(detail.progress.actions).toHaveLength(1);
     await expect(loadPlanDetail("nope", "pilot")).rejects.toBeInstanceOf(PlanNotFound);
     await expect(loadPlanDetail("loose", "pilot")).rejects.toBeInstanceOf(PlanNotFound);
+  });
+
+  it("never runs more than the limit at once and keeps input order", async () => {
+    let live = 0;
+    let peak = 0;
+    const out = await mapLimit([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      live -= 1;
+      return n * 10;
+    });
+    expect(peak).toBe(3);
+    expect(out).toEqual([10, 20, 30, 40, 50, 60, 70]);
   });
 });
