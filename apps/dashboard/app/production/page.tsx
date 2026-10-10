@@ -2,9 +2,11 @@
 
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GlobalStrip, QueueSection, SessionsSection } from "../../components/production-console";
 import { Sidebar } from "../../components/sidebar";
+import { parseLaunchParam } from "../../lib/launch-link";
 import { assembleQueue, type ConsoleCoreData, type ConsoleQueuePart } from "../../lib/production-console";
 
 /** Sessions and production state: fast while anything is live. */
@@ -25,13 +27,31 @@ const QUEUE_POLL_MS = 30_000;
  * through an existing preview-then-confirm route.
  */
 export default function ProductionPage() {
+  // useSearchParams needs a Suspense boundary for the static build.
+  return (
+    <Suspense fallback={null}>
+      <ProductionPageBody />
+    </Suspense>
+  );
+}
+
+function ProductionPageBody() {
   const [core, setCore] = useState<ConsoleCoreData | null>(null);
   const [coreError, setCoreError] = useState<string | null>(null);
   const [queuePart, setQueuePart] = useState<ConsoleQueuePart | null>(null);
   const [queueFetchError, setQueueFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const [launchKey, setLaunchKey] = useState<string | null>(null);
+  const [queueFresh, setQueueFresh] = useState(false);
   const liveRef = useRef(false);
+
+  // Re-read whenever the query changes (a link followed while already on /production), not only on mount.
+  const searchParams = useSearchParams();
+  const searchString = searchParams?.toString() ?? "";
+  useEffect(() => {
+    setLaunchKey(parseLaunchParam(searchString));
+  }, [searchString]);
   // Polls, focus and post-toggle refreshes overlap; only the newest request may update the page.
   const coreSeq = useRef(0);
   const queueSeq = useRef(0);
@@ -60,11 +80,14 @@ export default function ProductionPage() {
       if (sequence !== queueSeq.current) return;
       if (!response.ok) throw new Error(body.error ?? "Could not read the queue.");
       setQueuePart(body);
+      setQueueFresh(fresh);
       setQueueFetchError(null);
     } catch (cause) {
       if (sequence === queueSeq.current) setQueueFetchError(cause instanceof Error ? cause.message : String(cause));
     }
   }, []);
+
+  const requestFreshQueue = useCallback(() => void loadQueue(true), [loadQueue]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -140,7 +163,7 @@ export default function ProductionPage() {
         <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore(true)} />
         <div className="grid min-w-0 content-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <SessionsSection core={core} now={now} />
-          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} />
+          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} launchKey={launchKey} queueFresh={queueFresh} onRequestFresh={requestFreshQueue} />
         </div>
         <nav aria-label="Related pages" className="border-t border-line pt-4 text-xs text-muted">
           Older partial views, kept while this page settles in:{" "}

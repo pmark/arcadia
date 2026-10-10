@@ -2126,6 +2126,7 @@ function reviewItemSelectSql(whereSql: string): string {
   return `SELECT
     ri.*,
     p.name AS project_name,
+    p.slug AS project_slug,
     p.goal AS project_goal,
     p.goal AS project_outcome,
     wi.title AS work_item_title,
