@@ -110,9 +110,11 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     ? [
         `  2. Request protected preservation through the existing fixed launcher: arcadia-preserve-broker-${input.agent}`,
         "     Do not run raw git add, git commit or git push, and do not try to change permissions. If the broker",
-        "     refuses (for example a stale preservation heartbeat), do not retry or work around it: the host",
-        "     commits and preserves your candidate when you exit.",
-        "  3. Record completion with exactly this one command, with each `note` placeholder replaced by real",
+        "     refuses for any reason (a stale preservation heartbeat, a validation error), that is expected and",
+        "     normal: do not run the broker again and do not work around it, and continue with step 3 anyway. The",
+        "     host commits and preserves your candidate when you exit.",
+        "  3. Always do this step, whether or not the broker succeeded. Record completion with exactly this one",
+        "     command, with each `note` placeholder replaced by real",
         "     evidence (keep every `criterion` and `status` as given; change nothing else). If the broker",
         "     preserved your work, HEAD moved: set `candidate_revision` to the output of `git rev-parse HEAD` first:"
       ]
