@@ -912,7 +912,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         // "omit unless this is the active plan"), so completing an Action in any
         // other Plan records its progress and leaves that Plan's pointer field
         // exactly as it was (Issue #1061).
-        const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId),
+        const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId, proposal.normalized.requestId),
           planComplete
             ? { status: "complete", current_action: null, updated }
             : completingActivePlan ? { current_action: nextResolution.actionId, updated } : { updated });
@@ -1267,7 +1267,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             remainderIds.filter((id) => !freshReachableFrom(id).has(targetId));
 
           let next = amendAction(current, actionId, narrowedTitle, narrowed, freshAction.dependsOn, action.references, proposal.normalized.requestId);
-          next = markActionDone(next, actionId);
+          next = markActionDone(next, actionId, proposal.normalized.requestId);
           for (const remainderAction of normalizedRemainder) {
             next = appendPlanAction(next, {
               id: remainderAction.id, title: remainderAction.desiredResult, responsibility: action.responsibility,
@@ -2348,7 +2348,14 @@ function setTopLevelFields(content: string, fields: Record<string, string | null
     else if (index >= 0) lines[index] = `${field}: ${yamlScalar(value)}`;
     else lines.push(`${field}: ${yamlScalar(value)}`);
   }
-  return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
+  // A callback, not a string: the frontmatter block for a Plan document
+  // embeds the `actions:` list, so `lines` can carry an untouched Action
+  // field's literal text (for example `markActionDone`'s own completed
+  // next_action line, which may itself contain `$&`/`$1`/etc. from a
+  // caller-supplied Agent Ask request_id). A string replacement here would
+  // reinterpret those patterns against `match[0]`'s own match.
+  const newFrontmatter = `---\n${lines.join("\n")}\n---`;
+  return content.replace(match[0], () => newFrontmatter);
 }
 
 /** One top-level frontmatter scalar, unquoted; null when absent or empty. */
@@ -2659,14 +2666,49 @@ function amendAction(
   return content.replace(pattern, block);
 }
 
-function markActionDone(content: string, actionId: string): string {
+function markActionDone(content: string, actionId: string, requestId: string): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
   if (!/^ {4}status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
   block = block.replace(/^ {4}status:.*$/m, "    status: done");
-  return content.replace(pattern, block);
+  // `next_action` is optional in `src/docs/parse.ts` unless `clarification`
+  // is "clarified" (required) or this is the current pointer Action
+  // (clarification itself required); `complete` can target an otherwise
+  // valid legacy or non-active-Plan Action that never declared either. Rewrite
+  // the field only when it is present — there is no stale instruction to make
+  // unambiguous when it was never there, and the completion is still named by
+  // the canonical Log entry and settlement receipt either way. Leaving it
+  // absent preserves behavior the old writer already had for this shape.
+  if (/^ {4}next_action:/m.test(block)) {
+    // `next_action` is free text and may already be written as a YAML block
+    // scalar (`|`/`>`) spanning several more-indented lines; a header-only
+    // replace leaves those continuation lines behind, where they silently fold
+    // into the new plain scalar instead of being discarded. Consumed the same
+    // way `depends_on`/`references` consume their own continuation lines.
+    // A continuation line is one indented deeper than the 4-space key (5+
+    // spaces); blank lines count only when a deeper line follows them. The
+    // field's last line is often the block's last line (for the last Action the
+    // block runs to the closing `---` and includes top-level fields such as
+    // `questions:`), so the match must stop at the first line that is not a
+    // deeper-indented continuation and never consume that line's newline.
+    // The replacement is a callback, not a string: `requestId` is a caller-
+    // supplied Agent Ask request_id (normalized by `requiredText` only, so a
+    // literal `$&`/`$1`/etc is legal input), and `String.replace` expands those
+    // patterns in a string replacement. A callback returns it literally.
+    const completed = `Completed via Agent Ask ${requestId}; no further action.`;
+    // A request_id with a line break would otherwise inject YAML lines into the
+    // Action; a JSON double-quoted scalar is valid YAML and keeps it one line.
+    const completedScalar = /[\r\n]/.test(completed) ? JSON.stringify(completed) : yamlScalar(completed);
+    const newNextActionLine = `    next_action: ${completedScalar}`;
+    block = block.replace(/^ {4}next_action:.*(?:(?:\r?\n[ \t]*(?=\r?\n))*\r?\n {5,}\S.*)*/m, () => newNextActionLine);
+  }
+  // `block` now carries that same literal requestId text, so this final
+  // reinsertion into `content` must also use a callback: a string replacement
+  // here would reinterpret any `$&`/`$1`/etc. inside `block` against
+  // `pattern`'s own match in `content`, not keep `block` literal.
+  return content.replace(pattern, () => block);
 }
 
 /**
