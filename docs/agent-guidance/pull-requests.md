@@ -164,7 +164,13 @@ the dashboard, not by merging a pull request (Decision 0076).
 
 Operator pings (`arcadia ping send`) are capped at 500 characters: a nudge,
 not a report. Put detail in the PR or Issue and link it; a longer message is
-refused, not truncated.
+refused, not truncated. The cap is on the message text only; the bot appends
+links outside it. Every ping that needs the operator carries a tappable link:
+pass `--todo <kind>:<project>/<id>` (the key `arcadia todo` prints, for example
+`decision:arcadia/0119`) so Discord links straight to `/todo/<kind>/<project>/<id>`
+on the dashboard, or `--link <PR URL>` for a pull request. A `look` or
+`attention` ping with neither falls back to the `/todo` list, and
+`arcadia ping send` warns when an `attention` ping has neither.
 
 - **On open.** The moment a PR is created, draft and settle an Agent Ask,
   `intent: log`, `request_id` `pr-opened-<project>-pr<number>`, whose

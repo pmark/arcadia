@@ -8,6 +8,7 @@ import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
 import { categorizeNotification, sendToCategory } from "./categories.js";
 import { drainOperatorPings } from "./operatorPings.js";
+import { todoItemUrl } from "../todoLinks.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
@@ -93,7 +94,7 @@ export function evaluateNotifications(
     .filter((event): event is string => Boolean(event));
   const agentAskMessages = (snapshot.agentAskNotifications ?? []).map((notification) => ({
     key: `agent-ask:${notification.settlementId}`,
-    content: agentAskSettlementMessage(notification)
+    content: agentAskSettlementMessage(notification, dashboardUrl)
   }));
 
   if (!previous) {
@@ -382,10 +383,15 @@ function agentAskSettlementIdFromNotificationKey(key: string): string | null {
   return key.startsWith("agent-ask:") ? key.slice("agent-ask:".length) : null;
 }
 
-export function agentAskSettlementMessage(notification: AgentAskNotificationItem): string {
+export function agentAskSettlementMessage(notification: AgentAskNotificationItem, dashboardUrl?: string): string {
   if (notification.intent === "complete") {
     return agentAskCompletionMessage(notification);
   }
+  // A settlement that queued Actions is a follow-up the operator may want to
+  // open; a rejection or a no-op has nothing further to tap through to.
+  const followUpUrl = notification.queueActionKeys.length > 0 && notification.requestId
+    ? todoItemUrl(dashboardUrl, { kind: "agent_ask", project: notification.projectSlug, id: notification.requestId })
+    : null;
   const recovery = notification.recovery;
   return [
     `Agent Ask settled: ${notification.disposition}`,
@@ -406,6 +412,7 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
             : `Documents NOT committed; projection ${recovery.operationalSync}. ${recovery.remedy}`
         ]
       : []),
+    ...(followUpUrl ? [`Open in To-do: ${followUpUrl}`] : []),
     `Settlement: ${notification.settlementId}`
   ].join("\n");
 }

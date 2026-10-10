@@ -29,6 +29,8 @@ export interface OperatorPingInput {
   kind?: string;
   channel?: string | null;
   link?: string | null;
+  /** `<kind>:<project>/<id>`: the /todo item this ping is about; the bot turns it into a dashboard deep link. */
+  todo?: string | null;
   agent?: string | null;
   now?: Date;
 }
@@ -39,6 +41,7 @@ export interface OperatorPing {
   kind: OperatorPingKind;
   channel: string | null;
   link: string | null;
+  todoKey: string | null;
   agent: string | null;
   status: "pending" | "sent";
   discordMessageId: string | null;
@@ -48,6 +51,8 @@ export interface OperatorPing {
 
 export interface QueuedOperatorPing {
   ping: OperatorPing;
+  /** Set when an attention ping names neither --todo nor --link, so the bot can only point at /todo. */
+  warnings?: string[];
   /** True when an identical recent ping already existed and was reused rather than queued again. */
   deduplicated: boolean;
 }
@@ -56,11 +61,15 @@ export function ensureOperatorPingTable(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS operator_pings (
     id TEXT PRIMARY KEY, message TEXT NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('look', 'fyi', 'attention')),
-    channel TEXT, link TEXT, agent TEXT,
+    channel TEXT, link TEXT, agent TEXT, todo_key TEXT,
     status TEXT NOT NULL CHECK (status IN ('pending', 'sent')) DEFAULT 'pending',
     discord_message_id TEXT, created_at TEXT NOT NULL, sent_at TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_operator_pings_status ON operator_pings(status, created_at);`);
+  const columns = db.prepare("PRAGMA table_info(operator_pings)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "todo_key")) {
+    db.exec("ALTER TABLE operator_pings ADD COLUMN todo_key TEXT");
+  }
 }
 
 export function queueOperatorPing(db: Database.Database, input: OperatorPingInput): QueuedOperatorPing {
@@ -72,7 +81,7 @@ export function queueOperatorPing(db: Database.Database, input: OperatorPingInpu
       WHERE message = ? AND COALESCE(channel, '') = ? AND created_at >= ?
       ORDER BY created_at DESC LIMIT 1`)
       .get(fields.message, fields.channel ?? "", new Date(now.getTime() - OPERATOR_PING_DEDUP_WINDOW_MS).toISOString());
-    if (duplicate) return { ping: toPing(duplicate as PingRow), deduplicated: true };
+    if (duplicate) return { ping: toPing(duplicate as PingRow), deduplicated: true, warnings: linkWarnings(fields) };
 
     const recent = db.prepare("SELECT COUNT(*) AS n FROM operator_pings WHERE created_at >= ?")
       .get(new Date(now.getTime() - 60 * 60 * 1000).toISOString()) as { n: number };
@@ -84,12 +93,13 @@ export function queueOperatorPing(db: Database.Database, input: OperatorPingInpu
     }
 
     const id = `ping_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
-    db.prepare(`INSERT INTO operator_pings (id, message, kind, channel, link, agent, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`)
-      .run(id, fields.message, fields.kind, fields.channel, fields.link, fields.agent, createdAt);
+    db.prepare(`INSERT INTO operator_pings (id, message, kind, channel, link, todo_key, agent, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`)
+      .run(id, fields.message, fields.kind, fields.channel, fields.link, fields.todoKey, fields.agent, createdAt);
     return {
       ping: { id, ...fields, status: "pending", discordMessageId: null, createdAt, sentAt: null },
-      deduplicated: false
+      deduplicated: false,
+      warnings: linkWarnings(fields)
     };
   });
 }
@@ -129,7 +139,28 @@ export function normalizeOperatorPing(input: OperatorPingInput): NormalizedField
   if (channel !== null && !OPERATOR_PING_CHANNEL_PATTERN.test(channel)) {
     throw validationError("--channel must be a configured channel alias (lowercase letters, digits, - or _) or a channel id.", { channel });
   }
-  return { message, kind, channel, link: normalizeLink(input.link), agent: input.agent?.trim().slice(0, 64) || null };
+  return { message, kind, channel, link: normalizeLink(input.link), todoKey: normalizeTodoKey(input.todo), agent: input.agent?.trim().slice(0, 64) || null };
+}
+
+/** `<kind>:<project>/<id>`; kind may carry one `:sub` part (escalation:<kind>), id may carry `#` (plan actions). */
+export const OPERATOR_PING_TODO_KEY_PATTERN =
+  /^[a-z][a-z0-9_]{0,31}(?::[a-z0-9][a-z0-9_-]{0,31})?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._#:-]{0,127}$/;
+
+function normalizeTodoKey(raw: string | null | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (!OPERATOR_PING_TODO_KEY_PATTERN.test(value)) {
+    throw validationError(
+      "--todo must look like <kind>:<project>/<id>, the key `arcadia todo` prints (for example decision:arcadia/0119).",
+      { todo: value }
+    );
+  }
+  return value;
+}
+
+function linkWarnings(fields: NormalizedFields): string[] {
+  if (fields.kind !== "attention" || fields.link || fields.todoKey) return [];
+  return ["An attention ping with neither --todo nor --link can only link to the /todo list. Pass --todo <kind>:<project>/<id> (or --link <PR url>) so the operator lands on the exact item."];
 }
 
 function normalizeLink(raw: string | null | undefined): string | null {
@@ -148,7 +179,7 @@ function normalizeLink(raw: string | null | undefined): string | null {
 }
 
 interface PingRow {
-  id: string; message: string; kind: string; channel: string | null; link: string | null; agent: string | null;
+  id: string; message: string; kind: string; channel: string | null; link: string | null; todo_key: string | null; agent: string | null;
   status: string; discord_message_id: string | null; created_at: string; sent_at: string | null;
 }
 
@@ -159,6 +190,7 @@ function toPing(row: PingRow): OperatorPing {
     kind: row.kind as OperatorPingKind,
     channel: row.channel,
     link: row.link,
+    todoKey: row.todo_key ?? null,
     agent: row.agent,
     status: row.status as OperatorPing["status"],
     discordMessageId: row.discord_message_id,
