@@ -63,7 +63,7 @@ export function todoHrefOf(kind: string, project: string, id: string): string {
 
 /**
  * Reads `/todo/<kind>/<project>/<id…>` path segments back into a to-do key.
- * Null when the shape is wrong (a kind that is not a lowercase word, or a
+ * Null when the shape is wrong (a kind that is not a lowercase word with at most one `:<sub>` part, e.g. `escalation:auth`, or a
  * missing project or id), which the deep-link page reports as "not found".
  */
 export function parseTodoPath(kind: string | undefined, rest: string[] | undefined): { kind: string; project: string; id: string; todoKey: string } | null {
@@ -72,7 +72,7 @@ export function parseTodoPath(kind: string | undefined, rest: string[] | undefin
   };
   const parts = (rest ?? []).map(decode);
   const k = kind ? decode(kind) : "";
-  if (!/^[a-z][a-z0-9_]*$/.test(k) || parts.length < 2 || parts.some((part) => part === "")) return null;
+  if (!/^[a-z][a-z0-9_]*(:[a-z0-9][a-z0-9_-]*)?$/.test(k) || parts.length < 2 || parts.some((part) => part === "")) return null;
   const [project, ...idParts] = parts;
   const id = idParts.join("/");
   return { kind: k, project, id, todoKey: todoKeyOf(k, project, id) };

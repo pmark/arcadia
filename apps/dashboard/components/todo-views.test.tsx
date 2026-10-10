@@ -114,6 +114,61 @@ describe("TodoItemView", () => {
   });
 });
 
+describe("TodoItemView never claims Done on an incomplete list", () => {
+  const missing = parseTodoPath("decision", ["alpha", "0042"]);
+  const render = (extra: Partial<TodoCommon> & { source?: "todo" | "fallback" | null }) =>
+    renderToStaticMarkup(
+      <TodoItemView {...common} onRetry={() => undefined} {...extra} target={missing} approvals={[]} source={extra.source === undefined ? "todo" : extra.source} />
+    );
+
+  it("shows Done only for a complete, error-free list", () => {
+    expect(render({})).toContain('aria-label="Done"');
+  });
+
+  it.each([
+    ["a note (loader failure)", { note: "Settle controls are unavailable (boom)" }, "Settle controls are unavailable"],
+    ["an unavailable source", { note: "The to-do list could not read a source: review items: db locked" }, "db locked"],
+    ["a poll error after a prior success", { hasLoaded: true, error: "fetch failed" }, "fetch failed"],
+    ["the fallback list", { source: "fallback" as const }, "could not be read"]
+  ])("shows State unknown with Retry and a link back for %s", (_name, extra, text) => {
+    const html = render(extra);
+    expect(html).not.toContain('aria-label="Done"');
+    expect(html).toContain("State unknown");
+    expect(html).toContain(text);
+    expect(html).toContain("Retry");
+    expect(html).toContain('href="/todo"');
+  });
+
+  it("prefers an exact todoKey match over an alias match", () => {
+    const exact = row("decision", "alpha", "0001", { title: "EXACT" });
+    const aliased = row("decision", "alpha", "0002", { title: "ALIASED", aliases: ["0001"] });
+    const html = renderToStaticMarkup(
+      <TodoItemView {...common} target={parseTodoPath("decision", ["alpha", "0001"])} approvals={[aliased, exact]} source="todo" />
+    );
+    expect(html).toContain("EXACT");
+    expect(html).not.toContain("ALIASED");
+  });
+});
+
+describe("deep-link path forms", () => {
+  it("round-trips the Discord bot's encoding of a colon kind", () => {
+    // apps/discord-bot/src/todoLinks.ts: encodeURIComponent on each segment.
+    const url = ["escalation:auth", "alpha", "e 1"].map(encodeURIComponent).join("/");
+    expect(url).toBe("escalation%3Aauth/alpha/e%201");
+    const [kind, ...rest] = url.split("/");
+    const parsed = parseTodoPath(kind, rest);
+    expect(parsed).toMatchObject({ kind: "escalation:auth", project: "alpha", id: "e 1", todoKey: "escalation:auth:alpha/e 1" });
+    expect(todoHrefOf("escalation:auth", "alpha", "e 1")).toBe(`/todo/${url}`);
+    expect(parseTodoPath("escalation:a:b", ["alpha", "x"])).toBeNull();
+  });
+
+  it("decodes exactly once, so a literal percent in an id survives", () => {
+    // Next keeps params percent-encoded, so an id "50%" arrives as "50%25".
+    expect(parseTodoPath("review_item", ["alpha", "50%25"])?.id).toBe("50%");
+    expect(parseTodoPath("review_item", ["alpha", encodeURIComponent("%41")])?.id).toBe("%41");
+  });
+});
+
 describe("phone constraints", () => {
   const dir = new URL("./", import.meta.url);
   const sources = ["todo-card.tsx", "todo-views.tsx", "../hooks/use-approvals.ts", "../app/todo/page.tsx", "../app/todo/[kind]/[...id]/page.tsx"].map((file) =>

@@ -23,6 +23,7 @@ export default function TodoItemPage() {
         error={state.error}
         note={state.note}
         hasLoaded={state.hasLoaded}
+        onRetry={() => void state.refresh()}
       />
     </MobileShell>
   );

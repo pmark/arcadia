@@ -13,6 +13,7 @@ export interface TodoCommon {
   error: string | null;
   note: string | null;
   hasLoaded: boolean;
+  onRetry?: () => void;
 }
 
 /** The groups the list shows, in order. Stale items are separate and collapsed. */
@@ -132,7 +133,7 @@ export function TodoItemView({
       </div>
     );
   }
-  const found = approvals.find((approval) => matchesTodoTarget(approval, target));
+  const found = approvals.find((approval) => approval.todoKey === target.todoKey) ?? approvals.find((approval) => matchesTodoTarget(approval, target));
   const heading = `${kindLabel(target.kind)} ${target.id}`;
   if (found) {
     return (
@@ -143,30 +144,39 @@ export function TodoItemView({
       </div>
     );
   }
-  if (!common.hasLoaded) {
+  if (!common.hasLoaded && !common.error) {
     return (
       <div>
         <div className="mb-3">{back}</div>
-        <Notices error={common.error} note={null} message={null} />
-        {common.error ? null : <Loading />}
+        <Loading />
       </div>
     );
   }
-  // Review items come only from `arcadia todo`; if that read failed, an absent one is unknown, not done.
-  if (source === "fallback" && target.kind !== "decision" && target.kind !== "agent_ask") {
+  // "Done" is only true when the list is known complete: the last poll
+  // succeeded, `arcadia todo` read every source (no note), and it was not the
+  // fallback list. Anything else means an absent item is unknown, not settled.
+  const reason = common.error ?? common.note ?? (source !== "todo" ? "The to-do list could not be read." : null);
+  if (reason !== null || !common.hasLoaded) {
     return (
       <div>
         <div className="mb-3">{back}</div>
-        <Notices error={common.error} note={common.note} message={null} />
-        <h1 className="text-xl font-semibold">{heading}</h1>
-        <p className="mt-2 text-sm text-muted">The to-do list could not be read, so this item's state is unknown. Try again shortly.</p>
+        <Notices error={null} note={null} message={common.message} />
+        <section aria-label="State unknown" className="rounded-md border border-line bg-panel p-4 shadow-soft">
+          <h1 className="break-words text-lg font-semibold">{heading}</h1>
+          <p className="mt-2 break-words text-sm text-muted">State unknown — {reason ?? "the list has not loaded."} This item may still be waiting on you.</p>
+          {common.onRetry ? (
+            <button type="button" onClick={common.onRetry} className="mt-3 inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm font-semibold text-ink">
+              Retry
+            </button>
+          ) : null}
+        </section>
       </div>
     );
   }
   return (
     <div>
       <div className="mb-3">{back}</div>
-      <Notices error={common.error} note={null} message={common.message} />
+      <Notices error={null} note={null} message={common.message} />
       <section aria-label="Done" className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-moss">
           <CheckCircle2 className="h-4 w-4" aria-hidden="true" />Done
