@@ -2,7 +2,24 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const failure = vi.hoisted(() => ({ afterCallback: false }));
+
+// Lets one test make the database step fail after the transaction body (and
+// so the Decision commit) has run, as a DB COMMIT failure would.
+vi.mock("../src/db/connection.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/db/connection.js")>();
+  return {
+    ...actual,
+    writeTransaction: <T,>(db: Parameters<typeof actual.writeTransaction>[0], callback: () => T): T =>
+      actual.writeTransaction(db, () => {
+        const result = callback();
+        if (failure.afterCallback) throw new Error("simulated database commit failure");
+        return result;
+      })
+  };
+});
 import { runDecisionNewCommand } from "../src/commands/decision.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
@@ -223,6 +240,33 @@ describe("review approve applies its effect or refuses", () => {
     expect(log).toContain("Written by `arcadia review approve`");
     const count = execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
     expect(count).toBe("3");
+  });
+
+  it("keeps the committed answer when the database step fails after the commit, and a retry closes the item", () => {
+    const { workspace, repoRoot, projectSlug, projectId } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "db-fails", question: "Which way?" });
+    execFileSync("git", ["add", "docs"], { cwd: repoRoot });
+    execFileSync("git", ["commit", "-qm", "raise decision"], { cwd: repoRoot });
+    const item = clarificationFor(workspace, projectId, "decision/db-fails");
+
+    failure.afterCallback = true;
+    try {
+      expect(() => runReviewApproveCommand({ workspace, id: item.id, answer: "Go left" }))
+        .toThrow(/simulated database commit failure/);
+    } finally {
+      failure.afterCallback = false;
+    }
+
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" })).toBe("");
+    expect(readFileSync(path.join(repoRoot, "docs/decisions/0001-db-fails.md"), "utf8")).toContain("answer: Go left");
+    expect(withReadOnlyDatabase(workspace, (db) => getReviewItem(db, item.id))?.status).toBe("open");
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
+
+    runReviewApproveCommand({ workspace, id: item.id, answer: "Go left" });
+
+    expect(withReadOnlyDatabase(workspace, (db) => getReviewItem(db, item.id))?.status).toBe("approved");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" })).toBe(head);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" })).toBe("");
   });
 
   it("restores the file, surfaces the error and leaves the item open when the commit fails", () => {

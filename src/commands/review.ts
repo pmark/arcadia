@@ -1441,6 +1441,7 @@ function resolveClarificationDecision(
   const recordedAnswer = prepared?.answer ?? recorded;
   const clarificationReset = Boolean(decision.work_item_id);
   let decisionFileWriteStarted = false;
+  let decisionCommitted = false;
   let updated: ReviewItemSummary;
   try {
     updated = withDatabase(workspacePath, (db) =>
@@ -1472,13 +1473,17 @@ function resolveClarificationDecision(
             source: "arcadia review approve",
             retryHint: "answer the clarification again"
           });
+          decisionCommitted = true;
         }
 
         return next;
       })
     );
   } catch (error) {
-    if (prepared && decisionFileWriteStarted) {
+    // Once the answer is committed, git holds it: restoring `before` would
+    // leave a dirty, reverted file. The item stays open and a retry hits the
+    // already-committed no-op in recordDecisionAnswer.
+    if (prepared && decisionFileWriteStarted && !decisionCommitted) {
       try {
         writeFileSync(prepared.absolutePath, prepared.before, "utf8");
       } catch {
