@@ -299,9 +299,10 @@ Three preferences carry the strategy:
   When a Project's active Plan waits on the operator, its turn passes to the
   next Project instead of to its own next Plan
   ([Decision 0116](../decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md)).
-  Inside a Project the default is Focus: one Plan at a time, with corrective
-  and blocker Actions outranking planned work through the existing class
-  tiers.
+  Inside a Project the proposed default is Focus: one Plan at a time, with
+  corrective and blocker Actions outranking planned work through the existing
+  class tiers. No Decision ratifies Focus yet; 0116 decides only where a
+  blocked Project's turn goes.
 - **How much.** Per provider window, a reserve kept from agents. A Session
   starts only while projected use at the window's reset stays at or below
   100% minus the reserve (Decisions 0103 and 0111, open). Tokens are counted
@@ -325,7 +326,8 @@ Safety rules added to the model above:
 
 An adversarial review recommended strict priority and one unmerged candidate,
 and excluding OpenCode until it has a probe. The operator chose shares, two
-candidates and an OpenCode ceiling. Decisions 0115-0118 record both sides
+unmerged candidates (still one live Session per repository, Decision 0066) and
+an OpenCode ceiling. Decisions 0115-0118 record both sides
 for the operator's answer.
 
 ## 4. Sequence (the 20% first)
