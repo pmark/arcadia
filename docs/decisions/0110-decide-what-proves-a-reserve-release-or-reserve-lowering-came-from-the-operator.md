@@ -4,7 +4,7 @@ type: decision
 id: "0110"
 slug: decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator
 project: arcadia
-status: open
+status: approved
 question: Decide what proves a reserve release or reserve lowering came from the operator and not from an agent.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: A Discord message from the operator. Arcadia issues a one-time challenge code (expiring within 15 minutes) for a named scope. The operator posts it in the operator channel. The verifier fetches that message live from the Discord API and accepts it only when the author id equals the operator's Discord user id, pinned in checked-in config. It re-fetches each time the release is used
+decided: 2026-10-09
 ---
 
 # Decision 0110: Decide what proves a reserve release or reserve lowering came from the operator and not from an agent.
