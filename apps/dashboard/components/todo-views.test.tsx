@@ -202,7 +202,7 @@ describe("TodoCard build packets and Ask eligibility", () => {
 
   it("disables Accept with the reason and makes Reject primary when accepting would not apply", () => {
     const html = render(row("agent_ask", "alpha", "p1", { acceptable: false, acceptWhy: "Agent Ask Project has no resolvable active managed Plan." }));
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Won(&#x27;|')t apply — Agent Ask Project has no resolvable active managed Plan\.<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Likely won(&#x27;|')t apply — Agent Ask Project has no resolvable active managed Plan\.<\/button>/);
     expect(html).not.toContain(">Accept<");
     expect(html).toContain(">Reject<");
   });

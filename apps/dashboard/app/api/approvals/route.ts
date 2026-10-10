@@ -3,7 +3,7 @@ import { isSameOriginRequest } from "../../../lib/originGuard";
 import {
   approveDecision,
   ArcadiaCliError,
-  loadAgentAskEligibility,
+  peekAgentAskEligibility,
   loadOpenDecisions,
   loadOperatorTodo,
   loadPendingAgentAsks,
@@ -30,7 +30,8 @@ export async function GET() {
     if (loaderFailure && todo.status === "rejected") throw loaderFailure.reason;
     const pendingAsks = asks.status === "fulfilled" ? asks.value.data.pending : null;
     // Whether Accept would apply is read here, server-side, so the page never offers a button the data does not support.
-    const eligibility = pendingAsks ? await loadAgentAskEligibility(pendingAsks).catch(() => undefined) : undefined;
+    // It never waits: cached verdicts only, previews run in the background (unknown until one lands).
+    const eligibility = pendingAsks ? peekAgentAskEligibility(pendingAsks) : undefined;
     const list = buildApprovals({
       eligibility,
       asks: pendingAsks,

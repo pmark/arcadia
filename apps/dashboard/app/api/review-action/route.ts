@@ -3,6 +3,7 @@ import { isSameOriginRequest } from "../../../lib/originGuard";
 import {
   ArcadiaCliError,
   flagReviewForAgent,
+  loadReviewIntent,
   reassessReviewItem,
   resolveReviewReply,
   reviewApproveWithExecute,
@@ -56,6 +57,16 @@ export async function POST(request: Request) {
 
     if (action === "approve" && execute && noExecute) {
       return NextResponse.json({ error: "execute and noExecute cannot be combined.", details: null }, { status: 400 });
+    }
+
+    // A build packet authorizes a Session launched separately; from the dashboard it may only be approved with noExecute.
+    // Anything else that approves (a bare approve defaults to executing, --execute, a reply) is refused for it. Fails closed.
+    const wouldExecute = (action === "approve" && !noExecute) || action === "resolve";
+    if (wouldExecute && await loadReviewIntent(id) === "CodexBuildPacketApproval") {
+      return NextResponse.json(
+        { error: "A build packet can only be approved without executing (noExecute); the Session is launched separately.", details: { id } },
+        { status: 400 }
+      );
     }
 
     if (action === "approve" && execute) {

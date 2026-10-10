@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ArcadiaCliError, clearAgentAskEligibilityCache, loadAgentAskEligibility } from "./arcadia-cli";
+import { ArcadiaCliError, clearAgentAskEligibilityCache, peekAgentAskEligibility, reviewActionArgs, settleAgentAskEligibility } from "./arcadia-cli";
 import { buildApprovals } from "./approvals";
 import type { AgentAskPendingItem, OperatorTodoItem } from "./arcadia-cli";
 import { requestFor } from "../hooks/use-approvals";
@@ -55,31 +55,60 @@ describe("Agent Ask accept eligibility", () => {
     ]);
   });
 
-  it("reads eligibility from the dry-run preview: refusal is false with its reason, success is true, other failures unknown", async () => {
+  it("never waits: the first peek is empty, previews run in the background, the next peek has the verdicts", async () => {
     clearAgentAskEligibilityCache();
-    const calls: string[] = [];
-    const result = await loadAgentAskEligibility([{ proposalId: "a" }, { proposalId: "b" }, { proposalId: "c" }], async (id) => {
-      calls.push(id);
+    const preview = async (id: string) => {
       if (id === "b") throw new ArcadiaCliError("VALIDATION_ERROR: Agent Ask Project has no resolvable active managed Plan.\nmore", 400);
       if (id === "c") throw new ArcadiaCliError("timed out", 500);
       return {};
-    });
+    };
+    const asks = [{ proposalId: "a" }, { proposalId: "b" }, { proposalId: "c" }];
+    expect(peekAgentAskEligibility(asks, preview).size).toBe(0);
+    await settleAgentAskEligibility();
+    const result = peekAgentAskEligibility(asks, preview);
     expect(result.get("a")).toEqual({ acceptable: true, why: null });
     expect(result.get("b")).toEqual({ acceptable: false, why: "Agent Ask Project has no resolvable active managed Plan." });
     expect(result.has("c")).toBe(false);
   });
 
-  it("caches within a poll and bounds how many previews run", async () => {
+  it("shares in-flight previews, caches unknowns for 60s and successes for 15s, and bounds the batch", async () => {
     clearAgentAskEligibilityCache();
-    let count = 0;
-    const preview = async () => { count += 1; return {}; };
+    const calls: string[] = [];
+    let live = 0;
+    let peak = 0;
+    const preview = async (id: string) => {
+      calls.push(id);
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      live -= 1;
+      if (id === "p0") throw new ArcadiaCliError("timed out", 500);
+      return {};
+    };
     const ids = Array.from({ length: 30 }, (_, i) => ({ proposalId: `p${i}` }));
-    const first = await loadAgentAskEligibility(ids, preview, () => 1_000);
-    expect(first.size).toBe(20);
-    expect(count).toBe(20);
-    await loadAgentAskEligibility(ids, preview, () => 2_000);
-    expect(count).toBe(20);
-    await loadAgentAskEligibility(ids, preview, () => 1_000 + 16_000);
-    expect(count).toBe(40);
+    peekAgentAskEligibility(ids, preview, () => 1_000);
+    peekAgentAskEligibility(ids, preview, () => 1_000); // a second tab/poll while the first is in flight
+    await settleAgentAskEligibility();
+    expect(calls).toHaveLength(20);
+    expect(peak).toBeLessThanOrEqual(2);
+    peekAgentAskEligibility(ids, preview, () => 1_000 + 10_000);
+    await settleAgentAskEligibility();
+    expect(calls).toHaveLength(20);
+    peekAgentAskEligibility(ids, preview, () => 1_000 + 16_000);
+    await settleAgentAskEligibility();
+    // 19 successes expired at 15s and re-ran; the unknown p0 stays cached until 60s.
+    expect(calls).toHaveLength(39);
+    peekAgentAskEligibility(ids, preview, () => 1_000 + 61_000);
+    await settleAgentAskEligibility();
+    expect(calls).toContain("p0");
+    expect(calls.filter((id) => id === "p0")).toHaveLength(2);
+  });
+});
+
+describe("reviewActionArgs", () => {
+  it("appends --no-execute only to an approve that asks for it", () => {
+    expect(reviewActionArgs({ id: "rv1", action: "approve", noExecute: true })).toEqual(["review", "approve", "rv1", "--no-execute"]);
+    expect(reviewActionArgs({ id: "rv1", action: "approve" })).toEqual(["review", "approve", "rv1"]);
+    expect(reviewActionArgs({ id: "rv1", action: "reject", noExecute: true })).toEqual(["review", "reject", "rv1"]);
   });
 });

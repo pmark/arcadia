@@ -80,7 +80,7 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
         )
       ) : approval.acceptable === false ? (
         <p className="mt-2 text-sm text-muted">
-          Won&apos;t apply — {approval.acceptWhy ?? "the settlement preview was refused"}. Reject it, or fix what blocks it first.
+          Likely won&apos;t apply — {approval.acceptWhy ?? "the settlement preview was refused"}. This is a hint; applying re-checks. Reject it, or fix what blocks it first.
         </p>
       ) : askRecommendation ? (
         <p className="mt-2 text-sm text-muted">
@@ -115,7 +115,7 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
           <>
             {approval.acceptable === false ? (
               <button type="button" disabled aria-disabled="true" className={SECONDARY_BUTTON}>
-                Won&apos;t apply — {approval.acceptWhy ?? "preview refused"}
+                Likely won&apos;t apply — {approval.acceptWhy ?? "preview refused"}
               </button>
             ) : (
               <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Accept", disposition: "accepted" })} className={PRIMARY_BUTTON}>
