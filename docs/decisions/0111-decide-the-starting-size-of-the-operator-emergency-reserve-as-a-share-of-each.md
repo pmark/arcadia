@@ -4,7 +4,7 @@ type: decision
 id: "0111"
 slug: decide-the-starting-size-of-the-operator-emergency-reserve-as-a-share-of-each
 project: arcadia
-status: open
+status: approved
 question: Decide the starting size of the operator emergency reserve, as a share of each provider capacity window.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: 20% of each provider window
+decided: 2026-10-09
 ---
 
 # Decision 0111: Decide the starting size of the operator emergency reserve, as a share of each provider capacity window.

@@ -4,7 +4,7 @@ type: decision
 id: "0114"
 slug: decide-which-governed-roles-may-request-subagents-and-how-deep-delegation-may-go
 project: arcadia
-status: open
+status: approved
 question: Decide which governed roles may request subagents, and how deep delegation may go.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Only the session-start role may request delegates, and delegates may not delegate further (depth 1). Requests for code-reviewer and qa are met as separate independent Sessions, never as in-process children
+decided: 2026-10-09
 ---
 
 # Decision 0114: Decide which governed roles may request subagents, and how deep delegation may go.

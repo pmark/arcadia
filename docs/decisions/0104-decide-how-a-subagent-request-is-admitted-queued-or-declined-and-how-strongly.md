@@ -4,7 +4,7 @@ type: decision
 id: "0104"
 slug: decide-how-a-subagent-request-is-admitted-queued-or-declined-and-how-strongly
 project: arcadia
-status: open
+status: approved
 question: Decide how a subagent request is admitted, queued or declined, and how strongly Arcadia enforces it.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Deterministic broker, plus a hook where the provider has one. Admitted means a model, an advisory effort and a lease (60 minutes, at most two renewals). Queued means it waits in strict first-in, first-out order per provider, so a later request on the same provider is never admitted ahead of an earlier queued one. It is promoted only when its own requester runs arcadia delegation poll. A requester that does not poll within 5 minutes loses the request (poll_lapsed), and one still not admissible after its bounded wait (default 30 minutes) is declined as queue_timeout. Declined carries a reason code. For headless Claude, Arcadia's per-Session settings allow the delegation commands, plus a PreToolUse hook on Agent that permits exactly one spawn per admitted receipt. The hook checks the normalised model, counting an omitted model as the parent's, and only lets the receipt's own caller spend it. This applies only if an integration test proves such hooks fire under --setting-sources empty. Codex and opencode follow by convention. A broker that cannot answer admits nothing
+decided: 2026-10-09
 ---
 
 # Decision 0104: Decide how a subagent request is admitted, queued or declined, and how strongly Arcadia enforces it.

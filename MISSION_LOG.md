@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # Mission Log: Arcadia
@@ -2191,6 +2191,20 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 ## 2026-10-09 — Agent Ask pr-ready-arcadia-pr1170-decision-answer-2026-10-09
 
 - **Did:** Your call: PR #1170 carries Decisions 0100-0114, so it waits for your merge. Answer 0112 (role name), 0100 (taxonomy) and 0114 (who delegates) first to unblock Action 1. Note: 0105 and 0108 were older drafts I opened by mistake; answer or ignore. https://github.com/pmark/arcadia/pull/1170
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1174
+
+- **Did:** Your 13 governed-roles answers are recorded: PR #1174 approves every recommendation (Lead role, depth-1 delegation, 20% reserve, Discord presence proof). https://github.com/pmark/arcadia/pull/1174
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-ready-arcadia-pr1174-approval-boundary-2026-10-09
+
+- **Did:** Merge is yours: PR #1174 records approved Decisions on approval boundaries (reserve, broker, presence proof, delegation), so it is not merged on green. Once checks are green, merging unblocks define-governed-role-registry for arcadia go. https://github.com/pmark/arcadia/pull/1174
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

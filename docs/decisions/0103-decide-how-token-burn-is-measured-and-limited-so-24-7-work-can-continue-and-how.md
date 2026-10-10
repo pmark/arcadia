@@ -4,7 +4,7 @@ type: decision
 id: "0103"
 slug: decide-how-token-burn-is-measured-and-limited-so-24-7-work-can-continue-and-how
 project: arcadia
-status: open
+status: approved
 question: Decide how token burn is measured and limited so 24/7 work can continue, and how the operator emergency reserve is kept from agents.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Percent-of-window budget with a proof-gated reserve. Unattended Sessions and delegations cannot use the reserve. Releasing reserve, or lowering its size, is offered as an operator-script library entry (kind grant) run through the governed operator-script path, published in advance, and takes effect only with a valid operator presence proof. Burn rate comes from stored capacity observations. When projected use reaches the reserve before reset, new delegations queue first and then new Sessions stop
+decided: 2026-10-09
 ---
 
 # Decision 0103: Decide how token burn is measured and limited so 24/7 work can continue, and how the operator emergency reserve is kept from agents.
