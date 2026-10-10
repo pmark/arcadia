@@ -7,7 +7,7 @@ import { prepareBuildPacketForAcceptedPlan } from "./work.js";
 import { refuseFixturePacket, verifyFixturePacketApproval } from "../sessions/fixturePacketApproval.js";
 import type { FetchDecisionFile } from "../sessions/fixtureStandingLaunch.js";
 import { createId } from "../utils/id.js";
-import { prepareDecisionAnswer } from "./decision.js";
+import { prepareDecisionAnswer, recordDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
@@ -1465,8 +1465,13 @@ function resolveClarificationDecision(
         // committing the transaction fails after this begins, restore the
         // original bytes before rethrowing the transaction's error.
         if (prepared) {
+          // Written and committed together; a commit failure throws, which
+          // rolls the database back and restores the file below.
           decisionFileWriteStarted = true;
-          writeFileSync(prepared.absolutePath, prepared.after, "utf8");
+          recordDecisionAnswer(prepared, {
+            source: "arcadia review approve",
+            retryHint: "answer the clarification again"
+          });
         }
 
         return next;
