@@ -4,7 +4,7 @@ type: decision
 id: "0120"
 slug: decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the
 project: arcadia
-status: open
+status: approved
 question: Decide whether agents may publish Field Notes (ship notes and essays) to the operator's own Mission Control site automatically on a regular cadence, without a per-post operator approval.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
 updated: 2026-10-10
+answer: Agents publish Field Notes automatically on the operator's site
+decided: 2026-10-10
 ---
 
 # Decision 0120: Decide whether agents may publish Field Notes (ship notes and essays) to the operator's own Mission Control site automatically on a regular cadence, without a per-post operator approval.
