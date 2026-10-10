@@ -93,6 +93,7 @@ export interface OperatorPingItem {
   kind: "look" | "fyi" | "attention";
   channel: string | null;
   link: string | null;
+  todoKey?: string | null;
   agent: string | null;
   createdAt: string;
 }
@@ -265,6 +266,8 @@ export interface ReviewItem {
   workItemId: string | null;
   actionId?: string | null;
   projectId?: string | null;
+  projectSlug?: string | null;
+  docRef?: string | null;
   project: string | null;
   goal: string | null;
   outcome?: string | null;

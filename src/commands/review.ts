@@ -75,6 +75,8 @@ export interface RequiresReviewPacket {
   workItemId: string | null;
   actionId: string | null;
   projectId: string | null;
+  projectSlug?: string | null;
+  docRef?: string | null;
   project: string | null;
   goal: string | null;
   outcome: string | null;
@@ -1806,6 +1808,8 @@ export function reviewPacketForReviewItem(item: ReviewItemSummary): RequiresRevi
     workItemId: item.work_item_id,
     actionId: item.work_item_id,
     projectId: item.project_id,
+    projectSlug: item.project_slug ?? null,
+    docRef: item.doc_ref ?? null,
     project: item.project_name,
     goal: item.project_goal,
     outcome: item.project_outcome ?? item.project_goal,

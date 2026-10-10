@@ -1053,9 +1053,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--channel <alias>", "Configured Discord channel alias (DISCORD_PING_CHANNELS); default channel when omitted")
     .option("--kind <kind>", "look | fyi | attention", "fyi")
     .option("--link <url>", "An http(s) URL to open, such as a dashboard page or a PR")
+    .option("--todo <key>", "The /todo item this is about, as <kind>:<project>/<id> (the key `arcadia todo` prints); the Discord message links straight to it")
     .option("--agent <name>", "Who is pinging, shown in the message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; agent?: string; json?: boolean }) =>
+  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }) =>
     runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" ") }), renderPingSendSuccess)
   );
   addJsonOption(ping.command("pending")
