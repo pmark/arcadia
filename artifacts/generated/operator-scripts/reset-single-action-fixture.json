@@ -1,0 +1,57 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "reset-single-action-fixture",
+  "title": "Reset ONE rehearsal-fixture Action for a single-Action run (one non-force commit on fixture main; no production, Grant or receipt needed; settles nothing)",
+  "script": "reset-single-action-fixture.sh",
+  "repeatable": true,
+  "problem": "Re-running one fixture Action for the single-Action path (operator or standing launch, draft pull request, merge on green) used to need the 9-Action chain reset, which refuses without a production terminal-Off receipt from the previous chain run. A single-Action run never touches production, so that gate only blocks it. Each repeat also needs a completion request id that no earlier run used, the Action open again with a fresh requirement input revision, and the earlier run's artifact gone from fixture main.",
+  "desired_effect": "For the fixture pmark/arcadia-three-action-rehearsal-20261004 (clone /Users/pmark/tmp/arcadia-three-action-rehearsal, Project three-action-rehearsal), reopen exactly one Action (default write-start-marker, or --action <fixture Action id>) with the fresh completion request id complete-<action>-<run-tag>. One new commit on fixture main, pushed without force, sets the Action's status open, gives it a fresh next_action (a fresh requirement input revision, the new completion id and the leave-git-status-clean rule), points the Plan's and PROJECT.md's current_action at it, moves both updated: dates to the reset date, and removes the Action's own prior artifact (MARKER.md and tests/marker.test.mjs for write-start-marker; CHAIN.md for chain-step-04) when present. Docs sync for the fixture Project then makes the queue see the Action open, and the Action is positioned in the operational queue through the governed arrange. Every earlier candidate branch and pull request stays untouched. Preview it read-only first: /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-single-action-fixture.sh --dry-run --run-tag <run-tag> [--action <id>]. Run it from a terminal: /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-single-action-fixture.sh run --run-tag <run-tag> [--action <id>]",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-single-action-fixture.sh run --run-tag <run-tag> [--action <id>]",
+  "preconditions": [
+    "The Arcadia checkout is clean on main, level with last-fetched origin/main and with a fresh git ls-remote of it; this script and its descriptor are tracked and unmodified at its HEAD",
+    "ARCADIA_WORKSPACE is not exported and the CLI default workspace resolves from user config to martianrover",
+    "The fixture clone is clean on main with the G1 manifest, origin pmark/arcadia-three-action-rehearsal-20261004 and its registration marker, and its local main is exactly GitHub main (a fresh git ls-remote)",
+    "No Session for the fixture Project is prepared or running, and no pending proposal or open Decision gates the target Action",
+    "--run-tag is given: lowercase a-z, 0-9 and hyphens, at most 40 characters, and complete-<action>-<run-tag> is unused in the workspace and in the fixture tree"
+  ],
+  "parameters": {
+    "--run-tag": "Required: the run tag that makes the fresh completion request id complete-<action>-<run-tag>. Lowercase letters, digits and hyphens. Launched without it, the script refuses with a receipt and changes nothing.",
+    "--action": "Optional: the fixture Action to reopen (default write-start-marker): one of the chain's Action ids (write-start-marker, transform-start-marker, verify-final-rehearsal, chain-step-04 to chain-step-12). It must be ready after the reopening (its predecessors done), and an Action whose output sits in a file other Actions share is refused rather than edited.",
+    "--dry-run": "Read-only: every read and validation, then the exact Plan and PROJECT.md diff, the files that would be removed, the planned steps and every refusal; writes only into a fresh temporary directory.",
+    "run": "The default mode: perform the reset."
+  },
+  "expected_duration": "About one to three minutes (several Arcadia probes, one push, a docs sync and a queue read).",
+  "cost_note": "No model use and no spend; local Git, one push to the disposable fixture repository and local Arcadia commands.",
+  "authority": {
+    "does": [
+      "Refuses before any other step unless this script and its descriptor are tracked and unmodified at the Arcadia checkout's HEAD (reviewed and committed, not merely rendered) and --run-tag and --action are valid; requires the Arcadia checkout clean on main with HEAD level with last-fetched origin/main and a fresh 30-second git ls-remote of origin main (a dry run reports a mismatch as a refusal), ARCADIA_WORKSPACE not exported and the CLI default workspace martianrover from user config",
+      "Requires the local fixture clone clean on main with G1's manifest naming pmark/arcadia-three-action-rehearsal-20261004, its origin remote that exact repository, its registration marker matching the registered Project and its repo path, and its local main exactly equal to GitHub main read fresh with git ls-remote (a clone that is behind, ahead or diverged refuses and is never moved)",
+      "Renders, from the base head, only the Plan and PROJECT.md edits that reopen the one Action with the tested pure module (renderSingleActionReopen): the Action's status open and a fresh next_action, the Plan's and PROJECT.md's current_action, their updated: dates (a host date before a document's date refuses), and removes the Action's own prior artifact when present; every other line, the acceptance criteria and every other Action are left byte for byte, and an Action whose earlier output sits in a shared file refuses rather than being edited",
+      "Validates the rendering before any change with Arcadia's own discovery (zero errors), requirementIdentity (a fresh input revision and an unchanged criteria fingerprint), the ready set (the Action is ready) and a read-only live dry-run docs sync (the Action exactly one update, nothing skipped, no error); the change set must be exactly the Plan, PROJECT.md when its pointer moves, and the Action's own removed artifacts",
+      "Reads, read-only, the live workspace: the fixture Project's registration, that no Session for it is prepared or running, every pending proposal or open Decision that would gate the Action, and that the new completion request id is unused in the workspace and in the fixture tree; it refuses on any of them and settles none",
+      "Only after all of that: makes exactly one commit on fixture main and pushes refs/heads/main without force (a GitHub main that moved makes the push fail closed); confirms GitHub main is the new head and that every branch other than main, on GitHub and in the clone, is identical to before; runs arcadia docs sync --project three-action-rehearsal --apply with the verified workspace and confirms the Action synced exactly once; then positions the Action in the operational queue through the governed arrange (previewed, then applied at the exact queue revision, refused unless the queue is orderValid with zero unpositioned afterwards)",
+      "Resumes safely: a commit it already made but did not push is re-validated byte for byte and pushed; one already pushed proceeds to docs sync; after a succeeded run the same arguments refuse as already reset",
+      "--dry-run performs every read and validation read-only and prints the exact diff, the planned steps and every refusal, writing only into a fresh temporary directory",
+      "Writes a timestamped receipt under runs/<timestamp-pid>/ (actionId, runTag, completionId, githubRepository, baseHead, newHead, remoteMainAfter, removedFiles, input revisions, otherRefsBefore, queue) on success and refusal, plus a failure handoff on refusal"
+    ],
+    "never_does": [
+      "Never reads or requires production state, a terminal-Off or any G6, G7 or G8 receipt, and never previews, activates or deactivates production or creates, presses or changes a Grant or a Decision",
+      "Never settles, accepts, rejects, previews or edits any Agent Ask proposal",
+      "Never changes an Action's acceptance criteria, responsibility or title, any other Action, the genesis check, the CI workflow or the fixture manifest, and never edits PROJECT.md beyond its current_action and updated: lines",
+      "Never touches an earlier candidate's branch, worktree or pull request, and never comments on, merges, closes or edits a pull request",
+      "Never force-pushes, rewrites, rebases or resets fixture history, never moves local main, and never pushes anything but one fast-forward of fixture main to its single validated commit",
+      "Never deletes, renames, archives or changes the visibility of a repository, and never removes a file other than the reopened Action's own prior artifact",
+      "Never changes anything before the amended fixture validates, and never edits the workspace database directly",
+      "Never restarts a service or worker, reinstalls the broker or launches a Session",
+      "Never guesses or defaults the run tag, and never exports ARCADIA_WORKSPACE"
+    ]
+  },
+  "success": {
+    "effect": "Fixture main on GitHub and in the clone is one new commit on the previous head that reopens the one Action with the fresh completion request id and changes only the fixture Plan, PROJECT.md's pointer and the Action's own prior artifact; docs sync applied the Action with zero errors; the operational queue is orderValid with 0 unpositioned Actions; every earlier candidate branch and pull request is untouched; the receipt names the base and new head and the completion id. Production is unchanged.",
+    "next": "Launch the single-Action run for the reopened Action (operator launch or the standing launch) and let it draft the pull request. For another run, rerun with a new --run-tag."
+  },
+  "failure": {
+    "effect": "The receipt and failure handoff name the failed precondition, the fixture state found, and whether this run committed or pushed. Nothing was forced, rewritten or deleted, no proposal was settled, and production, Grants and every earlier candidate were not touched.",
+    "next": "Correct the named precondition and rerun with the same arguments; a commit or push this script already made is recognised and resumed, not repeated. If the handoff names pending proposals or Decisions, give each its own governed disposition first. If the clone is not level with GitHub main, bring it level through your normal Git steps and rerun."
+  }
+}

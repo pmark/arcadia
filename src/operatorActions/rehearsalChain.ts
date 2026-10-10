@@ -294,6 +294,9 @@ function stepTemplate(step: number): ActionTemplate {
 
 const templateOf = (index: number): ActionTemplate => index < BASE_TEMPLATES.length ? BASE_TEMPLATES[index] : stepTemplate(index + 1);
 
+/** The task sentence of the chain Action at `index` (0-based), without any run note; the single-Action fixture reset reuses it. */
+export const chainActionTask = (index: number): string => templateOf(index).task;
+
 /** The run note on every Action's next_action: a fresh input revision, the fresh completion id and the clean-tree rule. */
 export function chainNextAction(index: number, params: Pick<ChainRunParams, "runId" | "runLabel" | "actionCount">): string {
   const ids = chainActionIds(params.actionCount);
