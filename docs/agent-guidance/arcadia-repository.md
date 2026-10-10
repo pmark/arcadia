@@ -358,6 +358,9 @@ code (nothing launched, nothing minted) unless all hold:
 - `--agent-identity` is given (`fixture_standing_agent_identity_required`) and the
   shell is not inside an Arcadia Session (`operator_launch_inside_session`).
 
+Run `--fixture-standing` unsandboxed: a sandboxed agent may be denied the
+keychain, and the Decision fetch then fails closed.
+
 The exit re-checks the window and the remotes before the push and again before
 the pull request, and pins every `gh` call to the fixture with `--repo`; a mint's
 24-hour TTL can outlive 2026-10-18, and a refused exit pushes and opens nothing

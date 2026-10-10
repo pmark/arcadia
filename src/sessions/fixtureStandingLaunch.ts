@@ -186,7 +186,8 @@ export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): F
   return () => {
     const gh = resolveTrustedGh(deps);
     const home = deps.home();
-    const env: NodeJS.ProcessEnv = {
+    // A plain string map: some @types/node builds (the dashboard's) require NODE_ENV on ProcessEnv, which this must not add.
+    const env: Record<string, string> = {
       HOME: home,
       GH_CONFIG_DIR: path.join(home, ".config", "gh"),
       PATH: `/usr/bin:/bin:/usr/sbin:/sbin:${path.dirname(gh)}`
@@ -195,7 +196,8 @@ export function createGithubDecisionFetcher(deps: GhFetchDeps = systemGhDeps): F
     const result = deps.spawn(
       gh,
       ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${FIXTURE_STANDING_DECISION_FILE}?ref=main`],
-      { encoding: "utf8", env, timeout: 30_000 }
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- the dashboard build's @types/node needs the cast, the root build does not
+      { encoding: "utf8", env: env as NodeJS.ProcessEnv, timeout: 30_000 }
     );
     if (result.error || result.status !== 0) {
       throw new Error(`gh api failed (${result.error?.message ?? `exit ${String(result.status)}`}): ${String(result.stderr ?? "").trim().slice(0, 300)}`);
