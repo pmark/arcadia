@@ -1,3 +1,4 @@
+import { launchHrefOf } from "./launch-link";
 import type { AgentAskPendingItem, OpenDecisionItem, OperatorTodoItem } from "./arcadia-cli";
 
 export type ApprovalOption = { label: string; consequence: string; recommended: boolean };
@@ -37,6 +38,8 @@ export interface Approval {
   todoKey: string;
   /** The deep link to this one item, `/todo/<kind>/<project>/<id>`; the target of Discord pings. */
   href: string;
+  /** Escalations about one Action: the `/production?launch=<project>/<action>` link that opens its Launch dialog (the operator still confirms there); null otherwise. */
+  launchHref?: string | null;
   /** For an Agent Ask, the request id it was submitted under; null otherwise. */
   requestId: string | null;
   /** Other ids a link may address this item by: a Decision's doc slug, an Agent Ask's request id. */
@@ -164,6 +167,7 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     origin: item.origin ?? null,
     todoKey: todoKeyOf(item.kind, item.project, id),
     href: todoHrefOf(item.kind, item.project, id),
+    launchHref: item.kind.startsWith("escalation") ? launchHrefOf(`${item.project}/${id}`) : null,
     requestId: null,
     aliases: []
   };
