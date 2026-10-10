@@ -1,4 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runProjectImportCommand, runProjectMetadataCommand } from "../src/commands/project.js";
 import { runReviewApproveCommand, runReviewApproveFixturePacketCommand } from "../src/commands/review.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { createReviewItem } from "../src/db/repositories.js";
@@ -154,6 +157,35 @@ describe("review approve --fixture-standing (Decision 0119)", () => {
     expectRefused(rewritten, () => approve(rewritten), "fixture_packet_not_a_fixture");
     const none = fixture(null);
     expectRefused(none, () => approve(none), "fixture_packet_not_a_fixture");
+  });
+
+  it("refuses when the packet's Action belongs to a different Project than the Decision's", () => {
+    const setup = fixture();
+    const other = runProjectImportCommand({
+      workspace: setup.rehearsal.workspace, name: "Other Project", mission: "Not the fixture.", status: "active",
+      milestone: "m", nextAction: "n", classification: "agent"
+    });
+    withDatabase(setup.rehearsal.workspace, (db) => {
+      db.prepare("UPDATE work_items SET project_id = ? WHERE id = (SELECT work_item_id FROM review_items WHERE id = ?)").run(other.data.project.id, setup.packetId);
+    });
+    expectRefused(setup, () => approve(setup), "fixture_packet_not_a_fixture");
+  });
+
+  it("accepts an experiment workspace's repository through the command, with no allowlisted remote", () => {
+    const setup = fixture(null);
+    const workspace = setup.rehearsal.workspace;
+    mkdirSync(path.join(workspace, "config"), { recursive: true });
+    writeFileSync(path.join(workspace, "config", "arcadia.json"), JSON.stringify({ experiment: { enabled: true, allowedRepoRoot: "projects" } }));
+    const fx = path.join(workspace, "projects", "fx");
+    mkdirSync(fx, { recursive: true });
+    git(fx, ["init", "-q", "-b", "main"]);
+    runProjectMetadataCommand({ workspace, projectId: setup.rehearsal.projectId, repoPath: fx });
+    const response = approve(setup);
+    expect(response.data.result.status).toBe("approved");
+    withReadOnlyDatabase(setup.rehearsal.workspace, (db) => {
+      const row = db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(setup.packetId) as { context_json: string };
+      expect(JSON.parse(row.context_json).fixturePacketApproval).toMatchObject({ fixtureBasis: "experiment_workspace", remotes: [] });
+    });
   });
 
   it("never treats Arcadia's own Project as a fixture", () => {

@@ -798,6 +798,11 @@ export function runReviewApproveFixturePacketCommand(
       throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
     const project = item.project_id ? getProject(db, item.project_id) : null;
+    // The Action the packet is for must belong to the very Project whose repository is verified below.
+    const workItem = item.work_item_id ? getWorkItem(db, item.work_item_id) : null;
+    if (!workItem || !item.project_id || workItem.project_id !== item.project_id) {
+      refuseFixturePacket("fixture_packet_not_a_fixture", `Decision ${item.slug ?? item.id}'s Action does not belong to the Decision's Project, so the Project verified as a fixture is not the Action's.`, { id: item.id });
+    }
     const repoPath = project ? getProjectMetadata(db, project.id)?.repo_path?.trim() : undefined;
     if (!project || !repoPath) {
       refuseFixturePacket("fixture_packet_not_a_fixture", `Decision ${item.slug ?? item.id} has no Project repository to verify as a fixture.`, { id: item.id });
