@@ -60,6 +60,44 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/pull/1181", "https://github.com/pmark/arcadia/issues/1154", "docs/working-copy-safety.md"]
+  - id: reconcile-vulnerable-working-copies
+    title: One read-only command classifies every UNSAVED or LOCAL ONLY working copy by outcome, so the operator sees what is safe, what already shipped and what is the only copy.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: One read-only command classifies every UNSAVED or LOCAL ONLY working copy by outcome, so the operator sees what is safe, what already shipped and what is the only copy.
+    expected_artifact: Evidence satisfying Agent Ask reconcile-vulnerable-working-copies
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tighten-reconcile-and-recover-actions-after-review-2026-10-09-r3
+    acceptance_criteria:
+      - "A read-only command (for example `arcadia work reconcile`) lists every working copy the monitor reports as unsaved or local only and assigns each exactly one outcome: landed-equivalent (with the settlement or merge evidence that shows its effect shipped), superseded (a newer candidate for the same Action exists), unique work (changes found nowhere else), or unknown, with the evidence for each."
+      - It reuses `arcadia tidy`'s merge proofs (src/commands/tidy.ts) and the settlement-equivalence evidence of docs/proposals/reconcile-problematic-branches-and-worktrees-by-outcome.md instead of re-deriving them, and landed-equivalent never causes reconcile itself to delete or retire anything.
+      - It changes no file, index, ref, worktree, branch or workspace record, and a test proves the repositories are byte-identical before and after.
+      - Each line names the one next step for that outcome (retire with tidy, recover, or inspect), and the alert from alert-on-unsaved-and-local-only-work links to it.
+    depends_on: [alert-on-unsaved-and-local-only-work]
+    decisions: []
+    references: ["docs/working-copy-safety.md", "src/commands/tidy.ts", "docs/proposals/reconcile-problematic-branches-and-worktrees-by-outcome.md", "https://github.com/pmark/arcadia/pull/1186"]
+  - id: recover-unique-work-to-draft-prs
+    title: Unique work in a vulnerable working copy is preserved off the machine by an automated version of the recovery playbook, never by cleaning or resetting.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Unique work in a vulnerable working copy can be preserved off the machine on request, one named copy at a time, by an automated version of the recovery playbook, never by cleaning or resetting.
+    expected_artifact: Evidence satisfying Agent Ask recover-unique-work-to-draft-prs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tighten-reconcile-and-recover-actions-after-review-2026-10-09-r3
+    acceptance_criteria:
+      - The command runs only when invoked for one named working copy; nothing in the tick, the monitor, the alert or any schedule invokes it, so automatic WIP commits stay deferred as docs/working-copy-safety.md says, and that document's playbook section names the command as the tool for its steps 3-6.
+      - "It fails closed: every apply refuses until the repository has a checked-in secret-scan configuration and generated-file policy, and a test proves an apply refuses when either is missing and when either flags a changed path."
+      - "With both present, preview-then-apply on a copy classified as unique work: creates a recovery branch under an agent-owned prefix when the copy is detached or on the default branch, commits in place on an existing feature branch, uses the identity from `arcadia identity resolve` and never the operator's, pushes to origin without force and refuses if the remote branch already exists, and opens a draft recovery PR that says whether the scope is mixed."
+      - It never runs clean, reset, stash, rm, branch -D, checkout of other content, or worktree removal; a test proves every working-tree file is unchanged after apply.
+      - It refuses a working copy that holds a live Action claim or a running Session (from the claim and Session records), names that Session, and writes a receipt for every apply or refusal.
+      - Replaying recovered commits onto main stays a separate, normal PR step in a fresh worktree, as the playbook requires.
+    depends_on: [reconcile-vulnerable-working-copies]
+    decisions: []
+    references: ["docs/working-copy-safety.md", "src/commands/tidy.ts", "docs/proposals/reconcile-problematic-branches-and-worktrees-by-outcome.md", "https://github.com/pmark/arcadia/pull/1186", "docs/agent-guidance/git-identity.md"]
 questions: []
 decisions: []
 ---
