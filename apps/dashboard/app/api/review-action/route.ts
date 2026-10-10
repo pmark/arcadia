@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
+import { invalidateApprovalsCache } from "../../../lib/approvals-feed";
 import {
   ArcadiaCliError,
   flagReviewForAgent,
@@ -140,5 +141,8 @@ export async function POST(request: Request) {
       },
       { status: error instanceof ArcadiaCliError ? error.statusCode : 500 }
     );
+  } finally {
+    // A review action changes the to-do list; the next poll must not serve the old copy.
+    invalidateApprovalsCache();
   }
 }

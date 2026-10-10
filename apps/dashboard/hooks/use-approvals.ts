@@ -89,8 +89,19 @@ export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: 
   useEffect(() => {
     if (!enabled) return undefined;
     void refresh();
-    const interval = setInterval(() => void refresh(), APPROVAL_POLL_MS);
-    return () => clearInterval(interval);
+    // A hidden tab does not poll; coming back shows the last list at once and refreshes it straight away.
+    const poll = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "hidden") void refresh();
+    };
+    const interval = setInterval(poll, APPROVAL_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [enabled, refresh, refreshSignal]);
 
   const act = useCallback(async (approval: Approval, choice: Choice) => {
