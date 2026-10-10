@@ -214,7 +214,7 @@ if [[ "$LOCAL_MAIN" == "$REMOTE_MAIN" ]]; then
   if [[ "$(fx log -1 --format=%s "$LOCAL_MAIN")" == "$SUBJECT" ]]; then
     FIXTURE_STATE=pushed
     BASE="$(fx rev-parse "$LOCAL_MAIN^")"
-    PRIOR="$(for candidate in "$LIBRARY_DIR"/runs/*/receipt.json; do [[ -f "$candidate" ]] && jq -e --arg id "$SCRIPT_ID" --arg head "$LOCAL_MAIN" '.id == $id and .outcome == "succeeded" and .newHead == $head' "$candidate" >/dev/null 2>&1 && echo "$candidate"; done | tail -n 1)"
+    PRIOR="$(for candidate in "$LIBRARY_DIR"/runs/*/receipt.json; do if [[ -f "$candidate" ]] && jq -e --arg id "$SCRIPT_ID" --arg head "$LOCAL_MAIN" '.id == $id and .outcome == "succeeded" and .newHead == $head' "$candidate" >/dev/null 2>&1; then echo "$candidate"; fi; done | tail -n 1)"
     [[ -z "$PRIOR" ]] || refuse "this reset already succeeded at fixture head $LOCAL_MAIN ($PRIOR); it is not applied twice. Choose a new --run-tag for another run"
   else
     FIXTURE_STATE=at_base
@@ -492,7 +492,19 @@ OTHER_REFS_AFTER="$(other_refs)"
 record "otherRefsUnchanged" true
 
 STAGE=docs_sync
-SYNC="$(arcadia docs sync --project "$FIXTURE_PROJECT" --apply --workspace "$WORKSPACE" --json)" || SYNC=""
+# The live worker ticks against the same database, so only a busy/locked error is retried (bounded); anything else refuses at once.
+SYNC=""
+for ATTEMPT in 1 2 3 4 5; do
+  SYNC_ERR="$RUN_DIR/docs-sync.stderr"
+  SYNC="$(arcadia docs sync --project "$FIXTURE_PROJECT" --apply --workspace "$WORKSPACE" --json 2>"$SYNC_ERR")" || SYNC=""
+  if [[ -n "$SYNC" ]] && jq -e '.ok == true' <<<"$SYNC" >/dev/null 2>&1; then break; fi
+  if grep -q -i -E 'database is locked|SQLITE_BUSY|SQLITE_LOCKED' "$SYNC_ERR" <(printf '%s' "$SYNC") 2>/dev/null && (( ATTEMPT < 5 )); then
+    echo "docs sync hit a locked database (attempt $ATTEMPT of 5); retrying in $((ATTEMPT * ${DOCS_SYNC_BACKOFF_SECONDS:-3}))s."
+    sleep "$((ATTEMPT * ${DOCS_SYNC_BACKOFF_SECONDS:-3}))"
+    continue
+  fi
+  break
+done
 printf '%s\n' "$SYNC" > "$RUN_DIR/docs-sync.json"
 jq -e '.ok == true and .data.errorCount == 0' <<<"$SYNC" >/dev/null 2>&1 || refuse "docs sync reported errors although the amended fixture validated before the push; see $RUN_DIR/docs-sync.json"
 jq -e --arg ref "$ACTION_REF" --arg state "$FIXTURE_STATE" '[.data.projects[].changes[] | select(.entity == "action")] as $actions

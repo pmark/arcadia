@@ -131,6 +131,11 @@ printf '%s\\n' "$*" >> "$FAKE_ROOT/pnpm-calls.log"
 if [ "$1" = workspace ] && [ "$2" = resolve ]; then
   printf '{"ok":true,"data":{"source":"user config","workspacePath":"%s"}}\\n' "$FAKE_WORKSPACE"; exit 0
 fi
+if [ "$1" = docs ] && [ "$2" = sync ] && [ -f "$FAKE_ROOT/lock-docs-sync" ]; then
+  n=$(cat "$FAKE_ROOT/lock-docs-sync")
+  if [ -f "$FAKE_ROOT/fail-sync" ]; then echo "boom" >&2; exit 1; fi
+  if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$FAKE_ROOT/lock-docs-sync"; echo "SqliteError: database is locked" >&2; exit 1; fi
+fi
 has=""
 for a in "$@"; do [ "$a" = --workspace ] && has=1; done
 if [ -n "$has" ]; then exec node --import tsx "$FAKE_ARCADIA_ROOT/src/cli.ts" "$@"; fi
@@ -324,6 +329,55 @@ describe("single-Action reset: behavior", () => {
     expect(git(box.fixture, ["rev-list", "--count", `${base}..${committed}`])).toBe("1");
     expect(bareRef(box, "refs/heads/claude/write-start-marker-earlier")).toBe(candidate);
     expect(box.receipt()).toMatchObject({ outcome: "succeeded", fixtureState: "committed_unpushed", newHead: committed });
+  });
+
+  it("resumes after a pushed commit when the runs library holds several unrelated receipts, the newest not matching", { timeout: 280_000 }, () => {
+    const box = sandbox();
+    fixtureAtGenesis(box);
+    const base = afterSettledRun(box);
+    // The first run is interrupted at docs sync: the commit is pushed and the sync then fails (not a locked database, so no retry).
+    writeFileSync(path.join(box.root, "lock-docs-sync"), "0\n");
+    writeFileSync(path.join(box.root, "fail-sync"), "");
+    const interrupted = box.run(["run", "--run-tag", "t1"]);
+    expect(interrupted.status).not.toBe(0);
+    const pushed = git(box.fixture, ["rev-parse", "refs/heads/main"]);
+    expect(bareRef(box, "refs/heads/main")).toBe(pushed);
+    expect(git(box.fixture, ["rev-parse", `${pushed}^`])).toBe(base);
+    // Newer unrelated receipts sort after the earlier ones and match neither this script nor this head.
+    const runs = path.join(box.scripts, "runs");
+    const unrelated: Array<[string, object]> = [["99990101T000001Z-1", { id: "other-script", outcome: "succeeded", newHead: pushed }], ["99990101T000002Z-2", { id: SCRIPT, outcome: "refused" }], ["99990101T000003Z-3", { id: SCRIPT, outcome: "succeeded", newHead: "0".repeat(40) }]];
+    for (const [name, receipt] of unrelated) {
+      mkdirSync(path.join(runs, name), { recursive: true });
+      writeFileSync(path.join(runs, name, "receipt.json"), JSON.stringify(receipt));
+    }
+    rmSync(path.join(box.root, "fail-sync"));
+    const resumed = box.run(["run", "--run-tag", "t1"]);
+    expect(resumed.status, resumed.stdout + resumed.stderr).toBe(0);
+    expect(git(box.fixture, ["rev-parse", "refs/heads/main"])).toBe(pushed);
+    const receipts = box.runDirs().filter((d) => existsSync(path.join(d, "receipt.json")) && !path.basename(d).startsWith("9999"));
+    expect(JSON.parse(readFileSync(path.join(receipts[receipts.length - 1], "receipt.json"), "utf8"))).toMatchObject({ outcome: "succeeded", fixtureState: "pushed", newHead: pushed });
+  });
+
+  it("retries a transiently locked docs sync a bounded number of times and then succeeds", { timeout: 280_000 }, () => {
+    const box = sandbox();
+    fixtureAtGenesis(box);
+    afterSettledRun(box);
+    writeFileSync(path.join(box.root, "lock-docs-sync"), "2\n");
+    const result = box.run(["run", "--run-tag", "t1"], { DOCS_SYNC_BACKOFF_SECONDS: "0" });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("docs sync hit a locked database (attempt 2 of 5)");
+    expect(box.receipt()).toMatchObject({ outcome: "succeeded" });
+  });
+
+  it("refuses a docs sync that stays locked after five attempts", { timeout: 280_000 }, () => {
+    const box = sandbox();
+    fixtureAtGenesis(box);
+    afterSettledRun(box);
+    writeFileSync(path.join(box.root, "lock-docs-sync"), "99\n");
+    const result = box.run(["run", "--run-tag", "t1"], { DOCS_SYNC_BACKOFF_SECONDS: "0" });
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(path.join(box.root, "lock-docs-sync"), "utf8").trim()).toBe("94");
+    expect(box.receipt()).toMatchObject({ outcome: "refused", stage: "docs_sync" });
   });
 });
 
