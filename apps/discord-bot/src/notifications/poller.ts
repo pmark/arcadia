@@ -6,7 +6,7 @@ import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
-import { categorizeNotification, sendToCategory } from "./categories.js";
+import { categorizeAgentAsk, categorizeNotification, sendToCategory } from "./categories.js";
 import { drainOperatorPings } from "./operatorPings.js";
 import { todoItemUrl } from "../todoLinks.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
@@ -391,7 +391,7 @@ export const AGENT_ASK_REJECTION_BATCH_MIN = 3;
 const AGENT_ASK_REJECTION_BATCH_LISTED = 15;
 
 /**
- * One message per settlement, except that plain rejections (no recovery to act on) coalesce into one message once
+ * One message per settlement, except that plain log-channel rejections (no recovery to act on) coalesce into one message once
  * there are AGENT_ASK_REJECTION_BATCH_MIN of them: a rejection has nothing further to tap through to, and a bulk
  * operator disposition of hundreds would otherwise post hundreds of messages. Every settlement is still marked sent.
  */
@@ -400,7 +400,10 @@ export function agentAskNotificationMessages(notifications: AgentAskNotification
     key: `agent-ask:${notification.settlementId}`,
     content: agentAskSettlementMessage(notification, dashboardUrl)
   });
-  const quiet = notifications.filter((notification) => notification.disposition === "rejected" && !notification.recovery);
+  // Only rejections bound for the log channel: anything routed to alerts or the default channel stays its own message.
+  const quiet = notifications.filter(
+    (notification) => notification.disposition === "rejected" && !notification.recovery && categorizeAgentAsk(notification) === "log"
+  );
   if (quiet.length < AGENT_ASK_REJECTION_BATCH_MIN) return notifications.map(single);
   const batched = new Set(quiet.map((notification) => notification.settlementId));
   return [

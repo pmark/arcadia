@@ -1082,7 +1082,8 @@ function readWithWorkspace(
           ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null, askOrigins),
           ...clarifyItems(db, project.id, project.slug)
         ];
-        take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+        const withRows = withEscalations(found, escalationsOf(project.slug), project.slug);
+        take(project.slug, collapse, project.status === "completed" ? retired(withRows, project.slug) : withRows);
         continue;
       }
 
@@ -1119,7 +1120,9 @@ function readWithWorkspace(
       if (readySet) {
         found.push(...planActionItems(project.slug, readySet, evidence, selected, found, reviewedActionRefs(db, reviewRowsOf(project.id))));
       }
-      take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+      found = withEscalations(found, escalationsOf(project.slug), project.slug);
+      // Only reachable through --project: a completed Project's items are stale here too, as in the full view.
+      take(project.slug, collapse, project.status === "completed" ? retired(found, project.slug) : found);
     }
 
     // Agent Asks and escalations naming a Project outside this list are still the operator's.

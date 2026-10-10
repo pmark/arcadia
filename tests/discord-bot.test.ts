@@ -551,6 +551,16 @@ describe("discord bot Agent Ask settlement notifications", () => {
     expect(batch.content).toContain("…and 5 more");
     expect(batch.content.length).toBeLessThanOrEqual(1900);
   });
+
+  it("never coalesces a rejection routed outside the log channel", () => {
+    const rejections = ["a1", "a2", "a3"].map((id) => settlement(id, "rejected"));
+    const alert = settlement("ci", "rejected", { requestId: "ci-blocked-arcadia-pr1-2026-10-10" });
+    const decision = settlement("dc", "rejected", { intent: "decision" });
+    const messages = agentAskNotificationMessages([alert, decision, ...rejections]);
+    expect(messages.map((message) => [message.key, message.alsoKeys])).toEqual([
+      ["agent-ask:ci", undefined], ["agent-ask:dc", undefined], ["agent-ask:a1", ["agent-ask:a2", "agent-ask:a3"]]
+    ]);
+  });
 });
 
 describe("discord bot formatters", () => {
