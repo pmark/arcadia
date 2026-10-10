@@ -74,7 +74,7 @@ approves from `/todo`; (3) status flips to `approved`, then publish.
 | 4 | dev.to cross-post | essays, 1-3 days after the site post; optional | set `canonical_url` to the site | [dev.to editor guide](https://dev.to/p/editor_guide) |
 | 5 | X/Twitter (or Bluesky/Mastodon) | one short thread per essay; one line per ship note | plain text, link in last post, no engagement bait | judgment, no formal rule |
 | 6 | Reddit (r/LocalLLaMA, r/programming, others) | skip for now; consider after install works | each sub's sidebar governs; 9:1 is a norm, some subs ban self-posts; I could not verify either sub's current text | [overview](https://www.teract.ai/resources/reddit-subreddit-marketing-2026) |
-| 7 | Lobsters | only if a regular member suggests it | invite-only; self-promotion under about a quarter of activity; "show" tag unavailable to new users | [Lobsters about](https://lobste.rs/about) |
+| 7 | Lobsters | only if a regular member suggests it | invite-only; self-promotion under about a quarter of activity; "show" tag unavailable to new users (first 70 days) | [Lobsters about](https://lobste.rs/about) |
 
 Notes on norms:
 
@@ -100,11 +100,13 @@ Notes on norms:
 ## When not to post
 
 - Not before the claim receipts and fact-check pass.
-- Not to HN more than once per milestone, never re-submitting a flop, never
-  from a new, empty account without ordinary participation first.
+- Not to HN more than once per milestone (judgment, though HN asks that
+  self-posting be occasional), never re-submitting a flop (judgment), never
+  from a new, empty account without ordinary participation first (judgment).
 - Not Show HN until `arcadia` installs in minutes without signup.
 - Not the same text on five channels the same hour. Stagger: site, then
-  email, then HN/X next morning (US weekday morning), dev.to a day later.
+  email, then HN/X next morning (US weekday morning), dev.to a day later
+  (all timing here is judgment, not sourced).
 - Never ask for upvotes, stars or shares in any variant.
 
 ## Operating model (minimal operator time)
@@ -114,7 +116,9 @@ Notes on norms:
 2. Independent agent fact-checks; findings fixed.
 3. One `/todo` item per post with a Discord deep link: "Approve site+RSS" and
    per-channel Approve / Skip choices showing the exact text and consequence.
-4. Site publish may follow approval automatically (it is Mark's own property);
+4. Site publish follows the operator's `/todo` approval (it is Mark's own
+   property); agent-published ship notes with no per-post approval would need
+   a future governed Decision;
    external platforms are posted by Mark by hand or, later, by a narrow
    governed Decision with an expiry, like Decision 0100.
 5. Metrics, weekly, privacy-respecting: privacy-friendly aggregate page views
