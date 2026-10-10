@@ -4,7 +4,7 @@ type: decision
 id: "0112"
 slug: decide-the-name-and-semantics-of-the-governed-role-every-session-starts-in-on
 project: arcadia
-status: open
+status: approved
 question: Decide the name and semantics of the governed role every Session starts in, on the smallest model, before it delegates, including how it relates to the attempt-lineage roles.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Lead (Action Lead): holds the Action's development attempt (attempt_role development), does the routine work itself, requests delegates only for hard sub-problems, then integrates and settles"
+decided: 2026-10-09
 ---
 
 # Decision 0112: Decide the name and semantics of the governed role every Session starts in, on the smallest model, before it delegates, including how it relates to the attempt-lineage roles.
