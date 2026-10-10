@@ -4,11 +4,7 @@ type: decision
 id: "0119"
 slug: decide-whether-agents-may-approve-the-immutable-build-packet-of-an-action-in-a
 project: arcadia
-<<<<<<< HEAD
 status: approved
-=======
-status: open
->>>>>>> e6259eee61f7ff60618a1e31a3f4edd3be25b517
 question: Decide whether agents may approve the immutable build packet of an Action in a registered disposable fixture Project, so fixture Actions run from Launch to a merged pull request without an operator tap per Action.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -23,11 +19,8 @@ options:
 confidence: high
 plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
 updated: 2026-10-10
-<<<<<<< HEAD
 answer: Agents approve fixture build packets
 decided: 2026-10-10
-=======
->>>>>>> e6259eee61f7ff60618a1e31a3f4edd3be25b517
 ---
 
 # Decision 0119: Decide whether agents may approve the immutable build packet of an Action in a registered disposable fixture Project, so fixture Actions run from Launch to a merged pull request without an operator tap per Action.
