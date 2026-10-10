@@ -1005,7 +1005,16 @@ function readWithWorkspace(
 } {
   const roots = options.fixtureRoots ?? defaultFixtureRoots();
   return withReadOnlyDatabase(workspacePath, (db) => {
-    let projects = listProjects(db).filter((project) => project.status !== "completed");
+    const allProjects = listProjects(db);
+    // A completed (retired) Project is positive evidence its leftovers no longer wait on the operator: production
+    // never ticks it again, so its escalations cannot clear themselves, and no gate resolves for its Asks or review items.
+    const completedSlugs = new Map(
+      allProjects.filter((project) => project.status === "completed").map((project) => [project.slug.toLowerCase(), project.slug])
+    );
+    const completedIds = new Map(allProjects.filter((project) => project.status === "completed").map((project) => [project.id, project.slug]));
+    const retired = (found: TodoItem[], slug: string): TodoItem[] =>
+      found.map((item) => (item.staleReason ? item : { ...item, staleReason: `its Project ${slug} is completed` }));
+    let projects = allProjects.filter((project) => project.status !== "completed");
     if (options.project) {
       const wanted = getProject(db, options.project) ?? getProjectBySlug(db, options.project);
       if (!wanted) throw projectNotFound(options.project);
@@ -1073,7 +1082,8 @@ function readWithWorkspace(
           ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null, askOrigins),
           ...clarifyItems(db, project.id, project.slug)
         ];
-        take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+        const withRows = withEscalations(found, escalationsOf(project.slug), project.slug);
+        take(project.slug, collapse, project.status === "completed" ? retired(withRows, project.slug) : withRows);
         continue;
       }
 
@@ -1110,7 +1120,9 @@ function readWithWorkspace(
       if (readySet) {
         found.push(...planActionItems(project.slug, readySet, evidence, selected, found, reviewedActionRefs(db, reviewRowsOf(project.id))));
       }
-      take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+      found = withEscalations(found, escalationsOf(project.slug), project.slug);
+      // Only reachable through --project: a completed Project's items are stale here too, as in the full view.
+      take(project.slug, collapse, project.status === "completed" ? retired(found, project.slug) : found);
     }
 
     // Agent Asks and escalations naming a Project outside this list are still the operator's.
@@ -1122,7 +1134,9 @@ function readWithWorkspace(
         proposals.map((row) => row.proposal.normalized.project).filter((slug) => !known.has(slug.toLowerCase()))
       );
       for (const slug of strays) {
-        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, collect(classifyAsksOnly(proposals, slug), context));
+        const found = collect(classifyAsksOnly(proposals, slug), context);
+        const completed = completedSlugs.get(slug.toLowerCase());
+        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, completed ? retired(found, completed) : found);
       }
       const strayEscalations = new Map<string, OperatorEscalation[]>();
       for (const row of escalations) {
@@ -1130,15 +1144,30 @@ function readWithWorkspace(
         if (!known.has(slug.toLowerCase())) strayEscalations.set(slug, [...(strayEscalations.get(slug) ?? []), row]);
       }
       for (const [slug, rows] of strayEscalations) {
-        take(slug || "unknown", isFixtureProject(slug, undefined, roots) ? "fixture" : false, withEscalations([], rows, slug || "unknown"));
+        const found = withEscalations([], rows, slug || "unknown");
+        const completed = completedSlugs.get(slug.toLowerCase());
+        take(slug || "unknown", isFixtureProject(slug, undefined, roots) ? "fixture" : false, completed ? retired(found, completed) : found);
       }
-      // A review_item with no Project, or whose Project is completed or not listed, is still the operator's;
-      // it has no gate to block, so it is an alert in the `unknown` bucket rather than dropped.
+      // A review_item of a completed Project is listed under that Project as stale (see `retired`).
       const listedProjectIds = new Set(projects.map((project) => project.id));
+      for (const [projectId, slug] of completedIds) {
+        const rows = reviewRows.filter((row) => row.project_id === projectId);
+        if (rows.length === 0) continue;
+        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, retired(reviewTodoItems(db, rows, slug, undefined, null, askOrigins), slug));
+      }
+      // A review_item with no Project, or whose Project is not listed, is still the operator's;
+      // it has no gate to block, so it is an alert in the `unknown` bucket rather than dropped.
       take(
         "unknown",
         false,
-        reviewTodoItems(db, reviewRows.filter((row) => !row.project_id || !listedProjectIds.has(row.project_id)), "unknown", undefined, null, askOrigins)
+        reviewTodoItems(
+          db,
+          reviewRows.filter((row) => !row.project_id || (!listedProjectIds.has(row.project_id) && !completedIds.has(row.project_id))),
+          "unknown",
+          undefined,
+          null,
+          askOrigins
+        )
       );
     }
     return {
