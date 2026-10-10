@@ -81,6 +81,8 @@ export interface ConsoleProduction {
   maxConcurrentSessions: number | null;
   providers: string[];
   escalations: Array<{ actionKey: string; message: string; remedy: string | null }>;
+  /** Projects the production scope admits (the saved configuration while Off); null when unreadable. */
+  scopeProjects: string[] | null;
   /** True when Off retained a configuration that On could replay. */
   canReactivate: boolean;
 }
@@ -218,7 +220,8 @@ export function summarizeProduction(status: ProductionStatusResponse): ConsolePr
       message: escalation.message,
       remedy: escalation.remedy
     })),
-    canReactivate: status.inactiveConfiguration !== null
+    canReactivate: status.inactiveConfiguration !== null,
+    scopeProjects: scope?.projects ?? null
   };
 }
 
@@ -406,6 +409,108 @@ function launchDisabledReason(chip: ActionChip, agentOwned: boolean): string {
   if ((chip === "ready" || chip === "make_next") && !agentOwned) return "Not a coding-agent Action.";
   if (chip === "ready" || chip === "make_next") return "This Action has no Project or Plan to launch from.";
   return "Only ready Actions can launch.";
+}
+
+// ---------------------------------------------------------------------------
+// Projects: one card per Project, built from the same assembled queue
+// ---------------------------------------------------------------------------
+
+export type ProjectChip = "running" | "next_up" | "ready" | "needs_you" | "repo_busy" | "waiting" | "blocked" | "nothing_ready";
+
+export const PROJECT_CHIP_LABEL: Record<ProjectChip, string> = {
+  running: "Running",
+  next_up: "Next up",
+  ready: "Ready",
+  needs_you: "Needs you",
+  repo_busy: "Repository busy",
+  waiting: "Waiting",
+  blocked: "Blocked",
+  nothing_ready: "Nothing authorized"
+};
+
+export interface ProjectCard {
+  slug: string;
+  name: string;
+  /** The Project's earliest Action position in today's queue, which is what orders the cards. */
+  firstPosition: number;
+  /** Whether the production scope admits it; null when the scope could not be read. */
+  inScope: boolean | null;
+  chip: ProjectChip;
+  reason: string | null;
+  /** The Plan the Project's pointer is on, when its pointer Action is in the queue. */
+  planSlug: string | null;
+  planOpen: number;
+  planReady: number;
+  /** The running Action, or else the pointer Action: what production would pick now. */
+  next: ConsoleAction | null;
+  otherPlans: Array<{ slug: string; open: number }>;
+  /** Escalations Arcadia recorded for this Project's Actions. */
+  needs: Array<{ actionKey: string; message: string; remedy: string | null }>;
+}
+
+const RUNNING_CHIPS = new Set<ActionChip>(["running", "launching", "stalled"]);
+
+/**
+ * Groups the assembled queue by Project. Read-only: it orders cards by each
+ * Project's earliest queue position (today's priority authority) and marks the
+ * first ready, in-scope Project "Next up". Choosing Project order is pending
+ * Decision 0115; nothing here changes what production runs.
+ */
+export function assembleProjects(assembled: AssembledQueue, production: ConsoleProduction | null): ProjectCard[] {
+  const byProject = new Map<string, ConsoleAction[]>();
+  for (const action of assembled.actions) {
+    if (!action.projectSlug) continue;
+    const list = byProject.get(action.projectSlug) ?? [];
+    list.push(action);
+    byProject.set(action.projectSlug, list);
+  }
+  const scope = production?.scopeProjects ? new Set(production.scopeProjects) : null;
+  const cards = [...byProject.entries()].map(([slug, actions]): ProjectCard => {
+    const running = actions.find((action) => RUNNING_CHIPS.has(action.chip)) ?? null;
+    const pointer = actions.find((action) => action.pointerAuthorized) ?? null;
+    const planSlug = (running ?? pointer)?.planSlug ?? null;
+    const inPlan = planSlug ? actions.filter((action) => action.planSlug === planSlug) : [];
+    const plans = new Map<string, number>();
+    for (const action of actions) if (action.planSlug && action.planSlug !== planSlug) plans.set(action.planSlug, (plans.get(action.planSlug) ?? 0) + 1);
+    const needs = (production?.escalations ?? []).filter((escalation) => escalation.actionKey.startsWith(`${slug}/`));
+    const pointerNeedsYou = pointer !== null && (pointer.chip === "needs_you" || needs.some((escalation) => escalation.actionKey === pointer.key));
+    const [chip, reason] = projectState(running, pointer, pointerNeedsYou);
+    return {
+      slug,
+      name: actions[0].projectName ?? slug,
+      firstPosition: Math.min(...actions.map((action) => action.position)),
+      inScope: scope ? scope.has(slug) : null,
+      chip,
+      reason,
+      planSlug,
+      planOpen: inPlan.length,
+      planReady: inPlan.filter((action) => action.state === "ready").length,
+      next: running ?? pointer,
+      otherPlans: [...plans.entries()].map(([plan, open]) => ({ slug: plan, open })),
+      needs
+    };
+  });
+  cards.sort((a, b) => a.firstPosition - b.firstPosition);
+  const first = cards.find((card) => card.chip === "ready" && card.inScope !== false);
+  if (first) first.chip = "next_up";
+  return cards;
+}
+
+function projectState(running: ConsoleAction | null, pointer: ConsoleAction | null, pointerNeedsYou: boolean): [ProjectChip, string | null] {
+  if (running) return ["running", running.why];
+  if (!pointer) return ["nothing_ready", "No Action of this Project is authorized to run: its pointer Action is done, blocked or not chosen."];
+  if (pointerNeedsYou) return ["needs_you", pointer.why];
+  switch (pointer.chip) {
+    case "ready":
+    case "make_next":
+      return ["ready", null];
+    case "repo_busy":
+      return ["repo_busy", pointer.why];
+    case "waiting":
+      return ["waiting", pointer.why];
+    default:
+      return ["blocked", pointer.why];
+  }
 }
 
 // ---------------------------------------------------------------------------

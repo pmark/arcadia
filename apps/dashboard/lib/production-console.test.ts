@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScheduleBatch } from "./arcadia-cli";
 import {
+  assembleProjects,
   assembleQueue,
   PAUSE_CAPABILITY,
   sessionLogPath,
@@ -133,6 +134,18 @@ describe("production console: server-side trimming", () => {
     const summary = summarizeProduction(base);
     expect(summary).toMatchObject({ desiredState: "inactive", revision: 30, maxConcurrentSessions: 2, providers: ["claude-code-cli"], canReactivate: true });
     expect(summary.escalations).toEqual([{ actionKey: "arcadia/a", message: "m", remedy: "r" }]);
+    expect(summary.scopeProjects).toBeNull();
+  });
+
+  it("reads the scope's Projects, from the saved configuration while Off", () => {
+    const summary = summarizeProduction({
+      read: { status: "ok", policy: { desiredState: "inactive", revision: 1, epoch: 1, scope: { projects: ["old"] } }, observedAt: "" },
+      display: { state: "inactive_idle", label: "Inactive · Idle", observedAt: "" },
+      liveAdmissions: 0,
+      inactiveConfiguration: { scope: { projects: ["arcadia", "rebuster"], providers: [], maxConcurrentSessions: 1 } },
+      operatorEscalations: []
+    } as never);
+    expect(summary.scopeProjects).toEqual(["arcadia", "rebuster"]);
   });
 });
 
@@ -234,5 +247,50 @@ describe("production console: pause controls", () => {
     expect(PAUSE_CAPABILITY.session.available).toBe(false);
     expect(PAUSE_CAPABILITY.all.reason).toMatch(/^Not available yet/);
     expect(PAUSE_CAPABILITY.session.reason).toMatch(/^Not available yet/);
+  });
+});
+
+describe("production console: Projects view", () => {
+  const production = (scopeProjects: string[] | null, escalations: Array<{ actionKey: string; message: string; remedy: string | null }> = []) => ({
+    displayState: "inactive_idle", label: "Inactive · Idle", desiredState: "inactive" as const, revision: 1, epoch: 1, liveAdmissions: 0,
+    maxConcurrentSessions: 1, providers: [], escalations, canReactivate: true, scopeProjects
+  });
+  const entries = [
+    entry({ projectSlug: "rebuster", actionId: "r1" }),
+    entry({ projectSlug: "ppn", actionId: "p1", planSlug: "pilot" }),
+    entry({ projectSlug: "ppn", actionId: "p2", planSlug: "pilot", pointerAuthorized: false, state: "attention", status: "open", dependencies: ["p1"] }),
+    entry({ projectSlug: "ppn", actionId: "img", planSlug: "imagery", pointerAuthorized: false }),
+    entry({ projectSlug: "site", actionId: "s1", pointerAuthorized: false })
+  ];
+  const assembled = assembleQueue(trimWorkQueue(queue(entries)), null, []);
+
+  it("makes one card per Project in queue order, with its pointer Plan, counts, other Plans and what it would pick", () => {
+    const cards = assembleProjects(assembled, production(null));
+    expect(cards.map((card) => card.slug)).toEqual(["rebuster", "ppn", "site"]);
+    const ppn = cards[1];
+    expect(ppn).toMatchObject({ planSlug: "pilot", planOpen: 2, planReady: 1, chip: "ready", otherPlans: [{ slug: "imagery", open: 1 }] });
+    expect(ppn.next?.actionId).toBe("p1");
+    expect(cards[0].chip).toBe("next_up");
+    expect(cards[2]).toMatchObject({ chip: "nothing_ready", next: null, planSlug: null });
+  });
+
+  it("marks only in-scope Projects as next up and flags the rest as outside the scope", () => {
+    const cards = assembleProjects(assembled, production(["ppn"]));
+    expect(cards.find((card) => card.slug === "rebuster")).toMatchObject({ inScope: false, chip: "ready" });
+    expect(cards.find((card) => card.slug === "ppn")).toMatchObject({ inScope: true, chip: "next_up" });
+  });
+
+  it("says Needs you only when an escalation names the Project's pointer Action, and lists every escalation on its card", () => {
+    const onPointer = assembleProjects(assembled, production(null, [{ actionKey: "ppn/p1", message: "Prepare the packet.", remedy: "arcadia work plan x" }]));
+    expect(onPointer.find((card) => card.slug === "ppn")).toMatchObject({ chip: "needs_you", needs: [{ actionKey: "ppn/p1" }] });
+    const elsewhere = assembleProjects(assembled, production(null, [{ actionKey: "ppn/img", message: "m", remedy: null }]));
+    expect(elsewhere.find((card) => card.slug === "ppn")).toMatchObject({ chip: "ready", needs: [{ actionKey: "ppn/img" }] });
+  });
+
+  it("shows the running Action and its Plan while a Session holds it", () => {
+    const running = assembleQueue(trimWorkQueue(queue(entries)), null, [session({ projectId: "proj-ppn", actionId: "img" })]);
+    const ppn = assembleProjects(running, production(null)).find((card) => card.slug === "ppn");
+    expect(ppn).toMatchObject({ chip: "running", planSlug: "imagery" });
+    expect(ppn?.next?.actionId).toBe("img");
   });
 });
