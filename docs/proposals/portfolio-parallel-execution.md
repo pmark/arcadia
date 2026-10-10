@@ -274,6 +274,60 @@ work.
   operator set an explicit ceiling. `provider-capacity-harvesting` and the
   Constitution rule this out.
 
+### Scheduling strategy: operator preferences (2026-10-09)
+
+The operator thinks in Projects, then Plans. Action order inside a Plan is
+Arcadia's job. The goals, from the /production design session:
+
+1. Make the fastest progress the burn limits allow, around the clock, across
+   every provider, and never spend to fill idle capacity.
+2. State the strategy once, as a few preferences, instead of steering Actions.
+3. Allow breadth: usable work in several Projects at roughly the same time,
+   then iterate.
+4. Run Actions in parallel only when they are provably safe: dependencies
+   landed, scopes disjoint, resources free. Plan boundaries never decide safety.
+5. Give every idle Action exactly one wait reason.
+6. Keep preferences flexible until a Session starts. That admission is the
+   lock-in, and it writes its own receipt.
+
+Three preferences carry the strategy:
+
+- **Where.** The included Projects (production scope) and their order.
+- **How they share.** Percentage shares of Session starts across included
+  Projects, so a lower Project can run while a higher one still has ready
+  work ([Decision 0115](../decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md)).
+  When a Project's active Plan waits on the operator, its turn passes to the
+  next Project instead of to its own next Plan
+  ([Decision 0116](../decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md)).
+  Inside a Project the default is Focus: one Plan at a time, with corrective
+  and blocker Actions outranking planned work through the existing class
+  tiers.
+- **How much.** Per provider window, a reserve kept from agents. A Session
+  starts only while projected use at the window's reset stays at or below
+  100% minus the reserve (Decisions 0103 and 0111, open). Tokens are counted
+  per Session from the providers' local logs (Claude Code session JSONL
+  `usage`; Codex rollout `token_count`, which also carries a `rate_limits`
+  snapshot) and reported per Action and per Project. OpenCode, which has no
+  allowance probe, may run under an operator-set daily token ceiling
+  ([Decision 0118](../decisions/0118-decide-whether-opencode-which-has-no-allowance-probe-may-run-in-unattended.md)).
+
+Safety rules added to the model above:
+
+- Each admission joins the live set at once, so two Actions admitted in one
+  tick are checked against each other too. A tick never locks a group
+  atomically; a "batch" is simply what one tick admits.
+- Each repository lists implicitly shared files: lockfiles, generated
+  directories, migrations, fixtures. A candidate whose diff touches one counts
+  as touching the whole repository. A migration also serializes its Plan.
+- Up to two unmerged candidates per repository
+  ([Decision 0117](../decisions/0117-decide-how-many-unmerged-prs-candidates-production-may-have-open-per-repository.md)),
+  with merge lead time shown beside the review backlog.
+
+An adversarial review recommended strict priority and one unmerged candidate,
+and excluding OpenCode until it has a probe. The operator chose shares, two
+candidates and an OpenCode ceiling. Decisions 0115-0118 record both sides
+for the operator's answer.
+
 ## 4. Sequence (the 20% first)
 
 | Step | What | Gated by | Size |
@@ -294,9 +348,10 @@ triggers.
 ### What this does not build
 
 - A swarm scheduler, a distributed scheduler or a hosted coordinator.
-- Fairness weighting or aging across Projects. Strict queue order plus resource
-  limits already spreads work, and `production-scheduling.md` defers fairness
-  until a need is observed.
+- Fairness weighting or aging across Projects beyond what Decision 0115
+  decides. `production-scheduling.md` defers fairness until a need is
+  observed; the operator's breadth goal is that need, if 0115 is answered
+  with shares.
 - Spending to fill idle capacity.
 
 ## 5. Build map
