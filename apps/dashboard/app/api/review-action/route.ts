@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "../../../lib/originGuard";
 import {
   ArcadiaCliError,
   flagReviewForAgent,
@@ -18,6 +19,8 @@ interface ReviewActionRequest {
   action?: unknown;
   reply?: unknown;
   execute?: unknown;
+  /** Approve without executing (`review approve --no-execute`): what the build-packet control sends. */
+  noExecute?: unknown;
   executor?: unknown;
   trigger?: unknown;
   feedback?: unknown;
@@ -26,11 +29,15 @@ interface ReviewActionRequest {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "Cross-origin review requests are refused.", details: null }, { status: 403 });
+  }
   try {
     const body = (await request.json()) as ReviewActionRequest;
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim() as ReviewAction : "";
     const execute = body.execute === true;
+    const noExecute = body.noExecute === true;
     const executor = typeof body.executor === "string" ? body.executor.trim() : undefined;
     const trigger = typeof body.trigger === "string" ? body.trigger.trim() : "";
     const feedback = typeof body.feedback === "string" ? body.feedback.trim() : "";
@@ -45,6 +52,10 @@ export async function POST(request: Request) {
         { error: "A deferral requires a named trigger condition before it is accepted.", details: null },
         { status: 400 }
       );
+    }
+
+    if (action === "approve" && execute && noExecute) {
+      return NextResponse.json({ error: "execute and noExecute cannot be combined.", details: null }, { status: 400 });
     }
 
     if (action === "approve" && execute) {
@@ -83,6 +94,7 @@ export async function POST(request: Request) {
       const response = await runReviewAction({
         id,
         action,
+        noExecute: action === "approve" && noExecute,
         trigger: action === "defer" ? trigger : undefined,
         feedback: action === "reject" ? feedback : undefined
       });

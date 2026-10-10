@@ -261,6 +261,73 @@ export async function settlePendingAgentAsk(input: {
   );
 }
 
+export interface AgentAskEligibility {
+  /** True when the dry-run settle preview succeeded; false when it refused (then `why` says why). */
+  acceptable: boolean;
+  why: string | null;
+}
+
+const ELIGIBILITY_TTL_MS = 15_000;
+const ELIGIBILITY_MAX_ASKS = 20;
+const ELIGIBILITY_CONCURRENCY = 4;
+const ELIGIBILITY_TIMEOUT_MS = 10_000;
+const eligibilityCache = new Map<string, { at: number; value: AgentAskEligibility }>();
+
+function firstLine(message: string, limit = 200): string {
+  const line = (message.split("\n").map((part) => part.trim()).find(Boolean) ?? "the preview was refused").replace(/^[A-Za-z_]+:\s+/, "");
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+}
+
+/**
+ * Whether accepting each pending Agent Ask would apply right now, from the same dry-run settle preview
+ * `settlePendingAgentAsk` resolves (no `--apply`, so nothing is written). Cached ~one poll and bounded
+ * (at most 20 Asks, 4 at a time, 10s each); an Ask not evaluated is simply absent from the map, which the
+ * page treats as "unknown" and makes no claim about. A preview that cannot be run for a non-refusal reason
+ * (timeout, CLI failure) is also left unknown rather than reported as ineligible.
+ */
+export async function loadAgentAskEligibility(
+  asks: Array<{ proposalId: string }>,
+  preview: (proposalId: string) => Promise<unknown> = (proposalId) =>
+    runArcadiaCliJson<AgentAskSettleResponse>(
+      ["agent-ask", "settle", "--proposal", proposalId, "--request-id", `dashboard-eligibility-${proposalId}`, "--disposition", "accepted"],
+      { timeoutMs: ELIGIBILITY_TIMEOUT_MS }
+    ),
+  now: () => number = Date.now
+): Promise<Map<string, AgentAskEligibility>> {
+  const result = new Map<string, AgentAskEligibility>();
+  const pending: string[] = [];
+  for (const ask of asks.slice(0, ELIGIBILITY_MAX_ASKS)) {
+    const cached = eligibilityCache.get(ask.proposalId);
+    if (cached && now() - cached.at < ELIGIBILITY_TTL_MS) result.set(ask.proposalId, cached.value);
+    else pending.push(ask.proposalId);
+  }
+  let next = 0;
+  const worker = async () => {
+    while (next < pending.length) {
+      const proposalId = pending[next++];
+      try {
+        await preview(proposalId);
+        const value = { acceptable: true, why: null };
+        eligibilityCache.set(proposalId, { at: now(), value });
+        result.set(proposalId, value);
+      } catch (error) {
+        // Only a validation refusal from the preview itself is a "won't apply"; anything else is unknown.
+        if (error instanceof ArcadiaCliError && error.statusCode >= 400 && error.statusCode < 500) {
+          const value = { acceptable: false, why: firstLine(error.message) };
+          eligibilityCache.set(proposalId, { at: now(), value });
+          result.set(proposalId, value);
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(ELIGIBILITY_CONCURRENCY, pending.length) }, worker));
+  return result;
+}
+
+export function clearAgentAskEligibilityCache(): void {
+  eligibilityCache.clear();
+}
+
 export interface OpenDecisionOption {
   label: string;
   consequence: string;
@@ -1081,8 +1148,13 @@ export async function runReviewAction(input: {
   action: "approve" | "reject" | "defer";
   trigger?: string;
   feedback?: string;
+  /** Approve a build packet without executing anything: the guarded Session is launched separately. */
+  noExecute?: boolean;
 }): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
   const args = ["review", input.action, input.id];
+  if (input.action === "approve" && input.noExecute) {
+    args.push("--no-execute");
+  }
   if (input.action === "defer" && input.trigger) {
     args.push("--trigger", input.trigger);
   }

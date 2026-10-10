@@ -10,6 +10,32 @@ export interface Choice {
   disposition?: "accepted" | "rejected";
   /** For kind "decision": the option label to answer with. */
   option?: string;
+  /** For a build-packet review item: approve or reject it through /api/review-action. Approve never executes. */
+  reviewAction?: "approve" | "reject";
+}
+
+/** The request one choice sends: a build packet goes to /api/review-action with noExecute, everything else to /api/approvals. */
+export function requestFor(approval: Approval, choice: Choice): { url: string; body: Record<string, unknown> } {
+  if (approval.kind === "review_item" && choice.reviewAction) {
+    return {
+      url: "/api/review-action",
+      body: {
+        id: approval.id,
+        action: choice.reviewAction,
+        ...(choice.reviewAction === "approve" ? { noExecute: true } : {})
+      }
+    };
+  }
+  return {
+    url: "/api/approvals",
+    body: {
+      kind: approval.kind,
+      id: approval.id,
+      project: approval.project,
+      disposition: choice.disposition,
+      option: choice.option
+    }
+  };
 }
 
 // Not a hook value: guards one page's poll against an earlier response
@@ -73,16 +99,11 @@ export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: 
     setMessage(null);
     setError(null);
     try {
-      const response = await fetch("/api/approvals", {
+      const request = requestFor(approval, choice);
+      const response = await fetch(request.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: approval.kind,
-          id: approval.id,
-          project: approval.project,
-          disposition: choice.disposition,
-          option: choice.option
-        })
+        body: JSON.stringify(request.body)
       });
       const body = (await response.json()) as { message?: string; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not apply this approval.");
