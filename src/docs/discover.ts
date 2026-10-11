@@ -38,14 +38,6 @@ export interface DiscoveryResult {
   rejected: string[];
 }
 
-/**
- * Walk a repository for managed documents.
- *
- * Discovery is by frontmatter marker rather than by path, so an operator can
- * organize `docs/` however they like and a file only becomes Arcadia's business
- * when it explicitly opts in. Depth is capped and heavy directories skipped —
- * this runs over every project in the portfolio.
- */
 /** Active only inside `withDocsSnapshot`: repository root -> what one walk found. */
 let snapshot: Map<string, DiscoveryResult> | null = null;
 
@@ -55,6 +47,7 @@ let snapshot: Map<string, DiscoveryResult> | null = null;
  * re-reading and re-parsing every managed document. `arcadia todo` resolves
  * several views per Project and walked each repository many times (about 11 s,
  * past the dashboard's read timeout). Never wrap a pass that writes documents.
+ * Synchronous only: `run` must not return a Promise (the snapshot ends when it returns).
  */
 export function withDocsSnapshot<T>(run: () => T): T {
   if (snapshot) return run();
@@ -66,6 +59,14 @@ export function withDocsSnapshot<T>(run: () => T): T {
   }
 }
 
+/**
+ * Walk a repository for managed documents.
+ *
+ * Discovery is by frontmatter marker rather than by path, so an operator can
+ * organize `docs/` however they like and a file only becomes Arcadia's business
+ * when it explicitly opts in. Depth is capped and heavy directories skipped —
+ * this runs over every project in the portfolio.
+ */
 export function discoverDocs(repoRoot: string): DiscoveryResult {
   if (!snapshot) return walkDocs(repoRoot);
   const key = path.resolve(repoRoot);

@@ -1939,10 +1939,11 @@ export function recordCommittedCompletionSettlement(db: Database.Database, input
  */
 export function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
   const marker = `Agent Ask ${requestId}`;
-  // The whole request id, never a prefix: a revised Ask's id often extends the
-  // first draft's (`x` -> `x-r2`), and the draft did not file the revision's
-  // Decision (Issue #1236). Sentence punctuation may follow the id.
-  const named = new RegExp(`${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9_-])`);
+  // Only the writer's own line, with the whole request id, never a prefix or a
+  // prose mention: a revised Ask's id often extends the first draft's
+  // (`x` -> `x-r2`), and the draft did not file the revision's Decision (Issue
+  // #1236). The writer ends the id with a period; text may follow on the line.
+  const named = new RegExp(`^Proposed by ${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(?=\\s|$)`, "m");
   for (const doc of docs) {
     // A Plan Action created or amended by this Ask carries it as `source`.
     if (doc.type === "plan" && doc.project === projectSlug && doc.actions.some((action) => action.source === marker)) {
