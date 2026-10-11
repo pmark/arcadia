@@ -4,7 +4,7 @@ type: decision
 id: "0123"
 slug: decide-the-spend-bound-for-the-first-managed-production-run-on-arcadia-own
 project: arcadia
-status: open
+status: approved
 question: Decide the spend bound for the first managed production run on Arcadia own repository, which today has no provider-window awareness and no operator reserve.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route
 updated: 2026-10-11
+answer: Codex only, gate on, attended first run
+decided: 2026-10-11
 ---
 
 # Decision 0123: Decide the spend bound for the first managed production run on Arcadia own repository, which today has no provider-window awareness and no operator reserve.
