@@ -144,7 +144,7 @@ done
 
 # Warm the development dashboard's slowest reads so the operator's first visit
 # after a restart is not a cold page compile plus a cold CLI projection (the
-# /production queue took 14 s cold). Detached and bounded: it never delays or
+# /production queue took 14 s cold, /api/plans up to 50 s). Detached and bounded: it never delays or
 # fails the restart. ARCADIA_DASHBOARD_WARM=0 turns it off.
 if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
   DASHBOARD_URL="${ARCADIA_DASHBOARD_URL:-http://127.0.0.1:3020}"
@@ -154,7 +154,7 @@ if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
       curl -fsS -o /dev/null --max-time 5 "$DASHBOARD_URL/" && break
       sleep 2
     done
-    for path in /production "/api/production-console?part=core" "/api/production-console?part=queue"; do
+    for path in /production "/api/production-console?part=core" "/api/production-console?part=queue" /plans /api/plans; do
       curl -fsS -o /dev/null --max-time 90 "$DASHBOARD_URL$path" || true
     done
   ) </dev/null >/dev/null 2>&1 &

@@ -9,10 +9,42 @@ import type { AgentAskRejections } from "./libraryContract.js";
  * and decision logic for `scripts/apply-todo-bulk-disposition.ts`: it reads
  * nothing and writes nothing. Every pin below is checked again at run time.
  */
+export interface DispositionPins {
+  /** The operator action that applies this list. */
+  scriptId: string;
+  manifestPath: string;
+  sha256: string;
+  settlementRequestIdPrefix: string;
+  bulkClasses: readonly string[];
+  /** Pinned rehearsal fixture Projects to mark completed; may be empty. */
+  fixtureProjects: ReadonlyArray<{ id: string; slug: string }>;
+  neverTouch: { proposals: readonly string[]; reviewItems: readonly string[] };
+  /** Where Ask-file archive commits land: a fresh branch and worktree (under ~/tmp), never the main checkout. */
+  archiveBranch: string;
+  archiveWorktreeName: string;
+  archivePullRequestTitle: string;
+}
+
+/** Never settled, rejected or edited, whatever any list says (the rehearsal V1 session's items). */
+const NEVER_TOUCH = {
+  proposals: [
+    "agentask_951cb38647e2635013", // pr-opened-arcadia-pr1212
+    "agentask_a407e984e2dababe54"  // pr-opened-arcadia-pr1033
+  ],
+  reviewItems: [
+    "review_c1cc2f67b165454dab", // R366 (fixture; stays unapproved)
+    "review_af4fe69f0faf47ad9b"  // R368 (fixture; stays unapproved)
+  ]
+} as const;
+
 export const TODO_BULK_DISPOSITION_20261010 = {
+  scriptId: "apply-todo-bulk-disposition-20261010",
   manifestPath: "docs/reports/todo-bulk-disposition-2026-10-10.json",
   sha256: "813e83eaa4068a86b2bf1a5c088938c293e0bdf4aacfd500450fa418556916a4",
   settlementRequestIdPrefix: "bulk-20261010-",
+  archiveBranch: "operator/todo-bulk-disposition-archives-20261010",
+  archiveWorktreeName: "arcadia-todo-bulk-disposition-20261010",
+  archivePullRequestTitle: "chore(asks): archive Ask files rejected by the /todo bulk disposition (2026-10-10)",
   /** Classes the operator accepted for bulk disposition; class a and d stay. */
   bulkClasses: ["b", "c", "e"] as const,
   /** The 8 rehearsal fixture Projects marked completed, pinned by id and slug. */
@@ -26,18 +58,34 @@ export const TODO_BULK_DISPOSITION_20261010 = {
     { id: "proj_9f837e5188534af2b3", slug: "two-action-rehearsal-v6" },
     { id: "proj_fc0a2c56e3e7424c84", slug: "zero-prompt-rehearsal" }
   ],
-  /** Never settled, rejected or edited, whatever any list says. */
-  neverTouch: {
-    proposals: [
-      "agentask_951cb38647e2635013", // pr-opened-arcadia-pr1212
-      "agentask_a407e984e2dababe54"  // pr-opened-arcadia-pr1033
-    ],
-    reviewItems: [
-      "review_c1cc2f67b165454dab", // R366 (fixture; stays unapproved)
-      "review_af4fe69f0faf47ad9b"  // R368 (fixture; stays unapproved)
-    ]
-  }
-} as const;
+  neverTouch: NEVER_TOUCH
+} as const satisfies DispositionPins;
+
+/**
+ * The 2026-10-11 follow-up list (docs/reports/todo-bulk-disposition-2026-10-11.md):
+ * Arcadia Asks superseded by a later revision or by merged work, and the
+ * WayProposal review items the 2026-10-10 disposition rejected that docs sync
+ * then reopened (fixed in PR #1241). No fixture Projects. It applies only when
+ * the operator presses its button; generating it accepts nothing.
+ */
+export const TODO_BULK_DISPOSITION_20261011 = {
+  scriptId: "apply-todo-bulk-disposition-20261011",
+  manifestPath: "docs/reports/todo-bulk-disposition-2026-10-11.json",
+  sha256: "fb3675c8b11fd4aac09353c4ee6a73a06660d1cf8994f8e5ed54f9bbc1a8502d",
+  settlementRequestIdPrefix: "bulk-20261011-",
+  archiveBranch: "operator/todo-bulk-disposition-archives-20261011",
+  archiveWorktreeName: "arcadia-todo-bulk-disposition-20261011",
+  archivePullRequestTitle: "chore(asks): archive Ask files rejected by the /todo follow-up disposition (2026-10-11)",
+  bulkClasses: ["c", "e"] as const,
+  fixtureProjects: [],
+  neverTouch: NEVER_TOUCH
+} as const satisfies DispositionPins;
+
+/** The pins of each operator action this helper may run, by action id. */
+export const TODO_BULK_DISPOSITIONS: Readonly<Record<string, DispositionPins>> = {
+  [TODO_BULK_DISPOSITION_20261010.scriptId]: TODO_BULK_DISPOSITION_20261010,
+  [TODO_BULK_DISPOSITION_20261011.scriptId]: TODO_BULK_DISPOSITION_20261011
+};
 
 export interface ManifestItem {
   key: string;
@@ -75,8 +123,11 @@ export function sha256Hex(text: string | Buffer): string {
  * rejection scope, then derive exactly what may be applied. Refuses on any
  * drift instead of guessing.
  */
-export function buildDispositionPlan(manifestText: string, declared: AgentAskRejections): DispositionPlan {
-  const pins = TODO_BULK_DISPOSITION_20261010;
+export function buildDispositionPlan(
+  manifestText: string,
+  declared: AgentAskRejections,
+  pins: DispositionPins = TODO_BULK_DISPOSITION_20261010
+): DispositionPlan {
   const digest = sha256Hex(manifestText);
   if (digest !== pins.sha256) refuse("MANIFEST_SHA256_MISMATCH", `Manifest sha256 ${digest} is not the accepted ${pins.sha256}.`);
   if (declared.sha256 !== pins.sha256 || declared.manifest !== pins.manifestPath) {
@@ -86,7 +137,7 @@ export function buildDispositionPlan(manifestText: string, declared: AgentAskRej
   if (manifest.schema !== "arcadia-todo-bulk-disposition-v1" || !Array.isArray(manifest.items)) {
     refuse("MANIFEST_SHAPE", "Manifest is not an arcadia-todo-bulk-disposition-v1 list.");
   }
-  const bulk = manifest.items.filter((item) => (pins.bulkClasses as readonly string[]).includes(item.cls));
+  const bulk = manifest.items.filter((item) => pins.bulkClasses.includes(item.cls));
   const askItems = new Map<string, ManifestItem>();
   for (const item of bulk) {
     const id = item.writer?.agent_ask;
@@ -109,11 +160,11 @@ export function buildDispositionPlan(manifestText: string, declared: AgentAskRej
   }
   const reviews: PlannedReview[] = bulk.flatMap((item) => item.writer?.review_item
     ? [{ reviewItemId: item.writer.review_item, key: item.key, project: item.project }] : []);
-  const protectedReviews = reviews.filter((review) => (pins.neverTouch.reviewItems as readonly string[]).includes(review.reviewItemId));
+  const protectedReviews = reviews.filter((review) => pins.neverTouch.reviewItems.includes(review.reviewItemId));
   if (protectedReviews.length > 0) refuse("NEVER_TOUCH_IN_SCOPE", `Protected review item(s) appear in the list: ${protectedReviews.map((r) => r.reviewItemId).join(", ")}.`);
   const slugs = pins.fixtureProjects.map((p) => p.slug);
   if (!Array.isArray(manifest.fixtureProjects) || [...manifest.fixtureProjects].sort().join(",") !== [...slugs].sort().join(",")) {
-    refuse("FIXTURE_PROJECTS_MISMATCH", "The manifest's fixture Projects differ from the pinned eight.");
+    refuse("FIXTURE_PROJECTS_MISMATCH", `The manifest's fixture Projects differ from the pinned ${slugs.length}.`);
   }
   return { asks, crossRepoSkips, reviews, projects: pins.fixtureProjects };
 }

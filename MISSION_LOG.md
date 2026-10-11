@@ -2247,6 +2247,13 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1237
+
+- **Did:** PR 1237 is open: three new UX Actions give the Dashboard Ask screen a one-tap intent-correction menu, an evidence panel and a relationship map - https://github.com/pmark/arcadia/pull/1237
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1244
 
 - **Did:** PR #1244 stops an expired Claude login from pausing the Project: the exit now shows a sign-in blocker with the remedy and holds relaunches for 15 minutes instead of spending the failed-Run budget. Reviewed and green-checked; it waits for your merge because it touches production budget code. https://github.com/pmark/arcadia/pull/1244

@@ -7,7 +7,8 @@ import type { NormalizedAgentAsk } from "../src/ask/agentAsk.js";
 import { validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { assertOperatorSettlementContract } from "../src/operatorActions/operatorExecution.js";
 import {
-  buildDispositionPlan, decideAsk, decideProject, decideReview, previewTouchesOtherCheckout, TODO_BULK_DISPOSITION_20261010 as PINS
+  buildDispositionPlan, decideAsk, decideProject, decideReview, previewTouchesOtherCheckout, TODO_BULK_DISPOSITION_20261010 as PINS,
+  TODO_BULK_DISPOSITION_20261011 as PINS11, TODO_BULK_DISPOSITIONS
 } from "../src/operatorActions/todoBulkDisposition.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -140,5 +141,38 @@ describe("the launcher", () => {
     const bad = spawnSync(sh, ["--force"], { encoding: "utf8" });
     expect(bad.status).toBe(2);
     expect(bad.stderr).toContain("usage:");
+  });
+});
+
+describe("the pinned 2026-10-11 follow-up disposition", () => {
+  const ID11 = "apply-todo-bulk-disposition-20261011";
+  const descriptor11 = (): OperatorScriptDescriptor => JSON.parse(readFileSync(path.join(library, `${ID11}.json`), "utf8")) as OperatorScriptDescriptor;
+  const manifest11 = readFileSync(path.join(root, PINS11.manifestPath), "utf8");
+  it("derives exactly the listed scope with its own pins and no fixture Projects", () => {
+    expect(TODO_BULK_DISPOSITIONS[ID11]).toBe(PINS11);
+    const plan = buildDispositionPlan(manifest11, descriptor11().agentAskRejections!, PINS11);
+    expect(plan.asks).toHaveLength(15);
+    expect(plan.crossRepoSkips).toHaveLength(0);
+    expect(plan.reviews).toHaveLength(24);
+    expect(plan.projects).toHaveLength(0);
+    expect(plan.asks.every((a) => a.project === "arcadia" && a.settlementRequestId === `bulk-20261011-${a.proposalId}`)).toBe(true);
+    // Kept visible on purpose: rejecting would reset or reopen work or answer a live question; and the rehearsal session's items.
+    const reviewIds = new Set(plan.reviews.map((r) => r.reviewItemId));
+    for (const kept of ["review_ac701e4ed8a5442099", "review_41438cecfd7743499e", "review_ed15b634cdcc444084", ...PINS11.neverTouch.reviewItems]) {
+      expect(reviewIds.has(kept)).toBe(false);
+    }
+    const askIds = new Set(plan.asks.map((a) => a.proposalId));
+    for (const kept of ["agentask_f95e6a65cad68821cb", "agentask_d89203864aaa466a4e", "agentask_eac5a42d17c26104ef", ...PINS11.neverTouch.proposals]) {
+      expect(askIds.has(kept)).toBe(false);
+    }
+  });
+  it("refuses another list's pins in either direction", () => {
+    expect(() => buildDispositionPlan(manifest11, descriptor11().agentAskRejections!)).toThrow("sha256");
+    expect(() => buildDispositionPlan(manifestText, descriptor().agentAskRejections!, PINS11)).toThrow("sha256");
+  });
+  it("is a valid one-shot rejection-only library entry", () => {
+    const d = validateOperatorScriptContract(descriptor11(), ID11, readFileSync(path.join(library, `${ID11}.sh`), "utf8"));
+    expect(d.repeatable).toBe(false);
+    expect(d.agentAskRejections?.sha256).toBe(PINS11.sha256);
   });
 });
