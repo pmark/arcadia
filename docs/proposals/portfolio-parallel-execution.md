@@ -296,13 +296,12 @@ Three preferences carry the strategy:
 - **How they share.** Percentage shares of Session starts across included
   Projects, so a lower Project can run while a higher one still has ready
   work ([Decision 0115](../decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md)).
-  When a Project's active Plan waits on the operator, its turn passes to the
-  next Project instead of to its own next Plan
-  ([Decision 0116](../decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md)).
-  Inside a Project the proposed default is Focus: one Plan at a time, with
-  corrective and blocker Actions outranking planned work through the existing
-  class tiers. No Decision ratifies Focus yet; 0116 decides only where a
-  blocked Project's turn goes.
+  When a Project's active Plan waits on the operator, the Project keeps its
+  turn and runs its own next Plan
+  ([Decision 0116](../decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md),
+  answered 2026-10-11; today's behavior under Decision 0048).
+  Otherwise a Project works one Plan at a time, with corrective and blocker
+  Actions outranking planned work through the existing class tiers.
 - **How much.** Per provider window, a reserve kept from agents. A Session
   starts only while projected use at the window's reset stays at or below
   100% minus the reserve (Decision 0103: percent of window; Decision 0111:

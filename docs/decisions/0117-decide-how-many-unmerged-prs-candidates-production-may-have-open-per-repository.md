@@ -4,7 +4,7 @@ type: decision
 id: "0117"
 slug: decide-how-many-unmerged-prs-candidates-production-may-have-open-per-repository
 project: arcadia
-status: open
+status: approved
 question: "Decide how many unmerged PRs (candidates) production may have open per repository: 1 or 2."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-10
+updated: 2026-10-11
+answer: 2 unmerged candidates per repository
+decided: 2026-10-11
 ---
 
 # Decision 0117: Decide how many unmerged PRs (candidates) production may have open per repository: 1 or 2.

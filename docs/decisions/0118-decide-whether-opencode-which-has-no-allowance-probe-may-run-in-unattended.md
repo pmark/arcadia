@@ -4,7 +4,7 @@ type: decision
 id: "0118"
 slug: decide-whether-opencode-which-has-no-allowance-probe-may-run-in-unattended
 project: arcadia
-status: open
+status: approved
 question: Decide whether OpenCode, which has no allowance probe, may run in unattended production under an operator-set daily token ceiling.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-10
+updated: 2026-10-11
+answer: Admit OpenCode under an operator-set daily token ceiling
+decided: 2026-10-11
 ---
 
 # Decision 0118: Decide whether OpenCode, which has no allowance probe, may run in unattended production under an operator-set daily token ceiling.

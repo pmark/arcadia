@@ -2302,3 +2302,17 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route remains draft with completion state preserved. Operator asked for /plans/PROJECT to be a prioritized governed Action that runs soon (capture_6123f2ba). Activation replaces the active Plan; the issue-triage Plan stays draft with completion state preserved.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1259-decision-answer-2026-10-11
+
+- **Did:** Your call: Decision 0122 (the spend bound for the first production run on Arcadia) is drafted in PR #1259 with four options and consequences; I recommend Codex only, gate on, attended first run. It was fact-checked and corrected. Merge the PR so it lands, then answer 0122 on the dashboard. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask correct-spend-bound-decision-number-2026-10-11
+
+- **Did:** Correction: the spend bound Decision is 0123, not 0122. Main already had a different 0122 (production admission follows an operator-owned Project, answered in #1260), so PR #1259 renumbers mine to 0123; it is still open and unanswered. An earlier notice named it 0122. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Parallel Decision-number allocation race (#1187). The Decision was unanswered and unmerged, so it was renumbered in place; CodeRabbit wording on provider substitution was also verified and fixed.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

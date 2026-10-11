@@ -1,4 +1,6 @@
 import { OperatorScriptContractError, validateOperatorScriptContract } from "../../../../../src/operatorActions/libraryContract.js";
+import { matchRetirement, parseRetirementManifest } from "../../../../../src/operatorActions/libraryRetirements.js";
+import retirementManifest from "../../../../../src/operatorActions/legacyRetirements.json";
 import { constants } from "node:fs";
 import { access, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -52,6 +54,18 @@ export interface OperatorScriptRun {
     failure: { effect: string; next: string };
   };
   files: { stdout: string; stderr: string; descriptor: string; state: string };
+}
+
+const RETIREMENTS = parseRetirementManifest(retirementManifest);
+
+/** True for a legacy entry pinned by hash in legacyRetirements.json: it is intentionally never listed or run, so it is not an error. */
+async function isRetired(id: string): Promise<boolean> {
+  if (!RETIREMENTS.has(id)) return false;
+  try {
+    return matchRetirement(RETIREMENTS, id, await readFile(path.join(LIBRARY_PATH, `${id}.json`)), await readFile(path.join(LIBRARY_PATH, `${id}.sh`))) !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /** Load and validate an operator-script descriptor and its executable path. */
@@ -120,6 +134,7 @@ export async function GET() {
     const runReceipts = await loadLatestRunReceipts(LIBRARY_PATH);
     const scripts = await Promise.all(ids.map(async (id) => {
       try {
+        if (await isRetired(id)) return null;
         const { descriptor } = await loadDescriptor(id);
         const recorded = await loadState(id);
         const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
