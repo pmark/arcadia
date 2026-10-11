@@ -2239,3 +2239,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-directed rehearsal release-manager request, runbook recommendation 2 (Issue #1225). No governed Action is completed; pointer and queue untouched.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1229
+
+- **Did:** PR #1229 drafts your bug Plan: seven verified, small loop-integrity bugs in dependency order (inactive, nothing activated), plus an honest production-readiness answer with the gates left before a first run on Arcadia itself. Review is running. https://github.com/pmark/arcadia/pull/1229
+- **Result:** Operator request 2026-10-10 to run production on a Plan of the most important bugs once satisfied it can start. The Plan is an inactive draft; pointer, queue and authority untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
