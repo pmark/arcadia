@@ -2309,3 +2309,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask correct-spend-bound-decision-number-2026-10-11
+
+- **Did:** Correction: the spend bound Decision is 0123, not 0122. Main already had a different 0122 (production admission follows an operator-owned Project, answered in #1260), so PR #1259 renumbers mine to 0123; it is still open and unanswered. An earlier notice named it 0122. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Parallel Decision-number allocation race (#1187). The Decision was unanswered and unmerged, so it was renumbered in place; CodeRabbit wording on provider substitution was also verified and fixed.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
