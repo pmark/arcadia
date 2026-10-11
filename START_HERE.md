@@ -1207,8 +1207,9 @@ Set `DISCORD_CATEGORY_CHANNELS` in the bot's `.env` (see
 `apps/discord-bot/README.md`) to split the bot's proactive messages across
 channels you can mute separately. `alerts` gets production red alerts, CI-blocked
 pings, failed runs and blocked work; `briefings` gets the daily orientation
-packet and digests; `log` gets routine progress such as settlements, PR-opened
-pings and completed work. Anything that needs you (review items, opened
+packet and digests; `log` gets routine progress such as settlements and
+completed work. PR-opened and PR-ready are operator pings, so they go to the
+default channel. Anything that needs you (review items, opened
 Decisions, PR-ready pings) always stays in the default channel, which is also the
 only one that accepts requests. A category you leave unset, or a channel the bot
 cannot reach, falls back to the default channel, so nothing is lost.
