@@ -2295,3 +2295,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a remains draft with completion state preserved. Operator directed activation after PR 1246 merged; first Action is a light-tier snapshot.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1259-decision-answer-2026-10-11
+
+- **Did:** Your call: Decision 0122 (the spend bound for the first production run on Arcadia) is drafted in PR #1259 with four options and consequences; I recommend Codex only, gate on, attended first run. It was fact-checked and corrected. Merge the PR so it lands, then answer 0122 on the dashboard. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
