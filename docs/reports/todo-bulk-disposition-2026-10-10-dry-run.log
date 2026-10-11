@@ -1,5 +1,5 @@
 == /todo bulk disposition 2026-10-10 (--dry-run) ==
-Dry run: evidence in /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f; nothing is written to the workspace, any branch or GitHub.
+Dry run: evidence in /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.kQWG6h; nothing is written to the workspace, any branch or GitHub.
 agent_ask agent_ask:private-practice-now/agentask_3792df957b99ff6ae5 -> skipped: cross-repo item outside the declared scope; left for its own repository
 agent_ask agent_ask:private-practice-now/agentask_0f7d91a0b1e352e05f -> skipped: cross-repo item outside the declared scope; left for its own repository
 agent_ask agent_ask:private-practice-now/agentask_4f83957db433b9a5ea -> skipped: cross-repo item outside the declared scope; left for its own repository
@@ -92,7 +92,7 @@ agent_ask agent_ask:arcadia/agentask_2ff6688e3d395dd8d8 -> would_reject: would r
 agent_ask agent_ask:arcadia/agentask_e2013140b1521857c1 -> would_reject: would record the rejection; no file changes
 agent_ask agent_ask:arcadia/agentask_cacf838db3547e60ff -> would_reject: would record the rejection; no file changes
 agent_ask agent_ask:arcadia/agentask_3bbce63abb0848fce4 -> would_reject: would record the rejection; no file changes
-agent_ask agent_ask:unknown/agentask_1544892fa44fbb626d -> skipped: settlement preview refused, nothing written: Agent Ask must resolve an explicit Project before settlement.
+agent_ask agent_ask:unknown/agentask_1544892fa44fbb626d -> skipped: no resolved Project; settlement refuses it, nothing written
 agent_ask agent_ask:arcadia/agentask_bcec39dfeaa1a4177e -> would_reject: would record the rejection; no file changes
 agent_ask agent_ask:arcadia/agentask_a36fb6989bc607731d -> would_reject: would record the rejection; no file changes
 agent_ask agent_ask:arcadia/agentask_510998c2ade51e359e -> would_reject: would record the rejection; no file changes
@@ -301,5 +301,5 @@ project zero-prompt-rehearsal -> would_complete: active -> completed
  "review_item:would_reject": 61,
  "project:would_complete": 8
 }
-Receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f/receipt.json
-Per-item receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f/disposition-receipt.json
+Receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.kQWG6h/receipt.json
+Per-item receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.kQWG6h/disposition-receipt.json
