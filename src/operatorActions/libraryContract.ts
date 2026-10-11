@@ -1,3 +1,4 @@
+import path from "node:path";
 import { validatePlanAmendmentInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 
 export interface OperatorScriptDescriptor {
@@ -23,6 +24,19 @@ export interface OperatorScriptDescriptor {
   next_after?: NextAfter;
   planAmendment?: PlanAmendmentInput;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
+  /**
+   * A pinned, rejection-only settlement scope: the script may settle exactly
+   * these proposals, each only with disposition `rejected` (enforced at
+   * settlement time by `assertOperatorSettlementContract`). A rejection writes
+   * nothing about the work; it records the settlement and archives the Ask file.
+   * `manifest` and `sha256` name the reviewed list the ids were taken from.
+   */
+  agentAskRejections?: AgentAskRejections;
+}
+export interface AgentAskRejections {
+  manifest: string;
+  sha256: string;
+  proposals: string[];
 }
 export interface NextAfter {
   id: string;
@@ -39,6 +53,19 @@ const text = (v: unknown): v is string => typeof v === "string" && v.trim().leng
 const list = (v: unknown): v is string[] => Array.isArray(v) && v.every(text);
 const intents = ["auto", "outcome", "milestone", "plan", "action", "decision", "artifact", "log", "proposal", "project_update", "complete", "split"];
 const fail = (reason: string, message: string): never => { throw new OperatorScriptContractError(reason, message); };
+const MAX_DECLARED_REJECTIONS = 500;
+
+function validateAgentAskRejections(value: unknown): void {
+  const r = value as AgentAskRejections;
+  const repoRelative = (v: unknown) => text(v) && !path.isAbsolute(v) && !v.split(/[\\/]/).includes("..") && v.endsWith(".json");
+  if (!r || typeof r !== "object" || Array.isArray(r) || Object.keys(r).sort().join(",") !== "manifest,proposals,sha256" ||
+      !repoRelative(r.manifest) || typeof r.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(r.sha256) ||
+      !Array.isArray(r.proposals) || r.proposals.length === 0 || r.proposals.length > MAX_DECLARED_REJECTIONS ||
+      !r.proposals.every((id) => typeof id === "string" && /^agentask_[0-9a-f]{8,64}$/.test(id)) ||
+      new Set(r.proposals).size !== r.proposals.length) {
+    fail("INVALID_OPERATOR_CONTRACT", `agentAskRejections needs exactly manifest (a repository-relative .json path), sha256 (64 lowercase hex) and 1 to ${MAX_DECLARED_REJECTIONS} distinct agentask_ proposal ids.`);
+  }
+}
 
 /** Exact executable shape: no embedded settlement code or extra command can run. */
 export function planAmendmentLauncher(id: string): string {
@@ -69,6 +96,17 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
+  if (d.agentAskRejections !== undefined) {
+    if (d.planAmendment !== undefined || d.agentAsk !== undefined) {
+      fail("INVALID_OPERATOR_CONTRACT", "A rejection-only scope cannot be combined with agentAsk or planAmendment.");
+    }
+    validateAgentAskRejections(d.agentAskRejections);
+    if (d.repeatable === true) fail("INVALID_OPERATOR_CONTRACT", "A pinned rejection scope must be one-shot.");
+    if (script.includes("run-plan-amendment") || script.includes("plan-amendment-worker") || script.includes("withinPlanAmendmentRunner")) {
+      fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "The shared runner requires a pinned planAmendment descriptor.");
+    }
+    return d;
+  }
   if (d.planAmendment !== undefined) {
     if (d.agentAsk !== undefined) fail("INVALID_OPERATOR_CONTRACT", "Plan amendments use planAmendment, not a second Agent Ask declaration.");
     try { validatePlanAmendmentInput(d.planAmendment); }

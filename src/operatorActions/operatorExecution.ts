@@ -13,7 +13,10 @@ export function withinPlanAmendmentRunner<T>(descriptorPath: string, run: () => 
 }
 
 /** Called before previews, applies and replay returns in the canonical settlement path. */
-export function assertOperatorSettlementContract(ask: NormalizedAgentAsk): void {
+export function assertOperatorSettlementContract(
+  ask: NormalizedAgentAsk,
+  settlement: { proposalId: string; disposition: string } | null = null
+): void {
   const id = process.env.ARCADIA_OPERATOR_SCRIPT_ID;
   const descriptorPath = process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR;
   if (id === undefined && descriptorPath === undefined) return; // Ordinary manual/candidate CLI authority is unchanged.
@@ -29,6 +32,14 @@ export function assertOperatorSettlementContract(ask: NormalizedAgentAsk): void 
   } catch (error) {
     return refuse(error instanceof OperatorScriptContractError ? error.reason : "INVALID_OPERATOR_CONTEXT",
       error instanceof Error ? error.message : String(error));
+  }
+  if (descriptor.agentAskRejections) {
+    // Rejection-only scope: exactly the pinned proposals, each only rejected. Checked before the
+    // intent branches, so a pinned Plan-amendment Ask may be rejected but never accepted here.
+    if (!settlement || settlement.disposition !== "rejected" || !descriptor.agentAskRejections.proposals.includes(settlement.proposalId)) {
+      refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "This operator action may only reject the proposals its descriptor pins.");
+    }
+    return;
   }
   if (ask.intent === "plan" && ask.targetRef !== null) {
     if (activeRunnerDescriptor !== file || !descriptor.planAmendment) {

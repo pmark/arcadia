@@ -255,7 +255,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // A proposal recorded before `omittedLists` existed cannot say which lists
   // its Ask left out, so recover that from the stored request text (Issue #1079).
   const legacyListFallback = hydrateOmittedLists(db, proposal);
-  assertOperatorSettlementContract(proposal.normalized);
+  assertOperatorSettlementContract(proposal.normalized, { proposalId: proposal.id, disposition: input.disposition });
   const existingByRequest = db.prepare("SELECT operation_json, receipt_json FROM agent_ask_settlements WHERE request_id = ?")
     .get(input.settlementRequestId) as { operation_json: string; receipt_json: string } | undefined;
   if (existingByRequest) {

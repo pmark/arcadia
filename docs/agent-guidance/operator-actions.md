@@ -62,6 +62,12 @@ precondition drift before mutation, records a receipt, and states what it
 never does. Do not use the tag for ordinary preparation, observation, or
 deterministic completion evidence.
 
+An operator script that settles Agent Asks declares the exact scope it may
+settle: `agentAsk` (one proposal), `planAmendment` (the shared runner), or, for
+an accepted bulk cleanup, a one-shot `agentAskRejections` block naming the
+reviewed list (`manifest`, `sha256`) and every proposal id it may reject. The
+settlement guard then admits only disposition `rejected` for those ids.
+
 One-shot actions (`repeatable: false`) never delete themselves: `/runs` keeps
 their disabled succeeded state and receipt as the durable audit trail. Keep a
 reusable action repeatable only when rerunning is safe and useful. Do not add

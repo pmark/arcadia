@@ -1,0 +1,305 @@
+== /todo bulk disposition 2026-10-10 (--dry-run) ==
+Dry run: evidence in /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f; nothing is written to the workspace, any branch or GitHub.
+agent_ask agent_ask:private-practice-now/agentask_3792df957b99ff6ae5 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_0f7d91a0b1e352e05f -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_4f83957db433b9a5ea -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_2d5c5d8e5f0228355a -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_6cf8d04eaa217227e6 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_473d3e461f8e0a33b4 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_018d5d901a47748e83 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_fd59cb44aaf99d07d6 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_ae0f5d6d939e8fa7a1 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_be49cce3902d4d4165 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_e810dcec9a0463c07e -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_9e6a54bd877026ed97 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_aab5717b8911b29340 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_79f7d03d3c18458335 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_42b789260528df740e -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_56cefcb4491ee069f8 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_ba41462f7d15ada120 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_2a8ae311045becdb37 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_0618badcac63e9c0c7 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_c6ccd92939e5e8006e -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_850b1729daf5910be9 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_ae1f1ff32a73b9372f -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_a2ad0e6150bb9470c2 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_6c00077d34e19f2ab5 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_7d524a25de3dc6cc98 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_6d3f207ae52a0dbc54 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_1969ca14f1bbe10cb6 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_276b0cecef06b8f62b -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_0d89ae139d74cb6f13 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:rebuster/agentask_c3066acd08c0f493ad -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:rebuster/agentask_2e60fad3a5b3c6dc49 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:rebuster/agentask_bf34eae312433597fd -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_c8424d4877347d821b -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_1ae994fe8814762399 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_b47743c34440c7a768 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_f34a190933c9bee3c0 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_60086a80f0127a9a8d -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:mission-control-site/agentask_68b5b770ec2044b887 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_ba0951daf5c850a374 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_5f27f061036f07be63 -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_7ef3417cf0b031c8ac -> skipped: cross-repo item outside the declared scope; left for its own repository
+agent_ask agent_ask:private-practice-now/agentask_b3e10e90d2e8b24f22 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d1eb1197d01f73ee64 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_d7a77672173db5b309 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_421e23e4273d818cf2 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_e35b3e8e799536713e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_82b885109d80cbeb14 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_9cc8c89355a46e3251 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_7736b8a58cc9724e79 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_d2851009f8029ea69f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_195412a84460de7c31 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_936533d97ca9ce59cd -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_1fbe386a7149e28979 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_814de6a3e6e711e0cd -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4777d744460a9f5fc0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4c063f721f79ea77fe -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_57484134493808f03f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4be2a8356f2f27e4d6 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_11d892989640602eef -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a3f433a5c050d3223d -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_aefd3e121ae8cf276a -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_b6f7f4216a7c2f864d -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_49dcd2a1286e1b727b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_0915e87eae54cac4cb -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_7120546fc757e0d20b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b87260061c9b3f0b64 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_052fddd450060a86a9 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_feead103a44f7d745e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_0e1f8e8665d1abbbef -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_a11a2adbacb050abc4 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b75b770bb35b6d7f27 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d96e922756d376e49f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_2c9a0d5455cffd9d95 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a421ce3f51288cbc88 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_2145df1d5edb10dd50 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_3d4a1da777f4e7be05 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_e70f0a0f5392443f25 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b8d773493731c443a5 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_956f76e440cf2ce619 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_fb1dead300fabe2143 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b96d6a8658974579fc -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_6a735089ab1f9aa991 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_81deb15974333adbe3 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_eac5a42d17c26104ef -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_3cd2b1317b3abee08e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_f5287ca935dfe70c63 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_fabadadb695a318f77 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b84b4363959f9c75b0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_2ff6688e3d395dd8d8 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_e2013140b1521857c1 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_cacf838db3547e60ff -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_3bbce63abb0848fce4 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:unknown/agentask_1544892fa44fbb626d -> skipped: settlement preview refused, nothing written: Agent Ask must resolve an explicit Project before settlement.
+agent_ask agent_ask:arcadia/agentask_bcec39dfeaa1a4177e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a36fb6989bc607731d -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_510998c2ade51e359e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_87fba8a06e701607b8 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d90738b6caf8a988c9 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_985c277c95d8d2762b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_ce5d6bcaa572e50a18 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_79040ba899e6587a81 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_177e443f183a786f46 -> would_reject: would archive .arcadia/asks/agent-ask-enable-parallel-plan-dispatch-per-repository-2026-09-25.yaml, .arcadia/asks/archive/agent-ask-enable-parallel-plan-dispatch-per-repository-2026-09-25.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_4614452949f7f641de -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_09db6749746863d941 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:mission-control-site/agentask_a4a95e9db657292453 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_6e6ddd655701bd93ca -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_3445484a7f1ad37395 -> would_reject: would archive .arcadia/asks/agent-ask-gate-jev-decision-api-on-production-concurrency-2026-09-28.yaml, .arcadia/asks/archive/agent-ask-gate-jev-decision-api-on-production-concurrency-2026-09-28.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_9b22a93034605b3eed -> would_reject: would archive .arcadia/asks/agent-ask-jev-compatible-intelligence-decision-api-2026-09-27.yaml, .arcadia/asks/archive/agent-ask-jev-compatible-intelligence-decision-api-2026-09-27.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_ede5f01390939f767c -> would_reject: would archive .arcadia/asks/agent-ask-pr-opened-arcadia-pr754.yaml, .arcadia/asks/archive/agent-ask-pr-opened-arcadia-pr754.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_fff9a3587b4e83a931 -> would_reject: would archive .arcadia/asks/agent-ask-record-system-one-decision-research-2026-09-28.yaml, .arcadia/asks/archive/agent-ask-record-system-one-decision-research-2026-09-28.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_66ad52fbf455d181f7 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d6dc2774cc30b421c4 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_26af993fc3a80b7d49 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:mission-control-site/agentask_c25d09a3a464f39e19 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_65715bffa05e11a6b1 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_54e38401d091b1af20 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_7af1066e6bff2876db -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_ff68b346f0a1d08903 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_1fafd736aa150c3593 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b0736c1850017963a0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_6a28eeda37245365ad -> would_reject: would archive .arcadia/asks/agent-ask-repair-preservation-browser-boundaries-2026-10-01.yaml, .arcadia/asks/archive/agent-ask-repair-preservation-browser-boundaries-2026-10-01.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_c27c720d45b53cedb7 -> would_reject: would archive .arcadia/asks/agent-ask-record-five-rejections-and-deferred-flight-deck-2026-09-30.yaml, .arcadia/asks/archive/agent-ask-record-five-rejections-and-deferred-flight-deck-2026-09-30.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_5563d8f80ed35239e6 -> would_reject: would archive .arcadia/asks/agent-ask-report-stop-line-readonly-brief-836-2026-09-30.yaml, .arcadia/asks/archive/agent-ask-report-stop-line-readonly-brief-836-2026-09-30.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_4b36f56db97370c710 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b386621722cc805876 -> would_reject: would archive .arcadia/asks/agent-ask-ask-backed-adversarial-review-capability-2026-10-01.yaml, .arcadia/asks/archive/agent-ask-ask-backed-adversarial-review-capability-2026-10-01.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_d1d66ccde397bb3481 -> would_reject: would archive .arcadia/asks/agent-ask-streamline-production-contracts-2026-10-01.yaml, .arcadia/asks/archive/agent-ask-streamline-production-contracts-2026-10-01.yaml in the archive worktree
+agent_ask agent_ask:private-practice-now/agentask_2f9bdddc47f4f9d51d -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_b8a9899387682ea27a -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_5ad58110510dc5387e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_49c232ae0da62eda70 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_d60092e4693e00ac5f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_c9116ceb1d2dc0279a -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_e5fd53efc3d1470538 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_34f85ad416cc6034d2 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_04866d2823e1744bdb -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_da902eafb9a7e7fa52 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_98ccf333a9d774ba0b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_9ec053ff2a514c7140 -> would_reject: would archive .arcadia/asks/agent-ask-host-browser-native-containment-evidence-847-2026-10-01.yaml, .arcadia/asks/archive/agent-ask-host-browser-native-containment-evidence-847-2026-10-01.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_55cdc3bcf470d574fd -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a75afe43552a726d75 -> would_reject: would archive .arcadia/asks/agent-ask-serial-go-orchestrator-capability-audit-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-serial-go-orchestrator-capability-audit-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_96b15e54bd7abb8b82 -> would_reject: would archive .arcadia/asks/agent-ask-draft-go-role-orchestration-review-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-draft-go-role-orchestration-review-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_60b2d705ddef39ed51 -> would_reject: would archive .arcadia/asks/agent-ask-revised-go-role-orchestration-review-2026-10-02-v2.yaml, .arcadia/asks/archive/agent-ask-revised-go-role-orchestration-review-2026-10-02-v2.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_7981643aa380307419 -> would_reject: would archive .arcadia/asks/agent-ask-go-role-orchestration-independent-verdict-2026-10-02-v2.yaml, .arcadia/asks/archive/agent-ask-go-role-orchestration-independent-verdict-2026-10-02-v2.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_eb6679c36226268a03 -> would_reject: would archive .arcadia/asks/agent-ask-activate-scoped-container-audit-847-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-activate-scoped-container-audit-847-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_416ab79138e94d8b36 -> would_reject: would archive .arcadia/asks/agent-ask-activate-scoped-container-audit-847-2026-10-02-v2.yaml, .arcadia/asks/archive/agent-ask-activate-scoped-container-audit-847-2026-10-02-v2.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_c8472bcfb0bdf585d5 -> would_reject: would archive .arcadia/asks/agent-ask-authorize-extra-container-review-pass-873-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-authorize-extra-container-review-pass-873-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_039ccb7eb02427ad0c -> would_reject: would archive .arcadia/asks/agent-ask-minimal-autonomous-managed-production-critical-path-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-minimal-autonomous-managed-production-critical-path-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_9b04c86d6116085043 -> would_reject: would archive .arcadia/asks/agent-ask-installed-host-evidence-success-session-prompt-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-installed-host-evidence-success-session-prompt-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:private-practice-now/agentask_8d12583e87ab87dd14 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_bbdf14f5fa08b7954f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_68113e4766de9c9c26 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_64b76ae873834a95a0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_84b326de0af532003c -> would_reject: would archive .arcadia/asks/agent-ask-add-installed-three-action-autonomous-rehearsal-2026-10-02-v2.yaml, .arcadia/asks/archive/agent-ask-add-installed-three-action-autonomous-rehearsal-2026-10-02-v2.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_c94d6b9849df2a3132 -> would_reject: would archive .arcadia/asks/agent-ask-log-minimal-orchestration-friction-lessons-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-log-minimal-orchestration-friction-lessons-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_d1d832adfc2c2dda5f -> would_reject: would archive .arcadia/asks/agent-ask-minimal-three-action-orchestration-preflight-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-minimal-three-action-orchestration-preflight-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_d8db8c3d4d4f8c5b79 -> would_reject: would archive .arcadia/asks/agent-ask-issue-880-context-delivery-2026-10-02.yaml, .arcadia/asks/archive/agent-ask-issue-880-context-delivery-2026-10-02.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_17629b6f47d4ed7919 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_aab0128ef3d50d388b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a85d760c525282b1bd -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4c0852b7b09184c62b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_f0da0343f7202c3754 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:mission-control-site/agentask_4cfa7b89bbedd2cf1f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_5eb57063cd143bd2ac -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d657e31e0d89845ea8 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_9bf59b4a2f2bdbf79f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_45c0ddca3abb7dfc73 -> would_reject: would archive .arcadia/asks/agent-ask-adopt-issue-commentary-podcast-2026-10-05.yaml, .arcadia/asks/archive/agent-ask-adopt-issue-commentary-podcast-2026-10-05.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_85b6127bc3e7c6510e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_39f2c6b2149b3e0f62 -> would_reject: would archive .arcadia/asks/agent-ask-add-mp3-delivery-to-intelligence-narration-2026-10-06-r2.yaml, .arcadia/asks/archive/agent-ask-add-mp3-delivery-to-intelligence-narration-2026-10-06-r2.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_ca0cac126480d33e85 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_57c88403c5a33597c3 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_5698340a6d1f8bfd7b -> would_reject: would archive .arcadia/asks/agent-ask-propose-local-first-arcadia-artifact-system-2026-10-06-r2.yaml, .arcadia/asks/archive/agent-ask-propose-local-first-arcadia-artifact-system-2026-10-06-r2.yaml in the archive worktree
+agent_ask agent_ask:private-practice-now/agentask_c9308c845c499d5af1 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_d964a1870873d89696 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_f876e12b03df6973dc -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_3f7f49686b3a28be55 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_7f9e55d5d6f8a59b98 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_acb44530af614473a7 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_ba4481105dafc96bff -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_0fc905a709f64ea50e -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_de7fd5c753c6b17db5 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b93d84c5a07c64e560 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_1ec0e6d207fea181e8 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_ecbec5d56a73bb5779 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_0b2811e9de52002561 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_1ec36bf58be3d2ee48 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_d57c56538fd488c9a1 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_802f7a54ae8294662c -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_9c5e5887ef66c9f114 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_1f0ff13e5d4056befd -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_b4ed675bf4e87ca6b8 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_0075a409ed2e261c70 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_1ee520b8f032788013 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_00da33fdf8d0dea1c7 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_be49cccded5946aa22 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_72b94ead50b18fa529 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_8ec35f38559576e870 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_a7befe9907b0a1a4b3 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_e764bfd21299b6a470 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_6ba71cb27af14df4d0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_b5d158431bbad8eb40 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_1f99b4a8e6cfb6e444 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_1ccd1b6096071f239f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_d5d4d2865b907f300b -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_6598957375a7e1f3f5 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_12fdf50bde07da9448 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_fed43a77d5483cad28 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_b57a719eaeb341f57a -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_6f0b277fc5a12a3670 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:private-practice-now/agentask_59f79fc20a80f37aeb -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_12695d0a692f7664e3 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_880122d5d1483655df -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_9279f393884806f5f5 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_aaec7e29dd72d01942 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_538cfdf002e4d6bd05 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_df7f665098b8b5cce5 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_ed8a7ffaefec85b6b0 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_314574e1711429a161 -> would_reject: would archive .arcadia/asks/agent-ask-propose-plan-ask-token-fields-2026-10-09-r3.yaml, .arcadia/asks/archive/agent-ask-propose-plan-ask-token-fields-2026-10-09-r3.yaml in the archive worktree
+agent_ask agent_ask:arcadia/agentask_a55df6780901ecff9f -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_563dd4dc2c943e3aab -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_e987b77348223374a4 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_e7f79cde024a70b041 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4ca97d00ba31634001 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_4f08c5910d54b743d3 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_80bb28c16821d33994 -> would_reject: would record the rejection; no file changes
+agent_ask agent_ask:arcadia/agentask_767e7d3d0fa719dfb5 -> would_reject: would record the rejection; no file changes
+review_item review_item:private-practice-now/review_b5bf6edffc84470ba7 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_683e565915e9492bb6 -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_9f1ec589604f486bac -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_314a53bfaf44412ead -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_62e8d2da228844c8b8 -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_318b66b3b6d547bc87 -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_a4b57d51b3554ee3b4 -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_b9c6acaf08b44dc5ac -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_2f4c746db80147a3a1 -> would_reject: deferred -> rejected
+review_item review_item:arcadia/review_fde456629d3245a4bf -> would_reject: open -> rejected
+review_item review_item:arcadia/review_d9dd3a2bd6174ca5a9 -> would_reject: deferred -> rejected
+review_item review_item:private-practice-now/review_36d7ccd4597340c7aa -> would_reject: open -> rejected
+review_item review_item:arcadia/review_98733d41ef28410fba -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_2b5ae9b130ab4fd583 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_5ba908b551514e9593 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_e78ae8c70c4d4b8dbb -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_8d7483148c894b8184 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_a815b58787654a2094 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_385a542fa6a7442a99 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_3e3f6d9ce47f4545b8 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_b914fa130b184138bd -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_d28e2cefca3746dea1 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_02f8890264994eb590 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_28725e41ce514793a5 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_c1dc13e54bbd41ba80 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_e1f105e1a75a40379a -> would_reject: open -> rejected
+review_item review_item:arcadia/review_a4a1922e861741afae -> would_reject: open -> rejected
+review_item review_item:arcadia/review_34db21c929c140a2a9 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_dd4eec8f4fcc49a38f -> would_reject: open -> rejected
+review_item review_item:arcadia/review_f533ac102d1d47479d -> would_reject: open -> rejected
+review_item review_item:arcadia/review_ef12d4e665fe4bf897 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_84beee8321614354b4 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_3481aa7bd0ec4fdc9d -> would_reject: open -> rejected
+review_item review_item:arcadia/review_c0ce674954a2496780 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_e2609eb98689471289 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_5c4db5d0532e4645b6 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_33b5e8222eb84662ba -> would_reject: open -> rejected
+review_item review_item:arcadia/review_6f63aec2e9d74cdab5 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_edd915dc56f94fac9b -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_0439390db9b7413084 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_5d6d1e124d604c278d -> would_reject: open -> rejected
+review_item review_item:arcadia/review_0fcbbf319d6d487f94 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_4d7df4c38b0944fdae -> would_reject: open -> rejected
+review_item review_item:arcadia/review_de80cfcb9f864afb82 -> would_reject: open -> rejected
+review_item review_item:mission-control-site/review_268f57b7ea6c4733b5 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_03edd64d2b9f4c63a3 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_8565666f461846cd81 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_7815fcbcf6204d2ba5 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_3fad4ae1f2334f80a2 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_ee0335721fd443199e -> would_reject: open -> rejected
+review_item review_item:arcadia/review_530cb42300ed42e491 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_4bafc1545e0b4e3fa3 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_90ddd89ce8b34df09a -> would_reject: open -> rejected
+review_item review_item:arcadia/review_f34a74f55721494ca7 -> would_reject: open -> rejected
+review_item review_item:private-practice-now/review_7686295601c7430382 -> would_reject: open -> rejected
+review_item review_item:mission-control-site/review_1aa9ba1b08b546ca8b -> would_reject: open -> rejected
+review_item review_item:rebuster/review_f0c928723b5c4c788e -> would_reject: open -> rejected
+review_item review_item:rebuster/review_158a2db238bf412e8f -> would_reject: open -> rejected
+review_item review_item:arcadia/review_c0c3a5b19a03430eb0 -> would_reject: open -> rejected
+review_item review_item:arcadia/review_a5574c392f954bdd9e -> would_reject: open -> rejected
+review_item review_item:arcadia/review_b3c4cffea1134cdcbe -> would_reject: open -> rejected
+project three-action-rehearsal -> would_complete: active -> completed
+project two-action-rehearsal -> would_complete: paused -> completed
+project two-action-rehearsal-v2 -> would_complete: active -> completed
+project two-action-rehearsal-v3 -> would_complete: active -> completed
+project two-action-rehearsal-v4 -> would_complete: active -> completed
+project two-action-rehearsal-v5 -> would_complete: active -> completed
+project two-action-rehearsal-v6 -> would_complete: active -> completed
+project zero-prompt-rehearsal -> would_complete: active -> completed
+== dry_run
+{
+ "agent_ask:skipped": 42,
+ "agent_ask:would_reject": 183,
+ "review_item:would_reject": 61,
+ "project:would_complete": 8
+}
+Receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f/receipt.json
+Per-item receipt: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T//todo-bulk-disposition-dry-run.ohk50f/disposition-receipt.json
