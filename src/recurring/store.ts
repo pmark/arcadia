@@ -11,4 +11,6 @@ export function ensureRecurringScheduleTables(db: Database.Database): void {
     PRIMARY KEY(schedule_id, occurrence_key), FOREIGN KEY(schedule_id) REFERENCES recurring_schedules(id),
     FOREIGN KEY(proposal_id) REFERENCES agent_ask_proposals(id)
   );`);
+  const columns = db.prepare("PRAGMA table_info(recurring_schedules)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "timing_json")) db.exec("ALTER TABLE recurring_schedules ADD COLUMN timing_json TEXT");
 }

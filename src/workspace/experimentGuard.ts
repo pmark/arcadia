@@ -142,6 +142,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "schedule pause": ALLOWED,
   "schedule tick": ALLOWED,
   "schedule retry": ALLOWED,
+  "schedule edit": ALLOWED,
   "schedule prioritize": ALLOWED,
   "schedule classify": ALLOWED,
   "schedule discover": ALLOWED,

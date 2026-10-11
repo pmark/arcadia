@@ -70,6 +70,19 @@ export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<Dashbo
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
 }
 
+export async function loadRecurringSchedules() {
+  return runArcadiaCliJson<import("./clock-types").ClockStatus>(["schedule", "recurring"]);
+}
+export async function changeRecurringSchedule(input: { action: "enable" | "pause" | "edit"; id: string; expected: string; timing?: import("./clock-types").ClockTiming }) {
+  if (input.action !== "edit") return runArcadiaCliJson(["schedule", input.action, input.id, "--expected", input.expected]);
+  const directory = await mkdtemp(path.join(tmpdir(), "arcadia-clock-"));
+  try {
+    const file = path.join(directory, "timing.json");
+    await writeFile(file, JSON.stringify({ ...input.timing, expected: input.expected }));
+    return await runArcadiaCliJson(["schedule", "edit", input.id, "--file", file]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}
+
 export async function loadWorkQueue(): Promise<ArcadiaJsonSuccess<WorkQueue>> {
   return runArcadiaCliJson<WorkQueue>(["advance", "queue"]);
 }

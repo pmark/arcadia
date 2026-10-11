@@ -751,6 +751,8 @@ same preview-then-apply transition as `make-next`. Projects are scanned in
 one configured order and the first with runnable work is selected.
 
 Recurring calendar triggers use the existing worker and submit Agent Ask proposals.
+Open **Clock** from the dashboard menu, or visit `/clock`, to see existing recurring schedules, enable/pause them and edit their timing. Timing edits preserve occurrence history and refuse stale changes or unresolved proposals/retries. New timing begins at a future scheduled time; the existing worker still owns proposal intake. This page requires the updated dashboard and CLI build; it does not install or restart the runtime.
+
 See the [scheduler guide](docs/strategy/recurring-scheduler.md) for daily, weekly
 and monthly definitions, Field Notes examples, pause and retry controls.
 Registration starts paused; acceptance and dispatch retain their existing gates.

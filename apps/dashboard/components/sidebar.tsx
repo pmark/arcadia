@@ -36,6 +36,7 @@ const PRIMARY_NAV = [
   { href: "/plans", label: "Plans", icon: ListTree },
   { href: "/path", label: "Path", icon: Route },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
+  { href: "/clock", label: "Clock", icon: Clock },
   { href: "/work-queue", label: "Work Queue", icon: ListOrdered },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
   { href: "/ingress", label: "Ingress", icon: FolderOpen },
