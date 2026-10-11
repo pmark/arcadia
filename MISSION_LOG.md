@@ -2275,6 +2275,20 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1240
+
+- **Did:** PR 1240 is open: Decision 0121 asks whether sessions get a friction-watching supervisor, an arcadia bug utility and an insight harvest - https://github.com/pmark/arcadia/pull/1240
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1250
+
+- **Did:** PR #1250 stops an expired login from stranding an Action: a sign-in death now leaves its development attempt live, so signing in again resumes it instead of needing a governed amendment after about 33 minutes. Reviewed (pass); fast-rehearsal is running; it waits for your merge because it changes repair-budget accounting. https://github.com/pmark/arcadia/pull/1250
+- **Result:** Operator request 2026-10-11: prep #1243. Closes #1243; the attention-queue escalation for a login dead for hours is filed as #1249.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-11 — Agent Ask activate-issue-triage-plan-2026-10-11
 
 - **Did:** Activated every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route at snapshot-open-issues-and-build-packets.

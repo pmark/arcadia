@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -8,8 +8,11 @@ import { discoverDocs } from "../src/docs/discover.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
 import { developmentLineageRemedy } from "../src/production/tick.js";
 import { recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
+import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import {
   beginDevelopmentAttempt,
+  planDevelopmentAttempt,
+  settleDevelopmentAttemptForExit,
   runHelperAttempt,
   beginIndependentVerdict,
   finishIndependentVerdict,
@@ -320,6 +323,44 @@ describe("five-role attempt lineage through the real tick", () => {
     expect(lineage[1].request_id).not.toBe(lineage[0].request_id);
   });
 
+  it("keeps the development attempt live across provider sign-in deaths and passes it when the resumed Session completes (Issue #1243)", () => {
+    const rehearsal = activated();
+    const signedOut = (session: AgentSession) => {
+      withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(session.id));
+      mkdirSync(path.dirname(sessionLogPath(rehearsal.workspace, session.id)), { recursive: true });
+      writeFileSync(sessionLogPath(rehearsal.workspace, session.id), JSON.stringify({
+        type: "result", subtype: "success", is_error: true, result: "Failed to authenticate: OAuth session expired and could not be refreshed"
+      }) + "\n");
+      rehearsal.tmux.exit(session.tmux_session_name);
+    };
+    const a1 = launchA(rehearsal);
+    const [attempt] = rehearsal.attempts("write-marker-a");
+    expect(attempt).toMatchObject({ ordinal: 1, status: "running" });
+    const unchanged = [[attempt.request_id, 1, "running"]];
+    const lineage = () => rehearsal.attempts("write-marker-a").map((x) => [x.request_id, x.ordinal, x.status]);
+
+    // Four deaths on the same dead login, each relaunched after the 15-minute hold, never consume the attempt.
+    let dying = a1;
+    const sessionIds = [a1.id];
+    for (let i = 0; i < 4; i += 1) {
+      signedOut(dying);
+      expect(rehearsal.tick().reconciled[0]).toMatchObject({ sessionId: dying.id, outcome: "failed_execution" });
+      expect(lineage()).toEqual(unchanged);
+      rehearsal.tickUntil((r) => r.launch?.outcome === "launched", 20);
+      dying = rehearsal.lease()!;
+      expect(sessionIds).not.toContain(dying.id);
+      sessionIds.push(dying.id);
+    }
+    expect(lineage()).toEqual(unchanged);
+
+    // The resumed Session finishes the work: the same attempt passes, on ordinal 1.
+    rehearsal.agentEdit(dying, "MARKER.md", `${LINE_A}\n`);
+    rehearsal.agentFinish(dying, CRITERIA_A);
+    rehearsal.tmux.exit(dying.tmux_session_name);
+    expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(lineage()).toEqual([[attempt.request_id, 1, "passed"]]);
+  });
+
   it("never admits a second mutation owner when two connections begin the same requirement", () => {
     const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-lineage-race-")));
     const file = path.join(root, "arcadia.db");
@@ -356,6 +397,55 @@ describe("five-role attempt lineage through the real tick", () => {
     expect(passed).toMatch(/already passed.*awaiting_independent_verdicts.*merge --ff-only/s);
     expect(exhausted).toMatch(/Every bounded development attempt \(3\).*No command resets attempt lineage today.*governed amendment/is);
     expect(passed).not.toBe(exhausted);
+  });
+});
+
+describe("a provider sign-in exit and the development attempt (Issue #1243)", () => {
+  let db: Database.Database;
+  const now = new Date("2026-10-11T12:00:00.000Z");
+  const action = {
+    id: "write-marker-a", nextAction: "Write the marker.", acceptanceCriteria: ["The marker exists."], responsibility: "agent", resolvedExecution: null, execution: null
+  } as unknown as Parameters<typeof requirementIdentity>[0]["action"];
+  const requirement = requirementIdentity({ projectSlug: "p", planSlug: "plan", action });
+  const session = { id: "session_dead", project_slug: "p", plan_slug: "plan", action_id: "write-marker-a", worktree_path: "/nonexistent/arcadia-1243" } as AgentSession;
+  const begin = (n: number) => beginDevelopmentAttempt(db, { requirement, requestId: `launch-${n}`, retryAuthorized: true, now });
+  const exit = (outcome: Parameters<typeof settleDevelopmentAttemptForExit>[1]["outcome"], providerSignInFailure?: boolean) =>
+    settleDevelopmentAttemptForExit(db, { session, outcome, exitReceiptId: "receipt", now, ...(providerSignInFailure === undefined ? {} : { providerSignInFailure }) });
+  const lineage = () => db.prepare("SELECT ordinal, status FROM session_role_attempts WHERE role = 'development' ORDER BY ordinal").all();
+  afterEach(() => db?.close());
+
+  it("leaves the live attempt live, unconsumed and resumable, however many sign-in exits there are", () => {
+    db = new Database(":memory:");
+    applyInitialSchema(db);
+    const first = begin(1);
+    expect(first.resumed).toBe(false);
+    for (let i = 2; i <= 8; i += 1) {
+      expect(exit("failed_execution", true)).toMatchObject({ request_id: first.attempt.request_id, ordinal: 1, status: "pending" });
+      expect(planDevelopmentAttempt(db, { requirement, retryAuthorized: true })).toMatchObject({ kind: "resume", attempt: { request_id: first.attempt.request_id } });
+      expect(begin(i)).toMatchObject({ resumed: true, attempt: { request_id: first.attempt.request_id, ordinal: 1 } });
+    }
+    expect(lineage()).toEqual([{ ordinal: 1, status: "pending" }]);
+    // The resumed Session's accepted completion passes that same attempt.
+    expect(exit("accepted_completion", false)).toMatchObject({ request_id: first.attempt.request_id, ordinal: 1, status: "passed" });
+    expect(lineage()).toEqual([{ ordinal: 1, status: "passed" }]);
+  });
+
+  it("still fails the attempt for any other failed or missing-evidence exit, and still refuses the fourth with attempt_limit_exhausted", () => {
+    db = new Database(":memory:");
+    applyInitialSchema(db);
+    // Sign-in deaths interleaved with real failures: only the real ones count.
+    begin(1);
+    exit("failed_execution", true);
+    exit("failed_execution", true);
+    expect(exit("failed_execution", false)).toMatchObject({ ordinal: 1, status: "failed" });
+    expect(begin(2).attempt).toMatchObject({ ordinal: 2, status: "pending" });
+    exit("failed_execution", true);
+    expect(exit("failed_execution")).toMatchObject({ ordinal: 2, status: "failed" });
+    expect(begin(3).attempt).toMatchObject({ ordinal: 3 });
+    // The flag never downgrades anything but the failed_execution it classifies.
+    expect(exit("missing_evidence", true)).toMatchObject({ ordinal: 3, status: "failed" });
+    expect(lineage()).toEqual([{ ordinal: 1, status: "failed" }, { ordinal: 2, status: "failed" }, { ordinal: 3, status: "failed" }]);
+    expect(code(() => begin(4))).toBe("attempt_limit_exhausted");
   });
 });
 
