@@ -20,7 +20,17 @@ Latest derivation: **2026-10-10** (the section below). The 2026-10-02 derivation
 
 Optional, and not a prediction for this repository: `scripts/rehearsal-reviewer-smoke.ts --spend-approved` (three QA and three code-review calls, the operator's own yes) is pipeline sanity on the fixture's Action shape after #1212. A `--dry` run was green on 2026-10-10 (reported in #1226); it does not exercise this repository's review of the bug Plan's PRs.
 
-**The Plan.** The seven-Action draft Plan `seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and` holds valid, small bugs on the unattended settlement path, ordered so each lands before the next touches the same files. It is inactive; activating it is the operator's call. Excluded bugs and why are in its source Ask.
+**The Plan.** The seven-Action draft Plan `seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and` holds valid, small bugs on the unattended settlement path, ordered so each lands before the next touches the same files. The Plan itself was made active on 2026-10-11 (#1266); production stays Off, and pressing production activation is the operator's call. Excluded bugs and why are in its source Ask.
+
+## Run record: first supervised run on Arcadia's own repository (2026-10-11)
+
+Conditions recorded after the Plan was made active (#1266) and before production activation is pressed, so the data is read in context. Sources: the live preview and capacity read of 2026-10-11 and the operator's instruction as relayed by the release-manager session.
+
+- **Scope.** Plan `seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and`, 7 Actions in dependency order, Action 1 `keep-claim-when-passed-attempt-receipt-is-unparseable` ready (pinned `gpt-5.6-terra` / medium); concurrency 1 (the concurrency gate holds it there, independent of the capacity gate); preview scope fingerprint `e34530b41eb2a96836de67c00b55d47c`, expected revision 43.
+- **Provider policy.** `codex-cli` only. Remote preservation on (draft pull requests only); no integration grant, so the worker never merges and each PR is reviewed and merged by a supervisor before the next Action launches (Decision 0097).
+- **The capacity gate is OFF for this run.** Decision 0123 was answered "Codex only, gate on, attended first run" (2026-10-11). The operator then chose to leave the workspace config alone, `codingAgent.capacityGateEnabled: false`, because running without it still collects valuable data (relayed 2026-10-11). So this run has no provider-window awareness: Codex reads "admitted (unmetered by config)", nothing refuses at 95%, and the only protection for the operator's own Codex allowance is the policy's provider list, concurrency 1, the 120-minute Session limit and the attempt and failed-Run budgets. Treat any usage-window observation from this run as data about an ungated run, not as evidence the gate works.
+- **Known open gaps during the run.** A login that stays expired is retried every 15 minutes with no operator alert (#1249); per-Session token accounting is not built (the research closed in #1232), so cost per Action is unmeasured; the Session time limit is not settable on tick launches; capacity refusals (not applicable while the gate is off) would reach `production status` only after 10 minutes.
+- **Authority.** The activation press, any packet approvals and merging each PR are the operator's; this record changes none of them.
 
 ## Earlier answer, 2026-10-02
 
