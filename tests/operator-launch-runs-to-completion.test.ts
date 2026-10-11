@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,9 @@ import { toDashboardAgentSession, UNRECONCILED_EXIT_BOUND_MS } from "../src/dash
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { runProductionActivateCommand, runProductionPreviewCommand } from "../src/commands/production.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
+import { getSchedulingProject } from "../src/scheduling/store.js";
+import { sessionLogPath } from "../src/sessions/sessionRecording.js";
+import { listLaunchBlockers } from "../src/production/tick.js";
 import { preserveSessionCandidate } from "../src/production/sessionHandoff.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
 import { reconcileSessionExit } from "../src/sessions/reconciliation.js";
@@ -258,6 +261,62 @@ describe("the exit of an operator-launched Session with production Off", () => {
     // The resumable handoff is the existing receipt; the lease is released.
     expect(rehearsal.lease()).toBeNull();
     expect(rehearsal.status().operatorEscalations).toEqual([]);
+  });
+
+  it("a candidate carrying a non-canonical Ask file is refused before any push or PR, and the receipt records why (Issue #1177)", () => {
+    const rehearsal = fixture();
+    const session = launch(rehearsal, { source: "dashboard" });
+    const stray = ".arcadia/asks/complete-write-marker-a-run8.json";
+    // An earlier failed Session's hand-written file, committed with the candidate.
+    rehearsal.agentEdit(session, stray, "{}\n");
+    agentExits(rehearsal, session, "settled");
+    expect(git(session.worktree_path, ["ls-files", stray]).trim()).toBe(stray);
+    const headBefore = candidateHead(rehearsal, session);
+
+    const exited = rehearsal.tick();
+
+    expect(exited.handoff?.preservation).toMatchObject({ kind: "refused", reason: expect.stringContaining(stray) });
+    expect(rehearsal.github.pushes).toEqual([]);
+    expect(rehearsal.github.prs).toEqual([]);
+    expect(candidateHead(rehearsal, session)).toBe(headBefore);
+    expect(existsSync(path.join(session.worktree_path, stray))).toBe(true);
+    const used = authorization(rehearsal, session)!;
+    expect(used.used_at).not.toBeNull();
+    expect(used).toMatchObject({ outcome: "accepted_completion", publish_state: "failed", publish_attempts: 1 });
+    expect(JSON.parse(used.receipt_json!)).toMatchObject({
+      commit: { kind: "refused", reason: expect.stringContaining(stray) },
+      pullRequest: { kind: "refused", reason: expect.stringContaining(stray), url: null }, merged: false
+    });
+    // A refusal that cannot heal is not retried on later ticks.
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.pushes).toEqual([]);
+    expect(rehearsal.github.prs).toEqual([]);
+  });
+
+  it("a provider sign-in failure still uses the one-shot authorization with its unchanged summary, spends no failed-Run budget and records the sign-in blocker (Issue #1155)", () => {
+    const rehearsal = fixture();
+    const session = launch(rehearsal, { source: "dashboard" });
+    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(session.id));
+    const logFile = sessionLogPath(rehearsal.workspace, session.id);
+    mkdirSync(path.dirname(logFile), { recursive: true });
+    writeFileSync(logFile, JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Failed to authenticate: OAuth session expired and could not be refreshed" }) + "\n");
+    rehearsal.tmux.exit(session.tmux_session_name);
+
+    const exited = rehearsal.tick();
+
+    expect(exited.reconciled.map((entry) => entry.outcome)).toEqual(["failed_execution"]);
+    // Decision 0096: the authorization is used up whatever the exit was, and the summary line is unchanged.
+    expect(authorization(rehearsal, session)!.used_at).not.toBeNull();
+    expect(authorization(rehearsal, session)).toMatchObject({ outcome: "failed_execution", publish_state: "none" });
+    expect(rehearsal.log.some((line) => line.includes(`Operator launch authorization`) && line.includes(`used for Session ${session.id}: failed_execution`)
+      && line.endsWith(" The provider was not signed in and no work was done, but Decision 0096 makes the authorization one-shot: sign in, then a fresh confirmed Launch is needed."))).toBe(true);
+    expect(rehearsal.github.prs).toEqual([]);
+    // The exit is not a failed Run; it is a durable launch blocker instead.
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => getSchedulingProject(db, rehearsal.projectSlug)))
+      .toMatchObject({ failedRuns: 0, pausedReason: null });
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => listLaunchBlockers(db))).toEqual([
+      expect.objectContaining({ projectSlug: rehearsal.projectSlug, code: "provider_sign_in_failed", actionKey: `${rehearsal.projectSlug}/write-marker-a` })
+    ]);
   });
 
   it("a launch without the confirmation carries no authority: nothing is committed or pushed", () => {

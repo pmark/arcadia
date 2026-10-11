@@ -2254,6 +2254,27 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1244
+
+- **Did:** PR #1244 stops an expired Claude login from pausing the Project: the exit now shows a sign-in blocker with the remedy and holds relaunches for 15 minutes instead of spending the failed-Run budget. Reviewed and green-checked; it waits for your merge because it touches production budget code. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Operator request 2026-10-11: fix the small half of #1155. Refs #1155; the preflight probe stays open. Known limit filed as #1243.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1244-budget-code-2026-10-11
+
+- **Did:** Your call: PR #1244 (an expired login no longer pauses the Project; it holds relaunches 15 minutes) is reviewed and all 7 checks are green, but it changes production budget code, so it waits for your merge. The merge button is near the bottom of the Conversation tab. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Production budget accounting and launch spacing are excluded from merge on green; independent review passed and CI is green on 126c295a8.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1245
+
+- **Did:** PR #1245 keeps a stray hand-written Ask file from riding into a draft PR: preservation now refuses it and names the file. Two review rounds done, fast-rehearsal green; it waits for your merge because it touches preservation and launch-publish code. https://github.com/pmark/arcadia/pull/1245
+- **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1240
 
 - **Did:** PR 1240 is open: Decision 0121 asks whether sessions get a friction-watching supervisor, an arcadia bug utility and an insight harvest - https://github.com/pmark/arcadia/pull/1240

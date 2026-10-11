@@ -1268,11 +1268,18 @@ function syncProposal(
     return { action: "create", entity: "proposal", relativePath: doc.relativePath, ref, title: doc.question };
   }
 
+  // The operator's own disposition (review reject or defer) is newer than any
+  // unanswered document: the file only ever says "still asking", so it must not
+  // reopen an item the operator closed. Before this guard every docs sync
+  // reopened the WayProposals the 2026-10-10 bulk disposition rejected.
+  const operatorDisposed = !answered && existing.status !== "open";
+  const nextStatus = operatorDisposed ? existing.status : status;
+  const nextNote = operatorDisposed ? existing.decision_note : note;
   const drift: Array<[string, unknown, unknown]> = [
     ["question", existing.decision_needed, doc.question],
     ["recommendation", existing.recommendation, doc.recommendation],
-    ["status", existing.status, status],
-    ["decision", existing.decision_note, note]
+    ["status", existing.status, nextStatus],
+    ["decision", existing.decision_note, nextNote]
   ];
   const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
 
@@ -1282,7 +1289,7 @@ function syncProposal(
 
   // A proposal may be filed without an `updated:` date at all, and the staleness
   // guard has nothing to compare against then. The document wins in that case:
-  // nothing but this document ever writes these columns.
+  // apart from the operator-disposition guard above, nothing but this document writes these columns.
   const staleness = doc.updated ? stalenessOf(doc.updated, existing.updated_at) : null;
   if (staleness) {
     return {
@@ -1299,9 +1306,9 @@ function syncProposal(
     updateReviewItemFromDoc(db, existing.id, {
       decisionNeeded: doc.question,
       recommendation: doc.recommendation,
-      status,
-      decisionNote: note,
-      decidedAt: answered ? doc.updated : null,
+      status: nextStatus,
+      decisionNote: nextNote,
+      decidedAt: answered ? doc.updated : operatorDisposed ? existing.decided_at : null,
       confidenceLabel: existing.confidence_label,
       missingFields: []
     });

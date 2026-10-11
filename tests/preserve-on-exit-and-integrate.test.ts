@@ -744,6 +744,93 @@ describe("preserve-on-exit and integrate", () => {
     )).toEqual({ n: 1 });
   });
 
+  describe("a non-canonical file under .arcadia/asks/ (Issue #1177)", () => {
+    const STRAYS = [".arcadia/asks/foo.json", ".arcadia/asks/complete-x.json", ".arcadia/asks/agent-ask-ok.txt"];
+
+    function finished(options: { baseFiles?: Record<string, string> } = {}) {
+      const fixture = preparedFixture(options);
+      const tmux = new FakeTmux();
+      activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+      const session = launchFirstSession(fixture, tmux);
+      finishCandidate(fixture, tmux, session);
+      return { fixture, session };
+    }
+    const preserve = (fixture: Fixture, session: NonNullable<ReturnType<typeof getRepositoryLease>>) => withDatabase(fixture.workspace, (db) =>
+      preserveSessionCandidate({ db, workspace: fixture.workspace, repoRoot: fixture.repo, session, now: fixture.now }, { validate: fixtureValidator(true) }));
+    const receipts = (fixture: Fixture) => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM candidate_preservation_receipts").get());
+
+    it("refuses uncommitted strays naming every path, leaves the worktree untouched, then preserves once they are gone", () => {
+      const { fixture, session } = finished();
+      for (const stray of STRAYS) writeFileSync(path.join(session.worktree_path, stray), "{}\n");
+      const headBefore = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+      const statusBefore = git(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
+
+      const refused = preserve(fixture, session);
+
+      expect(refused.kind).toBe("refused");
+      for (const stray of STRAYS) expect((refused as { reason: string }).reason).toContain(stray);
+      expect((refused as { reason: string }).reason).toMatch(/arcadia agent-ask draft/);
+      expect((refused as { detail: { strayAskFiles: string[] } }).detail.strayAskFiles).toEqual([...STRAYS].sort());
+      expect(git(session.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(headBefore);
+      expect(git(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"])).toBe(statusBefore);
+      for (const stray of STRAYS) expect(existsSync(path.join(session.worktree_path, stray))).toBe(true);
+      expect(receipts(fixture)).toEqual({ n: 0 });
+
+      // The canonical draft was never the problem: remove the strays and the same candidate preserves.
+      for (const stray of STRAYS) rmSync(path.join(session.worktree_path, stray));
+      expect(preserve(fixture, session).kind).toBe("preserved");
+      expect(existsSync(path.join(session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"))).toBe(true);
+    });
+
+    it("refuses a stray that is already committed on the candidate (head versus base)", () => {
+      const { fixture, session } = finished();
+      writeFileSync(path.join(session.worktree_path, ".arcadia/asks/complete-write-start-marker.json"), "{}\n");
+      git(session.worktree_path, ["add", "."]);
+      git(session.worktree_path, ["commit", "-m", "host-committed stray"]);
+
+      const refused = preserve(fixture, session);
+
+      expect(refused).toMatchObject({ kind: "refused", reason: expect.stringContaining(".arcadia/asks/complete-write-start-marker.json") });
+      expect(receipts(fixture)).toEqual({ n: 0 });
+    });
+
+    it("ignores a stray the base already carries and the candidate leaves untouched", () => {
+      const legacy = ".arcadia/asks/legacy-stray.json";
+      const { fixture, session } = finished({ baseFiles: { [legacy]: "{}\n" } });
+      expect(existsSync(path.join(session.worktree_path, legacy))).toBe(true);
+
+      expect(preserve(fixture, session).kind).toBe("preserved");
+    });
+
+    it("ignores the candidate deleting an existing Ask file", () => {
+      const legacy = ".arcadia/asks/legacy-stray.json";
+      const { fixture, session } = finished({ baseFiles: { [legacy]: "{}\n" } });
+      rmSync(path.join(session.worktree_path, legacy));
+      git(session.worktree_path, ["add", "-A"]);
+      git(session.worktree_path, ["commit", "-m", "remove the legacy stray"]);
+
+      expect(preserve(fixture, session).kind).toBe("preserved");
+    });
+
+    it("still refuses a base-carried stray the candidate modifies", () => {
+      const legacy = ".arcadia/asks/legacy-stray.json";
+      const { fixture, session } = finished({ baseFiles: { [legacy]: "{}\n" } });
+      writeFileSync(path.join(session.worktree_path, legacy), '{"edited":true}\n');
+
+      expect(preserve(fixture, session)).toMatchObject({ kind: "refused", reason: expect.stringContaining(legacy) });
+    });
+
+    it("preserves a settled Ask moved to .arcadia/asks/archive/ under its own name", () => {
+      const { fixture, session } = finished();
+      const asks = path.join(session.worktree_path, ".arcadia", "asks");
+      mkdirSync(path.join(asks, "archive"), { recursive: true });
+      git(session.worktree_path, ["mv", ".arcadia/asks/agent-ask-complete-define-contract.yaml", ".arcadia/asks/archive/agent-ask-complete-define-contract.yaml"]);
+
+      expect(preserve(fixture, session).kind).toBe("preserved");
+    });
+  });
+
   it("refuses to preserve when host-side validation fails, and keeps the candidate", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -1021,7 +1108,7 @@ describe("candidate-integration grant", () => {
 });
 
 // --- fixture -----------------------------------------------------------------
-function preparedFixture() {
+function preparedFixture(options: { baseFiles?: Record<string, string> } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-integrate-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -1031,6 +1118,10 @@ function preparedFixture() {
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
   writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), planDocument);
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
+  for (const [file, content] of Object.entries(options.baseFiles ?? {})) {
+    mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+    writeFileSync(path.join(repo, file), content);
+  }
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.email", "arcadia@example.test"]);
   git(repo, ["config", "user.name", "Arcadia Test"]);

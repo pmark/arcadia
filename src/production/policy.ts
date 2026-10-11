@@ -134,6 +134,17 @@ export const PRODUCTION_CONTROL_DEADLINES = {
 } as const;
 
 /**
+ * How long the worker tick launches nothing for a Project after one of its
+ * Sessions died on a provider sign-in failure (Issue #1155). The launch
+ * preflight cannot see an unrefreshable credential, so without this hold the
+ * next tick would relaunch the same dead login every tick. Kept outside
+ * `PRODUCTION_CONTROL_DEADLINES` because that object is the frozen readout the
+ * status command prints; this is a worker-side retry spacing, not a control
+ * target. A fresh sign-in failure refreshes it.
+ */
+export const SIGN_IN_FAILURE_HOLD_MS = 15 * 60 * 1000;
+
+/**
  * The separately explicit authority a finished, validated Session candidate
  * needs before the host may integrate its agent-owned branch into the governed
  * base branch (Decision 0058). It is deliberately not a `MechanicalTransition`:

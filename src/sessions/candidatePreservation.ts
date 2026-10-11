@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
+import { assertNoStrayAskFiles } from "./strayAskFiles.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
@@ -605,6 +606,10 @@ export function preserveCandidate(
   if (acceptedTerminal && headTree(candidateWorktreePath) !== candidateFingerprint) {
     throw validationError("Terminal preservation must retain the exact completion settlement tree.");
   }
+
+  // Issue #1177: a non-canonical Ask file is never committed, pushed or
+  // published (even through an injected validator or a replayed receipt).
+  assertNoStrayAskFiles(repositoryPath, request.baseRevision, candidateFingerprint);
 
   // --- Idempotent replay by request id (AC3) -------------------------------
   preservationStage("preserve.replay");
