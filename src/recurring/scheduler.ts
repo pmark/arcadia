@@ -87,7 +87,7 @@ export function recurringScheduleStatus(db: Database.Database, now = new Date())
   });
   return { available: true, schedules };
 }
-export interface ScheduleTickResult { id: string; status: "submitted" | "failed" | "waiting"; occurrence: string; requestId?: string; proposalId?: string; error?: string; }
+export interface ScheduleTickResult { id: string; status: "submitted" | "failed" | "waiting"; occurrence?: string; requestId?: string; proposalId?: string; error?: string; }
 const RETRY_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 3;
 function render(text: string, slot: CalendarOccurrence): string {
@@ -102,7 +102,9 @@ export function tickRecurringSchedules(db: Database.Database, now = new Date()):
   let attempts = 0;
   for (const row of rows) {
     if (attempts >= 20) break;
-    const entry = writeTransaction(db, (): ScheduleTickResult | null => {
+    let entry: ScheduleTickResult | null;
+    try {
+      entry = writeTransaction(db, (): ScheduleTickResult | null => {
       // Recheck under the same writer lock as capture and receipt creation.
       const current = db.prepare("SELECT * FROM recurring_schedules WHERE id = ? AND enabled = 1").get(row.id) as ScheduleRow | undefined;
       if (!current) return null;
@@ -135,7 +137,17 @@ export function tickRecurringSchedules(db: Database.Database, now = new Date()):
         proposal_id=excluded.proposal_id,status=excluded.status,attempts=excluded.attempts,last_error=excluded.last_error,updated_at=excluded.updated_at`)
         .run(row.id, slot.key, slot.dueAt, requestId, proposalId, status, (existing?.attempts ?? 0) + 1, error, now.toISOString());
       return { id: row.id, status, occurrence: slot.key, requestId, ...(proposalId ? { proposalId } : {}), ...(error ? { error } : {}) };
-    });
+      });
+    } catch (failure) {
+      // No occurrence is claimed when validation or the writer transaction failed.
+      // Keep this optional intake failure from blocking other schedules.
+      entry = { id: row.id, status: "failed", error: failure instanceof Error ? failure.message : String(failure) };
+      // A shared database lock cannot be fixed by waiting again for every schedule.
+      if (failure && typeof failure === "object" && "code" in failure && /^SQLITE_(BUSY|LOCKED)/.test(String(failure.code))) {
+        result.push(entry);
+        break;
+      }
+    }
     if (entry) result.push(entry);
   }
   return result;

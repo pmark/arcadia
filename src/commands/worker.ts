@@ -999,6 +999,16 @@ export function reduceExecutionOutcome(input: {
   return "completed";
 }
 
+const recurringIntakeFailures = new Map<string, { message: string; count: number }>();
+function logRecurringIntakeFailure(workspacePath: string, logfile: string, message: string): void {
+  const previous = recurringIntakeFailures.get(workspacePath);
+  const count = previous?.message === message ? previous.count + 1 : 1;
+  recurringIntakeFailures.set(workspacePath, { message, count });
+  if (count === 1 || count % REPEATED_FAILURE_LOG_INTERVAL === 0) {
+    log(logfile, `[recurring-schedule] ${message}${count > 1 ? ` (repeated ${count} times)` : ""}`);
+  }
+}
+
 export function runWorkerIteration(
   db: ReturnType<typeof openDatabase>,
   workspacePath: string,
@@ -1017,8 +1027,18 @@ export function runWorkerIteration(
   // iteration preserves the old serialization with production admission and
   // prevents a new Session from invalidating the handoff's reservation.
   if (!process.env.CODEX_SANDBOX && processPreservationRequests(db, workspacePath)) return null;
-  for (const receipt of tickRecurringSchedules(db)) {
-    if (receipt.status !== "waiting") log(logfile, `Recurring schedule ${receipt.id}: ${receipt.status} ${receipt.occurrence}${receipt.error ? ` (${receipt.error})` : ""}`);
+  try {
+    const receipts = tickRecurringSchedules(db);
+    const uncaptured = receipts.filter((receipt) => receipt.status === "failed" && !receipt.occurrence);
+    for (const receipt of receipts) {
+      if (receipt.status !== "waiting" && receipt.occurrence) log(logfile, `Recurring schedule ${receipt.id}: ${receipt.status} ${receipt.occurrence}${receipt.error ? ` (${receipt.error})` : ""}`);
+    }
+    if (uncaptured.length) {
+      logRecurringIntakeFailure(workspacePath, logfile, uncaptured.map((receipt) => `${receipt.id}: ${receipt.error}`).join("; "));
+    } else recurringIntakeFailures.delete(workspacePath);
+  } catch (error) {
+    // Optional intake must not prevent recovery or the existing governed worker paths.
+    logRecurringIntakeFailure(workspacePath, logfile, `Tick error: ${error instanceof Error ? error.message : String(error)}`);
   }
   recoverOrphanedRuns(db, logfile);
   runManagedProductionIteration(db, workspacePath, logfile, progress);

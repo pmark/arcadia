@@ -80,3 +80,29 @@ user config and launch-agent directory unchanged. This creates no live
 experiment workspace and changes no production or messaging permission.
 Loaded experiment-workspace procedure: `docs/agent-guidance/arcadia-repository.md`
 section “Experiment workspaces” and approved Decision 0082 before this repair.
+
+## Stability repair before merge
+
+All seven CI jobs passed on `723099cd3224a9f424df1a144b236613816741ed`, but
+an advisory review identified a still-valid blocking stability defect: an
+unexpected recurring intake exception could exit the whole worker iteration.
+The author verified that control flow and held merge. Each schedule now isolates
+validation/transaction failures; no occurrence is claimed for a failed writer
+transaction. A worker-level boundary logs global intake errors and continues
+normal recovery/dispatch. Tests inject malformed stored JSON, an unsupported
+timezone and a global SQLITE_BUSY-shaped intake exception, proving healthy
+triggers and the normal worker Run claim remain reachable. This significant
+new blocking defect requires a fourth scoped independent review, allowed by the
+PR procedure's significant-defect exception; the new head needs fresh CI.
+
+Repeated intake failures use the worker's existing repeated-failure logging
+interval, with transient per-workspace counters cleared on recovery. Regression
+coverage proves unchanged failures are not logged every tick and recovery
+permits a new diagnostic. Retrieved notes entry “Reproduce a rehearsal defect
+offline before a live run” and its #1161 terminal-log incident before this guard;
+the existing fast-rehearsal harness is run before preserving this worker repair.
+
+A shared SQLITE_BUSY/LOCKED failure ends intake for the current tick, rather
+than multiplying the database busy timeout by every registered schedule. A
+fixture injection test proves only one lookup is attempted and no proposal is
+captured; unrelated definition-validation errors still allow healthy triggers.

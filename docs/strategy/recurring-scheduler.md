@@ -70,7 +70,13 @@ publication receipts before generating content.
 A failed capture retains its error and occurrence, retries after five minutes,
 and stops after three attempts. `retry` resets the budget for that failed
 occurrence without deleting it. Pausing prevents all attempts. One failing
-Project does not block other triggers. There are at most 100 definitions and 20
+Project does not block other triggers. An unreadable stored definition or failed
+writer transaction is reported without claiming a captured occurrence, and does
+not block healthy schedules. The worker also catches unexpected intake failures
+before continuing normal recovery and governed dispatch; failed transactions
+cannot fabricate a durable receipt. Shared database contention stops further
+intake attempts for that tick instead of waiting on the same lock per schedule.
+Repeated intake diagnostics use the worker's existing bounded logging interval. There are at most 100 definitions and 20
 submission attempts per tick. No shell, network, model call, new daemon or
 credentials are part of the scheduler.
 

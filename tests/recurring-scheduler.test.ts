@@ -1,9 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase, openReadOnlyDatabase } from "../src/db/connection.js";
+import * as repositories from "../src/db/repositories.js";
+import * as scheduler from "../src/recurring/scheduler.js";
 import { upsertProject } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { latestOccurrence, nextOccurrence } from "../src/recurring/calendar.js";
@@ -12,7 +14,7 @@ import { cleanupTrackedPaths, runCli } from "./cli-response-fixture.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
 
 const roots: string[] = [];
-afterEach(() => { vi.unstubAllEnvs(); cleanupTrackedPaths(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); cleanupTrackedPaths(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const definition = { schema: "arcadia-recurring-schedule-v1", id: "field-notes", project: "demo", cadence: "weekly", weekday: 1, timezone: "America/Los_Angeles", time: "09:00", starts_at: "2026-10-12T16:00:00.000Z", desired_result: "Collect shipped work between {{period_start}} and {{period_end}} for {{due_at}}.", acceptance: ["Evidence receipts exist."] };
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-recurring-")); roots.push(root); initWorkspace(root);
@@ -115,6 +117,59 @@ describe("durable recurring proposal intake", () => {
       retryRecurringOccurrence(db, definition.id, "2026-10-12");
       expect(tickRecurringSchedules(db, at("2026-10-12T17:00:00Z"))[0].status).toBe("submitted");
       expect((db.prepare("SELECT COUNT(*) AS n FROM agent_ask_proposals").get() as { n: number }).n).toBe(2);
+    } finally { db.close(); }
+  });
+  it.each(["{broken json", JSON.stringify({ ...definition, timezone: "retired/zone" })])("isolates an unreadable stored definition from healthy triggers (%s)", (corrupt) => {
+    const { db } = fixture();
+    try {
+      registerRecurringSchedule(db, definition); setRecurringScheduleEnabled(db, definition.id, true);
+      registerRecurringSchedule(db, { ...definition, id: "other" }); setRecurringScheduleEnabled(db, "other", true);
+      db.prepare("UPDATE recurring_schedules SET definition_json = ? WHERE id = ?").run(corrupt, definition.id);
+      const receipts = tickRecurringSchedules(db, at("2026-10-12T16:00:00Z"));
+      expect(receipts[0]).toMatchObject({ id: definition.id, status: "failed" });
+      expect(receipts[0].occurrence).toBeUndefined();
+      expect(receipts[0].error).toBeTruthy();
+      expect(receipts[1]).toMatchObject({ id: "other", status: "submitted" });
+      expect((db.prepare("SELECT COUNT(*) AS n FROM recurring_schedule_occurrences").get() as { n: number }).n).toBe(1);
+    } finally { db.close(); }
+  });
+  it("stops further intake attempts after shared database contention instead of waiting for each schedule", () => {
+    const { db } = fixture();
+    try {
+      registerRecurringSchedule(db, definition); setRecurringScheduleEnabled(db, definition.id, true);
+      registerRecurringSchedule(db, { ...definition, id: "other" }); setRecurringScheduleEnabled(db, "other", true);
+      const prepare = db.prepare.bind(db);
+      let lookups = 0;
+      vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
+        if (sql.includes("FROM recurring_schedules WHERE id = ? AND enabled = 1")) {
+          lookups++;
+          throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+        }
+        return prepare(sql);
+      });
+      expect(tickRecurringSchedules(db, at("2026-10-12T16:00:00Z"))).toMatchObject([{ id: definition.id, status: "failed", error: "database is locked" }]);
+      expect(lookups).toBe(1);
+      expect((db.prepare("SELECT COUNT(*) AS n FROM agent_ask_proposals").get() as { n: number }).n).toBe(0);
+    } finally { db.close(); }
+  });
+  it("logs a global intake failure and still reaches the worker's normal Run claim", () => {
+    const { db, root } = fixture();
+    try {
+      vi.stubEnv("CODEX_SANDBOX", "test");
+      const intake = vi.spyOn(scheduler, "tickRecurringSchedules").mockImplementation(() => { throw new Error("SQLITE_BUSY: scheduler intake unavailable"); });
+      const claim = vi.spyOn(repositories, "claimNextPendingRun");
+      const logfile = path.join(root, "worker.log");
+      expect(runWorkerIteration(db, root, process.pid, logfile)).toBeNull();
+      expect(claim).toHaveBeenCalledWith(db, process.pid);
+      expect(readFileSync(logfile, "utf8")).toContain("[recurring-schedule] Tick error: SQLITE_BUSY");
+      runWorkerIteration(db, root, process.pid, logfile);
+      expect(claim).toHaveBeenCalledTimes(2);
+      expect(readFileSync(logfile, "utf8").match(/Tick error/g)).toHaveLength(1);
+      intake.mockReturnValue([]);
+      runWorkerIteration(db, root, process.pid, logfile);
+      intake.mockImplementation(() => { throw new Error("SQLITE_BUSY: scheduler intake unavailable"); });
+      runWorkerIteration(db, root, process.pid, logfile);
+      expect(readFileSync(logfile, "utf8").match(/Tick error/g)).toHaveLength(2);
     } finally { db.close(); }
   });
   it("submits only once when two actual processes tick together", async () => {
