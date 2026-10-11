@@ -11,6 +11,7 @@ import { resolveActionReadiness } from "../docs/dispatch.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { findPromotionDecision, type AgentSession } from "./index.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
+import { assertNoStrayAskFiles } from "./strayAskFiles.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
@@ -92,6 +93,8 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   onStage?.("validation-candidate-capture");
   preservationStage("validation.snapshot");
   const tree = snapshotCandidate(candidate.worktree, candidate.base);
+  // Issue #1177: a non-canonical Ask file is refused before any check runs.
+  assertNoStrayAskFiles(candidate.repository, candidate.base, tree);
   // Refuse before executing anything: a check the candidate rewrote cannot judge it.
   preservationStage("validation.check-definitions");
   const checkDefinition = bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
