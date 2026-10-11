@@ -10,6 +10,34 @@
 Read before preparing a bounded operator choice or publishing its /runs action.
 The compact bootstrap and CONSTITUTION.md still bind; a button grants no authority.
 
+### The host is offsite
+
+Operator direction, 2026-10-11: every rehearsal and supervised run must behave
+increasingly like the way sessions are ultimately meant to proceed, and the
+operator (and soon alpha testers) must never need to act directly on the host
+machine. Design and report as if the host were permanently offsite.
+
+- Never hand the operator a terminal command, a file to edit, a service restart,
+  a checkout fast-forward or an install as the way forward. Offer only
+  remote-reachable surfaces: an `/actions`, `/review` or `/production` button, a
+  Discord reply, or a PR merge (the operator's merge only where Decision
+  0060/0080 leaves it to the operator). If none exists for a needed step, that
+  missing surface is the blocker: say so plainly.
+- Until a remote surface replaces them, existing descriptors, runbooks and the
+  `/runs` script library that name the Terminal panel or `/runs` as a fallback
+  (for example G8) stay valid and are not removed or refused. Treat each as a
+  defect to record under the next bullet; for any new step offer only the
+  remote surfaces above.
+- Every host-touching step you find (reinstalling the broker after main moves,
+  restarting services to load merged code, approving a Decision by CLI,
+  reading a path on disk to learn why something refused) is a defect: record
+  it as an Issue (a defect) or an Agent Ask proposal (a missing capability)
+  naming the remote surface that should replace it.
+- Prefer designs that self-heal or fail with a remote-visible reason and a
+  one-press remedy, never a shell command or a path on disk.
+- Agents may use the host for their own work; the operator's progress must not
+  depend on it.
+
 ### Make operator steps executable
 
 Whenever the operator must provide input or perform one or more steps after an
