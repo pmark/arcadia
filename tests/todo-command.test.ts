@@ -132,7 +132,7 @@ function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
       db.prepare("INSERT INTO ask_capture_envelopes (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json) VALUES (?, ?, 'f', 'x', 'test', ?, 'completed', '{}')")
         .run(`capture-${ask.id}`, `request-${ask.id}`, ask.createdAt);
       const normalized = {
-        project: ask.project ?? "demo", desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
+        project: ask.project ?? "demo", requestId: `request-${ask.id}`, desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
         targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: ask.options ?? [],
         gateQuestion: ask.gateQuestion ?? null, evidence: ask.evidence ?? []
       };
@@ -1116,6 +1116,45 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       ["agent_ask:retired/retired-ask", "its Project retired is completed"],
       ["escalation:build_packet_approval_pending:retired/write-marker", "its Project retired is completed"]
     ]);
+  });
+
+  it("lists a completed fixture Project's leftover Ask as stale instead of collapsing it into the fixture count", () => {
+    // The dashboard matches its own pending-Ask rows against this list; an Ask missing from it shows live (#1236 cleanup).
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "chain-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "three-action-rehearsal", desiredResult: "Mark chain-step-09 complete." },
+      { id: "live-fixture-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "two-action-rehearsal", desiredResult: "Still a fixture." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const chain = createProjectWithInitialWork(db, {
+        name: "Three Action Rehearsal", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(chain.project.id);
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    expect(data.items.filter((item) => item.project.includes("rehearsal")).map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:three-action-rehearsal/chain-ask", "its Project three-action-rehearsal is completed"]
+    ]);
+    // A live fixture item is still only a count.
+    expect(data.counts.fixture).toEqual({ projects: 2, items: 1 });
+  });
+
+  it("treats an Ask whose own Decision is already committed as stale, matching its whole request id, never a prefix (#1236)", () => {
+    const repo = fixtureRepo(0);
+    write(repo, "docs/decisions/0003-filed.md",
+      decisionDoc("0003", "Filed by the revision?", "2026-09-04") + "\nProposed by Agent Ask request-filed-r2.\n");
+    const workspace = fixtureWorkspace(repo, [
+      { id: "filed", createdAt: "2026-09-05T00:00:00.000Z", intent: "decision", desiredResult: "The first draft." },
+      { id: "filed-r2", createdAt: "2026-09-06T00:00:00.000Z", intent: "decision", desiredResult: "The revision that filed 0003." }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    const asks = data.items.filter((item) => item.kind === "agent_ask").map((item) => [item.key, item.staleReason ?? null]);
+    expect(asks).toEqual(expect.arrayContaining([
+      ["agent_ask:demo/filed", null],
+      ["agent_ask:demo/filed-r2", "its documents are already committed (docs/decisions/0003-filed.md); only its settlement receipt was never recorded"]
+    ]));
+    expect(asks).toHaveLength(2);
   });
 
   it("lists a waiting operator task with its own title and the canonical command; blocking only for the selected Action", () => {

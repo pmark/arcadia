@@ -18,14 +18,14 @@ import {
   listProjects
 } from "../db/repositories.js";
 import { resolveDispatch, resolveReadySet, type ReadySetResolution } from "../docs/dispatch.js";
-import { discoverDocs } from "../docs/discover.js";
+import { discoverDocs, withDocsSnapshot } from "../docs/discover.js";
 import { listOperatorTasks, type OperatorTask } from "../docs/operatorTasks.js";
 import { listOperatorEscalations, type OperatorEscalation } from "../production/tick.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary } from "../domain/types.js";
 import { ACTION_CLARIFICATION_INTENT } from "./review.js";
 import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGate.js";
-import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
+import { findCommittedSettlement, listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
 import { askQuestionOrigin, type AskOrigin } from "../ask/askQuestion.js";
@@ -246,6 +246,8 @@ interface ProjectEvidence {
   dispatching: boolean;
   /** Plan slug -> its `updated` date: a Plan Action carries no creation time of its own. */
   planUpdated: Map<string, string>;
+  /** The managed document this Ask's own earlier apply already wrote (its receipt went unrecorded), or null. */
+  committedBy: (requestId: string) => string | null;
 }
 
 function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvidence {
@@ -273,12 +275,15 @@ function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvid
   const activePlan = projectDoc?.type === "project" && projectDoc.activePlan ? projectDoc.activePlan.toLowerCase() : null;
   const plan = docs.find((doc) => doc.type === "plan" && doc.project.toLowerCase() === wanted && doc.slug.toLowerCase() === activePlan);
   const dispatching = projectDoc?.type === "project" && projectDoc.status === "active" && plan?.type === "plan" && plan.status === "active";
-  return { actions, decisionActions, decisionDocs, dispatching: Boolean(dispatching), planUpdated };
+  // The same durable check settlement applies before writing (exact request id, Issue #1236).
+  const committedBy = (requestId: string): string | null => findCommittedSettlement(docs, projectSlug, requestId);
+  return { actions, decisionActions, decisionDocs, dispatching: Boolean(dispatching), planUpdated, committedBy };
 }
 
 /** The Agent Ask facts staleness reads, taken from the stored proposal. */
 interface AskFacts {
   intent: string;
+  requestId: string;
   /** Actions reached through a target_ref. */
   targets: string[];
   /** Actions the Ask proposes to create (an `actions[].id` with no target_ref). */
@@ -293,6 +298,7 @@ function askFactsOf(rows: UnsettledAsk[]): Map<string, AskFacts> {
         row.id,
         {
           intent: normalized.intent,
+          requestId: normalized.requestId,
           targets: targetedActionIds(normalized),
           proposed: normalized.actions.flatMap((action) => (action.id && !action.targetRef ? [action.id] : []))
         }
@@ -421,6 +427,9 @@ function staleReasonOf(item: OperatorGateItem, context: StaleContext): string | 
   const superseder = context.superseded.get(item.id);
   if (superseder) return `superseded by Agent Ask ${superseder} (explicit Supersedes line in its rationale)`;
   const facts = context.askFacts.get(item.id);
+  // Its documents are committed, so settlement refuses to apply it again: it no longer waits on the operator (#1236).
+  const committed = facts && evidence?.committedBy(facts.requestId);
+  if (committed) return `its documents are already committed (${committed}); only its settlement receipt was never recorded`;
   if (!facts || !["complete", "split", "action"].includes(facts.intent) || facts.targets.length === 0 || !evidence) return undefined;
   // An Ask that also proposes new Actions is only stale once those exist in a Plan too.
   if (facts.proposed.some((id) => !evidence.actions.has(id))) return undefined;
@@ -911,7 +920,8 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
 
   if (resolved) {
     try {
-      const read = readWithWorkspace(resolved, options, unavailable);
+      // One walk per repository for the whole read: it is read-only, and re-walking was nearly all of its time.
+      const read = withDocsSnapshot(() => readWithWorkspace(resolved, options, unavailable));
       items = read.items;
       fixture = read.fixture;
       noRepoPath = read.noRepoPath;
@@ -1050,8 +1060,10 @@ function readWithWorkspace(
     // Project; only the non-blocking items of a collapsed Project become a count.
     const take = (slug: string, collapse: false | "fixture" | "noRepoPath", found: TodoItem[]): void => {
       // An Ask question is never collapsed into a count because its Project has no repo_path: that is how an Ask vanishes.
+      // A stale item is never collapsed: it is listed with its evidence (hidden by the default view anyway), so a
+      // reader of the full list, such as the dashboard's /todo, can tell it is done rather than seeing it unmatched.
       const collapsed = collapse
-        ? found.filter((item) => !((item.blocking || (item.askQuestion && collapse === "noRepoPath")) && !item.staleReason))
+        ? found.filter((item) => !item.staleReason && !(item.blocking || (item.askQuestion && collapse === "noRepoPath")))
         : [];
       items.push(...found.filter((item) => !collapsed.includes(item)));
       if (collapse === "fixture") {

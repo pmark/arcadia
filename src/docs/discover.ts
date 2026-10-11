@@ -46,7 +46,39 @@ export interface DiscoveryResult {
  * when it explicitly opts in. Depth is capped and heavy directories skipped —
  * this runs over every project in the portfolio.
  */
+/** Active only inside `withDocsSnapshot`: repository root -> what one walk found. */
+let snapshot: Map<string, DiscoveryResult> | null = null;
+
+/**
+ * Run a read-only pass over one consistent view of each repository: inside
+ * `run`, discovering the same root again reuses the first walk instead of
+ * re-reading and re-parsing every managed document. `arcadia todo` resolves
+ * several views per Project and walked each repository many times (about 11 s,
+ * past the dashboard's read timeout). Never wrap a pass that writes documents.
+ */
+export function withDocsSnapshot<T>(run: () => T): T {
+  if (snapshot) return run();
+  snapshot = new Map();
+  try {
+    return run();
+  } finally {
+    snapshot = null;
+  }
+}
+
 export function discoverDocs(repoRoot: string): DiscoveryResult {
+  if (!snapshot) return walkDocs(repoRoot);
+  const key = path.resolve(repoRoot);
+  let found = snapshot.get(key);
+  if (!found) {
+    found = walkDocs(repoRoot);
+    snapshot.set(key, found);
+  }
+  // Fresh arrays, so a caller that sorts or appends cannot change what the next caller sees.
+  return { docs: [...found.docs], errors: [...found.errors], rejected: [...found.rejected] };
+}
+
+function walkDocs(repoRoot: string): DiscoveryResult {
   const docs: ArcadiaDoc[] = [];
   const errors: DocValidationError[] = [];
   const rejected: string[] = [];
