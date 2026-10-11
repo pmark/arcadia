@@ -139,6 +139,9 @@ test("the Production console drives and monitors production at phone width", asy
   const projects = page.getByRole("list", { name: "Projects in the production scope" });
   await expect(projects.getByText("Arcadia", { exact: true })).toBeVisible();
   await expect(projects.getByText(/Would pick now:/)).toBeVisible();
+  // The Project links to its plans page and its Plan to the Plan's own page.
+  await expect(projects.getByRole("link", { name: "Arcadia" })).toHaveAttribute("href", /\/projects\/[^/]+\/plans$/);
+  await expect(projects.locator('a[href^="/plans/arcadia/"]').first()).toBeVisible();
 
   // The queue in batches: the two ready Actions share one repository, so they are batch 1 and batch 2.
   await page.getByRole("tab", { name: "Batches" }).click();

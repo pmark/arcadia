@@ -268,7 +268,7 @@ describe("production console: Projects view", () => {
     const cards = assembleProjects(assembled, production(null));
     expect(cards.map((card) => card.slug)).toEqual(["rebuster", "ppn", "site"]);
     const ppn = cards[1];
-    expect(ppn).toMatchObject({ planSlug: "pilot", planOpen: 2, planReady: 1, chip: "ready", otherPlans: [{ slug: "imagery", open: 1 }] });
+    expect(ppn).toMatchObject({ projectId: "proj-ppn", planSlug: "pilot", planOpen: 2, planReady: 1, chip: "ready", otherPlans: [{ slug: "imagery", open: 1 }] });
     expect(ppn.next?.actionId).toBe("p1");
     expect(cards[0].chip).toBe("next_up");
     expect(cards[2]).toMatchObject({ chip: "nothing_ready", next: null, planSlug: null });
