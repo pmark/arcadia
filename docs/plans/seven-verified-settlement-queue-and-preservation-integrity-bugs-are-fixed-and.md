@@ -18,12 +18,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask keep-claim-when-passed-attempt-receipt-is-unparseable
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "A malformed receipt currently lets the claim release and can launch a duplicate session for an Action that already has a passed candidate."
     acceptance_criteria:
       - With a passed development row whose terminal receipt JSON is malformed plus a superseded row, developedForSupersededInput returns false and the claim is not released.
       - With only well-formed superseded rows it still returns true and releases the claim.
-      - A focused regression test for the malformed-receipt case exists and the roleLineage and production-tick tests pass.
+      - A focused regression test for the malformed-receipt case exists, and tests/rehearsal-attempt-lineage.test.ts, tests/production-tick.test.ts and pnpm fast-rehearsal pass.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/960"]
@@ -36,12 +36,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask settle-superseded-decision-ask-rejection
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "Six superseded Decision rejections are stuck behind a substring match, which also threatens any Ask whose id prefixes another."
     acceptance_criteria:
       - With an accepted <id>-r3 Decision on disk, rejecting the original Ask <id> applies without the already-wrote refusal.
       - A genuine prior commit of the same Ask id is still refused (the existing already-wrote test passes).
-      - Ask ids that are prefixes of one another no longer cross-trigger in the Plan, Log or Decision checks, with a regression test.
+      - An Ask id that is a prefix of another no longer matches the other Ask Decision document, with a regression test.
+      - pnpm fast-rehearsal passes with the change.
     depends_on: [keep-claim-when-passed-attempt-receipt-is-unparseable]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1173"]
@@ -54,13 +55,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask amend-action-consumes-block-scalar-and-literal-ids
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "Amendment can show an agent old and new instruction text concatenated, and a request id with replacement patterns can garble a Plan."
     acceptance_criteria:
       - Amending an Action whose next_action is a literal or folded block scalar yields a parsed nextAction exactly equal to the requested text, on the Action-amend and Plan-amend paths.
-      - An instruction or request id containing $& or a backtick-dollar sequence is written literally by amendAction, setActionDependsOn, recordSplitInto and replaceTopLevelField.
-      - A split Ask whose request_id contains $& leaves the Plan valid with only the intended fields changed (regression test).
-      - Other fields, other Actions, refusals and idempotency are unchanged and the agent-ask settlement, split and complete test files pass.
+      - An instruction or request id that contains a dollar sign followed by an ampersand, a backtick or an apostrophe is written literally by amendAction, setActionDependsOn, recordSplitInto and replaceTopLevelField.
+      - A split Ask whose request_id contains a dollar sign followed by an ampersand leaves the Plan valid with only the intended fields changed (regression test).
+      - Other fields, other Actions, refusals and idempotency are unchanged; the agent-ask settlement, split and complete test files and pnpm fast-rehearsal pass.
     depends_on: [settle-superseded-decision-ask-rejection]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1031", "https://github.com/pmark/arcadia/issues/1213"]
@@ -73,13 +74,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask keep-queue-positions-of-projects-not-visible-at-arrange
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "A transient blocker on one Project can erase another Project order, leaving orderValid false and every make-next refused."
     acceptance_criteria:
-      - arrangeActionOrder and moveActionOrder keep, or refuse to drop, position rows for keys absent from currentKeys, with the chosen design stated in the PR.
+      - arrangeActionOrder and moveActionOrder keep every position row for a key absent from currentKeys unless the caller names that key as retired (done or dropped); the PR states how callers pass retired keys.
       - A settlement-time arrange while another Project is transiently blocked leaves that Project positions intact (regression test).
-      - The receipt records the full position table before and after.
-      - Done or dropped Action keys are still removed as before (schedule stale-key behaviour unchanged) and the action-order and settlement tests pass.
+      - A key the caller names as retired, as the scheduler does for done Actions, is still removed, and undo restores the full position table from the receipt.
+      - The receipt records the full position table before and after; the action-order and settlement tests and pnpm fast-rehearsal pass.
     depends_on: [amend-action-consumes-block-scalar-and-literal-ids]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1022"]
@@ -92,11 +93,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask refuse-hidden-renames-in-committed-completion-replay
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "The deterministic completion proof can be passed by a candidate that hides the deletion of a governed record behind a rename."
     acceptance_criteria:
       - A candidate HEAD that renames a governed document into .arcadia/asks/ is refused by recordCommittedCompletionSettlement.
-      - A commit that only adds .arcadia/asks/archive/agent-ask-<requestId>.yaml and removes .arcadia/asks/agent-ask-<requestId>.yaml is still recorded.
+      - A commit that only adds .arcadia/asks/archive/agent-ask-<requestId>.yaml and removes .arcadia/asks/agent-ask-<requestId>.yaml is still recorded; an archive under any other name is refused, and the PR says so.
       - A forced source-control timeout inside the replay leaves no arcadia-settlement-replay-* scratch directory.
       - pnpm fast-rehearsal passes with the change.
     depends_on: [keep-queue-positions-of-projects-not-visible-at-arrange]
@@ -111,12 +112,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-from-origin-and-refuse-duplicates
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-arcadia-loop-integrity-bug-burndown-2026-10-10
+    source: Agent Ask amend-bug-burndown-plan-after-review-2026-10-10-r2
     why: "Parallel sessions allocate the same Decision number, so a bare Decision citation can resolve to the wrong authority record."
     acceptance_criteria:
       - With origin/main holding Decision 0100 and a worktree whose documents stop at 0099, settlement and arcadia decision new both allocate 0101; offline they fall back to the local maximum with a warning.
-      - A new Decision file that duplicates an existing number outside the grandfathered pairs 0004, 0005, 0079 and 0100 fails docs sync or the added check.
-      - The existing pairs and slug-based Decision lookup are unchanged and the settlement, decision and docs-sync tests pass.
+      - A new Decision file that duplicates an existing number outside the grandfathered pairs 0004, 0005, 0079 and 0100 fails a check that runs in pnpm lint, so CI catches two unmerged branches that allocated the same number when the second one runs; the PR states the residual race because branch protection is not strict.
+      - The existing pairs and slug-based Decision lookup are unchanged and the settlement, decision and docs-sync tests and pnpm fast-rehearsal pass.
       - Renumbering the live second 0100 is not part of this Action and stays an operator-governed step.
     depends_on: [refuse-hidden-renames-in-committed-completion-replay]
     decisions: []
