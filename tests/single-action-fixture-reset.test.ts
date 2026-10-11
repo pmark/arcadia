@@ -146,6 +146,42 @@ describe("single-Action reopen rendering (pure)", () => {
       expect(out.plan).toContain("status: active");
     });
 
+    it("refuses unless the rendered Plan ends exactly `status: active`: quoted, commented, trailing-space, draft, superseded and missing spellings refuse; active and complete render", () => {
+      const spell = (status: string | null) => (status === null ? donePlan.replace("status: complete\n", "") : donePlan.replace("status: complete", status));
+      for (const status of ['status: "complete"', "status: complete # x", "status: complete ", "status: draft", "status: superseded", "status:complete", null]) {
+        expect(() => renderSingleActionReopen(spell(status), doneProject, input), String(status)).toThrow(/PLAN_STATUS_NOT_ACTIVE|not exactly "status: active"/);
+        try { renderSingleActionReopen(spell(status), doneProject, input); } catch (error) { expect((error as SingleActionResetError).reason).toBe("PLAN_STATUS_NOT_ACTIVE"); }
+      }
+      // A refused quoted-complete Plan is refused even when PROJECT.md already carries a pointer (nothing else would catch it).
+      expect(() => renderSingleActionReopen(spell('status: "complete"'), doneProject.replace("active_plan: p", "active_plan: p\ncurrent_action: x"), input)).toThrow(/not exactly "status: active"/);
+      expect(renderSingleActionReopen(spell("status: active"), doneProject, input).plan).toMatch(/^status: active$/m);
+      expect(renderSingleActionReopen(spell("status: complete"), doneProject, input).plan).toMatch(/^status: active$/m);
+    });
+
+    it("refuses a complete Plan with another Action not done (it would surface open after the flip), but not when only the reopened one is", () => {
+      const open = donePlan.replace("    status: done\n    responsibility: agent\n    next_action: old two", "    status: open\n    responsibility: agent\n    next_action: old two");
+      expect(open).not.toBe(donePlan);
+      expect(() => renderSingleActionReopen(open, doneProject, input)).toThrow(/transform-start-marker \(open\) is not done/);
+      try { renderSingleActionReopen(open, doneProject, input); } catch (error) { expect((error as SingleActionResetError).reason).toBe("PLAN_SIBLING_NOT_DONE"); }
+      // An active Plan may carry other open Actions (the pre-chain shape): unchanged.
+      expect(renderSingleActionReopen(open.replace("status: complete", "status: active").replace("milestone: Run the bounded rehearsal\n", "milestone: Run the bounded rehearsal\ncurrent_action: transform-start-marker\n"), doneProject, input).plan).toMatch(/^current_action: write-start-marker$/m);
+      expect(renderSingleActionReopen(donePlan, doneProject, input).plan).toContain("current_action: write-start-marker");
+    });
+
+    it("treats an empty `current_action:` line as the existing pointer, and refuses an anchor followed by an indented continuation", () => {
+      const emptyPlan = donePlan.replace("milestone: Run the bounded rehearsal\n", "milestone: Run the bounded rehearsal\ncurrent_action:\n");
+      const planOut = renderSingleActionReopen(emptyPlan, doneProject, input).plan;
+      expect(planOut.match(/^current_action:/gm)).toHaveLength(1);
+      expect(planOut).toMatch(/^current_action: write-start-marker$/m);
+      const emptyProject = doneProject.replace("active_plan: p\n", "active_plan: p\ncurrent_action:\n");
+      const projectOut = renderSingleActionReopen(donePlan, emptyProject, input).project;
+      expect(projectOut.match(/^current_action:/gm)).toHaveLength(1);
+      expect(projectOut).toMatch(/^current_action: write-start-marker$/m);
+      const folded = donePlan.replace("milestone: Run the bounded rehearsal\n", "milestone: >\n  Run the bounded\n  rehearsal\n");
+      expect(() => renderSingleActionReopen(folded, doneProject, input)).toThrow(/continuation line/);
+      expect(() => renderSingleActionReopen(donePlan, doneProject.replace("active_plan: p\n", "active_plan: >\n  p\n"), input)).toThrow(/continuation line/);
+    });
+
     it("does not touch the pre-chain shapes: an active Plan with a pointer keeps its status and gains no second pointer", () => {
       const active = donePlan.replace("status: complete", "status: active").replace("actions:", "actions:").replace("---\n\n# Body", "current_action: transform-start-marker\n---\n\n# Body");
       const out = renderSingleActionReopen(active, doneProject.replace("active_plan: p", "active_plan: p\ncurrent_action: transform-start-marker"), input);
@@ -317,6 +353,8 @@ function afterCompletedChain(box: Box) {
   const head = commitAll(box.fixture, "Settled whole chain");
   git(box.fixture, ["push", "-q", "origin", "main"]);
   expect((runDocsSyncCommand({ workspace: box.workspace, project: "three-action-rehearsal", apply: true }).data as unknown as { errorCount: number }).errorCount).toBe(0);
+  // Settlement marks the work items done in the workspace as well (as afterSettledRun does), so the reopen must really flip one back.
+  withDatabase(box.workspace, (db) => { db.prepare("UPDATE work_items SET status = 'done' WHERE doc_ref LIKE ?").run("plan/autonomous-three-action-rehearsal#%"); });
   return head;
 }
 
@@ -401,6 +439,7 @@ describe("single-Action reset: behavior", () => {
     const box = sandbox();
     const { candidate } = fixtureAtGenesis(box);
     const base = afterCompletedChain(box);
+    expect(workItemStatus(box)).toBe("done");
     expect(planText(box, base)).toMatch(/^status: complete$/m);
     expect(planText(box, base)).not.toMatch(/^current_action: /m);
     expect(git(box.bare, ["show", `${base}:PROJECT.md`])).not.toMatch(/^current_action: /m);

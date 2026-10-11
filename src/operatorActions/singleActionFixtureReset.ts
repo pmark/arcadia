@@ -68,9 +68,12 @@ function bumpDate(lines: string[], end: number, resetDate: string, what: string)
   return before;
 }
 
+/** A top-level `current_action:` line, with a value or empty (`current_action:` alone is still the pointer, never a second one to add). */
+const isPointerLine = (line: string): boolean => line === "current_action:" || line.startsWith("current_action: ");
+
 /** Replace the one top-level `current_action:` line of a front matter (optional for a Plan). Returns whether it changed. */
 function pointAt(lines: string[], end: number, actionId: string, required: boolean, what: string): boolean {
-  const at = lines.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < end && line.startsWith("current_action: "));
+  const at = lines.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < end && isPointerLine(line));
   if (at.length > 1 || (required && at.length === 0)) throw new SingleActionResetError("CURRENT_ACTION", `${what} does not carry exactly one current_action: line`);
   if (at.length === 0) return false;
   const next = `current_action: ${actionId}`;
@@ -89,7 +92,22 @@ function insertPointerAfter(lines: string[], end: number, actionId: string, afte
   if (at.length !== 1 || at[0][0].slice(afterPrefix.length).trim() === "") {
     throw new SingleActionResetError(reason, `${what} carries no current_action: line and does not carry exactly one ${afterPrefix.trim()} line with a value to insert it after`);
   }
+  const next = lines[at[0][1] + 1];
+  if (next !== undefined && /^[ \t]/.test(next)) {
+    throw new SingleActionResetError(reason, `${what}'s ${afterPrefix.trim()} line is followed by an indented continuation line; the pointer would be spliced between the key and its value`);
+  }
   lines.splice(at[0][1] + 1, 0, `current_action: ${actionId}`);
+}
+
+/** Each `  - id:` block of a Plan's front matter with its own `    status:` value (null when absent). */
+function actionBlocks(front: string[]): Array<{ id: string; status: string | null }> {
+  const blocks: Array<{ id: string; status: string | null }> = [];
+  for (const line of front) {
+    const id = /^ {2}- id: (.*)$/.exec(line);
+    if (id) blocks.push({ id: id[1].trim(), status: null });
+    else if (blocks.length > 0 && line.startsWith("    status: ") && blocks[blocks.length - 1].status === null) blocks[blocks.length - 1].status = line.slice("    status: ".length).trim();
+  }
+  return blocks;
 }
 
 export interface RenderedSingleAction {
@@ -137,18 +155,27 @@ export function renderSingleActionReopen(basePlan: string, baseProject: string, 
   planFront[nextAt] = `    next_action: ${nextAction}`;
   planFront[statusAt] = "    status: open";
   const planUpdatedBefore = bumpDate(planFront, plan.end, resetDate, "the base Plan");
-  const planStatusAt = planFront.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < plan.end && line.startsWith("status: "));
-  if (planStatusAt.length > 1) throw new SingleActionResetError("PLAN_STATUS", "the base Plan carries more than one top-level status: line");
+  const planStatusAt = planFront.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < plan.end && /^status:/.test(line));
   const planCompleted = planStatusAt.length === 1 && planFront[planStatusAt[0][1]] === "status: complete";
-  if (planCompleted) planFront[planStatusAt[0][1]] = "status: active";
-  const planPointed = planFront.slice(1, plan.end).some((line) => line.startsWith("current_action: "));
+  if (planCompleted) {
+    // A finished chain: the reopened Action is the only one that may leave `done`, otherwise a sibling would surface open.
+    const notDone = actionBlocks(plan.lines.slice(0, plan.end)).filter((block) => block.id !== actionId && block.status !== "done").map((block) => `${block.id} (${block.status ?? "no status"})`);
+    if (notDone.length > 0) throw new SingleActionResetError("PLAN_SIBLING_NOT_DONE", `the base Plan is complete but ${notDone.join(", ")} is not done; reopening ${actionId} would expose it. Reopen only from a Plan whose every other Action is done`);
+    planFront[planStatusAt[0][1]] = "status: active";
+  }
+  const planPointed = planFront.slice(1, plan.end).some(isPointerLine);
   pointAt(planFront, plan.end, actionId, false, "the base Plan");
   if (planCompleted && !planPointed) insertPointerAfter(planFront, plan.end, actionId, "milestone: ", "PLAN_MILESTONE", "the completed base Plan");
+  // Nothing downstream judges the Plan's own status, so the rendering must itself end exactly active.
+  const renderedStatus = planFront.filter((line, i) => i > 0 && i < plan.end + 1 && /^status:/.test(line));
+  if (renderedStatus.length !== 1 || renderedStatus[0] !== "status: active") {
+    throw new SingleActionResetError("PLAN_STATUS_NOT_ACTIVE", `the rendered Plan's top-level status would be ${renderedStatus.length === 1 ? JSON.stringify(renderedStatus[0]) : `${renderedStatus.length} status: lines`}, not exactly "status: active"; only an active or a plainly "status: complete" Plan can be reopened`);
+  }
   const renderedPlan = [...planFront, ...plan.lines.slice(plan.end + 1)].join("\n");
 
   const project = frontMatter(baseProject, "the base PROJECT.md");
   const projectFront = project.lines.slice(0, project.end + 1);
-  const projectPointers = projectFront.slice(1, project.end).filter((line) => line.startsWith("current_action: ")).length;
+  const projectPointers = projectFront.slice(1, project.end).filter(isPointerLine).length;
   if (projectPointers > 1) throw new SingleActionResetError("CURRENT_ACTION", "the base PROJECT.md does not carry exactly one current_action: line");
   let projectChanged: boolean;
   let projectEnd = project.end;
