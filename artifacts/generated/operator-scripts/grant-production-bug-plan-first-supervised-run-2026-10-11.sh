@@ -73,7 +73,9 @@ arcadia() { (cd "$ARCADIA_REPO" && timeout 180 mise exec -- pnpm -s arcadia "$@"
 # activation can commit and the CLI still time out, fail or print unparsable
 # output. Observe production status instead and return only this Grant to Off.
 # Sets OFF_RESULT to one of: not_attempted, not_active, other_grant_active,
-# returned_off, OFF_FAILED, UNKNOWN.
+# returned_off, off_issued_unobserved (status stayed unreadable; an Off was
+# issued blind and its output confirms Inactive, whether this Grant was Active
+# is unknown), OFF_FAILED, UNKNOWN.
 reconcile_activation() {
   local status="" attempt
   [[ "$ACTIVATION_ATTEMPTED" == true ]] || { OFF_RESULT=not_attempted; return 0; }
@@ -86,7 +88,7 @@ reconcile_activation() {
     # only be this attempt's: try the Off anyway (over-stopping is safe) and report it only if it confirms.
     if arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID-off-unread" --reason 'The supervised-run Grant could not read production status after an activation attempt; return production to Off and preserve evidence.' --json > "$RUN_DIR/off.json" \
       && jq -e '.ok == true and .data.result.policy.desiredState == "inactive"' "$RUN_DIR/off.json" >/dev/null 2>&1; then
-      OFF_RESULT=returned_off
+      OFF_RESULT=off_issued_unobserved
     else
       OFF_RESULT=UNKNOWN
     fi
@@ -113,7 +115,7 @@ finish_refused() {
   # The receipt reports what was observed: an unreadable status is not "not activated".
   case "$off" in
     returned_off | OFF_FAILED) ACTIVATED=true ;;
-    UNKNOWN) ACTIVATED='"unknown"' ;;
+    UNKNOWN | off_issued_unobserved) ACTIVATED='"unknown"' ;;
     *) ACTIVATED=false ;;
   esac
   record_str offCleanup "$off"
@@ -133,6 +135,7 @@ finish_refused() {
       not_active) echo "An activation was attempted, and production status afterwards reads Inactive. This Grant is not active." ;;
       returned_off) echo "An activation by this Grant was observed Active after the failure; the script returned only this Grant to Off and the Off was confirmed." ;;
       other_grant_active) echo "Production is Active under ANOTHER request id, not this Grant; this script did not touch it. Read production status and press the STOP button ($OFF_ID) if that is not intended." ;;
+      off_issued_unobserved) echo "Production status stayed unreadable after the activation attempt, so an Off was issued blind under a fresh request id and its output confirms Inactive. Whether this Grant was ever Active is unknown; production now reads Inactive from that output. Confirm with production status." ;;
       OFF_FAILED) echo "This Grant was observed Active and the Off was NOT confirmed. Press the STOP button ($OFF_ID) NOW from /actions or the Terminal panel and read production status." ;;
       *) echo "Production status could not be read after the activation attempt: the policy may be ACTIVE. Press the STOP button ($OFF_ID) NOW from /actions or the Terminal panel." ;;
     esac

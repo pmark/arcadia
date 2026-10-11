@@ -15,7 +15,7 @@
       "Requires production Inactive with zero live admissions and this request id not already in the policy",
       "Previews at the current policy revision, previews again immediately before activation and requires the identical fingerprint and revision, activates once with --expected-revision and its own request id, then verifies the activated fingerprint; the preview must name exactly the 7 Plan Actions (compared as a set), codex-cli, concurrency one, remote preservation, the delegated mechanics and the 24-hour packet-approval expiry, and no integration grant",
       "Under Decision 0072 lets the worker approve the build packet of an Action inside this exact scope (whose only provider is codex-cli), only while the policy is Active and the delegation unexpired; under remote preservation the worker pushes the preserved candidate branch and opens its draft pull request",
-      "After any activation attempt that does not verify (including a failed, timed-out or unparsable activate, or SIGTERM/SIGINT), reads production status back, returns only its own Grant to Off if it is Active, and records the observed state (or UNKNOWN, telling you to press STOP now) in a timestamped receipt and failure handoff"
+      "After any activation attempt that does not verify (including a failed, timed-out or unparsable activate, or SIGTERM/SIGINT), reads production status back (retrying three times), returns only its own Grant to Off if it is Active, and records the observed state in a timestamped receipt and failure handoff. If status stays unreadable it issues an Off blind under a fresh request id (safe because production was Inactive before this run, and an Off only removes authority) and records off_issued_unobserved, or UNKNOWN telling you to press STOP now if that Off is not confirmed"
     ],
     "never_does": [
       "Never authorizes a GitHub merge, readying a pull request, a reviewer run or a push to any base branch: there is no integration grant, so the worker only pushes branches and opens draft pull requests",
@@ -23,7 +23,7 @@
       "Never edits the workspace config or changes the capacity gate, credentials, branch protection, repository settings or any Decision, Plan or Action",
       "Never launches, terminates or resumes a Session, restarts a service, or reactivates production after Off",
       "Never activates twice under its request id: the one-shot button stays disabled after success",
-      "Never turns a failed or unverified activation into a success: it returns only its own Grant to Off and says so"
+      "Never turns a failed or unverified activation into a success: it returns its own Grant to Off (a blind Off only when status stays unreadable) and says so"
     ]
   },
   "success": {
@@ -31,7 +31,7 @@
     "next": "Watch production status and the dashboard: the tick prepares and approves the first packet and launches a Codex Session. A supervising agent reviews and merges each draft PR before the next Action launches. To stop at any time press restore-off-production-bug-plan-first-supervised-run-2026-10-11."
   },
   "failure": {
-    "effect": "If no activation was attempted, policy is unchanged. After an attempt, the script reads production status back, returns only its own Grant to Off when it is Active, and records the observed result (not_active, returned_off, other_grant_active, OFF_FAILED or UNKNOWN).",
+    "effect": "If no activation was attempted, policy is unchanged. After an attempt, the script reads production status back, returns only its own Grant to Off when it is Active, and records the observed result (not_active, returned_off, other_grant_active, OFF_FAILED or UNKNOWN). When status stays unreadable it issues an Off blind and records off_issued_unobserved (whether this Grant was Active is then unknown, and the receipt says activated unknown).",
     "next": "Do not press again blindly. Read the handoff; if it says OFF_FAILED or UNKNOWN, press restore-off-production-bug-plan-first-supervised-run-2026-10-11 now. Otherwise resolve the named drift and ask for a fresh Grant."
   }
 }
