@@ -1,4 +1,5 @@
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
+import { resolveBaseBranch } from "../git/worktrees.js";
 import { boundedExec } from "./preservationStages.js";
 
 /**
@@ -21,14 +22,47 @@ export function nonCanonicalAskPaths(paths: readonly string[]): string[] {
   return paths.filter((file) => UNDER_ASKS_DIRECTORY.test(file.replaceAll("\\", "/")) && !CANONICAL_ASK_PATH.test(file));
 }
 
+/** A bounded Git timeout is not an answer: it must surface, never read as "nothing resolved". */
+function rethrowTimeout(error: unknown): void {
+  if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
+}
+
+/**
+ * Where `baseRevision` forks from the project's own base branch, or null when
+ * no base branch or merge base can be resolved (the caller then relies on
+ * `baseRevision` alone). A recorded base that is itself a commit on the
+ * candidate branch carries everything the candidate committed before it; its
+ * fork point from the base branch does not.
+ */
+function projectBaseFork(repository: string, baseRevision: string): string | null {
+  try {
+    const branch = resolveBaseBranch(repository);
+    const fork = boundedExec("git", ["merge-base", "--end-of-options", `refs/heads/${branch}`, baseRevision],
+      { cwd: repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    return /^[0-9a-f]{40,64}$/.test(fork) ? fork : null;
+  } catch (error) {
+    rethrowTimeout(error);
+    return null;
+  }
+}
+
+function addedOrModified(repository: string, from: string, tree: string): string[] {
+  return boundedExec("git", ["diff-tree", "-r", "-z", "--no-renames", "--name-only", "--diff-filter=AMT", "--end-of-options", from, tree],
+    { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0").filter(Boolean);
+}
+
 /**
  * The non-canonical Ask paths the candidate `tree` adds or modifies relative
- * to `baseRevision`. A deletion, and a file the base already carries
- * unchanged, never counts: only what this candidate itself introduces.
+ * to `baseRevision`, and relative to where `baseRevision` forks from the
+ * project's base branch (so a stray committed on the candidate branch before
+ * its recorded base still counts). A deletion, and a file the base or the
+ * base branch already carries unchanged, never counts: only what this
+ * candidate itself introduces.
  */
 export function strayAskFilesChangedSince(repository: string, baseRevision: string, tree: string): string[] {
-  const changed = boundedExec("git", ["diff-tree", "-r", "-z", "--no-renames", "--name-only", "--diff-filter=AMT", baseRevision, tree],
-    { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0").filter(Boolean);
+  const changed = addedOrModified(repository, baseRevision, tree);
+  const fork = projectBaseFork(repository, baseRevision);
+  if (fork && fork !== baseRevision) changed.push(...addedOrModified(repository, fork, tree));
   return [...new Set(nonCanonicalAskPaths(changed))].sort();
 }
 

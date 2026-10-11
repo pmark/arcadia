@@ -66,11 +66,11 @@ describe("nonCanonicalAskPaths (Issue #1177)", () => {
 });
 
 describe("strayAskFilesChangedSince", () => {
-  function repository(files: Record<string, string>) {
+  function repository(files: Record<string, string>, initialBranch = "main") {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-stray-asks-"));
     roots.push(root);
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-    git("init", "-q", "-b", "main");
+    git("init", "-q", "-b", initialBranch);
     git("config", "user.email", "t@example.test");
     git("config", "user.name", "T");
     const write = (rel: string, content = "x\n") => {
@@ -110,5 +110,61 @@ describe("strayAskFilesChangedSince", () => {
     r.write(".arcadia/asks/b.json");
     const tree = treeOfWorkingState(r);
     expect(() => assertNoStrayAskFiles(r.root, r.base, tree)).toThrow(/\.arcadia\/asks\/a\.json, \.arcadia\/asks\/b\.json/);
+  });
+
+  describe("a recorded base that is itself a candidate-branch commit", () => {
+    const STRAY = ".arcadia/asks/complete-x.json";
+    const commitAll = (r: ReturnType<typeof repository>, message: string) => {
+      r.git("add", "-A");
+      r.git("commit", "-q", "-m", message);
+      return r.git("rev-parse", "HEAD");
+    };
+
+    it("refuses a stray committed on the candidate branch at the recorded base, though the tree is unchanged since", () => {
+      const r = repository({ "README.md": "x\n" });
+      r.git("checkout", "-q", "-b", "candidate");
+      r.write(STRAY);
+      const strayCommit = commitAll(r, "host-committed stray");
+
+      // Against the recorded base alone the stray is invisible; against where it forks from main it is not.
+      expect(strayAskFilesChangedSince(r.root, strayCommit, r.git("rev-parse", `${strayCommit}^{tree}`))).toEqual([STRAY]);
+      expect(() => assertNoStrayAskFiles(r.root, strayCommit, r.git("rev-parse", `${strayCommit}^{tree}`))).toThrow(STRAY);
+    });
+
+    it("still refuses it when the candidate has since added other work above that base", () => {
+      const r = repository({ "README.md": "x\n" });
+      r.git("checkout", "-q", "-b", "candidate");
+      r.write(STRAY);
+      const strayCommit = commitAll(r, "host-committed stray");
+      r.write("docs/work.md");
+
+      expect(strayAskFilesChangedSince(r.root, strayCommit, treeOfWorkingState(r))).toEqual([STRAY]);
+    });
+
+    it("does not refuse a stray the project base branch itself carries, untouched by the candidate", () => {
+      const r = repository({ "README.md": "x\n", [STRAY]: "{}\n" });
+      r.git("checkout", "-q", "-b", "candidate");
+      r.write("docs/work.md");
+      const candidateCommit = commitAll(r, "candidate work");
+      const tree = r.git("rev-parse", `${candidateCommit}^{tree}`);
+
+      expect(strayAskFilesChangedSince(r.root, r.base, tree)).toEqual([]);
+      expect(strayAskFilesChangedSince(r.root, candidateCommit, tree)).toEqual([]);
+      expect(() => assertNoStrayAskFiles(r.root, candidateCommit, tree)).not.toThrow();
+    });
+
+    it("falls back to the recorded base alone, without throwing, when no base branch resolves", () => {
+      const r = repository({ "README.md": "x\n" }, "trunk");
+      r.git("checkout", "-q", "-b", "candidate");
+      r.write(STRAY);
+      const strayCommit = commitAll(r, "host-committed stray");
+      const tree = r.git("rev-parse", `${strayCommit}^{tree}`);
+
+      // No origin/HEAD, no local main or master: nothing to fork from, so only the recorded base is compared.
+      expect(() => strayAskFilesChangedSince(r.root, strayCommit, tree)).not.toThrow();
+      expect(strayAskFilesChangedSince(r.root, strayCommit, tree)).toEqual([]);
+      // A stray introduced above the recorded base is still found by that single comparison.
+      expect(strayAskFilesChangedSince(r.root, r.base, tree)).toEqual([STRAY]);
+    });
   });
 });
