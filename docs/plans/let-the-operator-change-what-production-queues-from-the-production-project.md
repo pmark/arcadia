@@ -18,15 +18,16 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask record-production-project-preferences
     clarification: clarified
     confidence: high
-    source: Agent Ask production-queue-controls-plan-2026-10-11
+    source: Agent Ask tighten-queue-controls-plan-after-review-2026-10-11
     acceptance_criteria:
-      - A Decision amending 0048 and 0054 is answered by the operator before this Action starts, stating that production admission follows the Project preference record and queue positions order Actions only within a Plan.
-      - A CLI command previews and applies a change to the preference record (include or exclude a Project, move it, set its Plan, and set shares if Decision 0115 chose shares), with a revision check and a receipt, and refuses a Project or Plan the production scope does not admit.
+      - Before this Action starts, the operator has answered Decision 0115 and a Decision amending 0048 and 0054 stating that production admission follows the Project preference record and queue positions order Actions only within a Plan.
+      - A CLI command previews and applies a change to the preference record (include or exclude a Project, move it, set its Plan, and set shares if Decision 0115 chose shares), with a revision check and a receipt.
+      - "The record only orders and narrows work inside the production scope already granted: it refuses a Project or Plan outside that scope, and widening the scope still goes through arcadia production preview and the operator's grant."
       - A change while production is on takes effect at the next admission without Off and a reviewed On, never changes a Session already running, and is refused unless it comes from the operator under the presence proof of Decision 0110.
       - Tests cover preview/apply, the revision conflict, the scope refusal and the operator-only refusal.
     depends_on: []
     decisions: []
-    references: ["docs/proposals/production-console.md", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md", "docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md", "docs/decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md", "docs/decisions/0110-decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator-and.md"]
+    references: ["docs/decisions/0110-decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md", "docs/decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md"]
   - id: admit-from-project-preferences
     title: The tick picks the next Action from the preference record at admission and locks it in with a receipt that says why.
     status: open
@@ -36,15 +37,16 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask admit-from-project-preferences
     clarification: clarified
     confidence: high
-    source: Agent Ask production-queue-controls-plan-2026-10-11
+    source: Agent Ask tighten-queue-controls-plan-after-review-2026-10-11
     acceptance_criteria:
-      - At each admission the tick walks included Projects in preference order (or by share, per Decision 0115), takes the chosen Plan's next ready Action, and skips a Project whose active Plan waits on the operator as Decision 0116 answered, recording one skip reason per skipped Project.
+      - Before this Action starts, the operator has answered Decisions 0115 and 0116.
+      - At each admission the tick walks included Projects in preference order (or by share, per Decision 0115), takes the chosen Plan's next ready Action, and skips a Project whose active Plan waits on the operator as Decision 0116 answered, recording one skip reason per skipped Project in a read model the dashboard can query (today src/production/tick.ts records only one launch outcome per tick).
       - Each admission writes a lock-in receipt naming the Project, Plan, Action, provider and every skip reason above it; nothing is locked before admission.
       - With one Session the result equals stack-skip-when-blocked; with more Sessions the same rule fills each free slot, one Session per repository, with no other change.
       - Tests cover order, skip reasons, the receipt and two slots.
     depends_on: [record-production-project-preferences]
     decisions: []
-    references: ["docs/proposals/production-console.md", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md", "docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md", "docs/decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md"]
+    references: ["docs/decisions/0110-decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/proposals/portfolio-parallel-execution.md", "src/production/tick.ts", "docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md"]
   - id: production-card-queue-controls
     title: The /production Project cards let the operator include or stop a Project, move it to the top and run a different Plan, each stating its consequence.
     status: open
@@ -71,14 +73,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-skip-reasons-and-lock-in-on-cards
     clarification: clarified
     confidence: high
-    source: Agent Ask production-queue-controls-plan-2026-10-11
+    source: Agent Ask tighten-queue-controls-plan-after-review-2026-10-11
     acceptance_criteria:
-      - A card that is not running shows the latest tick skip reason for its Project, and a card with a live Session shows 'Locked in <time>' from its lock-in receipt.
-      - Predictions show 'Would pick now · as of <time>' and dim when older than two minutes.
+      - A card that is not running shows its Project's latest skip reason from the per-Project skip read model that admit-from-project-preferences adds, and a card with a live Session shows 'Locked in <time>' from its lock-in receipt.
+      - Predictions show 'Would pick now · as of <time>' and dim when older than two minutes (a threshold this Plan introduces; the operator can change it).
       - Unit tests cover each state.
     depends_on: [admit-from-project-preferences]
     decisions: []
-    references: ["docs/proposals/production-console.md", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md", "docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md", "docs/decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md", "apps/dashboard/lib/production-console.ts"]
+    references: ["docs/decisions/0110-decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "apps/dashboard/lib/production-console.ts"]
 questions: []
 decisions: []
 ---
