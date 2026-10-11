@@ -97,7 +97,7 @@ STAGE=apply
 HELPER_MODE="--apply"
 [[ "$DRY_RUN" == false ]] || HELPER_MODE="--dry-run"
 set +e
-(cd "$ARCADIA_REPO" && timeout 2700 mise exec -- node --import tsx scripts/apply-todo-bulk-disposition.ts "$DESCRIPTOR" "$RUN_DIR" "$HELPER_MODE")
+(cd "$ARCADIA_REPO" && timeout 7200 mise exec -- node --import tsx scripts/apply-todo-bulk-disposition.ts "$DESCRIPTOR" "$RUN_DIR" "$HELPER_MODE")
 HELPER_EXIT=$?
 set -e
 OUTCOME="$(jq -r '.outcome // empty' "$DETAIL" 2>/dev/null || true)"

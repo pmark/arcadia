@@ -13,7 +13,7 @@
     "ARCADIA_WORKSPACE is not exported and the CLI default workspace is martianrover",
     "~/tmp/arcadia-todo-bulk-disposition-20261010 is absent, or is a clean worktree of this repository on operator/todo-bulk-disposition-archives-20261010 (a resumed run)"
   ],
-  "expected_duration": "About 2 to 10 minutes (245 settlements and decisions, one push and one pull request only if an Ask file needs archiving).",
+  "expected_duration": "About 30 to 60 minutes: each of the 184 Asks is previewed and then applied (about 5 seconds each), then 61 review items, 8 Projects, and one push and pull request when Ask files were archived. Bounded at 2 hours.",
   "cost_note": "No model use and no spend; local Arcadia writes, and at most one push and one pull request.",
   "agentAskRejections": {
     "manifest": "docs/reports/todo-bulk-disposition-2026-10-10.json",
