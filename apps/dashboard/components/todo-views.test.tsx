@@ -200,7 +200,7 @@ describe("TodoCard build packets and Ask eligibility", () => {
     expect(html).not.toContain("Read-only here");
   });
 
-  it("gives each planning review item its own button label, a consequence line and a Blocking the run badge", () => {
+  it("gives each planning review item its own button label, a consequence line and a Blocking progress badge", () => {
     const control = (approveLabel: string, canReject = true) => ({
       approveLabel, consequence: `Consequence of ${approveLabel}.`, noExecute: true, canReject, rejectConsequence: canReject ? "Rejecting does this." : null
     });
@@ -208,14 +208,14 @@ describe("TodoCard build packets and Ask eligibility", () => {
     expect(retry).toContain("Retry planning");
     expect(retry).toContain("Consequence of Retry planning.");
     expect(retry).toContain(">Reject<");
-    expect(retry).toContain("Blocking the run");
+    expect(retry).toContain("Blocking progress");
     expect(retry).not.toContain("Read-only here");
     const accept = render(row("review_item", "alpha", "rv2", { origin: "CodexPlanningArtifactAcceptance", reviewControl: control("Accept plan", false) }));
     expect(accept).toContain("Accept plan");
     expect(accept).not.toContain(">Reject<");
-    expect(accept).not.toContain("Blocking the run");
+    expect(accept).not.toContain("Blocking progress");
     const stale = render(row("review_item", "alpha", "rv3", { readOnly: true, blocking: true, staleReason: "done elsewhere" }));
-    expect(stale).not.toContain("Blocking the run");
+    expect(stale).not.toContain("Blocking progress");
   });
 
   it("disables Accept with the reason and makes Reject primary when accepting would not apply", () => {

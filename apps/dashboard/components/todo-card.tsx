@@ -61,7 +61,7 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
     >
       {blockingLive ? (
         <p className="mb-2 inline-block rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">
-          Blocking the run
+          Blocking progress
         </p>
       ) : null}
       <span className="block text-xs font-semibold uppercase tracking-wide text-muted">

@@ -103,11 +103,11 @@ export const PLANNING_REVIEW_CONTROLS: Record<string, ReviewControl> = {
     consequence: "Creates a planning-retry approval for the same packet. Nothing runs until you approve that retry.",
     noExecute: true,
     canReject: true,
-    rejectConsequence: "Withdraws the failed Artifact and reopens the Action so a fresh planning packet can be prepared."
+    rejectConsequence: "Rejects the failed validation and reopens the Action for a fresh planning packet."
   },
   CodexPlanningArtifactAcceptance: {
     approveLabel: "Accept plan",
-    consequence: "Accepts the validated plan, promotes the Action and prepares its build packet for your approval. No Run starts.",
+    consequence: "Accepts the validated plan. A governed Action gets its build packet prepared for your approval; a captured Action is marked done. No Run starts.",
     noExecute: true,
     canReject: false,
     rejectConsequence: null
