@@ -4,7 +4,7 @@ type: decision
 id: "0115"
 slug: decide-whether-production-shares-session-capacity-across-included-projects-by
 project: arcadia
-status: open
+status: approved
 question: Decide whether production shares Session capacity across included Projects by percentage shares, so a lower Project can run while a higher one still has ready work.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-10
+updated: 2026-10-11
+answer: Percentage shares per included Project, highest-priority Project first when shares tie
+decided: 2026-10-11
 ---
 
 # Decision 0115: Decide whether production shares Session capacity across included Projects by percentage shares, so a lower Project can run while a higher one still has ready work.
