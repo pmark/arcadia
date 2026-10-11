@@ -61,6 +61,23 @@ describe("durable recurring proposal intake", () => {
       for (const table of ["work_items", "review_items", "execution_runs"]) expect((db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n).toBe(0);
     } finally { db.close(); }
   });
+  it.each(["paused", "completed", "incubating"] as const)("refuses registration for a %s Project", (status) => {
+    const { db } = fixture();
+    try {
+      upsertProject(db, { name: "Demo", mission: "Unavailable", status });
+      expect(() => registerRecurringSchedule(db, definition)).toThrow("active Project");
+      expect((db.prepare("SELECT COUNT(*) AS n FROM recurring_schedules").get() as { n: number }).n).toBe(0);
+    } finally { db.close(); }
+  });
+  it.each(["completed", "incubating"] as const)("blocks delivery when the destination becomes %s after registration", (status) => {
+    const { db } = fixture();
+    try {
+      registerRecurringSchedule(db, definition); setRecurringScheduleEnabled(db, definition.id, true);
+      upsertProject(db, { name: "Demo", mission: "No longer active", status });
+      expect(tickRecurringSchedules(db, at("2026-10-12T16:00:00Z"))[0]).toMatchObject({ status: "failed", error: "Schedule destination must be a configured active Project." });
+      expect((db.prepare("SELECT COUNT(*) AS n FROM agent_ask_proposals").get() as { n: number }).n).toBe(0);
+    } finally { db.close(); }
+  });
   it("deduplicates across connections/restarts and holds the next period while its Ask is unsettled", () => {
     const { db, root } = fixture();
     try {

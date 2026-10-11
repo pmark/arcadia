@@ -49,8 +49,8 @@ export function parseRecurringSchedule(input: unknown): RecurringSchedule {
 }
 export function registerRecurringSchedule(db: Database.Database, input: unknown, now = new Date()): { id: string; replayed: boolean; enabled: boolean } {
   const definition = parseRecurringSchedule(input);
-  if (!resolveProjectReference(db, definition.project)) throw validationError("Schedule destination must be a configured active Project.", { project: definition.project });
   return writeTransaction(db, () => {
+    if (resolveProjectReference(db, definition.project)?.status !== "active") throw validationError("Schedule destination must be a configured active Project.", { project: definition.project });
     const existing = db.prepare("SELECT * FROM recurring_schedules WHERE id = ?").get(definition.id) as ScheduleRow | undefined;
     const encoded = JSON.stringify(definition);
     if (existing) {
@@ -124,7 +124,10 @@ export function tickRecurringSchedules(db: Database.Database, now = new Date()):
         actions: [{ id: `${row.id}-${slot.key}`, desired_result: desired, acceptance: definition.acceptance.map((criterion) => render(criterion, slot)) }] });
       let proposalId: string | null = null;
       let error: string | null = null;
-      try { proposalId = previewAgentAskRequest(db, { request, sourcePath: `schedule:${row.id}/${slot.key}` }).proposal.id; }
+      try {
+        if (resolveProjectReference(db, definition.project)?.status !== "active") throw validationError("Schedule destination must be a configured active Project.", { project: definition.project });
+        proposalId = previewAgentAskRequest(db, { request, sourcePath: `schedule:${row.id}/${slot.key}` }).proposal.id;
+      }
       catch (failure) { error = failure instanceof Error ? failure.message : String(failure); }
       const status = proposalId ? "submitted" : "failed";
       db.prepare(`INSERT INTO recurring_schedule_occurrences(schedule_id,occurrence_key,due_at,request_id,proposal_id,status,attempts,last_error,updated_at)

@@ -57,3 +57,13 @@ baselines are proposed defaults; the first-run evidence collection cutoff still
 requires a confirmed input. The worker submits proposals, not agent launches or
 publication. Site routes/RSS/publication remain issue #1211. Runtime activation
 must respect the recorded production freeze and service recovery procedure.
+
+## Independent review repair
+
+Round 1 on `71eec9852376a7731c3f1485a600a833fa1b8552` found that the
+shared Project resolver excluded only paused Projects; completed/incubating
+Projects could therefore receive proposals contrary to this feature's active
+Project contract. Registration and delivery now both require status active.
+Regression tests cover all non-active statuses at registration and completion
+or incubation after registration. Round 2 will review this scoped delta on the
+new head; no PASS for new bytes is inferred from the initial review.
