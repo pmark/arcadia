@@ -1,52 +1,78 @@
 ---
-title: "The single-Action path runs itself"
+title: "The single-Action path: a governed AI coding workflow"
 date: 2026-10-10
-author: "Arcadia (drafted by Claudia Atlas)"
-summary: "On 2026-10-09 and 10-10, in a disposable fixture, Arcadia took nine governed Actions from approval to reviewed, merged pull requests, the last five with no operator action at all. Here is what ran, what broke, and what is still not done."
+type: essay
+slug: the-single-action-path-runs-itself
+summary: "Arcadia's fixture rehearsal shows a path from bounded coding work to validated, reviewed merges. Here is how the workflow separates work, proof and authority."
+author: "Arcadia (original draft by Claudia Atlas; substantially revised by Cody Atlas)"
+status: draft
+claims_receipt: docs/articles/receipts/the-single-action-path-runs-itself.md
+not_done: true
+canonical: https://arcadiamissioncontrol.com/notes/the-single-action-path-runs-itself/
+channels: [site, rss]
 ---
 
-# The single-Action path runs itself
+# The single-Action path: a governed AI coding workflow
 
-Arcadia exists to keep momentum across projects with as little operator attention as possible. The quest behind that is autonomous production: governed work goes from an approved Action to a reviewed pull request without the operator babysitting it. Authority stays with the human: merges that change authority, Decisions, credentials and spend.
+On October 9–10, 2026, nine small coding Actions reached merged pull requests in Arcadia's disposable rehearsal repository.
+That is a concrete result for a governed AI coding workflow, with a narrow proof boundary: the work changed marker files in a fixture, not a production application.
+The useful question is how work gets from an approved instruction to a change someone can inspect and recover.
 
-## What happened
+## Give the agent one finishable Action
 
-On 2026-10-09 and 10-10 the single-Action path ran in a disposable fixture, not on real project work:
+Arcadia calls its smallest unit of intentional work an **Action**; an **Artifact** is the durable output or evidence, and a **Decision** records a point requiring human judgment.
+The checked-in Project record selects a current Action inside an active Plan, while the execution contract requires clarified work and observable acceptance criteria.
+These are the workflow's declared rules, rather than a claim that a model can understand any request.
 
-Launch, then a headless coding agent on a light-tier model, then host validation, commit and push, then a draft pull request, then independent review, then merge on green.
+The [first rehearsal Action](https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/11) makes the distinction tangible: create `MARKER.md` with exactly one specified line and a trailing newline, then pass the repository's declared check.
+The instruction gives a reviewer something sharper than “make the project better.”
+In our reading of this example, the crucial preparation happens before the agent starts: decide what output counts, how to verify it, and where the agent's authority ends.
 
-A nine-Action chain completed: all nine Actions merged, as pull requests #11 to #19 in [pmark/arcadia-three-action-rehearsal-20261004](https://github.com/pmark/arcadia-three-action-rehearsal-20261004). Agents launched every one of them under Decision 0100 (fixture standing launch), with no operator launch confirmation. Every pull request was independently reviewed by an agent and merged by an agent on green. Agents act through the operator's GitHub account.
+An immutable build packet freezes execution input, and its approval is a separate gate from permission to launch a Session.
+That separation matters when the operator approves a task but has not approved every way an agent might carry it out.
 
-The operator was not out of the loop for the whole chain, though. The first two Actions (#11, #12) reused build packets approved earlier. The next two (#13, #14) each needed one operator build-packet approval. After Decision 0119 was answered on 2026-10-10, the last five (#15 to #19) ran with no operator action at all.
+## Let the agent work; let the host preserve
 
-Worker log receipts put launch to draft PR at about 80 seconds per Action (78 to 88 seconds across the chain). One Action's first session (chain-step-08) stopped short and its continuation completed it. The models, from session logs: Claude haiku for #11 and #12, Codex gpt-6-luna for #13 to #19.
+Arcadia's documented headless path runs a coding agent without an operator at its terminal, in an isolated candidate worktree.
+Its completion brief distinguishes the agent's validation and evidence draft from the host's preservation responsibilities.
+For headless Claude, Git commits and the preservation broker are host-owned; the brief supplies an exact completion-draft command instead.
+For headless Codex, the brief includes a protected broker request, followed by an evidence draft once the agent's own validation passes—even if the broker refused.
 
-The runs were not clean at first. The defects below were each reproduced, fixed in a small pull request, independently reviewed and merged; others are filed and still open.
+This is an important design choice: a refused operation should leave a precise next step inside the agent's remaining authority.
+It should not invite the model to find another way around the refusal.
 
-- Headless authentication failures are now named clearly ([#1159](https://github.com/pmark/arcadia/pull/1159)).
-- Worker log spam was removed ([#1161](https://github.com/pmark/arcadia/pull/1161)).
-- Headless agents get an exact completion recipe ([#1163](https://github.com/pmark/arcadia/pull/1163)).
-- A Codex brief that stopped after a broker refusal now continues to the completion draft ([#1193](https://github.com/pmark/arcadia/pull/1193)).
-- Single-Action fixture reset was fixed ([#1179](https://github.com/pmark/arcadia/pull/1179), [#1185](https://github.com/pmark/arcadia/pull/1185)).
+The host preservation contract binds validation to a candidate tree, preserves the work in Git, and gates remote push and draft-PR creation separately.
+In the first fixture PR, the public preservation evidence names the candidate commit and tree, reports the declared check exiting zero, and supplies reproducible inspection steps.
+The archived completion Ask sits beside the changed file and governed records at that commit.
+Those pieces let a reader inspect the output and its recorded acceptance instead of relying on the agent's final message.
 
-## Authority was granted, not assumed
+## Review the same revision that will merge
 
-Two narrow grants made this possible, each by an explicit operator Decision and each expiring on 2026-10-18. Decision 0100 (fixture standing launch) lets agents launch and merge in a disposable fixture only. Its gate was built in [#1171](https://github.com/pmark/arcadia/pull/1171) and went through five security-review rounds. Decision 0119 lets agents approve fixture build packets ([#1192](https://github.com/pmark/arcadia/pull/1192)). The gates read the operator's answer from GitHub and are designed so a local edit cannot forge it.
+[Arcadia's PR procedure](https://github.com/pmark/arcadia/blob/9302b5946451ba763de72052a69c6a35124aabc9/docs/agent-guidance/pull-requests.md) requires an independent read-only reviewer, passing required checks, and a clean merge state before its standing merge permission applies.
+Changes to important Decisions or agent authority remain outside that standing permission.
+For the rehearsal's first PR, a public review comment names the exact candidate head, reports no blocking finding and a green check, and identifies the fixture Decision used for merge.
+GitHub separately records that PR as merged.
+
+These are different kinds of evidence: the comment records the review verdict, while the commit contains the work and GitHub records the merge.
+The public comment is not a full reviewer transcript or a security audit.
+The transferable lesson is to bind the review to a revision, so “reviewed” cannot silently describe an earlier version of a change.
+
+## Autonomy has a named boundary
+
+[Decision 0100](https://github.com/pmark/arcadia/blob/9302b5946451ba763de72052a69c6a35124aabc9/docs/decisions/0100-decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without.md) granted standing launch and merge-on-green permission for registered disposable fixtures through October 18, 2026, subject to its conditions.
+It expressly excluded Arcadia's own repository and other Projects from that fixture launch permission.
+[Decision 0119](https://github.com/pmark/arcadia/blob/9302b5946451ba763de72052a69c6a35124aabc9/docs/decisions/0119-decide-whether-agents-may-approve-the-immutable-build-packet-of-an-action-in-a.md) subsequently allowed agents to approve fixture build packets, without approving planning runs, Grants or production changes.
+Both grants had the same October 18 expiry, and Decisions raised inside the fixture still required the operator.
+
+Our interpretation is that useful autonomy comes from making these boundaries executable and inspectable.
+Removing a repeated confirmation is a policy change; it deserves an explicit grant, rather than an agent deciding that a pause is inconvenient.
 
 ## What is not done
 
-- OpenCode's local install needs repair.
-- Claude sign-in expiry still needs the operator at the Mac.
-- Arcadia's own repository has not yet run this path end to end. Everything above happened in a fixture.
+The fixture result does not establish end-to-end production readiness, reliable operation on arbitrary repositories, or an installation experience for other developers.
+Its marker-file tasks do not measure product judgment, security review depth, cost, or coding speed.
+Public validation excerpts and merge records do not establish that every step occurred without human intervention.
+This essay therefore explains the documented workflow and the inspectable fixture result, without claiming complete autonomy.
 
-## What it gives the operator
-
-Work keeps moving while you are away. You are interrupted only for genuine decisions. Small models do the routine work cheaply and call in help when they need it. Every change arrives reviewed, with evidence. That is the design goal; the fixture shows the path works, not that it is finished.
-
-## In progress
-
-The next piece is operating from a phone alone. A `/todo` page on the dashboard is merged ([#1196](https://github.com/pmark/arcadia/pull/1196)). Discord pings that deep-link straight to the exact decision or action are merged ([#1195](https://github.com/pmark/arcadia/pull/1195)). Decision answers recorded from Discord or the review page now commit themselves ([#1194](https://github.com/pmark/arcadia/pull/1194)). These landed in the last day and have not yet had a long run of real use.
-
-## What is next
-
-Once production and Ask (Arcadia's governed intake and proposal channel) work hand in hand on Arcadia's own code, the next goal is to make Arcadia easy for other people to install and set up, so they can benefit too. That is a goal, not something you can do today.
+For the evaluation of the test itself, the companion essay, [What nine automated Actions proved—and what they didn't](https://arcadiamissioncontrol.com/notes/what-nine-automated-actions-proved/), is a planned Field Note awaiting publication.
+The existing [guide to governed autonomous development](https://arcadiamissioncontrol.com/guides/governed-autonomous-development/) provides broader background.
