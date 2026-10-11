@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "../src/commands/portfolio.js";
+import { runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   getReviewItemByDocRef,
@@ -156,6 +157,29 @@ type: proposal
     const portfolio = runPortfolioCommand({ workspace });
     expect(portfolio.data.totals.openProposals).toBe(0);
     expect(renderPortfolioSuccess(portfolio).some((line) => line.includes("(proposal)"))).toBe(false);
+  });
+
+  it.each([
+    ["rejected", runReviewRejectCommand],
+    ["deferred", runReviewDeferCommand]
+  ] as const)("never reopens a proposal the operator %s, though its document still asks", (status, decide) => {
+    const repo = scratch();
+    writeDoc(repo, "docs/proposals/trigger-evaluation.md", TRIGGER_PROPOSAL);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    const id = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "proposal/trigger-evaluation"))!.id;
+    decide({ workspace, id });
+    const before = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "proposal/trigger-evaluation"));
+
+    const again = runDocsSyncCommand({ workspace, apply: true });
+    expect(again.data.projects[0].changes.find((change) => change.entity === "proposal")).toMatchObject({ action: "unchanged" });
+    const after = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "proposal/trigger-evaluation"));
+    expect(after).toMatchObject({ status, decision_note: before?.decision_note, decided_at: before?.decided_at });
+
+    // A Decision recorded in the document still answers it.
+    writeDoc(repo, "docs/proposals/trigger-evaluation.md", TRIGGER_PROPOSAL.replace("---\n\n# Trigger", 'decision: "0031"\n---\n\n# Trigger'));
+    runDocsSyncCommand({ workspace, apply: true });
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "proposal/trigger-evaluation"))?.status).toBe("approved");
   });
 
   it("re-reads an unchanged proposal without rewriting it", () => {

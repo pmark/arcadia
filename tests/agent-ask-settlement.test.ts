@@ -2458,6 +2458,17 @@ describe("Agent Ask safety boundaries", () => {
       .toHaveLength(1);
   });
 
+  it("lets an earlier draft settle when only its revision (a longer request id) filed the Decision (#1236)", () => {
+    const { workspace } = fixture();
+    const draft = runAgentAskPreviewCommand({ workspace, request: askForIntent("reserve-size", "decision", "How large is the reserve?", undefined, [], "resists_reversal") });
+    settleOne(workspace, "decision", "How large is the reserve, revised?", "reserve-size-r3", "resists_reversal");
+    const options = { workspace, proposal: draft.data.proposal.id, requestId: "reserve-size-reject", disposition: "rejected" as const };
+    const preview = runAgentAskSettleCommand(options);
+    // "Proposed by Agent Ask reserve-size-r3." does not name reserve-size: the rejection applies instead of claiming it already wrote 0001.
+    expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt)
+      .toMatchObject({ applied: true, disposition: "rejected" });
+  });
+
   it("keeps a colliding derived slug within the cap", () => {
     // The uniqueness suffix must not push a capped slug back over 80 characters.
     const { workspace, repo } = fixture();

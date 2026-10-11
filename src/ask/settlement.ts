@@ -1937,8 +1937,13 @@ export function recordCommittedCompletionSettlement(db: Database.Database, input
  * settlement writers stamp, never free prose, so a Log entry that merely
  * mentions an Ask id does not register as that Ask's record.
  */
-function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
+export function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
   const marker = `Agent Ask ${requestId}`;
+  // Only the writer's own line, with the whole request id, never a prefix or a
+  // prose mention: a revised Ask's id often extends the first draft's
+  // (`x` -> `x-r2`), and the draft did not file the revision's Decision (Issue
+  // #1236). The writer ends the id with a period; text may follow on the line.
+  const named = new RegExp(`^Proposed by ${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(?=\\s|$)`, "m");
   for (const doc of docs) {
     // A Plan Action created or amended by this Ask carries it as `source`.
     if (doc.type === "plan" && doc.project === projectSlug && doc.actions.some((action) => action.source === marker)) {
@@ -1949,7 +1954,7 @@ function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, reques
       return doc.relativePath;
     }
     // A Decision this Ask filed names it as its proposer.
-    if (doc.type === "decision" && doc.project === projectSlug && doc.body.includes(marker)) {
+    if (doc.type === "decision" && doc.project === projectSlug && named.test(doc.body)) {
       return doc.relativePath;
     }
   }
