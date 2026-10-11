@@ -151,9 +151,10 @@ arcadia ping "Added a Retry button to the Actions page" --kind look --link http:
   to the default channel or a configured alias. That authority covers nothing
   else; a later Decision can revoke it, so re-read the Decision if in doubt.
 - **It is read-only and grants nothing.** Never use it to ask for a Decision,
-  approval, credential, spend or merge, and never as a substitute for the Agent
-  Ask or PR notifications above; those keep their own paths. If you need an
-  answer, stop at a Decision or picker instead.
+  approval, credential, spend or merge, and never as a substitute for an Agent
+  Ask; the PR-opened and PR-ready notifications are themselves pings (see
+  `pull-requests.md`, "PR lifecycle notifications"), while CI-blocked stays an
+  Ask. If you need an answer, stop at a Decision or picker instead.
 - Success means *queued*; the Discord bot delivers on its next poll. A non-zero
   exit means it was not queued: say so in the handoff rather than assuming the
   operator was told. Report a ping you could not send under the notification

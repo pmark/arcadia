@@ -4,7 +4,7 @@ type: decision
 id: "0116"
 slug: decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator
 project: arcadia
-status: open
+status: approved
 question: "Decide what production runs when a Project's active Plan waits on the operator: that Project's next Plan, or the next Project."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-10
+updated: 2026-10-11
+answer: Run the same Project's next Plan
+decided: 2026-10-11
 ---
 
 # Decision 0116: Decide what production runs when a Project's active Plan waits on the operator: that Project's next Plan, or the next Project.

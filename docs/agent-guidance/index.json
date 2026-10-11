@@ -20,7 +20,7 @@
       "trigger": "operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this",
       "path": "docs/agent-guidance/operator-actions.md",
       "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
-      "sha256": "dd27684a223b3c3b958eefd8121df9ae5f366a58cfd34bed3f65f5dc44f3c827"
+      "sha256": "14f7bf6afac66a449a81b8b953ccab0e06f6fe681c86e3262a94bd4cc09dcd1c"
     },
     {
       "id": "proposals",
@@ -41,7 +41,7 @@
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "6631aa236c1f5727197ab8151fdeaaef7f4405b55c0f3620eb9933c574eb045a"
+      "sha256": "02b133d34ead16c10b6d85b93b1b353f6524726197e9ce0239081aad3180a9f3"
     },
     {
       "id": "learning",

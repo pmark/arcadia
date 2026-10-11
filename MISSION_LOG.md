@@ -2300,5 +2300,9 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 
 - **Did:** Your call: Decision 0122 (the spend bound for the first production run on Arcadia) is drafted in PR #1259 with four options and consequences; I recommend Codex only, gate on, attended first run. It was fact-checked and corrected. Merge the PR so it lands, then answer 0122 on the dashboard. https://github.com/pmark/arcadia/pull/1259
 - **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
+## 2026-10-11 — Agent Ask activate-plans-project-route-2026-10-11
+
+- **Did:** Activated add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans at add-plans-project-route.
+- **Result:** Operator-settled Plan transition. Previous Plan every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route remains draft with completion state preserved. Operator asked for /plans/PROJECT to be a prioritized governed Action that runs soon (capture_6123f2ba). Activation replaces the active Plan; the issue-triage Plan stays draft with completion state preserved.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
