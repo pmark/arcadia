@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: recover-completed-governance-overlap-in-protected-go
 project: arcadia
-status: draft
+status: active
 milestone: Recover completed governance overlap in protected Go
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -31,6 +31,9 @@ actions:
     references: ["src/commands/go.ts", "src/sessions/hostEnrollment.ts", "src/sessions/enrollment.ts", "tests/go.test.ts", "docs/working-copy-safety.md", "docs/agent-guidance/operator-actions.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "/Users/pmark/Dev/PrivatePracticeNow/platform/.arcadia/asks/agent-ask-repair-nagel-go-base-overlap-2026-10-11.yaml"]
 questions: []
 decisions: []
+current_action: reconcile-completed-governance-overlap
+recommended_model: heavy
+recommended_reasoning_effort: high
 ---
 
 # Recover completed governance overlap in protected Go
