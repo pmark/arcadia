@@ -118,11 +118,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask dashboard-ask-heard-receipt-and-correction-menu
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-ux-dashboard-ask-correction-and-map-2026-10-11
+    source: Agent Ask plan-ux-ask-menu-task-option-gated-2026-10-11
     why: "An unmatched Ask must be correctable at the moment of capture, not found later in arcadia todo."
     acceptance_criteria:
       - The Ask capture result shows the Heard line (type, confidence, source, what was created and where) before any other detail.
-      - A menu offers work in a chosen Project, idea, status question, answer to a named pending Decision, and operator task; choosing one calls the same writers as arcadia ask correct and shows the superseding receipt.
+      - A menu offers every correction type arcadia ask correct accepts at implementation time (work in a chosen Project, idea, status question, answer to a named pending Decision); an operator task option appears only once ask correct accepts a task type (Action ask-do-for-me-operator-tasks). Choosing one calls the same writers as arcadia ask correct and shows the superseding receipt.
       - An answer correction requires an explicit pending Decision reference and is refused otherwise.
       - The menu works with the relationship map absent or failing.
       - Tests cover each correction target and the refusal; type, lint and build pass; a pushed PR with exact-head independent review and all required checks is the delivered Artifact.
