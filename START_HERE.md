@@ -750,6 +750,11 @@ moves the governed pointer to the first ready Action in that order, using the
 same preview-then-apply transition as `make-next`. Projects are scanned in
 one configured order and the first with runnable work is selected.
 
+Recurring calendar triggers use the existing worker and submit Agent Ask proposals.
+See the [scheduler guide](docs/strategy/recurring-scheduler.md) for daily, weekly
+and monthly definitions, Field Notes examples, pause and retry controls.
+Registration starts paused; acceptance and dispatch retain their existing gates.
+
 ```sh
 pnpm arcadia schedule status --workspace "$WORKSPACE"
 pnpm arcadia schedule prioritize --order private-practice-now arcadia rebuster --workspace "$WORKSPACE"
