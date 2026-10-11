@@ -12,14 +12,26 @@ import { boundedExec } from "./preservationStages.js";
  * silently dropping it would remove it from the preserved record.
  */
 
-/** `agent-ask draft`'s file name, in the Asks directory or its `archive/`; nothing else is canonical. */
-const CANONICAL_ASK_PATH = /^\.arcadia\/asks\/(?:archive\/)?agent-ask-[a-z0-9][a-z0-9._-]*\.(?:yaml|yml|json)$/;
-/** Anywhere a path names the Asks directory, however oddly spelled (case, separators, a prefix). */
-const UNDER_ASKS_DIRECTORY = /(?:^|\/)\.arcadia\/asks(?:\/|$)/i;
+/**
+ * `agent-ask draft`'s file name, in the Asks directory or its `archive/`; nothing else is canonical.
+ * Only YAML: draft writes `.yaml` and settlement discovery matches `.ya?ml`, so an
+ * `agent-ask-*.json` would never be settled.
+ */
+const CANONICAL_ASK_PATH = /^\.arcadia\/asks\/(?:archive\/)?agent-ask-[a-z0-9][a-z0-9._-]*\.(?:yaml|yml)$/;
+/**
+ * The repository's own Asks directory. Changed paths are repo-relative, so this is
+ * anchored at the root: a nested `.arcadia/asks` (a fixture repository, another
+ * project's tree) is ordinary content. A backslash is a valid file-name character on
+ * POSIX hosts but a separator on a Windows checkout, so it is read as one here; the
+ * case-insensitive match covers a case-insensitive file system.
+ */
+const ROOT_ASKS_DIRECTORY = /^\.arcadia\/asks(?:\/|$)/i;
+/** A draft-shaped name (`agent-ask-<id>.yaml`, directly in the Asks directory) whose id fails the slug rule. */
+const DRAFT_SHAPED_ASK_PATH = /^\.arcadia\/asks\/agent-ask-[^/]*\.ya?ml$/;
 
-/** The paths, under `.arcadia/asks/`, that are not a canonical Agent Ask file name. Order is preserved. */
+/** The paths, under the repository's `.arcadia/asks/`, that are not a canonical Agent Ask file name. Order is preserved. */
 export function nonCanonicalAskPaths(paths: readonly string[]): string[] {
-  return paths.filter((file) => UNDER_ASKS_DIRECTORY.test(file.replaceAll("\\", "/")) && !CANONICAL_ASK_PATH.test(file));
+  return paths.filter((file) => ROOT_ASKS_DIRECTORY.test(file.replaceAll("\\", "/")) && !CANONICAL_ASK_PATH.test(file));
 }
 
 /** A bounded Git timeout is not an answer: it must surface, never read as "nothing resolved". */
@@ -70,11 +82,18 @@ export function strayAskFilesChangedSince(repository: string, baseRevision: stri
 export function assertNoStrayAskFiles(repository: string, baseRevision: string, tree: string): void {
   const stray = strayAskFilesChangedSince(repository, baseRevision, tree);
   if (stray.length === 0) return;
-  throw validationError(
-    `The candidate adds or changes ${stray.length === 1 ? "a file" : "files"} under .arcadia/asks/ that ` +
-      `${stray.length === 1 ? "is not a canonical Agent Ask" : "are not canonical Agent Asks"}, so it will not be preserved: ${stray.join(", ")}. ` +
-      "Remove each one from the candidate worktree, or re-submit it through `arcadia agent-ask draft` so it is written as " +
-      ".arcadia/asks/agent-ask-<request_id>.yaml. The candidate worktree was left untouched.",
-    { strayAskFiles: stray, remedy: "Remove the file, or draft the Ask with `arcadia agent-ask draft`." }
-  );
+  // `agent-ask draft` writes `agent-ask-<request_id>.yaml` for any id it is given, so re-drafting an id that
+  // fails the slug rule would recreate the same refused name: that case must say to change the id.
+  const badId = stray.filter((file) => DRAFT_SHAPED_ASK_PATH.test(file));
+  const other = stray.filter((file) => !DRAFT_SHAPED_ASK_PATH.test(file));
+  const lead = (paths: string[]) => `The candidate adds or changes ${paths.length === 1 ? "a file" : "files"} under .arcadia/asks/ that ` +
+    `${paths.length === 1 ? "is not a canonical Agent Ask" : "are not canonical Agent Asks"}, so it will not be preserved: ${paths.join(", ")}.`;
+  const message = [
+    other.length ? `${lead(other)} Remove each one from the candidate worktree, or re-submit it through \`arcadia agent-ask draft\` so it is ` +
+      "written as .arcadia/asks/agent-ask-<request_id>.yaml. The candidate worktree was left untouched." : "",
+    badId.length ? `${lead(badId)} The request_id in an agent-ask-<request_id>.yaml name must be lowercase letters, digits and hyphens, ` +
+      "so this name must be changed: delete the file and draft the Ask again under a conforming request_id. " +
+      "The candidate worktree was left untouched." : ""
+  ].filter(Boolean).join(" ");
+  throw validationError(message, { strayAskFiles: stray, remedy: "Remove the file, or draft the Ask with `arcadia agent-ask draft` under a lowercase request_id." });
 }

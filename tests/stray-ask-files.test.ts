@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { validateBoundCandidate } from "../src/sessions/preservationValidation.js";
 import { assertNoStrayAskFiles, nonCanonicalAskPaths, strayAskFilesChangedSince } from "../src/sessions/strayAskFiles.js";
 
 const roots: string[] = [];
@@ -11,14 +12,30 @@ afterEach(() => {
 });
 
 describe("nonCanonicalAskPaths (Issue #1177)", () => {
-  it("accepts only agent-ask-<slug>.(yaml|yml|json), in the Asks directory or its archive", () => {
+  it("accepts only agent-ask-<slug>.(yaml|yml), in the Asks directory or its archive", () => {
     expect(nonCanonicalAskPaths([
       ".arcadia/asks/agent-ask-complete-x-2026-10-10.yaml",
       ".arcadia/asks/agent-ask-a.yml",
-      ".arcadia/asks/agent-ask-a.b_c-1.json",
+      ".arcadia/asks/agent-ask-a.b_c-1.yaml",
       ".arcadia/asks/archive/agent-ask-complete-x.yaml",
       "docs/notes.md",
       "src/asks/foo.json"
+    ])).toEqual([]);
+  });
+
+  it("flags an agent-ask-*.json: nothing drafts or settles one", () => {
+    const bad = [".arcadia/asks/agent-ask-complete-x.json", ".arcadia/asks/archive/agent-ask-complete-x.json"];
+    expect(nonCanonicalAskPaths(bad)).toEqual(bad);
+  });
+
+  it("does not treat a nested .arcadia/asks (a fixture repository or another project's tree) as the Asks directory", () => {
+    expect(nonCanonicalAskPaths([
+      "tests/fixtures/repo/.arcadia/asks/agent-ask-x.yaml",
+      "tests/fixtures/repo/.arcadia/asks/foo.json",
+      "projects/foo/.arcadia/asks/archive/agent-ask-x.yaml",
+      "src/.arcadia/asks/x.ts",
+      ".arcadia/asks-extra/foo.json",
+      "docs/.arcadia/asks"
     ])).toEqual([]);
   });
 
@@ -46,12 +63,10 @@ describe("nonCanonicalAskPaths (Issue #1177)", () => {
     expect(nonCanonicalAskPaths(bad)).toEqual(bad);
   });
 
-  it("flags dot-dot, absolute and backslash spellings of the Asks directory", () => {
+  it("flags dot-dot and backslash spellings of the root Asks directory", () => {
     const bad = [
       ".arcadia/asks/../asks/foo.json",
       ".arcadia/asks/..",
-      "../.arcadia/asks/agent-ask-x.yaml",
-      "/repo/.arcadia/asks/agent-ask-x.yaml",
       ".arcadia\\asks\\agent-ask-x.yaml",
       ".arcadia/asks\\agent-ask-x.yaml",
       ".arcadia/asks/archive\\agent-ask-x.yaml"
@@ -166,5 +181,87 @@ describe("strayAskFilesChangedSince", () => {
       // A stray introduced above the recorded base is still found by that single comparison.
       expect(strayAskFilesChangedSince(r.root, r.base, tree)).toEqual([STRAY]);
     });
+  });
+});
+
+describe("refusal text and the validation stage (Issue #1177)", () => {
+  function repository(files: Record<string, string> = { "README.md": "x\n" }) {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-stray-asks-"));
+    roots.push(root);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.test");
+    git("config", "user.name", "T");
+    const write = (rel: string, content = "x\n") => {
+      mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      writeFileSync(path.join(root, rel), content);
+    };
+    for (const [rel, content] of Object.entries(files)) write(rel, content);
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    const tree = () => { git("add", "-A"); return git("write-tree"); };
+    return { root, git, write, base: git("rev-parse", "HEAD"), tree };
+  }
+  const messageOf = (r: ReturnType<typeof repository>) => {
+    try {
+      assertNoStrayAskFiles(r.root, r.base, r.tree());
+    } catch (error) {
+      return (error as Error).message;
+    }
+    throw new Error("expected a refusal");
+  };
+
+  it("ignores a checked-in fixture repository's own .arcadia/asks anywhere below the root", () => {
+    const r = repository();
+    r.write("tests/fixtures/repo/.arcadia/asks/agent-ask-x.yaml");
+    r.write("tests/fixtures/repo/.arcadia/asks/foo.json");
+    r.write("projects/foo/.arcadia/asks/archive/agent-ask-x.yaml");
+    expect(strayAskFilesChangedSince(r.root, r.base, r.tree())).toEqual([]);
+  });
+
+  it("tells an agent to re-submit through draft for a file that is not draft-named", () => {
+    const r = repository();
+    r.write(".arcadia/asks/complete-x.json");
+    const message = messageOf(r);
+    expect(message).toContain(".arcadia/asks/complete-x.json");
+    expect(message).toMatch(/re-submit it through `arcadia agent-ask draft`/);
+    expect(message).not.toMatch(/lowercase letters, digits and hyphens/);
+  });
+
+  it("tells an agent to change the request_id, not re-draft it, when a draft-named file fails the slug rule", () => {
+    const r = repository();
+    r.write(".arcadia/asks/agent-ask-Complete X.yaml");
+    r.write(".arcadia/asks/agent-ask-UPPER.yaml");
+    const message = messageOf(r);
+    expect(message).toContain(".arcadia/asks/agent-ask-Complete X.yaml");
+    expect(message).toContain(".arcadia/asks/agent-ask-UPPER.yaml");
+    expect(message).toMatch(/lowercase letters, digits and hyphens/);
+    expect(message).toMatch(/draft the Ask again under a conforming request_id/);
+    expect(message).not.toMatch(/re-submit it through/);
+  });
+
+  it("gives each its own advice when both kinds are present", () => {
+    const r = repository();
+    r.write(".arcadia/asks/agent-ask-UPPER.yaml");
+    r.write(".arcadia/asks/foo.json");
+    const message = messageOf(r);
+    expect(message).toMatch(/re-submit it through `arcadia agent-ask draft`/);
+    expect(message).toMatch(/lowercase letters, digits and hyphens/);
+  });
+
+  it("validateBoundCandidate refuses a stray before running any check or writing evidence", () => {
+    const r = repository();
+    r.write(".arcadia/asks/complete-x.json");
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-stray-workspace-"));
+    roots.push(workspace);
+    let ran = false;
+    const attempt = () => validateBoundCandidate(workspace, {
+      id: "session_stray", repository: r.root, worktree: r.root, base: r.base, commands: ["touch ran-a-check"]
+    }, {}, () => { ran = true; });
+
+    expect(attempt).toThrow(/\.arcadia\/asks\/complete-x\.json/);
+    expect(ran).toBe(true); // the authority binding is checked first, then the snapshot, then the refusal
+    expect(existsSync(path.join(workspace, "artifacts"))).toBe(false);
+    expect(existsSync(path.join(r.root, "ran-a-check"))).toBe(false);
   });
 });
