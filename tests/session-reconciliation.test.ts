@@ -258,6 +258,33 @@ describe("reconcileSessionExit", () => {
     expect(JSON.parse(result.receipt.evidence_json!).providerFailure).toMatchObject({ kind: "sign_in", provider: "claude-code-cli" });
   });
 
+  it.each([
+    ["a provider sign-in failure leaves the live development attempt live, so a relaunch resumes it (Issue #1243)",
+      "Failed to authenticate: OAuth session expired and could not be refreshed", "running"],
+    ["any other nonzero exit settles the development attempt failed", "Prompt is too long", "failed"]
+  ])("%s", (_name, resultText, expectedStatus) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const sessionId = launchCompletionFixture(fixture, tmux).data.session.id;
+    tmux.live = false;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(sessionId);
+    });
+    const logFile = sessionLogPath(fixture.workspace, sessionId);
+    mkdirSync(path.dirname(logFile), { recursive: true });
+    writeFileSync(logFile, JSON.stringify({ type: "result", subtype: "success", is_error: true, result: resultText }) + "\n");
+    const attempts = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT ordinal, status FROM session_role_attempts WHERE role = 'development'").all());
+    expect(attempts()).toEqual([{ ordinal: 1, status: "running" }]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-1243", repoRoot: fixture.repo, workspace: fixture.workspace })
+    );
+
+    expect(result.receipt.outcome).toBe("failed_execution");
+    expect(attempts()).toEqual([{ ordinal: 1, status: expectedStatus }]);
+  });
+
   it("keeps the generic reason when the log has no error result event, or an error result that is not authentication", () => {
     for (const lines of [
       [JSON.stringify({ type: "assistant", message: "Failed to authenticate the user in the test" })],

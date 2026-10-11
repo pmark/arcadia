@@ -2314,6 +2314,54 @@ describe("a Session that dies on a provider sign-in failure (Issue #1155)", () =
     expect(tmux.launches).toHaveLength(2);
   });
 
+  it("consumes no development attempt: three sign-in deaths spaced by the hold never exhaust the lineage, and the fourth and fifth launches run (Issue #1243)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const developmentAttempts = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT ordinal, status, request_id FROM session_role_attempts WHERE role = 'development' ORDER BY ordinal").all() as Array<{ ordinal: number; status: string; request_id: string }>);
+    const HOLD = SIGN_IN_FAILURE_HOLD_MS;
+
+    // Dies at t=1m, t=17m and t=33m: each exit is reconciled one minute after its launch.
+    const first = launchThenExit(fixture, tmux, SIGNED_OUT);
+    tickAt(fixture, tmux, MIN);
+    const lineage = developmentAttempts();
+    expect(lineage).toEqual([{ ordinal: 1, status: "running", request_id: expect.any(String) }]);
+    const dead = [first.id];
+    for (const launchAt of [MIN + HOLD, 2 * MIN + 2 * HOLD]) {
+      const relaunched = launchThenExit(fixture, tmux, SIGNED_OUT, launchAt);
+      dead.push(relaunched.id);
+      tickAt(fixture, tmux, launchAt + MIN);
+      // The same live attempt, its ordinal unconsumed, after every sign-in death.
+      expect(developmentAttempts()).toEqual(lineage);
+      expect(blockers(fixture)[0]).toMatchObject({ code: "provider_sign_in_failed" });
+    }
+    expect(new Set(dead).size).toBe(3);
+    expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null });
+
+    // t=48m: the fourth launch is not refused attempt_limit_exhausted; it resumes the same attempt.
+    const fourthAt = 3 * MIN + 3 * HOLD;
+    const fourth = projectOf(tickAt(fixture, tmux, fourthAt));
+    expect(fourth.launch).toMatchObject({ attempted: true, outcome: "launched" });
+    expect(tmux.launches).toHaveLength(4);
+    expect(developmentAttempts()).toEqual(lineage);
+    expect(blockers(fixture)).toEqual([]);
+    expect(repairAttempts(fixture)).toEqual([]);
+
+    // That one dies on the same dead login too; t=63m launches a fifth, still the one attempt.
+    const fourthSession = lease(fixture)!;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(fourthSession.id));
+    mkdirSync(path.dirname(sessionLogPath(fixture.workspace, fourthSession.id)), { recursive: true });
+    writeFileSync(sessionLogPath(fixture.workspace, fourthSession.id), JSON.stringify({ type: "result", is_error: true, result: SIGNED_OUT }) + "\n");
+    tmux.live.delete(fourthSession.tmux_session_name);
+    tickAt(fixture, tmux, fourthAt + MIN);
+    expect(developmentAttempts()).toEqual(lineage);
+    const fifth = projectOf(tickAt(fixture, tmux, fourthAt + MIN + HOLD));
+    expect(fifth.launch).toMatchObject({ attempted: true, outcome: "launched" });
+    expect(tmux.launches).toHaveLength(5);
+    expect(developmentAttempts()).toEqual(lineage);
+  });
+
   it("still counts any other failed_execution against the failed-Run budget and records no sign-in blocker", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -2327,6 +2375,9 @@ describe("a Session that dies on a provider sign-in failure (Issue #1155)", () =
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, session.id))!.reason).not.toContain("sign-in");
     expect(scheduling(fixture).failedRuns).toBe(1);
     expect(blockers(fixture)).toEqual([]);
+    // Unlike a sign-in death, it did consume its development attempt.
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT ordinal, status FROM session_role_attempts WHERE role = 'development'").all())).toEqual([{ ordinal: 1, status: "failed" }]);
   });
 });
 
