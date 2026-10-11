@@ -10,10 +10,11 @@ import { withReadOnlyDatabase } from "../src/db/connection.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import {
   buildDispositionPlan, decideAsk, decideProject, decideReview, DispositionRefusal, previewTouchesOtherCheckout,
-  TODO_BULK_DISPOSITION_20261010 as PINS, type ExistingSettlement, type ProjectRow
+  TODO_BULK_DISPOSITIONS, type ExistingSettlement, type ProjectRow
 } from "../src/operatorActions/todoBulkDisposition.js";
 
-// Entry point for the operator action apply-todo-bulk-disposition-20261010.
+// Entry point for the operator actions apply-todo-bulk-disposition-<date> (each pinned in
+// src/operatorActions/todoBulkDisposition.ts, chosen by the descriptor's own id).
 // usage: apply-todo-bulk-disposition.ts <descriptor.json> <run-directory> (--dry-run | --apply)
 // Applies the accepted /todo bulk disposition only through the canonical writers (Agent Ask
 // settlement with disposition rejected, review reject, project update --status completed).
@@ -27,14 +28,19 @@ const dryRun = modeArg === "--dry-run";
 const descriptorPath = path.resolve(descriptorArg);
 const repo = realpathSync(path.resolve(path.dirname(descriptorPath), "../../.."));
 const scriptId = path.basename(descriptorPath, ".json");
-const ARCHIVE_BRANCH = "operator/todo-bulk-disposition-archives-20261010";
-const ARCHIVE_WORKTREE = path.join(os.homedir(), "tmp", "arcadia-todo-bulk-disposition-20261010");
+const pinned = TODO_BULK_DISPOSITIONS[scriptId];
+if (!pinned) { process.stderr.write(`No pinned /todo disposition for ${scriptId}.\n`); process.exit(2); }
+const PINS = pinned;
+const ARCHIVE_BRANCH = PINS.archiveBranch;
+const ARCHIVE_WORKTREE = path.join(os.homedir(), "tmp", PINS.archiveWorktreeName);
 const TRACKED = [
   `artifacts/generated/operator-scripts/${scriptId}.json`, `artifacts/generated/operator-scripts/${scriptId}.sh`,
   PINS.manifestPath, "scripts/apply-todo-bulk-disposition.ts", "src/operatorActions/todoBulkDisposition.ts",
   "src/operatorActions/libraryContract.ts", "src/operatorActions/operatorExecution.ts",
   // The canonical writers themselves: a locally modified writer must not run under this button.
-  "src/ask/settlement.ts", "src/commands/agentAsk.ts", "src/commands/review.ts", "src/commands/project.ts"
+  "src/ask/settlement.ts", "src/commands/agentAsk.ts", "src/commands/review.ts", "src/commands/project.ts",
+  // Docs sync must keep an operator-rejected Way proposal rejected (PR #1241), or the rejection is undone.
+  "src/docs/sync.ts"
 ];
 
 interface ItemResult { kind: "agent_ask" | "review_item" | "project"; id: string; key?: string; project?: string; outcome: string; note: string; receipt?: string; documents?: string[]; documentsCommit?: string | null }
@@ -78,7 +84,7 @@ try {
   const descriptor = validateOperatorScriptContract(JSON.parse(readFileSync(descriptorPath, "utf8")), scriptId,
     readFileSync(descriptorPath.replace(/\.json$/, ".sh"), "utf8"));
   if (!descriptor.agentAskRejections || descriptor.repeatable === true) throw new DispositionRefusal("DESCRIPTOR_SCOPE_MISMATCH", "The descriptor must declare a one-shot agentAskRejections scope.");
-  const plan = buildDispositionPlan(readFileSync(path.join(repo, PINS.manifestPath), "utf8"), descriptor.agentAskRejections);
+  const plan = buildDispositionPlan(readFileSync(path.join(repo, PINS.manifestPath), "utf8"), descriptor.agentAskRejections, PINS);
   const { workspacePath } = resolveReadyWorkspace();
   if (path.basename(workspacePath) !== "martianrover") throw new DispositionRefusal("WORKSPACE", `The default workspace is ${workspacePath}, not martianrover.`);
   const mainHeadBefore = git(repo, ["rev-parse", "HEAD"]);
@@ -201,7 +207,7 @@ try {
         git(worktree, ["push", "origin", `HEAD:refs/heads/${ARCHIVE_BRANCH}`]);
         const existing = JSON.parse(gh(worktree, ["pr", "list", "--head", ARCHIVE_BRANCH, "--state", "open", "--json", "url"])) as Array<{ url: string }>;
         receipt.archivePullRequest = existing[0]?.url ?? gh(worktree, ["pr", "create", "--base", "main", "--head", ARCHIVE_BRANCH,
-          "--title", "chore(asks): archive Ask files rejected by the /todo bulk disposition (2026-10-10)",
+          "--title", PINS.archivePullRequestTitle,
           "--body", `Written by the operator action \`${scriptId}\` (list ${PINS.manifestPath}, sha256 ${PINS.sha256}).\n\n` +
             `${ahead} commit(s) from \`arcadia agent-ask settle --disposition rejected --apply\`; each moves one settled Ask file to \`.arcadia/asks/archive/\`. ` +
             "No Project, Plan, Action, pointer or queue changes."]);
