@@ -4,7 +4,7 @@ type: decision
 id: "0122"
 slug: decide-whether-production-admission-follows-an-operator-owned-project
 project: arcadia
-status: open
+status: approved
 question: Decide whether production admission follows an operator-owned Project preference record (included Projects, shares and each Project's chosen Plan), with queue positions ordering Actions only within a Plan, amending Decisions 0048 and 0054.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route
 updated: 2026-10-11
+answer: Production admission follows the Project preference record; queue positions order Actions only within a Plan
+decided: 2026-10-11
 ---
 
 # Decision 0122: Decide whether production admission follows an operator-owned Project preference record (included Projects, shares and each Project's chosen Plan), with queue positions ordering Actions only within a Plan, amending Decisions 0048 and 0054.
