@@ -5,7 +5,7 @@
   "script": "restore-off-production-bug-plan-first-supervised-run-2026-10-11.sh",
   "repeatable": true,
   "problem": "You want production stopped: the first supervised run on Arcadia's own repository (the seven-bug Plan) is doing something you do not want, or you simply want it to stop admitting work. Production Off is the only authority change this button makes, and it only removes authority.",
-  "desired_effect": "Reads production status, and if production is Active (under any request id) turns it Off through `arcadia production deactivate` under a fresh request id, then reads status back and requires desiredState inactive. If production is already Inactive it changes nothing and records that. Writes a timestamped receipt and, on any failure, a handoff naming the exact next step. It does not depend on the Git checkout, the Plan or any Decision, so a drifted checkout cannot block it.",
+  "desired_effect": "Reads production status, and if production is Active (under any request id) turns it Off through `arcadia production deactivate` under a fresh request id, then reads status back and requires desiredState inactive. If production is already Inactive it changes nothing and records that. Writes a timestamped receipt and, on any failure, a handoff naming the exact next step. It checks no Git state, Plan or Decision, so a drifted or dirty checkout cannot block it; it does run the Arcadia CLI from the main checkout, so a missing or broken install there blocks it (then use the Terminal fallback in failure.next, which needs the same CLI).",
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/restore-off-production-bug-plan-first-supervised-run-2026-10-11.sh run",
   "authority": {
     "does": [

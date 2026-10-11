@@ -75,10 +75,22 @@ arcadia() { (cd "$ARCADIA_REPO" && timeout 180 mise exec -- pnpm -s arcadia "$@"
 # Sets OFF_RESULT to one of: not_attempted, not_active, other_grant_active,
 # returned_off, OFF_FAILED, UNKNOWN.
 reconcile_activation() {
-  local status
+  local status="" attempt
   [[ "$ACTIVATION_ATTEMPTED" == true ]] || { OFF_RESULT=not_attempted; return 0; }
-  if ! status="$(arcadia production status --json)" || ! jq -e '.ok == true and .data.read.status == "ok"' <<<"$status" >/dev/null 2>&1; then
-    OFF_RESULT=UNKNOWN; return 0
+  for attempt in 1 2 3; do
+    if status="$(arcadia production status --json)" && jq -e '.ok == true and .data.read.status == "ok"' <<<"$status" >/dev/null 2>&1; then break; fi
+    status=""; sleep 5
+  done
+  if [[ -z "$status" ]]; then
+    # Status stayed unreadable. Production was Inactive when this run started, so an Active policy now can
+    # only be this attempt's: try the Off anyway (over-stopping is safe) and report it only if it confirms.
+    if arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID-off-unread" --reason 'The supervised-run Grant could not read production status after an activation attempt; return production to Off and preserve evidence.' --json > "$RUN_DIR/off.json" \
+      && jq -e '.ok == true and .data.result.policy.desiredState == "inactive"' "$RUN_DIR/off.json" >/dev/null 2>&1; then
+      OFF_RESULT=returned_off
+    else
+      OFF_RESULT=UNKNOWN
+    fi
+    return 0
   fi
   printf '%s\n' "$status" > "$RUN_DIR/status-after-failure.json"
   if jq -e '.data.read.policy.desiredState == "inactive"' <<<"$status" >/dev/null; then OFF_RESULT=not_active; return 0; fi
@@ -201,7 +213,7 @@ record capacityObserved "$(jq -c --arg p "$PROVIDER" '[.data.observation.provide
 if jq -e --arg p "$PROVIDER" '[.data.observation.providers[] | select(.providerId == $p) | .receipt.source] == ["operator_config"]' <<<"$CAPACITY" >/dev/null; then
   CAPACITY_GATE="off: $PROVIDER is unmetered by workspace configuration (an operator choice), not by observation"
 else
-  CAPACITY_GATE="on: $PROVIDER admitted from an observed provider window"
+  CAPACITY_GATE="on: $PROVIDER admitted by the capacity read (source $(jq -r --arg p "$PROVIDER" '[.data.observation.providers[] | select(.providerId == $p) | .receipt.source][0] // "unknown"' <<<"$CAPACITY"))"
 fi
 record_str capacityGate "$CAPACITY_GATE"
 
