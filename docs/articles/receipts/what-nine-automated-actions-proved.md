@@ -39,7 +39,7 @@ Every prose sentence is on its own source line in the article and has a row belo
 | C4 | It does not support a claim that autonomous AI coding is ready for real production. | F | Limitation / inference: Absence of proof in this bounded package; not a claim that capability is impossible or absent everywhere. |
 | C5 | For a developer evaluating an agent workflow, the interesting result is the evidence between those two statements. | F | Evidence-backed interpretation / recommendation: Fixture output and recorded public evidence only; not production or an intervention ledger. |
 | C6 | The first three Actions wrote a start line, appended its uppercase form, and appended a verification line to `MARKER.md`, with tests for the expected order. | F, SEM, CHECK | Fact / declared contract: Fixture output and recorded public evidence only; not production or an intervention ledger. |
-| C7 | The remaining six Actions built `CHAIN.md`, each reading the previous result and adding one specified line while preserving earlier content. | F, SEM, CHECK | Fact / declared contract: Fixture output and recorded public evidence only; not production or an intervention ledger. |
+| C7 | The remaining six Actions built `CHAIN.md`; their instructions required reading the previous result, adding one specified line and preserving earlier content. | F, SEM, CHECK | Fact / declared contract: Fixture output and recorded public evidence only; not production or an intervention ledger. |
 | C8 | An Action is Arcadia's unit of intentional work; a Plan supplies the sequence and acceptance criteria. | F, SEM, CHECK | Fact / declared contract: Fixture output and recorded public evidence only; not production or an intervention ledger. |
 | C9 | Small tasks make errors easier to locate, which is why we regard this as a handoff test rather than a measure of coding ability. | F, SEM, CHECK | Evidence-backed interpretation / recommendation: Fixture output and recorded public evidence only; not production or an intervention ledger. |
 | C10 | The sequence asks whether the next Action receives the preceding output and whether each result survives as reviewable Git history. | F, SEM, CHECK | Fact / declared contract: Fixture output and recorded public evidence only; not production or an intervention ledger. |
@@ -116,8 +116,12 @@ Author preflight: required front matter present; status draft; exactly site/RSS 
 
 ## Independent review
 
-Pending the separate read-only reviewer on the frozen content revision. No PASS is claimed here. The durable report will live under `docs/articles/briefs/`; its exact SHA and content hashes bind these bytes. A changed article or receipt needs a scoped delta check; the report does not review its own recording commit.
+- Reviewer: Critic Cody Atlas, separate read-only subagent `/root/fact_check`.
+- Initial candidate: `c2aa262613b0013bd6695b5ad26e382df0820829`; source base: `9302b5946451ba763de72052a69c6a35124aabc9`.
+- Initial article verdict: HOLD for one overstatement, corrected in the following revision; content-PR verdict HOLD until the case-study correction receives its delta check.
+- [Retained report](../briefs/2026-10-10-first-two-essays-independent-review.md) includes exact article/receipt hashes, findings, evidence and safety confirmation.
+- Current receipt edits and the case-study sentence correction require the scoped delta check, to be retained in [PR #1222](https://github.com/pmark/arcadia/pull/1222). No final PASS for these new bytes is claimed yet; the report does not review its own recording commit.
 
 ## Delivery handoff
 
-Pending content PR; no site revision, deploy result, live essay page, RSS publication, notification or unpublish receipt exists for this package. Cross-essay canonicals are planned URLs. Technical rendering is unverified. Source remains draft, even after content review; publication adapter approval is separate.
+Content [PR #1222](https://github.com/pmark/arcadia/pull/1222) is open; no site revision, deploy result, live essay page, RSS publication, notification or unpublish receipt exists for this package. Cross-essay canonicals are planned URLs. Technical rendering is unverified. Source remains draft, even after content review; publication adapter approval is separate.

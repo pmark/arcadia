@@ -22,7 +22,7 @@ For a developer evaluating an agent workflow, the interesting result is the evid
 ## A deliberately small test with visible outputs
 
 The first three Actions wrote a start line, appended its uppercase form, and appended a verification line to `MARKER.md`, with tests for the expected order.
-The remaining six Actions built `CHAIN.md`, each reading the previous result and adding one specified line while preserving earlier content.
+The remaining six Actions built `CHAIN.md`; their instructions required reading the previous result, adding one specified line and preserving earlier content.
 An Action is Arcadia's unit of intentional work; a Plan supplies the sequence and acceptance criteria.
 
 Small tasks make errors easier to locate, which is why we regard this as a handoff test rather than a measure of coding ability.

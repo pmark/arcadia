@@ -111,8 +111,12 @@ Author preflight: required front matter present; status draft; exactly site/RSS 
 
 ## Independent review
 
-Pending the separate read-only reviewer on the frozen content revision. No PASS is claimed here. The durable report will live under `docs/articles/briefs/`; its exact SHA and content hashes bind these bytes. A changed article or receipt needs a scoped delta check; the report does not review its own recording commit.
+- Reviewer: Critic Cody Atlas, separate read-only subagent `/root/fact_check`.
+- Initial candidate: `c2aa262613b0013bd6695b5ad26e382df0820829`; source base: `9302b5946451ba763de72052a69c6a35124aabc9`.
+- Initial article verdict: PASS; content-PR verdict HOLD until the case-study correction receives its delta check.
+- [Retained report](../briefs/2026-10-10-first-two-essays-independent-review.md) includes exact article/receipt hashes, findings, evidence and safety confirmation.
+- Current receipt edits and the case-study sentence correction require the scoped delta check, to be retained in [PR #1222](https://github.com/pmark/arcadia/pull/1222). No final PASS for these new bytes is claimed yet; the report does not review its own recording commit.
 
 ## Delivery handoff
 
-Pending content PR; no site revision, deploy result, live essay page, RSS publication, notification or unpublish receipt exists for this package. Cross-essay canonicals are planned URLs. Technical rendering is unverified. Source remains draft, even after content review; publication adapter approval is separate.
+Content [PR #1222](https://github.com/pmark/arcadia/pull/1222) is open; no site revision, deploy result, live essay page, RSS publication, notification or unpublish receipt exists for this package. Cross-essay canonicals are planned URLs. Technical rendering is unverified. Source remains draft, even after content review; publication adapter approval is separate.
