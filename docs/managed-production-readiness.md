@@ -603,6 +603,7 @@ It never merges. Integration is refused for operator-launched candidates unless 
 - Every session writes `<workspace>/.arcadia/sessions/<id>.log` and records its exit code in `agent_sessions.exit_status`, with 128+n for a signal.
 - Watch live sessions with `arcadia dashboard runs --sessions 8 --json`, the `/production` log tail, and `.arcadia/worker.log`.
 - A preflight refuses a launch before reserving anything when the provider binary is missing (`provider_binary_missing`), the provider is not signed in (`provider_not_signed_in`), or the required headless flags are missing (`permission_posture_missing`).
+- A Session that dies on an expired login the preflight could not see (`Provider sign-in failure` receipt) spends no failed-Run budget and cannot pause the Project. The tick records the `provider_sign_in_failed` launch blocker (shown by `arcadia production status`) and launches nothing for that Project for 15 minutes (`SIGN_IN_FAILURE_HOLD_MS`); sign in again, then the tick retries and a further sign-in failure renews the hold.
 
 **Models.**
 - Every session starts on the light tier (`sessionStartTier`): Codex `gpt-6-luna`, Claude `haiku`. The brief names the plan's tier as the escalation target.
