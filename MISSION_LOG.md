@@ -2274,3 +2274,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1235-v3
+
+- **Did:** Notes-only PR 1235 is open: it adds the arcadia tidy remedy for a go handoff that launches no session to the brief-deadline notes entry. https://github.com/pmark/arcadia/pull/1235
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
