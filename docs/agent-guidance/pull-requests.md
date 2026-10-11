@@ -172,36 +172,37 @@ on the dashboard, or `--link <PR URL>` for a pull request. A `look` or
 `attention` ping with neither falls back to the `/todo` list, and
 `arcadia ping send` warns when an `attention` ping has neither.
 
-- **On open.** The moment a PR is created, draft and settle an Agent Ask,
-  `intent: log`, `request_id` `pr-opened-<project>-pr<number>`, whose
-  `desired_result` is one upbeat, specific sentence naming what shipped, plus
-  the PR URL. This fires for every PR, including ones "Merge on green" will
-  merge without further ado — it is the "something is moving" signal.
-  `.gitattributes` marks `MISSION_LOG.md` `merge=union`, so a branch that
-  carries this append no longer conflicts when `main` appends its own entry;
-  never reset and re-settle under a new request id to dodge that conflict, as
-  each redo sends another notification.
-- **On ready-for-you.** Send a second ping, `request_id`
-  `pr-ready-<project>-pr<number>-<reason-slug>-<yyyy-mm-dd>` (a short kebab
-  `reason-slug` naming *why* — `decision-answer`, `approval-boundary`,
-  `credentials-needed`, and so on), only for a PR that "Merge on green"
-  already excludes from auto-merge (one that opens or carries a Decision, or
-  changes Constitution/approval-boundary/spend/credential authority) once its
+- **A PR notification is a ping, never a log write on the PR branch.**
+  `MISSION_LOG.md` is a shared append-only file, so a branch carrying its own
+  entry conflicts as soon as `main` appends one, and the redo (reset,
+  re-settle under a new `request_id`) re-notifies each time (#1254). Send the
+  two lifecycle notifications below with `arcadia ping send` (no Agent Ask, no
+  settlement, no file written), and never add a `pr-opened-*` or `pr-ready-*`
+  `intent: log` settlement to a PR branch. The CI-blocked settlement above
+  stays an Ask, because the bot routes it to the alerts channel by its
+  `request_id`.
+- **On open.** The moment a PR is created, run
+  `arcadia ping send --kind fyi --agent <claude|codex|opencode> --link <PR URL> "<message>"`,
+  where `<message>` is one upbeat, specific sentence naming what shipped. This
+  fires for every PR, including ones "Merge on green" will merge without
+  further ado — it is the "something is moving" signal. Send it once; a ping
+  that returns no receipt is retried, never replaced by a log settlement.
+- **On ready-for-you.** Send a second ping,
+  `arcadia ping send --kind attention --agent <claude|codex|opencode> --link <PR URL> "<message>"`,
+  only for a PR that "Merge on green" already excludes from auto-merge (one
+  that opens or carries a Decision, or changes
+  Constitution/approval-boundary/spend/credential authority) once its
   independent review and required checks are otherwise clear, or for any PR a
   session is stopping at as a blocker or picker. Name what's ready, why it
-  needs the operator specifically, and the PR URL. A request_id that only
-  varies by PR number, or only by date, replays the first settlement's
-  receipt instead of queuing a fresh notification the next time the same PR
-  reaches a *different* blocker on the same day — the reason-slug gives each
-  distinct handoff its own identity, while retrying the *same* handoff (same
-  reason, same day) stays idempotent by reusing that same id. Do not send
-  this for a routine PR that "Merge on green" will merge itself — by the time
-  you could send it, it is already merged, and a "ready to merge" ping for
-  something already merged is noise, not a decision point.
+  needs the operator specifically, and what they should do. Send one per
+  distinct handoff, not one per retry. Do not send this for a routine PR that
+  "Merge on green" will merge itself — by the time you could send it, it is
+  already merged, and a "ready to merge" ping for something already merged is
+  noise, not a decision point.
 - **Keep both messages to one or two sentences.** Fun, warm, specific — the
   Discord message is the whole notification; the operator should not have to
-  open the PR to know why they were pinged. This is the queued Discord
-  delivery every `intent: log` settlement already uses, not a new channel.
+  open the PR to know why they were pinged. The message is capped at 500
+  characters and goes to the default Discord channel, not a new channel.
 - **Link the PR itself**
   (`https://github.com/<owner>/<repo>/pull/<number>`). GitHub exposes no
   anchor that scrolls to the merge control, so do not claim the link does —
@@ -211,9 +212,9 @@ on the dashboard, or `--link <PR URL>` for a pull request. A `look` or
   next time you touch that PR and act on it like any other operator
   instruction — alongside the normal Decision or picker flow, never as a
   silent substitute for recording the Decision's actual answer.
-- **This never widens authority.** It reuses the Discord channel and
-  `intent: log` settlement already governing "CI failures are fixed
-  immediately" above; it does not authorize a new messaging channel, and it
+- **This never widens authority.** It reuses the Discord channel already
+  governing "CI failures are fixed immediately" above and the read-only
+  `arcadia ping send` command; it does not authorize a new messaging channel, and it
   never substitutes for a required Decision, approval boundary, or the
   review and CI gates above.
 
