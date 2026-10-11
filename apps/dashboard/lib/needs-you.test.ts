@@ -203,6 +203,44 @@ describe("buildNeedsYouBoard", () => {
     expect(board.excluded.map((entry) => entry.item.id)).toEqual(expect.arrayContaining(["review:rebuster", "review:arcadia"]));
   });
 
+  it("never pushes a blocked item out of the board with the focus cap", () => {
+    const board = buildNeedsYouBoard(
+      [
+        attentionItem({ id: "review:a", projectName: "Arcadia", actionId: "a" }),
+        attentionItem({ id: "review:b", projectName: "Arcadia", actionId: "b" }),
+        attentionItem({ id: "review:c", projectName: "Arcadia", actionId: "c" }),
+        attentionItem({ id: "review:blocked", projectName: "Beta", severity: "blocked", relatedReviewId: null, actionId: "blocked" })
+      ],
+      [],
+      [],
+      NOW,
+      // Beta ranks last by project order, so only the cap could drop it.
+      { projectOrder: ["Arcadia", "Beta"], excludedProjects: [], maxItems: 2 }
+    );
+
+    const kept = [board.dominant?.item.id, ...board.queue.map((entry) => entry.item.id)];
+    expect(kept).toContain("review:blocked");
+    // The cap still bounds everything that is not blocked.
+    expect(kept.filter((id) => id !== "review:blocked")).toHaveLength(2);
+    expect(board.excluded.map((entry) => entry.item.id)).toEqual(["review:c"]);
+  });
+
+  it("still ranks a kept blocked item by score and still excludes it with its Project", () => {
+    const board = buildNeedsYouBoard(
+      [
+        attentionItem({ id: "review:blocked-a", projectName: "Arcadia", severity: "blocked", relatedReviewId: null, actionId: "a" }),
+        attentionItem({ id: "review:blocked-b", projectName: "Rebuster", severity: "blocked", relatedReviewId: null, actionId: "b" })
+      ],
+      [],
+      [],
+      NOW,
+      { projectOrder: ["Arcadia"], excludedProjects: ["Rebuster"], maxItems: 1 }
+    );
+
+    expect(board.dominant?.item.id).toBe("review:blocked-a");
+    expect(board.excluded.map((entry) => entry.item.id)).toEqual(["review:blocked-b"]);
+  });
+
   it("returns an empty board with no dominant item when nothing needs the operator", () => {
     const board = buildNeedsYouBoard([]);
     expect(board.dominant).toBeNull();

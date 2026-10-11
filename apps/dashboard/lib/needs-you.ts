@@ -239,15 +239,24 @@ export function buildNeedsYouBoard(
 
   ranked.sort((a, b) => b.score - a.score);
 
+  // The cap bounds attention, never what is blocking: a blocked item is always on the board, ranked by score like any
+  // other, and does not use up a focused slot.
   const focusLimit = focus?.maxItems ?? ranked.length;
-  for (const entry of ranked.slice(focusLimit)) {
+  let focusedSlots = 0;
+  const focused: typeof ranked = [];
+  for (const entry of ranked) {
+    if (entry.ranked.item.severity === "blocked" || focusedSlots < focusLimit) {
+      if (entry.ranked.item.severity !== "blocked") focusedSlots += 1;
+      focused.push(entry);
+      continue;
+    }
     excluded.push({
       item: entry.ranked.item,
       exclusionReason: "Open, but outside the focused set. Promote it by changing the workspace review focus."
     });
   }
 
-  const [dominant, ...rest] = ranked.slice(0, focusLimit);
+  const [dominant, ...rest] = focused;
 
   return {
     dominant: dominant?.ranked ?? null,

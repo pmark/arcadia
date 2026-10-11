@@ -52,9 +52,19 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
     : null;
   // A recommendation is shown only when the data carries one.
   const askRecommendation = approval.kind === "agent_ask" ? options.find((option) => option.recommended) ?? null : null;
+  const reviewControl = approval.readOnly || approval.buildPacket ? null : approval.reviewControl ?? null;
+  const blockingLive = approval.blocking && !approval.staleReason;
   return (
-    <article id={anchorOf(approval)} className="min-w-0 scroll-mt-20 rounded-md border border-line bg-panel p-4 shadow-soft">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <article
+      id={anchorOf(approval)}
+      className={`min-w-0 scroll-mt-20 rounded-md border bg-panel p-4 shadow-soft ${blockingLive ? "border-2 border-red-600" : "border-line"}`}
+    >
+      {blockingLive ? (
+        <p className="mb-2 inline-block rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">
+          Blocking the run
+        </p>
+      ) : null}
+      <span className="block text-xs font-semibold uppercase tracking-wide text-muted">
         {kindLabel(approval.kind)} · {approval.project}
         {approval.blocking ? " · Blocking" : ""}
         {approval.staleReason ? " · Stale" : ""}
@@ -69,6 +79,11 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
       ) : approval.buildPacket ? (
         <p className="mt-2 text-sm text-muted">
           Approving records your answer only; it starts nothing. The guarded build Session is launched separately.
+        </p>
+      ) : reviewControl ? (
+        <p className="mt-2 text-sm text-muted">
+          {reviewControl.consequence}
+          {reviewControl.canReject && reviewControl.rejectConsequence ? ` Reject: ${reviewControl.rejectConsequence}` : ""}
         </p>
       ) : approval.kind === "decision" ? (
         recommendedOption ? (
@@ -98,6 +113,19 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
               {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
               Reject
             </button>
+          </>
+        ) : reviewControl ? (
+          <>
+            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Approve", reviewAction: "approve" })} className={PRIMARY_BUTTON}>
+              {pendingId === `${key}:Approve` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {reviewControl.approveLabel}
+            </button>
+            {reviewControl.canReject ? (
+              <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Reject", reviewAction: "reject" })} className={SECONDARY_BUTTON}>
+                {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Reject
+              </button>
+            ) : null}
           </>
         ) : approval.kind === "decision" ? (
           recommendedOption ? (
