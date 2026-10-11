@@ -67,3 +67,16 @@ Project contract. Registration and delivery now both require status active.
 Regression tests cover all non-active statuses at registration and completion
 or incubation after registration. Round 2 will review this scoped delta on the
 new head; no PASS for new bytes is inferred from the initial review.
+
+## Required CI repair
+
+Run `38098726164`, unit-2, failed two command-classification assertions:
+the six new CLI commands had no entries in `COMMAND_CLASSIFICATION`.
+No gate was removed. The commands are now classified as local proposal intake,
+consistent with Decision 0082's existing allow-by-default policy and Agent Ask
+preview scope. A disposable-fixture CLI test proves one proposal is captured
+only in the explicitly addressed experiment, with its simulated live database,
+user config and launch-agent directory unchanged. This creates no live
+experiment workspace and changes no production or messaging permission.
+Loaded experiment-workspace procedure: `docs/agent-guidance/arcadia-repository.md`
+section “Experiment workspaces” and approved Decision 0082 before this repair.

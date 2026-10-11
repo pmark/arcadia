@@ -22,6 +22,7 @@ import {
   GUARDED_OPERATIONS,
   listActionCommands
 } from "../src/workspace/experimentGuard.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { compareAttributedFields, compareLeakSnapshots, takeLeakSnapshot } from "../src/workspace/leakCheck.js";
 
@@ -322,6 +323,23 @@ describe("the CLI choke point", () => {
     }
     const resolved = await runCli(["workspace", "resolve"]);
     expect("output" in resolved && resolved.output.data.experiment).toBe(true);
+  });
+
+  it("keeps recurring proposal intake inside the explicitly named experiment", async () => {
+    registerProject(experiment, "Fixture", path.join(experiment, "projects", "fixture"));
+    const liveDatabaseBefore = readFileSync(getWorkspacePaths(live).databaseFile);
+    const userConfigBefore = readFileSync(userConfig);
+    const file = path.join(root, "schedule.json");
+    writeFileSync(file, JSON.stringify({ schema: "arcadia-recurring-schedule-v1", id: "fixture-note", project: "fixture", cadence: "daily", timezone: "UTC", time: "00:00", starts_at: "2020-01-01T00:00:00.000Z", desired_result: "Prepare a fixture draft for {{due_at}}.", acceptance: ["Fixture evidence exists."] }));
+    for (const args of [["register", "--file", file], ["enable", "fixture-note"], ["tick"], ["recurring"], ["pause", "fixture-note"]]) {
+      const outcome = await runCli(["schedule", ...args, "--workspace", experiment]);
+      expect("output" in outcome && outcome.output.ok, JSON.stringify(outcome)).toBe(true);
+    }
+    const proposals = withDatabase(experiment, (db) => (db.prepare("SELECT COUNT(*) AS n FROM agent_ask_proposals").get() as { n: number }).n);
+    expect(proposals).toBe(1);
+    expect(readFileSync(getWorkspacePaths(live).databaseFile)).toEqual(liveDatabaseBefore);
+    expect(readFileSync(userConfig)).toEqual(userConfigBefore);
+    expect(existsSync(path.join(home, "Library", "LaunchAgents"))).toBe(false);
   });
 
   it("refuses the worker plist write even when called directly", () => {

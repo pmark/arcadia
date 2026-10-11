@@ -134,6 +134,14 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   capture: ALLOWED,
   "schedule status": ALLOWED,
   "schedule log": ALLOWED,
+  // Calendar intake only captures proposals in the explicitly resolved workspace.
+  // It starts no worker and grants no production, publication or delivery authority.
+  "schedule register": ALLOWED,
+  "schedule recurring": ALLOWED,
+  "schedule enable": ALLOWED,
+  "schedule pause": ALLOWED,
+  "schedule tick": ALLOWED,
+  "schedule retry": ALLOWED,
   "schedule prioritize": ALLOWED,
   "schedule classify": ALLOWED,
   "schedule discover": ALLOWED,
