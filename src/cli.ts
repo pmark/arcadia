@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -1121,7 +1122,29 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
 
-  const schedule = program.command("schedule").description("Production scheduling: per-Project queues by tier, the GitHub board projection, and discovery");
+  const schedule = program.command("schedule").description("Project work priority, GitHub projection, discovery, and recurring calendar triggers");
+  for (const command of ["register", "recurring", "enable", "pause", "tick", "retry"] as const) {
+    const descriptions = {
+      register: "Register a recurring JSON definition, initially paused",
+      recurring: "Read recurring schedules, next times and occurrence receipts",
+      enable: "Enable a registered recurring proposal trigger",
+      pause: "Pause a recurring trigger without deleting its receipts",
+      tick: "Submit due recurring Action proposals without approving or executing them",
+      retry: "Reset the retry budget for a failed occurrence"
+    };
+    const subcommand = schedule.command(command).description(descriptions[command]);
+    if (command === "register") subcommand.requiredOption("--file <path>", "Schedule JSON definition");
+    if (["enable", "pause", "retry"].includes(command)) subcommand.argument("<id>", "Recurring schedule id");
+    if (command === "retry") subcommand.requiredOption("--occurrence <date>", "Failed occurrence date YYYY-MM-DD");
+    addJsonOption(subcommand.option("--workspace <path>", "Workspace path", defaultWorkspace()));
+    if (["enable", "pause", "retry"].includes(command)) {
+      subcommand.action((id: string, options: { workspace: string; occurrence?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, { ...options, id }), renderRecurringScheduleSuccess));
+    } else {
+      subcommand.action((options: { workspace: string; file?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, options), renderRecurringScheduleSuccess));
+    }
+  }
   addJsonOption(
     schedule
       .command("status")
@@ -5313,7 +5336,7 @@ function commandNameFromArgv(argv: string[]): string {
     return `production.${second}`;
   }
 
-  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume"].includes(second ?? "")) {
+  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume", "register", "recurring", "enable", "pause", "tick", "retry"].includes(second ?? "")) {
     return `schedule.${second}`;
   }
 

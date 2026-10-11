@@ -1,3 +1,4 @@
+import { ensureRecurringScheduleTables } from "../recurring/store.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +107,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureProductionPolicyTables(db);
   ensureProductionLaunchBlockersTable(db);
   ensureSchedulingTables(db);
+  ensureRecurringScheduleTables(db);
   ensureProductionOperatorEscalationsTable(db);
   ensureRedAlertTables(db);
   applyCapabilityMigrations(db);
