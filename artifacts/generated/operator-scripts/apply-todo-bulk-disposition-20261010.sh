@@ -83,6 +83,11 @@ trap on_error ERR
 
 echo "== /todo bulk disposition 2026-10-10 ($MODE) =="
 [[ "$DRY_RUN" == false ]] || echo "Dry run: evidence in $RUN_DIR; nothing is written to the workspace, any branch or GitHub."
+TOOLS="jq timeout mise git"
+[[ "$DRY_RUN" == true ]] || TOOLS="$TOOLS gh"
+for tool in $TOOLS; do
+  command -v "$tool" >/dev/null 2>&1 || { REASON="required tool '$tool' is not on PATH"; false; }
+done
 # The settlement guard reads this context and admits only the descriptor's pinned rejections.
 if [[ -n "${ARCADIA_OPERATOR_SCRIPT_ID:-}" && "$ARCADIA_OPERATOR_SCRIPT_ID" != "$SCRIPT_ID" ]]; then
   REASON="launched under another operator action's context ($ARCADIA_OPERATOR_SCRIPT_ID)"; false

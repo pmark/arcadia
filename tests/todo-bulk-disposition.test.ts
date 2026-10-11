@@ -60,6 +60,7 @@ describe("per-item re-checks", () => {
     expect(decideAsk(planned, false, undefined)).toMatchObject({ act: false, note: expect.stringContaining("missing") });
     expect(decideAsk(planned, true, { requestId: planned.settlementRequestId, disposition: "rejected" })).toMatchObject({ act: false, note: expect.stringContaining("resumed") });
     expect(decideAsk(planned, true, { requestId: "other", disposition: "accepted" })).toMatchObject({ act: false, note: expect.stringContaining("accepted") });
+    expect(decideAsk({ ...planned, project: "unknown" }, true, undefined)).toMatchObject({ act: false, note: expect.stringContaining("no resolved Project") });
   });
   it("rejects only open or deferred review items", () => {
     expect(decideReview("open").act).toBe(true);

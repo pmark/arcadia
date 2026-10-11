@@ -142,6 +142,8 @@ export function decideReview(status: string | undefined): Decision {
 export interface ExistingSettlement { requestId: string; disposition: string }
 export function decideAsk(planned: PlannedAsk, exists: boolean, settled: ExistingSettlement | undefined): Decision {
   if (!exists) return { act: false, note: "proposal missing from the workspace" };
+  // Settlement refuses an Ask with no resolved Project; that is known, not a failure of this run.
+  if (planned.project === "unknown") return { act: false, note: "no resolved Project; settlement refuses it, nothing written" };
   if (settled) {
     return settled.requestId === planned.settlementRequestId
       ? { act: false, note: "already rejected by this list (resumed)" }
