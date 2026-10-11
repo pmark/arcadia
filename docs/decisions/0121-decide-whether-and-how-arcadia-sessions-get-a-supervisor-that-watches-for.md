@@ -4,7 +4,7 @@ type: decision
 id: "0121"
 slug: decide-whether-and-how-arcadia-sessions-get-a-supervisor-that-watches-for
 project: arcadia
-status: open
+status: approved
 question: Decide whether and how Arcadia sessions get a supervisor that watches for friction during a session, files bugs through a new arcadia bug utility, and asks the peer agent for ideas and insights after it, extending Decision 0113.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
 updated: 2026-10-11
+answer: "Event-triggered light-tier supervisor: deterministic detectors watch every session and a light-model supervisor is invoked only on a friction or exception signal and at session end, may cover several sessions, files bugs through arcadia bug and asks the lead for ideas and insights"
+decided: 2026-10-11
 ---
 
 # Decision 0121: Decide whether and how Arcadia sessions get a supervisor that watches for friction during a session, files bugs through a new arcadia bug utility, and asks the peer agent for ideas and insights after it, extending Decision 0113.
