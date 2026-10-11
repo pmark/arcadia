@@ -118,8 +118,11 @@ function publish(
     operatorLaunch: { authorizationId: authorization.id, phase: "publish", requestId: publishRequestId(session.id) }
   }, gate.deps);
   const pullRequest = pullRequestFor(db, session.id);
-  // A PR url exists only when the draft PR was really opened or updated.
-  const state: OperatorLaunchPublishState = step.kind === "preserved" && step.state === "IN PR" && pullRequest.url ? "done" : "pending";
+  // A PR url exists only when the draft PR was really opened or updated. A candidate carrying a non-canonical
+  // Ask file (Issue #1177) will not heal by waiting: its refusal is final, so it is not retried.
+  const strayAsks = step.kind === "refused" && Array.isArray((step.detail as { strayAskFiles?: unknown } | undefined)?.strayAskFiles);
+  const state: OperatorLaunchPublishState = strayAsks ? "failed"
+    : step.kind === "preserved" && step.state === "IN PR" && pullRequest.url ? "done" : "pending";
   return { step, state, pullRequest };
 }
 

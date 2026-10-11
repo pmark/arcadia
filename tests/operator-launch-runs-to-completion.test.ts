@@ -260,6 +260,36 @@ describe("the exit of an operator-launched Session with production Off", () => {
     expect(rehearsal.status().operatorEscalations).toEqual([]);
   });
 
+  it("a candidate carrying a non-canonical Ask file is refused before any push or PR, and the receipt records why (Issue #1177)", () => {
+    const rehearsal = fixture();
+    const session = launch(rehearsal, { source: "dashboard" });
+    const stray = ".arcadia/asks/complete-write-marker-a-run8.json";
+    // An earlier failed Session's hand-written file, committed with the candidate.
+    rehearsal.agentEdit(session, stray, "{}\n");
+    agentExits(rehearsal, session, "settled");
+    expect(git(session.worktree_path, ["ls-files", stray]).trim()).toBe(stray);
+    const headBefore = candidateHead(rehearsal, session);
+
+    const exited = rehearsal.tick();
+
+    expect(exited.handoff?.preservation).toMatchObject({ kind: "refused", reason: expect.stringContaining(stray) });
+    expect(rehearsal.github.pushes).toEqual([]);
+    expect(rehearsal.github.prs).toEqual([]);
+    expect(candidateHead(rehearsal, session)).toBe(headBefore);
+    expect(existsSync(path.join(session.worktree_path, stray))).toBe(true);
+    const used = authorization(rehearsal, session)!;
+    expect(used.used_at).not.toBeNull();
+    expect(used).toMatchObject({ outcome: "accepted_completion", publish_state: "failed", publish_attempts: 1 });
+    expect(JSON.parse(used.receipt_json!)).toMatchObject({
+      commit: { kind: "refused", reason: expect.stringContaining(stray) },
+      pullRequest: { kind: "refused", reason: expect.stringContaining(stray), url: null }, merged: false
+    });
+    // A refusal that cannot heal is not retried on later ticks.
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.pushes).toEqual([]);
+    expect(rehearsal.github.prs).toEqual([]);
+  });
+
   it("a launch without the confirmation carries no authority: nothing is committed or pushed", () => {
     const rehearsal = fixture();
     const session = launch(rehearsal);
