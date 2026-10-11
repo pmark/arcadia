@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Add the missing /plans/<project> dashboard route that lists one Project's Plans.
-active_plan: add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans
-current_action: add-plans-project-route
+milestone: Seven verified settlement, queue and preservation-integrity bugs are fixed and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.
+active_plan: seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and
+current_action: keep-claim-when-passed-attempt-receipt-is-unparseable
 updated: 2026-10-11
 ---
 
