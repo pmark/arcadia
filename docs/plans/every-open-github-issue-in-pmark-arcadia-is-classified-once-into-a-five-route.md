@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route
 project: arcadia
-status: active
+status: draft
 milestone: Every open GitHub Issue in pmark/arcadia is classified once into a five-route vocabulary, reconciled both ways with governed Actions, the vital few (about 20 percent) are verified, and the top batches plus a Decision-ready change list are delivered as one local report, with no GitHub mutation.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -154,7 +154,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: snapshot-open-issues-and-build-packets
 recommended_model: claude-haiku-5-5
 recommended_reasoning_effort: low
 ---

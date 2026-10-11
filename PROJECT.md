@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Every open GitHub Issue in pmark/arcadia is classified once into a five-route vocabulary, reconciled both ways with governed Actions, the vital few (about 20 percent) are verified, and the top batches plus a Decision-ready change list are delivered as one local report, with no GitHub mutation.
-active_plan: every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route
-current_action: snapshot-open-issues-and-build-packets
+milestone: Add the missing /plans/<project> dashboard route that lists one Project's Plans.
+active_plan: add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans
+current_action: add-plans-project-route
 updated: 2026-10-11
 ---
 

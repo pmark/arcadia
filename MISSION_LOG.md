@@ -2295,3 +2295,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a remains draft with completion state preserved. Operator directed activation after PR 1246 merged; first Action is a light-tier snapshot.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-plans-project-route-2026-10-11
+
+- **Did:** Activated add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans at add-plans-project-route.
+- **Result:** Operator-settled Plan transition. Previous Plan every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route remains draft with completion state preserved. Operator asked for /plans/PROJECT to be a prioritized governed Action that runs soon (capture_6123f2ba). Activation replaces the active Plan; the issue-triage Plan stays draft with completion state preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
