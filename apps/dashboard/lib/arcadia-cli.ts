@@ -416,8 +416,10 @@ export interface OperatorTodoData {
 
 /** The one operator to-do list, every live and stale item. Read-only; nothing here settles anything. */
 export async function loadOperatorTodo(): Promise<ArcadiaJsonSuccess<OperatorTodoData>> {
-  // Short timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
-  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 15_000 });
+  // Bounded timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
+  // About 3 s of work plus tsx start-up; 15 s was exceeded under the page's parallel CLI load (2026-10-11), which
+  // silently dropped the list to the fallback (no staleness, no review items).
+  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 30_000 });
 }
 
 export interface DecisionApproveResponse {
