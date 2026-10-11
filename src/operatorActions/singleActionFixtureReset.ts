@@ -6,6 +6,14 @@ import { CHAIN_FIXTURE, chainActionIds, chainActionTask, completionRequestId } f
  * fixture with a fresh completion request id, without the chain's production
  * receipts. The script owns every side effect; this module only renders the
  * amended Plan and PROJECT.md and judges which prior artifacts must go.
+ *
+ * The fixture may be at either of two shapes. While a chain is in flight its
+ * Plan is `active` and both documents carry a `current_action:` pointer, which
+ * the reopen only moves. Once the whole chain completed its Plan is `complete`
+ * and neither document carries a pointer (nothing is current); the reopen then
+ * returns the Plan to `active`, inserts `current_action:` right after the
+ * Plan's `milestone:` line and right after PROJECT.md's `active_plan:` line,
+ * and still changes nothing else.
  */
 
 export const SINGLE_ACTION_DEFAULT = "write-start-marker";
@@ -71,6 +79,19 @@ function pointAt(lines: string[], end: number, actionId: string, required: boole
   return true;
 }
 
+/**
+ * Insert `current_action: <actionId>` immediately after the single top-level
+ * line starting with `afterPrefix` (the pointer a completed document lacks).
+ * Refuses when that anchor line is missing, duplicated or has no value.
+ */
+function insertPointerAfter(lines: string[], end: number, actionId: string, afterPrefix: string, reason: string, what: string): void {
+  const at = lines.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < end && line.startsWith(afterPrefix));
+  if (at.length !== 1 || at[0][0].slice(afterPrefix.length).trim() === "") {
+    throw new SingleActionResetError(reason, `${what} carries no current_action: line and does not carry exactly one ${afterPrefix.trim()} line with a value to insert it after`);
+  }
+  lines.splice(at[0][1] + 1, 0, `current_action: ${actionId}`);
+}
+
 export interface RenderedSingleAction {
   plan: string;
   project: string;
@@ -85,8 +106,11 @@ export interface RenderedSingleAction {
 /**
  * Reopen one Action: status open, a fresh next_action (a new requirement input
  * revision), the Plan's and PROJECT.md's current_action pointing at it, and
- * their updated: dates moved to the reset date. Every other line is kept byte
- * for byte, and the acceptance criteria are never touched.
+ * their updated: dates moved to the reset date. A `complete` Plan (a finished
+ * chain) goes back to `active`, and a document with no current_action: line
+ * gains one: the Plan's right after `milestone:`, PROJECT.md's right after
+ * `active_plan:`. Every other line is kept byte for byte, and the acceptance
+ * criteria are never touched.
  */
 export function renderSingleActionReopen(basePlan: string, baseProject: string, input: { actionId: string; runTag: string; resetDate: string }): RenderedSingleAction {
   const { actionId, runTag, resetDate } = input;
@@ -113,14 +137,29 @@ export function renderSingleActionReopen(basePlan: string, baseProject: string, 
   planFront[nextAt] = `    next_action: ${nextAction}`;
   planFront[statusAt] = "    status: open";
   const planUpdatedBefore = bumpDate(planFront, plan.end, resetDate, "the base Plan");
+  const planStatusAt = planFront.map((line, i) => [line, i] as const).filter(([line, i]) => i > 0 && i < plan.end && line.startsWith("status: "));
+  if (planStatusAt.length > 1) throw new SingleActionResetError("PLAN_STATUS", "the base Plan carries more than one top-level status: line");
+  const planCompleted = planStatusAt.length === 1 && planFront[planStatusAt[0][1]] === "status: complete";
+  if (planCompleted) planFront[planStatusAt[0][1]] = "status: active";
+  const planPointed = planFront.slice(1, plan.end).some((line) => line.startsWith("current_action: "));
   pointAt(planFront, plan.end, actionId, false, "the base Plan");
+  if (planCompleted && !planPointed) insertPointerAfter(planFront, plan.end, actionId, "milestone: ", "PLAN_MILESTONE", "the completed base Plan");
   const renderedPlan = [...planFront, ...plan.lines.slice(plan.end + 1)].join("\n");
 
   const project = frontMatter(baseProject, "the base PROJECT.md");
   const projectFront = project.lines.slice(0, project.end + 1);
-  const projectChanged = pointAt(projectFront, project.end, actionId, true, "the base PROJECT.md");
+  const projectPointers = projectFront.slice(1, project.end).filter((line) => line.startsWith("current_action: ")).length;
+  if (projectPointers > 1) throw new SingleActionResetError("CURRENT_ACTION", "the base PROJECT.md does not carry exactly one current_action: line");
+  let projectChanged: boolean;
+  let projectEnd = project.end;
+  if (projectPointers === 0) {
+    // A completed chain leaves nothing current: point at the reopened Action right after active_plan:.
+    insertPointerAfter(projectFront, project.end, actionId, "active_plan: ", "CURRENT_ACTION", "the base PROJECT.md");
+    projectChanged = true;
+    projectEnd += 1;
+  } else projectChanged = pointAt(projectFront, project.end, actionId, true, "the base PROJECT.md");
   let projectUpdatedBefore: string;
-  if (projectChanged) projectUpdatedBefore = bumpDate(projectFront, project.end, resetDate, "the base PROJECT.md");
+  if (projectChanged) projectUpdatedBefore = bumpDate(projectFront, projectEnd, resetDate, "the base PROJECT.md");
   else {
     const dates = projectFront.filter((line) => DATE_LINE.test(line));
     projectUpdatedBefore = dates.length === 1 ? DATE_LINE.exec(dates[0])![1] : "";
