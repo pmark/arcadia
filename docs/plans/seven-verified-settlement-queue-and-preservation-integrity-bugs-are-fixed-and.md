@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and
 project: arcadia
-status: draft
+status: active
 milestone: Seven verified settlement, queue and preservation-integrity bugs are fixed and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -142,6 +142,9 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1160"]
 questions: []
 decisions: []
+current_action: keep-claim-when-passed-attempt-receipt-is-unparseable
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: medium
 ---
 
 # Seven verified settlement, queue and preservation-integrity bugs are fixed and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.

@@ -2316,3 +2316,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Parallel Decision-number allocation race (#1187). The Decision was unanswered and unmerged, so it was renumbered in place; CodeRabbit wording on provider substitution was also verified and fixed.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-seven-bug-plan-2026-10-11
+
+- **Did:** Activated seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and at keep-claim-when-passed-attempt-receipt-is-unparseable.
+- **Result:** Operator-settled Plan transition. Previous Plan add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans remains draft with completion state preserved. Operator instruction in chat, 2026-10-11: 'activate the bug plan', given together with the answer to Decision 0123 (Codex only, gate on, attended first run). No Action content changes; this Ask carries the settle-time --activate. Consequence accepted by the operator: the currently active Plan add-plans-project-route returns to draft with Action completion state unchanged.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans
 project: arcadia
-status: active
+status: draft
 milestone: Add the missing /plans/<project> dashboard route that lists one Project's Plans.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -29,7 +29,6 @@ actions:
     references: ["apps/dashboard/app/plans/[project]/[plan]/page.tsx", "apps/dashboard/app/projects/[id]/plans/page.tsx", "apps/dashboard/app/api/projects/[id]/plans/route.ts", "apps/dashboard/components/plans-list.tsx"]
 questions: []
 decisions: []
-current_action: add-plans-project-route
 recommended_model: claude-sonnet-5-5
 recommended_reasoning_effort: medium
 ---
