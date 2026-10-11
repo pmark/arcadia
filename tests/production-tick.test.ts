@@ -30,6 +30,7 @@ import {
   MECHANICAL_TRANSITIONS,
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
+  SIGN_IN_FAILURE_HOLD_MS,
   type ProductionScope
 } from "../src/production/policy.js";
 import {
@@ -55,6 +56,7 @@ import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
+import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -2186,6 +2188,145 @@ describe("bounded session lifetime", () => {
     expect(resolveSessionTimeLimitMs(db, { time_limit_ms: null })).toBe(PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs);
     expect(resolveSessionTimeLimitMs(db, { time_limit_ms: 7 * MIN })).toBe(7 * MIN);
     db.close();
+  });
+});
+
+describe("a Session that dies on a provider sign-in failure (Issue #1155)", () => {
+  const MIN = 60_000;
+  const tickAt = (fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, offsetMs: number, log?: (line: string) => void) =>
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        ...(log ? { log } : {})
+      })
+    );
+  const projectOf = (result: ReturnType<typeof tickAt>) => result.projects.find((entry) => entry.projectSlug === "test-project")!;
+  const scheduling = (fixture: ReturnType<typeof preparedFixture>) =>
+    withReadOnlyDatabase(fixture.workspace, (db) => getSchedulingProject(db, "test-project"));
+  const blockers = (fixture: ReturnType<typeof preparedFixture>) => withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db));
+  const repairAttempts = (fixture: ReturnType<typeof preparedFixture>) =>
+    withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT action_key, attempts FROM production_repair_attempts").all());
+  const lease = (fixture: ReturnType<typeof preparedFixture>) => withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo));
+
+  /** The tick launches the Session; it then exits nonzero with `resultText` as its terminal result event. */
+  function launchThenExit(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, resultText: string | null, offsetMs = 0) {
+    tickAt(fixture, tmux, offsetMs);
+    const session = lease(fixture)!;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(session.id));
+    if (resultText !== null) {
+      mkdirSync(path.dirname(sessionLogPath(fixture.workspace, session.id)), { recursive: true });
+      writeFileSync(sessionLogPath(fixture.workspace, session.id), [
+        JSON.stringify({ type: "system", subtype: "init" }),
+        JSON.stringify({ type: "result", subtype: "success", is_error: true, result: resultText }),
+        "arcadia: provider exited with status 1"
+      ].join("\n") + "\n");
+    }
+    tmux.live.delete(session.tmux_session_name);
+    return session;
+  }
+  const SIGNED_OUT = "Failed to authenticate: OAuth session expired and could not be refreshed";
+
+  it("spends no failed-Run budget, does not pause the Project and surfaces a durable sign-in blocker with the remedy", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launchThenExit(fixture, tmux, SIGNED_OUT);
+    const log = vi.fn();
+
+    const result = tickAt(fixture, tmux, MIN, log);
+
+    expect(projectOf(result).reconciled).toEqual([{ sessionId: session.id, outcome: "failed_execution" }]);
+    expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null, pausedDecisionId: null });
+    const recorded = blockers(fixture);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      projectSlug: "test-project", code: "provider_sign_in_failed",
+      actionKey: "test-project/define-contract", observedAt: new Date(fixture.now.getTime() + MIN).toISOString()
+    });
+    expect(recorded[0].reason).toContain(session.id);
+    expect(recorded[0].reason).toContain("claude-code-cli");
+    expect(recorded[0].reason).toContain("claude auth login");
+    expect(recorded[0].reason).toContain("claude setup-token");
+    expect(recorded[0].reason).toContain(new Date(fixture.now.getTime() + MIN + SIGN_IN_FAILURE_HOLD_MS).toISOString());
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Provider sign-in failure for test-project.*not counted against the failed-Run budget/));
+
+    // The same projection `arcadia production status` renders.
+    const rendered = renderProductionStatusSuccess({
+      ok: true, command: "production.status", workspace: fixture.workspace,
+      data: {
+        read: { status: "unreadable", reason: "fixture" } as never,
+        display: { state: "off", label: "Off", observedAt: fixture.now.toISOString() },
+        liveAdmissions: 0, admissions: [], baseBranchAdvances: [], launchBlockers: recorded, operatorEscalations: [],
+        offConsequence: "Off.", controlDeadlines: PRODUCTION_CONTROL_DEADLINES
+      },
+      artifacts: [], warnings: []
+    }).join("\n");
+    expect(rendered).toContain("test-project [provider_sign_in_failed]");
+    expect(rendered).toContain("claude auth login");
+  });
+
+  it("launches nothing, reserves no Session and counts no repair attempt inside the hold, then launches again after it", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    launchThenExit(fixture, tmux, SIGNED_OUT);
+    tickAt(fixture, tmux, MIN); // reconciles the exit and records the blocker
+    const recorded = blockers(fixture)[0];
+    expect(tmux.launches).toHaveLength(1);
+
+    for (const offset of [2 * MIN, 5 * MIN, MIN + SIGN_IN_FAILURE_HOLD_MS - 1_000]) {
+      const held = projectOf(tickAt(fixture, tmux, offset));
+      expect(held.launch).toMatchObject({ attempted: false, outcome: "skipped", actionKey: "test-project/define-contract" });
+      expect(held.launch?.reason).toContain(new Date(fixture.now.getTime() + MIN + SIGN_IN_FAILURE_HOLD_MS).toISOString());
+      expect(tmux.launches).toHaveLength(1);
+      expect(lease(fixture)).toBeNull();
+      expect(repairAttempts(fixture)).toEqual([]);
+      expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null });
+      // The hold row is neither cleared nor refreshed by a held tick.
+      expect(blockers(fixture)).toEqual([recorded]);
+    }
+
+    const after = projectOf(tickAt(fixture, tmux, MIN + SIGN_IN_FAILURE_HOLD_MS));
+    expect(after.launch).toMatchObject({ attempted: true, outcome: "launched" });
+    expect(tmux.launches).toHaveLength(2);
+    expect(blockers(fixture)).toEqual([]);
+  });
+
+  it("renews the hold when the relaunched Session dies on the same dead login, still without spending the budget", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    launchThenExit(fixture, tmux, SIGNED_OUT);
+    tickAt(fixture, tmux, MIN);
+    const relaunchAt = MIN + SIGN_IN_FAILURE_HOLD_MS;
+    const second = launchThenExit(fixture, tmux, SIGNED_OUT, relaunchAt);
+    expect(tmux.launches).toHaveLength(2);
+
+    tickAt(fixture, tmux, relaunchAt + MIN);
+    expect(blockers(fixture)[0]).toMatchObject({
+      code: "provider_sign_in_failed", observedAt: new Date(fixture.now.getTime() + relaunchAt + MIN).toISOString()
+    });
+    expect(blockers(fixture)[0].reason).toContain(second.id);
+    expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null });
+    const held = projectOf(tickAt(fixture, tmux, relaunchAt + 2 * MIN));
+    expect(held.launch).toMatchObject({ attempted: false, outcome: "skipped" });
+    expect(tmux.launches).toHaveLength(2);
+  });
+
+  it("still counts any other failed_execution against the failed-Run budget and records no sign-in blocker", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    // A nonzero exit whose log shows no authentication failure.
+    const session = launchThenExit(fixture, tmux, "Prompt is too long");
+
+    const result = tickAt(fixture, tmux, MIN);
+
+    expect(projectOf(result).reconciled).toEqual([{ sessionId: session.id, outcome: "failed_execution" }]);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, session.id))!.reason).not.toContain("sign-in");
+    expect(scheduling(fixture).failedRuns).toBe(1);
+    expect(blockers(fixture)).toEqual([]);
   });
 });
 
