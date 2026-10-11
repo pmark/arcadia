@@ -2,6 +2,8 @@
 set -euo pipefail
 
 DEFAULT_REPO="/Users/pmark/Dev/MR/Arcadia/arcadia"
+# shellcheck source=lib/ready-probe.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/ready-probe.sh"
 ACTION="${1:-restart}"
 REPO_ARG="${2:-$DEFAULT_REPO}"
 
@@ -380,9 +382,10 @@ launch_service() {
 
 wait_for_service() {
   local service="$1"
-  local url pid attempt
+  local url pid attempt=0 start=$SECONDS
   url="$(service_url "$service")"
-  for attempt in $(seq 1 80); do
+  while (( SECONDS - start < READY_DEADLINE )); do
+    attempt=$((attempt + 1))
     pid="$(tracked_pid "$service" 2>/dev/null || true)"
     if [[ -z "$pid" ]]; then
       echo "$service exited before becoming ready." >&2
@@ -393,12 +396,12 @@ wait_for_service() {
       if [[ "$attempt" -ge 6 ]]; then
         return 0
       fi
-    elif curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
+    elif curl -fsS -o /dev/null --max-time "$READY_PROBE_TIMEOUT" "$url" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.5
   done
-  echo "$service timed out during readiness checks." >&2
+  echo "$service did not become ready within ${READY_DEADLINE}s (each probe allowed ${READY_PROBE_TIMEOUT}s)." >&2
   print_logs "$service"
   return 1
 }
@@ -552,8 +555,14 @@ case "$ACTION" in
       wait_for_service "$service"
     done
     # Re-probe HTTP services after all non-HTTP services have survived startup.
-    curl -fsS --max-time 2 "$(service_url intelligence)" >/dev/null
-    curl -fsS --max-time 2 "$(service_url dashboard)" >/dev/null
+    # Retried until a deadline: one slow answer under load is not a failure.
+    for service in intelligence dashboard; do
+      if ! probe_until_ready "$(service_url "$service")" "$READY_RECHECK_DEADLINE"; then
+        echo "$service stopped answering after startup (rechecked for ${READY_RECHECK_DEADLINE}s)." >&2
+        print_logs "$service"
+        exit 1
+      fi
+    done
     STARTED_THIS_ATTEMPT=0
     trap - EXIT INT TERM
     echo "Arcadia services are ready for $REPO"
