@@ -37,16 +37,16 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask admit-from-project-preferences
     clarification: clarified
     confidence: high
-    source: Agent Ask tighten-queue-controls-plan-after-review-2026-10-11
+    source: Agent Ask align-queue-controls-with-decision-0116-2026-10-11
     acceptance_criteria:
-      - Before this Action starts, the operator has answered Decisions 0115 and 0116.
-      - At each admission the tick walks included Projects in preference order (or by share, per Decision 0115), takes the chosen Plan's next ready Action, and skips a Project whose active Plan waits on the operator as Decision 0116 answered, recording one skip reason per skipped Project in a read model the dashboard can query (today src/production/tick.ts records only one launch outcome per tick).
+      - Before this Action starts, the operator has answered Decisions 0115 and 0116 and the Decision amending 0048 and 0054.
+      - At each admission the tick walks included Projects by share and then preference order (Decision 0115), takes the chosen Plan's next ready Action, and when that Plan waits on the operator takes the same Project's next Plan's next ready Action (Decision 0116); a Project with nothing admissible is skipped with one recorded reason, in a read model the dashboard can query (today src/production/tick.ts records only one launch outcome per tick).
       - Each admission writes a lock-in receipt naming the Project, Plan, Action, provider and every skip reason above it; nothing is locked before admission.
-      - With one Session the result equals stack-skip-when-blocked; with more Sessions the same rule fills each free slot, one Session per repository, with no other change.
-      - Tests cover order, skip reasons, the receipt and two slots.
+      - With one Session the result equals the share rule with one slot; with more Sessions the same rule fills each free slot, one Session per repository, with no other change.
+      - Tests cover shares, the next-Plan fallback, skip reasons, the receipt and two slots.
     depends_on: [record-production-project-preferences]
     decisions: []
-    references: ["docs/decisions/0110-decide-what-proves-a-reserve-release-or-reserve-lowering-came-from-the-operator.md", "docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/proposals/portfolio-parallel-execution.md", "src/production/tick.ts", "docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md"]
+    references: ["docs/decisions/0116-decide-what-production-runs-when-a-project-s-active-plan-waits-on-the-operator.md", "docs/proposals/portfolio-parallel-execution.md", "src/production/tick.ts", "docs/decisions/0115-decide-whether-production-shares-session-capacity-across-included-projects-by.md"]
   - id: production-card-queue-controls
     title: The /production Project cards let the operator include or stop a Project, move it to the top and run a different Plan, each stating its consequence.
     status: open
