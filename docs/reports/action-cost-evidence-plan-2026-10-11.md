@@ -4,7 +4,7 @@ Research date: 2026-10-11 UTC (operator request 2026-10-10 America/Los_Angeles).
 
 ## Outcome and Milestone
 
-The operator can inspect each Action's chosen and observed provider/model/effort, authoritative token usage and generated size, and actual or qualified near-exact cost across attempts, delegates, reviews and failures. First Milestone: a read-only CLI rollup backed by durable provider receipts reconciles sanitized billing evidence and exposes missing coverage or attribution. This is the user-confirmed outcome; subscription allocation and live billing access are not silently decided.
+The operator can inspect each Action's chosen and observed provider/model/effort, authoritative token usage and generated size, and actual or qualified near-exact cost across attempts, delegates, reviews and failures. Proposed first Milestone: a read-only CLI rollup backed by durable provider receipts reconciles sanitized billing evidence and exposes missing coverage or attribution. The Outcome reflects the operator's explicit request; the CLI checkpoint is proposed and has not been separately approved. Subscription allocation and live billing access are not silently decided.
 
 ## Staff planning rationale and ownership
 
