@@ -23,6 +23,12 @@ checks. Follow the [installation instructions](.agents/skills/arcadia-github-iss
 for Claude Code, OpenCode and Codex;
 triage does not change the Project pointer or apply GitHub updates.
 
+Field Notes production uses the [evidence-first instruction file](docs/strategy/field-notes-production.md)
+and article/receipt templates. [Decision 0120](docs/decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
+approves automatic site/RSS publication after independent fact-checking;
+the site routes, delivery gate and automatic cadence still need implementation.
+The existing `blog` commands create local scaffolds and operator review items.
+
 Open **Now** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/now> (on this Mac: <http://127.0.0.1:3020/now>). This is the screen to bookmark. It answers one question — how far away is the single thing that matters, and what is the one next move toward it — and refuses to answer any other. The target, the Project that owns it, and the gates that stand between you and it are declared in `NORTH_STAR.md` at the workspace root; edit that file to change what the screen measures. Below the distance, local Intelligence writes a short, specific account of what actually happened this week from the commit subjects in each Project's repository, followed by the share of the week's commits that landed in the target Project. One action is offered at full size, and one fifteen-minute alternative that is still on the target. The same brief is available in the terminal:
 
 ```bash
@@ -357,7 +363,7 @@ Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
 this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 **To-do** (Accept/Reject for Agent Asks, Approve for Decisions, and any
 review items read-only with the command that answers them; the same list as
-`arcadia todo --all`, with stale items folded into a collapsed **Stale** group)
+`arcadia todo --all`, with stale items folded into a collapsed **Done elsewhere** group)
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
@@ -743,6 +749,13 @@ canonical queue -- scheduling class (`interrupt` > `blocker` > `corrective` >
 moves the governed pointer to the first ready Action in that order, using the
 same preview-then-apply transition as `make-next`. Projects are scanned in
 one configured order and the first with runnable work is selected.
+
+Recurring calendar triggers use the existing worker and submit Agent Ask proposals.
+Open **Clock** from the dashboard menu, or visit `/clock`, to see existing recurring schedules, enable/pause them and edit their timing. Timing edits preserve occurrence history and refuse stale changes or unresolved proposals/retries. New timing begins at a future scheduled time; the existing worker still owns proposal intake. This page requires the updated dashboard and CLI build; it does not install or restart the runtime.
+
+See the [scheduler guide](docs/strategy/recurring-scheduler.md) for daily, weekly
+and monthly definitions, Field Notes examples, pause and retry controls.
+Registration starts paused; acceptance and dispatch retain their existing gates.
 
 ```sh
 pnpm arcadia schedule status --workspace "$WORKSPACE"
@@ -3098,7 +3111,11 @@ settled `rejected` (Asks naming each other in a cycle of any length, two or more
 cancel out: no member of the cycle is hidden). A review item is stale
 when its work item is done or its `doc_ref` names an answered (approved or
 rejected) Decision. An open Decision is
-stale when its `action` is done. The default view hides stale items;
+stale when its `action` is done. An Agent Ask, review item or production
+escalation of a `completed` Project is stale (`its Project <slug> is completed`):
+production never ticks a retired Project again, so its escalation cannot clear
+itself. Retire a finished fixture with `arcadia project update <id> --status completed`.
+The default view hides stale items (on `/todo`, in a collapsed **Done elsewhere** group);
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
 

@@ -167,6 +167,7 @@ export interface DecisionApproveData {
  * without writing anything.
  */
 export interface PreparedDecisionAnswer {
+  repoRoot: string;
   relativePath: string;
   absolutePath: string;
   /** Content as it is on disk now, so a caller can restore it after a later failure. */
@@ -178,6 +179,56 @@ export interface PreparedDecisionAnswer {
   /** The answer as recorded — an offered option's exact label when there were options. */
   answer: string;
   decisionId: string | null;
+}
+
+/**
+ * Write a prepared Decision answer and commit exactly that file. Shared by
+ * every path that records an answer (`decision approve`, and the Discord and
+ * /review clarification path) so none leaves `docs/decisions/<n>.md` modified
+ * but uncommitted. On a commit failure the file is restored to its prior bytes
+ * and the failure is thrown, so the tree is never left dirty.
+ */
+export function recordDecisionAnswer(
+  prepared: PreparedDecisionAnswer,
+  options: { source: string; retryHint: string }
+): { receiptId: string | null } {
+  const { repoRoot, relativePath, absolutePath } = prepared;
+  if (tryGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+    throw validationError(
+      "The Project repository is on a detached HEAD, so the Decision answer commit would be unreachable from any branch.",
+      { repoRoot, decisionId: prepared.decisionId }
+    );
+  }
+  const alreadyCommitted =
+    readFileSync(absolutePath, "utf8") === prepared.after &&
+    tryGit(repoRoot, ["ls-files", "--error-unmatch", "--", relativePath]) !== null &&
+    tryGit(repoRoot, ["status", "--porcelain", "--", relativePath]) === "";
+  if (alreadyCommitted) return { receiptId: null };
+
+  writeFileSync(absolutePath, prepared.after, "utf8");
+  const receiptId = `decisionanswer_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
+  const commitMessage = [
+    `chore(arcadia): answer Decision ${prepared.decisionId ?? relativePath}`,
+    "",
+    `- ${relativePath}: recorded the answer.`,
+    "",
+    `Written by \`${options.source}\` (${receiptId}).`
+  ].join("\n");
+  const commitError = commitOnlyPaths(repoRoot, [relativePath], commitMessage);
+  if (commitError) {
+    try {
+      writeFileSync(absolutePath, prepared.before, "utf8");
+    } catch {
+      // Surface the commit failure; it is the useful handoff.
+    }
+    throw validationError("The Decision answer could not be committed; the file was restored.", {
+      decisionId: prepared.decisionId,
+      relativePath,
+      commitError,
+      remedy: `Fix the Git failure (for example a missing user.name/user.email) and ${options.retryHint}.`
+    });
+  }
+  return { receiptId };
 }
 
 /**
@@ -261,7 +312,7 @@ export function prepareDecisionAnswer(
 
   failOnValidationErrors(parseDoc(relativePath, absolutePath, after).errors, "updated");
 
-  return { relativePath, absolutePath, before, after, chosen, answer, decisionId: decisionDoc?.id ?? null };
+  return { repoRoot, relativePath, absolutePath, before, after, chosen, answer, decisionId: decisionDoc?.id ?? null };
 }
 
 export function runDecisionApproveCommand(options: DecisionApproveOptions): CommandSuccess<DecisionApproveData> {
@@ -404,25 +455,10 @@ function applyDecisionApprove(
     // A plain Decision answer commits its own file locally, matching the
     // deferral path's contract: landing a governed record locally is
     // Arcadia's job, publishing it is the operator's (Issue #645).
-    writeFileSync(absolutePath, updatedContent, "utf8");
-
-    const receiptId = `decisionanswer_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
-    const commitMessage = [
-      `chore(arcadia): answer Decision ${prepared.decisionId ?? relativePath}`,
-      "",
-      `- ${relativePath}: recorded the answer.`,
-      "",
-      `Written by \`arcadia decision approve\` (${receiptId}).`
-    ].join("\n");
-    const commitError = commitOnlyPaths(repoRoot, [relativePath], commitMessage);
-    if (commitError) {
-      throw validationError("The Decision answer was written but could not be committed.", {
-        decisionId: prepared.decisionId,
-        relativePath,
-        commitError,
-        remedy: "Fix the Git failure (for example a missing user.name/user.email) and re-run `arcadia decision approve` with the same arguments."
-      });
-    }
+    const { receiptId } = recordDecisionAnswer(prepared, {
+      source: "arcadia decision approve",
+      retryHint: "re-run `arcadia decision approve` with the same arguments"
+    });
 
     return createSuccess({
       command: "decision.approve",

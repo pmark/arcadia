@@ -9,10 +9,14 @@ import {
   runPingSendCommand,
   runPingSentCommand
 } from "../src/commands/ping.js";
+import { formatRequiresReviewNotificationItem } from "../apps/discord-bot/src/formatters/requiresReviewFormatter.js";
+import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
+import { parseTodoKey } from "../apps/discord-bot/src/todoLinks.js";
 import { openDatabase } from "../src/db/connection.js";
 import {
   OPERATOR_PING_HOURLY_CAP,
   OPERATOR_PING_MESSAGE_MAX,
+  ensureOperatorPingTable,
   queueOperatorPing
 } from "../src/ping/operatorPing.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -191,5 +195,126 @@ describe("operator ping delivery", () => {
     const delivered = await drainOperatorPings(cli, config, async () => ({ id: "m" }), () => {});
     expect(delivered).toBe(2);
     expect(recorded).toEqual(["b"]);
+  });
+});
+
+describe("operator ping todo deep links", () => {
+  const DASH = "https://dash.example.ts.net/";
+  const PR = "https://example.com/x/y/pull/1";
+  const base = { id: "p", message: "m", kind: "attention" as const, channel: null, link: null, agent: null, createdAt: "2026-10-10T00:00:00Z" };
+
+  it("stores a validated --todo key and rejects malformed ones", () => {
+    const ws = workspace();
+    const ok = runPingSendCommand({ workspace: ws, message: "Decide 0119", kind: "attention", todo: "decision:arcadia/0119" });
+    expect(ok.data.ping.todoKey).toBe("decision:arcadia/0119");
+    expect(ok.data.warnings).toEqual([]);
+    expect(runPingSendCommand({ workspace: ws, message: "esc", todo: "escalation:auth-preflight:arcadia/act_1" }).data.ping.todoKey)
+      .toBe("escalation:auth-preflight:arcadia/act_1");
+    for (const bad of ["arcadia/0119", "decision:0119", "Decision:arcadia/1", "decision:arc adia/1", "decision:arcadia/"]) {
+      expect(() => runPingSendCommand({ workspace: ws, message: `bad ${bad}`, todo: bad })).toThrow(/--todo/);
+    }
+  });
+
+  it("warns, without failing, for an attention ping with no --todo or --link", () => {
+    const ws = workspace();
+    const bare = runPingSendCommand({ workspace: ws, message: "need you", kind: "attention" });
+    expect(bare.data.warnings?.[0]).toMatch(/--todo/);
+    expect(runPingSendCommand({ workspace: ws, message: "fyi only" }).data.warnings).toEqual([]);
+    expect(runPingSendCommand({ workspace: ws, message: "pr", kind: "attention", link: PR }).data.warnings).toEqual([]);
+  });
+
+  it("adds todo_key to a database created before the column existed", () => {
+    const ws = workspace();
+    const db = openDatabase(ws);
+    try {
+      db.exec("DROP TABLE operator_pings");
+      db.exec(`CREATE TABLE operator_pings (id TEXT PRIMARY KEY, message TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('look', 'fyi', 'attention')), channel TEXT, link TEXT, agent TEXT,
+        status TEXT NOT NULL DEFAULT 'pending', discord_message_id TEXT, created_at TEXT NOT NULL, sent_at TEXT)`);
+      ensureOperatorPingTable(db);
+      ensureOperatorPingTable(db);
+      expect(queueOperatorPing(db, { message: "after migration", todo: "review_item:arcadia/r1" }).ping.todoKey).toBe("review_item:arcadia/r1");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("tolerates a concurrent first open that already added the column", () => {
+    const ws = workspace();
+    const db = openDatabase(ws);
+    try {
+      const realPrepare = db.prepare.bind(db);
+      // Simulate the race: the column check sees no todo_key, but the ALTER finds it already added.
+      db.prepare = ((sql: string) => {
+        if (sql.includes("PRAGMA table_info(operator_pings)")) return { all: () => [] };
+        return realPrepare(sql);
+      }) as typeof db.prepare;
+      expect(() => ensureOperatorPingTable(db)).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("treats the same text and channel with a different --todo as a distinct ping", () => {
+    const ws = workspace();
+    const a = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/1" });
+    const b = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/2" });
+    const c = runPingSendCommand({ workspace: ws, message: "Look", todo: "decision:arcadia/2" });
+    expect(b.data.deduplicated).toBe(false);
+    expect(b.data.ping.id).not.toBe(a.data.ping.id);
+    expect(c.data.deduplicated).toBe(true);
+  });
+
+  it("appends the item link outside the message cap", () => {
+    const long = "x".repeat(OPERATOR_PING_MESSAGE_MAX);
+    const text = operatorPingMessage({ ...base, message: long, todoKey: "decision:arcadia/0119" }, null, DASH);
+    expect(text).toContain(long);
+    expect(text).toContain("https://dash.example.ts.net/todo/decision/arcadia/0119");
+  });
+
+  it("keeps an explicit link and adds the todo link; falls back to /todo only when link-less", () => {
+    const both = operatorPingMessage({ ...base, link: PR, todoKey: "pull_request:arcadia/1" }, null, DASH);
+    expect(both).toContain(PR);
+    expect(both).toContain("https://dash.example.ts.net/todo/pull_request/arcadia/1");
+    expect(operatorPingMessage(base, null, DASH)).toContain("https://dash.example.ts.net/todo\n");
+    expect(operatorPingMessage({ ...base, kind: "look" }, null, DASH)).toContain("https://dash.example.ts.net/todo\n");
+    expect(operatorPingMessage({ ...base, kind: "fyi" }, null, DASH)).not.toContain("/todo");
+    expect(operatorPingMessage({ ...base, link: "https://x.test/a" }, null, DASH)).not.toContain("dash.example");
+  });
+
+  it("omits links when no dashboard URL is configured", () => {
+    expect(operatorPingMessage({ ...base, todoKey: "decision:arcadia/0119" })).not.toContain("/todo");
+    expect(operatorPingMessage(base, null, "")).not.toContain("/todo");
+  });
+
+  it("parses keys with a sub-kind and plan-action ids", () => {
+    expect(parseTodoKey("escalation:auth:arcadia/act_1")).toEqual({ kind: "escalation:auth", project: "arcadia", id: "act_1" });
+    expect(parseTodoKey("plan_action:arcadia/p#A1")).toEqual({ kind: "plan_action", project: "arcadia", id: "p#A1" });
+    expect(parseTodoKey("nonsense")).toBeNull();
+  });
+
+  const review = {
+    id: "ri_1", slug: "R1", workItemId: null, project: "Arcadia", projectSlug: "arcadia", goal: null,
+    decisionNeeded: "Pick one", context: "", recommendation: null, options: ["approve"], sourceInput: "", resultingAskRequestId: null
+  };
+
+  it("links every requires-review intent to its /todo item, and falls back without a project", () => {
+    expect(formatRequiresReviewNotificationItem({ ...review, resolvedIntent: "ActionClarification" }, DASH))
+      .toContain("Open in To-do: https://dash.example.ts.net/todo/review_item/arcadia/ri_1");
+    expect(formatRequiresReviewNotificationItem({ ...review, resolvedIntent: "X", docRef: "decision/0119-slug" }, DASH))
+      .toContain("/todo/decision/arcadia/0119-slug");
+    expect(formatRequiresReviewNotificationItem({ ...review, projectSlug: null, resolvedIntent: "X" }, DASH))
+      .toContain("Open in To-do: https://dash.example.ts.net/todo");
+    expect(formatRequiresReviewNotificationItem({ ...review, resolvedIntent: "X" })).not.toContain("To-do");
+  });
+
+  it("links an Agent Ask settlement that queued follow-up Actions", () => {
+    const settled = {
+      settlementId: "s1", requestId: "req_1", projectSlug: "arcadia", disposition: "accepted" as const, intent: "propose",
+      effects: [], queueActionKey: "A1", queueActionKeys: ["A1"], queuePosition: 0, nextActionKey: "A1", createdAt: "2026-10-10T00:00:00Z"
+    };
+    expect(agentAskSettlementMessage(settled, DASH)).toContain("Open in To-do: https://dash.example.ts.net/todo/agent_ask/arcadia/req_1");
+    expect(agentAskSettlementMessage({ ...settled, queueActionKeys: [] }, DASH)).not.toContain("To-do");
+    expect(agentAskSettlementMessage(settled)).not.toContain("To-do");
   });
 });

@@ -69,6 +69,12 @@ export default function OperatorActionsPage() {
     }
   }, []);
 
+  // A deep link (/actions?q=<action id>) opens with the search prefilled, so a ping can point at one button.
+  useEffect(() => {
+    const linked = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (linked) setQuery(linked.slice(0, 200));
+  }, []);
+
   useEffect(() => {
     void refresh();
     const interval = setInterval(() => void refresh(), 3_000);

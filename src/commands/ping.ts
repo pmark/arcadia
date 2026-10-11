@@ -16,6 +16,7 @@ export interface PingSendOptions {
   kind?: string;
   channel?: string;
   link?: string;
+  todo?: string;
   agent?: string;
 }
 
@@ -26,12 +27,13 @@ export function runPingSendCommand(options: PingSendOptions): CommandSuccess<Que
 }
 
 export function renderPingSendSuccess(response: CommandSuccess<QueuedOperatorPing>): string[] {
-  const { ping, deduplicated } = response.data;
+  const { ping, deduplicated, warnings } = response.data;
   const destination = ping.channel ? `channel "${ping.channel}"` : "the default channel";
   return [
     deduplicated
       ? `Ping ${ping.id} already queued for ${destination} within the last 10 minutes; not queued again.`
-      : `Ping ${ping.id} queued for ${destination}. The Discord bot delivers it on its next poll.`
+      : `Ping ${ping.id} queued for ${destination}. The Discord bot delivers it on its next poll.`,
+    ...(warnings ?? []).map((warning) => `Warning: ${warning}`)
   ];
 }
 

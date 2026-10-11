@@ -24,3 +24,56 @@ export interface ProjectPlansResponse {
   project: { slug: string; name: string; activePlan: string | null } | null;
   plans: PlanRow[];
 }
+
+/** One Action of a Plan, as `arcadia plans --plan <slug> --all` reports it. */
+export interface PlanProgressAction {
+  /** `<project>/<actionId>`. */
+  key: string;
+  /** The Plan document's recorded status. */
+  status: string;
+  dependsOn: string[];
+  title: string;
+}
+
+export interface PlanProgressEntry {
+  key: string;
+  title: string;
+  status: string;
+  /** Unfinished dependencies still ahead of this Action. */
+  waitingOn: string[];
+}
+
+/** Mirrors `PlanProgressData` in `src/commands/plans.ts`. */
+export interface PlanProgressData {
+  schema: string;
+  source: { planSlug: string; planPath: string; updated: string };
+  counts: { open: number; in_progress: number; done: number; blocked: number; deferred: number; total: number };
+  isActivePlan: boolean;
+  current: (PlanProgressEntry & { basis: string }) | null;
+  currentNote: string | null;
+  next: PlanProgressEntry[];
+  blocked: Array<PlanProgressEntry & { reason: string }>;
+  actions: PlanProgressAction[];
+  note: string;
+}
+
+/** `/api/plans`: every Project's plans, each Project read on its own so one failure stays local. */
+export interface AllPlansResponse {
+  generatedAt: string;
+  projects: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    activePlan: string | null;
+    plans: PlanRow[] | null;
+    error: string | null;
+  }>;
+}
+
+/** `/api/plans/<project>/<plan>`: one Plan with every Action. */
+export interface PlanDetailResponse {
+  project: { id: string; slug: string; name: string };
+  plan: PlanRow | null;
+  progress: PlanProgressData;
+}

@@ -1,0 +1,125 @@
+{
+  "schema": "action-cost-research-consultation-evidence-v1",
+  "collector": "Codex repository-aware coordinator; Opus conceptual specialist only",
+  "cliVersion": "2.1.267 (Claude Code), observed after execution",
+  "argv": [
+    "claude",
+    "--safe-mode",
+    "--print",
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "plan",
+    "--no-session-persistence",
+    "--model",
+    "opus",
+    "--effort",
+    "high",
+    "--tools",
+    ""
+  ],
+  "cwd": "/tmp",
+  "privacyScope": "Generic requirements only; safe-mode and no tools; no repository/private context, account data or transcript export",
+  "requested": {
+    "provider": "claude-code",
+    "model": "opus",
+    "effort": "high"
+  },
+  "observed": {
+    "modelIds": [
+      "claude-haiku-4-5-20251001",
+      "claude-opus-5"
+    ],
+    "effort": null,
+    "effortUnavailableReason": "No effort value in returned usage",
+    "sessionId": "5ec5bd00-67b9-493f-9a2c-b6e0f9c72ada"
+  },
+  "exitCode": 0,
+  "isError": false,
+  "subtype": "success",
+  "numTurns": 1,
+  "permissionDenials": [],
+  "providerReportedDurationMs": 204295,
+  "providerReportedApiDurationMs": 206135,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 5270,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 14786,
+    "output_tokens_details": {
+      "thinking_tokens": 7211
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 5270,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 14786,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 5270,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5270
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1392,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001472,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5": {
+      "inputTokens": 2,
+      "outputTokens": 14786,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 5270,
+      "webSearchRequests": 0,
+      "costUSD": 0.42236000000000007,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 7211,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "providerReportedTotalCostUsd": 0.42383200000000004,
+  "costBasis": "provider-reported client-side list-price estimate, not invoice or subscription charge",
+  "scope": "One shared conceptual consultation for clock UI and Action economics, unallocated/shared overhead; not uniquely assigned to any governed Action",
+  "coverage": "modelUsage parent total includes auxiliary model usage; do not add model subtotals again; usage describes main turn",
+  "generatedSize": {
+    "resultUtf8Bytes": 20083,
+    "resultUnicodeCodepoints": 19918,
+    "resultSha256": "d2050b4c00009086eb733ac26e02ed2374bb5f71dde23031a04d2fc8779f6ee9",
+    "providerOutputTokensAreDistinct": true
+  },
+  "source": {
+    "briefSha256": "ff2b8b5d97bd5d555e7804dc132fd7520ed525c8f438d811b246c761e0ea1e64",
+    "briefBytes": 2538,
+    "rawResultSha256": "f589a17ffa0b88dea9f9772f0c4da72ca945e4eab229530dafbe24b07a26c0c5",
+    "rawResultBytes": 22503,
+    "stderrBytes": 0,
+    "rawBodiesLocation": "Session scratch only; this artifact preserves safe counters, not prompt/result bodies"
+  }
+}

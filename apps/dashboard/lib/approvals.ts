@@ -1,4 +1,5 @@
-import type { AgentAskPendingItem, OpenDecisionItem, OperatorTodoItem } from "./arcadia-cli";
+import { launchHrefOf } from "./launch-link";
+import type { AgentAskEligibility, AgentAskPendingItem, OpenDecisionItem, OperatorTodoItem } from "./arcadia-cli";
 
 export type ApprovalOption = { label: string; consequence: string; recommended: boolean };
 
@@ -33,13 +34,63 @@ export interface Approval {
   answerVia: string[];
   /** What raised it, as `arcadia todo` records it (a review_item's intent, a Decision's plan/action, an Agent Ask's request); null when the source records none. */
   origin: string | null;
+  /** `<kind>:<project>/<id>`: the same key `arcadia todo` uses, stable across polls and unique across Projects. */
+  todoKey: string;
+  /** The deep link to this one item, `/todo/<kind>/<project>/<id>`; the target of Discord pings. */
+  href: string;
+  /** Escalations about one Action: the `/production?launch=<project>/<action>` link that opens its Launch dialog (the operator still confirms there); null otherwise. */
+  launchHref?: string | null;
+  /** For an Agent Ask, the request id it was submitted under; null otherwise. */
+  requestId: string | null;
+  /** Other ids a link may address this item by: a Decision's doc slug, an Agent Ask's request id. */
+  aliases: string[];
+  /**
+   * For an Agent Ask: true/false when the dry-run settle preview said accepting would/would not apply, null when it was
+   * not evaluated (so no claim is made). Always null for other kinds.
+   */
+  acceptable: boolean | null;
+  /** Why accepting would not apply (the preview's own refusal); null unless `acceptable` is false. */
+  acceptWhy: string | null;
+  /** A build-packet Decision (resolved intent CodexBuildPacketApproval): approved with `review approve --no-execute`, never executed from here. */
+  buildPacket: boolean;
+}
+
+/** The resolved intent of a build-packet approval review item. */
+export const BUILD_PACKET_INTENT = "CodexBuildPacketApproval";
+
+/** True when the link target names this item by its key or by one of its aliases (same kind and Project). */
+export function matchesTodoTarget(approval: Approval, target: { kind: string; project: string; id: string; todoKey: string }): boolean {
+  return approval.todoKey === target.todoKey ||
+    (approval.kind === target.kind && approval.project === target.project && approval.aliases.includes(target.id));
 }
 
 export const NO_MODEL_COST = "Deterministic — a CLI write, no model call.";
 const READ_ONLY_COST = "Read-only here — answer it with the command shown.";
 
-export function todoKeyOf(kind: "decision" | "agent_ask", project: string, id: string): string {
+export function todoKeyOf(kind: string, project: string, id: string): string {
   return `${kind}:${project || "unknown"}/${id}`;
+}
+
+/** The deep link for one item. Segments are percent-encoded; the page decodes them, so an id containing `/` still round-trips. */
+export function todoHrefOf(kind: string, project: string, id: string): string {
+  return `/todo/${[kind, project || "unknown", id].map(encodeURIComponent).join("/")}`;
+}
+
+/**
+ * Reads `/todo/<kind>/<project>/<id…>` path segments back into a to-do key.
+ * Null when the shape is wrong (a kind that is not a lowercase word with at most one `:<sub>` part, e.g. `escalation:auth`, or a
+ * missing project or id), which the deep-link page reports as "not found".
+ */
+export function parseTodoPath(kind: string | undefined, rest: string[] | undefined): { kind: string; project: string; id: string; todoKey: string } | null {
+  const decode = (value: string) => {
+    try { return decodeURIComponent(value); } catch { return value; }
+  };
+  const parts = (rest ?? []).map(decode);
+  const k = kind ? decode(kind) : "";
+  if (!/^[a-z][a-z0-9_]*(:[a-z0-9][a-z0-9_-]*)?$/.test(k) || parts.length < 2 || parts.some((part) => part === "")) return null;
+  const [project, ...idParts] = parts;
+  const id = idParts.join("/");
+  return { kind: k, project, id, todoKey: todoKeyOf(k, project, id) };
 }
 
 function toAgentAskApproval(item: AgentAskPendingItem): Approval {
@@ -60,7 +111,14 @@ function toAgentAskApproval(item: AgentAskPendingItem): Approval {
     staleReason: null,
     answer: null,
     answerVia: [],
-    origin: null
+    origin: null,
+    todoKey: todoKeyOf("agent_ask", item.project, item.proposalId),
+    href: todoHrefOf("agent_ask", item.project, item.proposalId),
+    requestId: item.requestId ?? null,
+    aliases: item.requestId ? [item.requestId] : [],
+    acceptable: null,
+    acceptWhy: null,
+    buildPacket: false
   };
 }
 
@@ -82,7 +140,14 @@ function toDecisionApproval(item: OpenDecisionItem): Approval {
     staleReason: null,
     answer: null,
     answerVia: [],
-    origin: null
+    origin: null,
+    todoKey: todoKeyOf("decision", item.projectSlug, item.id),
+    href: todoHrefOf("decision", item.projectSlug, item.id),
+    requestId: null,
+    aliases: item.slug ? [item.slug] : [],
+    acceptable: null,
+    acceptWhy: null,
+    buildPacket: false
   };
 }
 
@@ -98,9 +163,13 @@ function evidenceLines(item: OperatorTodoItem): string[] {
 }
 
 function toReadOnlyApproval(item: OperatorTodoItem): Approval {
+  const id = idOfTodo(item);
+  // A build packet is the one review item the dashboard can answer: approving it never executes anything
+  // (`review approve --no-execute`), so the control is safe to put on a phone.
+  const buildPacket = item.kind === "review_item" && item.origin === BUILD_PACKET_INTENT && !item.staleReason;
   return {
     kind: item.kind,
-    id: idOfTodo(item),
+    id,
     project: item.project,
     title: item.title,
     detail: null,
@@ -108,16 +177,29 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     options: item.options ?? [],
     evidence: [],
     sourceEvidence: evidenceLines(item),
-    cost: READ_ONLY_COST,
+    cost: buildPacket ? "Deterministic — approving records the Decision; no execution starts." : READ_ONLY_COST,
     createdAt: item.createdAt,
-    readOnly: true,
+    readOnly: !buildPacket,
     blocking: item.blocking,
     staleReason: item.staleReason ?? null,
     answer: item.answer,
     // A read-only row has no dashboard control, so a dashboard path `arcadia todo` lists for it is not offered here.
     answerVia: (item.answerVia ?? []).filter((line) => !line.startsWith("Dashboard:")),
-    origin: item.origin ?? null
+    origin: item.origin ?? null,
+    todoKey: todoKeyOf(item.kind, item.project, id),
+    href: todoHrefOf(item.kind, item.project, id),
+    launchHref: item.kind.startsWith("escalation") ? launchHrefOf(`${item.project}/${id}`) : null,
+    requestId: null,
+    aliases: [],
+    acceptable: null,
+    acceptWhy: null,
+    buildPacket
   };
+}
+
+/** Blocking rows lead; then Decisions, then Agent Asks, then everything else. */
+function kindRank(kind: string): number {
+  return kind === "decision" ? 0 : kind === "agent_ask" ? 1 : 2;
 }
 
 export interface ApprovalSources {
@@ -128,6 +210,8 @@ export interface ApprovalSources {
   todo: { items: OperatorTodoItem[]; unavailable: string[] } | null;
   loadError?: string;
   todoError?: string;
+  /** Per proposal id, from the dry-run settle preview; an Ask absent from it was not evaluated. */
+  eligibility?: Map<string, AgentAskEligibility>;
 }
 
 export interface ApprovalList {
@@ -149,7 +233,15 @@ export interface ApprovalList {
  */
 export function buildApprovals(sources: ApprovalSources): ApprovalList {
   const legacy: Approval[] = [
-    ...(sources.asks ?? []).map(toAgentAskApproval),
+    ...(sources.asks ?? []).map((item) => {
+      const row = toAgentAskApproval(item);
+      const verdict = sources.eligibility?.get(item.proposalId);
+      if (verdict) {
+        row.acceptable = verdict.acceptable;
+        row.acceptWhy = verdict.acceptable ? null : verdict.why;
+      }
+      return row;
+    }),
     ...(sources.decisions ?? []).map(toDecisionApproval)
   ];
   const notes: string[] = [];
@@ -163,7 +255,7 @@ export function buildApprovals(sources: ApprovalSources): ApprovalList {
     const byKey = new Map(todo.items.map((item) => [item.key, item]));
     const claimed = new Set<string>();
     for (const row of legacy) {
-      const key = todoKeyOf(row.kind as "decision" | "agent_ask", row.project, row.id);
+      const key = row.todoKey;
       const match = byKey.get(key);
       if (!match) continue;
       claimed.add(key);
@@ -185,7 +277,13 @@ export function buildApprovals(sources: ApprovalSources): ApprovalList {
   }
 
   const approvals = legacy.sort(
-    (a, b) => Number(b.blocking) - Number(a.blocking) || Number(Boolean(a.staleReason)) - Number(Boolean(b.staleReason)) || b.createdAt.localeCompare(a.createdAt)
+    (a, b) =>
+      Number(b.blocking) - Number(a.blocking) ||
+      Number(Boolean(a.staleReason)) - Number(Boolean(b.staleReason)) ||
+      // Asks whose accept would not apply sit below everything actionable.
+      Number(a.acceptable === false) - Number(b.acceptable === false) ||
+      kindRank(a.kind) - kindRank(b.kind) ||
+      b.createdAt.localeCompare(a.createdAt)
   );
   return { approvals, note: notes.length > 0 ? notes.join(" ") : null, source: todo ? "todo" : "fallback" };
 }

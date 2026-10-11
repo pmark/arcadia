@@ -1,0 +1,19 @@
+{
+  "schema": "arcadia-recurring-schedule-v1",
+  "project": "arcadia",
+  "timezone": "America/Los_Angeles",
+  "time": "09:00",
+  "acceptance": [
+    "Follow docs/strategy/field-notes-production.md and Decision 0120.",
+    "Skip with a receipt if there is no eligible new evidence; cadence is a ceiling.",
+    "Every factual claim has a primary-source receipt; an independent reviewer validates the package.",
+    "Provide the AMC title, slug, summary, search intent and internal links; preserve the What is not done section.",
+    "Use the last confirmed publication cutoff for collection; an unpublished package never advances it.",
+    "Submit the content package through the existing governed review path; this proposal grants no publication authority."
+  ],
+  "id": "field-notes-ship",
+  "cadence": "weekly",
+  "weekday": 1,
+  "starts_at": "2026-10-12T16:00:00.000Z",
+  "desired_result": "Prepare at most one AMC Field Notes ship note for the completed week {{period_start}} to {{period_end}}, due {{due_at}}. Read the existing production instruction file and publication receipts. Reuse any pending package. Collect only new shipped work from the last confirmed cutoff through {{period_end}}; capture a question if the first-run collection baseline is missing. Skip empty evidence before model work. Do not publish."
+}

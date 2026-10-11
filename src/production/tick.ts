@@ -18,7 +18,7 @@ import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBran
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -1692,7 +1692,22 @@ export function runManagedProductionTick(
           observeReconcileSuccess(alertCtx);
           observeStall(alertCtx, { session: null, stalled: false, tmux });
         });
-        if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
+        if (result.receipt.outcome === "failed_execution" && result.receipt.reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX)) {
+          // A dead login is not a defect in the work: it spends no failed-Run
+          // budget (so it cannot pause the Project or open a Decision) and is
+          // surfaced as a durable launch blocker instead (Issue #1155). The
+          // preflight cannot see an unrefreshable credential, so the blocker
+          // also holds this Project's launches for SIGN_IN_FAILURE_HOLD_MS.
+          const holdEnd = new Date(now.getTime() + SIGN_IN_FAILURE_HOLD_MS);
+          recordLaunchBlocker(db, {
+            projectSlug: project.slug,
+            code: PROVIDER_SIGN_IN_FAILED_CODE,
+            reason: providerSignInFailureBlockerReason({ sessionId: lease.id, provider: lease.provider, at: now, holdEnd, receiptReason: result.receipt.reason }),
+            actionKey: `${project.slug}/${lease.action_id}`,
+            at: now
+          });
+          log(`Provider sign-in failure for ${project.slug} (Session ${lease.id}, ${lease.provider}); not counted against the failed-Run budget. Launches held until ${holdEnd.toISOString()}.`);
+        } else if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
         }
@@ -1901,6 +1916,23 @@ function attemptProjectLaunch(
   // finished; drop any dependency-unresolved bookkeeping left from an earlier
   // tick rather than waiting for it to be pruned as some other Action's.
   clearDependencyUnresolvedSighting(db, actionKey);
+
+  // Hold after a Session died on a provider sign-in failure (Issue #1155). The
+  // launch preflight cannot see an unrefreshable credential, so the durable
+  // blocker recorded at reconciliation is also this hold: nothing is
+  // previewed, reserved, counted as a repair attempt or cleared until it
+  // lapses. This sits before auto-settle, whose success clears the Project's
+  // launch blocker and would otherwise wipe the hold row. Past the hold the
+  // launch is attempted again; its success (or a confirmed sign-in) clears the
+  // blocker, and another sign-in failure re-records it with a fresh hold.
+  const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
+  if (signInHold) {
+    const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a Session launched now would die on the same dead login. Sign in again on this worker host.`;
+    if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
+      input.log(`Launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
+    }
+    return { attempted: false, outcome: "skipped", reason, actionKey };
+  }
 
   // A drafted `complete` Agent Ask already covering this Action's evidence
   // means a previous session finished the work and either ended, or was
@@ -2387,6 +2419,36 @@ export function listRecentBaseBranchAdvances(db: Database.Database, limit = 10):
     });
   }
   return records;
+}
+
+/** The launch-blocker code a provider sign-in failure exit records; it doubles as the hold marker. */
+const PROVIDER_SIGN_IN_FAILED_CODE = "provider_sign_in_failed";
+
+/**
+ * The durable, operator-readable reason for a sign-in failure exit: names the
+ * provider, the Session, when it happened, the remedy and when the hold ends.
+ * The receipt reason already carries the Claude Code remedy; a provider whose
+ * receipt does not gets a generic one rather than none.
+ */
+function providerSignInFailureBlockerReason(input: { sessionId: string; provider: string; at: Date; holdEnd: Date; receiptReason: string }): string {
+  const remedy = input.receiptReason.includes("Sign in to ")
+    ? ""
+    : ` Sign in to ${input.provider} again on this worker host${input.provider.startsWith("codex") ? ' (run "codex login")' : ""}, then retry.`;
+  return `Session ${input.sessionId} (${input.provider}) exited on a sign-in failure at ${input.at.toISOString()}. ${input.receiptReason}${remedy} `
+    + `Launches for this Project are held until ${input.holdEnd.toISOString()}, then retried once; a further sign-in failure renews the hold.`;
+}
+
+/** The Project's sign-in failure hold if it is still running at `now`; null when none or lapsed. */
+function activeSignInFailureHold(db: Database.Database, projectSlug: string, now: Date): { until: Date; observedAt: string } | null {
+  ensureProductionLaunchBlockersTable(db);
+  const row = db
+    .prepare("SELECT code, observed_at FROM production_launch_blockers WHERE project_slug = ?")
+    .get(projectSlug) as { code: string; observed_at: string } | undefined;
+  if (!row || row.code !== PROVIDER_SIGN_IN_FAILED_CODE) return null;
+  const observed = Date.parse(row.observed_at);
+  if (!Number.isFinite(observed)) return null;
+  const until = observed + SIGN_IN_FAILURE_HOLD_MS;
+  return now.getTime() < until ? { until: new Date(until), observedAt: row.observed_at } : null;
 }
 
 export interface LaunchBlockerRecord {

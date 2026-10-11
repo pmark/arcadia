@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -1053,9 +1054,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--channel <alias>", "Configured Discord channel alias (DISCORD_PING_CHANNELS); default channel when omitted")
     .option("--kind <kind>", "look | fyi | attention", "fyi")
     .option("--link <url>", "An http(s) URL to open, such as a dashboard page or a PR")
+    .option("--todo <key>", "The /todo item this is about, as <kind>:<project>/<id> (the key `arcadia todo` prints); the Discord message links straight to it")
     .option("--agent <name>", "Who is pinging, shown in the message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; agent?: string; json?: boolean }) =>
+  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }) =>
     runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" ") }), renderPingSendSuccess)
   );
   addJsonOption(ping.command("pending")
@@ -1120,7 +1122,31 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
 
-  const schedule = program.command("schedule").description("Production scheduling: per-Project queues by tier, the GitHub board projection, and discovery");
+  const schedule = program.command("schedule").description("Project work priority, GitHub projection, discovery, and recurring calendar triggers");
+  for (const command of ["register", "recurring", "enable", "pause", "tick", "retry", "edit"] as const) {
+    const descriptions = {
+      register: "Register a recurring JSON definition, initially paused",
+      recurring: "Read recurring schedules, next times and occurrence receipts",
+      enable: "Enable a registered recurring proposal trigger",
+      pause: "Pause a recurring trigger without deleting its receipts",
+      tick: "Submit due recurring Action proposals without approving or executing them",
+      retry: "Reset the retry budget for a failed occurrence",
+      edit: "Change recurring timing with a fingerprint, preserving its receipts"
+    };
+    const subcommand = schedule.command(command).description(descriptions[command]);
+    if (["register", "edit"].includes(command)) subcommand.requiredOption("--file <path>", "Schedule JSON definition");
+    if (["enable", "pause", "retry", "edit"].includes(command)) subcommand.argument("<id>", "Recurring schedule id");
+    if (["enable", "pause"].includes(command)) subcommand.option("--expected <fingerprint>", "Refuse a stale schedule change");
+    if (command === "retry") subcommand.requiredOption("--occurrence <date>", "Failed occurrence date YYYY-MM-DD");
+    addJsonOption(subcommand.option("--workspace <path>", "Workspace path", defaultWorkspace()));
+    if (["enable", "pause", "retry", "edit"].includes(command)) {
+      subcommand.action((id: string, options: { workspace: string; occurrence?: string; file?: string; expected?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, { ...options, id }), renderRecurringScheduleSuccess));
+    } else {
+      subcommand.action((options: { workspace: string; file?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, options), renderRecurringScheduleSuccess));
+    }
+  }
   addJsonOption(
     schedule
       .command("status")
@@ -3466,12 +3492,25 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
       .option("--answer <text>", "Answer to a clarification Decision (required for those; no executor runs)")
       .option("--clarify", "After a clarification answer is recorded, run `clarify --work <id> --apply` once")
+      .option(
+        "--fixture-standing",
+        "Agent path (Decision 0119, expires 2026-10-18): approve ONLY a build-packet Decision of a registered disposable fixture Project, with no execution and no follow-up Decision. Verifies Decision 0119 on GitHub main; refused for Arcadia's own repository, any other Project, planning runs and inside an Arcadia Session. Needs --agent-identity."
+      )
+      .option("--agent-identity <name>", "With --fixture-standing: the invoking agent, recorded in the approval receipt")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; clarify?: boolean; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; clarify?: boolean; fixtureStanding?: boolean; agentIdentity?: string; json?: boolean }) =>
     runCliAction(
       "review.approve",
       reviewOptionsFromArgv(options),
-      () => runReviewApproveWithClarify({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer, clarify: options.clarify }),
+      () => {
+        if (options.agentIdentity && !options.fixtureStanding) {
+          throw validationError("--agent-identity applies only with --fixture-standing.", {});
+        }
+        if (options.fixtureStanding && options.clarify) {
+          throw validationError("--fixture-standing cannot be combined with --clarify.", {});
+        }
+        return runReviewApproveWithClarify({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer, clarify: options.clarify, fixtureStanding: options.fixtureStanding, agentIdentity: options.agentIdentity });
+      },
       renderReviewApproveWithClarifySuccess
     )
   );
@@ -5299,7 +5338,7 @@ function commandNameFromArgv(argv: string[]): string {
     return `production.${second}`;
   }
 
-  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume"].includes(second ?? "")) {
+  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume", "register", "recurring", "enable", "pause", "tick", "retry", "edit"].includes(second ?? "")) {
     return `schedule.${second}`;
   }
 

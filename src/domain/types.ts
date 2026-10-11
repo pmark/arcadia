@@ -477,6 +477,7 @@ export interface AskRequestSummary extends AskRequest {
 
 export interface ReviewItemSummary extends ReviewItem {
   project_name: string | null;
+  project_slug?: string | null;
   project_goal: string | null;
   project_outcome: string | null;
   work_item_title: string | null;

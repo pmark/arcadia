@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const loaders = vi.hoisted(() => ({
   loadPendingAgentAsks: vi.fn(),
   loadOpenDecisions: vi.fn(),
-  loadOperatorTodo: vi.fn()
+  loadOperatorTodo: vi.fn(),
+  peekAgentAskEligibility: vi.fn()
 }));
 
 vi.mock("../../../lib/arcadia-cli", async () => {
@@ -12,6 +13,7 @@ vi.mock("../../../lib/arcadia-cli", async () => {
 });
 
 import { GET } from "./route";
+import { invalidateApprovalsCache } from "../../../lib/approvals-feed";
 
 const option = { label: "Approve it", consequence: "Ships.", recommended: true };
 const success = <T>(data: T) => ({ ok: true, command: "x", workspace: "w", data, artifacts: [], warnings: [] });
@@ -30,6 +32,9 @@ const review = {
 };
 
 beforeEach(() => {
+  invalidateApprovalsCache();
+  vi.clearAllMocks();
+  loaders.peekAgentAskEligibility.mockReturnValue(new Map());
   loaders.loadPendingAgentAsks.mockResolvedValue(success({ pending: [ask] }));
   loaders.loadOpenDecisions.mockResolvedValue(success({ decisions: [decision] }));
   loaders.loadOperatorTodo.mockResolvedValue(success({ schema: "arcadia-todo-v1", view: "all", items: [review], unavailable: [] }));
@@ -42,8 +47,8 @@ describe("GET /api/approvals", () => {
     expect(body.note).toBeNull();
     expect(body.approvals.map((a: { kind: string; readOnly: boolean }) => [a.kind, a.readOnly])).toEqual([
       ["review_item", true],
-      ["agent_ask", false],
-      ["decision", false]
+      ["decision", false],
+      ["agent_ask", false]
     ]);
     expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(1);
   });
@@ -82,5 +87,27 @@ describe("GET /api/approvals", () => {
     expect(byKind.decision).toMatchObject({ readOnly: false, options: [option] });
     expect(byKind.agent_ask).toMatchObject({ readOnly: true, answer: "arcadia agent-ask settle --proposal p1" });
     expect(body.approvals).toHaveLength(3);
+  });
+
+  it("marks an Ask whose accept would not apply, and lists it below the actionable rows", async () => {
+    loaders.peekAgentAskEligibility.mockReturnValue(new Map([["p1", { acceptable: false, why: "no resolvable active managed Plan" }]]));
+    const body = await (await GET()).json();
+    const rows = body.approvals as Array<{ kind: string; acceptable: boolean | null; acceptWhy: string | null }>;
+    expect(rows.at(-1)).toMatchObject({ kind: "agent_ask", acceptable: false, acceptWhy: "no resolvable active managed Plan" });
+    expect(loaders.peekAgentAskEligibility).toHaveBeenCalledWith([expect.objectContaining({ proposalId: "p1" })]);
+  });
+
+  it("lists everything with no eligibility claim when nothing is cached yet", async () => {
+    const body = await (await GET()).json();
+    expect(body.approvals.find((a: { kind: string }) => a.kind === "agent_ask")).toMatchObject({ acceptable: null, acceptWhy: null });
+  });
+
+  it("serves repeat reads from the shared cache and rebuilds after an invalidation", async () => {
+    await GET();
+    await GET();
+    expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(1);
+    invalidateApprovalsCache();
+    await GET();
+    expect(loaders.loadOperatorTodo).toHaveBeenCalledTimes(2);
   });
 });

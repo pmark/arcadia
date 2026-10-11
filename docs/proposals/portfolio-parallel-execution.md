@@ -305,8 +305,8 @@ Three preferences carry the strategy:
   blocked Project's turn goes.
 - **How much.** Per provider window, a reserve kept from agents. A Session
   starts only while projected use at the window's reset stays at or below
-  100% minus the reserve (Decisions 0103 and 0111, open). Tokens are counted
-  per Session from the providers' local logs (Claude Code session JSONL
+  100% minus the reserve (Decision 0103: percent of window; Decision 0111:
+  a 20% reserve). Tokens are counted per Session from the providers' local logs (Claude Code session JSONL
   `usage`; Codex rollout `token_count`, which also carries a `rate_limits`
   snapshot) and reported per Action and per Project. OpenCode, which has no
   allowance probe, may run under an operator-set daily token ceiling

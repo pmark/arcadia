@@ -1,4 +1,5 @@
 import type { ReviewDecisionData, ReviewExecutionData, ReviewItem } from "../arcadia/types.js";
+import { todoItemUrl, todoListUrl } from "../todoLinks.js";
 import { estimatedReviewTimeFor } from "./decisionFormatter.js";
 
 export function formatRequiresReview(items: ReviewItem[]): string {
@@ -145,18 +146,32 @@ function formatRequiresReviewItem(item: ReviewItem): string {
 }
 
 export function formatRequiresReviewNotificationItem(item: ReviewItem, dashboardUrl?: string): string {
+  const todoUrl = requiresReviewTodoUrl(item, dashboardUrl);
   if (item.resolvedIntent === "ReviewExecutionResult" && item.contextJson) {
-    return formatExecutionResultFollowUp(item);
+    const followUp = formatExecutionResultFollowUp(item);
+    return todoUrl ? `${followUp}\n\nOpen in To-do: ${todoUrl}` : followUp;
   }
   const formatted = formatRequiresReviewItem(item);
-  if (item.resolvedIntent !== "ProjectProposalApproval" || !item.projectId || !dashboardUrl) {
-    return formatted;
+  const lines = [formatted];
+  if (item.resolvedIntent === "ProjectProposalApproval" && item.projectId && dashboardUrl) {
+    lines.push("", `Project details and approval: ${dashboardUrl.replace(/\/+$/, "")}/projects/${encodeURIComponent(item.projectId)}`);
   }
-  return [
-    formatted,
-    "",
-    `Project details and approval: ${dashboardUrl.replace(/\/+$/, "")}/projects/${encodeURIComponent(item.projectId)}`
-  ].join("\n");
+  if (todoUrl) lines.push(...(lines.length === 1 ? [""] : []), `Open in To-do: ${todoUrl}`);
+  return lines.join("\n");
+}
+
+/**
+ * Every requires-review intent links to its /todo item. An item raised from a
+ * Decision document (`doc_ref` decision/<slug>) is the Decision; anything else
+ * is the review item itself. Without a Project slug there is no item path, so
+ * it falls back to the /todo list.
+ */
+function requiresReviewTodoUrl(item: ReviewItem, dashboardUrl?: string): string | null {
+  const project = item.projectSlug?.trim();
+  const decisionSlug = /^decision\/(.+)$/.exec(item.docRef?.trim() ?? "")?.[1];
+  if (!project) return todoListUrl(dashboardUrl);
+  if (decisionSlug) return todoItemUrl(dashboardUrl, { kind: "decision", project, id: decisionSlug });
+  return todoItemUrl(dashboardUrl, { kind: "review_item", project, id: item.id });
 }
 
 function formatExecutionResultFollowUp(item: ReviewItem): string {

@@ -25,7 +25,7 @@ import type {
 } from "./types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
-import type { ProjectPlansResponse } from "./plans-types";
+import type { PlanProgressData, ProjectPlansResponse } from "./plans-types";
 import type {
   WorkQueue,
   WorkQueueMakeNextResponse,
@@ -68,6 +68,19 @@ const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export async function loadRecurringSchedules() {
+  return runArcadiaCliJson<import("./clock-types").ClockStatus>(["schedule", "recurring"]);
+}
+export async function changeRecurringSchedule(input: { action: "enable" | "pause" | "edit"; id: string; expected: string; timing?: import("./clock-types").ClockTiming }) {
+  if (input.action !== "edit") return runArcadiaCliJson(["schedule", input.action, input.id, "--expected", input.expected]);
+  const directory = await mkdtemp(path.join(tmpdir(), "arcadia-clock-"));
+  try {
+    const file = path.join(directory, "timing.json");
+    await writeFile(file, JSON.stringify({ ...input.timing, expected: input.expected }));
+    return await runArcadiaCliJson(["schedule", "edit", input.id, "--file", file]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
 export async function loadWorkQueue(): Promise<ArcadiaJsonSuccess<WorkQueue>> {
@@ -261,6 +274,94 @@ export async function settlePendingAgentAsk(input: {
   );
 }
 
+export interface AgentAskEligibility {
+  /** True when the dry-run settle preview succeeded; false when it refused (then `why` says why). */
+  acceptable: boolean;
+  why: string | null;
+}
+
+const ELIGIBILITY_TTL_MS = 15_000;
+/** An unknown or negative-because-unreadable result is remembered longer, so a failing preview is not retried every poll. */
+const ELIGIBILITY_UNKNOWN_TTL_MS = 60_000;
+const ELIGIBILITY_MAX_ASKS = 20;
+const ELIGIBILITY_CONCURRENCY = 2;
+const ELIGIBILITY_TIMEOUT_MS = 10_000;
+/** `value: null` records "could not be determined"; the page makes no claim for it. */
+const eligibilityCache = new Map<string, { at: number; value: AgentAskEligibility | null }>();
+const eligibilityInFlight = new Map<string, Promise<void>>();
+
+function firstLine(message: string, limit = 200): string {
+  const line = (message.split("\n").map((part) => part.trim()).find(Boolean) ?? "the preview was refused").replace(/^[A-Za-z_]+:\s+/, "");
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+}
+
+type EligibilityPreview = (proposalId: string) => Promise<unknown>;
+
+const defaultEligibilityPreview: EligibilityPreview = (proposalId) =>
+  runArcadiaCliJson<AgentAskSettleResponse>(
+    ["agent-ask", "settle", "--proposal", proposalId, "--request-id", `dashboard-eligibility-${proposalId}`, "--disposition", "accepted"],
+    { timeoutMs: ELIGIBILITY_TIMEOUT_MS }
+  );
+
+async function previewOne(proposalId: string, preview: EligibilityPreview, now: () => number): Promise<void> {
+  try {
+    await preview(proposalId);
+    eligibilityCache.set(proposalId, { at: now(), value: { acceptable: true, why: null } });
+  } catch (error) {
+    // Only a validation refusal from the preview itself is a "won't apply"; anything else is unknown.
+    const refused = error instanceof ArcadiaCliError && error.statusCode >= 400 && error.statusCode < 500;
+    eligibilityCache.set(proposalId, { at: now(), value: refused ? { acceptable: false, why: firstLine(error.message) } : null });
+  }
+}
+
+/**
+ * Whether accepting each pending Agent Ask would apply, as a hint from the dry-run settle preview (no `--apply`, so
+ * nothing is written; the real apply re-checks). This NEVER waits on a preview: it returns what is cached right now
+ * (a stale verdict is served while it refreshes; an Ask never evaluated is simply absent, i.e. unknown) and starts the
+ * missing or expired previews in the background. In-flight previews are shared across callers, so concurrent polls and
+ * tabs spawn no duplicates; successes are fresh for 15s, unknown results for 60s; at most 20 Asks are evaluated, 2 at a time.
+ */
+export function peekAgentAskEligibility(
+  asks: Array<{ proposalId: string }>,
+  preview: EligibilityPreview = defaultEligibilityPreview,
+  now: () => number = Date.now
+): Map<string, AgentAskEligibility> {
+  const known = new Map<string, AgentAskEligibility>();
+  const due: string[] = [];
+  for (const ask of asks.slice(0, ELIGIBILITY_MAX_ASKS)) {
+    const cached = eligibilityCache.get(ask.proposalId);
+    if (cached?.value) known.set(ask.proposalId, cached.value);
+    const ttl = cached?.value ? ELIGIBILITY_TTL_MS : ELIGIBILITY_UNKNOWN_TTL_MS;
+    if ((!cached || now() - cached.at >= ttl) && !eligibilityInFlight.has(ask.proposalId)) due.push(ask.proposalId);
+  }
+  if (due.length > 0) {
+    // One shared runner for this batch: a fixed pool pulls ids, and every id is registered in flight until its preview ends.
+    let next = 0;
+    const settled = new Map<string, () => void>();
+    for (const id of due) eligibilityInFlight.set(id, new Promise<void>((resolve) => settled.set(id, resolve)));
+    const worker = async () => {
+      while (next < due.length) {
+        const id = due[next++];
+        await previewOne(id, preview, now);
+        eligibilityInFlight.delete(id);
+        settled.get(id)!();
+      }
+    };
+    for (let i = 0; i < Math.min(ELIGIBILITY_CONCURRENCY, due.length); i += 1) void worker();
+  }
+  return known;
+}
+
+/** Resolves when every preview currently in flight has finished (tests, and anything that wants the settled state). */
+export async function settleAgentAskEligibility(): Promise<void> {
+  await Promise.all([...eligibilityInFlight.values()]);
+}
+
+export function clearAgentAskEligibilityCache(): void {
+  eligibilityCache.clear();
+  eligibilityInFlight.clear();
+}
+
 export interface OpenDecisionOption {
   label: string;
   consequence: string;
@@ -315,8 +416,10 @@ export interface OperatorTodoData {
 
 /** The one operator to-do list, every live and stale item. Read-only; nothing here settles anything. */
 export async function loadOperatorTodo(): Promise<ArcadiaJsonSuccess<OperatorTodoData>> {
-  // Short timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
-  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 15_000 });
+  // Bounded timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
+  // About 3 s of work plus tsx start-up; 15 s was exceeded under the page's parallel CLI load (2026-10-11), which
+  // silently dropped the list to the fallback (no staleness, no review items).
+  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 30_000 });
 }
 
 export interface DecisionApproveResponse {
@@ -454,6 +557,18 @@ export async function loadProjectPlans(
     args.push("--project", projectSlug);
   }
   return runArcadiaCliJson<ProjectPlansResponse>(args);
+}
+
+/**
+ * One Plan's progress with every Action: `arcadia plans --plan <slug> --all`.
+ * Reads the Plan document only, like `loadProjectPlans`.
+ */
+export async function loadPlanProgress(
+  repoPath: string,
+  projectSlug: string,
+  planSlug: string
+): Promise<ArcadiaJsonSuccess<PlanProgressData>> {
+  return runArcadiaCliJson<PlanProgressData>(["plans", "--repo", repoPath, "--project", projectSlug, "--plan", planSlug, "--all"]);
 }
 
 export interface ProjectSetupContextResponse {
@@ -1076,20 +1191,39 @@ export interface ClarifyActionResponse {
   skipped: Array<{ workItemId: string; title: string; reason: string }>;
 }
 
-export async function runReviewAction(input: {
+export interface ReviewActionInput {
   id: string;
   action: "approve" | "reject" | "defer";
   trigger?: string;
   feedback?: string;
-}): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
+  /** Approve a build packet without executing anything: the guarded Session is launched separately. */
+  noExecute?: boolean;
+}
+
+/** The CLI arguments for one review action; exported so the `--no-execute` mapping is testable without spawning. */
+export function reviewActionArgs(input: ReviewActionInput): string[] {
   const args = ["review", input.action, input.id];
+  if (input.action === "approve" && input.noExecute) {
+    args.push("--no-execute");
+  }
   if (input.action === "defer" && input.trigger) {
     args.push("--trigger", input.trigger);
   }
   if (input.action === "reject" && input.feedback) {
     args.push("--feedback", input.feedback);
   }
+  return args;
+}
+
+export async function runReviewAction(input: ReviewActionInput): Promise<ArcadiaJsonSuccess<ReviewActionResponse>> {
+  const args = reviewActionArgs(input);
   return runArcadiaCliJson<ReviewActionResponse>(args);
+}
+
+/** The resolved intent of one review item (`review show`), so a caller can refuse an action that would be unsafe for it. */
+export async function loadReviewIntent(id: string): Promise<string> {
+  const response = await runArcadiaCliJson<{ item: { resolvedIntent: string } }>(["review", "show", id]);
+  return response.data.item.resolvedIntent;
 }
 
 export async function reassessReviewItem(id: string): Promise<ArcadiaJsonSuccess<{

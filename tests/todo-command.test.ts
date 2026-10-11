@@ -132,7 +132,7 @@ function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
       db.prepare("INSERT INTO ask_capture_envelopes (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json) VALUES (?, ?, 'f', 'x', 'test', ?, 'completed', '{}')")
         .run(`capture-${ask.id}`, `request-${ask.id}`, ask.createdAt);
       const normalized = {
-        project: ask.project ?? "demo", desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
+        project: ask.project ?? "demo", requestId: `request-${ask.id}`, desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
         targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: ask.options ?? [],
         gateQuestion: ask.gateQuestion ?? null, evidence: ask.evidence ?? []
       };
@@ -856,7 +856,7 @@ describe("arcadia todo: review_items", () => {
     expect(run({ workspace, now: NOW, project: "demo" }).data.items.map((item) => item.key)).toEqual(["review_item:demo/review-norepo"]);
   });
 
-  it("lists a review_item of a completed Project in the 'unknown' bucket instead of dropping it (#1074)", () => {
+  it("keeps a review_item of a completed Project as stale under that Project, never dropping it (#1074)", () => {
     const workspace = fixtureWorkspace(selectableRepo());
     addReviews(workspace, [{ id: "review-live", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Live Project question." }]);
     withDatabase(workspace, (db) => {
@@ -874,9 +874,12 @@ describe("arcadia todo: review_items", () => {
 
     const { data } = run({ workspace, now: NOW });
 
-    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
-      ["review_item:demo/review-live", "demo", false],
-      ["review_item:unknown/review-finished", "unknown", false]
+    // The completed Project is positive evidence: the item is stale (hidden by default, counted), not live and not dropped.
+    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([["review_item:demo/review-live", "demo", false]]);
+    expect(data.counts).toMatchObject({ stale: 1, staleHidden: 1 });
+    const stale = run({ workspace, now: NOW, stale: true }).data.items;
+    expect(stale.map((item) => [item.key, item.project, item.staleReason])).toEqual([
+      ["review_item:finished/review-finished", "finished", "its Project finished is completed"]
     ]);
     // A --project view is that Project's alone.
     expect(keys(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["review_item:demo/review-live"]);
@@ -1088,6 +1091,70 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       ["decision:demo/0001", "demo", true, "arcadia decision approve 0001 --project demo --answer 'Go ahead'"]
     ]);
     expect(keysOf(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["decision:demo/0001"]);
+  });
+
+  it("treats an escalation and an Agent Ask of a completed Project as stale, so a retired Project's rows stop blocking", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "retired-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "retired", desiredResult: "Leftover." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const retired = createProjectWithInitialWork(db, {
+        name: "Retired", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(retired.project.id);
+    });
+    addEscalations(workspace, [
+      { actionKey: "retired/write-marker", kind: "build_packet_approval_pending", message: "The previewed Action is not ready to launch.", remedy: null, firstDetectedAt: "2026-10-08T07:00:00.000Z" },
+      { actionKey: "ghost/lost-step", kind: "dependency_unresolved", message: "Dependency is not resolvable.", remedy: null, firstDetectedAt: "2026-10-08T07:30:00.000Z" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+    // An unknown Project's escalation still blocks; the completed Project's rows are stale, counted, not listed.
+    expect(keysOf(data)).toEqual(["escalation:dependency_unresolved:ghost/lost-step", "decision:demo/0001"]);
+    expect(data.counts).toMatchObject({ blocking: 2, stale: 2, staleHidden: 2 });
+    expect(run({ workspace, now: NOW, stale: true }).data.items.map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:retired/retired-ask", "its Project retired is completed"],
+      ["escalation:build_packet_approval_pending:retired/write-marker", "its Project retired is completed"]
+    ]);
+  });
+
+  it("lists a completed fixture Project's leftover Ask as stale instead of collapsing it into the fixture count", () => {
+    // The dashboard matches its own pending-Ask rows against this list; an Ask missing from it shows live (#1236 cleanup).
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "chain-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "three-action-rehearsal", desiredResult: "Mark chain-step-09 complete." },
+      { id: "live-fixture-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "two-action-rehearsal", desiredResult: "Still a fixture." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const chain = createProjectWithInitialWork(db, {
+        name: "Three Action Rehearsal", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(chain.project.id);
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    expect(data.items.filter((item) => item.project.includes("rehearsal")).map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:three-action-rehearsal/chain-ask", "its Project three-action-rehearsal is completed"]
+    ]);
+    // A live fixture item is still only a count.
+    expect(data.counts.fixture).toEqual({ projects: 2, items: 1 });
+  });
+
+  it("treats an Ask whose own Decision is already committed as stale, matching its whole request id, never a prefix (#1236)", () => {
+    const repo = fixtureRepo(0);
+    write(repo, "docs/decisions/0003-filed.md",
+      decisionDoc("0003", "Filed by the revision?", "2026-09-04") + "\nProposed by Agent Ask request-filed-r2.\n");
+    const workspace = fixtureWorkspace(repo, [
+      { id: "filed", createdAt: "2026-09-05T00:00:00.000Z", intent: "decision", desiredResult: "The first draft." },
+      { id: "filed-r2", createdAt: "2026-09-06T00:00:00.000Z", intent: "decision", desiredResult: "The revision that filed 0003." }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    const asks = data.items.filter((item) => item.kind === "agent_ask").map((item) => [item.key, item.staleReason ?? null]);
+    expect(asks).toEqual(expect.arrayContaining([
+      ["agent_ask:demo/filed", null],
+      ["agent_ask:demo/filed-r2", "its documents are already committed (docs/decisions/0003-filed.md); only its settlement receipt was never recorded"]
+    ]));
+    expect(asks).toHaveLength(2);
   });
 
   it("lists a waiting operator task with its own title and the canonical command; blocking only for the selected Action", () => {

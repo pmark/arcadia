@@ -10,6 +10,8 @@ import {
   LayoutGrid,
   ListChecks,
   ListOrdered,
+  ListTodo,
+  ListTree,
   Menu,
   MessageSquarePlus,
   NotebookText,
@@ -27,11 +29,14 @@ import { createPortal } from "react-dom";
 import type { MissionControlOverview } from "../lib/mission-control-types";
 
 const PRIMARY_NAV = [
+  { href: "/todo", label: "To-do", icon: ListTodo },
   { href: "/now", label: "Now", icon: Target },
   { href: "/production", label: "Production", icon: Gauge },
   { href: "/flight-deck", label: "Flight Deck", icon: LayoutGrid },
+  { href: "/plans", label: "Plans", icon: ListTree },
   { href: "/path", label: "Path", icon: Route },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
+  { href: "/clock", label: "Clock", icon: Clock },
   { href: "/work-queue", label: "Work Queue", icon: ListOrdered },
   { href: "/capture", label: "Capture", icon: MessageSquarePlus },
   { href: "/ingress", label: "Ingress", icon: FolderOpen },
@@ -121,7 +126,7 @@ export function Sidebar() {
                 <nav className="grid gap-1">
                   {PRIMARY_NAV.map((item) => {
                     const Icon = item.icon;
-                    const active = pathname === item.href || (item.href === "/actions" && pathname.startsWith("/actions/"));
+                    const active = pathname === item.href || (item.href === "/todo" && pathname.startsWith("/todo/")) || (item.href === "/actions" && pathname.startsWith("/actions/"));
                     return (
                       <Link
                         key={item.href}

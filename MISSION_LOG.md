@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-10
+updated: 2026-10-11
 ---
 
 # Mission Log: Arcadia
@@ -2223,5 +2223,54 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 
 - **Did:** Activated governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a at define-governed-role-registry.
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator explicitly requested activation. Preserve the unfinished work in the existing active Plan and use the exact activation preview before applying.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1212
+
+- **Did:** PR #1212 ports the done-Action settlement fix onto current main: a completed Action now reads "Completed via Agent Ask <id>" instead of stale guidance, and the runbook handoff is brought up to date. Independent review and CI are running. https://github.com/pmark/arcadia/pull/1212
+- **Result:** Operator-directed rehearsal release-manager request, recommendation 1. Supersedes dirty PR #1033; no governed Action is completed and the pointer and queue are untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1226
+
+- **Did:** PR #1226 turns the reviewer smoke into a maintained script: it builds the Action 1 shape from the fixture, writes the real settlement, asserts the done record and refuses any paid run without your yes. Dry run is green; review and CI are running. https://github.com/pmark/arcadia/pull/1226
+- **Result:** Operator-directed rehearsal release-manager request, runbook recommendation 2 (Issue #1225). No governed Action is completed; pointer and queue untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1229
+
+- **Did:** PR #1229 drafts your bug Plan: seven verified, small loop-integrity bugs in dependency order (inactive, nothing activated), plus an honest production-readiness answer with the gates left before a first run on Arcadia itself. Review is running. https://github.com/pmark/arcadia/pull/1229
+- **Result:** Operator request 2026-10-10 to run production on a Plan of the most important bugs once satisfied it can start. The Plan is an inactive draft; pointer, queue and authority untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1237
+
+- **Did:** PR 1237 is open: three new UX Actions give the Dashboard Ask screen a one-tap intent-correction menu, an evidence panel and a relationship map - https://github.com/pmark/arcadia/pull/1237
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1244
+
+- **Did:** PR #1244 stops an expired Claude login from pausing the Project: the exit now shows a sign-in blocker with the remedy and holds relaunches for 15 minutes instead of spending the failed-Run budget. Reviewed and green-checked; it waits for your merge because it touches production budget code. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Operator request 2026-10-11: fix the small half of #1155. Refs #1155; the preflight probe stays open. Known limit filed as #1243.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1244-budget-code-2026-10-11
+
+- **Did:** Your call: PR #1244 (an expired login no longer pauses the Project; it holds relaunches 15 minutes) is reviewed and all 7 checks are green, but it changes production budget code, so it waits for your merge. The merge button is near the bottom of the Conversation tab. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Production budget accounting and launch spacing are excluded from merge on green; independent review passed and CI is green on 126c295a8.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1245
+
+- **Did:** PR #1245 keeps a stray hand-written Ask file from riding into a draft PR: preservation now refuses it and names the file. Two review rounds done, fast-rehearsal green; it waits for your merge because it touches preservation and launch-publish code. https://github.com/pmark/arcadia/pull/1245
+- **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

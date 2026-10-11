@@ -374,6 +374,26 @@ authority: it needs the answer "with merge on green" plus an independent review
 of the head finding nothing blocking and every check passing. Raising the
 flag does not extend the expiry; a later date needs a new Decision.
 
+## Fixture packet approval (Decision 0119)
+
+Only once Decision 0119 is answered "Agents approve fixture build packets".
+`arcadia review approve <id> --fixture-standing --agent-identity <name>` approves
+ONLY a build-packet Decision (`CodexBuildPacketApproval`) of a disposable
+fixture, with no execution: no Run is queued and no follow-up "Execute approved
+work" Decision is created (the Session is launched separately). It reuses the
+0100 verification above (GitHub-fetched Decision with blob sha check, expiry
+2026-10-18, fixture remote allowlist or experiment workspace, never Arcadia's own
+Project, not inside a Session) with Decision 0119's hardcoded path, and refuses
+with `fixture_packet_decision_unanswered`, `fixture_packet_decision_unverifiable`,
+`fixture_packet_expired`, `fixture_packet_not_a_fixture`,
+`fixture_packet_not_a_build_packet`, `fixture_packet_agent_identity_required`,
+`fixture_packet_flag_conflict` or `operator_launch_inside_session`. Planning-run
+approvals, Grants and production changes are always refused. The receipt (agent,
+Decision 0119 blob sha, fixture basis) lands in the Decision's `fixturePacketApproval`
+context, its decision note and a `review.fixture_packet_approved` event. Run it
+unsandboxed for the same keychain reason. Plain `--no-execute` still leaves a
+follow-up Decision (Issue #1189); that is unchanged.
+
 ## Claude Code specifics
 
 - `@AGENTS.md` above is a Claude Code import. Codex ignores it and reads
