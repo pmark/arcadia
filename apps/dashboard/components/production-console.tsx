@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, Pause, Play, Rocket, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ProductionReactivationPreviewResponse } from "../lib/arcadia-cli";
@@ -32,6 +33,7 @@ import {
 import type { SessionLogTail } from "../lib/session-log";
 import type { DashboardAgentSession } from "../lib/types";
 import { SessionCard } from "./dashboard-ui";
+import { planHref } from "./plans-list";
 
 // ---------------------------------------------------------------------------
 // Small shared pieces
@@ -836,12 +838,20 @@ function ProjectCardRow({ card, onLaunch }: { card: ProjectCard; onLaunch: (acti
   return (
     <li className="grid min-w-0 gap-1.5 rounded-md border border-line bg-panel p-3">
       <div className="flex min-w-0 items-start gap-2">
-        <p className="min-w-0 flex-1 break-words font-semibold">{card.name}</p>
+        {card.projectId ? (
+          <Link href={`/projects/${encodeURIComponent(card.projectId)}/plans`} className="min-w-0 flex-1 break-words font-semibold text-steel underline-offset-2 hover:underline">
+            {card.name}
+          </Link>
+        ) : (
+          <p className="min-w-0 flex-1 break-words font-semibold">{card.name}</p>
+        )}
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${PROJECT_CHIP_TONE[card.chip]}`}>{PROJECT_CHIP_LABEL[card.chip]}</span>
       </div>
       {card.planSlug ? (
         <p className="min-w-0 break-words text-sm">
-          {humanizeSlug(card.planSlug)}
+          <Link href={planHref(card.slug, card.planSlug)} className="text-steel underline-offset-2 hover:underline">
+            {humanizeSlug(card.planSlug)}
+          </Link>
           <span className="text-muted"> · {card.planOpen} open · {card.planReady} ready</span>
         </p>
       ) : null}
@@ -860,7 +870,13 @@ function ProjectCardRow({ card, onLaunch }: { card: ProjectCard; onLaunch: (acti
       ))}
       {card.otherPlans.length > 0 ? (
         <p className="text-xs text-muted">
-          {card.otherPlans.length} other active Plan{card.otherPlans.length === 1 ? "" : "s"}: {card.otherPlans.map((plan) => `${humanizeSlug(plan.slug)} (${plan.open})`).join(", ")}
+          {card.otherPlans.length} other active Plan{card.otherPlans.length === 1 ? "" : "s"}:{" "}
+          {card.otherPlans.map((plan, index) => (
+            <span key={plan.slug}>
+              {index > 0 ? ", " : ""}
+              <Link href={planHref(card.slug, plan.slug)} className="text-steel underline-offset-2 hover:underline">{humanizeSlug(plan.slug)}</Link> ({plan.open})
+            </span>
+          ))}
         </p>
       ) : null}
       {next?.launch.allowed ? (

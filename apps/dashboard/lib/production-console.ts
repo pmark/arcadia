@@ -430,6 +430,8 @@ export const PROJECT_CHIP_LABEL: Record<ProjectChip, string> = {
 
 export interface ProjectCard {
   slug: string;
+  /** Arcadia's Project id, for the Project's own pages; null when the queue did not carry one. */
+  projectId: string | null;
   name: string;
   /** The Project's earliest Action position in today's queue, which is what orders the cards. */
   firstPosition: number;
@@ -477,6 +479,7 @@ export function assembleProjects(assembled: AssembledQueue, production: ConsoleP
     const [chip, reason] = projectState(running, pointer, pointerNeedsYou);
     return {
       slug,
+      projectId: actions.find((action) => action.projectId)?.projectId ?? null,
       name: actions[0].projectName ?? slug,
       firstPosition: Math.min(...actions.map((action) => action.position)),
       inScope: scope ? scope.has(slug) : null,
