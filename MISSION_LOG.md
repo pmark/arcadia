@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-10
+updated: 2026-10-11
 ---
 
 # Mission Log: Arcadia
@@ -2230,5 +2230,12 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 
 - **Did:** PR #1212 ports the done-Action settlement fix onto current main: a completed Action now reads "Completed via Agent Ask <id>" instead of stale guidance, and the runbook handoff is brought up to date. Independent review and CI are running. https://github.com/pmark/arcadia/pull/1212
 - **Result:** Operator-directed rehearsal release-manager request, recommendation 1. Supersedes dirty PR #1033; no governed Action is completed and the pointer and queue are untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1222
+
+- **Did:** Two evidence-led AMC Field Notes drafts are preserved for independent review: https://github.com/pmark/arcadia/pull/1222. Both remain drafts; nothing is published.
+- **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
