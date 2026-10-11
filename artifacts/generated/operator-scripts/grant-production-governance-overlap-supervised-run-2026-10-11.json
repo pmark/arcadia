@@ -32,6 +32,6 @@
   },
   "failure": {
     "effect": "If no activation was attempted, policy is unchanged. After an attempt, the script reads production status back, returns only its own Grant to Off when it is Active, and records the observed result (not_active, returned_off, other_grant_active, OFF_FAILED or UNKNOWN). When status stays unreadable it issues an Off blind and records off_issued_unobserved (whether this Grant was Active is then unknown, and the receipt says activated unknown).",
-    "next": "Do not press again blindly. Read the handoff; if it says OFF_FAILED or UNKNOWN, press restore-off-production-bug-plan-first-supervised-run-2026-10-11 now. Otherwise resolve the named drift (STOP if the previous grant is still Active, reinstall the broker if the release is stale) and press again."
+    "next": "Do not press again blindly. Read the handoff; if it says OFF_FAILED or UNKNOWN, press restore-off-production-bug-plan-first-supervised-run-2026-10-11 now. Otherwise resolve the named drift (STOP if the previous grant is still Active, reinstall the broker if the release is stale, merge the Plan's activation PR if the Plan file is missing) and ask for a fresh Grant if an activation was attempted; a refusal before any activation attempt can be pressed again once the drift is fixed."
   }
 }
