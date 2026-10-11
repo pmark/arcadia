@@ -2253,3 +2253,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1245
+
+- **Did:** PR #1245 keeps a stray hand-written Ask file from riding into a draft PR: preservation now refuses it and names the file. Two review rounds done, fast-rehearsal green; it waits for your merge because it touches preservation and launch-publish code. https://github.com/pmark/arcadia/pull/1245
+- **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
