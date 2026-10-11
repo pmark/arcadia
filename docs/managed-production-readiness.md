@@ -2,9 +2,27 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, including the published #878 manual-preservation repair candidate in PR #888, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
+Latest derivation: **2026-10-10** (the section below). The 2026-10-02 derivation after it, and everything under it, is earlier evidence kept for history and has not been re-derived.
 
-## Current answer
+## Current answer, 2026-10-10: not yet; a supervised first run on Arcadia's own repository becomes possible once gates 1 to 6 below are cleared, and unattended production does not
+
+**Proven.** One Action runs from a confirmed Launch to a draft PR in about 80 seconds (Claude Haiku and Codex, Decision 0096). Under Decisions 0097 (merge-then-next), 0100 and 0119 the disposable fixture ran all nine of its Actions to merged PRs (fixture PRs #11 to #19), with no operator step for the last five. Settlement now leaves a completed Action unambiguous (#1212), the deterministic review gate accepts that exact shape, and the reviewer pre-flight smoke is a maintained script with a spend guard (#1226). Nothing in this list has run on Arcadia's own repository.
+
+**Not proven, and not built.** No production run has ever completed an Action on a non-disposable repository. The worker never merges a pull request: an operator-launched candidate stops at a draft PR (`src/production/tick.ts`, `sessionHandoff.ts`: "merge it through its pull request"), and the automated review-and-merge capability Decision 0097 names is not built. A first run therefore needs a supervising agent or the operator to review and merge each PR under Decisions 0060/0080 before the next launches. Expect those PRs to stop for the operator rather than merge on green: the Plan's Actions touch `src/ask`, `src/dispatch` and `src/sessions`, which the blast-radius assessment (`arcadia pr assess-blast-radius`) treats as authority-adjacent.
+
+**Gates before the first run on Arcadia's own repository** (each is evidence-checked; the operator owns the ones marked *operator*):
+1. *Operator.* Authority for this repository. Decisions 0100 and 0119 name the disposable fixture only, so each of the seven Actions needs its build packet approved by the operator, or a `packet_approval` delegation (Decision 0072; it expires, which ties to gate 5). A fresh `arcadia production preview --project arcadia --plan <the bug Plan> --concurrency 1 --remote-preservation` (add `--transitions validation,acceptance,pointer,packet_approval --packet-approval-expires-at <iso>` only if delegating) and the operator's own activation are required. **Do not add an integration grant for this repository**: the worker's integration path (`sessionHandoff.ts`) does a local `git merge --ff-only` into the base branch directly rather than through a pull request, so a grant would bypass the PR and its seven required CI jobs (and `main` keeps admin bypass on for governed settlement pushes). Use remote preservation (draft PR only) and merge through PRs.
+2. *Operator.* A spend bound. Observed 2026-10-10: `capacityGateEnabled` is `false` in the workspace config, so every provider reads "unmetered by config". Decision 0103's percent-of-window budget and Decision 0111's 20% reserve are approved but not built (the open governed-agent-roles Actions `reserve-operator-emergency-capacity` and `project-token-burn-rate`), so enabling the gate only restores the existing 5% margin and 15-minute freshness. Until they land, the bound is concurrency 1, a short Grant expiry and a per-launch time limit.
+3. *Operator.* Answer Decisions 0116 (what runs when a Plan waits on the operator) and 0117 (how many unmerged PRs per repository). 0117's recorded recommendation is two unmerged candidates; a serial merge-then-next run (Decision 0097) needs only one. 0115 (Project share splitting) can wait because one Project is in scope, and 0118 (OpenCode daily cap) can wait if OpenCode stays out of the provider list.
+4. Fix, under supervision before activation: #1177 (a non-canonical hand-written Ask is committed and published by the host), and the small half of #1155 (`tick.ts` counts a provider sign-in failure as a failed Run, which spends the repair budget and can pause the Project; the issue text is about the preflight missing an expired credential, #1159 already classified the failure). Both touch launch-authority or budget code and wait for the operator at merge.
+5. Avoid, by Grant sizing: #1012 (an Action is admitted after the Grant's delegations have expired). Keep OpenCode out (#1165, Decision 0118 open).
+6. Make the settlement fix live. Observed 2026-10-10 after #1212 and #1226 merged: the primary checkout was not fast-forwarded and services were not restarted. Restart once, outside any run, and avoid merging during a run (#1129: a restart under load can stop every service).
+
+Optional, and not a prediction for this repository: `scripts/rehearsal-reviewer-smoke.ts --spend-approved` (three QA and three code-review calls, the operator's own yes) is pipeline sanity on the fixture's Action shape after #1212. A `--dry` run was green on 2026-10-10 (reported in #1226); it does not exercise this repository's review of the bug Plan's PRs.
+
+**The Plan.** The seven-Action draft Plan `seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and` holds valid, small bugs on the unattended settlement path, ordered so each lands before the next touches the same files. It is inactive; activating it is the operator's call. Excluded bugs and why are in its source Ask.
+
+## Earlier answer, 2026-10-02
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
@@ -58,6 +76,8 @@ Rehearsal procedure, standard and failure catalog (runs 1 to 5, 2026-10-06):
 [autonomous-production-rehearsal-runbook.md](autonomous-production-rehearsal-runbook.md).
 
 ## Vital few next steps
+
+*Earlier, from the 2026-10-02 derivation; superseded by the 2026-10-10 answer at the top.*
 
 1. Keep B's completed recovery closed: the exact Grant was consumed, the candidate integrated once, and production is Off. Reassess the remaining parent criteria without repeating B or reusing the succeeded button. The literal two-Session A completion remains unproven; browser closure and a complete operator-intervention ledger are also not established by current receipts.
 2. Preserve the completed terminal repair and live evidence separately. #866 bound the accepted exit and exact settlement, validated the unchanged candidate, and created the canonical preservation receipt without reviving a Session; #865's pinned path integrated it. The recorded validation command exited 0, fixture main and candidate both resolve to `c6b4c4e`, and the one base-advance receipt records the transition.
