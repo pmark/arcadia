@@ -1,3 +1,4 @@
+import { PLANNING_REVIEW_CONTROLS } from "./approvals";
 import type { AgentQueueEntry, DashboardAttentionItem, DashboardReviewFocus, DashboardReviewItem } from "./types";
 
 export type AttentionCost = "short" | "medium" | "long";
@@ -239,15 +240,32 @@ export function buildNeedsYouBoard(
 
   ranked.sort((a, b) => b.score - a.score);
 
+  // The cap bounds attention, never what is blocking the run: the Review of a planning run, retry, failed Validation or
+  // Artifact acceptance is always on the board, ranked by score like any other, and does not use up a focused slot.
+  // The attention snapshot gives every review item severity "action", so the intent of the linked Review decides this,
+  // not severity (a failed Run or a packet with no repository stays subject to the cap).
+  const blocksTheRun = (item: DashboardAttentionItem): boolean => {
+    if (item.kind !== "review" || !item.relatedReviewId) return false;
+    const intent = reviewByReviewId.get(item.relatedReviewId)?.resolvedIntent;
+    return typeof intent === "string" && Object.hasOwn(PLANNING_REVIEW_CONTROLS, intent);
+  };
   const focusLimit = focus?.maxItems ?? ranked.length;
-  for (const entry of ranked.slice(focusLimit)) {
+  let focusedSlots = 0;
+  const focused: typeof ranked = [];
+  for (const entry of ranked) {
+    const exempt = blocksTheRun(entry.ranked.item);
+    if (exempt || focusedSlots < focusLimit) {
+      if (!exempt) focusedSlots += 1;
+      focused.push(entry);
+      continue;
+    }
     excluded.push({
       item: entry.ranked.item,
       exclusionReason: "Open, but outside the focused set. Promote it by changing the workspace review focus."
     });
   }
 
-  const [dominant, ...rest] = ranked.slice(0, focusLimit);
+  const [dominant, ...rest] = focused;
 
   return {
     dominant: dominant?.ranked ?? null,

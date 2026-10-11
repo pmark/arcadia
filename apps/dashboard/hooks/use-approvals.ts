@@ -10,19 +10,23 @@ export interface Choice {
   disposition?: "accepted" | "rejected";
   /** For kind "decision": the option label to answer with. */
   option?: string;
-  /** For a build-packet review item: approve or reject it through /api/review-action. Approve never executes. */
+  /** For a build-packet or planning review item: approve or reject it through /api/review-action. */
   reviewAction?: "approve" | "reject";
 }
 
-/** The request one choice sends: a build packet goes to /api/review-action with noExecute, everything else to /api/approvals. */
+/**
+ * The request one choice sends: a review item goes to /api/review-action, everything else to /api/approvals. Approve is
+ * sent with noExecute unless the row's own control says otherwise (a planning run approval is what queues its Run).
+ */
 export function requestFor(approval: Approval, choice: Choice): { url: string; body: Record<string, unknown> } {
   if (approval.kind === "review_item" && choice.reviewAction) {
+    const noExecute = approval.reviewControl?.noExecute ?? true;
     return {
       url: "/api/review-action",
       body: {
         id: approval.id,
         action: choice.reviewAction,
-        ...(choice.reviewAction === "approve" ? { noExecute: true } : {})
+        ...(choice.reviewAction === "approve" && noExecute ? { noExecute: true } : {})
       }
     };
   }

@@ -203,6 +203,72 @@ describe("buildNeedsYouBoard", () => {
     expect(board.excluded.map((entry) => entry.item.id)).toEqual(expect.arrayContaining(["review:rebuster", "review:arcadia"]));
   });
 
+  describe("focus cap and the Review that blocks the run", () => {
+    // The real snapshot shape: every review attention item is severity "action"; only its linked Review says what it is.
+    const focus = { projectOrder: ["Arcadia", "Beta"], excludedProjects: [], maxItems: 2 };
+    const crowd = [
+      attentionItem({ id: "review:a", projectName: "Arcadia", actionId: "a", relatedReviewId: "ra" }),
+      attentionItem({ id: "review:b", projectName: "Arcadia", actionId: "b", relatedReviewId: "rb" }),
+      attentionItem({ id: "review:c", projectName: "Arcadia", actionId: "c", relatedReviewId: "rc" })
+    ];
+    const crowdReviews = ["ra", "rb", "rc"].map((id) => reviewItem({ id, slug: id }));
+
+    for (const intent of [
+      "CodexPlanningRunApproval",
+      "CodexPlanningRetryApproval",
+      "codex_planning_artifact_validation",
+      "CodexPlanningArtifactAcceptance"
+    ]) {
+      it(`keeps a ${intent} review ranked below the cap on the board`, () => {
+        const board = buildNeedsYouBoard(
+          [...crowd, attentionItem({ id: "review:stalled", projectName: "Beta", severity: "action", actionId: "s", relatedReviewId: "rs" })],
+          [...crowdReviews, reviewItem({ id: "rs", slug: "rs", resolvedIntent: intent })],
+          [],
+          NOW,
+          focus
+        );
+
+        const kept = [board.dominant?.item.id, ...board.queue.map((entry) => entry.item.id)];
+        expect(kept).toContain("review:stalled");
+        // The cap still bounds everything else.
+        expect(kept.filter((id) => id !== "review:stalled")).toHaveLength(2);
+        expect(board.excluded.map((entry) => entry.item.id)).toEqual(["review:c"]);
+      });
+    }
+
+    it("still caps an ordinary review, and a failed Run or severity-blocked item that is not a planning Review", () => {
+      const board = buildNeedsYouBoard(
+        [
+          ...crowd,
+          attentionItem({ id: "review:clarify", projectName: "Beta", actionId: "x", relatedReviewId: "rx" }),
+          attentionItem({ id: "run:failed", kind: "run", status: "failed", severity: "blocked", projectName: "Beta", relatedReviewId: null, relatedRunId: "run-9", actionId: "y" })
+        ],
+        [...crowdReviews, reviewItem({ id: "rx", slug: "rx", resolvedIntent: "ActionClarification" })],
+        [],
+        NOW,
+        focus
+      );
+
+      const kept = [board.dominant?.item.id, ...board.queue.map((entry) => entry.item.id)];
+      expect(kept).toHaveLength(2);
+      expect(board.excluded.map((entry) => entry.item.id)).toEqual(expect.arrayContaining(["run:failed", "review:clarify"]));
+      expect(board.excluded.every((entry) => /outside the focused set/i.test(entry.exclusionReason) || entry.item.id === "review:c")).toBe(true);
+    });
+
+    it("still excludes a planning Review with its Project when the Project is out of focus", () => {
+      const board = buildNeedsYouBoard(
+        [attentionItem({ id: "review:stalled", projectName: "Rebuster", actionId: "s", relatedReviewId: "rs" })],
+        [reviewItem({ id: "rs", slug: "rs", resolvedIntent: "codex_planning_artifact_validation" })],
+        [],
+        NOW,
+        { projectOrder: ["Arcadia"], excludedProjects: ["Rebuster"], maxItems: 1 }
+      );
+
+      expect(board.dominant).toBeNull();
+      expect(board.excluded.map((entry) => entry.item.id)).toEqual(["review:stalled"]);
+    });
+  });
+
   it("returns an empty board with no dominant item when nothing needs the operator", () => {
     const board = buildNeedsYouBoard([]);
     expect(board.dominant).toBeNull();
