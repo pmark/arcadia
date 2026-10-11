@@ -2274,3 +2274,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1240
+
+- **Did:** PR 1240 is open: Decision 0121 asks whether sessions get a friction-watching supervisor, an arcadia bug utility and an insight harvest - https://github.com/pmark/arcadia/pull/1240
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
