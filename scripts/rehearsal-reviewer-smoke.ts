@@ -32,25 +32,33 @@ import { getWorkspacePaths } from "../src/workspace/paths.js";
  *     [--fixture <path>] [--base <rev>] [--action <id>] [--qa <n>] [--code-review <n>]
  *     [--keep-going] [--out <dir>] [--live-workspace <path>]
  *
- * WRITES: only under `--out`. The reviewer path would write the operator's
- * global usage cache (~/.arcadia/telemetry/coding-agent-usage.json) and Claude
- * usage snapshot; for the reviewer phase those two paths are redirected to
- * files under `--out` (seeded with a copy of the current content, so reads are
- * unchanged) and the environment is restored afterwards.
+ * WRITES: this script writes only under `--out`. The reviewer path would write
+ * the operator's global usage cache (~/.arcadia/telemetry/coding-agent-usage.json)
+ * and Claude usage snapshot; for the reviewer phase those two paths are
+ * redirected (ARCADIA_CODING_AGENT_USAGE_CACHE_PATH, ARCADIA_CLAUDE_USAGE_PATH)
+ * to files under `--out`, seeded with a copy of the current content so reads are
+ * unchanged, and the environment is restored afterwards. The assertion
+ * `telemetry-writes-redirected` checks the values observed during the phase.
+ * The real global files are NOT gated: other processes (the Claude Code status
+ * line, any arcadia command or tick) write them at any time, so their
+ * before/after is printed as information only. Child processes the Codex CLI
+ * spawns (`codex app-server` for the rate-limit probe, `codex sandbox`, and the
+ * model run in a live mode) may write under ~/.codex, which this script does
+ * not control.
  *
  * READS: the fixture (clone source and `git status`/HEAD checks), the live
  * workspace's preserved QA evidence (`artifacts/qa`), its `config/` reviewer
  * registries (copied into the throwaway workspace) and `artifacts/code-review`
  * listing; the operator's Codex rate-limit state through the Codex
- * app-server probe the availability check runs (a read; the Codex CLI keeps its
- * own state under ~/.codex, which this script does not control); the real host
- * sandbox preflight (a `curl` of api.github.com and `codex sandbox`).
+ * app-server probe the availability check runs; the real host sandbox
+ * preflight (a `curl` of api.github.com and `codex sandbox`).
  *
  * STUBS: `gh` (only `pr view --json <fields>`, `pr view --json commits` and the
  * compare patch are served, every other call is refused and fails the run) and
- * `git remote get-url` (answered with the fixture's GitHub name). In dry mode
- * only the two sandbox-preflight commands run for real and the reviewer model
- * process is intercepted; any other host command is refused (fail closed).
+ * `git remote get-url` (answered with the fixture's GitHub name). The only
+ * host commands that run for real are the zsh baseline probe, `<codex> sandbox`
+ * and, live only, `<codex> exec`; in dry mode `<codex> exec` is intercepted.
+ * Every other host command, in either mode, is refused and counted (fail closed).
  * Settlement runs in process with `operator: true` and the throwaway clone as
  * the control checkout, not from a candidate worktree, with
  * ARCADIA_OPERATOR_SCRIPT_ID/ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR unset for its
@@ -156,12 +164,16 @@ export function withEnv<T>(overrides: Record<string, string | undefined>, run: (
   try { return run(); } finally { apply(previous); }
 }
 
+/** The environment variables availability.ts honours for the files its check writes, and each file's name in the redirected directory. */
+export const telemetryTargets: Readonly<Record<string, string>> = {
+  ARCADIA_CODING_AGENT_USAGE_CACHE_PATH: "coding-agent-usage.json",
+  ARCADIA_CLAUDE_USAGE_PATH: "claude-code.json"
+};
+
 /** The global files the reviewer path's availability check writes, as availability.ts resolves them. */
 export function telemetryPaths(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
-  return {
-    ARCADIA_CODING_AGENT_USAGE_CACHE_PATH: env.ARCADIA_CODING_AGENT_USAGE_CACHE_PATH ?? path.join(homedir(), ".arcadia", "telemetry", "coding-agent-usage.json"),
-    ARCADIA_CLAUDE_USAGE_PATH: env.ARCADIA_CLAUDE_USAGE_PATH ?? path.join(homedir(), ".arcadia", "telemetry", "claude-code.json")
-  };
+  return Object.fromEntries(Object.entries(telemetryTargets).map(([variable, name]) =>
+    [variable, env[variable] ?? path.join(homedir(), ".arcadia", "telemetry", name)]));
 }
 
 function walkFiles(dir: string, root = dir): string[] {
@@ -191,14 +203,49 @@ function sameList(a: string[], b: string[]): boolean { return a.length === b.len
 /** The "inputs the script must only read" assertion, over a snapshot taken before and one taken now. */
 function readOnlyInputsAssertion(before: LiveSnapshot, after: LiveSnapshot): SmokeAssertion {
   const liveSame = Object.keys(before.live).every((key) => sameList(before.live[key], after.live[key] ?? []));
-  const telemetrySame = Object.keys(before.telemetry).every((key) => before.telemetry[key] === after.telemetry[key]);
   const fixtureSame = before.fixtureStatus === after.fixtureStatus && before.fixtureHead === after.fixtureHead;
   const detail = [
-    `live artifacts ${Object.entries(after.live).map(([key, list]) => `${key}: ${list.length} file(s)`).join(", ")}${liveSame ? "" : " CHANGED"}`,
-    `global telemetry ${Object.keys(after.telemetry).length} file(s)${telemetrySame ? " unchanged" : " CHANGED"}`,
+    `live artifacts ${Object.entries(after.live).map(([key, list]) => `${key}: ${list.length} file(s)`).join(", ")}${liveSame ? " unchanged" : " CHANGED"}`,
     `fixture HEAD ${after.fixtureHead.slice(0, 12)}; status --porcelain ${after.fixtureStatus.trim() === "" ? "clean" : "NOT clean"}${fixtureSame ? " unchanged" : " CHANGED"}`
   ].join("; ");
-  return { name: "read-only-inputs-unchanged", pass: liveSame && telemetrySame && fixtureSame, detail };
+  return { name: "read-only-inputs-unchanged", pass: liveSame && fixtureSame, detail };
+}
+
+/** Informational only, never gated: other processes may write the global telemetry files at any time. */
+export function telemetryInformation(before: LiveSnapshot, after: LiveSnapshot): string[] {
+  return Object.keys(after.telemetry).map((file) =>
+    `informational (not gated; other processes may write these): ${file} ${before.telemetry[file] === after.telemetry[file] ? "unchanged" : `changed ${before.telemetry[file]} -> ${after.telemetry[file]}`}`);
+}
+
+/** The path as the kernel resolves it, even for a file that does not exist yet (its directory is resolved instead). */
+function realPathOf(file: string): string {
+  try { return realpathSync(file); } catch { /* not created yet */ }
+  try { return path.join(realpathSync(path.dirname(file)), path.basename(file)); } catch { return path.resolve(file); }
+}
+
+/**
+ * Deterministic by construction: the global telemetry paths as observed inside
+ * the reviewer phase must each resolve (realpath) under the out dir, so the
+ * availability check's writes cannot reach the operator's real files.
+ */
+export function telemetryRedirectAssertion(observed: Array<Record<string, string | undefined>>, out: string): SmokeAssertion {
+  const outReal = realPathOf(out);
+  const problems: string[] = [];
+  if (observed.length === 0) problems.push("no observation was recorded during the reviewer phase");
+  for (const [index, seen] of observed.entries()) {
+    for (const variable of Object.keys(telemetryTargets)) {
+      const value = seen[variable];
+      if (!value) problems.push(`observation ${index + 1}: ${variable} was not set`);
+      else if (!isInside(realPathOf(value), outReal)) problems.push(`observation ${index + 1}: ${variable}=${value} is outside ${out}`);
+    }
+  }
+  return {
+    name: "telemetry-writes-redirected",
+    pass: problems.length === 0,
+    detail: problems.length === 0
+      ? `${observed.length} observation(s): ${Object.keys(telemetryTargets).join(" and ")} resolved under ${out}`
+      : problems.join("; ")
+  };
 }
 
 function isInside(child: string, parent: string): boolean {
@@ -480,11 +527,14 @@ type RunCommand = NonNullable<QaPrReviewDependencies["runCommand"]>;
  * The only `gh` calls the reviewer path may make: `pr view --json <fields>`,
  * `pr view --json commits` and the compare patch. Anything else is refused and
  * logged. `git remote get-url` is answered with the fixture's GitHub name.
- * Live: every other host command runs for real. Dry: only the sandbox preflight
- * (the zsh baseline probe and `<codex> sandbox ...`) runs; `<codex> exec` is
- * intercepted; every other command is refused (fail closed) and counted.
+ * The only host commands that run are the zsh baseline probe, `<codex> sandbox`
+ * and `<codex> exec`; in dry mode `<codex> exec` is intercepted instead. Every
+ * other command, in either mode, is refused (fail closed) and counted.
  */
-export function makeStubbedRunner(candidate: SmokeCandidate, options: { dry: boolean; log: string; onModelIntercept?: () => void; host?: RunCommand }): { runCommand: RunCommand; refused: () => number } {
+export function makeStubbedRunner(
+  candidate: SmokeCandidate,
+  options: { dry: boolean; log: string; onModelIntercept?: () => void; onCall?: () => void; host?: RunCommand }
+): { runCommand: RunCommand; refused: () => number } {
   if (!options.dry && candidate.mode !== "live") {
     throw new SmokeRefusal("The candidate was built in dry mode; a live reviewer run needs a candidate built live (with --spend-approved).");
   }
@@ -500,6 +550,7 @@ export function makeStubbedRunner(candidate: SmokeCandidate, options: { dry: boo
     let kind = "";
     let result: ReturnType<RunCommand>;
     const program = path.basename(input.command);
+    options.onCall?.();
     if (input.command === "git" && input.args[0] === "remote" && input.args[1] === "get-url") {
       kind = "remote-url"; result = { status: 0, stdout: `https://github.com/${candidate.repository}.git\n`, stderr: "", error: null };
     } else if (input.command === "gh") {
@@ -511,19 +562,19 @@ export function makeStubbedRunner(candidate: SmokeCandidate, options: { dry: boo
       } else {
         kind = "refused"; result = refuse(`gh call ${input.args.join(" ")}`);
       }
-    } else if (options.dry) {
+    } else {
+      // The reviewer path runs exactly these host commands and no others, in either mode.
       const baselineProbe = input.command === "/bin/zsh" && input.args[0] === "-c" && input.args[2] === "arcadia-qa-host-baseline";
       const sandboxProbe = program === "codex" && input.args[0] === "sandbox";
-      if (program === "codex" && input.args[0] === "exec") {
+      const modelRun = program === "codex" && input.args[0] === "exec";
+      if (modelRun && options.dry) {
         kind = "dry-no-model"; options.onModelIntercept?.();
         result = { status: 1, stdout: "", stderr: "smoke dry run: model not invoked", error: "dry run" };
-      } else if (baselineProbe || sandboxProbe) {
+      } else if (baselineProbe || sandboxProbe || modelRun) {
         result = (options.host ?? runHostCommand)(input);
       } else {
-        kind = "refused-dry"; result = refuse(`host command ${input.command} ${input.args.slice(0, 3).join(" ")} (dry mode allows only the sandbox preflight)`);
+        kind = "refused-host"; result = refuse(`host command ${input.command} ${input.args.slice(0, 3).join(" ")} (only the zsh baseline probe, codex sandbox and codex exec are allowed)`);
       }
-    } else {
-      result = (options.host ?? runHostCommand)(input);
     }
     appendFileSync(options.log, `${JSON.stringify({
       cmd: kind ? `${input.command}(stub:${kind})` : input.command,
@@ -548,6 +599,8 @@ export interface ReviewerPhaseResult {
   skipped: Array<{ kind: "qa" | "code-review"; attempt: number }>;
   refusedCalls: number;
   logPath: string;
+  /** ARCADIA_CODING_AGENT_USAGE_CACHE_PATH and ARCADIA_CLAUDE_USAGE_PATH as seen inside the phase (loop iterations and every command). */
+  telemetryObservations: Array<Record<string, string | undefined>>;
 }
 
 /** Step (f): `--qa` QA calls and `--code-review` code-review calls through the real reviewer path. */
@@ -578,7 +631,10 @@ export function runReviewerCalls(
   const log = path.join(candidate.out, "reviewer-calls.log");
   writeFileSync(log, "");
   let intercepted: boolean;
-  const stub = makeStubbedRunner(candidate, { dry: options.dry, log, host: deps.host, onModelIntercept: () => { intercepted = true; } });
+  // The telemetry variables as they stand inside the redirected scope: at every loop iteration and at every command.
+  const observed: Array<Record<string, string | undefined>> = [];
+  const observe = (): void => { observed.push(Object.fromEntries(Object.keys(telemetryTargets).map((variable) => [variable, process.env[variable]]))); };
+  const stub = makeStubbedRunner(candidate, { dry: options.dry, log, host: deps.host, onCall: observe, onModelIntercept: () => { intercepted = true; } });
 
   // The availability check writes the operator's global usage cache and Claude usage snapshot. Redirect only those
   // writes under --out, seeded with the current content so reads are unchanged. CODEX_HOME is left alone: the Codex
@@ -587,7 +643,7 @@ export function runReviewerCalls(
   mkdirSync(telemetryDir, { recursive: true });
   const redirect: Record<string, string> = {};
   for (const [variable, real] of Object.entries(telemetryPaths())) {
-    const target = path.join(telemetryDir, path.basename(real));
+    const target = path.join(telemetryDir, telemetryTargets[variable]);
     if (existsSync(real)) copyFileSync(real, target);
     redirect[variable] = target;
   }
@@ -604,6 +660,7 @@ export function runReviewerCalls(
         continue;
       }
       intercepted = false;
+      observe();
       const started = Date.now();
       try {
         const { data } = runQaPrReviewCommand(
@@ -628,7 +685,7 @@ export function runReviewerCalls(
       }
     }
   });
-  return { calls, skipped, refusedCalls: stub.refused(), logPath: log };
+  return { calls, skipped, refusedCalls: stub.refused(), logPath: log, telemetryObservations: observed };
 }
 
 export function renderTable(rows: string[][]): string[] {
@@ -687,18 +744,18 @@ export function main(argv: string[], deps: MainDeps = {}): number {
     if (error instanceof SmokeSettlementFailure) {
       // The settlement step failed: a failed deterministic assertion, a FAIL gate and a result file, not a stack trace.
       const context = error.context;
-      const assertions = [
-        assertion("settlement", false, error.message),
-        readOnlyInputsAssertion(context.before, snapshotLive({ fixture: context.fixture, liveWorkspace: context.liveWorkspace }))
-      ];
+      const afterFailure = snapshotLive({ fixture: context.fixture, liveWorkspace: context.liveWorkspace });
+      const assertions = [assertion("settlement", false, error.message), readOnlyInputsAssertion(context.before, afterFailure)];
+      const information = telemetryInformation(context.before, afterFailure);
       write(`Out dir: ${context.out}`);
       write(`Mode: ${context.mode === "dry" ? "DRY (no model call)" : "LIVE"}`);
       write(`Action ${context.actionId}; completion request id ${context.requestId}; base ${context.baseRevision.slice(0, 12)}`);
       write();
       write("Deterministic assertions");
       for (const entry of assertions) write(`  ${entry.pass ? "PASS" : "FAIL"} ${entry.name}: ${entry.detail}`);
+      for (const line of information) write(`  ${line}`);
       write();
-      writeFileSync(path.join(context.out, "smoke-result.json"), `${JSON.stringify({ gate: "FAIL", actionId: context.actionId, requestId: context.requestId, baseRevision: context.baseRevision, assertions, calls: [] }, null, 2)}\n`, "utf8");
+      writeFileSync(path.join(context.out, "smoke-result.json"), `${JSON.stringify({ gate: "FAIL", actionId: context.actionId, requestId: context.requestId, baseRevision: context.baseRevision, assertions, calls: [], information }, null, 2)}\n`, "utf8");
       write("SMOKE GATE: FAIL");
       return 1;
     }
@@ -720,10 +777,17 @@ export function main(argv: string[], deps: MainDeps = {}): number {
     reviewerError = error instanceof Error ? error.message : String(error);
   }
   const assertions = [...candidate.assertions];
-  if (reviewer) assertions.push(assertion("reviewer-calls-allowed", reviewer.refusedCalls === 0, `${reviewer.refusedCalls} refused gh or host call(s); log ${reviewer.logPath}`));
-  else assertions.push(assertion("reviewer-phase-ran", false, reviewerError ?? "reviewer phase did not run"));
-  assertions.push(readOnlyInputsAssertion(candidate.before, snapshotLive({ fixture: candidate.fixture, liveWorkspace: options.liveWorkspace })));
+  if (reviewer) {
+    assertions.push(assertion("reviewer-calls-allowed", reviewer.refusedCalls === 0, `${reviewer.refusedCalls} refused gh or host call(s); log ${reviewer.logPath}`));
+    assertions.push(telemetryRedirectAssertion(reviewer.telemetryObservations, candidate.out));
+  } else {
+    assertions.push(assertion("reviewer-phase-ran", false, reviewerError ?? "reviewer phase did not run"));
+  }
+  const after = snapshotLive({ fixture: candidate.fixture, liveWorkspace: options.liveWorkspace });
+  assertions.push(readOnlyInputsAssertion(candidate.before, after));
   for (const entry of assertions) write(`  ${entry.pass ? "PASS" : "FAIL"} ${entry.name}: ${entry.detail}`);
+  const information = telemetryInformation(candidate.before, after);
+  for (const line of information) write(`  ${line}`);
 
   write();
   const calls = reviewer?.calls ?? [];
@@ -750,7 +814,7 @@ export function main(argv: string[], deps: MainDeps = {}): number {
   writeFileSync(path.join(candidate.out, "smoke-result.json"), `${JSON.stringify({
     gate, options, actionId: candidate.actionId, requestId: candidate.requestId,
     baseRevision: candidate.baseRevision, workCommit: candidate.workCommit, headCommit: candidate.headCommit, evidenceSource: candidate.evidenceSource,
-    assertions, calls, skipped
+    assertions, calls, skipped, information
   }, null, 2)}\n`, "utf8");
   write(`SMOKE GATE: ${gate}`);
   return gate === "FAIL" ? 1 : 0;

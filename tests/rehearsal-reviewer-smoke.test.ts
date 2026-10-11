@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   buildSmokeCandidate, completionRequestId, completionRequestIds, main, makeStubbedRunner, parseArgs, runReviewerCalls, snapshotLive,
-  SmokeRefusal, type SmokeCandidate, type SmokeOptions
+  SmokeRefusal, telemetryRedirectAssertion, type SmokeCandidate, type SmokeOptions
 } from "../scripts/rehearsal-reviewer-smoke.js";
 import type { SelectedCodingAgentConfiguration } from "../src/codingAgents/providerAdapters.js";
 import { CHAIN_FIXTURE } from "../src/operatorActions/rehearsalChain.js";
@@ -116,6 +116,9 @@ const fakeReviewer = {
   profile: { name: "codex_planning", command: "codex", sandbox: "read-only" }
 } as unknown as SelectedCodingAgentConfiguration;
 
+/** The snapshot fields the gate depends on; the global telemetry files are informational (other processes write them). */
+const gated = (snapshot: ReturnType<typeof snapshotLive>) => ({ live: snapshot.live, fixtureStatus: snapshot.fixtureStatus, fixtureHead: snapshot.fixtureHead });
+
 type HostInput = { command: string; args: string[] };
 /** A host that passes the sandbox preflight (so the reviewer path reaches `exec`) and records every command it was handed. */
 function passingHost(seen: string[]) {
@@ -136,6 +139,8 @@ function failingHost(seen: string[]) {
 
 describe("rehearsal reviewer smoke", () => {
   let candidate: SmokeCandidate;
+  /** Built live (no spend happens until a reviewer call; every host command in these tests is stubbed). */
+  let liveCandidate: SmokeCandidate;
   let fixture: string;
   let live: string;
   let before: ReturnType<typeof snapshotLive>;
@@ -153,6 +158,7 @@ describe("rehearsal reviewer smoke", () => {
     live = liveWorkspace();
     before = snapshotLive({ fixture, liveWorkspace: live });
     candidate = buildSmokeCandidate(options(fixture, { live }));
+    liveCandidate = buildSmokeCandidate(options(fixture, { live, dry: false, spendApproved: true }));
   }, 120_000);
 
   it("replays the candidate's product files, settles through the real Agent Ask, and holds every deterministic assertion", () => {
@@ -186,7 +192,7 @@ describe("rehearsal reviewer smoke", () => {
   });
 
   it("never writes the fixture, the live workspace or the global telemetry files", () => {
-    expect(snapshotLive({ fixture, liveWorkspace: live })).toEqual(before);
+    expect(gated(snapshotLive({ fixture, liveWorkspace: live }))).toEqual(gated(before));
     expect(git(fixture, "status", "--porcelain")).toBe("");
     expect(existsSync(path.join(fixture, ".arcadia"))).toBe(false);
     expect(candidate.out.startsWith(root)).toBe(true);
@@ -226,13 +232,50 @@ describe("rehearsal reviewer smoke", () => {
     dry.runCommand({ command: "/bin/zsh", cwd: root, args: ["-c", "probe", "arcadia-qa-host-baseline", "a", "b"] });
     dry.runCommand({ command: "/opt/bin/codex", cwd: root, args: ["sandbox", "--", "x"] });
     expect(hostSeen).toHaveLength(2);
-    for (const other of [["codex", ["login"]], ["codex", ["app-server"]], ["git", ["status"]], ["/bin/zsh", ["-c", "rm -rf /", "other"]], ["curl", ["https://example.invalid"]]] as const) {
+    const others = [
+      ["codex", ["login"]], ["codex", ["app-server"]], ["git", ["status"]], ["/bin/zsh", ["-c", "rm -rf /", "other"]],
+      ["curl", ["https://example.invalid"]],
+      // `exec` is only the model run when it is the subcommand; a leading option must not slip it through.
+      ["codex", ["--cd", "x", "exec", "--json"]]
+    ] as const;
+    for (const other of others) {
       const result = dry.runCommand({ command: other[0], cwd: root, args: [...other[1]] });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("refused host command");
     }
-    expect(dry.refused()).toBe(5);
+    expect(dry.refused()).toBe(others.length);
+    expect(intercepted).toBe(1);
     expect(hostSeen).toHaveLength(2);
+  });
+
+  it("in live mode allows only the zsh baseline probe, codex sandbox and codex exec on the host, and refuses everything else", () => {
+    expect(liveCandidate.mode).toBe("live");
+    const hostSeen: string[] = [];
+    const stub = makeStubbedRunner(liveCandidate, { dry: false, log: path.join(liveCandidate.out, "live-stub.log"), host: failingHost(hostSeen) });
+    // The three stubbed gh shapes and the remote-url stub never reach the host.
+    const repo = REPOSITORY;
+    expect(stub.runCommand({ command: "gh", cwd: root, args: ["pr", "view", "9", "--repo", repo, "--json", "commits"] }).status).toBe(0);
+    expect(stub.runCommand({ command: "git", cwd: root, args: ["remote", "get-url", "origin"] }).status).toBe(0);
+    expect(hostSeen).toEqual([]);
+    expect(stub.refused()).toBe(0);
+    // Resolved paths of gh or git, other codex subcommands and arbitrary programs are refused and counted, never run.
+    const others = [
+      ["/opt/homebrew/bin/gh", ["pr", "merge", "9"]], ["/usr/bin/git", ["remote", "get-url", "origin"]], ["git", ["push"]],
+      ["codex", ["login"]], ["codex", ["--cd", "x", "exec"]], ["/bin/zsh", ["-c", "echo hi", "other"]], ["curl", ["https://example.invalid"]]
+    ] as const;
+    for (const other of others) {
+      const result = stub.runCommand({ command: other[0], cwd: root, args: [...other[1]] });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("refused host command");
+    }
+    expect(stub.refused()).toBe(others.length);
+    expect(hostSeen).toEqual([]);
+    // The three real preflight and model commands do reach the (stubbed) host.
+    stub.runCommand({ command: "/bin/zsh", cwd: root, args: ["-c", "probe", "arcadia-qa-host-baseline", "a", "b"] });
+    stub.runCommand({ command: "codex", cwd: root, args: ["sandbox", "--", "x"] });
+    stub.runCommand({ command: "/opt/bin/codex", cwd: root, args: ["exec", "--json"] });
+    expect(hostSeen).toHaveLength(3);
+    expect(stub.refused()).toBe(others.length);
   });
 
   it("runs the real reviewer path over the stubbed gh in a throwaway workspace, redirecting the global telemetry writes", () => {
@@ -255,32 +298,80 @@ describe("rehearsal reviewer smoke", () => {
     // During the reviewer phase both global paths pointed under --out (seeded with the current cache), and they are restored after.
     expect(observed).toHaveLength(2);
     for (const seen of observed) {
-      expect(seen.cache).toBe(path.join(candidate.out, "telemetry", path.basename(cachePath)));
-      expect(seen.claude).toBe(path.join(candidate.out, "telemetry", path.basename(claudePath)));
+      expect(seen.cache).toBe(path.join(candidate.out, "telemetry", "coding-agent-usage.json"));
+      expect(seen.claude).toBe(path.join(candidate.out, "telemetry", "claude-code.json"));
     }
-    expect(readFileSync(path.join(candidate.out, "telemetry", path.basename(cachePath)), "utf8")).toBe('{"version":1,"providers":{}}\n');
+    expect(readFileSync(path.join(candidate.out, "telemetry", "coding-agent-usage.json"), "utf8")).toBe('{"version":1,"providers":{}}\n');
     expect(process.env.ARCADIA_CODING_AGENT_USAGE_CACHE_PATH).toBe(cachePath);
     expect(process.env.ARCADIA_CLAUDE_USAGE_PATH).toBe(claudePath);
-    expect(snapshotLive({ fixture, liveWorkspace: live })).toEqual(before);
+    // The observations the gate uses: more than the callback's two (loop iterations and every command), all under --out.
+    expect(result.telemetryObservations.length).toBeGreaterThan(observed.length);
+    expect(telemetryRedirectAssertion(result.telemetryObservations, candidate.out)).toMatchObject({ name: "telemetry-writes-redirected", pass: true });
+    expect(gated(snapshotLive({ fixture, liveWorkspace: live }))).toEqual(gated(before));
   }, 120_000);
 
-  it("runs the whole script in dry mode through the host stubs: exec is never handed to the host, the gate is DRY-OK, exit 0", () => {
+  it("checks the redirect deterministically from the observed environment, failing on a real path or no observation", () => {
+    const inside = {
+      ARCADIA_CODING_AGENT_USAGE_CACHE_PATH: path.join(candidate.out, "telemetry", "coding-agent-usage.json"),
+      ARCADIA_CLAUDE_USAGE_PATH: path.join(candidate.out, "telemetry", "claude-code.json")
+    };
+    expect(telemetryRedirectAssertion([inside, inside], candidate.out).pass).toBe(true);
+    // A path that merely shares the out dir as a string prefix, a real global path, an unset variable and no observation all fail.
+    expect(telemetryRedirectAssertion([{ ...inside, ARCADIA_CLAUDE_USAGE_PATH: `${candidate.out}-sibling/claude-code.json` }], candidate.out).pass).toBe(false);
+    expect(telemetryRedirectAssertion([{ ...inside, ARCADIA_CODING_AGENT_USAGE_CACHE_PATH: cachePath }], candidate.out).pass).toBe(false);
+    expect(telemetryRedirectAssertion([{ ...inside, ARCADIA_CLAUDE_USAGE_PATH: undefined }], candidate.out).pass).toBe(false);
+    expect(telemetryRedirectAssertion([], candidate.out).pass).toBe(false);
+  });
+
+  it("runs the whole script in dry mode through the host stubs: exec is never handed to the host, the gate is DRY-OK, exit 0, even while other processes write the real telemetry files", () => {
     const hostSeen: string[] = [];
     const lines: string[] = [];
     const out = path.join(root, "integrated-out");
+    const quiet = passingHost(hostSeen);
+    let writes = 0;
+    // Stands in for the Claude Code status line or any arcadia command: the real global files change during the run.
+    const noisyNeighbour = (input: HostInput) => {
+      writes += 1;
+      writeFileSync(cachePath, `{"version":1,"providers":{},"writer":${writes}}\n`);
+      writeFileSync(claudePath, `{"writer":${writes}}\n`);
+      return quiet(input);
+    };
     const code = main(["--dry", "--qa", "1", "--code-review", "1", "--fixture", fixture, "--out", out, "--live-workspace", live], {
-      env: {}, host: passingHost(hostSeen), selectReviewer: () => fakeReviewer, copyLiveConfig: false, out: (line) => lines.push(line), err: (line) => lines.push(line)
+      env: {}, host: noisyNeighbour, selectReviewer: () => fakeReviewer, copyLiveConfig: false, out: (line) => lines.push(line), err: (line) => lines.push(line)
     });
     const text = lines.join("\n");
     expect(code).toBe(0);
     expect(text).toContain("SMOKE GATE: DRY-OK");
     expect(text).toContain("PASS read-only-inputs-unchanged");
     expect(text).toContain("PASS reviewer-calls-allowed");
+    expect(text).toContain("PASS telemetry-writes-redirected");
+    expect(writes).toBeGreaterThanOrEqual(4);
+    // The change is reported, labelled informational, and not part of the gate.
+    expect(text).toMatch(/informational \(not gated; other processes may write these\): .*global-usage-cache\.json changed/);
     expect(hostSeen.length).toBeGreaterThanOrEqual(4);
     expect(hostSeen.filter((entry) => /\bexec\b/.test(entry))).toEqual([]);
     expect(hostSeen.filter((entry) => entry.startsWith("git"))).toEqual([]);
     expect(JSON.parse(readFileSync(path.join(out, "smoke-result.json"), "utf8")).gate).toBe("DRY-OK");
-    expect(snapshotLive({ fixture, liveWorkspace: live })).toEqual(before);
+    expect(gated(snapshotLive({ fixture, liveWorkspace: live }))).toEqual(gated(before));
+  }, 120_000);
+
+  it("a live run whose first reviewer call is not a pass stops, lists the skipped calls and exits 1 (nothing is spent: only the host is stubbed)", () => {
+    const hostSeen: string[] = [];
+    const lines: string[] = [];
+    const out = path.join(root, "live-main-out");
+    const code = main(["--spend-approved", "--qa", "2", "--code-review", "0", "--fixture", fixture, "--out", out, "--live-workspace", live], {
+      env: {}, host: failingHost(hostSeen), selectReviewer: () => fakeReviewer, copyLiveConfig: false, out: (line) => lines.push(line), err: (line) => lines.push(line)
+    });
+    const text = lines.join("\n");
+    expect(code).toBe(1);
+    expect(text).toContain("Mode: LIVE");
+    expect(text).toContain("SMOKE GATE: FAIL");
+    expect(text).toContain("skipped 1 call(s): qa #2");
+    expect(text).toMatch(/qa\s+2\s+skipped/);
+    expect(hostSeen.filter((entry) => /\bexec\b/.test(entry))).toEqual([]);
+    const result = JSON.parse(readFileSync(path.join(out, "smoke-result.json"), "utf8"));
+    expect(result.gate).toBe("FAIL");
+    expect(result.skipped).toEqual([{ kind: "qa", attempt: 2 }]);
   }, 120_000);
 
   it("exits 1 with a FAIL gate when a deterministic assertion fails, and when the reviewer is unreachable", () => {
@@ -320,7 +411,6 @@ describe("rehearsal reviewer smoke", () => {
   }, 120_000);
 
   it("stops buying live calls after the first non-pass unless --keep-going, and says which were skipped", () => {
-    const liveCandidate = buildSmokeCandidate(options(fixture, { live, dry: false, spendApproved: true }));
     expect(liveCandidate.mode).toBe("live");
     const seen: string[] = [];
     const reviewerOptions = { dry: false, qa: 2, codeReview: 1, liveWorkspace: live };
