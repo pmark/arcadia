@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents."
-active_plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
-current_action: define-governed-role-registry
-updated: 2026-10-10
+milestone: Every open GitHub Issue in pmark/arcadia is classified once into a five-route vocabulary, reconciled both ways with governed Actions, the vital few (about 20 percent) are verified, and the top batches plus a Decision-ready change list are delivered as one local report, with no GitHub mutation.
+active_plan: every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route
+current_action: snapshot-open-issues-and-build-packets
+updated: 2026-10-11
 ---
 
 # Arcadia
