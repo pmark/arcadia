@@ -1,3 +1,4 @@
+import { tickRecurringSchedules } from "../recurring/scheduler.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -1016,6 +1017,9 @@ export function runWorkerIteration(
   // iteration preserves the old serialization with production admission and
   // prevents a new Session from invalidating the handoff's reservation.
   if (!process.env.CODEX_SANDBOX && processPreservationRequests(db, workspacePath)) return null;
+  for (const receipt of tickRecurringSchedules(db)) {
+    if (receipt.status !== "waiting") log(logfile, `Recurring schedule ${receipt.id}: ${receipt.status} ${receipt.occurrence}${receipt.error ? ` (${receipt.error})` : ""}`);
+  }
   recoverOrphanedRuns(db, logfile);
   runManagedProductionIteration(db, workspacePath, logfile, progress);
   const run = claimNextPendingRun(db, pid);

@@ -19,9 +19,10 @@ Decision 0120 exception. Do not clear those review items automatically or use
 [implementation proposal](../proposals/field-notes-production-capability.md).
 
 A session can produce and independently review a content package today. Live
-publication and automatic cadence remain unimplemented; stop before them
-until the site capability and a governed scheduling path exist. Do not install
-cron, launchd, a queue or a second agent runner as a workaround.
+publication remains unimplemented. The [basic recurring scheduler](recurring-scheduler.md)
+can capture timed Action proposals using the existing worker; acceptance and
+dispatch still use the governed path. Stop before live publication until the
+site capability exists. Do not install a second agent runner as a workaround.
 
 ## Inputs and preflight
 
