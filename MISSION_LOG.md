@@ -2260,3 +2260,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator request 2026-10-11: fix the small half of #1155. Refs #1155; the preflight probe stays open. Known limit filed as #1243.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1244-budget-code-2026-10-11
+
+- **Did:** Your call: PR #1244 (an expired login no longer pauses the Project; it holds relaunches 15 minutes) is reviewed and all 7 checks are green, but it changes production budget code, so it waits for your merge. The merge button is near the bottom of the Conversation tab. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Production budget accounting and launch spacing are excluded from merge on green; independent review passed and CI is green on 126c295a8.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
