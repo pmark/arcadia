@@ -2246,3 +2246,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator request 2026-10-10 to run production on a Plan of the most important bugs once satisfied it can start. The Plan is an inactive draft; pointer, queue and authority untouched.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1237
+
+- **Did:** PR 1237 is open: three new UX Actions give the Dashboard Ask screen a one-tap intent-correction menu, an evidence panel and a relationship map - https://github.com/pmark/arcadia/pull/1237
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
