@@ -2,9 +2,26 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, including the published #878 manual-preservation repair candidate in PR #888, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
+Latest derivation: **2026-10-10** (the section below). The 2026-10-02 derivation after it, and everything under it, is earlier evidence kept for history and has not been re-derived.
 
-## Current answer
+## Current answer, 2026-10-10: ready for a supervised first run on Arcadia's own repository, not for unattended production
+
+**Proven.** One Action runs from a confirmed Launch to a draft PR in about 80 seconds (Claude Haiku and Codex, Decision 0096). Under Decisions 0097 (merge-then-next), 0100 and 0119 the disposable fixture ran all nine of its Actions to merged PRs (fixture PRs #11 to #19), with no operator step for the last five. Settlement now leaves a completed Action unambiguous (#1212), the deterministic review gate accepts that exact shape, and the reviewer pre-flight smoke is a maintained script with a spend guard (#1226). Nothing in this list has run on Arcadia's own repository.
+
+**Not proven, and not built.** No production run has ever completed an Action on a non-disposable repository. The worker never merges: an operator-launched candidate stops at a draft PR (`src/production/tick.ts`, `sessionHandoff.ts`: "merge it through its pull request"), and the automated review-and-merge capability Decision 0097 names is not built. A first run therefore needs a supervising agent or the operator to review and merge each PR under Decisions 0060/0080 before the next launches.
+
+**Gates before the first run on Arcadia's own repository** (each is evidence-checked; the operator owns the ones marked *operator*):
+1. *Operator.* Authority for this repository. Decision 0100 and 0119 name the disposable fixture only. A fresh `arcadia production preview --project arcadia --plan <the bug Plan> --concurrency 1 --remote-preservation` and the operator's own activation are required. **Do not add an integration grant for this repository**: the worker's integration path fast-forwards the base branch directly rather than through a pull request, so a grant would bypass the PR and its seven required CI jobs (and `main` keeps admin bypass on for governed settlement pushes). Use remote preservation (draft PR only) and merge through PRs.
+2. *Operator.* A spend bound. `capacityGateEnabled` is `false` in the workspace, so every provider reads "unmetered by config" and Decision 0103's percent-of-window budget with a 20% reserve (Decision 0111) is not enforced. Enable the gate, or accept concurrency 1, a short Grant expiry and a per-launch time limit as the only bound.
+3. *Operator.* Answer Decisions 0116 (what runs when a Plan waits on the operator) and 0117 (how many unmerged PRs per repository; the evidence favours one). 0115 and 0118 can wait if OpenCode stays out of the provider list.
+4. Fix, under supervision before activation: #1177 (a non-canonical hand-written Ask is committed and published by the host), and the small half of #1155 (a provider sign-in failure consumes the failed-Run budget and can pause the Project). Both touch launch-authority or budget code and wait for the operator at merge.
+5. Avoid, by Grant sizing: #1012 (an Action is admitted after the Grant's delegations have expired). Keep OpenCode out (#1165, Decision 0118 open).
+6. Make the settlement fix live: main is not fast-forwarded in the primary checkout and services are not restarted since #1212 and #1226 merged. Restart once, outside any run, and avoid merging during a run (#1129: a restart under load can stop every service).
+7. Spend six reviewer calls once (`scripts/rehearsal-reviewer-smoke.ts --spend-approved`, three QA and three code-review) and read the verdicts before activation; `--dry` is already green.
+
+**The Plan.** The seven-Action draft Plan `seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and` holds valid, small bugs on the unattended settlement path, ordered so each lands before the next touches the same files. It is inactive; activating it is the operator's call. Excluded bugs and why are in its source Ask.
+
+## Earlier answer, 2026-10-02
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
