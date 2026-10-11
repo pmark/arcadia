@@ -30,8 +30,13 @@ arcadia schedule retry field-notes-ship --occurrence 2026-10-12
 Each command resolves the configured workspace by default. Use `--workspace`
 only for an explicitly resolved alternate workspace or disposable test fixture.
 Registration starts paused; replaying the identical definition preserves its
-state. To change a definition, pause the old id and register a new id. Receipts
-are retained. `recurring` is read-only, including on a database predating this
+state. To change timing, prefer Clock (`/clock`) or the fingerprinted atomic
+`schedule edit` operation below; both preserve the existing ID and receipts.
+Registered original definitions are immutable, while timing overrides are
+validated separately. A new ID creates an independent schedule with independent
+deduplication and pending-proposal state; use it for distinct work, not to retime
+an existing schedule. Pausing the old ID does not resolve its pending proposal,
+so registering the same work under another ID risks duplicate intake. `recurring` is read-only, including on a database predating this
 feature. `tick` is a manual equivalent of the worker's regular evaluation.
 The worker must be running a build containing this feature for automatic ticks.
 
@@ -95,3 +100,51 @@ twice, and inspect `schedule recurring` plus `agent-ask pending`. Expect one
 proposal and one submitted occurrence; no new execution Run or approved work.
 Pause it and tick again: no additional proposal. The production integration is
 the same tick function in `runWorkerIteration`, tested with production inactive.
+
+## Clock dashboard
+
+Open **Clock** in the dashboard menu (`/clock`). Each card shows its timing and
+IANA time zone, enabled/paused state, next scheduled time, last occurrence and
+pending proposal link. **Enable** and **Pause** preserve history. Enabled state
+is permission for the existing worker to propose work at eligible times, not a
+promise that the worker is running or that an Action will execute.
+
+**Edit timing** changes only cadence, day, time and time zone. Saving keeps the
+schedule's stable ID, original registered definition, existing receipts and
+enabled state. It starts at a future date not already covered by a receipt, on
+or after the existing start baseline. For example, moving a monthly November 1
+09:00 start to 08:00 before that first occurrence preserves the 09:00 baseline
+and first becomes eligible on December 1. The form shows the existing start,
+and the card shows the resulting next scheduled time after saving. A no-op
+save does not postpone already due work.
+
+Resolve an unsettled proposal or failed occurrence before changing timing;
+Clock links submitted proposals to To-do. Concurrent changes are refused with
+a refresh, never overwritten. The dashboard uses the existing same-origin
+request guard; this is the local single-operator deployment, not an identity
+or authentication layer.
+
+The CLI also exposes the same atomic operation:
+
+```sh
+arcadia schedule recurring --json  # read the schedule's fingerprint
+arcadia schedule edit field-notes-ship --file /tmp/timing.json
+```
+
+Example `/tmp/timing.json` (replace `expected` with the current fingerprint):
+
+```json
+{
+  "expected": "<64-character fingerprint from schedule recurring>",
+  "cadence": "weekly",
+  "weekday": 2,
+  "time": "10:00",
+  "timezone": "America/Los_Angeles"
+}
+```
+
+The timing file contains `expected` (the current fingerprint), `cadence`,
+`time`, `timezone`, and `weekday` for weekly or `day` for monthly. Supported
+monthly days remain 1–28. Enable/pause accept optional `--expected` for the
+same stale-change protection. Runtime installation/restart stays with the
+release-manager; this page does not create another runner or publish posts.

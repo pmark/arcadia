@@ -14,7 +14,7 @@ export interface RecurringSchedule extends CalendarSchedule {
   desired_result: string;
   acceptance: string[];
 }
-interface ScheduleRow { id: string; definition_json: string; enabled: number; created_at: string; }
+interface ScheduleRow { id: string; definition_json: string; enabled: number; created_at: string; timing_json?: string | null; }
 interface OccurrenceRow {
   schedule_id: string; occurrence_key: string; due_at: string; request_id: string;
   proposal_id: string | null; status: "submitted" | "failed"; attempts: number;
@@ -47,6 +47,55 @@ export function parseRecurringSchedule(input: unknown): RecurringSchedule {
     ...(value.weekday !== undefined ? { weekday: value.weekday as number } : {}), ...(value.day !== undefined ? { day: value.day as number } : {}),
     starts_at: value.starts_at as string, desired_result: value.desired_result as string, acceptance: value.acceptance as string[] };
 }
+/** Original definition and receipt identity stay immutable; only operator timing can change. */
+function effectiveDefinition(row: ScheduleRow): RecurringSchedule {
+  const original = parseRecurringSchedule(JSON.parse(row.definition_json));
+  if (!row.timing_json) return original;
+  const { weekday: _weekday, day: _day, ...base } = original;
+  return parseRecurringSchedule({ ...base, ...JSON.parse(row.timing_json) });
+}
+function fingerprint(row: ScheduleRow): string {
+  return createHash("sha256").update(JSON.stringify([row.definition_json, row.timing_json ?? null, row.enabled])).digest("hex");
+}
+function nextUnrecorded(db: Database.Database, id: string, definition: RecurringSchedule, after: Date): CalendarOccurrence {
+  let next = nextOccurrence(definition, after);
+  // A timezone or later-time edit can move a previously recorded local date
+  // into the future. Keep the original receipt authoritative for that date.
+  while (db.prepare("SELECT 1 FROM recurring_schedule_occurrences WHERE schedule_id=? AND occurrence_key=?").get(id, next.key)) {
+    next = nextOccurrence(definition, new Date(next.dueAt));
+  }
+  return next;
+}
+function assertExpected(row: ScheduleRow, expected?: string): void {
+  if (expected !== undefined && expected !== fingerprint(row)) throw validationError("Schedule changed; refresh Clock and try again.", { conflict: true });
+}
+export function editRecurringScheduleTiming(db: Database.Database, id: string, input: unknown, now = new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw validationError("Timing must be a JSON object.");
+  const value = input as Record<string, unknown>;
+  for (const key of Object.keys(value)) if (!["expected", "cadence", "timezone", "time", "weekday", "day"].includes(key)) throw validationError(`Unknown timing field: ${key}.`);
+  if (typeof value.expected !== "string" || !/^[a-f0-9]{64}$/.test(value.expected)) throw validationError("Timing requires an expected schedule fingerprint.");
+  return writeTransaction(db, () => {
+    const row = db.prepare("SELECT * FROM recurring_schedules WHERE id = ?").get(id) as ScheduleRow | undefined;
+    if (!row) throw validationError("Unknown recurring schedule.", { id });
+    assertExpected(row, value.expected as string);
+    const pending = db.prepare(`SELECT 1 FROM recurring_schedule_occurrences o LEFT JOIN agent_ask_settlements s ON s.proposal_id=o.proposal_id
+      WHERE o.schedule_id=? AND (o.status='failed' OR s.id IS NULL) LIMIT 1`).get(id);
+    if (pending) throw validationError("Resolve the pending proposal or failed occurrence before editing timing.", { conflict: true });
+    const original = effectiveDefinition(row);
+    const { weekday: _weekday, day: _day, ...base } = original;
+    const timing = { cadence: value.cadence, timezone: value.timezone, time: value.time,
+      ...(value.weekday !== undefined ? { weekday: value.weekday } : {}), ...(value.day !== undefined ? { day: value.day } : {}) };
+    const definition = parseRecurringSchedule({ ...base, ...timing });
+    // A no-op keeps the old baseline, so it cannot skip an already due occurrence.
+    const same = ["cadence", "timezone", "time", "weekday", "day"].every((key) => definition[key as keyof RecurringSchedule] === original[key as keyof RecurringSchedule]);
+    if (!same) {
+      const lowerBound = new Date(Math.max(now.getTime(), Date.parse(original.starts_at) - 1));
+      const starts_at = nextUnrecorded(db, id, definition, lowerBound).dueAt;
+      db.prepare("UPDATE recurring_schedules SET timing_json=? WHERE id=?").run(JSON.stringify({ ...timing, starts_at }), id);
+    }
+    return { id, changed: !same };
+  });
+}
 export function registerRecurringSchedule(db: Database.Database, input: unknown, now = new Date()): { id: string; replayed: boolean; enabled: boolean } {
   const definition = parseRecurringSchedule(input);
   return writeTransaction(db, () => {
@@ -63,9 +112,14 @@ export function registerRecurringSchedule(db: Database.Database, input: unknown,
     return { id: definition.id, replayed: false, enabled: false };
   });
 }
-export function setRecurringScheduleEnabled(db: Database.Database, id: string, enabled: boolean): void {
-  const result = db.prepare("UPDATE recurring_schedules SET enabled = ? WHERE id = ?").run(Number(enabled), id);
-  if (!result.changes) throw validationError("Unknown recurring schedule.", { id });
+export function setRecurringScheduleEnabled(db: Database.Database, id: string, enabled: boolean, expected?: string): void {
+  writeTransaction(db, () => {
+    const row = db.prepare("SELECT * FROM recurring_schedules WHERE id = ?").get(id) as ScheduleRow | undefined;
+    if (!row) throw validationError("Unknown recurring schedule.", { id });
+    assertExpected(row, expected);
+    const result = db.prepare("UPDATE recurring_schedules SET enabled = ? WHERE id = ?").run(Number(enabled), id);
+    if (!result.changes) throw validationError("Unknown recurring schedule.", { id });
+  });
 }
 function installed(db: Database.Database): boolean {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recurring_schedules'").get());
@@ -73,7 +127,7 @@ function installed(db: Database.Database): boolean {
 export function recurringScheduleStatus(db: Database.Database, now = new Date()) {
   if (!installed(db)) return { available: false, schedules: [] };
   const schedules = (db.prepare("SELECT * FROM recurring_schedules ORDER BY id").all() as ScheduleRow[]).map((row) => {
-    const definition = parseRecurringSchedule(JSON.parse(row.definition_json));
+    const definition = effectiveDefinition(row);
     const last = db.prepare("SELECT * FROM recurring_schedule_occurrences WHERE schedule_id = ? ORDER BY due_at DESC LIMIT 1").get(row.id) as OccurrenceRow | undefined;
     const due = latestOccurrence(definition, now);
     const pending = db.prepare(`SELECT o.* FROM recurring_schedule_occurrences o
@@ -83,7 +137,7 @@ export function recurringScheduleStatus(db: Database.Database, now = new Date())
     const recorded = db.prepare("SELECT 1 FROM recurring_schedule_occurrences WHERE schedule_id = ? AND occurrence_key = ?").get(row.id, due.key);
     const hasDue = Boolean(row.enabled) && !pending && !recorded && due.dueAt >= definition.starts_at;
     const lowerBound = new Date(Math.max(now.getTime(), Date.parse(definition.starts_at) - 1));
-    return { definition, enabled: Boolean(row.enabled), due: hasDue ? due : null, next: nextOccurrence(definition, lowerBound), pending: pending ?? null, last: last ?? null };
+    return { fingerprint: fingerprint(row), definition, enabled: Boolean(row.enabled), due: hasDue ? due : null, next: nextUnrecorded(db, row.id, definition, lowerBound), pending: pending ?? null, last: last ?? null };
   });
   return { available: true, schedules };
 }
@@ -108,7 +162,7 @@ export function tickRecurringSchedules(db: Database.Database, now = new Date()):
       // Recheck under the same writer lock as capture and receipt creation.
       const current = db.prepare("SELECT * FROM recurring_schedules WHERE id = ? AND enabled = 1").get(row.id) as ScheduleRow | undefined;
       if (!current) return null;
-      const definition = parseRecurringSchedule(JSON.parse(current.definition_json));
+      const definition = effectiveDefinition(current);
       const pending = db.prepare(`SELECT o.* FROM recurring_schedule_occurrences o
         LEFT JOIN agent_ask_settlements s ON s.proposal_id = o.proposal_id
         WHERE o.schedule_id = ? AND (o.status = 'failed' OR s.id IS NULL)
