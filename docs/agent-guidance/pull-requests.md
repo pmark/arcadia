@@ -177,6 +177,10 @@ on the dashboard, or `--link <PR URL>` for a pull request. A `look` or
   `desired_result` is one upbeat, specific sentence naming what shipped, plus
   the PR URL. This fires for every PR, including ones "Merge on green" will
   merge without further ado — it is the "something is moving" signal.
+  `.gitattributes` marks `MISSION_LOG.md` `merge=union`, so a branch that
+  carries this append no longer conflicts when `main` appends its own entry;
+  never reset and re-settle under a new request id to dodge that conflict, as
+  each redo sends another notification.
 - **On ready-for-you.** Send a second ping, `request_id`
   `pr-ready-<project>-pr<number>-<reason-slug>-<yyyy-mm-dd>` (a short kebab
   `reason-slug` naming *why* — `decision-answer`, `approval-boundary`,
