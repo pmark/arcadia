@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Operator-host defaults, as in the restart-arcadia-services skill this was
+# vendored from; scripts/services.sh always passes the repository explicitly.
 DEFAULT_REPO="/Users/pmark/Dev/MR/Arcadia/arcadia"
-# shellcheck source=lib/ready-probe.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/ready-probe.sh"
+READY_PROBE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/ready-probe.sh"
 ACTION="${1:-restart}"
 REPO_ARG="${2:-$DEFAULT_REPO}"
 
@@ -544,6 +545,9 @@ case "$ACTION" in
     echo "Logs: $LOG_DIR"
     ;;
   restart)
+    # Probe settings matter only here; stop and status must work even when they are malformed.
+    # shellcheck source=lib/ready-probe.sh
+    source "$READY_PROBE_LIB"
     trap rollback EXIT INT TERM
     stop_all
     check_port_conflicts

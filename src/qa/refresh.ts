@@ -440,7 +440,9 @@ function runService(
   const result = spawnSync(script, [action], {
     cwd: project.repoPath,
     encoding: "utf8",
-    timeout: 180_000
+    // A restart waits for slow services and retries once (scripts/lib/ready-probe.sh);
+    // 3 minutes killed it mid-wait, and the kill rolled every service back.
+    timeout: 15 * 60_000
   });
   return { ok: result.status === 0, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }

@@ -31,9 +31,10 @@ RECOVER_ID="recover-arcadia-host-services"
 # The reviewed host-service path, pinned to its exact reviewed bytes.
 RECOVER_SCRIPT_SHA256="d48ad928b578010f6de10f51bf971168db21713f2a99daf22354559afb500a63"
 RECOVER_DESCRIPTOR_SHA256="4e6186613c03c86a67f8ee8cccdeb6adaf1a979e677ab621d07cc15fb3f1c0f1"
-# scripts/services.sh (tracked, clean main) delegates to this implementation.
-RESTART_IMPL="$HOME/.codex/skills/restart-arcadia-services/scripts/restart-services.sh"
-RESTART_IMPL_SHA256="ac0c60a1d8282f9413e92e77066f44f58257cc6a8d979f1d1e4fe8097b8b53b6"
+# scripts/services.sh (tracked, clean main) delegates to this implementation,
+# and refuses to run any other file when given this pin (PR #1247).
+RESTART_IMPL="$ARCADIA_REPO/scripts/restart-services-impl.sh"
+RESTART_IMPL_SHA256="4c4211ff26619a8db8789dbbac74123d2929a0cad3305e1774364a1d0a2e788f"
 WORKER_LOG_GLOB="$HOME/Library/Logs/arcadia-services-*"
 DRAIN_DEADLINE_SECONDS=1800
 OBSERVATION_INTERVAL_SECONDS=15
@@ -339,6 +340,7 @@ RESTART_EXIT=0
 (cd "$ARCADIA_REPO" && env -u ARCADIA_OPERATOR_SCRIPT_ID -u ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR \
   -u ARCADIA_RESTART_SCRIPT -u ARCADIA_RESTART_ATTEMPTS -u ARCADIA_RESTART_RETRY_DELAY \
   -u ARCADIA_MISE_BIN -u ARCADIA_NODE_BIN -u ARCADIA_WORKSPACE_DEFAULT ARCADIA_WORKSPACE="$WORKSPACE" \
+  ARCADIA_RESTART_IMPL_SHA256="$RESTART_IMPL_SHA256" \
   timeout "$RESTART_TIMEOUT_SECONDS" "$RECOVER" run) > "$RUN_DIR/restart-output.log" 2>&1 || RESTART_EXIT=$?
 RESTARTED=true
 SERVICES_AFTER="$(cd "$ARCADIA_REPO" && timeout 60 scripts/services.sh status 2>&1 || true)"

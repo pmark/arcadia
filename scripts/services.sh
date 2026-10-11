@@ -71,6 +71,17 @@ if [[ ! -x "$IMPL" ]]; then
   exit 2
 fi
 
+# A caller that pinned the implementation it reviewed (the rehearsal-chain
+# terminal-Off action does) passes that pin here, so what was verified is what
+# runs: a different file refuses instead of running.
+if [[ -n "${ARCADIA_RESTART_IMPL_SHA256:-}" ]]; then
+  if command -v shasum >/dev/null; then IMPL_SHA="$(shasum -a 256 "$IMPL" | cut -d' ' -f1)"; else IMPL_SHA="$(sha256sum "$IMPL" | cut -d' ' -f1)"; fi
+  if [[ "$IMPL_SHA" != "$ARCADIA_RESTART_IMPL_SHA256" ]]; then
+    echo "Refused: the restart implementation $IMPL (sha256 $IMPL_SHA) is not the pinned one ($ARCADIA_RESTART_IMPL_SHA256)." >&2
+    exit 3
+  fi
+fi
+
 # Rehearsal freeze window (docs/agent-guidance/rehearsal-freeze-window.md):
 # restarting or stopping services under a live managed-production run unloads
 # the worker it depends on, so the CLI's read-only freeze check refuses while

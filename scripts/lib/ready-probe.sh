@@ -7,10 +7,15 @@
 # exit 28) and the rollback stopped every service (Issue #430, and again on
 # 2026-10-11). Probes now allow READY_PROBE_TIMEOUT seconds each and retry until
 # a deadline, so a slow service is waited for and only a dead one fails.
+#
+# Worst case for one restart attempt with the defaults: about 2 x (120 + 10) s
+# of startup readiness plus 2 x (30 + 10) s of recheck, roughly 6 minutes on top
+# of stopping and launching. Callers that bound a restart (src/qa/refresh.ts,
+# recover-arcadia-host-services) allow 15 minutes, which covers two attempts.
 
 READY_PROBE_TIMEOUT="${ARCADIA_READY_PROBE_TIMEOUT:-10}"
-READY_DEADLINE="${ARCADIA_READY_DEADLINE:-180}"
-READY_RECHECK_DEADLINE="${ARCADIA_READY_RECHECK_DEADLINE:-60}"
+READY_DEADLINE="${ARCADIA_READY_DEADLINE:-120}"
+READY_RECHECK_DEADLINE="${ARCADIA_READY_RECHECK_DEADLINE:-30}"
 
 for _setting in READY_PROBE_TIMEOUT READY_DEADLINE READY_RECHECK_DEADLINE; do
   if [[ ! "${!_setting}" =~ ^[1-9][0-9]{0,3}$ ]]; then
