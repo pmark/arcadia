@@ -44,7 +44,18 @@ was A12's own subject); reviewers = fresh Sonnet read-only subagents.
 | Wall time, Driver | about 35 min |
 | Codex Session spend | 0 |
 
-Per-Action rows for A3, A5 and A6 are appended as they land.
+| Measure | A3 | A5 | A6 |
+|---|---|---|---|
+| PR | #1293 (merged on green) | #1296 (waits for operator) | #1297 (waits for operator) |
+| Driver attempts / repair rounds | 1 / 1 | 1 / 2 | 1 / 3 |
+| Independent review rounds | 1 | 3 (2 blocking) | 2 (1 blocking) |
+| Driver tokens (subagent total) | about 180k | about 330k | about 590k |
+| Real defects the reviewers found before merge | 2 low (hidden deferred items, missing gate tests) | 12 validator bypass classes, route on human-owned Action | unguarded `activateNextPlan`/`activatePlan`, half-finished `go --apply`, status change, fail-open store |
+| Outcome | partial slice, `split` still to record | heuristic validator, term-list gaps disclosed | guard covers activation, completion hold, status; no pause path |
+
+Totals for the night: 4 Actions built by Sonnet Drivers in isolated worktrees,
+8 PRs opened and merged or queued, 0 host touches, 0 Codex Session spend,
+0 Grants. Operator touches: the activation answer and the PR merges.
 
 ## What works (keep it)
 
@@ -94,6 +105,11 @@ Issue or PR exists.
 | 12 | Clearing an `environment_wall` blocker is CLI-only (`production reset-repair-budget`). | host touch | A /todo or /actions one-click | Open |
 | 14 | After the split and a canonical queue reorder, PROJECT.md `current_action` still names the remainder; the pointer only advances inside a settlement, so the operator's chosen order (A3 first) needs another governed PR (#1295) and the pointer stays wrong until then. | one more PR, a stale pointer that `arcadia go` would follow | Advance the pointer when the explicit queue order changes, or let `queue reorder` stage the pointer change as a settlement | Open |
 | 13 | Review comments on the PR and dashboard-reachable code exposed that "tokens per attempt" mixed cached and uncached for Codex (`input_tokens` already includes cached). | wrong cost numbers | Fixed in #1290; keep the unit test | Fixed |
+| 15 | The Driver's own claim of acceptance was wrong on A5 and A6: the first drafts passed their own tests while independent adversarial review found bypasses a reviewer could run in minutes. Self-reported test counts are not evidence of the criterion. | 2 and 3 blocking review rounds | Require the Driver to include the reviewer's adversarial strings (or a property list) in the brief for any validator/guard Action; keep independent review mandatory for guards | Practice |
+| 16 | Guards written for one entry point (`settle --activate`) missed the other entry points (`activateNextPlan`, `activatePlan`, `arcadia go`, `project_update`). | one blocking round on A6 | A single shared `assertNoActiveScope…` at the lowest write boundary, with a test that enumerates callers | Fixed in #1297 |
+| 17 | Fast-rehearsal run from the wrong working directory silently produced no report (exit 124, `jq` error). | wasted 10 min | Print the report path and fail loudly if `report.json` is missing | Open |
+| 18 | The adversarial reviewer needs a runnable validator; reading code by hand missed what a 3-line script found. | quality | Give reviewer briefs a read-only way to execute pure functions | Practice |
+| 19 | Operator-owned PRs left as drafts (#1291) block merge and review unnoticed. | one stall | Lead checks `isDraft`; `gh pr ready` is allowed when the operator asked for the merge | Practice |
 
 ## Tool and process notes
 
