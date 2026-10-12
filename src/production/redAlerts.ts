@@ -501,7 +501,12 @@ export function observeScopeDriftForProject(ctx: AlertContext, repoRoot: string)
   observeScopeSuccessorHeld(ctx, { activePlanSlug, planFinished: !!held });
 }
 
-/** The scoped Plan finished but its successor activation is refused: one alert until STOP or the pointer moves. */
+/**
+ * Clears a held-successor alert once its condition no longer holds (scope not
+ * Active, not covering the Plan, or the Plan not finished). It never raises:
+ * only an actual refused activation does (`raiseScopeSuccessorHeld`), so a
+ * finished Plan with no queued successor is not an alert.
+ */
 export function observeScopeSuccessorHeld(ctx: AlertContext, input: { activePlanSlug: string | null; planFinished: boolean }): void {
   const { db, projectSlug, now } = ctx;
   const read = readProductionPolicySafely(db);
@@ -509,8 +514,13 @@ export function observeScopeSuccessorHeld(ctx: AlertContext, input: { activePlan
   const planKey = input.activePlanSlug ? `${projectSlug}/${input.activePlanSlug}` : null;
   if (!scope || !planKey || !input.planFinished || !scope.projects.includes(projectSlug) || !scope.plans.includes(planKey)) {
     clearRedAlerts(db, { projectSlug, trigger: "scope_successor_held", now });
-    return;
   }
+}
+
+/** A successor activation was refused by the scope guard: one alert per Project until the hold lifts. */
+export function raiseScopeSuccessorHeld(ctx: AlertContext, input: { planKey: string }): void {
+  const { db, projectSlug, now } = ctx;
+  const planKey = input.planKey;
   raiseRedAlert(db, {
     workspace: ctx.workspace,
     projectSlug,

@@ -27,6 +27,7 @@ import {
   observeReconcileSuccess,
   observeRepairBudget,
   observeScopeDriftForProject,
+  raiseScopeSuccessorHeld,
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
@@ -1914,6 +1915,11 @@ function attemptProjectLaunch(
       // A held successor is not a failure: the per-tick scope-drift observer already holds one
       // named alert for it, so this tick stays quiet and skips (no log line, no retry storm).
       if ((error as { details?: { code?: string } }).details?.code === SCOPE_HELD_CODE) {
+        const heldPlan = (error as { details?: { activePlan?: string } }).details?.activePlan;
+        if (heldPlan) {
+          safelyRaiseRedAlerts(input.log, "scope successor held", () =>
+            raiseScopeSuccessorHeld({ db, workspace: input.workspace, projectSlug: input.projectSlug, now: input.now }, { planKey: heldPlan }));
+        }
         return { attempted: false, outcome: "skipped", reason: message, actionKey: null };
       }
       input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
