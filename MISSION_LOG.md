@@ -2365,3 +2365,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "An Action with execution: build routes to a build packet regardless of its wording; an Action with execution: plan-run routes to a plan run; an Action with neither keeps today's behaviour and the preview says so."; "The production preview lists each Action's route and the operator touches it expects."; "The artifact sentence pair quoted in Issue #1277 (a statement that the run itself needs no approval followed by one that the later implementation needs a separate approved goal) passes the validator, and a sentence saying the implementation needs no approval still fails it."; "Focused tests exist and pnpm fast-rehearsal passes.".
 - **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-declare-action-route-and-fix-the-approval-check-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/refuse-plan-changes-inside-an-active-production-scope
+
+- **Did:** Completed Action arcadia/refuse-plan-changes-inside-an-active-production-scope from accepted evidence (Candidate dc0cb021b79ac8826b921e6f32df6e90b07fa03a).
+- **Result:** Every declared acceptance criterion was accepted as met: "Applying an activation or pause that changes the current Plan of a Project covered by an Active policy scope is refused before any document is written, naming STOP as the remedy."; "A pointer that leaves an Active policy's scope raises a red alert naming the mismatch, with a one-click remedy."; "With production Inactive the existing activation behaviour is unchanged."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-plan-changes-inside-an-active-production-scope-2026-10-12).
