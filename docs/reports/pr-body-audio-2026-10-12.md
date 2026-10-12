@@ -228,3 +228,25 @@ an audio regression. No full-suite pass is claimed for the contaminated run.
 Adding a separate Notes To Self entry exceeded its 25-entry contract. The remedy
 was merged into the existing headless-fixture entry instead; all 3 notes tests
 then passed. This preserves the cache gate and existing knowledge.
+
+## Final refactor handoff state
+
+Implementation preserved locally in `c245d7e64` on `codex/pr-body-audio`.
+Full run: 370 test files passed, 1 failed, 3 skipped; 5,621 tests passed,
+2 failed, 1 expected failure and 22 skipped, over 1,957.20 seconds. Its only
+failures were the two diagnosed inherited-token login fixtures. Both passed
+in the isolated current-candidate rerun and the installed-Node/pre-refactor
+archive check. The original broad run is not described as green; required CI
+on a published head still must run and pass. No gates or assertions weakened.
+
+Final notes contract: 3 tests passed. Core/Discord and production Dashboard
+builds, full lint, package boundary, focused audio suites, real encoding proof
+and phone-width browser QA passed. Independent review found no blocker.
+The owned localhost3041 QA server was stopped after verification. The approved
+PR1308-only phone player remains the detached PID60881 listener on Tailnet3042;
+managed services and main checkout were not installed, restarted or edited.
+
+Prepared external artifacts: `/tmp/pr-read-aloud-feature-issue.md`,
+`/tmp/pr-read-aloud-refactor-pr.md`, and
+`/tmp/pr-read-aloud-fixture-defect-issue.md`. These are drafts, not published
+Issues or a PR. External authorization is the remaining handoff boundary.
