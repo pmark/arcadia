@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the
 project: arcadia
-status: draft
+status: active
 milestone: "Production runs on Arcadia launch with zero host touches, stop spending into the same environment wall, name every stall with a one-click fix, and cannot be stranded by a Plan change under an Active scope: Actions A12, A3, A5 and A6 of the first supervised run plan are implemented and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -88,6 +88,9 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
 questions: []
 decisions: []
+current_action: stop-spending-into-an-environment-wall
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: medium
 ---
 
 # Production runs on Arcadia launch with zero host touches, stop spending into the same environment wall, name every stall with a one-click fix, and cannot be stranded by a Plan change under an Active scope: Actions A12, A3, A5 and A6 of the first supervised run plan are implemented and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.
