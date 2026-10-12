@@ -112,6 +112,13 @@
       "path": "docs/agent-guidance/standard-harness.md",
       "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
       "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
+    },
+    {
+      "id": "session-roles-and-briefs",
+      "trigger": "launch session, subagent, driver, reviewer, replayer, observer, brief, hand-back, session ledger, model per role",
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
+      "sha256": "faa3359e5fdd2454965278db71bd1945487c143df30a12105e7a9cd3a89f1b74"
     }
   ]
 }
