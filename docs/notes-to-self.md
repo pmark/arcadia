@@ -186,11 +186,12 @@ Regression: `tests/dispatch-journal.test.ts`, sandbox-callable broker section.
 
 ## Brief launcher returned `BRIEF_DEADLINE_EXCEEDED` (or seemed to hang)
 
-keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status
+keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status, arcadia go, tidy, no session, quarantine
 
 The fixed brief supervises itself: one JSON document on stdout within 25s.
 A failure names `error.details.stage`, `correlationId` and `recovery`; it is read-only, so rerun the same launcher once.
 `work-monitor` = many worktrees or a hung git; `advance`/`next` = a SQLite lock. Never run mutable `next` or widen the sandbox.
+If `go` prepares a worktree but no session launches, preview `pnpm -s arcadia tidy --repo <main checkout>` (quarantines merged worktrees and branches, nothing deleted), then `tidy --apply` only after reviewing it; `tidy undo <run>` restores them. Unverified that this clears a `work-monitor` stall.
 Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
 Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
