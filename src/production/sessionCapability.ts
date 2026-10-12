@@ -1,5 +1,6 @@
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
+import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/preservationTransport.js";
 
@@ -90,6 +91,28 @@ export function probeSessionCapability(workspace: string, profileSandbox?: strin
     walls.push({ wallClass: "host_validation", evidence: clip(transportHeartbeatDiagnostic(workspace, "go")), remedy: WALL_REMEDY.host_validation });
   }
   return walls;
+}
+
+/**
+ * The one preflight every launch path runs (guarded launch, `arcadia go
+ * --launch`): refuses with the named walls and remedy before anything is
+ * admitted, prepared or spawned. `override` is a caller's or test's probe;
+ * without one the real probe runs, except under Vitest (like the provider
+ * prerequisites). A `conflict` refusal, so the production tick treats it as a
+ * wait state rather than a counted launch failure.
+ */
+export function assertSessionCapability(input: {
+  workspace: string;
+  actionLabel: string;
+  profileSandbox: string | null;
+  override?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
+}): void {
+  const walls = input.override
+    ? input.override(input.workspace, input.profileSandbox)
+    : process.env.VITEST ? [] : probeSessionCapability(input.workspace, input.profileSandbox);
+  if (walls.length === 0) return;
+  const named = describeEnvironmentWalls(input.actionLabel, walls, "preflight");
+  throw validationError(named.message, { code: "session_environment_wall", walls, remedy: named.remedy, conflict: true });
 }
 
 /** The single named blocker text for a set of walls. */

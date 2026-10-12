@@ -11,7 +11,7 @@ import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { describeEnvironmentWalls, probeSessionCapability, type EnvironmentWall } from "../production/sessionCapability.js";
+import { assertSessionCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
   canonicalPath,
@@ -337,14 +337,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     );
   }
   // A selection reused from an immutable packet carries no profile; its sandbox is then unknown (null).
-  const profileSandbox: string | null = preview.selection.profile?.sandbox ?? null;
-  const walls = input.sessionCapability
-    ? input.sessionCapability(input.workspace, profileSandbox)
-    : process.env.VITEST ? [] : probeSessionCapability(input.workspace, profileSandbox);
-  if (walls.length > 0) {
-    const named = describeEnvironmentWalls(`${preview.projectSlug}/${preview.actionId}`, walls, "preflight");
-    throw validationError(named.message, { code: "session_environment_wall", walls, remedy: named.remedy, conflict: true });
-  }
+  // An already-durable own lease is returned (or resumed) above, before this
+  // point: reused and resumed leases are covered only by the exit-side no-diff stop.
+  assertSessionCapability({
+    workspace: input.workspace,
+    actionLabel: `${preview.projectSlug}/${preview.actionId}`,
+    profileSandbox: preview.selection.profile?.sandbox ?? null,
+    override: input.sessionCapability
+  });
   // Checked from this worker process's own context, before issueAdmission
   // reserves a concurrency slot and before any worktree or lease is created:
   // a signed-out provider must take no admission and no lease, so the next
