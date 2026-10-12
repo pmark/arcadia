@@ -39,6 +39,7 @@ import {
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
   listOperatorEscalations,
+  listProductionAttemptTokens,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
 } from "../src/production/tick.js";
 import { listPendingAgentAskNotifications, listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
@@ -278,6 +279,62 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?")
         .get("test-project/define-contract"))).toEqual({attempts: 1});
+  });
+
+  it("refuses before launch, spending nothing, when the Session capability preflight names a wall (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      sessionCapability: () => [{ wallClass: "workspace_write", evidence: "attempt to write a readonly database", remedy: "Grant workspace write." }]
+    }));
+    const first = tick().projects.find((p) => p.projectSlug === "test-project")?.launch;
+    expect(first?.outcome).toBe("refused");
+    expect(first?.reason).toContain("no tokens were spent");
+    tick();
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations.filter((e) => e.kind === "environment_wall")).toHaveLength(1);
+    expect(escalations[0]?.remedy).toContain("Grant workspace write.");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM production_repair_attempts").get())).toEqual({ n: 0 });
+  });
+
+  it("replays a no-diff Session that hit workspace-write and sandbox refusals: one named blocker, no second launch (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    mkdirSync(path.dirname(sessionLogPath(fixture.workspace, first.id)), { recursive: true });
+    writeFileSync(sessionLogPath(fixture.workspace, first.id), [
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 11_100_000, output_tokens: 4000 } }),
+      "arcadia: SQLITE_WORKSPACE_WRITE_DENIED: attempt to write a readonly database",
+      "go test ./... -> operation not permitted (sandbox refused 81 of 84 tests)",
+      "preservation launcher produced no receipt"
+    ].join("\n"));
+    tmux.live.delete(first.tmux_session_name);
+    for (let i = 0; i < 4; i++) tick();
+    expect(tmux.launches).toHaveLength(1);
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ kind: "environment_wall" });
+    expect(escalations[0]?.message).toContain("workspace_write");
+    expect(escalations[0]?.message).toContain("11100000 input tokens");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
+      .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, outputTokens: 4000 })]);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") as { attempts: number }).attempts))
+      .toBeGreaterThanOrEqual(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   });
 
   it("clears the no-progress retry count when a resumed candidate actually advances", () => {

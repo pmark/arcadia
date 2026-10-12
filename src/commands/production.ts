@@ -40,6 +40,8 @@ import {
   getProductionRepairAttempts,
   listLaunchBlockers,
   listOperatorEscalations,
+  listProductionAttemptTokens,
+  type ProductionAttemptTokens,
   listRecentBaseBranchAdvances,
   resetProductionRepairBudget,
   type BaseBranchAdvanceRecord,
@@ -132,6 +134,8 @@ export interface ProductionStatusData {
   launchBlockers: LaunchBlockerRecord[];
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: OperatorEscalation[];
+  /** Tokens recorded per Session attempt, next to each Action, oldest first. */
+  attemptTokens?: ProductionAttemptTokens[];
   /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
   redAlerts: RedAlert[];
   /** The one bounded diagnosis per alert episode, when one ran. */
@@ -188,6 +192,7 @@ export function runProductionStatusCommand(
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
+      attemptTokens: listProductionAttemptTokens(db),
       redAlerts: listOpenRedAlerts(db),
       redAlertDiagnoses: listRedAlertDiagnoses(db),
       inactiveConfiguration: readInactiveConfigurationSafely(db),
