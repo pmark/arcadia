@@ -447,7 +447,18 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     // while the objective a coding agent is about to start must say what
     // finished means before anyone starts it.
     const acceptanceCriteria = stringArray(value.acceptance_criteria);
-    const executionResult = value.execution === undefined || value.execution === null
+    // `execution` is either the vendor-neutral requirement mapping or, as a
+    // plain string, the Action's declared route. A string never reaches the
+    // mapping parser, so existing plans are unaffected.
+    let executionRoute: "build" | "plan-run" | null = null;
+    if (typeof value.execution === "string") {
+      if (value.execution === "build" || value.execution === "plan-run") {
+        executionRoute = value.execution;
+      } else {
+        problems.add(`${field}.execution`, "`execution` as a route must be exactly `build` or `plan-run`.");
+      }
+    }
+    const executionResult = value.execution === undefined || value.execution === null || typeof value.execution === "string"
       ? { requirement: null, resolved: null, issues: [] }
       : parseExecutionRequirement(value.execution, responsibility as never);
     for (const issue of executionResult.issues) {
@@ -489,6 +500,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       decisions: stringArray(value.decisions),
       references: stringArray(value.references),
       execution: executionResult.requirement,
+      executionRoute,
       resolvedExecution: executionResult.resolved
     });
 

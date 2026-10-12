@@ -464,20 +464,31 @@ function approvalContradictionEvidence(
     keywords.add("implementation");
   }
 
-  return lines.filter((line) => {
-    const normalizedLine = normalize(line);
-    if (!/\bapproval\b/.test(normalizedLine) && !/\bwithout\b/.test(normalizedLine)) {
+  // Judged per sentence: "Planning requires no approval. Implementation
+  // requires a separate approved goal." is a correct pair, not a contradiction.
+  const sentences = lines.flatMap((line) => line.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean));
+  return sentences.filter((sentence) => {
+    const normalizedSentence = normalize(sentence);
+    if (!/\bapproval\b/.test(normalizedSentence) && !/\bwithout\b/.test(normalizedSentence)) {
       return false;
     }
 
-    const contradictsApproval = /\b(?:no approval|approval is not required|approval not required|without approval|approved to|approval unnecessary|can proceed directly)\b/i.test(line);
+    const contradictsApproval = /\b(?:no approval|approval is not required|approval not required|without approval|approved to|approval unnecessary|can proceed directly)\b/i.test(sentence);
     if (!contradictsApproval) {
       return false;
     }
 
-    return [...keywords].some((keyword) => normalize(keyword).split(" ").some((token) => normalizedLine.includes(token)));
+    // A sentence that itself states the gate (needs a separate approval) is not a contradiction.
+    if (STATES_SEPARATE_APPROVAL.test(sentence) && !NEGATED_SEPARATE_APPROVAL.test(sentence)) {
+      return false;
+    }
+
+    return [...keywords].some((keyword) => normalize(keyword).split(" ").some((token) => normalizedSentence.includes(token)));
   });
 }
+
+const STATES_SEPARATE_APPROVAL = /\b(?:requires?|needs?|must have|needs to have)\b[^.!?]*\bseparate(?:ly)?\b[^.!?]*\bapprov/i;
+const NEGATED_SEPARATE_APPROVAL = /\b(?:no|not|without|never)\b[^.!?,;]*\bseparate(?:ly)?\b/i;
 
 function approvalGateTypes(approvalText: string): string[] {
   const matches = [

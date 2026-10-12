@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { validatePlanningArtifact } from "../src/stewardship/artifactValidator.js";
 import {
+  completePlanningArtifact,
+  completePlanningPacket,
   issueCodesBySeverity,
   planningArtifactValidationFixtures
 } from "./planningArtifactValidationFixtures.js";
@@ -91,4 +93,27 @@ describe("validation-execution claim detection", () => {
       expect(codesFor(line)).toContain("validation_execution_claim_not_required");
     }
   );
+});
+
+describe("approval contradiction is judged per sentence (Issue #1277)", () => {
+  const failureCodes = (extraLine: string): string[] =>
+    validatePlanningArtifact({
+      packetText: completePlanningPacket,
+      artifactText: `${completePlanningArtifact}\n${extraLine}`
+    }).failures.map((failure) => failure.code);
+
+  it("passes the planner's standard phrasing: the run needs no approval, the implementation needs a separate one", () => {
+    expect(
+      failureCodes(
+        "Planning requires no approval. Implementation requires a **separate approved Codex implementation goal** covering this repository change."
+      )
+    ).not.toContain("approval_boundary_contradiction");
+  });
+
+  it("still fails a sentence saying the implementation needs no approval", () => {
+    expect(failureCodes("Implementation requires no approval.")).toContain("approval_boundary_contradiction");
+    expect(failureCodes("Planning requires no approval. Implementation requires no approval.")).toContain(
+      "approval_boundary_contradiction"
+    );
+  });
 });

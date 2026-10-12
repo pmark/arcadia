@@ -24,6 +24,7 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { discoverDocs } from "../src/docs/discover.js";
+import { planStepsForWorkItem } from "../src/execution/skills.js";
 import { isManagedDoc, parseDoc } from "../src/docs/parse.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -929,6 +930,42 @@ describe("docs sync", () => {
     expect(JSON.parse(action?.execution_requirement_json as string)).toMatchObject({
       schema: "arcadia.execution/v1",
       profile: "routine_implementation"
+    });
+  });
+
+  it("declares an Action route (execution: build | plan-run), validates it, and routes by it over the prose (#1277)", () => {
+    const withRoute = (route: string, nextAction = "Implement the code change for staging."): string =>
+      PLAN.replace("    depends_on: []", `    depends_on: []\n    execution: ${route}`).replace(
+        "Run the migration against staging.",
+        nextAction
+      );
+
+    const bad = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", withRoute("deploy"));
+    expect(bad.errors.map((error) => error.message).join("\n")).toMatch(/exactly `build` or `plan-run`/);
+    const good = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", withRoute("plan-run"));
+    expect(good.errors).toEqual([]);
+    expect((good.doc as never as { actions: Array<{ executionRoute: string | null }> }).actions[0].executionRoute).toBe("plan-run");
+
+    const routeOf = (document: string): { declared: string | null | undefined; executor: string | undefined } => {
+      const repo = scratch();
+      writeDoc(repo, "docs/plans/sample-plan.md", document);
+      const workspace = workspaceWithProject(repo);
+      runDocsSyncCommand({ workspace, apply: true });
+      const item = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"));
+      return { declared: item?.execution_route, executor: planStepsForWorkItem(item as never)[0]?.executorType };
+    };
+
+    // Prose says "implement the code" (keywords would pick build), the declaration wins.
+    expect(routeOf(withRoute("plan-run"))).toEqual({ declared: "plan-run", executor: "codex_planning" });
+    // Prose says "planning" (keywords would pick planning), the declaration wins.
+    expect(routeOf(withRoute("build", "Write the planning notes for staging."))).toEqual({
+      declared: "build",
+      executor: "codex_build"
+    });
+    // Neither declared: today's keyword behaviour is unchanged.
+    expect(routeOf(PLAN.replace("Run the migration against staging.", "Implement the code change for staging."))).toEqual({
+      declared: null,
+      executor: "codex_build"
     });
   });
 

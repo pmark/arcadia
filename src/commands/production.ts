@@ -613,6 +613,8 @@ export function renderProductionPreviewSuccess(
   ];
   for (const [index, action] of preview.orderedActions.entries()) {
     lines.push(`    ${index + 1}. ${action.actionKey} [${action.state}] ${action.title}`);
+    lines.push(`       Route: ${action.route.kind} (${action.route.declared ? "declared" : "not declared"})`);
+    for (const touch of action.route.operatorTouches) lines.push(`       Operator touch: ${touch}`);
   }
   lines.push("  Activation does not grant:");
   for (const stop of preview.explicitStops) {

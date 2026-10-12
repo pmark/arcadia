@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { buildAgentQueue, type AgentQueueEntry } from "../dispatch/queue.js";
+import { getProjectBySlug, getWorkItemByDocRef } from "../db/repositories.js";
+import { planStepsForWorkItem } from "../execution/skills.js";
 import {
   MECHANICAL_TRANSITIONS,
   PRODUCTION_CONTROL_DEADLINES,
@@ -63,6 +65,43 @@ export interface PreviewedAction {
   state: AgentQueueEntry["state"];
   position: number | null;
   dependencies: string[];
+  /** How the Action will run: a declared `execution`, or inferred from its wording. */
+  route: PreviewedActionRoute;
+}
+
+export interface PreviewedActionRoute {
+  /** `build` or `plan-run` as routed today; `unrouted` when no Codex route applies. */
+  kind: "build" | "plan-run" | "unrouted";
+  /** True when the Action declares `execution: build | plan-run`; false means keyword routing on its prose. */
+  declared: boolean;
+  /** The operator touches this route expects before the Action can finish. */
+  operatorTouches: string[];
+}
+
+function previewRoute(db: Database.Database, projectSlug: string, planSlug: string, actionId: string): PreviewedActionRoute {
+  const project = getProjectBySlug(db, projectSlug);
+  const workItem = project ? getWorkItemByDocRef(db, `plan/${planSlug}#${actionId}`, project.id) : null;
+  if (!workItem) {
+    return { kind: "unrouted", declared: false, operatorTouches: ["Not synced yet; run `arcadia docs sync` to see its route."] };
+  }
+  const declared = workItem.execution_route === "build" || workItem.execution_route === "plan-run";
+  const steps = planStepsForWorkItem(workItem);
+  const executor = steps.length === 1 ? steps[0]?.executorType : undefined;
+  const inferred = declared ? "" : " (route not declared; inferred from the Action's wording)";
+  if (executor === "codex_build") {
+    return { kind: "build", declared, operatorTouches: [`Build-packet approval before launch${inferred}.`] };
+  }
+  if (executor === "codex_planning") {
+    return {
+      kind: "plan-run",
+      declared,
+      operatorTouches: [
+        `Planning-run approval Decision${inferred}.`,
+        "A separate approved implementation goal before any code change."
+      ]
+    };
+  }
+  return { kind: "unrouted", declared, operatorTouches: ["No Codex route applies; the Action needs operator review or a deterministic skill."] };
 }
 
 export interface ProductionActivationPreview {
@@ -143,7 +182,8 @@ export function buildProductionActivationPreview(
     title: entry.actionTitle ?? entry.nextAction,
     state: entry.state,
     position: entry.position ?? null,
-    dependencies: entry.dependencies ?? []
+    dependencies: entry.dependencies ?? [],
+    route: previewRoute(db, entry.projectSlug!, entry.planSlug!, entry.actionId!)
   }));
 
   const includedProjects = [...new Set(orderedActions.map((action) => action.projectSlug))].sort();
