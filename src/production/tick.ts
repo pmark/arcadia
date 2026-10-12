@@ -10,7 +10,8 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, updateReviewItemStatus } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, listActionableReviewItems, updateReviewItemStatus } from "../db/repositories.js";
+import { queueOperatorPing } from "../ping/operatorPing.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -18,7 +19,7 @@ import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBran
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -26,6 +27,8 @@ import {
   observeReconcileFailure,
   observeReconcileSuccess,
   observeRepairBudget,
+  observeScopeDriftForProject,
+  raiseScopeSuccessorHeld,
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
@@ -990,6 +993,92 @@ function recordInterruptedCompletionSettlement(
 }
 
 /**
+ * A launch wait that is the operator's, not time's: an in-scope Action whose
+ * preparation sits on a planning review item (run approval, artifact
+ * validation or artifact acceptance). These were once excluded as
+ * "self-resolving" because the item is visible in Review, which hid the first
+ * 2026-10-11 stall (A3, #1284). After {@link STALLED_GATE_MIN_DWELL_MS} of the
+ * same refusal the tick records ONE `production_operator_escalations` row
+ * naming the gate class, the Action and the one button that resolves it on
+ * /todo (`review_item:<project>/<id>`, also /review and /actions), and queues
+ * exactly one Discord ping. It decides, approves and executes nothing.
+ */
+export const STALLED_GATE_MIN_DWELL_MS = 60 * 1000;
+
+export const STALLED_PLANNING_GATES: Record<string, { kind: string; gate: string; button: string; consequence: string }> = {
+  CodexPlanningRunApproval: {
+    kind: "planning_run_approval_pending",
+    gate: "planning-run approval",
+    button: "Approve planning run",
+    consequence: "queues the planning run for the production worker; planning only, no build starts"
+  },
+  CodexPlanningRetryApproval: {
+    kind: "planning_run_approval_pending",
+    gate: "planning-retry approval",
+    button: "Approve planning retry",
+    consequence: "queues a new planning attempt from the unchanged packet; planning only, no build starts"
+  },
+  codex_planning_artifact_validation: {
+    kind: "planning_artifact_validation_pending",
+    gate: "planning-artifact validation",
+    button: "Retry planning",
+    consequence: "creates a planning-retry approval for the same packet; nothing runs until that retry is approved"
+  },
+  CodexPlanningArtifactAcceptance: {
+    kind: "planning_artifact_acceptance_pending",
+    gate: "planning-artifact acceptance",
+    button: "Accept plan",
+    consequence: "accepts the validated plan and prepares its build packet for approval; no Run starts"
+  }
+};
+
+/**
+ * Escalate (once) an in-scope Action that has been refused for a planning
+ * review item for at least the dwell. Returns true when a named row now holds
+ * the Action (new or unchanged); false when nothing qualifies, so the caller
+ * clears as it did before. One row per Action, one ping per distinct gate item.
+ */
+function escalateStalledPlanningGate(
+  db: Database.Database,
+  input: { actionKey: string; projectSlug: string; workItemId: string | null; lifecycleKind: string | null; now: Date; log: (message: string) => void }
+): boolean {
+  if (!input.workItemId || (input.lifecycleKind !== "planning_approval_pending" && input.lifecycleKind !== "planning_in_progress")) return false;
+  const refusal = db.prepare("SELECT first_at FROM production_launch_refusal_log WHERE action_key = ?").get(input.actionKey) as
+    | { first_at: string }
+    | undefined;
+  if (!refusal || input.now.getTime() - Date.parse(refusal.first_at) < STALLED_GATE_MIN_DWELL_MS) return false;
+  // Exactly the items /todo lists as operator-actionable (agent-flagged deferred items wait on an agent and are hidden there).
+  const item = listActionableReviewItems(db)
+    .filter((candidate) => candidate.work_item_id === input.workItemId && Object.hasOwn(STALLED_PLANNING_GATES, candidate.resolved_intent))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  if (!item) return false;
+  const gate = STALLED_PLANNING_GATES[item.resolved_intent];
+  // The leading words are the template /todo anchors on to show this item once, marked blocking.
+  const message = `Launch of ${input.actionKey} is held by pending review item ${item.id}: ${gate.gate} for ${input.actionKey}.`;
+  const todoKey = `review_item:${input.projectSlug}/${item.id}`;
+  const remedy = `Press "${gate.button}" on /todo (${todoKey}), also on /review and /actions: one click, nothing to copy or type. `
+    + `It ${gate.consequence}. This entry clears on the first tick after the gate is answered.`;
+  const previous = db.prepare("SELECT kind, message FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
+    | { kind: string; message: string }
+    | undefined;
+  if (previous?.kind === gate.kind && previous.message === message) return true;
+  recordOperatorEscalation(db, { actionKey: input.actionKey, kind: gate.kind, message, remedy, now: input.now });
+  input.log(`Escalated ${input.actionKey} to the operator (${gate.kind}): ${message}`);
+  try {
+    queueOperatorPing(db, {
+      message: `Production is waiting on you: ${gate.gate} for ${input.actionKey}. One click: "${gate.button}" on /todo.`,
+      kind: "attention",
+      todo: todoKey,
+      agent: "production-tick",
+      now: input.now
+    });
+  } catch (error) {
+    input.log(`Could not queue the ${gate.kind} ping for ${input.actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return true;
+}
+
+/**
  * The escalation kind for an in-scope Action whose launch the tick skips
  * because a pending operator item gates it: resolveProjectTransition answers
  * `decision` for an unsettled Agent Ask proposal or an open Decision naming
@@ -1551,6 +1640,9 @@ export function runManagedProductionTick(
     let handoffHead: string | null = null;
     let terminalRefusal: TerminalRefusalFacts | null = null;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
+    // Scope drift is observed once per tick for every Project, before any early skip below, so a
+    // stranded scope is seen whether or not this tick could launch, wait or reconcile.
+    safelyRaiseRedAlerts(log, "scope drift", () => observeScopeDriftForProject(alertCtx, repoRoot));
     // Set only once the exit-reconcile branch starts, so a throw from the
     // live-session stall observation is never reported as a failed reconcile.
     let alertLease: ReturnType<typeof getRepositoryLease> = null;
@@ -1907,6 +1999,16 @@ function attemptProjectLaunch(
       activateNextPlan(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, requestId, apply: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A held successor is not a failure: the per-tick scope-drift observer already holds one
+      // named alert for it, so this tick stays quiet and skips (no log line, no retry storm).
+      if ((error as { details?: { code?: string } }).details?.code === SCOPE_HELD_CODE) {
+        const heldPlan = (error as { details?: { activePlan?: string } }).details?.activePlan;
+        if (heldPlan) {
+          safelyRaiseRedAlerts(input.log, "scope successor held", () =>
+            raiseScopeSuccessorHeld({ db, workspace: input.workspace, projectSlug: input.projectSlug, now: input.now }, { planKey: heldPlan }));
+        }
+        return { attempted: false, outcome: "skipped", reason: message, actionKey: null };
+      }
       input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
@@ -2213,7 +2315,16 @@ function attemptProjectLaunch(
         if (newlyDetected) {
           input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
-      } else {
+      } else if (!escalateStalledPlanningGate(db, {
+        actionKey,
+        projectSlug: input.projectSlug,
+        workItemId: transition.dispatch.context
+          ? getWorkItemByDocRef(db, `plan/${transition.dispatch.context.activePlan}#${transition.dispatch.context.action.id}`)?.id ?? null
+          : null,
+        lifecycleKind: resolvedLifecycleKind,
+        now: input.now,
+        log: input.log
+      })) {
         clearOperatorEscalation(db, actionKey);
       }
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };

@@ -531,7 +531,7 @@ describe("runManagedProductionTick", () => {
     expect(thirdTickLog).not.toHaveBeenCalledWith(expect.stringMatching(/Launch refused/));
   });
 
-  it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), and never escalates it to the operator", () => {
+  it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), then names the approval wait once after the dwell (A3)", () => {
     const fixture = preparedFixture({ skipPacket: true });
     const tmux = new FakeTmux();
     activatePolicy(fixture);
@@ -574,23 +574,32 @@ describe("runManagedProductionTick", () => {
 
     // The stall is resolved automatically the very first tick that discovers
     // it -- no human or agent had to notice and run `arcadia work plan` by
-    // hand -- and it is never escalated, on this or any later tick, because
-    // the resulting Decision is already operator-visible through Review.
+    // hand. The resulting approval wait is not escalated while it is young,
+    // then exactly once after the dwell (A3: the Review item alone hid it).
     expect(ticks[0].log).toHaveBeenCalledWith(
       expect.stringMatching(/Automatically requested a Decision-gated planning run for test-project\/define-contract/)
     );
-    for (const { log } of ticks) {
-      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
-    }
+    expect(ticks[0].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[2].log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract .*planning_run_approval_pending/));
     // Only the first tick does the work; once the Decision exists, later
     // ticks find `planning_approval_pending` and never re-invoke `work plan`.
     expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
     expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
 
-    // The pre-existing escalation seeded above is gone: it cleared through the
-    // tick's ordinary escalate/clear branch (the resolved kind is no longer in
-    // the non-self-resolving set), not a bespoke clearing path.
-    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    // The seeded planning_required row was replaced, in the one-row-per-Action
+    // table, by the named approval wait: exactly one blocker, one ping.
+    const named = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(named).toHaveLength(1);
+    expect(named[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_run_approval_pending" });
+    expect(named[0].message).toMatch(/planning-run approval for test-project\/define-contract/);
+    expect(named[0].remedy).toMatch(/Press "Approve planning run" on \/todo \(review_item:test-project\/review_/);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT kind, todo_key FROM operator_pings").all()
+    ) as Array<{ kind: string; todo_key: string }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0]).toMatchObject({ kind: "attention" });
+    expect(pings[0].todo_key).toMatch(/^review_item:test-project\/review_/);
 
     // The approval gate itself is preserved, not bypassed: exactly one open
     // CodexPlanningRunApproval Decision exists, unapproved, for this Action.
@@ -601,6 +610,132 @@ describe("runManagedProductionTick", () => {
         .all(workItem.id)
     ) as Array<{ resolved_intent: string; status: string }>;
     expect(decisions).toEqual([{ resolved_intent: "CodexPlanningRunApproval", status: "open" }]);
+  });
+
+  it.each([
+    ["CodexPlanningArtifactAcceptance", "planning_artifact_acceptance_pending", "Accept plan"],
+    ["CodexPlanningRetryApproval", "planning_run_approval_pending", "Approve planning retry"]
+  ])("names a %s wait once with its button and one ping (A3)", (intent, kind, button) => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const at = new Date(fixture.now.getTime() + 1_000).toISOString();
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'approved' WHERE work_item_id = ?").run(workItem.id);
+      db.prepare(`INSERT INTO review_items (id, work_item_id, status, decision_needed, recommendation, source_input, proposed_action, resolved_intent,
+          confidence_label, confidence, missing_fields, context_json, created_at, updated_at)
+        SELECT 'review_gate_wait', work_item_id, 'open', 'Gate wait', NULL, source_input, proposed_action, ?,
+          confidence_label, confidence, missing_fields, context_json, ?, ? FROM review_items WHERE work_item_id = ? LIMIT 1`)
+        .run(intent, at, at, workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind });
+    expect(rows[0].message).toContain("review item review_gate_wait");
+    expect(rows[0].remedy).toContain(`Press "${button}" on /todo`);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT todo_key FROM operator_pings").all()) as Array<{ todo_key: string }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0].todo_key).toBe("review_item:test-project/review_gate_wait");
+  });
+
+  it("never names a gate that is only an agent-review-flagged deferred item, which /todo hides (A3)", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'deferred', context_json = ? WHERE work_item_id = ?")
+        .run(JSON.stringify({ agentReview: { status: "flagged" } }), workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT 1 FROM operator_pings").all())).toHaveLength(0);
+  });
+
+  it("keeps the tick's gate button labels equal to the dashboard's one-click controls (A3 drift guard)", async () => {
+    const { PLANNING_REVIEW_CONTROLS } = await import("../apps/dashboard/lib/approvals.js");
+    const { STALLED_PLANNING_GATES } = await import("../src/production/tick.js");
+    for (const [intent, gate] of Object.entries(STALLED_PLANNING_GATES)) {
+      expect(PLANNING_REVIEW_CONTROLS[intent]?.approveLabel, intent).toBe(gate.button);
+    }
+  });
+
+  it("names the artifact-validation wait after the run approval, one ping per gate (A3)", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) => {
+      const log = vi.fn();
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log,
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+      return log;
+    };
+    const escalations = () => withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    const pings = () => withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT message FROM operator_pings").all()) as Array<{ message: string }>;
+
+    tick(0); // prepares the planning-run approval
+    expect(escalations()).toHaveLength(0); // young wait: not escalated yet
+    expect(pings()).toHaveLength(0);
+    tick(70_000); // the approval wait's own episode starts here
+    expect(escalations()).toHaveLength(0);
+    tick(140_000);
+    expect(escalations().map((row) => row.kind)).toEqual(["planning_run_approval_pending"]);
+    expect(pings()).toHaveLength(1);
+
+    // The run was approved and produced its artifact: a validation item is open.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const at = new Date(fixture.now.getTime() + 90_000).toISOString();
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'approved' WHERE work_item_id = ?").run(workItem.id);
+      db.prepare(`INSERT INTO review_items (id, work_item_id, status, decision_needed, recommendation, source_input, proposed_action, resolved_intent,
+          confidence_label, confidence, missing_fields, context_json, created_at, updated_at)
+        SELECT 'review_validation_wait', work_item_id, 'open', 'Validate the planning artifact', NULL, source_input, proposed_action,
+          'codex_planning_artifact_validation', confidence_label, confidence, missing_fields, context_json, ?, ? FROM review_items WHERE work_item_id = ? LIMIT 1`)
+        .run(at, at, workItem.id);
+    });
+    tick(150_000);
+    tick(220_000);
+    const second = escalations();
+    expect(second).toHaveLength(1);
+    expect(second[0]).toMatchObject({ kind: "planning_artifact_validation_pending" });
+    expect(second[0].message).toContain("review item review_validation_wait: planning-artifact validation for test-project/define-contract");
+    expect(second[0].remedy).toContain('Press "Retry planning" on /todo');
+    // Same gate on later ticks: still one row, no second ping for it.
+    tick(250_000);
+    tick(280_000);
+    expect(escalations()).toHaveLength(1);
+    expect(pings()).toHaveLength(2);
+
+    // Answered: the row clears on the first tick after the gate is gone.
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE review_items SET status = 'approved' WHERE id = 'review_validation_wait'").run());
+    tick(310_000);
+    expect(escalations().map((row) => row.kind)).not.toContain("planning_artifact_validation_pending");
   });
 
   it("prunes an escalation left over from an Action that is no longer current", () => {
@@ -2575,6 +2710,105 @@ describe("red alerts from the worker tick", () => {
     tmux.paneOutput.set(session.tmux_session_name, "$ claude wrote a file\n");
     tickAt(fixture, tmux, stalledAt + 180_000);
     expect(openAlerts(fixture)).toHaveLength(0);
+  });
+
+  describe("scope drift (A6, #1284)", () => {
+    const successorPlan = `---
+arcadia: v1
+type: plan
+slug: plan-b
+project: test-project
+status: active
+milestone: Prove the continuous worker tick
+current_action: b1
+token_impact: medium
+token_budget: One bounded Session; all checks are deterministic.
+recommended_model: sonnet
+recommended_reasoning_effort: high
+updated: 2026-08-30
+actions:
+  - id: b1
+    title: Define the successor contract
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Define the bounded successor contract.
+    expected_artifact: docs/b1.md
+    acceptance_criteria:
+      - The successor contract exists.
+    decisions: ["0001"]
+---
+
+# Plan B
+`;
+    function finishScopedPlan(fixture: ReturnType<typeof preparedFixture>) {
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8")
+        .replace("status: active", "status: complete").replace("current_action: define-contract", "current_action: null")
+        .replace("    status: open", "    status: done"));
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "finish scoped plan"]);
+    }
+    const activeScopeFor = (plans: string[]) => normalizeProductionScope({
+      intent: "Prove scope drift.", projects: ["test-project"], plans, actions: [], providers: ["claude-code-cli"],
+      maxConcurrentSessions: 1, mechanicalTransitions: ["acceptance", "pointer"]
+    });
+    function activate(fixture: ReturnType<typeof preparedFixture>, plans: string[]) {
+      const scope = activeScopeFor(plans);
+      withDatabase(fixture.workspace, (db) => activateProduction(db, {
+        requestId: `scope-${plans.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator"
+      }));
+    }
+    const pointer = (fixture: ReturnType<typeof preparedFixture>) =>
+      /active_plan: (\S+)/.exec(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8"))![1];
+
+    it("holds the successor Plan while the scope covers the finished Plan: no activation, one alert, no failure", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/copy-proof"]);
+      const tmux = new FakeTmux();
+      const first = tickAt(fixture, tmux, 0, true);
+      const second = tickAt(fixture, tmux, 5_000, true);
+      expect(pointer(fixture)).toBe("copy-proof");
+      expect(first.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      expect(second.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      const alerts = openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].occurrences).toBe(2);
+      expect(alerts[0].detail).toMatch(/Turn production Off/);
+    });
+
+    it("still activates the successor when the Active scope covers a different Plan", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/some-other-plan"]);
+      tickAt(fixture, new FakeTmux(), 0, true);
+      expect(pointer(fixture)).toBe("plan-b");
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held")).toHaveLength(0);
+    });
+
+    it("raises scope_pointer_mismatch through the tick when the pointer leaves the scope, and clears when it returns", () => {
+      const fixture = preparedFixture();
+      activate(fixture, ["test-project/copy-proof"]);
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      const original = readFileSync(projectPath, "utf8");
+      writeFileSync(projectPath, original.replace("active_plan: copy-proof", "active_plan: plan-b").replace("current_action: define-contract", "current_action: b1"));
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "re-point to plan-b"]);
+      const tmux = new FakeTmux();
+      tickAt(fixture, tmux, 0, true);
+      const raised = openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch");
+      expect(raised).toHaveLength(1);
+      expect(raised[0].detail).toMatch(/test-project\/plan-b.*Turn production Off/s);
+      writeFileSync(projectPath, original);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "restore pointer"]);
+      tickAt(fixture, tmux, 5_000, true);
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch")).toHaveLength(0);
+    });
   });
 
   it("raises one reconcile_failed alert per Session, updates it on repeat, and clears once a reconcile succeeds", () => {
