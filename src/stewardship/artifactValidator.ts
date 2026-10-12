@@ -464,44 +464,52 @@ function approvalContradictionEvidence(
     keywords.add("implementation");
   }
 
-  // Judged per clause, failing closed: "Planning requires no approval.
-  // Implementation requires a separate approved goal." is a correct pair, but
-  // a clause pairing a boundary keyword with a no-approval claim is flagged
-  // unless that same clause states the separate approval.
+  // Judged per clause, failing closed. "Planning requires no approval.
+  // Implementation requires a separate approved goal." is a correct pair; a
+  // clause that concerns the implementation (named, or carried across clauses,
+  // sentences and pronouns until another subject appears) and negates or
+  // pre-grants its approval is a contradiction. A phrase that merely gates the
+  // implementation ("not ... without a separate approved goal") is stripped first.
   const keywordIn = (normalized: string): boolean =>
     [...keywords].some((keyword) => normalize(keyword).split(" ").some((token) => normalized.includes(token)));
   const flagged: string[] = [];
+  let implementationSubject = false;
   for (const line of lines) {
-    for (const sentence of splitSentences(line)) {
-      // A keyword stated without any approval wording ("Implementation, i.e.
-      // the code change, needs no approval") carries over to later clauses.
-      let pendingKeyword = false;
+    if (/^#{1,6}\s/.test(line)) implementationSubject = false;
+    for (const sentence of splitSentences(line.replaceAll("\u2019", "'"))) {
       for (const clause of sentence.split(CLAUSE_SPLIT)) {
         const text = clause?.trim();
         if (!text) continue;
-        const normalized = normalize(text);
-        const hasKeyword = keywordIn(normalized);
-        const mentionsApproval = /\bapprov/.test(normalized);
-        const separateGate = STATES_SEPARATE_APPROVAL.test(text) && !NEGATED_SEPARATE_APPROVAL.test(text);
-        const contradicts = separateGate
-          ? APPROVAL_CONTRADICTION_STRONG.test(text)
-          : APPROVAL_CONTRADICTION.test(text);
-        if (contradicts && (hasKeyword || pendingKeyword)) {
+        const lowered = text.toLowerCase().replace(/implementation[- ]plan(?:s|ning)?\b/g, "plan");
+        if (IMPLEMENTATION_TERMS.test(lowered)) {
+          implementationSubject = true;
+        } else if (OTHER_SUBJECT_TERMS.test(lowered)) {
+          implementationSubject = false;
+        }
+        if (!implementationSubject && !keywordIn(normalize(lowered))) continue;
+        const claim = lowered.replace(GATE_PHRASE, " ");
+        const negated = NEGATION.test(claim) && APPROVAL_WORD.test(claim);
+        const approvalNoun = /\bapprov\w*\b[^.]*\b(?:not|n't|never|unnecessary|optional|waived|skipped)\b/.test(claim);
+        if (negated || approvalNoun || PREGRANTED.test(claim)) {
           flagged.push(sentence);
           break;
         }
-        pendingKeyword = mentionsApproval ? false : hasKeyword || pendingKeyword;
       }
     }
   }
   return flagged;
 }
 
-const CLAUSE_SPLIT = /[;,]|\b(?:but|however|whereas|while|although|though|yet|and|then)\b/i;
-const APPROVAL_CONTRADICTION_STRONG = /\b(?:no approval|approval is not required|approval not required|without approval|approval unnecessary|can proceed directly|no separate approval|without (?:a )?separate approval|not need(?:ed)? (?:a )?separate approval)\b/i;
-const APPROVAL_CONTRADICTION = new RegExp(`${APPROVAL_CONTRADICTION_STRONG.source}|\\bapproved to\\b`, "i");
-const STATES_SEPARATE_APPROVAL = /\b(?:requires?|needs?|must have|needs to have)\b[^.!?]*\bseparate(?:ly)?\b[^.!?]*\bapprov/i;
-const NEGATED_SEPARATE_APPROVAL = /\b(?:no|not|without|never|nothing)\b[^.!?]*\bseparate(?:ly)?\b/i;
+const CLAUSE_SPLIT = /[;,()]|\b(?:but|however|whereas|while|although|though|yet|and|then)\b/i;
+const IMPLEMENTATION_TERMS =
+  /\b(?:implementation|implement(?:s|ed|ing)?|build(?:s|ing)?|ship(?:s|ped|ping)?|patch(?:es)?|code|coding|changes?|prs?|pull requests?|deploy(?:s|ed|ment|ing)?|merg(?:e|es|ed|ing))\b/;
+const OTHER_SUBJECT_TERMS =
+  /\b(?:planning|plans?|run|review|validation|research|analysis|discovery|artifact|document(?:ation)?|report|investigation|assessment|design|proposal)\b/;
+const GATE_PHRASE =
+  /\b(?:without|until|unless|before|absent)\b[^.;,]*?\b(?:separate(?:ly)?|explicit(?:ly)?|express|prior|operator|written)\b[^.;,]*?\bapprov\w*/g;
+const NEGATION = /(?:\bno\b|\bnot\b|n't\b|\bwithout\b|\bnever\b|\bnone\b|\bnor\b|\bneither\b|\bnothing\b)/;
+const APPROVAL_WORD = /\b(?:approv\w*|sign-?off)\b/;
+const PREGRANTED = /\b(?:pre-?approved|already approved|previously approved|approved to|proceed(?:s|ed)? directly)\b/;
 
 /** Splits on sentence ends without breaking on `i.e.`, `e.g.`, `etc.`, `vs.` or list numbers. */
 function splitSentences(line: string): string[] {
