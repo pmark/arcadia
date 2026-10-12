@@ -1,52 +1,31 @@
-import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ narrate: vi.fn(), encode: vi.fn() }));
-vi.mock("./arcadia-cli", () => ({ narratePullRequestBody: mocks.narrate }));
-vi.mock("node:child_process", () => ({ execFile: mocks.encode }));
-import { generatePullRequestAudio } from "./pull-request-audio";
-
-afterEach(() => vi.resetAllMocks());
-
-describe("PR audio", () => {
-  it("converts local narration to MP3 and removes temporary files", async () => {
-    let wavPath = "";
-    mocks.narrate.mockImplementation(async (_repo, _number, wav) => { wavPath = wav; await writeFile(wav, "WAV"); });
-    mocks.encode.mockImplementation((_command, args, _options, callback) => {
-      void writeFile(args.at(-1), "MP3").then(() => callback(null, "", ""));
-    });
-    const result = await generatePullRequestAudio("pmark/arcadia", 12);
-    expect(result.format).toBe("mp3");
-    expect(Buffer.from(result.bytes).toString()).toBe("MP3");
-    expect(mocks.narrate).toHaveBeenCalledWith("pmark/arcadia", 12, expect.stringContaining("body.wav"));
-    expect(mocks.encode.mock.calls[0][0]).toBe("ffmpeg");
-    expect(existsSync(wavPath)).toBe(false);
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const mocks = vi.hoisted(() => ({ description: vi.fn(), submit: vi.fn(), wait: vi.fn(), speech: vi.fn() }));
+vi.mock("./arcadia-cli", () => ({ loadPullRequestDescription: mocks.description }));
+vi.mock("./intelligence", () => ({ getIntelligenceClient: () => ({ submit: mocks.submit, waitForCompletion: mocks.wait }) }));
+vi.mock("./read-aloud", () => ({ submitReadAloud: mocks.speech }));
+import { buildPrSummaryRequest, preparePullRequestAudio } from "./pull-request-audio";
+const source = { title: "Draft plan", url: "https://github.com/owner/repo/pull/2", body: "# What\nA **draft** Plan.\n\n## Authority\nNothing is activated." };
+beforeEach(() => { vi.resetAllMocks(); mocks.description.mockResolvedValue({ ...source }); mocks.submit.mockResolvedValue({ job: { id: "summary-job" } }); mocks.speech.mockResolvedValue({ id: "audio-job", status: "queued" }); });
+describe("PR read-aloud preparation", () => {
+  it("uses a bounded local summary and submits summary before the original body", async () => {
+    mocks.wait.mockResolvedValue({ status: "completed", result: { summary: "An inactive draft; approval remains required." } });
+    const result = await preparePullRequestAudio("owner/repo", 2);
+    expect(result.job.id).toBe("audio-job");
+    expect(result.source.summary).toBe("An inactive draft; approval remains required.");
+    expect(mocks.speech).toHaveBeenCalledWith("Summary. An inactive draft; approval remains required.\n\nFull pull request description.\n\nWhat\nA draft Plan.\nAuthority\nNothing is activated.");
+    expect(mocks.submit.mock.calls[0][0]).toMatchObject({ capability: "text.generate", execution: "local-required", executionPolicy: { allowPaidUsage: false } });
   });
-  it("returns WAV when the host has no encoder", async () => {
-    mocks.narrate.mockImplementation(async (_repo, _number, wav) => { await writeFile(wav, "WAV"); });
-    mocks.encode.mockImplementation((_command, _args, _options, callback) => callback(new Error("ENOENT")));
-    const result = await generatePullRequestAudio("pmark/arcadia", 12);
-    expect(result.format).toBe("wav");
-    expect(Buffer.from(result.bytes).toString()).toBe("WAV");
+  it("keeps body audio usable and labels TLDR failure without cloud escalation", async () => {
+    mocks.wait.mockResolvedValue({ status: "blocked", error: { message: "No local route" } });
+    const result = await preparePullRequestAudio("owner/repo", 2);
+    expect(result.source.summary).toBeUndefined();
+    expect(result.source.summaryError).toContain("body only");
+    expect(mocks.submit).toHaveBeenCalledTimes(1);
+    expect(mocks.speech.mock.calls[0][0]).toContain("Nothing is activated.");
   });
-  it("shares concurrent requests for the same PR and refuses other synthesis until completion", async () => {
-    let release!: () => void;
-    mocks.narrate.mockImplementation(async (_repo, _number, wav) => {
-      await new Promise<void>(resolve => { release = resolve; });
-      await writeFile(wav, "WAV");
-    });
-    mocks.encode.mockImplementation((_command, _args, _options, callback) => callback(new Error("ENOENT")));
-    const first = generatePullRequestAudio("pmark/arcadia", 12);
-    const second = generatePullRequestAudio("pmark/arcadia", 12);
-    await expect(generatePullRequestAudio("pmark/arcadia", 13)).rejects.toThrow("Another PR");
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-    release();
-    expect(await first).toBe(await second);
-    expect(mocks.narrate).toHaveBeenCalledTimes(1);
-  });
-  it("propagates synthesis failures and permits a retry", async () => {
-    mocks.narrate.mockRejectedValue(new Error("Local speech unavailable"));
-    await expect(generatePullRequestAudio("pmark/arcadia", 12)).rejects.toThrow("Local speech unavailable");
-    await expect(generatePullRequestAudio("pmark/arcadia", 13)).rejects.toThrow("Local speech unavailable");
+  it("changes cached summary identity when source text changes", () => {
+    const first = buildPrSummaryRequest(source);
+    expect(buildPrSummaryRequest({ ...source }).idempotencyKey).toBe(first.idempotencyKey);
+    expect(buildPrSummaryRequest({ ...source, body: "Activated instead" }).idempotencyKey).not.toBe(first.idempotencyKey);
   });
 });

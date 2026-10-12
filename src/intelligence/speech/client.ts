@@ -52,7 +52,7 @@ export interface SpeechClient {
  * maps this to the "blocked" job status — a retryable, non-fatal condition.
  */
 export class SpeechUnavailableError extends Error {
-  public constructor(message: string) {
+  public constructor(message: string, public readonly code = "SPEECH_UNAVAILABLE") {
     super(message);
     this.name = "SpeechUnavailableError";
   }

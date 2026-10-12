@@ -129,3 +129,102 @@ No shared Arcadia service, Tailscale configuration, active Plan or queue changed
 This is a PR1308-specific test page; reusable Dashboard TLDR generation has not
 been added by this page update. GitHub Issue/PR publication remains awaiting
 separate authorization.
+
+## Shared Intelligence read-aloud refactor
+
+Operator request: “It's important that Arcadia Intelligence is able to easily
+ offer MP3 encoding” and “refactor what you've done and integrate it with the
+ existing Arcadia pull requests feature.” This remains operator-directed work
+without a governed Action; active Plan, current Action and queue are unchanged.
+The candidate is `codex/pr-body-audio`. Work monitor evidence is retained at
+`/tmp/pr-read-aloud-refactor-monitor.json`; no overlapping relevant dirty paths
+were found before edits.
+
+Intelligence now accepts WAV or MP3 speech requests, chunks long text, validates
+and assembles compatible PCM, encodes once, and persists one final asset in its
+existing artifact store. FFmpeg/libmp3lame is checked before provider inference.
+There is no separate audio server or asset database in the integrated feature.
+WAV remains the default. Resource leases, local-only routing, paid-use refusal,
+content-key reuse and the existing bounded retry budget remain enforced.
+The Dashboard's generic `/api/read-aloud` and `ReadAloud` player let other text
+surfaces reuse this path. PRs add a separately cached, labelled local TLDR, speak
+it first, and display the original GFM body below it. Summary failure is labelled
+and falls back to original-body narration. Page opening performs no inference.
+Merged PR links now use configured repository identities even with zero open PRs.
+
+A real encoding experiment caught a duration defect: piping VBR MP3 omitted a
+seekable-file header and FFprobe estimated 187.937 seconds for 123.5 seconds of
+source PCM. Constant 64-kbit/s mono 24-kHz MP3 fixes this: the shared encoder's
+PR1308 output is 988,460 bytes, recognised as `audio/mpeg`, with FFprobe duration
+123.552 seconds (normal compressed encoder padding). This real encoder proof
+uses the previously generated local speech PCM, not a new production worker job.
+
+Focused suites passed: 66 tests across 10 files, 16 compatibility tests across
+4 files, and 20 additional tests across 4 files. Dashboard production build
+passed. The independent read-only shared-audio review found no blocking issues.
+Its suggested later-chunk failure case was strengthened to synthesize one chunk,
+fail the second, and assert no final artifact or encoder invocation.
+
+Phone-width Chromium QA passed against the built candidate on localhost3041,
+with controlled queued/completed job responses and the real encoded MP3: one tap
+starts playback, the URL points to the durable artifact proxy, a delayed original
+source GET preserves the prepared TLDR, GFM headings render, no horizontal
+overflow occurs, and selecting the same PR again clears the old player. Evidence:
+`/tmp/pr-read-aloud-shared-browser.mjs` and this chat's
+`pr1308-shared-player.png`. This is a browser integration proof with fixtures;
+physical iPhone Safari and live managed-service rollout remain unverified.
+
+New verification failures were repaired without weakening checks: API download
+header construction produced a `HeadersInit` union with undefined values;
+Markdown image props allow a Blob as well as string; execFile's promisify mock
+needed its real custom return contract. An initial root `pnpm exec next start`
+failed because Next belongs to the Dashboard package; running from that package
+started the built candidate. Next warns that this standalone build's installed
+service should use its standalone server entry point; no shared service changed.
+
+Loaded/retrieved guidance for this phase: existing Constitution, Project, current
+Action, context policy/index and operator-directed-work/working-copy procedures;
+Arcadia repository Orientation, Semantics and PR QA; Intelligence scope, routing
+and speech/artifact code; targeted notes searches before implementation and new
+failures; git-identity and pull-requests before preservation. The initial guessed
+`docs/agent-guidance/identity.md` was absent; the index resolves the authoritative
+`git-identity.md`, which was read before committing. No missing authoritative
+reference remains. Existing main checkout changes from other sessions were not
+edited or reset.
+
+GitHub Issue/PR publication remains beyond the earlier automatic approval
+rejection pending explicit operator authorization. Installation, shared-service
+restarts and retirement of the approved temporary Tailnet player are a separate
+approved rollout step. The phone-test URL remains the preserved PR1308 fixture,
+not a claim that the new generic Intelligence worker is installed.
+
+Final core/Discord build, full lint and public package boundary passed. The
+strengthened MP3 suite passed all 5 tests; the independent reviewer confirmed
+that its second-chunk failure delta closes the earlier coverage gap with no
+blocking concern. Staged diff whitespace checks passed. Additional source-byte
+counts read in this phase: `git-identity.md` 5,248; `pull-requests.md` 17,208;
+`operator-directed-work.md` 4,494; shared `READ_ALOUD.md` 4,408 bytes.
+
+The full-suite run exposed two unrelated headless-provider logged-out fixture
+failures (lines 338 and 707). A focused rerun reproduced them. Their fixture,
+fake provider and preflight sources are unchanged by this candidate. The host
+process has an inherited Claude token (presence only inspected; no value read
+or printed), which production preflight correctly treats as a login. Removing
+that variable only for the focused test process made both cases pass. No host
+credential or trust setting changed. A defect Issue draft is preserved at
+`/tmp/pr-read-aloud-fixture-defect-issue.md`; publication waits with the feature
+Issue/PR. Revival trigger: authorized publication or next headless-fixture
+maintenance. The verified bounded command is recorded in Notes To Self.
+
+An archived pre-refactor HEAD was also tested. Initial archive attempts hit
+mise's untrusted-directory guard in the runner and then its fake-provider
+subprocess shebangs. The final check uses the installed Node executable and
+places its directory ahead of the mise shim, without changing trust settings.
+The archive is `/private/tmp/arcadia-read-aloud-baseline.Lr9SfL`.
+The archived pre-refactor check passed both cases once its subprocess PATH used
+the installed Node runtime and the inherited token was absent. This matches
+the current candidate's clean-environment result; the reported failure is not
+an audio regression. No full-suite pass is claimed for the contaminated run.
+Adding a separate Notes To Self entry exceeded its 25-entry contract. The remedy
+was merged into the existing headless-fixture entry instead; all 3 notes tests
+then passed. This preserves the cache gate and existing knowledge.

@@ -27,7 +27,8 @@
     "dist/src/intelligence/types.d.ts",
     "dist/src/intelligence/types.js.map",
     "dist/src/intelligence/types.d.ts.map",
-    "README.md"
+    "README.md",
+    "dist/src/intelligence/text"
   ],
   "scripts": {
     "postinstall": "mise exec -- pnpm rebuild better-sqlite3",

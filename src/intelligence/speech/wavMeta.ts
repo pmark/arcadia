@@ -19,11 +19,18 @@ export type WavMetadata = {
   bitsPerSample: number;
 };
 
-/** Returns "audio/wav" for a RIFF/WAVE payload, else "application/octet-stream". */
+/** Recognizes WAV and MP3 containers; this is MIME sniffing, not a full codec decoder. */
 export function sniffAudioMimeType(bytes: Buffer): string {
   if (isWav(bytes)) {
     return "audio/wav";
   }
+  let offset = 0;
+  if (bytes.length >= 10 && bytes.subarray(0, 3).toString("latin1") === "ID3") {
+    if (bytes[3] < 2 || bytes[3] > 4 || bytes.subarray(6, 10).some(value => value >= 128)) return "application/octet-stream";
+    const tagSize = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
+    offset = 10 + tagSize;
+  }
+  if (bytes.length >= offset + 4 && bytes[offset] === 0xff && (bytes[offset + 1] & 0xe0) === 0xe0 && (bytes[offset + 1] & 0x18) !== 0x08 && (bytes[offset + 1] & 0x06) === 0x02 && (bytes[offset + 2] & 0xf0) !== 0 && (bytes[offset + 2] & 0xf0) !== 0xf0 && (bytes[offset + 2] & 0x0c) !== 0x0c) return "audio/mpeg";
   return "application/octet-stream";
 }
 

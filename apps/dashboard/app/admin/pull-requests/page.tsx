@@ -13,6 +13,7 @@ import type {
 } from "../../../lib/types";
 
 export default function AdminPullRequestsPage() {
+  const [readerRevision, setReaderRevision] = useState(0);
   const [data, setData] = useState<DashboardOutstandingPullRequests | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,11 +47,11 @@ export default function AdminPullRequestsPage() {
       subtitle={data ? `${data.counts.total} open across ${data.projectsScanned} Projects` : "Across every configured Project repository."}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
-      onRefresh={() => void refresh()}
+      onRefresh={() => { setReaderRevision(value => value + 1); void refresh(); }}
     >
       {error ? <ErrorState title="Outstanding PRs unavailable" message={error} /> : null}
       {loading && !data ? <LoadingState /> : null}
-      <PullRequestLinkAudio />
+      <PullRequestLinkAudio refreshToken={readerRevision} />
       {data ? <PullRequestBody data={data} /> : null}
     </DashboardChrome>
   );

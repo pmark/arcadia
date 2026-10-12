@@ -1,31 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../../../../lib/arcadia-cli", () => ({ loadOutstandingPullRequests: vi.fn() }));
-vi.mock("../../../../lib/pull-request-audio", () => ({ generatePullRequestAudio: vi.fn(), AudioBusyError: class extends Error {} }));
-import { loadOutstandingPullRequests } from "../../../../lib/arcadia-cli";
-import { generatePullRequestAudio } from "../../../../lib/pull-request-audio";
-import { POST } from "./route";
+vi.mock("../../../../lib/arcadia-cli", () => ({ loadPullRequestDescription: vi.fn(), ArcadiaCliError: class extends Error { statusCode = 404; } }));
+vi.mock("../../../../lib/pull-request-audio", () => ({ preparePullRequestAudio: vi.fn() }));
+import { loadPullRequestDescription, ArcadiaCliError } from "../../../../lib/arcadia-cli";
+import { preparePullRequestAudio } from "../../../../lib/pull-request-audio";
+import { GET, POST } from "./route";
 const request = (body: unknown) => new Request("http://localhost/api/pull-requests/audio", { method: "POST", body: JSON.stringify(body) });
 beforeEach(() => vi.resetAllMocks());
 describe("PR audio endpoint", () => {
-  it("rejects malformed input before reading GitHub or synthesizing", async () => {
-    for (const body of [null, {}, { repository: "owner/repo/extra", number: 2 }, { repository: "owner/repo", number: "2" }]) {
-      expect((await POST(request(body))).status).toBe(400);
-    }
-    expect(loadOutstandingPullRequests).not.toHaveBeenCalled();
-    expect(generatePullRequestAudio).not.toHaveBeenCalled();
+  it("rejects malformed input before reading or generating", async () => {
+    for (const body of [null, {}, { repository: "owner/repo/extra", number: 2 }, { repository: "owner/repo", number: "2" }]) expect((await POST(request(body))).status).toBe(400);
+    expect(preparePullRequestAudio).not.toHaveBeenCalled();
   });
-  it("refuses repositories outside the configured open inventory", async () => {
-    vi.mocked(loadOutstandingPullRequests).mockResolvedValue({ data: { snapshot: { pullRequests: [] } } } as never);
-    expect((await POST(request({ repository: "owner/repo", number: 2 }))).status).toBe(404);
-    expect(generatePullRequestAudio).not.toHaveBeenCalled();
+  it("keeps the repository boundary refusal visible", async () => {
+    vi.mocked(preparePullRequestAudio).mockRejectedValue(new ArcadiaCliError("Repository is not configured", 404));
+    expect((await POST(request({ repository: "outside/repo", number: 2 }))).status).toBe(404);
   });
-  it("returns playable downloadable audio for a merged PR in an allowed repository", async () => {
-    vi.mocked(loadOutstandingPullRequests).mockResolvedValue({ data: { snapshot: { pullRequests: [{ repository: "owner/repo", number: 99 }] } } } as never);
-    vi.mocked(generatePullRequestAudio).mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), format: "mp3" });
+  it("returns a durable job reference rather than waiting for audio bytes", async () => {
+    vi.mocked(preparePullRequestAudio).mockResolvedValue({ source: { title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", summary: "TLDR" }, job: { id: "audio-job", status: "queued" } } as never);
     const response = await POST(request({ repository: "owner/repo", number: 2 }));
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("audio/mpeg");
-    expect(response.headers.get("content-disposition")).toContain("pr-2-body.mp3");
-    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2, 3]);
+    expect(await response.json()).toMatchObject({ job: { id: "audio-job", status: "queued" }, source: { summary: "TLDR" } });
+  });
+  it("loads the original description without model calls", async () => {
+    vi.mocked(loadPullRequestDescription).mockResolvedValue({ title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", repository: "owner/repo", number: 2, state: "MERGED" });
+    const response = await GET(new Request("http://localhost/api/pull-requests/audio?repository=owner/repo&number=2"));
+    expect(await response.json()).toMatchObject({ source: { body: "Description", state: "MERGED" } });
+    expect(preparePullRequestAudio).not.toHaveBeenCalled();
   });
 });

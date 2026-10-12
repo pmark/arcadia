@@ -44,6 +44,9 @@ import {
   type SpeechClient,
 } from "../speech/client.js";
 import { parseWavMetadata } from "../speech/wavMeta.js";
+import { concatWavBuffers, splitNarrationText } from "../speech/narration.js";
+import { parseSpeechInput } from "../speech/input.js";
+import { createFfmpegMp3Encoder, type Mp3Encoder } from "../speech/mp3Encoder.js";
 import { UnknownVoiceError, resolveVoice } from "../speech/voices.js";
 import { validateOutput } from "../validation/validateOutput.js";
 import { resolveIntelligenceResourceGroup } from "./resourceGroup.js";
@@ -84,6 +87,7 @@ export class IntelligenceWorker {
     private readonly _comfyUiImageExecutor?: ComfyUiImageExecutor,
     private readonly _claudeCodeTextExecutor?: ClaudeCodeTextExecutor,
     workerId: string = randomUUID(),
+    private readonly _mp3Encoder: Mp3Encoder = createFfmpegMp3Encoder(),
   ) {
     this.workerId = workerId;
     this.schedulerConfig = resolveIntelligenceSchedulerConfig(_config);
@@ -236,7 +240,7 @@ export class IntelligenceWorker {
       if (error instanceof SpeechUnavailableError) {
         return this._repository.blockJob(
           job.id,
-          { code: "SPEECH_UNAVAILABLE", message: error.message },
+          { code: error.code, message: error.message },
           nowIso(),
           lease,
         );
@@ -410,42 +414,42 @@ export class IntelligenceWorker {
       throw error;
     }
 
-    const generation = await this._speechClient.generateSpeech(
-      {
-        text: input.text,
-        voice,
-        format: input.format,
-        speed: input.speed,
-        language: input.language,
-        instructions: input.instructions,
-      },
-      route.liteLlmRoute,
-      baseUrl,
-    );
-
-    // Deterministic inspection happens before any bytes are persisted: an
-    // undecodable payload fails the job and never becomes an artifact.
-    const metadata = parseWavMetadata(generation.bytes);
-    if (!metadata) {
-      throw new SpeechGenerationError(
-        "SPEECH_UNDECODABLE_AUDIO",
-        "Generated audio could not be decoded as WAV; its duration and sample metadata are unavailable.",
-      );
+    const chunks = splitNarrationText(input.text);
+    if (chunks.length > 256) throw new SpeechGenerationError("SPEECH_INVALID_INPUT", "Speech input contains too many separate paragraphs; maximum 256 chunks.");
+    if (input.format === "mp3") await this._mp3Encoder.assertAvailable();
+    const clips: Buffer[] = [];
+    let byteSize = 0;
+    let provider = "";
+    let model: string | undefined;
+    for (const text of chunks) {
+      const generation = await this._speechClient.generateSpeech({
+        text, voice, format: "wav", speed: input.speed, language: input.language, instructions: input.instructions,
+      }, route.liteLlmRoute, baseUrl);
+      if (!parseWavMetadata(generation.bytes)) throw new SpeechGenerationError("SPEECH_UNDECODABLE_AUDIO", "Generated speech is not a decodable WAV.");
+      byteSize += generation.bytes.byteLength;
+      if (byteSize > 128 * 1024 * 1024) throw new SpeechGenerationError("SPEECH_AUDIO_TOO_LARGE", "Narrated audio exceeds the 128 MiB generation limit.");
+      clips.push(generation.bytes);
+      if (provider && (provider !== generation.provider || model !== generation.model)) throw new SpeechGenerationError("SPEECH_INCONSISTENT_PROVIDER", "Speech chunks returned inconsistent provenance.");
+      provider = generation.provider;
+      model = generation.model;
     }
-
+    let wav: Buffer;
+    try { wav = clips.length === 1 ? clips[0] : concatWavBuffers(clips); } catch {
+      throw new SpeechGenerationError("SPEECH_INCONSISTENT_AUDIO", "Speech chunks have incompatible PCM formats.");
+    }
+    const metadata = parseWavMetadata(wav)!;
+    const bytes = input.format === "mp3" ? await this._mp3Encoder.encode(wav) : wav;
     const artifact = await this._artifactStore.saveAudioBytes({
-      jobId: job.id,
-      bytes: generation.bytes,
-      format: input.format,
+      jobId: job.id, bytes, format: input.format,
       durationSeconds: metadata.durationSeconds,
-      sampleRateHz: metadata.sampleRateHz,
-      channels: metadata.channels,
-      metadata: { voiceId: input.voiceId },
+      sampleRateHz: input.format === "mp3" ? 24_000 : metadata.sampleRateHz,
+      channels: input.format === "mp3" ? 1 : metadata.channels,
+      metadata: { voiceId: input.voiceId, chunkCount: chunks.length, encoder: input.format === "mp3" ? "ffmpeg-libmp3lame-cbr64k" : "pcm" },
     });
 
     const usage: IntelligenceUsage = {
-      provider: generation.provider,
-      ...(generation.model ? { model: generation.model } : {}),
+      provider: provider,
+      ...(model ? { model: model } : {}),
       ...(route.location === "local" ? { estimatedCostUsd: 0 } : {}),
     };
 
@@ -453,15 +457,16 @@ export class IntelligenceWorker {
       artifact: artifact as unknown as JsonValue,
       voiceId: input.voiceId,
       routeId: route.routeId,
-      provider: generation.provider,
-      ...(generation.model ? { model: generation.model } : {}),
+      provider: provider,
+      ...(model ? { model: model } : {}),
       usage: {
         routeId: route.routeId,
         modelRoute: route.liteLlmRoute,
-        provider: generation.provider,
-        ...(generation.model ? { model: generation.model } : {}),
+        provider: provider,
+        ...(model ? { model: model } : {}),
         ...(route.location === "local" ? { estimatedCostUsd: 0 } : {}),
       },
+      chunkCount: chunks.length,
       createdAt: nowIso(),
     };
 
@@ -470,7 +475,7 @@ export class IntelligenceWorker {
     process.stderr.write(
       `[intelligence] audio.speech.generate job ${job.id} produced ${artifact.byteSize}B ` +
         `${artifact.format ?? "audio"} via ${route.location === "local" ? "LOCAL" : "PAID CLOUD"} ` +
-        `route ${route.routeId} (provider ${generation.provider})\n`,
+        `route ${route.routeId} (provider ${provider})\n`,
     );
 
     return { output, usage };
@@ -629,60 +634,4 @@ function requestedImageCount(input: JsonValue): number | undefined {
     }
   }
   return undefined;
-}
-
-type SpeechInputFields = {
-  text: string;
-  voiceId: string;
-  format: string;
-  speed?: number;
-  language?: string;
-  instructions?: string;
-};
-
-/**
- * Reads and validates the speech options from a request's `input`. The API
- * layer already validates this shape (see api/server.ts), but the worker
- * re-checks defensively — a raw request could reach the worker without passing
- * through the HTTP validator. `format` defaults to "wav" (the only supported
- * format this milestone).
- */
-function parseSpeechInput(input: JsonValue): SpeechInputFields {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new SpeechGenerationError(
-      "SPEECH_INVALID_INPUT",
-      "audio.speech.generate input must be an object containing text and voiceId.",
-    );
-  }
-  const obj = input as Record<string, JsonValue>;
-  const text = typeof obj.text === "string" ? obj.text.trim() : "";
-  const voiceId = typeof obj.voiceId === "string" ? obj.voiceId.trim() : "";
-  if (!text) {
-    throw new SpeechGenerationError(
-      "SPEECH_INVALID_INPUT",
-      "audio.speech.generate requires a non-empty string input.text.",
-    );
-  }
-  if (!voiceId) {
-    throw new SpeechGenerationError(
-      "SPEECH_INVALID_INPUT",
-      "audio.speech.generate requires a non-empty string input.voiceId.",
-    );
-  }
-  const format =
-    typeof obj.format === "string" && obj.format.trim().length > 0 ? obj.format.trim() : "wav";
-  if (format !== "wav") {
-    throw new SpeechGenerationError(
-      "SPEECH_INVALID_INPUT",
-      `audio.speech.generate input.format "${format}" is not supported. Only "wav" is supported.`,
-    );
-  }
-  return {
-    text,
-    voiceId,
-    format,
-    speed: typeof obj.speed === "number" ? obj.speed : undefined,
-    language: typeof obj.language === "string" ? obj.language : undefined,
-    instructions: typeof obj.instructions === "string" ? obj.instructions : undefined,
-  };
 }
