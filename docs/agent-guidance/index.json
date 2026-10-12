@@ -62,7 +62,7 @@
       "trigger": "Project, Plan, Action, Decision, status, acceptance",
       "path": "docs/managed-documents.md",
       "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "312e728e8eaec0db2a391b9039c82ec2e304a05da735f86d61e55f950104bb00"
+      "sha256": "a09736e31250ff6920e916cc457cce72f3fc9cba36c8e9feb3d558487f89daa7"
     },
     {
       "id": "planning",

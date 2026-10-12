@@ -9,14 +9,20 @@ This report is a review Artifact, not a completion claim or an approval. No gove
 - Every managed Plan Action requires a non-empty list, including non-current, completed, deferred, blocked and question-open Actions. Malformed elements are rejected instead of silently coerced or dropped.
 - Parsing and settlement share deterministic checks for duplicate conditions, unresolved placeholders, known subjective quality claims, short implementation instructions and unnamed token thresholds. These are necessary minimum checks; arbitrary English coverage and semantic precision still require independent review.
 - The amendment writer can insert a missing list. A restricted criteria-only repair read tolerates only acceptance errors and preserves the Action identity, next_action, status, responsibility, dependencies, questions and pointers; written documents undergo ordinary strict validation. It grants no dispatch authority.
-- Four malformed YAML criteria were quoted with their literal text preserved. Authoring guidance and its index fingerprints were updated.
+- Six malformed YAML criteria were quoted with their literal text preserved. Authoring guidance and its index fingerprints were updated.
 
 ## Validation
 
 - Parser/dispatch regression suites: 137 tests passed.
 - Existing Artifact acceptance tests and new Plan validation tests: 29 passed.
 - Governed criteria-repair scenarios: 4 passed (open, done, question_open preservation, and pre-write subjective-criterion refusal).
-- Full suite is running; final results will be added before handoff. The checked-in control-document test is expected to remain blocked until the eight missing historical lists and active Plan token thresholds are settled.
+- Final targeted parser/dispatch suites: 139 tests passed.
+- Complete settlement and governed-compatibility suites: 104 tests passed.
+- Bootstrap, ordering, history-link and scheduling compatibility suites: 69 tests passed.
+- Session Action brief suite: 27 tests passed, including a field-specific invalid-criteria refusal.
+- Six repair scenarios cover open/done/question_open state, non-current legacy Actions without next_action, subjective rejection and literal-dollar preservation. Positive assertion regressions reject the independent reviewer's excellent-product and everyone-loves-it examples.
+- The obsolete pre-review local full-suite process was stopped after about 13 minutes; source changes made it unsuitable as final-head proof. First-head CI reported old fixture failures plus the expected control-document refusal. Each reported fixture failure was repaired and its targeted suite passed. Final-head CI supplies the full-suite gate.
+- A read-only projection check parsed the three official settlement-preview Plan outputs and compared every Action control field except acceptance/source metadata. All unchanged-corpus errors are covered by these three unapplied amendments. No live Plan was written for this proof.
 
 ## Approval boundary and exact amendments
 
@@ -161,3 +167,11 @@ Loaded the following paths and relevant sections before their operations. Byte c
 - A repair fixture initially used the wrong title for a question-open Action. The preservation check rejected it; the corrected fixture passed.
 - Changed authoring guidance initially failed its fingerprint check; the two index hashes were refreshed using the canonical fingerprint function.
 - The full suite uses disposable test workspaces only. No live governed settlement, queue reorder, service restart, merge or deployment was performed.
+
+## Independent review
+
+Round 1 reviewed `692236bf8bca396e0ea713c200da64cbd6b31c62` and found two blocking issues: a phrase blacklist admitted subjective prose, and missing-next_action legacy shapes could not use criteria-only repair. The reviewer also identified the pre-existing literal-dollar replacement defect (related to Issue #1213). All three were repaired, with positive assertion checks, preserved absent fields, callback replacement and regressions. Round 2 reviews the resulting pushed head. CodeRabbit skipped its review because the PR is a draft; no advisory findings were supplied.
+
+Bootstrap generation now emits a declared Artifact condition or a recorded clarification condition for each Action. An unresolved product requirement remains blocked; no product success condition is invented. Initial CI's historical fixtures were updated to declare their actual test condition. Session launch now surfaces the exact malformed-criteria field instead of claiming the existing Plan is missing.
+
+A report-update Python syntax error left the report unchanged; the corrected update was applied separately with fail-fast shell execution. No governed state was involved.

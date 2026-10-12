@@ -197,7 +197,8 @@ decisions: []
   conditions. An unresolved requirement remains an explicit question; its
   criteria may describe the required Decision record without answering it.
   Parsing and settlement reject missing, malformed, duplicate, placeholder,
-  subjective-only or unspecified-token-limit criteria with field-level remedies.
+  subjective-only, assertion-free or unspecified-token-limit criteria with
+  field-level remedies.
   These deterministic checks are a minimum: independent review must still judge
   whether the conditions cover the Action and whether the evidence proves them.
 
