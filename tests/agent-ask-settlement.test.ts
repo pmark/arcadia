@@ -226,6 +226,26 @@ describe("Agent Ask settlement", () => {
     });
   });
 
+  it("fails loudly when an Action the activation queued is missing from the synced projection", () => {
+    const { workspace, repo } = activationFixture();
+    const file = path.join(repo, "docs/plans/production.md");
+    const content = readFileSync(file, "utf8");
+    const template = content.slice(content.indexOf("  - id:"), content.indexOf("questions:"));
+    writeFileSync(file, content.replace("questions: []", template.replace("id: first", "id: second") + "questions: []"));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add second Action"], { cwd: repo });
+    const options = { workspace, proposal: "activate-production", requestId: "activation-missing-projection",
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra", top: true, revision: 1 };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint,
+      hooks: { beforeOperationalProjection: () => {
+        // The queued Action vanishes from the documents the projection reads.
+        const current = readFileSync(file, "utf8");
+        writeFileSync(file, current.slice(0, current.lastIndexOf("  - id: second")) + "questions: []\n---\n\n# Plan\n");
+      } } });
+    expect(applied.data.receipt.recovery?.reason).toMatch(/exactly once/);
+  });
+
   it("activates when another Project gains an Action after the order was resolved", () => {
     const { workspace, repo } = activationFixture();
     addOtherProject(workspace, repo);

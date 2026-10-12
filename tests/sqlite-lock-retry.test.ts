@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ArcadiaError } from "../src/cli/errors.js";
-import { retryOnSqliteLock } from "../src/db/connection.js";
+import { retryOnSqliteLock, SqliteLockRetriesExhaustedError } from "../src/db/lockRetry.js";
 
 function busy(): Error {
   return Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
@@ -29,8 +28,8 @@ describe("retryOnSqliteLock", () => {
     }
     expect(calls).toBe(3);
     expect(delays).toHaveLength(2);
-    expect(thrown).toBeInstanceOf(ArcadiaError);
-    expect(thrown).toMatchObject({ code: "SQLITE_LOCK_RETRIES_EXHAUSTED", details: { attempts: 3, cause: "database is locked" } });
+    expect(thrown).toBeInstanceOf(SqliteLockRetriesExhaustedError);
+    expect(thrown).toMatchObject({ attempts: 3, reason: "database is locked" });
   });
 
   it("does not retry an error that is not a lock", () => {
