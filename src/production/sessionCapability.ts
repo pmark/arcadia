@@ -59,9 +59,24 @@ export function detectEnvironmentWalls(log: string | null): EnvironmentWall[] {
  * workspace database, host validation and preservation? Deterministic,
  * read-only, spends no tokens. The go route is only a wall when absent
  * (`unavailable`); `busy` is a transient wait, not a missing capability.
+ *
+ * Known gap: the file-access probe runs as the host worker, which can always
+ * write the workspace, so it only catches a broken host. What the *Session's*
+ * sandbox may write lives in the provider's runtime configuration (Codex
+ * writable roots, Claude permissions.additionalDirectories) and is not
+ * readable offline here, so it is not probed. The one fact knowable offline is
+ * the selected profile's declared sandbox mode: `read-only` can never write the
+ * workspace database. Any other denial is caught by the no-diff stop on exit.
  */
-export function probeSessionCapability(workspace: string): EnvironmentWall[] {
+export function probeSessionCapability(workspace: string, profileSandbox?: string | null): EnvironmentWall[] {
   const walls: EnvironmentWall[] = [];
+  if (profileSandbox === "read-only") {
+    walls.push({
+      wallClass: "workspace_write",
+      evidence: "the selected coding profile declares a read-only sandbox, which cannot write the workspace database",
+      remedy: WALL_REMEDY.workspace_write
+    });
+  }
   const { databaseFile } = getWorkspacePaths(workspace);
   try {
     accessSync(databaseFile, constants.W_OK);
@@ -95,10 +110,11 @@ export function describeEnvironmentWalls(
 }
 
 /** Input/output tokens a provider log reports (Claude `result` usage, Codex `turn.completed` usage); null when it reports none. */
-export function sessionTokensFromLog(log: string | null): { inputTokens: number; outputTokens: number } | null {
+export function sessionTokensFromLog(log: string | null): { inputTokens: number; cachedInputTokens: number; outputTokens: number } | null {
   if (!log) return null;
   let input = 0;
   let output = 0;
+  let cached = 0;
   let seen = false;
   const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
   for (const line of log.split(/\r?\n/)) {
@@ -107,9 +123,10 @@ export function sessionTokensFromLog(log: string | null): { inputTokens: number;
       const event = JSON.parse(line) as { type?: unknown; usage?: Record<string, unknown> };
       if (!event.usage || (event.type !== "result" && event.type !== "turn.completed")) continue;
       seen = true;
-      input += num(event.usage.input_tokens) + num(event.usage.cache_creation_input_tokens) + num(event.usage.cache_read_input_tokens);
+      input += num(event.usage.input_tokens);
+      cached += num(event.usage.cache_creation_input_tokens) + num(event.usage.cache_read_input_tokens) + num(event.usage.cached_input_tokens);
       output += num(event.usage.output_tokens);
     } catch { /* not a JSON event line */ }
   }
-  return seen ? { inputTokens: input, outputTokens: output } : null;
+  return seen ? { inputTokens: input, cachedInputTokens: cached, outputTokens: output } : null;
 }

@@ -331,7 +331,20 @@ describe("runManagedProductionTick", () => {
     expect(escalations[0]?.message).toContain("workspace_write");
     expect(escalations[0]?.message).toContain("11100000 input tokens");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
-      .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, outputTokens: 4000 })]);
+      .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, cachedInputTokens: 0, outputTokens: 4000 })]);
+    const rendered = renderProductionStatusSuccess({
+      ok: true, command: "production.status", workspace: fixture.workspace,
+      data: {
+        read: { status: "unreadable", reason: "fixture" } as never,
+        display: { state: "off", label: "Off", observedAt: fixture.now.toISOString() },
+        liveAdmissions: 0, admissions: [], baseBranchAdvances: [], launchBlockers: [], operatorEscalations: [],
+        attemptTokens: withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db)),
+        offConsequence: "Off.", controlDeadlines: PRODUCTION_CONTROL_DEADLINES
+      },
+      artifacts: [], warnings: []
+    }).join("\n");
+    expect(rendered).toContain("test-project/define-contract");
+    expect(rendered).toContain("11100000 uncached input, 0 cached input, 4000 output");
     expect(withReadOnlyDatabase(fixture.workspace, (db) =>
       (db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") as { attempts: number }).attempts))
       .toBeGreaterThanOrEqual(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);

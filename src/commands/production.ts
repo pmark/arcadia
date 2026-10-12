@@ -576,6 +576,17 @@ export function renderProductionStatusSuccess(
     }
   }
 
+  const attemptTokens = response.data.attemptTokens ?? [];
+  if (attemptTokens.length > 0) {
+    lines.push(`  Tokens per attempt (${attemptTokens.length}):`);
+    for (const attempt of attemptTokens) {
+      lines.push(
+        `    ${attempt.actionKey} Session ${attempt.sessionId} [${attempt.outcome ?? "unknown"}]: ` +
+          `${attempt.inputTokens} uncached input, ${attempt.cachedInputTokens} cached input, ${attempt.outputTokens} output`
+      );
+    }
+  }
+
   lines.push(`  Off consequence: ${response.data.offConsequence}`);
   return lines;
 }

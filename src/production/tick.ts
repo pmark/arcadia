@@ -496,6 +496,7 @@ export function ensureProductionTickTables(db: Database.Database): void {
       action_key TEXT NOT NULL,
       session_id TEXT NOT NULL,
       input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       outcome TEXT,
       recorded_at TEXT NOT NULL,
@@ -1659,9 +1660,9 @@ export function runManagedProductionTick(
               : undefined,
           // Keep retry accounting atomic with the terminal Session/receipt.
           // A worker crash cannot commit one without the other; replay is a no-op.
-          onReceiptWrite: continuation ? (receipt) => {
+          onReceiptWrite: (receipt) => {
             const actionKey = `${project.slug}/${lease.action_id}`;
-            const unchanged = receipt.outcome === "incomplete_resumable"
+            const unchanged = continuation !== null && receipt.outcome === "incomplete_resumable"
               && receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
               && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
             if (unchanged) {
@@ -1672,14 +1673,16 @@ export function runManagedProductionTick(
                   lastError: attempts.lastError, now, log });
               }
             } else if (receipt.outcome === "accepted_completion"
-              || (receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
+              || (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
               resetRepairAttempts(db, actionKey);
             }
-          } : undefined
-        });
-        recordSessionExitAccounting(db, {
-          workspace, projectSlug: project.slug, session: lease, outcome: result.receipt.outcome,
-          candidateRevision: result.receipt.candidate_revision, now, log
+            // Tokens per attempt and the environment-wall stop commit with the
+            // receipt, so a crash cannot lose the wall and relaunch into it.
+            recordSessionExitAccounting(db, {
+              workspace, projectSlug: project.slug, session: lease, outcome: receipt.outcome,
+              candidateRevision: receipt.candidate_revision, now, log
+            });
+          }
         });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
@@ -2257,9 +2260,9 @@ export function recordSessionExitAccounting(
   const tokens = sessionTokensFromLog(text);
   if (tokens) {
     db.prepare(
-      `INSERT OR REPLACE INTO production_attempt_tokens (action_key, session_id, input_tokens, output_tokens, outcome, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(actionKey, input.session.id, tokens.inputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
+      `INSERT OR REPLACE INTO production_attempt_tokens (action_key, session_id, input_tokens, cached_input_tokens, output_tokens, outcome, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
   }
   if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
   const walls = detectEnvironmentWalls(text);
@@ -2285,7 +2288,9 @@ export function recordSessionExitAccounting(
 export interface ProductionAttemptTokens {
   actionKey: string;
   sessionId: string;
+  /** Uncached input tokens. */
   inputTokens: number;
+  cachedInputTokens: number;
   outputTokens: number;
   outcome: string | null;
   recordedAt: string;
@@ -2296,14 +2301,15 @@ export function listProductionAttemptTokens(db: Database.Database, actionKey?: s
   try {
     const rows = db
       .prepare(
-        `SELECT action_key, session_id, input_tokens, output_tokens, outcome, recorded_at
+        `SELECT action_key, session_id, input_tokens, cached_input_tokens, output_tokens, outcome, recorded_at
            FROM production_attempt_tokens ${actionKey ? "WHERE action_key = ?" : ""} ORDER BY recorded_at ASC`
       )
       .all(...(actionKey ? [actionKey] : [])) as Array<{
-        action_key: string; session_id: string; input_tokens: number; output_tokens: number; outcome: string | null; recorded_at: string;
+        action_key: string; session_id: string; input_tokens: number; cached_input_tokens: number; output_tokens: number;
+        outcome: string | null; recorded_at: string;
       }>;
     return rows.map((row) => ({
-      actionKey: row.action_key, sessionId: row.session_id, inputTokens: row.input_tokens,
+      actionKey: row.action_key, sessionId: row.session_id, inputTokens: row.input_tokens, cachedInputTokens: row.cached_input_tokens,
       outputTokens: row.output_tokens, outcome: row.outcome, recordedAt: row.recorded_at
     }));
   } catch (error) {
