@@ -40,6 +40,8 @@ import {
   getProductionRepairAttempts,
   listLaunchBlockers,
   listOperatorEscalations,
+  listProductionAttemptTokens,
+  type ProductionAttemptTokens,
   listRecentBaseBranchAdvances,
   resetProductionRepairBudget,
   type BaseBranchAdvanceRecord,
@@ -132,6 +134,8 @@ export interface ProductionStatusData {
   launchBlockers: LaunchBlockerRecord[];
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: OperatorEscalation[];
+  /** Tokens recorded per Session attempt, next to each Action, oldest first. */
+  attemptTokens?: ProductionAttemptTokens[];
   /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
   redAlerts: RedAlert[];
   /** The one bounded diagnosis per alert episode, when one ran. */
@@ -188,6 +192,7 @@ export function runProductionStatusCommand(
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
+      attemptTokens: listProductionAttemptTokens(db),
       redAlerts: listOpenRedAlerts(db),
       redAlertDiagnoses: listRedAlertDiagnoses(db),
       inactiveConfiguration: readInactiveConfigurationSafely(db),
@@ -568,6 +573,17 @@ export function renderProductionStatusSuccess(
     lines.push(`  Needs an operator or agent (${escalations.length}):`);
     for (const escalation of escalations) {
       lines.push(`    ${escalation.actionKey} [${escalation.kind}] since ${escalation.firstDetectedAt}: ${escalation.remedy ?? escalation.message}`);
+    }
+  }
+
+  const attemptTokens = response.data.attemptTokens ?? [];
+  if (attemptTokens.length > 0) {
+    lines.push(`  Tokens per attempt (${attemptTokens.length}):`);
+    for (const attempt of attemptTokens) {
+      lines.push(
+        `    ${attempt.actionKey} Session ${attempt.sessionId} [${attempt.outcome ?? "unknown"}]: ` +
+          `${attempt.inputTokens} uncached input, ${attempt.cachedInputTokens} cached input, ${attempt.outputTokens} output`
+      );
     }
   }
 
