@@ -5,11 +5,27 @@ import { validateSessionLedger, validateSessionLedgerRow } from "../src/reports/
 
 const ledger = readFileSync(path.resolve(import.meta.dirname, "../docs/reports/session-ledger.jsonl"), "utf8");
 const row = () => JSON.parse(ledger.split("\n")[0]) as Record<string, unknown>;
+const BACKFILLED_SESSION_IDS = [
+  "2026-10-12-driver-a12",
+  "2026-10-12-driver-a3",
+  "2026-10-12-driver-a5",
+  "2026-10-12-driver-a6"
+];
 
 describe("session ledger validator", () => {
-  it("accepts the four backfilled rows", () => {
+  it("accepts the required backfilled rows and validates the entire append-only ledger", () => {
+    const rows = ledger.trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    const byId = new Map(rows.map((entry) => [entry.session_id, entry]));
+    for (const sessionId of BACKFILLED_SESSION_IDS) {
+      const required = byId.get(sessionId);
+      expect(required, `required backfilled Session ${sessionId} is missing`).toBeDefined();
+      expect(validateSessionLedgerRow(required)).toEqual([]);
+    }
     expect(validateSessionLedger(ledger)).toEqual([]);
-    expect(ledger.trim().split("\n")).toHaveLength(4);
+  });
+  it("accepts a valid unique Session row appended to the ledger", () => {
+    const appended = { ...row(), session_id: "2026-10-12-test-appended-session" };
+    expect(validateSessionLedger(`${ledger.trim()}\n${JSON.stringify(appended)}\n`)).toEqual([]);
   });
   it("rejects a missing field", () => {
     const { wall_min: _drop, ...rest } = row();
