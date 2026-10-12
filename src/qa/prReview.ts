@@ -227,6 +227,14 @@ export interface QaPrReviewDependencies {
   now?: () => Date;
 }
 
+/** A resumed unfinished lineage attempt is the same attempt, not its own retry parent. */
+export function effectivenessParentRequestId(
+  previous: { request_id: string } | null,
+  begun: { request_id: string }
+): string | null {
+  return previous?.request_id === begun.request_id ? null : previous?.request_id ?? null;
+}
+
 export interface RawPullRequest {
   number: number;
   title: string;
@@ -448,7 +456,9 @@ export function runQaPrReviewCommand(
       requestId: begun.attempt.request_id,
       attemptId: begun.attempt.id,
       ordinal: begun.attempt.ordinal,
-      parentRequestId: previous?.request_id ?? null,
+      // beginIndependentVerdict resumes an unfinished attempt for the same
+      // actor and binding. That attempt is not its own retry parent.
+      parentRequestId: effectivenessParentRequestId(previous, begun.attempt),
     };
   });
   const sandboxProof = runQaSandboxPreflight({
@@ -590,7 +600,7 @@ export function runQaPrReviewCommand(
     attemptOrdinal: lineage?.ordinal ?? null,
     evidenceSource: toWorkspaceRelativePath(workspacePath, executorOutputPath),
     invocation: reviewerInvoked ? "fresh" : "not-invoked",
-    modelVerdict: parsedModel.verdict.verdict,
+    ...(reviewerInvoked && reviewerUnavailable === null ? { modelVerdict: parsedModel.verdict.verdict } : {}),
     deterministicGateVerdict: deterministic.gate ?? "pass",
     deterministicGateReasons: deterministic.reasons,
     findingEvidence: findings.map((finding, findingIndex) => ({
@@ -1927,7 +1937,7 @@ function isReviewEffectivenessTelemetry(value: unknown, role: PrReviewRole, cand
   if (!(value.escapedDefects === null || (Array.isArray(value.escapedDefects) && value.escapedDefects.every(defect =>
     isRecordWithExactKeys(defect, ["id", "evidence"]) && isNonEmptyString(defect.id) && isNonEmptyString(defect.evidence))))) return false;
   const indexes = new Set<number>();
-  return value.findingEvidence.every(finding => isRecordWithExactKeys(finding, [
+  return value.findingEvidence.length === findings.length && value.findingEvidence.every(finding => isRecordWithExactKeys(finding, [
     "findingIndex", "severity", "disposition", "resolutionState", "validationOutcome", "validationEvidence", "repairHead", "repairEvidence"
   ]) && Number.isInteger(finding.findingIndex) && Number(finding.findingIndex) >= 0 && Number(finding.findingIndex) < findings.length &&
     !indexes.has(Number(finding.findingIndex)) && (indexes.add(Number(finding.findingIndex)), true) &&
@@ -1936,6 +1946,7 @@ function isReviewEffectivenessTelemetry(value: unknown, role: PrReviewRole, cand
     ["open", "repaired", "accepted-risk", "not-actionable"].includes(String(finding.resolutionState)) &&
     ["confirmed", "rejected", "unresolved", "duplicate"].includes(String(finding.validationOutcome)) &&
     [finding.validationEvidence, finding.repairHead, finding.repairEvidence].every(nullableString)) &&
+    indexes.size === findings.length &&
     value.linkedResourceReceipts.every(receipt => isRecordWithExactKeys(receipt, [
       "id", "attemptRequestId", "inputTokens", "cachedInputTokens", "outputTokens", "elapsedMs"
     ]) && isNonEmptyString(receipt.id) && isNonEmptyString(receipt.attemptRequestId) &&
@@ -1975,11 +1986,23 @@ function verifyReceiptFile(workspace: string, file: { path: string; sha256: stri
   return sha256File(absolutePath) === file.sha256;
 }
 
-/** Confirms that every immutable file named by a persisted QA context still matches its captured hash. */
-export function verifyPersistedQaContextEvidence(workspace: string, context: PersistedQaContext): boolean {
+/**
+ * Confirms that the database context is bound to the canonical captured
+ * result, and that every immutable file named by that result still matches.
+ */
+export function verifyPersistedQaContextEvidence(
+  workspace: string,
+  context: PersistedQaContext,
+  expected?: { decisionId: string; artifactId: string }
+): boolean {
   if (!context.receiptFiles.every(file => verifyReceiptFile(workspace, file))) return false;
   try {
     const metadataPath = path.resolve(workspace, context.metadataPath);
+    const resultPath = path.join(path.dirname(metadataPath), "result.json");
+    const result = JSON.parse(readFileSync(resultPath, "utf8")) as unknown;
+    if (!isPersistedReceipt(result) || result.evidenceFingerprint !== context.evidenceFingerprint ||
+        !sameReceiptFiles(result.requiredFiles, context.receiptFiles) ||
+        (expected && (result.decisionId !== expected.decisionId || result.artifactId !== expected.artifactId))) return false;
     const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as Record<string, unknown>;
     return isDeepStrictEqual(metadata.candidate, context.candidate) &&
       metadata.verdict === context.verdict &&

@@ -549,19 +549,24 @@ pnpm arcadia qa effectiveness
 ```
 
 The report groups only receipts with the same explicitly observed task class,
-difficulty, review role, and rubric version. Unknown class or difficulty stays
-visible as unknown rather than being inferred from the rubric. It separates
+difficulty, review role, rubric version, provider, model, and effective effort.
+Configured effort and pricing date are coverage, not cohort keys; conflicts are
+shown. Unknown class or difficulty stays visible as unknown rather than being inferred from the rubric. It separates
 configured from runtime-effective effort, reviewer-only usage from additional
-resource receipts explicitly linked to the exact review attempt and head, and
-reviewer environment failures from judgment failures. Cached receipt replay is
+resource observations explicitly linked to the exact review attempt and head,
+and reviewer environment failures from model verdicts. A model `fail` means the
+Candidate failed model review; it is not scored as reviewer failure. Cached receipt replay is
 deduplicated by attempt identity. Findings count as confirmed, rejected, or
-duplicate only when a separate evidence source records that validation; a Pass
+duplicate only when a separate trusted later outcome verifies that validation;
+a same-receipt metadata reference, a Pass,
 or author acceptance is not ground truth and no escaped-defect record is not
 reported as zero misses. Finding disposition (Required correction, Worthwhile
 improvement, or Follow-up opportunity) stays separate from its resolution state
-and remains unknown when the receipt did not observe it. Missing tokens, time, billed cost, pricing, and
-included-capacity consumption remain null/unknown; the command makes no model
-call and changes no routing policy.
+and remains unknown when the receipt did not observe it. Resource sums are
+labelled observed partial until both terminal outcome and immutable resource
+evidence verify. Missing tokens, time, billed cost, pricing, and included-capacity
+consumption retain known/total coverage; the command opens the workspace database
+read-only, makes no model call, and changes no routing policy.
 
 Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is

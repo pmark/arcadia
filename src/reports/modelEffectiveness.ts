@@ -54,7 +54,10 @@ export interface EffectivenessReviewRecord {
   context: PersistedQaContext;
   observedTaskClass?: string | null;
   observedDifficulty?: string | null;
-  linkedResources?: ReviewEffectivenessTelemetry["linkedResourceReceipts"];
+  linkedResources?: Array<ReviewEffectivenessTelemetry["linkedResourceReceipts"][number] & {
+    terminalOutcome: boolean;
+    resourceEvidenceVerified: boolean;
+  }>;
 }
 
 export interface ResourceTotals {
@@ -62,6 +65,11 @@ export interface ResourceTotals {
   cachedInputTokens: number;
   outputTokens: number;
   elapsedMs: number;
+  samples: number;
+  inputTokensKnown: number;
+  cachedInputTokensKnown: number;
+  outputTokensKnown: number;
+  elapsedMsKnown: number;
   samplesWithCompleteUsage: number;
   samplesWithUnknownUsage: number;
 }
@@ -74,20 +82,30 @@ export interface ModelEffectivenessGroup {
   provider: string;
   model: string;
   configuredEffort: string | null;
+  configuredEffortValues: string[];
+  configuredEffortConflict: boolean;
   effectiveEffort: string | null;
   sampleSize: number;
   configuredEffortKnown: number;
   effectiveEffortKnown: number;
   taskClassKnown: number;
   difficultyKnown: number;
+  invocationKnown: number;
+  modelJudgmentKnown: number;
+  deterministicGateKnown: number;
+  environmentOutcomeKnown: number;
   freshInvocations: number;
   retryCount: number;
   repairCount: number;
+  repairReferences: number;
+  repairOutcomeEvidenceKnown: number;
   reviewRounds: number;
   environmentFailures: number;
-  judgmentFailures: number;
+  candidateModelReviewFailures: number;
   deterministicGateFailures: number;
   passes: number;
+  findingCount: number;
+  findingOutcomeEvidenceKnown: number;
   confirmedBlockingFindings: number;
   rejectedFindings: number;
   duplicateFindings: number;
@@ -100,13 +118,17 @@ export interface ModelEffectivenessGroup {
   rejectedOrDuplicateRate: number | null;
   escapedDefects: number | null;
   reviewerResources: ResourceTotals;
-  totalResourcesThroughOutcome: ResourceTotals;
+  observedResourcesThroughOutcome: ResourceTotals;
+  verifiedOutcomeResources: ResourceTotals | null;
   linkedResourceReceiptCount: number;
+  verifiedLinkedResourceReceiptCount: number;
   actualBilledCostUsd: number | null;
   estimatedCostUsd: number | null;
   billedCostKnown: number;
   estimatedCostKnown: number;
   pricingAsOf: string | null;
+  pricingDates: string[];
+  pricingDateConflict: boolean;
   includedCapacityKnown: number;
   includedCapacityConsumption: number | null;
 }
@@ -123,6 +145,11 @@ const zeroResources = (): ResourceTotals => ({
   cachedInputTokens: 0,
   outputTokens: 0,
   elapsedMs: 0,
+  samples: 0,
+  inputTokensKnown: 0,
+  cachedInputTokensKnown: 0,
+  outputTokensKnown: 0,
+  elapsedMsKnown: 0,
   samplesWithCompleteUsage: 0,
   samplesWithUnknownUsage: 0
 });
@@ -133,13 +160,14 @@ function addResources(target: ResourceTotals, value: {
   outputTokens: number | null;
   elapsedMs: number | null;
 }): void {
+  target.samples += 1;
   const complete = value.inputTokens !== null && value.cachedInputTokens !== null && value.outputTokens !== null && value.elapsedMs !== null;
   if (complete) target.samplesWithCompleteUsage += 1;
   else target.samplesWithUnknownUsage += 1;
-  target.inputTokens += value.inputTokens ?? 0;
-  target.cachedInputTokens += value.cachedInputTokens ?? 0;
-  target.outputTokens += value.outputTokens ?? 0;
-  target.elapsedMs += value.elapsedMs ?? 0;
+  if (value.inputTokens !== null) { target.inputTokens += value.inputTokens; target.inputTokensKnown += 1; }
+  if (value.cachedInputTokens !== null) { target.cachedInputTokens += value.cachedInputTokens; target.cachedInputTokensKnown += 1; }
+  if (value.outputTokens !== null) { target.outputTokens += value.outputTokens; target.outputTokensKnown += 1; }
+  if (value.elapsedMs !== null) { target.elapsedMs += value.elapsedMs; target.elapsedMsKnown += 1; }
 }
 
 function deduplicationKey(record: EffectivenessReviewRecord): string {
@@ -151,14 +179,17 @@ function deduplicationKey(record: EffectivenessReviewRecord): string {
 
 /**
  * Builds a deterministic report only from persisted receipts. It never calls a
- * reviewer. Unknown task class/difficulty stay unknown and therefore never
- * masquerade as comparable samples.
+ * reviewer. Unknown task class/difficulty stay unknown and coverage remains
+ * explicit; no missing value is inferred from a combined verdict.
  */
 export function buildModelEffectivenessReport(records: EffectivenessReviewRecord[]): ModelEffectivenessReport {
   const unique = new Map<string, EffectivenessReviewRecord>();
   for (const record of records) if (!unique.has(deduplicationKey(record))) unique.set(deduplicationKey(record), record);
   const groups = new Map<string, ModelEffectivenessGroup>();
   const linkedResourceIds = new Map<string, Set<string>>();
+  const configuredEffortValues = new Map<string, Set<string>>();
+  const pricingDateValues = new Map<string, Set<string>>();
+  const verifiedOutcomePossible = new Map<string, boolean>();
   for (const record of unique.values()) {
     const context = record.context;
     const telemetry = context.effectiveness ?? null;
@@ -167,77 +198,76 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     const difficulty = telemetry?.difficulty ?? record.observedDifficulty ?? null;
     const effectiveEffort = context.reviewer.effectiveEffort ?? null;
     const configuredEffort = context.reviewer.configuredEffort ?? null;
-    const pricingAsOf = context.reviewer.estimatedCostUsd == null ? null : context.reviewer.pricingAsOf ?? null;
     const rubricVersion = telemetry?.rubricVersion ?? null;
-    // Unknown class or difficulty is not a comparable cohort: retain it as a
-    // one-receipt group instead of silently comparing unrelated changes.
-    const comparabilityKey = taskClass === null || difficulty === null ? record.id : `${taskClass}:${difficulty}`;
-    const key = JSON.stringify([comparabilityKey, role, rubricVersion, context.reviewer.provider, context.reviewer.model, configuredEffort, effectiveEffort, pricingAsOf]);
+    const key = JSON.stringify([taskClass, difficulty, role, rubricVersion, context.reviewer.provider, context.reviewer.model, effectiveEffort]);
     let group = groups.get(key);
     if (!group) {
       group = {
         taskClass, difficulty, role, rubricVersion,
         provider: context.reviewer.provider,
         model: context.reviewer.model,
-        configuredEffort,
+        configuredEffort: null, configuredEffortValues: [], configuredEffortConflict: false,
         effectiveEffort,
         sampleSize: 0, configuredEffortKnown: 0, effectiveEffortKnown: 0, taskClassKnown: 0, difficultyKnown: 0,
-        freshInvocations: 0, retryCount: 0, repairCount: 0, reviewRounds: 0,
-        environmentFailures: 0, judgmentFailures: 0, deterministicGateFailures: 0, passes: 0,
+        invocationKnown: 0, modelJudgmentKnown: 0, deterministicGateKnown: 0, environmentOutcomeKnown: 0,
+        freshInvocations: 0, retryCount: 0, repairCount: 0, repairReferences: 0, repairOutcomeEvidenceKnown: 0, reviewRounds: 0,
+        environmentFailures: 0, candidateModelReviewFailures: 0, deterministicGateFailures: 0, passes: 0,
+        findingCount: 0, findingOutcomeEvidenceKnown: 0,
         confirmedBlockingFindings: 0, rejectedFindings: 0, duplicateFindings: 0, validatedFindings: 0,
         unresolvedFindings: 0, dispositionsKnown: 0, requiredCorrectionFindings: 0,
         worthwhileImprovementFindings: 0, followUpOpportunityFindings: 0,
-        rejectedOrDuplicateRate: null, escapedDefects: 0,
-        reviewerResources: zeroResources(), totalResourcesThroughOutcome: zeroResources(), linkedResourceReceiptCount: 0,
-        actualBilledCostUsd: null, estimatedCostUsd: null, billedCostKnown: 0, estimatedCostKnown: 0, pricingAsOf,
+        rejectedOrDuplicateRate: null, escapedDefects: null,
+        reviewerResources: zeroResources(), observedResourcesThroughOutcome: zeroResources(), verifiedOutcomeResources: null,
+        linkedResourceReceiptCount: 0, verifiedLinkedResourceReceiptCount: 0,
+        actualBilledCostUsd: null, estimatedCostUsd: null, billedCostKnown: 0, estimatedCostKnown: 0,
+        pricingAsOf: null, pricingDates: [], pricingDateConflict: false,
         includedCapacityKnown: 0, includedCapacityConsumption: null
       };
       groups.set(key, group);
       linkedResourceIds.set(key, new Set());
+      configuredEffortValues.set(key, new Set());
+      pricingDateValues.set(key, new Set());
+      verifiedOutcomePossible.set(key, true);
     }
     group.sampleSize += 1;
     group.reviewRounds += 1;
-    group.freshInvocations += telemetry?.invocation === "fresh" ? 1 : 0;
-    group.configuredEffortKnown += context.reviewer.configuredEffort !== null && context.reviewer.configuredEffort !== undefined ? 1 : 0;
+    if (configuredEffort !== null) {
+      group.configuredEffortKnown += 1;
+      configuredEffortValues.get(key)!.add(configuredEffort);
+    }
     group.effectiveEffortKnown += effectiveEffort !== null ? 1 : 0;
     group.taskClassKnown += taskClass !== null ? 1 : 0;
     group.difficultyKnown += difficulty !== null ? 1 : 0;
-    group.retryCount += telemetry?.parentAttemptRequestId ? 1 : 0;
-    group.repairCount += telemetry?.findingEvidence.filter(finding => finding.repairHead === context.candidate.headSha &&
-      finding.repairEvidence !== null && context.receiptFiles.some(file => file.path === finding.repairEvidence)).length ?? 0;
-    if (context.reviewerUnavailable) group.environmentFailures += 1;
-    else if (telemetry === null || telemetry.invocation === "fresh") {
-      const modelVerdict = telemetry?.modelVerdict ?? context.verdict;
-      if (modelVerdict !== "pass") group.judgmentFailures += 1;
-      else group.passes += 1;
+    if (telemetry !== null) {
+      group.invocationKnown += 1;
+      group.freshInvocations += telemetry.invocation === "fresh" ? 1 : 0;
+      if (telemetry.parentAttemptRequestId && telemetry.parentAttemptRequestId !== telemetry.attemptRequestId) group.retryCount += 1;
+      if (telemetry.invocation === "fresh" && telemetry.modelVerdict !== undefined && !context.reviewerUnavailable) {
+        group.modelJudgmentKnown += 1;
+        if (telemetry.modelVerdict === "pass") group.passes += 1;
+        else group.candidateModelReviewFailures += 1;
+      }
+      if (Object.prototype.hasOwnProperty.call(telemetry, "deterministicGateVerdict")) {
+        group.deterministicGateKnown += 1;
+        if (telemetry.deterministicGateVerdict && telemetry.deterministicGateVerdict !== "pass") group.deterministicGateFailures += 1;
+      }
     }
-    if (telemetry?.deterministicGateVerdict && telemetry.deterministicGateVerdict !== "pass") {
-      group.deterministicGateFailures += 1;
+    if (telemetry !== null || Object.prototype.hasOwnProperty.call(context, "reviewerUnavailable")) {
+      group.environmentOutcomeKnown += 1;
+      if (context.reviewerUnavailable) group.environmentFailures += 1;
     }
 
     const findingEvidence = telemetry?.findingEvidence ?? context.findings.map((finding, findingIndex) => ({
       findingIndex, severity: finding.severity, disposition: null,
       resolutionState: "open" as const, validationOutcome: "unresolved" as const, validationEvidence: null, repairHead: null, repairEvidence: null
     }));
-    for (const finding of findingEvidence) {
-      if (finding.disposition !== null) group.dispositionsKnown += 1;
-      if (finding.disposition === "required-correction") group.requiredCorrectionFindings += 1;
-      if (finding.disposition === "worthwhile-improvement") group.worthwhileImprovementFindings += 1;
-      if (finding.disposition === "follow-up-opportunity") group.followUpOpportunityFindings += 1;
-      const validationEvidenced = finding.validationEvidence !== null && context.receiptFiles.some(file => file.path === finding.validationEvidence);
-      if (finding.validationOutcome === "confirmed" && validationEvidenced && finding.disposition === "required-correction") {
-        group.confirmedBlockingFindings += 1;
-      }
-      if (finding.validationOutcome === "rejected" && validationEvidenced) group.rejectedFindings += 1;
-      if (finding.validationOutcome === "duplicate" && validationEvidenced) group.duplicateFindings += 1;
-      if (finding.validationOutcome === "unresolved" || !validationEvidenced) group.unresolvedFindings += 1;
-      else group.validatedFindings += 1;
-    }
-    group.rejectedOrDuplicateRate = group.validatedFindings > 0
-      ? (group.rejectedFindings + group.duplicateFindings) / group.validatedFindings
-      : null;
-    if (telemetry?.escapedDefects === null || telemetry === null) group.escapedDefects = null;
-    else if (group.escapedDefects !== null) group.escapedDefects += telemetry.escapedDefects.length;
+    group.findingCount += findingEvidence.length;
+    group.unresolvedFindings += findingEvidence.length;
+    group.repairReferences += findingEvidence.filter(finding => finding.repairHead !== null || finding.repairEvidence !== null).length;
+    // A path repeated in the same review context (including metadata.json) is
+    // neither independent validation nor evidence of a later repair. Retain
+    // the references, but leave outcome, disposition, repair and escape scores
+    // unknown until a separate trusted outcome receipt exists.
 
     const reviewerUsage = context.reviewer.usage ?? null;
     if (context.reviewer.actualBilledCostUsd !== null && context.reviewer.actualBilledCostUsd !== undefined) {
@@ -247,6 +277,7 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     if (context.reviewer.estimatedCostUsd !== null && context.reviewer.estimatedCostUsd !== undefined && context.reviewer.pricingAsOf) {
       group.estimatedCostUsd = (group.estimatedCostUsd ?? 0) + context.reviewer.estimatedCostUsd;
       group.estimatedCostKnown += 1;
+      pricingDateValues.get(key)!.add(context.reviewer.pricingAsOf);
     }
     if (context.reviewer.includedCapacityConsumption !== null && context.reviewer.includedCapacityConsumption !== undefined) {
       group.includedCapacityKnown += 1;
@@ -258,7 +289,7 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
       outputTokens: reviewerUsage?.outputTokens ?? null,
       elapsedMs: context.reviewer.modelCallElapsedMs ?? null
     });
-    addResources(group.totalResourcesThroughOutcome, {
+    addResources(group.observedResourcesThroughOutcome, {
       inputTokens: reviewerUsage?.inputTokens ?? null,
       cachedInputTokens: reviewerUsage?.cachedInputTokens ?? null,
       outputTokens: reviewerUsage?.outputTokens ?? null,
@@ -266,11 +297,30 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     });
     const linkedResources = new Map((record.linkedResources ?? []).map(linked => [linked.id, linked]));
     const seenLinked = linkedResourceIds.get(key)!;
+    let recordHasVerifiedOutcomeResource = linkedResources.size > 0;
     for (const linked of linkedResources.values()) {
       if (seenLinked.has(linked.id)) continue;
       seenLinked.add(linked.id);
-      addResources(group.totalResourcesThroughOutcome, linked);
+      addResources(group.observedResourcesThroughOutcome, linked);
       group.linkedResourceReceiptCount += 1;
+      const complete = linked.inputTokens !== null && linked.cachedInputTokens !== null && linked.outputTokens !== null && linked.elapsedMs !== null;
+      if (linked.terminalOutcome && linked.resourceEvidenceVerified && complete) group.verifiedLinkedResourceReceiptCount += 1;
+      else recordHasVerifiedOutcomeResource = false;
+    }
+    if (!recordHasVerifiedOutcomeResource || group.reviewerResources.samplesWithUnknownUsage > 0) verifiedOutcomePossible.set(key, false);
+  }
+  for (const [key, group] of groups) {
+    const effortValues = [...configuredEffortValues.get(key)!].sort();
+    group.configuredEffortValues = effortValues;
+    group.configuredEffort = effortValues.length === 1 ? effortValues[0] : null;
+    group.configuredEffortConflict = effortValues.length > 1;
+    const dates = [...pricingDateValues.get(key)!].sort();
+    group.pricingDates = dates;
+    group.pricingAsOf = dates.length === 1 ? dates[0] : null;
+    group.pricingDateConflict = dates.length > 1;
+    if (verifiedOutcomePossible.get(key) && group.linkedResourceReceiptCount > 0 &&
+        group.verifiedLinkedResourceReceiptCount === group.linkedResourceReceiptCount) {
+      group.verifiedOutcomeResources = structuredClone(group.observedResourcesThroughOutcome);
     }
   }
   return { schemaVersion: 1, records: records.length, deduplicatedRecords: unique.size, groups: [...groups.values()] };
