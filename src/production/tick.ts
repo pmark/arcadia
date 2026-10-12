@@ -2536,6 +2536,32 @@ export function getProductionRepairAttempts(db: Database.Database, actionKey: st
   return getRepairAttempts(db, actionKey);
 }
 
+/** The kind of the escalation currently recorded against an Action, or null when it has none. */
+export function getProductionOperatorEscalationKind(db: Database.Database, actionKey: string): string | null {
+  ensureProductionTickTables(db);
+  const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  return row?.kind ?? null;
+}
+
+/**
+ * Every escalation kind this module can record, assembled from the constants the recording sites use, so
+ * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
+ */
+export const EMITTED_ESCALATION_KINDS: readonly string[] = [
+  ENVIRONMENT_WALL_ESCALATION_KIND,
+  BUDGET_EXHAUSTED_ESCALATION_KIND,
+  "repair_budget_exhausted",
+  "dependency_unresolved",
+  "no_validation_commands",
+  OPERATOR_GATE_ESCALATION,
+  TERMINAL_CANDIDATE_ESCALATION,
+  PLANNER_ATTEMPTS_EXHAUSTED,
+  ...ATTEMPT_LINEAGE_ESCALATIONS,
+  ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,
+  ...VERDICT_WAIT_ESCALATIONS,
+  ...Object.values(STALLED_PLANNING_GATES).map((gate) => gate.kind)
+];
+
 /**
  * Reset a repository's exhausted repair budget after an operator has fixed
  * the underlying problem, so the next tick attempts admission again rather

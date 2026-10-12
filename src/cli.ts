@@ -1344,11 +1344,12 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .command("reset-repair-budget <actionKey>")
       .description("Reset an Action's exhausted repair budget after fixing what made every launch attempt fail")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((actionKey: string, options: { workspace: string; json?: boolean }) =>
+      .option("--expect-kind <kind>", "Only reset when the Action's recorded blocker is of this kind (a no-op when it is already gone)")
+  ).action((actionKey: string, options: { workspace: string; expectKind?: string; json?: boolean }) =>
     runCliAction(
       "production.reset-repair-budget",
       options,
-      () => runProductionResetRepairBudgetCommand({ workspace: options.workspace, actionKey }),
+      () => runProductionResetRepairBudgetCommand({ workspace: options.workspace, actionKey, expectKind: options.expectKind }),
       renderProductionResetRepairBudgetSuccess
     )
   );

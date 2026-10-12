@@ -926,6 +926,41 @@ describe("production reset-repair-budget (Issue #703)", () => {
     ) as { kind: string } | undefined;
     expect(remaining?.kind).toBe("no_validation_commands");
   });
+
+  describe("pinned to a blocker kind (--expect-kind, the /todo one-click clear)", () => {
+    const seed = (target: string, kind: string) =>
+      withDatabase(target, (db) => {
+        db.prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('demo/migrate', ?, 'A named stop.', 'Fix it.', '2026-09-26T06:00:00.000Z', '2026-09-26T06:00:00.000Z')`
+        ).run(kind);
+      });
+    const kindOf = (target: string) =>
+      (withDatabase(target, (db) =>
+        db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get("demo/migrate")
+      ) as { kind: string } | undefined)?.kind;
+
+    it("clears exactly the pinned blocker, reports the pin, and is idempotent", () => {
+      const target = workspace();
+      seed(target, "environment_wall");
+      const first = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" });
+      expect(first.data).toMatchObject({ actionKey: "demo/migrate", pinnedKind: "environment_wall", alreadyClear: false });
+      expect(kindOf(target)).toBeUndefined();
+
+      const second = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" });
+      expect(second.data).toMatchObject({ pinnedKind: "environment_wall", alreadyClear: true, attemptsCleared: 0 });
+      expect(second.warnings).toEqual(["demo/migrate has no environment_wall blocker; it was already clear."]);
+    });
+
+    it("refuses a different blocker and leaves it recorded", () => {
+      const target = workspace();
+      seed(target, "budget_exhausted");
+      expect(() =>
+        runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" })
+      ).toThrow(/budget_exhausted blocker, not environment_wall/);
+      expect(kindOf(target)).toBe("budget_exhausted");
+    });
+  });
 });
 
 describe("the control surface stays reachable when other sources are broken", () => {

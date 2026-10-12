@@ -67,3 +67,25 @@ describe("order", () => {
     ]);
   });
 });
+
+describe("platform blocker remedies (#1284)", () => {
+  const esc = (kind: string, id: string) =>
+    ({ ...todo("review_item", "alpha", id, "2026-10-12", { blocking: true }), key: `escalation:${kind}:alpha/${id}`, kind: `escalation:${kind}` }) as unknown as OperatorTodoItem;
+
+  it("gives environment_wall and budget_exhausted a pinned one-click clear, no Launch dialog link", () => {
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items: [esc("environment_wall", "act-1"), esc("budget_exhausted", "act-2")], unavailable: [] } });
+    for (const [kind, id] of [["environment_wall", "act-1"], ["budget_exhausted", "act-2"]]) {
+      const found = list.approvals.find((a) => a.id === id)!;
+      expect(found.readOnly).toBe(false);
+      expect(found.blockerRemedy).toMatchObject({ kind, oneClick: true, actionKey: `alpha/${id}` });
+    }
+  });
+
+  it("names the existing Turn production Off control for scope stops and offers no button", () => {
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items: [esc("scope_successor_held", "alert-1")], unavailable: [] } });
+    const found = list.approvals[0];
+    expect(found.readOnly).toBe(true);
+    expect(found.launchHref).toBeNull();
+    expect(found.blockerRemedy).toMatchObject({ label: "Turn production Off", href: "/production", oneClick: false, actionKey: null });
+  });
+});
