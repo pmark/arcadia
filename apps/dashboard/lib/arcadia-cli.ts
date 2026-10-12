@@ -1634,3 +1634,8 @@ function statusForArcadiaError(code: string, details: unknown): number {
 
   return 500;
 }
+
+/** Reuse the existing local-only, chunked narration command. */
+export async function narratePullRequestBody(repository: string, number: number, outputPath: string): Promise<void> {
+  await runArcadiaCliJson(["intelligence", "narrate", "--pull-request", String(number), "--repo", repository, "--out", outputPath], { timeoutMs: 300_000 });
+}

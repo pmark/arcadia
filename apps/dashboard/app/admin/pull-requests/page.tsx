@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
+import { PullRequestAudio } from "../../../components/pull-request-audio";
 import { DashboardChrome } from "../../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
 import type {
@@ -125,6 +126,7 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
             <div className="sm:col-span-2"><Detail label="Readiness" value={pullRequest.summary} /></div>
           </dl>
           <PullRequestBriefing briefing={pullRequest.briefing} />
+          <PullRequestAudio key={`${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             {pullRequest.isDraft ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> Draft</span> : null}
             {pullRequest.readiness === "merge_ready" ? <span className="inline-flex items-center gap-1 text-moss"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> Approved and merge-ready</span> : null}
