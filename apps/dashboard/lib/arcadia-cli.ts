@@ -427,6 +427,26 @@ export interface DecisionApproveResponse {
   applied: boolean;
 }
 
+export interface BlockerClearResponse {
+  actionKey: string;
+  attemptsCleared: number;
+  lastError: string | null;
+  reviewStepsCleared: number;
+  pinnedKind?: string | null;
+  alreadyClear?: boolean;
+}
+
+/**
+ * Clear one platform-raised blocker: `production reset-repair-budget <actionKey> --expect-kind <kind>`. The pin makes the
+ * CLI refuse (409) when the Action is held by a different blocker and no-op when this one is already gone.
+ */
+export async function clearPinnedBlocker(input: { actionKey: string; kind: string }): Promise<ArcadiaJsonSuccess<BlockerClearResponse>> {
+  return runArcadiaCliJson<BlockerClearResponse>(
+    ["production", "reset-repair-budget", input.actionKey, "--expect-kind", input.kind],
+    { timeoutMs: 60_000 }
+  );
+}
+
 /** Answer a Decision with one of its offered option labels, using the canonical writer `decision approve` shares with the CLI. */
 export async function approveDecision(input: {
   projectSlug: string;

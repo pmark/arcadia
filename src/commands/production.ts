@@ -37,6 +37,7 @@ import {
   type ProductionReactivationPreview
 } from "../production/reactivation.js";
 import {
+  getProductionOperatorEscalationKind,
   getProductionRepairAttempts,
   listLaunchBlockers,
   listOperatorEscalations,
@@ -121,6 +122,11 @@ export interface ProductionReactivateOptions extends ProductionReactivatePreview
 export interface ProductionResetRepairBudgetOptions {
   workspace: string;
   actionKey: string;
+  /**
+   * Pin the reset to one blocker: only reset when the Action's recorded escalation is of this kind (the dashboard's
+   * one-click clear sends it). A blocker that is gone is an idempotent no-op; a different one is refused untouched.
+   */
+  expectKind?: string;
 }
 
 export interface ProductionStatusData {
@@ -173,6 +179,10 @@ export interface ProductionResetRepairBudgetData {
   lastError: string | null;
   /** Unattended-review step rows cleared: their failure budget and checks deadline restart. */
   reviewStepsCleared: number;
+  /** The pinned blocker kind this reset answered; null when no pin was given. */
+  pinnedKind?: string | null;
+  /** True when a pin was given and that blocker was already gone, so nothing was reset. */
+  alreadyClear?: boolean;
 }
 
 export function runProductionStatusCommand(
@@ -461,13 +471,28 @@ export function runProductionResetRepairBudgetCommand(
     throw validationError("Name the Action as \"project/action-id\".", { field: "actionKey" });
   }
 
-  const data = withDatabase(workspacePath, (db) => {
+  const expectKind = options.expectKind?.trim() || null;
+  const data = withDatabase(workspacePath, (db): ProductionResetRepairBudgetData => {
+    if (expectKind) {
+      const current = getProductionOperatorEscalationKind(db, actionKey);
+      if (current === null) {
+        return { actionKey, attemptsCleared: 0, lastError: null, reviewStepsCleared: 0, pinnedKind: expectKind, alreadyClear: true };
+      }
+      if (current !== expectKind) {
+        throw validationError(
+          `${actionKey} is held by a ${current} blocker, not ${expectKind}; nothing was reset.`,
+          { field: "expectKind", expectedKind: expectKind, currentKind: current, conflict: true }
+        );
+      }
+    }
     const before = getProductionRepairAttempts(db, actionKey);
     const { reviewStepsCleared } = resetProductionRepairBudget(db, actionKey);
-    return { actionKey, attemptsCleared: before.attempts, lastError: before.lastError, reviewStepsCleared };
+    return { actionKey, attemptsCleared: before.attempts, lastError: before.lastError, reviewStepsCleared, ...(expectKind ? { pinnedKind: expectKind, alreadyClear: false } : {}) };
   });
 
-  const warnings = data.attemptsCleared === 0 && data.reviewStepsCleared === 0
+  const warnings = data.alreadyClear
+    ? [`${actionKey} has no ${expectKind} blocker; it was already clear.`]
+    : data.attemptsCleared === 0 && data.reviewStepsCleared === 0
     ? [`${actionKey} had no recorded repair attempts; nothing was exhausted.`]
     : [];
 
@@ -703,6 +728,7 @@ export function renderProductionResetRepairBudgetSuccess(
   response: CommandSuccess<ProductionResetRepairBudgetData>
 ): string[] {
   const { actionKey, attemptsCleared, lastError } = response.data;
+  if (response.data.alreadyClear) return [`${actionKey} had no ${response.data.pinnedKind} blocker; it was already clear.`];
   const lines = [`Reset ${actionKey}'s repair budget.`];
   lines.push(`  Cleared ${attemptsCleared} failed launch attempt(s).`);
   if (response.data.reviewStepsCleared > 0) {
