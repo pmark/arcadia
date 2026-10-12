@@ -118,7 +118,7 @@
       "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
       "path": "docs/agent-guidance/ask-todo-scout.md",
       "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
-      "sha256": "3eb44df3d4ca979557af6e351a857899a09f03dd0f5093f19b6c2ce9b631d520"
+      "sha256": "f95eed75ef768e2933a0d27b185dee489822baca0941987b8fd24c8b840eb410"
     },
     {
       "id": "session-roles-and-briefs",

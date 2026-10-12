@@ -58,9 +58,9 @@ export interface ScenarioReport {
     outcome: "yes" | "no";
     firstBlocker: string | null;
     identifiers: Record<string, string | null>;
-    transcript: Array<{ command: "ask" | "todo" | "ask-trail"; input: string; result: unknown }>;
-    artifactCheck: { path: string; expectedSha256: string; exists: boolean; exactBytes: boolean; acceptedCompletionEvidence: boolean; evidence: unknown[] };
-    launched: { queued: boolean; launched: boolean; publicRunId: string | null; runId: string | null; runStatus: string | null; executionObserved: boolean };
+    transcript: Array<{ command: "ask" | "todo"; input: string; result: unknown }>;
+    artifactCheck: { path: string; expectedSha256: string; actualSha256: string | null; canonicalPath: string; exists: boolean; exactBytes: boolean; acceptedCompletionEvidence: boolean; evidence: Array<{ id: string; path: string | null; canonicalPath: string | null; status: string; work_item_id: string | null; linkedRunIds: string[] }> };
+    launched: { queued: boolean; launched: boolean; publicRunId: string | null; runId: string | null; runStatus: string | null; workItemId: string | null; linkedArtifactIds: string[]; executionObserved: boolean };
     modelUsage: { calls: 0; tokens: 0; guardCalls: string[]; proof: string[] };
     findings: Array<{ code: string; detail: string; fingerprint: string; proposedNextStep: string }>;
   };

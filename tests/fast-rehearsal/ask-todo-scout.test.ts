@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,8 +26,8 @@ interface ScoutState {
   firstBlocker: string | null;
   identifiers: Record<string, string | null>;
     transcript: Array<{ command: "ask" | "todo"; input: string; result: unknown }>;
-  artifactCheck: { path: string; expectedSha256: string; exists: boolean; exactBytes: boolean; acceptedCompletionEvidence: boolean; evidence: unknown[] };
-  launched: { queued: boolean; launched: boolean; publicRunId: string | null; runId: string | null; runStatus: string | null; executionObserved: boolean };
+  artifactCheck: { path: string; expectedSha256: string; actualSha256: string | null; canonicalPath: string; exists: boolean; exactBytes: boolean; acceptedCompletionEvidence: boolean; evidence: Array<{ id: string; path: string | null; canonicalPath: string | null; status: string; work_item_id: string | null; linkedRunIds: string[] }> };
+  launched: { queued: boolean; launched: boolean; publicRunId: string | null; runId: string | null; runStatus: string | null; workItemId: string | null; linkedArtifactIds: string[]; executionObserved: boolean };
   modelUsage: { calls: 0; tokens: 0; guardCalls: string[]; proof: string[] };
   findings: Array<{ code: string; detail: string; fingerprint: string; proposedNextStep: string }>;
 }
@@ -36,14 +37,29 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 
 function hash(value: string | Buffer): string { return createHash("sha256").update(value).digest("hex"); }
 
-function acceptedCompletion(run: { status: string; work_item_id: string | null }, artifacts: Array<{ path: string | null; status: string; work_item_id: string | null }>): boolean {
+function canonicalArtifactPath(repo: string, artifactPath: string | null): string | null {
+  if (!artifactPath) return null;
+  const relative = path.relative(repo, path.resolve(repo, artifactPath));
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join("/");
+}
+
+function acceptedCompletion(
+  run: { id: string; status: string; work_item_id: string | null; linkedArtifactIds: string[] },
+  artifacts: ScoutState["artifactCheck"]["evidence"]
+): boolean {
   return run.status === "completed" && run.work_item_id !== null && artifacts.some((artifact) =>
-    artifact.path === OUTPUT_PATH && ["ready", "published"].includes(artifact.status) &&
-    artifact.work_item_id === run.work_item_id
+    artifact.canonicalPath === OUTPUT_PATH && ["ready", "published"].includes(artifact.status) &&
+    artifact.work_item_id === run.work_item_id && run.linkedArtifactIds.includes(artifact.id) && artifact.linkedRunIds.includes(run.id)
   );
 }
 
-function scoutPasses(fileExists: boolean, exactBytes: boolean, run: { status: string; work_item_id: string | null } | undefined, artifacts: Array<{ path: string | null; status: string; work_item_id: string | null }>): boolean {
+function scoutPasses(
+  fileExists: boolean,
+  exactBytes: boolean,
+  run: { id: string; status: string; work_item_id: string | null; linkedArtifactIds: string[] } | undefined,
+  artifacts: ScoutState["artifactCheck"]["evidence"]
+): boolean {
   return fileExists && exactBytes && Boolean(run && acceptedCompletion(run, artifacts));
 }
 
@@ -60,8 +76,8 @@ describe("Ask/To-do scout", () => {
       outcome: "no", firstBlocker: "Journey did not reach a verified completion state.",
       identifiers: { requestId: REQUEST_ID, captureId: null, askId: null, reviewId: null, approvalRequestId: APPROVAL_REQUEST_ID, approvalCaptureId: null, approvalAskId: null, runId: null },
       transcript: [],
-      artifactCheck: { path: OUTPUT_PATH, expectedSha256: hash(OUTPUT_BYTES), exists: false, exactBytes: false, acceptedCompletionEvidence: false, evidence: [] },
-      launched: { queued: false, launched: false, publicRunId: null, runId: null, runStatus: null, executionObserved: false },
+      artifactCheck: { path: OUTPUT_PATH, expectedSha256: hash(OUTPUT_BYTES), actualSha256: null, canonicalPath: OUTPUT_PATH, exists: false, exactBytes: false, acceptedCompletionEvidence: false, evidence: [] },
+      launched: { queued: false, launched: false, publicRunId: null, runId: null, runStatus: null, workItemId: null, linkedArtifactIds: [], executionObserved: false },
       modelUsage: { calls: 0, tokens: 0, guardCalls: [], proof: ["For this deterministic scout only: runAskCommand, runTodoCommand and Ask show are the sole interaction paths.", "Provider binary guards recorded zero calls; their exact call list is retained in guardCalls.", "Ask intent resolution uses the deterministic local registry and does not call a model adapter; zero tokens excludes coding-agent implementation work."] },
       findings: []
     };
@@ -109,22 +125,34 @@ describe("Ask/To-do scout", () => {
 
       const dbEvidence = withReadOnlyDatabase(workspace, (db) => {
         const run = db.prepare("SELECT id, status, review_item_id, work_item_id FROM execution_runs WHERE review_item_id = ? ORDER BY created_at DESC LIMIT 1").get(reviewId) as { id: string; status: string; review_item_id: string; work_item_id: string | null } | undefined;
-        const artifacts = db.prepare("SELECT id, path, status, work_item_id FROM artifacts WHERE path = ?").all(OUTPUT_PATH) as Array<{ id: string; path: string | null; status: string; work_item_id: string | null }>;
-        return { run, artifacts };
+        const artifacts = db.prepare("SELECT a.id, a.path, a.status, a.work_item_id, ra.run_id AS linked_run_id FROM artifacts a LEFT JOIN run_artifacts ra ON ra.artifact_id = a.id").all() as Array<{ id: string; path: string | null; status: string; work_item_id: string | null; linked_run_id: string | null }>;
+        const linkedArtifactIds = run ? db.prepare("SELECT artifact_id FROM run_artifacts WHERE run_id = ?").all(run.id).map((row) => (row as { artifact_id: string }).artifact_id) : [];
+        const groupedArtifacts = new Map<string, ScoutState["artifactCheck"]["evidence"][number]>();
+        for (const artifact of artifacts) {
+          const previous = groupedArtifacts.get(artifact.id) ?? {
+            id: artifact.id, path: artifact.path, canonicalPath: canonicalArtifactPath(repo, artifact.path),
+            status: artifact.status, work_item_id: artifact.work_item_id, linkedRunIds: []
+          };
+          if (artifact.linked_run_id && !previous.linkedRunIds.includes(artifact.linked_run_id)) previous.linkedRunIds.push(artifact.linked_run_id);
+          groupedArtifacts.set(artifact.id, previous);
+        }
+        return { run, linkedArtifactIds, artifacts: [...groupedArtifacts.values()] };
       });
       const outputFile = path.join(repo, OUTPUT_PATH);
       scout.artifactCheck.exists = existsSync(outputFile);
       scout.artifactCheck.exactBytes = scout.artifactCheck.exists && readFileSync(outputFile).equals(OUTPUT_BYTES);
+      scout.artifactCheck.actualSha256 = scout.artifactCheck.exists ? hash(readFileSync(outputFile)) : null;
       scout.artifactCheck.evidence = dbEvidence.artifacts;
-      scout.artifactCheck.acceptedCompletionEvidence = Boolean(dbEvidence.run && acceptedCompletion(dbEvidence.run, dbEvidence.artifacts));
+      scout.artifactCheck.acceptedCompletionEvidence = Boolean(dbEvidence.run && acceptedCompletion({ ...dbEvidence.run, linkedArtifactIds: dbEvidence.linkedArtifactIds }, dbEvidence.artifacts));
       scout.launched = {
-        queued: dbEvidence.run?.status === "pending_execution", launched: false,
+        queued: dbEvidence.run?.status === "pending_execution", launched: Boolean(dbEvidence.run && dbEvidence.run.status !== "pending_execution"),
         publicRunId: approval.data.run?.id ?? null, runId: dbEvidence.run?.id ?? null,
         runStatus: dbEvidence.run?.status ?? null,
+        workItemId: dbEvidence.run?.work_item_id ?? null, linkedArtifactIds: dbEvidence.linkedArtifactIds,
         executionObserved: Boolean(dbEvidence.run && dbEvidence.run.status !== "pending_execution")
       };
       scout.identifiers.runId = scout.launched.runId;
-      const success = scoutPasses(scout.artifactCheck.exists, scout.artifactCheck.exactBytes, dbEvidence.run, dbEvidence.artifacts);
+      const success = scoutPasses(scout.artifactCheck.exists, scout.artifactCheck.exactBytes, dbEvidence.run ? { ...dbEvidence.run, linkedArtifactIds: dbEvidence.linkedArtifactIds } : undefined, dbEvidence.artifacts);
       scout.outcome = success ? "yes" : "no";
       scout.firstBlocker = success ? null : dbEvidence.run?.status === "pending_execution"
         ? "The approved Ask queued a review-execution Run, but no worker executed it; To-do still exposes the review item and Ask hides the queued Run id."
@@ -176,7 +204,91 @@ describe("Ask/To-do scout", () => {
     roots.push(root);
     const file = path.join(root, OUTPUT_PATH);
     writeFileSync(file, OUTPUT_BYTES);
-    expect(scoutPasses(existsSync(file), readFileSync(file).equals(OUTPUT_BYTES), { status: "pending_execution", work_item_id: null }, [])).toBe(false);
-    expect(acceptedCompletion({ status: "completed", work_item_id: null }, [{ path: OUTPUT_PATH, status: "ready", work_item_id: "unrelated-work" }])).toBe(false);
+    expect(canonicalArtifactPath(root, OUTPUT_PATH)).toBe(OUTPUT_PATH);
+    expect(canonicalArtifactPath(root, file)).toBe(OUTPUT_PATH);
+    const staleArtifact = { id: "artifact-stale", path: OUTPUT_PATH, canonicalPath: OUTPUT_PATH, status: "ready", work_item_id: "work-1", linkedRunIds: [] };
+    const completedRunWithoutArtifactLink = { id: "run-target", status: "completed", work_item_id: "work-1", linkedArtifactIds: [] };
+    expect(scoutPasses(existsSync(file), readFileSync(file).equals(OUTPUT_BYTES), completedRunWithoutArtifactLink, [staleArtifact])).toBe(false);
+    expect(acceptedCompletion({ id: "run-target", status: "completed", work_item_id: "work-1", linkedArtifactIds: [] }, [staleArtifact])).toBe(false);
+    expect(acceptedCompletion({ id: "run-target", status: "completed", work_item_id: null, linkedArtifactIds: ["artifact-stale"] }, [staleArtifact])).toBe(false);
+  });
+
+  it("validates the combined report and preserves diagnostics for missing, malformed, bare-yes, and contradictory-yes reports", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-scout-launcher-regression-"));
+    roots.push(root);
+    const scriptDir = path.join(root, "project", "artifacts", "generated", "operator-scripts");
+    const fakeBin = path.join(root, "fake-bin");
+    const reports = path.join(root, "reports");
+    mkdirSync(scriptDir, { recursive: true });
+    mkdirSync(fakeBin, { recursive: true });
+    mkdirSync(reports, { recursive: true });
+    const sourceScript = path.resolve(import.meta.dirname, "../../artifacts/generated/operator-scripts/run-scout-hello-world-probe.sh");
+    const launcher = path.join(scriptDir, "run-scout-hello-world-probe.sh");
+    copyFileSync(sourceScript, launcher);
+    chmodSync(launcher, 0o755);
+    const fakeMise = path.join(fakeBin, "mise");
+    writeFileSync(fakeMise, `#!/bin/sh
+if [ "\${SCOUT_FAKE_MODE}" = missing ]; then printf 'no report produced\\n'; else printf 'Fast rehearsal report path: %s\\n' "\${SCOUT_REPORT}"; fi
+exit 0
+`);
+    chmodSync(fakeMise, 0o755);
+
+    const noScout = () => ({
+      outcome: "no",
+      firstBlocker: "The Run is queued but no worker executed it.",
+      identifiers: { requestId: REQUEST_ID, captureId: "capture-1", askId: "ask-1", reviewId: "review-1", approvalRequestId: APPROVAL_REQUEST_ID, approvalCaptureId: "capture-2", approvalAskId: "ask-2", runId: "run-1" },
+      transcript: [
+        { command: "ask", input: "create HelloWorld.txt", result: { status: "requires_review" } },
+        { command: "todo", input: "inspect review item", result: { matchingReviewItems: [] } },
+        { command: "ask", input: "show request", result: { asks: [] } }
+      ],
+      artifactCheck: { path: OUTPUT_PATH, expectedSha256: hash(OUTPUT_BYTES), actualSha256: null, canonicalPath: OUTPUT_PATH, exists: false, exactBytes: false, acceptedCompletionEvidence: false, evidence: [] },
+      launched: { queued: true, launched: false, publicRunId: null, runId: "run-1", runStatus: "pending_execution", workItemId: null, linkedArtifactIds: [], executionObserved: false },
+      modelUsage: { calls: 0, tokens: 0, guardCalls: [], proof: ["deterministic fixture"] },
+      findings: [{ code: "queued-run-not-execution", detail: "No worker ran.", fingerprint: "a".repeat(64), proposedNextStep: "Issue #1320: expose the queued Run." }]
+    });
+    const makeReport = (scout: Record<string, unknown>) => ({
+      wallMs: 100, vitestStatus: 0, reportDir: "/tmp/fast-rehearsal", scenarios: [{
+        scenario: SCENARIO, file: "tests/fast-rehearsal/ask-todo-scout.test.ts", validator: "unsandboxed", wallMs: 10,
+        ticks: 0, actions: [], tickLog: [], errors: [], notes: [], workerLog: [], scout
+      }]
+    });
+    const bareYes = makeReport({ outcome: "yes" });
+    const contradictoryYesScout = noScout();
+    contradictoryYesScout.outcome = "yes";
+    const cases: Array<{ mode: string; report?: unknown; succeeds: boolean; retained: boolean }> = [
+      { mode: "missing", succeeds: false, retained: false },
+      { mode: "malformed", report: "{broken\n", succeeds: false, retained: true },
+      { mode: "bare-yes", report: JSON.stringify(bareYes), succeeds: false, retained: true },
+      { mode: "contradictory-yes", report: JSON.stringify(makeReport(contradictoryYesScout)), succeeds: false, retained: true },
+      { mode: "valid-no", report: JSON.stringify(makeReport(noScout())), succeeds: true, retained: true }
+    ];
+
+    for (const testCase of cases) {
+      const reportPath = path.join(reports, `${testCase.mode}.json`);
+      if (testCase.report !== undefined) writeFileSync(reportPath, testCase.report);
+      const result = spawnSync("bash", [launcher, "run"], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 15_000,
+        env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ""}`, SCOUT_FAKE_MODE: testCase.mode === "missing" ? "missing" : "report", SCOUT_REPORT: reportPath }
+      });
+      const receiptMatch = `${result.stdout}\n${result.stderr}`.match(/Receipt: (.+?)(?:\. Handoff:|\n|$)/);
+      expect(receiptMatch, `${testCase.mode} did not print its receipt path`).not.toBeNull();
+      const receiptPath = receiptMatch![1];
+      const runDirectory = path.dirname(receiptPath);
+      const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { outcome: string; scoutOutcome: string; retainedReportPath: string };
+      if (testCase.succeeds) {
+        expect(result.status).toBe(0);
+        expect(receipt).toMatchObject({ outcome: "succeeded", scoutOutcome: "no" });
+        expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(false);
+      } else {
+        expect(result.status).not.toBe(0);
+        expect(receipt.outcome).toBe("failed");
+        expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(true);
+      }
+      expect(Boolean(receipt.retainedReportPath)).toBe(testCase.retained);
+      if (testCase.retained) expect(readFileSync(receipt.retainedReportPath, "utf8")).toBe(String(testCase.report));
+    }
   });
 });
