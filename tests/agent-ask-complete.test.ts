@@ -19,6 +19,7 @@ import {
   getActiveWorktreeReservation,
   reserveAgentWorktree
 } from "../src/sessions/index.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -295,6 +296,25 @@ describe("Agent Ask complete", () => {
     expect(plan).toMatchObject({ status: "complete", currentAction: null });
     const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
     expect(project).toMatchObject({ currentAction: null });
+  });
+
+  it("holds successor activation while an Active production scope covers the completing Plan (A6)", () => {
+    const { workspace, repo, head } = fixture({ secondDone: true, withActiveSidePlan: true });
+    withDatabase(workspace, (db) => {
+      const scope = normalizeProductionScope({ intent: "Run demo-plan.", projects: ["demo"], plans: ["demo/demo-plan"], actions: [],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+      activateProduction(db, { requestId: "scope-held", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-held", "first", head) });
+    const preview = runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id, requestId: "settle-held", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-held", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.effects.join(" ")).toContain("Successor activation was held");
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("activated Plan side-plan");
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ activePlan: "demo-plan" });
   });
 
   it("activates the Plan whose earliest eligible Action is highest in the explicit queue when the active Plan completes", () => {

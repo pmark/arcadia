@@ -912,7 +912,11 @@ export function settleAgentAsk(db: Database.Database, input: {
         // explicit queue may name exactly one approved successor Plan; activate
         // it here rather than leaving the pointer on a finished Plan. The Action
         // being completed is ignored so it is never offered as its own successor.
-        const activation = planComplete && completingActivePlan
+        // A10/A6 guard: when an Active production scope covers the completing Plan, auto-activating
+        // its successor would re-point the Project and strand the scope, so the successor stays
+        // queued behind and the pointer stays put until production is turned Off.
+        const scopeHoldsPlan = planComplete && completingActivePlan && !!activeScopeCoveringPlan(db, project.slug, targetPlan.slug);
+        const activation = planComplete && completingActivePlan && !scopeHoldsPlan
           ? resolvePlanActivation({
               repoRoot,
               projectSlug: project.slug,
@@ -944,7 +948,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (activatedNext) {
           effects.push(`Plan ${targetPlan.slug} is complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`);
         } else if (planComplete) {
-          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
+          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}${scopeHoldsPlan ? ` Successor activation was held: the Plan is inside the Active production scope. ${SCOPE_DRIFT_REMEDY}` : ""}`);
         } else if (completingActivePlan) {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         } else {

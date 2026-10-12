@@ -842,15 +842,16 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
 
 /** The one-click remedy named by every scope-drift refusal and alert. */
 export const SCOPE_DRIFT_REMEDY =
-  "Press STOP for production on /todo (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
+  "On /production press \"Turn production Off\" (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
 
 /**
  * Whether `currentPlanSlug`, the Project's current Plan, is inside an Active
  * production policy's scope. A Plan change (activation, pause, re-point) while
  * this holds would strand the run's scope, so callers refuse it before writing
  * anything. Returns null when production is Inactive, the Project or its
- * current Plan is outside the scope, or the policy store cannot answer
- * (an unreadable store is not a reason to block ordinary Plan work).
+ * current Plan is outside the scope. FAILS CLOSED: when the policy store
+ * cannot be read, the Project may be inside an Active scope, so this throws
+ * a refusal naming a remote retry remedy rather than allowing the change.
  */
 export function activeScopeCoveringPlan(
   db: Database.Database,
@@ -858,7 +859,13 @@ export function activeScopeCoveringPlan(
   currentPlanSlug: string
 ): { scope: ProductionScope; planKey: string } | null {
   const read = readProductionPolicySafely(db);
-  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
+  if (read.status !== "ok") {
+    throw validationError(
+      "The production policy could not be read, so Arcadia cannot confirm this Plan is outside an Active production scope. Nothing was changed.",
+      { reason: read.reason, remedy: "Retry in a moment; if it persists, open /production to see the policy state and press \"Turn production Off\" once it loads." }
+    );
+  }
+  if (read.policy.desiredState !== "active" || !read.policy.scope) return null;
   const planKey = `${projectSlug}/${currentPlanSlug}`;
   const scope = read.policy.scope;
   return scope.projects.includes(projectSlug) && scope.plans.includes(planKey) ? { scope, planKey } : null;

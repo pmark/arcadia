@@ -114,12 +114,24 @@ describe("Agent Ask settlement", () => {
       let message = "";
       try { runAgentAskSettleCommand(options("scope-refused", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
       expect(message).toMatch(/inside the Active production scope/);
-      expect(message).toMatch(/STOP/);
+      expect(message).toMatch(/Turn production Off/);
       expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
       expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
       expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
       expect(discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan")).toMatchObject({ status: "active" });
       expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("demo-plan");
+    });
+
+    it("fails closed with a retry remedy when the production policy cannot be read, writing nothing", () => {
+      const { workspace, repo } = activationFixture();
+      withDatabase(workspace, (db) => { db.prepare("UPDATE production_policy SET scope_json = '{not json' WHERE id = 'workspace'").run(); });
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      let message = "";
+      try { runAgentAskSettleCommand(options("scope-unreadable", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
+      expect(message).toMatch(/could not be read/);
+      expect(message).toMatch(/Retry/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
     });
 
     it("still activates when the scope covers a different Plan", () => {
@@ -152,7 +164,7 @@ describe("Agent Ask settlement", () => {
         const open = listOpenRedAlerts(db);
         expect(open).toHaveLength(1);
         expect(open[0]).toMatchObject({ trigger: "scope_pointer_mismatch", projectSlug: "demo", occurrences: 2 });
-        expect(open[0].detail).toMatch(/demo\/production.*STOP/s);
+        expect(open[0].detail).toMatch(/demo\/production.*Turn production Off/s);
         observeScopePointer(ctx, { activePlanSlug: "demo-plan" });
         expect(listOpenRedAlerts(db)).toHaveLength(0);
       });
