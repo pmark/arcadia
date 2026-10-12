@@ -10,7 +10,7 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, listReviewItems, updateReviewItemStatus } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, listActionableReviewItems, updateReviewItemStatus } from "../db/repositories.js";
 import { queueOperatorPing } from "../ping/operatorPing.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
@@ -1003,7 +1003,7 @@ function recordInterruptedCompletionSettlement(
  */
 export const STALLED_GATE_MIN_DWELL_MS = 60 * 1000;
 
-const STALLED_PLANNING_GATES: Record<string, { kind: string; gate: string; button: string; consequence: string }> = {
+export const STALLED_PLANNING_GATES: Record<string, { kind: string; gate: string; button: string; consequence: string }> = {
   CodexPlanningRunApproval: {
     kind: "planning_run_approval_pending",
     gate: "planning-run approval",
@@ -1045,7 +1045,8 @@ function escalateStalledPlanningGate(
     | { first_at: string }
     | undefined;
   if (!refusal || input.now.getTime() - Date.parse(refusal.first_at) < STALLED_GATE_MIN_DWELL_MS) return false;
-  const item = [...listReviewItems(db, "open"), ...listReviewItems(db, "deferred")]
+  // Exactly the items /todo lists as operator-actionable (agent-flagged deferred items wait on an agent and are hidden there).
+  const item = listActionableReviewItems(db)
     .filter((candidate) => candidate.work_item_id === input.workItemId && Object.hasOwn(STALLED_PLANNING_GATES, candidate.resolved_intent))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   if (!item) return false;

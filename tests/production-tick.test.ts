@@ -612,6 +612,76 @@ describe("runManagedProductionTick", () => {
     expect(decisions).toEqual([{ resolved_intent: "CodexPlanningRunApproval", status: "open" }]);
   });
 
+  it.each([
+    ["CodexPlanningArtifactAcceptance", "planning_artifact_acceptance_pending", "Accept plan"],
+    ["CodexPlanningRetryApproval", "planning_run_approval_pending", "Approve planning retry"]
+  ])("names a %s wait once with its button and one ping (A3)", (intent, kind, button) => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const at = new Date(fixture.now.getTime() + 1_000).toISOString();
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'approved' WHERE work_item_id = ?").run(workItem.id);
+      db.prepare(`INSERT INTO review_items (id, work_item_id, status, decision_needed, recommendation, source_input, proposed_action, resolved_intent,
+          confidence_label, confidence, missing_fields, context_json, created_at, updated_at)
+        SELECT 'review_gate_wait', work_item_id, 'open', 'Gate wait', NULL, source_input, proposed_action, ?,
+          confidence_label, confidence, missing_fields, context_json, ?, ? FROM review_items WHERE work_item_id = ? LIMIT 1`)
+        .run(intent, at, at, workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind });
+    expect(rows[0].message).toContain("review item review_gate_wait");
+    expect(rows[0].remedy).toContain(`Press "${button}" on /todo`);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT todo_key FROM operator_pings").all()) as Array<{ todo_key: string }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0].todo_key).toBe("review_item:test-project/review_gate_wait");
+  });
+
+  it("never names a gate that is only an agent-review-flagged deferred item, which /todo hides (A3)", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'deferred', context_json = ? WHERE work_item_id = ?")
+        .run(JSON.stringify({ agentReview: { status: "flagged" } }), workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT 1 FROM operator_pings").all())).toHaveLength(0);
+  });
+
+  it("keeps the tick's gate button labels equal to the dashboard's one-click controls (A3 drift guard)", async () => {
+    const { PLANNING_REVIEW_CONTROLS } = await import("../apps/dashboard/lib/approvals.js");
+    const { STALLED_PLANNING_GATES } = await import("../src/production/tick.js");
+    for (const [intent, gate] of Object.entries(STALLED_PLANNING_GATES)) {
+      expect(PLANNING_REVIEW_CONTROLS[intent]?.approveLabel, intent).toBe(gate.button);
+    }
+  });
+
   it("names the artifact-validation wait after the run approval, one ping per gate (A3)", () => {
     const fixture = preparedFixture({ skipPacket: true });
     const tmux = new FakeTmux();
