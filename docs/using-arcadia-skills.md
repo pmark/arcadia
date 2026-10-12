@@ -29,6 +29,12 @@ changing global configuration.
   an unreachable grader leaves the Action as it was. It is not invoked by hand.
   Claude Code uses the `.claude/skills/next-action-grader` symlink to the same
   source.
+- [`arcadia-guardrail`](../.agents/skills/arcadia-guardrail/SKILL.md):
+  a narrow quality supplement for focused implementation, economical
+  delegation, and evidence-based validation. It references the governing
+  procedures and grants no authority. Codex and OpenCode discover the
+  `.agents/skills/` source; Claude Code uses the `.claude/skills/arcadia-guardrail`
+  symlink to the same source.
 - `arcadia-dogfood-workflow`: use only when explicitly managing the repo-local `.arcadia-workspace/` compatibility workflow.
 - `arcadia-workspace-operator`: use when inspecting or operating any Arcadia workspace.
 - `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.
