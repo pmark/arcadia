@@ -26,6 +26,7 @@ import {
   type ActionClaimFence
 } from "../sessions/index.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
+import { activeScopeCoveringPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -557,6 +558,15 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (input.activate) {
             if (proposedActions.length || input.responsibility) throw validationError("Activate an existing Plan separately from Action amendments.");
             if (target.slug === plan.slug || target.status !== "draft") throw validationError("Activation requires a different draft Plan.");
+            // Scope-drift guard (A6): the previous Plan is the Active production scope's Plan, so
+            // re-pointing the Project would strand the run. Refuse before any file is written.
+            const covering = activeScopeCoveringPlan(db, project.slug, plan.slug);
+            if (covering) {
+              throw validationError(
+                `Plan ${plan.slug} is inside the Active production scope; activating ${target.slug} would strand it. Nothing was changed.`,
+                { activePlan: covering.planKey, requestedPlan: `${project.slug}/${target.slug}`, remedy: SCOPE_DRIFT_REMEDY }
+              );
+            }
             if (!input.action || !input.model || !input.placement) throw validationError("Activation requires --action, --model and an explicit queue placement.");
             if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(input.model)) throw validationError("Activation model must be a CLI model identifier.");
             if (input.effort && !["low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort)) throw validationError("Activation effort is unsupported.");

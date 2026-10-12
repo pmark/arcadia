@@ -26,6 +26,7 @@ import {
   observeReconcileFailure,
   observeReconcileSuccess,
   observeRepairBudget,
+  observeScopePointer,
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
@@ -1934,6 +1935,11 @@ function attemptProjectLaunch(
     // instead of every tick skipping the launch with no trace (Issue #997).
     const gateItem = transition.kind === "decision" ? transition.operatorGate?.blocking[0] : undefined;
     const context = transition.dispatch.context;
+    // An unresolved context says nothing about the pointer, so only a resolved one is observed.
+    if (context) {
+      safelyRaiseRedAlerts(input.log, "scope pointer", () =>
+        observeScopePointer({ db, workspace: input.workspace, projectSlug: input.projectSlug, now: input.now }, { activePlanSlug: context.activePlan }));
+    }
     if (currentActionKey && gateItem && context && actionInActiveScope(db, input.projectSlug, context.activePlan, context.action.id)) {
       if (input.gate) input.gate.actionKey = currentActionKey;
       try {

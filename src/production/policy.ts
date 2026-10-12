@@ -840,6 +840,30 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
   }
 }
 
+/** The one-click remedy named by every scope-drift refusal and alert. */
+export const SCOPE_DRIFT_REMEDY =
+  "Press STOP for production on /todo (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
+
+/**
+ * Whether `currentPlanSlug`, the Project's current Plan, is inside an Active
+ * production policy's scope. A Plan change (activation, pause, re-point) while
+ * this holds would strand the run's scope, so callers refuse it before writing
+ * anything. Returns null when production is Inactive, the Project or its
+ * current Plan is outside the scope, or the policy store cannot answer
+ * (an unreadable store is not a reason to block ordinary Plan work).
+ */
+export function activeScopeCoveringPlan(
+  db: Database.Database,
+  projectSlug: string,
+  currentPlanSlug: string
+): { scope: ProductionScope; planKey: string } | null {
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
+  const planKey = `${projectSlug}/${currentPlanSlug}`;
+  const scope = read.policy.scope;
+  return scope.projects.includes(projectSlug) && scope.plans.includes(planKey) ? { scope, planKey } : null;
+}
+
 /** The Project/Plan/Action a caller wants checked against an active policy's scope. */
 export interface PolicyScopeIdentity {
   projectSlug: string;
