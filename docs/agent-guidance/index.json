@@ -115,10 +115,10 @@
     },
     {
       "id": "session-roles-and-briefs",
-      "trigger": "launch session, subagent, driver, reviewer, replayer, observer, brief, hand-back, session ledger, model per role",
+      "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "faa3359e5fdd2454965278db71bd1945487c143df30a12105e7a9cd3a89f1b74"
+      "sha256": "a7d65e49c0c57d874838e19bf83307002336ec59b33939e3ffd3d43f922e8b46"
     }
   ]
 }

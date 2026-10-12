@@ -3,18 +3,18 @@
 Read this procedure before launching, briefing or handing back a Session or
 subagent. The compact bootstrap and CONSTITUTION.md still bind; roles and
 briefs grant no authority. Evidence: `docs/reports/production-simulation-living-notes.md`
-("What works", frictions 10 and 15 to 19).
+(headings "What works" and "Friction").
 
 ## Roles
 
 | Role | Does | Never |
 |---|---|---|
-| Lead | One Action per session. Starts from a generated brief: Plan pointer, open blockers, last three rows of `docs/reports/session-ledger.jsonl`. Owns Plan, queue, scope and merge-on-green; checks `isDraft` before calling a PR ready. | Writes product code. |
+| Lead | One Action per session. Starts from a generated brief: Plan pointer, open blockers, last three rows of `docs/reports/session-ledger.jsonl`. Owns Plan, queue and scope. Applies the Merge on green gate in `pull-requests.md`; merge authority is Decision 0060/0080 only, never the Lead role. Checks `isDraft` before calling a PR ready. | Writes product code. |
 | Driver | The only code writer, standard tier. Works from one brief and returns only the diff sha, the test command with its exit code, and gaps. | Repeats sandbox text, pastes logs, or claims acceptance from its own test counts. |
-| Reviewer | One fresh read-only role replacing "Critic" for sessions (identity resolution still uses the critic role). A new Reviewer each round, adversarial, given raw evidence and runnable pure functions plus the failure classes to attack. | Is the author, or the later reviewer of the same head; touches the shared checkout. |
+| Reviewer | The read-only role for every review; it signs with `arcadia identity resolve --role critic` (see `git-identity.md`). Plan critique is also Reviewer work. Follows the independent review gate in `pull-requests.md` (rounds, brief prohibitions). A new Reviewer each round, adversarial, given raw evidence and runnable pure functions plus the failure classes to attack. | Is the author; reviews its own fix of the same head; edits, checks out or adds a worktree in any live checkout. |
 | Replayer | A deterministic script, not a model. Turns each run's receipts into fast-rehearsal fixtures so the next run catches the defect offline. | Needs a model call. |
-| Observer (live) | Deferred. Revisit when the ledger shows repeated `stop_reason` `none` with zero diffs, or a stop needs judgment the platform cannot make. | Is built before that trigger. |
-| Planner | Opus, for Plan design only. | Executes Actions. |
+| Observer (live) | Deferred. Revisit when three consecutive ledger rows show `stop_reason` `none` and zero diffs, or a stop needs judgment the platform cannot make. Building one needs a Decision; this row grants nothing. | Is built before that trigger. |
+| Planner | Opus, for Plan design only; grants no model or Plan authority. | Executes Actions. |
 
 Self-reported test counts are not evidence: on guards and validators the
 Reviewer's adversarial strings found bypasses the Driver's tests missed.
@@ -39,8 +39,8 @@ Keep the brief under one screen. Fields:
 3. **Acceptance**: observable criteria copied from the Action.
 4. **Ownership**: the files the Driver may write; everything else is read-only.
 5. **Checks**: focused tests; repo lint on touched files; for dashboard-reachable
-   code `cd apps/dashboard && tsc --noEmit --listFiles | rg <module>` must be
-   empty; `node scripts/fast-rehearsal.mjs` run from the worktree root, and
+   code `cd apps/dashboard && tsc --noEmit --listFiles | rg <module>` must give
+   empty output; `node scripts/fast-rehearsal.mjs` run from the worktree root, and
    confirm `report.json` exists.
 6. **Adversarial**: for any guard or validator Action, the strings or properties
    a reviewer would try (empty, whitespace, case variants, path traversal,
