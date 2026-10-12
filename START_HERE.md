@@ -377,6 +377,12 @@ changed field, and the exact recovery step with a durable receipt. If settlement
 committed but publication failed, retrying that same action verifies and publishes
 the existing commit without settling twice. It never changes a queue or pointer. The [shared runner contract](docs/operator-plan-amendments.md) documents pinned inputs and safe recovery.
 
+The `run-scout-hello-world-probe` action runs the bounded Ask/To-do Hello World
+scout and retains its machine-readable report, log, and receipt. A captured
+report can correctly say product outcome `no`; harness success only means the
+observation completed. This action appears in Operator actions after its
+reviewed script library is published. See the [scout instructions](docs/agent-guidance/ask-todo-scout.md).
+
 **Test headless Codex, OpenCode and Claude single-Action runs (experiment
 fixture)** (`test-headless-provider-single-action`, from `/runs` or the terminal)
 tries each coding agent independently, in that order, on its own disposable
