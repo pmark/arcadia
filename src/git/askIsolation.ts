@@ -6,17 +6,11 @@ import { validationError } from "../cli/errors.js";
 import { parseWorktrees } from "./worktrees.js";
 import { preservationProcessLimits } from "../sessions/preservationStages.js";
 
-/** Ask operations must address the caller's checkout, never inherited Git relocation/config. */
-export function askGitEnvironment(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
-  for (const key of Object.keys(env)) {
-    if (/^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CEILING_DIRECTORIES|NAMESPACE|DISCOVERY_ACROSS_FILESYSTEM|CONFIG.*)$/.test(key)) delete env[key];
-  }
-  return env;
-}
+import { isolatedGitEnvironment } from "./isolatedGitEnvironment.js";
+export { isolatedGitEnvironment as askGitEnvironment } from "./isolatedGitEnvironment.js";
 
 export function askGit(root: string, args: string[], index?: string, trim = true): string {
-  const env = askGitEnvironment();
+  const env = isolatedGitEnvironment();
   // core.worktree must name the physical checkout, not an invocation subdirectory.
   let checkout = path.resolve(root);
   for (let current = checkout; ; current = path.dirname(current)) {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
+import { isolatedGitEnvironment } from "./isolatedGitEnvironment.js";
 import { PRESERVATION_REQUEST_FILE } from "../sessions/candidateSnapshot.js";
 import { GO_REQUEST_FILE } from "../sessions/goRequestProtocol.js";
 
@@ -280,29 +281,9 @@ export function commitOnlyPaths(repoRoot: string, relativePaths: string[], messa
   }
 }
 
-/**
- * Git environment variables that relocate the repository a command reads,
- * overriding the `cwd` it was given. An ownership check that inherits them can
- * be pointed at an owned Project's Git directory from an unrelated path.
- */
-const GIT_LOCATION_ENV = [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_COMMON_DIR",
-  "GIT_INDEX_FILE",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_CEILING_DIRECTORIES",
-  "GIT_NAMESPACE",
-  "GIT_DISCOVERY_ACROSS_FILESYSTEM"
-] as const;
-
 /** Run a read-only Git query against exactly the repository at `cwd`, never one an inherited variable redirects it to. */
 function tryGitAt(cwd: string, args: string[]): string | null {
-  const env = { ...process.env };
-  for (const key of GIT_LOCATION_ENV) delete env[key];
-  for (const key of Object.keys(env)) if (key.startsWith("GIT_CONFIG")) delete env[key];
-  env.GIT_OPTIONAL_LOCKS = "0";
+  const env = isolatedGitEnvironment();
   const result = spawnSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return result.status === 0 ? result.stdout.trim() : null;
 }

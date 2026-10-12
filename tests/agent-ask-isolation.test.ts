@@ -1,11 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reserveAskGitIndex, askGit } from "../src/git/askIsolation.js";
-import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
+import { runAgentAskDraftCommand, runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
+import { projectCheckoutFor } from "../src/git/worktrees.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { isolatedGitEnvironment } from "../src/git/isolatedGitEnvironment.js";
 import { recoverLegacyAgentAskDrift } from "../src/sessions/legacyAskRecovery.js";
 const commandHooks = vi.hoisted(() => ({ afterUpdate: undefined as (() => void) | undefined, afterBuild: undefined as (() => void) | undefined, beforeUpdate: undefined as (() => void) | undefined, crossDevice: false }));
 vi.mock("node:child_process", async importOriginal => {
@@ -71,6 +74,39 @@ describe("Agent Ask isolation", () => {
     writeFileSync(path.join(f.candidate, "record.md"), "after\n"); const held = reserveAskGitIndex(f.candidate);
     try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
     vi.unstubAllEnvs(); expect(snapshot(f.main)).toEqual(before); expect(git(f.candidate, "show", "HEAD:record.md")).toBe("after");
+  });
+  it.each([
+    { traceKeys: ["GIT_TRACE", "GIT_TRACE_PERFORMANCE", "GIT_TRACE_SETUP"] },
+    { traceKeys: ["GIT_TRACE2", "GIT_TRACE2_EVENT", "GIT_TRACE2_PERF"] }
+  ])("prevents inherited trace output %j from modifying peer files during draft, preview, and ownership queries", ({ traceKeys }) => {
+    const f = fixture(); const workspace = path.join(f.root, "workspace"); initWorkspace(workspace);
+    const peer = path.join(f.root, "peer-important.txt"); const bytes = "peer original bytes\n"; writeFileSync(peer, bytes);
+    for (const key of traceKeys) vi.stubEnv(key, peer);
+    vi.stubEnv("GIT_AUTHOR_NAME", "Resolved Agent"); expect(isolatedGitEnvironment().GIT_AUTHOR_NAME).toBe("Resolved Agent");
+    for (const key of traceKeys) expect(isolatedGitEnvironment()[key]).toBe(key.startsWith("GIT_TRACE2") ? "0" : undefined);
+    runAgentAskDraftCommand({ request: ask, dir: f.candidate, workspace: "missing" });
+    const preview = runAgentAskPreviewCommand({ request: ask, dir: f.candidate, workspace });
+    expect(preview.data.proposal.id).toBeTruthy();
+    expect(realpathSync(projectCheckoutFor(f.main, f.candidate))).toBe(realpathSync(f.candidate));
+    // Status's filter-key lookup is another Git invocation and must also suppress traces.
+    expect(askGit(f.candidate, ["status", "--porcelain=v1", "--untracked-files=all"])).toContain(".arcadia/asks/");
+    expect(readFileSync(peer, "utf8")).toBe(bytes);
+  });
+  it.each(["trace2.normalTarget", "trace2.eventTarget", "trace2.perfTarget"])("disables configured %s output during all Ask and ownership queries", key => {
+    const f = fixture(); const workspace = path.join(f.root, "workspace"); initWorkspace(workspace);
+    const peer = path.join(f.root, "peer-important.txt"); const bytes = "peer original bytes\n";
+    const configHome = path.join(f.root, "xdg-config"); mkdirSync(path.join(configHome, "git"), { recursive: true });
+    writeFileSync(path.join(configHome, "git", "config"), `[trace2]\n  ${key.split(".")[1]} = ${peer}\n`);
+    vi.stubEnv("XDG_CONFIG_HOME", configHome);
+    writeFileSync(peer, bytes);
+    // Positive control proves this is a real global trace target on the host Git version.
+    git(f.candidate, "rev-parse", "HEAD"); expect(readFileSync(peer, "utf8")).not.toBe(bytes);
+    writeFileSync(peer, bytes);
+    runAgentAskDraftCommand({ request: ask, dir: f.candidate, workspace: "missing" });
+    expect(runAgentAskPreviewCommand({ request: ask, dir: f.candidate, workspace }).data.proposal.id).toBeTruthy();
+    expect(realpathSync(projectCheckoutFor(f.main, f.candidate))).toBe(realpathSync(f.candidate));
+    expect(askGit(f.candidate, ["status", "--porcelain=v1", "--untracked-files=all"])).toContain(".arcadia/asks/");
+    expect(readFileSync(peer, "utf8")).toBe(bytes);
   });
   it("preserves real index, staged peer changes and HEAD on commit failure", () => {
     const f = fixture(); writeFileSync(path.join(f.candidate, "peer.md"), "peer staged\n"); git(f.candidate, "add", "peer.md");
