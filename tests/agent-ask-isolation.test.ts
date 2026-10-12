@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -105,6 +105,12 @@ describe("Agent Ask isolation", () => {
     try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
     expect(snapshot(f.main)).toEqual(before);
   });
+  it("refuses a candidate already pointing at the primary's branch before creating Git locks", () => {
+    const f = fixture(); const before = snapshot(f.main); git(f.candidate, "symbolic-ref", "HEAD", "refs/heads/main");
+    const index = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "index"); const head = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "HEAD");
+    expect(() => reserveAskGitIndex(f.candidate)).toThrow(/checked out in another worktree/);
+    expect(snapshot(f.main)).toEqual(before); expect(existsSync(index + ".lock")).toBe(false); expect(existsSync(head + ".lock")).toBe(false);
+  });
   it("refuses detached writes and foreign HEAD locks before mutation", () => {
     const f = fixture(); git(f.candidate, "checkout", "--detach", "-q");
     expect(() => reserveAskGitIndex(f.candidate)).toThrow(/named candidate branch/);
@@ -146,6 +152,12 @@ describe("Agent Ask isolation", () => {
     writeFileSync(file, ask); const before = snapshot(f.main); const recovered = recoverLegacyAgentAskDrift(f.main, f.main);
     expect(recovered.recovered).toBe(true); expect(readFileSync(file, "utf8")).toBe("original without newline"); expect(snapshot(f.main)).toEqual(before);
     expect(git(f.main, "show", `${recovered.branch}:${recovered.askFile}`)).toBe(ask.trim());
+  });
+  it("restores tracked Ask executable mode through the bound original file descriptor", () => {
+    const f = fixture(); const source = path.join(f.main, "agent-ask.yaml"); writeFileSync(source, ask);
+    git(f.main, "add", "agent-ask.yaml"); git(f.main, "commit", "-qm", "tracked Ask"); const before = snapshot(f.main);
+    chmodSync(source, 0o755); expect(recoverLegacyAgentAskDrift(f.main, f.main).recovered).toBe(true);
+    expect(statSync(source).mode & 0o111).toBe(0); expect(git(f.main, "--no-optional-locks", "status", "--porcelain")).toBe(""); expect(snapshot(f.main)).toEqual(before);
   });
   it.each([true, false])("preserves a replacement cleanup symlink and its peer target (tracked=%s)", tracked => {
     const f = fixture(); const source = path.join(f.main, "agent-ask.yaml"); const peer = path.join(f.root, "peer-important.yaml");

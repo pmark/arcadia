@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, constants, existsSync, fchmodSync, fstatSync, ftruncateSync, lstatSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { askGit as git, tryAskGit as tryGit, reserveAskGitIndex } from "../git/askIsolation.js";
@@ -143,6 +143,8 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
       const original = Buffer.from(git(worktreePath, ["show", `HEAD:${filePath}`], undefined, false));
       writeSync(fd, original, 0, original.length, 0);
       ftruncateSync(fd, original.length);
+      const mode = git(worktreePath, ["ls-tree", "HEAD", "--", filePath]).split(" ")[0];
+      fchmodSync(fd, mode === "100755" ? (current.mode & 0o777) | 0o111 : current.mode & 0o666);
     } else {
       const entry = lstatSync(source);
       if (entry.dev !== sourceStat.dev || entry.ino !== sourceStat.ino || !entry.isFile()) throw validationError("Drifted Agent Ask was replaced during recovery; preserved replacement.");

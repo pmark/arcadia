@@ -3,6 +3,7 @@ import { closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, m
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
+import { parseWorktrees } from "./worktrees.js";
 import { preservationProcessLimits } from "../sessions/preservationStages.js";
 
 /** Ask operations must address the caller's checkout, never inherited Git relocation/config. */
@@ -77,6 +78,10 @@ export function reserveAskGitIndex(root: string): { commit: (paths: string[], me
   if (existsSync(index) && !lstatSync(index).isFile()) throw validationError("Agent Ask Git index must be a regular file.", { index });
   const initialRef = tryAskGit(root, ["symbolic-ref", "HEAD"]);
   if (!initialRef) throw validationError("Agent Ask writes require a named candidate branch; detached HEAD was preserved.", { repository: root, remedy: "Use the Session's named candidate branch before applying settlement or recovering an Ask." });
+  const sourceRoot = realpathSync(askGit(root, ["rev-parse", "--show-toplevel"]));
+  const peer = parseWorktrees(askGit(root, ["worktree", "list", "--porcelain"]))
+    .find(worktree => worktree.branch === initialRef && (existsSync(worktree.path) ? realpathSync(worktree.path) : path.resolve(worktree.path)) !== sourceRoot);
+  if (peer) throw validationError("Agent Ask branch is checked out in another worktree; shared branch ownership was preserved.", { repository: root, branch: initialRef, peer: peer.path, remedy: "Use your Session's uniquely owned candidate branch before applying this Ask." });
   const headPath = askGit(root, ["rev-parse", "--path-format=absolute", "--git-path", "HEAD"]);
   if (!lstatSync(headPath).isFile()) throw validationError("Agent Ask HEAD must be a regular file.", { headPath });
   const locks: { path: string; fd: number; dev: number; ino: number }[] = [];

@@ -19,7 +19,7 @@ The initial inline intake failed with `SQLITE_WORKSPACE_WRITE_DENIED`; the same 
 
 ## Retrieved guidance
 
-Candidate sizes below identify the instruction path inventory; startup reading used the primary control documents; procedure sections were retrieved as the operation required. Repository guidance: `arcadia-repository.md` Orientation, Semantics, Model Selection, PR QA and Working-Copy Safety. Notes: Ask draft recovery, workspace resolution, settlement, sandbox write denial, and Git preservation. Agent Ask skill: `/Users/pmark/.codex/skills/arcadia-agent-ask/SKILL.md`.
+Candidate sizes below identify the instruction path inventory; startup reading used the primary control documents; procedure sections were retrieved as the operation required. Repository guidance: `arcadia-repository.md` Orientation, Semantics, Model Selection, PR QA and Working-Copy Safety. Notes: Ask draft recovery, workspace resolution, settlement, sandbox write denial, and Git preservation. Agent Ask skill: `arcadia-agent-ask/SKILL.md`.
 
 - `CONSTITUTION.md`: 3320 bytes.
 - `PROJECT.md`: 31634 bytes.
@@ -48,3 +48,7 @@ PR #1332 head `0aa2de8ad44aa95ea778d2db56820bf9feaf1eb5` received an independent
 Initial required CI exposed downstream callers/fixtures that relied on primary-checkout drafts: clarification handoff, reviewer smoke, completion/brief tests, and plan-amendment runner fixtures. Clarification now registers the Ask inline with a truthful registered receipt. Smoke uses a linked candidate; fixtures retain their acceptance assertions with isolated input. The stale-pointer race still proves fresh reapplication, with its competing settlement before the first Git reservation rather than under an already-owned lock.
 
 Final focused race/brief output: `/private/tmp/arcadia-driver-check-14158.log`, 53 passing. Core regression output: `/private/tmp/arcadia-driver-check-97691.log`, 230 passing. Final runner, type/lint and rehearsal outputs were still running when this note was written; final results and current-head review/CI are recorded in PR #1332. Failed first-head CI evidence remains recoverable in GitHub run `38310015302` and temporary unit-shard logs. The rejected PR notification was not sent; automatic approval review required an explicit messaging Decision. No messaging workaround was attempted.
+
+Available advisory CodeRabbit feedback was considered: the machine-specific skill path was made portable, and tracked Ask recovery was corrected to restore the Git executable bit. Its rate limit is not a merge blocker.
+
+Final local repairs verified before the ownership/mode followup commit: isolation/race/mode suite 27/27, plan runner 28/28, clarification 13/13, TypeScript and touched ESLint exit 0. The fresh fast-rehearsal report at `/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-Ma4V2F/report.json` has `vitestStatus: 0`, 34 scenarios, with 72 passing tests and one expected failure. Source additionally refuses a pinned branch already checked out in another registered worktree before acquiring Git locks. Current-head review and remote required checks remain merge gates, recorded in PR #1332.
