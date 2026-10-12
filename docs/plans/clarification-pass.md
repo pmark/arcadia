@@ -7,58 +7,69 @@ status: complete
 milestone: Clarification loop shipped
 token_impact: large
 token_budget: "Historical multi-phase agentic implementation was the primary token cost; migrations, CLI checks, and tests were deterministic."
-updated: 2026-08-01
+updated: 2026-10-12
 actions:
   - id: phase-1-plumbing
     title: Thin CLI plumbing — artifact create and work update --expected-artifact
+    acceptance_criteria:
+      - CLI help lists artifact create and work update --expected-artifact; a CLI fixture creates an Artifact linked to its Action and persists the supplied expected-artifact value.
     status: done
     responsibility: agent
     effort: session
-    next_action: Merged as PR #3; no further work.
+    next_action: Merged as PR
     expected_artifact: Merged PR adding artifact create and --expected-artifact
     clarification: clarified
     confidence: high
-    source: docs/plans/clarification-pass.md, Phase 1 section
+    source: Agent Ask precise-criteria-clarification-pass-20261012
     depends_on: []
   - id: phase-2-fields
     title: Structured clarification fields on work_items
+    acceptance_criteria:
+      - A fresh database and an upgraded database each expose clarification_status, gap_type, open_question, clarification_source and confidence on work_items; repeating migration leaves exactly one column of each name.
     status: done
     responsibility: agent
     effort: session
-    next_action: Merged as PR #6; no further work.
+    next_action: Merged as PR
     expected_artifact: Merged PR adding the five clarification columns
     clarification: clarified
     confidence: high
-    source: docs/plans/clarification-pass.md, Phase 2 section
+    source: Agent Ask precise-criteria-clarification-pass-20261012
     depends_on: [phase-1-plumbing]
   - id: phase-3-decisions-subtasks
     title: Clarification Decisions and Action subtasks
+    acceptance_criteria:
+      - CLI fixtures open a clarification Decision and add a child Action whose parent_work_item_id equals the named parent; listing the Actions shows that parent-child relationship.
     status: done
     responsibility: agent
     effort: session
-    next_action: Merged as PR #10; no further work.
+    next_action: Merged as PR
     expected_artifact: Merged PR adding review open and parent_work_item_id
     clarification: clarified
     confidence: high
-    source: docs/plans/clarification-pass.md, Phase 3 section
+    source: Agent Ask precise-criteria-clarification-pass-20261012
     depends_on: [phase-2-fields]
   - id: phase-4-orchestrator
     title: The arcadia clarify orchestrator over Arcadia Intelligence
+    acceptance_criteria:
+      - A clarify fixture maps a concrete next action to clarified and an unresolved requirement to question_open with exactly one question and gap_type, preserving the original captured input.
     status: done
     responsibility: agent
     effort: project
-    next_action: Merged as PR #8; no further work.
+    next_action: Merged as PR
     expected_artifact: Merged PR adding the clarify command
     clarification: clarified
     confidence: high
-    source: docs/plans/clarification-pass.md, Phase 4 section
+    source: Agent Ask precise-criteria-clarification-pass-20261012
     depends_on: [phase-3-decisions-subtasks]
   - id: plan-gate
     title: Gate work plan on clarified Actions
+    acceptance_criteria:
+      - An explicit Decision records whether work plan requires clarified Actions and names the compatibility consequences; until that Decision is answered this Action remains question_open and is not dispatched.
     status: open
     responsibility: requires_review
     effort: short
     clarification: question_open
+    source: Agent Ask precise-criteria-clarification-pass-20261012
     gap_type: missing-decision
     question: Should only a clarified Action be plannable, given that gating changes existing planning tests?
     depends_on: [phase-4-orchestrator]
