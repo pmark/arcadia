@@ -9,10 +9,12 @@ token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: high
-updated: 2026-08-30
+updated: 2026-10-12
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
+    acceptance_criteria:
+      - Parsing a managed frontmatter fixture returns its declared Project, Plan or Decision fields; an invalid vocabulary value reports the exact file and field without throwing away errors in other files.
     status: done
     responsibility: agent
     effort: session
@@ -20,10 +22,12 @@ actions:
     expected_artifact: Frontmatter parser reporting per-field validation errors
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: []
   - id: build-upsert
     title: Build the upsert layer (project/plan/decision -> DB rows)
+    acceptance_criteria:
+      - Applying the same managed-document fixture twice leaves one row per doc_ref and no duplicate dependency links; a changed title updates the existing row rather than creating another.
     status: done
     responsibility: agent
     effort: session
@@ -31,10 +35,12 @@ actions:
     expected_artifact: Idempotent doc_ref-keyed upsert
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: [build-parser]
   - id: wire-docs-sync-command
     title: Wire arcadia docs sync [--project] [--apply] into the CLI
+    acceptance_criteria:
+      - CLI help lists docs sync with --project and --apply; a fixture dry run writes no Project rows, the same --apply run persists the declared records, and portfolio reports the synced Project.
     status: done
     responsibility: agent
     effort: short
@@ -42,7 +48,7 @@ actions:
     expected_artifact: docs sync and portfolio commands
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: [build-upsert]
   - id: contract-work-pointer
     title: Add the authoritative work pointer and dispatch resolution
