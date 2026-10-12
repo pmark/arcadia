@@ -180,6 +180,44 @@ actions:
     depends_on: [decision-card-contract]
     decisions: []
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md"]
+  - id: card-veto-verb
+    title: Implement a veto verb with an expiry default on the decision card so a card executes at expiry with a receipt unless the operator vetoes it, starting with split remainder placement.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a veto verb with an expiry default on the decision card so a card executes at expiry with a receipt unless the operator vetoes it, starting with split remainder placement.
+    expected_artifact: Evidence satisfying Agent Ask card-veto-verb
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-cards-plan-add-veto-and-scoreboard-2026-10-12
+    why: "Default-and-veto turns most routine questions into receipts and is the main lever on touches per Action."
+    acceptance_criteria:
+      - A card kind may declare a default action and an expiry and the evaluator executes the default at expiry only when no veto was recorded, leaving a receipt that names the card, default and time.
+      - A veto before expiry cancels the default and records who vetoed and when; a later expiry never executes it.
+      - Credentials, Grants, spend, cap, Constitution and approval classes can never declare a default, and tests enumerate each excluded class.
+      - The /todo card shows the default, the deadline and a one-click veto; focused tests pass.
+    depends_on: [decision-card-contract]
+    decisions: []
+    references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
+  - id: record-operator-touch-receipts
+    title: Implement an operator touch receipt written by every card verb and a /production scoreboard showing touches per Action, median decision latency and the share answered from the card alone.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement an operator touch receipt written by every card verb and a /production scoreboard showing touches per Action, median decision latency and the share answered from the card alone.
+    expected_artifact: Evidence satisfying Agent Ask record-operator-touch-receipts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-cards-plan-add-veto-and-scoreboard-2026-10-12
+    why: "Nothing measures the goal today; the scoreboard shows whether operator attention is actually falling."
+    acceptance_criteria:
+      - Each merge, run, answer and veto verb writes one touch row with the card kind, latency and whether the card was sufficient.
+      - The /production page shows touches per merged Action, median latency, host touches and unattended hours computed from the receipts and the session ledger.
+      - A fixture replay of one run produces the expected scoreboard numbers and the numbers are deterministic.
+      - Focused tests pass and the dashboard import graph has no containerAuditTransport or commander edge.
+    depends_on: [decision-card-contract]
+    decisions: []
+    references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
 ---
