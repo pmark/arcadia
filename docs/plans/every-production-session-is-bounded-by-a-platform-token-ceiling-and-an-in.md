@@ -106,21 +106,20 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: fix-docs-sync-lock-and-activation-order
     title: Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.
+    next_action: Completed via Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask fix-docs-sync-lock-and-activation-order
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-autonomous-production-hardening-2026-10-12
+    source: Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12
     why: "Activation left four unpositioned Actions and a stale pointer that needed a manual arrange and an extra pull request (frictions 3, 14)."
     acceptance_criteria:
-      - A test reproduces the post-activation SQLite lock and afterwards advance queue reports orderValid true with unpositionedCount 0.
       - Other Projects relative queue order is unchanged by an activation.
-      - A queue reorder stages the matching pointer change in the same settlement so current_action does not stay on a moved Action.
       - Focused settlement and queue tests pass.
     depends_on: []
+    split_into: [stage-pointer-with-queue-reorder-and-reproduce-live-lock]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: revise-agent-roles-and-session-briefs
@@ -154,6 +153,22 @@ actions:
     source: Agent Ask split-probe-environment-inside-session-2026-10-12
     acceptance_criteria:
       - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
+  - id: stage-pointer-with-queue-reorder-and-reproduce-live-lock
+    title: Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.
+    expected_artifact: Evidence satisfying Agent Ask stage-pointer-with-queue-reorder-and-reproduce-live-lock
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12
+    acceptance_criteria:
+      - A test reproduces the post-activation SQLite lock and afterwards advance queue reports orderValid true with unpositionedCount 0.
+      - A queue reorder stages the matching pointer change in the same settlement so current_action does not stay on a moved Action.
     depends_on: []
     decisions: []
     references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
