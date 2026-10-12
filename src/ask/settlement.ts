@@ -12,7 +12,7 @@ import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../d
 import { discoverDocs } from "../docs/discover.js";
 import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
-import { parseDoc } from "../docs/parse.js";
+import { parseDoc, parsePlanForAcceptanceRepair } from "../docs/parse.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
@@ -359,6 +359,25 @@ export function settleAgentAsk(db: Database.Database, input: {
     // file -- so it is not fenced; every accepted settlement is.
     if (settlingClaim) claimFence = { ...settlingClaim };
     const discovered = discoverDocs(repoRoot);
+    // A criteria-only amendment must be able to repair the very validation
+    // error that otherwise hides its target. This read never grants dispatch.
+    let criteriaRepair = proposal.normalized.intent === "plan" && !!proposal.normalized.targetRef &&
+      proposal.normalized.actions.length > 0 && proposal.normalized.actions.every((action) =>
+        !!action.targetRef && action.omittedLists?.includes("dependencies") &&
+        action.omittedLists?.includes("references") && action.why === undefined) &&
+      proposal.normalized.references.length === 0 && !input.activate && !input.placement &&
+      !input.anchor && !input.responsibility;
+    if (criteriaRepair) {
+      const projectContext = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
+      const targetSlug = resolveManagedTargetRef(proposal.normalized.targetRef!, "plan", project.slug);
+      for (const relativePath of discovered.rejected) {
+        if (!relativePath.startsWith("docs/plans/")) continue;
+        const absolutePath = path.join(repoRoot, relativePath);
+        const repaired = parsePlanForAcceptanceRepair(relativePath, absolutePath, readFileSync(absolutePath, "utf8"));
+        if (repaired.doc?.type === "plan" && repaired.doc.project === project.slug &&
+            [targetSlug, projectContext?.activePlan].includes(repaired.doc.slug)) discovered.docs.push(repaired.doc);
+      }
+    }
     const projectDoc = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
     const plan = discovered.docs.find(
       (doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === projectDoc?.activePlan
@@ -663,6 +682,17 @@ export function settleAgentAsk(db: Database.Database, input: {
             break;
           }
 
+          if (criteriaRepair) {
+            const onlyCriteria = proposedActions.every((proposed) => {
+              const id = resolveManagedTargetRef(proposed.targetRef!, "action", project.slug);
+              const existing = target.actions.find((action) => action.id === id);
+              return existing && proposed.desiredResult === (existing.nextAction ?? existing.title);
+            });
+            if (!onlyCriteria && (discovered.rejected.includes(target.relativePath) || discovered.rejected.includes(plan.relativePath))) {
+              throw validationError("Criteria repair must preserve each Action's next_action and title.");
+            }
+            criteriaRepair = onlyCriteria;
+          }
           const takenIds = new Set(target.actions.map((action) => action.id));
           const newActionIds = proposedActions.map((action) => action.targetRef
             ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
@@ -730,7 +760,7 @@ export function settleAgentAsk(db: Database.Database, input: {
                 dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
-              actionIdsToValidate.push(action.id);
+              if (!criteriaRepair) actionIdsToValidate.push(action.id);
             } else {
               after = appendPlanAction(after, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
@@ -2668,15 +2698,25 @@ function amendAction(
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^ {4}next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
-  block = block.replace(/^ {4}next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
+  if (!/^ {4}next_action:/m.test(block)) {
+    if (!/^ {4}clarification: question_open\r?$/m.test(block)) {
+      throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
+    }
+    // Criteria for resolving an open question do not answer it or make it executable.
+  } else {
+    block = block.replace(/^ {4}next_action:.*$/m, () => `    next_action: ${yamlScalar(nextAction)}`);
+  }
   if (responsibility) {
     if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
     block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
   if (acceptance.length > 0) {
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
-    block = block.replace(/^ {4}acceptance_criteria:\r?\n(?: {6}- .*\r?\n?)*/m, `${replacement}\n`);
+    if (/^ {4}acceptance_criteria:/m.test(block)) {
+      block = block.replace(/^ {4}acceptance_criteria:.*\r?\n(?: {6}- .*\r?\n?)*/m, () => `${replacement}\n`);
+    } else {
+      block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n${replacement}`);
+    }
   }
   // depends_on/references may already be written as a multi-line block list
   // (each item on its own "      - " line) rather than an inline [a, b]; the

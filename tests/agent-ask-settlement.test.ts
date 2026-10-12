@@ -2872,3 +2872,48 @@ function existingDirectory(directory: string): string {
   mkdirSync(directory, { recursive: true });
   return directory;
 }
+
+
+describe("governed acceptance criteria repairs", () => {
+  it.each(["open", "done", "question_open"])("backfills missing criteria without changing %s Action state", (state) => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    let before = readFileSync(planPath, "utf8").replace("    acceptance_criteria:\n      - Existing proof exists.\n", "");
+    if (state === "done") before = before.replace("    status: open", "    status: done");
+    if (state === "question_open") before = before
+      .replace(/ {4}next_action:.*\n/, "")
+      .replace("    clarification: clarified", "    clarification: question_open\n    question: Which limit?\n    gap_type: missing-decision");
+    writeFileSync(planPath, before);
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Legacy criteria fixture"], { cwd: repo });
+    const desired = state === "question_open" ? "Keep existing work" : "Keep existing work moving.";
+    const request = JSON.stringify({ agent_ask: "v1", request_id: `repair-${state}`, project: "demo", intent: "plan",
+      target_ref: "plan/demo-plan", desired_result: "Backfill evaluation conditions", actions: [{ target_ref: "action/existing",
+        desired_result: desired, acceptance: ["The migration fixture leaves exactly one status column after two runs."] }] });
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: `settle-repair-${state}`, disposition: "accepted" as const };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.applied).toBe(true);
+    const result = discoverDocs(repo);
+    expect(result.errors).toEqual([]);
+    const action = (result.docs.find((doc) => doc.type === "plan") as PlanDoc).actions[0];
+    expect(action.status).toBe(state === "done" ? "done" : "open");
+    expect(action.acceptanceCriteria).toEqual(["The migration fixture leaves exactly one status column after two runs."]);
+    expect(action.nextAction).toBe(state === "question_open" ? null : "Keep existing work moving.");
+    if (state === "question_open") expect(action.question).toBe("Which limit?");
+    expect(applied.data.receipt.queueActionKeys).toEqual([]);
+  });
+  it("rejects a subjective criterion before a settlement preview can write a Plan", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    const proposal = runAgentAskPreviewCommand({ workspace, request: JSON.stringify({ agent_ask: "v1",
+      request_id: "vague-criterion", project: "demo", intent: "plan", target_ref: "plan/demo-plan",
+      desired_result: "Amend evaluation", actions: [{ target_ref: "action/existing",
+        desired_result: "Keep existing work moving.", acceptance: ["Works correctly."] }] }) });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id,
+      requestId: "settle-vague", disposition: "accepted" })).toThrow("precise and checkable");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
+});

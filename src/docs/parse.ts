@@ -1,5 +1,5 @@
 import { validateAcceptanceCriteria } from "./acceptanceCriteria.js";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   CLARIFICATION_CONFIDENCE_LEVELS,
   CLARIFICATION_STATUSES,
@@ -1119,3 +1119,26 @@ function stringArray(raw: unknown): string[] {
 }
 
 export { MILESTONE_STATUSES };
+
+/**
+ * Read a Plan only to repair acceptance defects. Ordinary parsing/dispatch stays
+ * strict. No other error is tolerated, and the writer must validate its result.
+ */
+export function parsePlanForAcceptanceRepair(relativePath: string, absolutePath: string, content: string): ParseResult {
+  const original = parseDoc(relativePath, absolutePath, content);
+  if (original.doc || original.errors.length === 0 ||
+      original.errors.some((error) => !/^actions\[\d+\]\.acceptance_criteria(?:\[\d+\])?$/.test(error.field))) return original;
+  const match = FRONTMATTER.exec(content);
+  if (!match) return original;
+  const data = parseYaml(match[1]) as Record<string, unknown>;
+  if (data.type !== "plan" || !Array.isArray(data.actions)) return original;
+  const rawActions = data.actions as Record<string, unknown>[];
+  const repairedInput = { ...data, actions: rawActions.map((action) => ({
+    ...action, acceptance_criteria: ["An Agent Ask records the corrected evaluation condition."]
+  })) };
+  const parsed = parseDoc(relativePath, absolutePath, `---\n${stringifyYaml(repairedInput)}---\n${match[2] ?? ""}`);
+  if (!parsed.doc || parsed.doc.type !== "plan" || parsed.errors.length > 0) return original;
+  return { doc: { ...parsed.doc, actions: parsed.doc.actions.map((action, index) => ({
+    ...action, acceptanceCriteria: stringArray(rawActions[index].acceptance_criteria)
+  })) }, errors: original.errors };
+}

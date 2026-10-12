@@ -220,6 +220,8 @@ describe("dispatch resolution", () => {
         "    clarification: question_open",
         "    gap_type: missing-decision",
         "    question: Which environment goes first?",
+        "    acceptance_criteria:",
+        "      - A Decision records the selected first environment.",
         "    depends_on: []",
         "---",
         ""
@@ -318,6 +320,8 @@ describe("dispatch resolution", () => {
           "    clarification: clarified",
           "    confidence: high",
           "    source: conversation",
+          "    acceptance_criteria:",
+          "      - Running the prerequisite migration leaves one status column.",
           "    depends_on: []"
         ].join("\n")
       }).replace("    depends_on: []\n", "    depends_on: [lay-groundwork]\n")
@@ -350,6 +354,8 @@ describe("dispatch resolution", () => {
           "    clarification: clarified",
           "    confidence: high",
           "    source: conversation",
+          "    acceptance_criteria:",
+          "      - Running the prerequisite migration leaves one status column.",
           "    depends_on: []"
         ].join("\n")
       }).replace("    depends_on: []\n", "    depends_on: [lay-groundwork]\n")
