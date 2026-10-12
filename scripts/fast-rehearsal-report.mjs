@@ -13,7 +13,7 @@ export function collectScenarioReports(reportDir) {
       try {
         return JSON.parse(readFileSync(path.join(reportDir, file), "utf8"));
       } catch (error) {
-        throw new Error(`fast-rehearsal: scenario report ${path.join(reportDir, file)} is unparsable (${error.message}).`);
+        throw new Error(`fast-rehearsal: scenario report ${path.join(reportDir, file)} is unparsable (${error.message}).`, { cause: error });
       }
     })
     .sort((a, b) => `${a.file}/${a.scenario}`.localeCompare(`${b.file}/${b.scenario}`));
@@ -31,6 +31,6 @@ export function readCombinedReport(file) {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
   } catch (error) {
-    throw new Error(`fast-rehearsal: report ${file} is unparsable (${error.message}).`);
+    throw new Error(`fast-rehearsal: report ${file} is unparsable (${error.message}).`, { cause: error });
   }
 }
