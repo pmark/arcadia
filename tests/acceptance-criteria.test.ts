@@ -1,47 +1,90 @@
 import { describe, expect, it } from "vitest";
-import { stringify } from "yaml";
-import { validateAcceptanceCriteria } from "../src/docs/acceptanceCriteria.js";
-import { parseDoc } from "../src/docs/parse.js";
+import { evaluateAcceptanceCriteria, renderAcceptanceCriteriaReport } from "../src/stewardship/acceptanceCriteria.js";
 
-function plan(criteria: unknown, status = "open", clarification = "clarified") {
-  return "---\n" + stringify({
-    arcadia: "v1", type: "plan", slug: "criteria", project: "demo", status: "draft",
-    milestone: "Check all Actions", token_impact: "none", token_budget: "Deterministic checks only.",
-    actions: [{ id: "non-current", title: "Exercise the criterion", status, responsibility: "requires_review",
-      clarification, ...(clarification === "question_open" ? { question: "Which limit?", gap_type: "missing-decision" } : { next_action: "Run the fixture." }),
-      acceptance_criteria: criteria }], updated: "2026-10-12"
-  }) + "---\n";
-}
+const ARTIFACT_TEXT = [
+  "# Deterministic Stewardship Artifact Validation Plan",
+  "",
+  "## Ordered Phases",
+  "1. Contract extraction: parse the originating planning packet sections.",
+  "",
+  "## Repository Impact Assessment",
+  "- Primary area: `src/stewardship` deterministic validation module.",
+  "",
+  "## Validation Strategy",
+  "- Use deterministic fixtures for pass, failure, and warning cases."
+].join("\n");
 
-describe("acceptance criteria on every Plan Action", () => {
-  it.each(["open", "in_progress", "done", "blocked", "deferred"])("rejects missing criteria on a non-current %s Action", (status) => {
-    const result = parseDoc("criteria.md", "/tmp/criteria.md", plan(undefined, status));
-    expect(result.doc).toBeNull();
-    expect(result.errors).toContainEqual(expect.objectContaining({ field: "actions[0].acceptance_criteria" }));
+describe("evaluateAcceptanceCriteria", () => {
+  it("reports unmet when none of a criterion's key terms appear anywhere in the Artifact", () => {
+    const results = evaluateAcceptanceCriteria(
+      ["The migration adds a rollback script."],
+      ARTIFACT_TEXT
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      criterion: "The migration adds a rollback script.",
+      status: "unmet"
+    });
+    expect(results[0].reason).toContain("migration");
   });
-  it.each(["unclarified", "question_open"])("does not exempt %s Actions", (clarification) => {
-    const result = parseDoc("criteria.md", "/tmp/criteria.md", plan([], "open", clarification));
-    expect(result.errors.some((e) => e.field === "actions[0].acceptance_criteria")).toBe(true);
+
+  it("reports unchecked, never met, when the criterion's terms are present", () => {
+    const results = evaluateAcceptanceCriteria(
+      ["The plan includes a repository impact assessment."],
+      ARTIFACT_TEXT
+    );
+
+    expect(results[0].status).toBe("unchecked");
+    expect(results.some((result) => result.status === "met")).toBe(false);
   });
-  it.each(["missing", 42, [""], [null], [42], [{ result: "Pass" }]])("rejects malformed criteria without dropping entries: %j", (criteria) => {
-    const result = parseDoc("criteria.md", "/tmp/criteria.md", plan(criteria));
-    expect(result.doc).toBeNull();
-    expect(result.errors.some((e) => e.field.startsWith("actions[0].acceptance_criteria"))).toBe(true);
+
+  it("never produces met, regardless of how closely the text matches", () => {
+    // Even a criterion quoting the Artifact's own heading verbatim only earns
+    // "unchecked" -- presence is not proof the claim is true, and this
+    // checker does not invent judgment to bridge that gap.
+    const results = evaluateAcceptanceCriteria(
+      ['The artifact has an "Ordered Phases" section with contract extraction.'],
+      ARTIFACT_TEXT
+    );
+
+    expect(results[0].status).toBe("unchecked");
   });
-  it.each(["Works correctly.", "The product is high-quality.", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
-    expect(validateAcceptanceCriteria([criterion])).not.toEqual([]);
+
+  it("reports unchecked when a criterion has no distinctive terms to search for", () => {
+    const results = evaluateAcceptanceCriteria(["It is done."], ARTIFACT_TEXT);
+
+    expect(results[0].status).toBe("unchecked");
+    expect(results[0].reason).toContain("no distinctive terms");
   });
-  it("rejects normalized duplicate conditions", () => {
-    expect(validateAcceptanceCriteria(["The command exits zero.", " the COMMAND exits zero "])).toContainEqual(expect.objectContaining({ index: 1 }));
+
+  it("preserves the plan author's order and exact wording", () => {
+    const criteria = ["The migration is idempotent.", "The command is covered by a test."];
+    const results = evaluateAcceptanceCriteria(criteria, ARTIFACT_TEXT);
+
+    expect(results.map((result) => result.criterion)).toEqual(criteria);
   });
-  it("accepts reproducible success, refusal, threshold and Decision conditions", () => {
-    const criteria = [
-      "Running pnpm test tests/migration.test.ts exits zero; two migrations leave exactly one status column.",
-      "A probe fixture returns environment_wall within its 1,000 input tokens probe token budget and records exactly one launch.",
-      "Opening /todo exposes the registered reset-repair-budget operator script.",
-      "A Decision records the operator-selected limit; the Action remains question_open until the answer is recorded."
-    ];
-    expect(validateAcceptanceCriteria(criteria)).toEqual([]);
-    expect(parseDoc("criteria.md", "/tmp/criteria.md", plan(criteria, "done")).errors).toEqual([]);
+
+  it("returns nothing for an empty criteria list", () => {
+    expect(evaluateAcceptanceCriteria([], ARTIFACT_TEXT)).toEqual([]);
+  });
+});
+
+describe("renderAcceptanceCriteriaReport", () => {
+  it("renders one line per criterion, in the plan author's words", () => {
+    const results = evaluateAcceptanceCriteria(
+      ["The migration adds a rollback script.", "The plan includes a repository impact assessment."],
+      ARTIFACT_TEXT
+    );
+
+    const report = renderAcceptanceCriteriaReport(results);
+
+    expect(report).toContain("Acceptance criteria:");
+    expect(report).toContain('- unmet: "The migration adds a rollback script."');
+    expect(report).toContain('- unchecked: "The plan includes a repository impact assessment."');
+  });
+
+  it("renders nothing for an empty result list", () => {
+    expect(renderAcceptanceCriteriaReport([])).toBe("");
   });
 });
