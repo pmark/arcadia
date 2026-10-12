@@ -1,4 +1,5 @@
 import { launchHrefOf } from "./launch-link";
+import { blockerRemedyFor } from "../../../src/production/blockerRemedies";
 import type { AgentAskEligibility, AgentAskPendingItem, OpenDecisionItem, OperatorTodoItem } from "./arcadia-cli";
 
 export type ApprovalOption = { label: string; consequence: string; recommended: boolean };
@@ -55,6 +56,22 @@ export interface Approval {
   buildPacket: boolean;
   /** The one-click control for a planning review item (see {@link PLANNING_REVIEW_CONTROLS}); null/absent when the row has none. */
   reviewControl?: ReviewControl | null;
+  /**
+   * An escalation or scope stop's registry remedy (src/production/blockerRemedies.ts): `oneClick` rows carry the pinned
+   * clear (`actionKey` + `kind` are the pin); the others name an existing control by `href`. Null on every other row.
+   */
+  blockerRemedy?: BlockerRemedyView | null;
+}
+
+export interface BlockerRemedyView {
+  kind: string;
+  label: string;
+  consequence: string;
+  oneClick: boolean;
+  /** The pinned Action (`<project>/<action>`); only for a one-click clear. */
+  actionKey: string | null;
+  /** The route of an existing control on another surface, or null. */
+  href: string | null;
 }
 
 /** What the dashboard offers for one kind of planning review item; every field is the truth about what the answer does. */
@@ -230,6 +247,18 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
   const reviewControl = item.kind === "review_item" && !item.staleReason && item.origin && Object.hasOwn(PLANNING_REVIEW_CONTROLS, item.origin)
     ? PLANNING_REVIEW_CONTROLS[item.origin]
     : null;
+  const escalationKind = item.kind.startsWith("escalation:") ? item.kind.slice("escalation:".length) : null;
+  const remedy = escalationKind && !item.staleReason ? blockerRemedyFor(escalationKind) : null;
+  const blockerRemedy: BlockerRemedyView | null = remedy
+    ? {
+        kind: remedy.kind,
+        label: remedy.label,
+        consequence: remedy.consequence,
+        oneClick: remedy.oneClick,
+        actionKey: remedy.oneClick ? `${item.project}/${id}` : null,
+        href: remedy.href
+      }
+    : null;
   return {
     kind: item.kind,
     id,
@@ -242,8 +271,9 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     sourceEvidence: evidenceLines(item),
     cost: buildPacket
       ? "Deterministic — approving records the Decision; no execution starts."
-      : reviewControl?.consequence ?? READ_ONLY_COST,
+      : reviewControl?.consequence ?? (blockerRemedy?.oneClick ? blockerRemedy.consequence : READ_ONLY_COST),
     createdAt: item.createdAt,
+    // A blocker's pinned clear is rendered by its own control, never as a settle control, so the row stays read-only.
     readOnly: !buildPacket && !reviewControl,
     blocking: item.blocking,
     staleReason: item.staleReason ?? null,
@@ -253,13 +283,15 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     origin: item.origin ?? null,
     todoKey: todoKeyOf(item.kind, item.project, id),
     href: todoHrefOf(item.kind, item.project, id),
-    launchHref: item.kind.startsWith("escalation") ? launchHrefOf(`${item.project}/${id}`) : null,
+    // A scope stop is keyed by its alert id, not an Action: its control is /production's Turn Off, never a Launch dialog.
+    launchHref: item.kind.startsWith("escalation") && !blockerRemedy?.href ? launchHrefOf(`${item.project}/${id}`) : null,
     requestId: null,
     aliases: [],
     acceptable: null,
     acceptWhy: null,
     buildPacket,
-    reviewControl
+    reviewControl,
+    blockerRemedy
   };
 }
 

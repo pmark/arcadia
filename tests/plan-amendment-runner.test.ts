@@ -33,7 +33,7 @@ function fixture() {
   git("config", "commit.gpgsign", "false");
   git("init", "--bare", "-q", origin);
   git("remote", "add", "origin", origin);
-  const action = { id: "first", title: "Prove the runner", status: "open", responsibility: "agent", effort: "session", next_action: "Prove the original scope", expected_artifact: "Runner evidence", clarification: "clarified", confidence: "high", acceptance_criteria: ["Original criterion: real newline."], depends_on: [], decisions: [], references: [] };
+  const action = { id: "first", title: "Prove the runner", status: "open", responsibility: "agent", effort: "session", next_action: "Prove the original scope", expected_artifact: "Runner evidence", clarification: "clarified", confidence: "high", acceptance_criteria: ["The original runner receipt contains a real newline."], depends_on: [], decisions: [], references: [] };
   const project = { arcadia: "v1", type: "project", slug: "demo", name: "Demo", status: "active", goal: "Prove settlement", outcome: "Safe settlement", milestone: "Settlement", active_plan: "demo-plan", current_action: "first", updated: "2026-09-30" };
   const plan = { arcadia: "v1", type: "plan", slug: "demo-plan", project: "demo", status: "active", milestone: "Settlement", current_action: "first", token_impact: "none", token_budget: "No models", recommended_model: "gpt-6.1-sol", updated: "2026-09-30", actions: [action], questions: [], decisions: [] };
   const writeDoc = (file: string, data: unknown) => writeFileSync(path.join(repo, file), `---\n${stringify(data)}---\n\n# Real document body\n`);
@@ -49,7 +49,7 @@ function fixture() {
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     arrangeActionOrder(db, { currentKeys: ["demo/first"], order: ["demo/first"], requestId: "fixture-order", apply: true });
   });
-  const ask = { agent_ask: "v1", request_id: "amend-first", project: "demo", intent: "plan", target_ref: "plan/demo-plan", desired_result: "Replace only first scope", requested_authority: "apply_if_approved", actions: [{ target_ref: "action/first", desired_result: "Prove the amended scope", acceptance: ["New criterion: real newline.", "Second criterion."], dependencies: [], references: [] }] };
+  const ask = { agent_ask: "v1", request_id: "amend-first", project: "demo", intent: "plan", target_ref: "plan/demo-plan", desired_result: "Replace only first scope", requested_authority: "apply_if_approved", actions: [{ target_ref: "action/first", desired_result: "Prove the amended scope", acceptance: ["The amended runner receipt contains a real newline.", "The amended runner receipt names the second condition."], dependencies: [], references: [] }] };
   // Canonical draft and stored proposal, including real YAML newlines.
   const draft = runAgentAskDraftCommand({ workspace, dir: repo, request: stringify(ask) });
   expect(draft.data.workspaceStatus).toBe("previewed");
@@ -193,7 +193,7 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
   });
   it.each(["status", "responsibility", "acceptance_criteria", "references"])("refuses target %s drift before mutation", field => {
     const f = fixture();
-    const changed: Record<string, unknown> = { status: "in_progress", responsibility: "requires_review", acceptance_criteria: ["Drift"], references: ["README.md"] };
+    const changed: Record<string, unknown> = { status: "in_progress", responsibility: "requires_review", acceptance_criteria: ["The runner receipt records the changed scope."], references: ["README.md"] };
     f.writeDoc("docs/plans/demo-plan.md", { ...f.plan, actions: [{ ...f.action, [field]: changed[field] }] }); f.commit(); f.noMutation("TARGET_STATE_DRIFT");
   });
   it("refuses semantic effects outside the pinned replacement", () => {

@@ -52,7 +52,7 @@ actions:
     next_action: Repair the instruction delivery.
     expected_artifact: proof.md
     acceptance_criteria:
-      - Mandatory guidance arrives.
+      - The dispatched packet contains the mandatory guidance.
 ---
 `);
 }

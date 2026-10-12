@@ -63,6 +63,27 @@ export interface ActionBriefInput {
    * generic protocol.
    */
   headless?: boolean;
+  /**
+   * The exact probe command (from `issueSessionProbe`). With it the brief
+   * opens with the capability probe as the Session's first step; the host
+   * reads the probe's one JSON line (echoing the command's nonce) from the
+   * Session log and ends the attempt on a failed check.
+   */
+  probeCommand?: string;
+}
+
+/** The first-step probe instructions: one short command, then stop at once on any failed check. */
+function renderProbeStep(input: ActionBriefInput): string[] {
+  if (!input.probeCommand) return [];
+  return [
+    "",
+    "First step — environment probe (do this before anything else, even reading files):",
+    `  ${input.probeCommand}`,
+    "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero when this Session's sandbox cannot write the workspace,",
+    "  run host validation or write a completion receipt. If it exits non-zero or prints \"ok\":false, STOP",
+    "  IMMEDIATELY: make no edits, run no other command, spend no more tokens, and exit. The host records",
+    "  the named environment wall from that line; retrying or working around it only wastes budget."
+  ];
 }
 
 /** Whether this Session's posture is one that cannot commit or preserve (host-owned). */
@@ -195,6 +216,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     ...(input.identity
       ? renderIdentityBlock(input.identity, input.partners ?? null)
       : renderSessionIdentityBlock({ agent: input.agent, partners: input.partners ?? null })),
+    "",
+    ...renderProbeStep(input),
     "",
     "Next action:",
     action.nextAction ?? "(none declared)",

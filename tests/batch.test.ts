@@ -125,7 +125,7 @@ function actionBlock(action: FixtureAction): string[] {
     ...(action.question ? [`    question: ${action.question}`] : []),
     ...(open ? ["    gap_type: missing-decision"] : []),
     "    acceptance_criteria:",
-    `      - ${action.id} is done.`,
+    `      - The proof for ${action.id} exists.`,
     `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
     `    decisions: [${(action.decisions ?? []).map((id) => `"${id}"`).join(", ")}]`,
     "    references: []"

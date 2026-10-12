@@ -183,3 +183,93 @@ The latest assertion-contract compatibility run passed 240 tests in nine suites.
 Round 3 at `121e91298972d0d35dc70fe6027d1da12d30b6f0` found one remaining structural bypass: isolated predicates such as “Complete”, “Pass”, “Required” and “Visible”. The validator now rejects isolated predicates while retaining compact named-field comparisons. Regression tests also retain “Proof exists.” as a legitimate minimal observable result. The final parser/docs-sync/dispatch run passed all 146 tests. Round 4 reviews this significant blocking repair; no governed amendment has been applied.
 
 Round 4 passed exact head `faf692ba6d067193e8a6bb7461ddd7a030518a97` with no unresolved blocking findings. Final full lint, TypeScript and guidance delivery checks passed. Subsequent previous-head E2E logs identified old “is finished”/“proof ran” fixtures and a generated Project preparation criterion using “ends with”; those now name concrete Artifact results. Project preparation tests pass (3 tests). An initial test path was absent and corrected to the located suite. A local E2E attempt lacked the required dashboard production build and refused fixture startup; the isolated dashboard is being built before rerunning affected scenarios. No E2E pass is claimed yet.
+
+
+## 2026-10-12 build-repair Driver evidence
+
+The isolated `codex/precise-plan-criteria` candidate started clean at
+`67b19bb9fdf969f5239f5ff4ebb95dbe3b111b16`. The Driver fetched and automatically
+merged `origin/main` at `f75cf47da` with `--no-commit --no-ff`; no conflicts were
+resolved and both histories remain present. The Lead owns the pending merge
+commit, publication and fresh independent review.
+
+Older valid-behavior fixtures now name concrete Artifact, receipt, queue or
+story results instead of placeholders, copulas or completion claims. Their
+behavioral assertions remain present. Shared preservation-fixture replacements
+were updated together so the browser-requirement and authority-drift checks
+still mutate the fixture. The Plan-amendment drift test uses a valid changed
+condition, allowing it to reach its existing target-drift assertion.
+
+The only validator change adds the third-person assertion `resets`, accepting
+“A resumed Plan resets only its own counter; other Plans are untouched.”
+Regressions refuse bare “Reset”, “Reset counter”, unknown clauses, and old
+completion placeholders. No status, path or Action exemption was added.
+
+The historical production handoff Ask remains unchanged. One test proves its
+raw instruction-shaped criteria are refused before any managed-document or
+queue write. A separately named migrated fixture replay preserves all of the
+original requirements as observable conditions and exercises the original
+handoff assertions.
+
+Validation receipts (all commands run from this candidate):
+
+- The 28 originally failing suites ran with `node_modules/.bin/vitest run
+  <paths in /tmp/pr1307-failing-suites.json> --maxWorkers=4 --reporter=json
+  --outputFile=/tmp/pr1307-driver-pass1.json`: exit 1, 634 passed, 13 failed.
+  Raw failure details: `/tmp/pr1307-driver-pass1-failures.json`.
+- A settlement-only follow-up recorded exit 1, 104 passed and one remaining
+  historical-Ask failure in `/tmp/pr1307-driver-settlement.json`; its raw
+  failures are `/tmp/pr1307-driver-settlement-failures.json`.
+- `node_modules/.bin/vitest run tests/manual-preservation.test.ts
+  tests/plan-amendment-runner.test.ts tests/agent-ask-settlement.test.ts
+  tests/plan-acceptance-validation.test.ts --maxWorkers=4 --reporter=json
+  --outputFile=/tmp/pr1307-driver-repairs-final.json`: exit 0, 199 passed.
+- `node_modules/.bin/vitest run tests/agent-ask-settlement.test.ts
+  --testNamePattern='historical production|legacy criteria' --maxWorkers=1`:
+  exit 0, both raw refusal and migrated replay passed. The explicit filter
+  excludes the other 104 tests; their previous full-suite result is above.
+- `node_modules/.bin/eslint src/docs/acceptanceCriteria.ts
+  scripts/preservation-fixture.ts <all changed test paths>`: exit 0;
+  the final historical-Ask test addition was separately linted, exit 0.
+- `node_modules/.bin/tsc -p tsconfig.json --noEmit`: exit 0.
+- `git diff --check`: exit 0.
+
+The first 28-suite run passed 24 suites; all three repairable remaining suites
+then passed in the final focused run. `managed-documents-contract.test.ts`
+remains blocked by canonical records: five missing criteria lists in
+`clarification-pass`, three in `portfolio-docs-protocol`, and two unspecified
+token limits in Action index 3 of the active hardening Plan. The read-only final
+snapshot is `/tmp/pr1307-driver-corpus-errors-final.json` (10 errors, 3 rejected
+Plans). No governed Plan, Action, pointer, Decision or pending amendment was
+edited or settled. No green result is claimed for the control-document test.
+
+Failed receipts and logs are preserved in `/tmp/pr1307-driver-*`. The initial
+combined instruction read was truncated; relevant procedures and exact Action
+were retrieved again in bounded reads. Two guessed test/parser paths were
+corrected to the located files. Sandbox writes to the external candidate used
+the ordinary host approval path; no permissions or policy were changed.
+
+Loaded instruction evidence follows. Byte values describe the files at handback;
+sections state what was retrieved for this repair.
+
+| Path | UTF-8 bytes at handback | Retrieved sections |
+| --- | ---: | --- |
+| `AGENTS.md` | 9276 | All; candidate before base merge |
+| `CONSTITUTION.md` | 3320 | Authority, Truth, Economy |
+| `PROJECT.md` | 31609 | Frontmatter and active Plan/current Action |
+| `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 | All |
+| `.arcadia/repo-context.md` | 703 | All |
+| `.arcadia/context-policy.json` | 870 | All |
+| `docs/agent-guidance/index.json` | 7280 | Task and failure triggers |
+| `docs/agent-guidance/continuation.md` | 6239 | All |
+| `docs/agent-guidance/learning.md` | 1636 | All |
+| `docs/working-copy-safety.md` | 15818 | Monitor, isolated candidate, reconciliation, preservation boundaries |
+| `docs/agent-guidance/operator-directed-work.md` | 4494 | Direct request classification and unaffected tracks |
+| `docs/agent-guidance/pull-requests.md` | 17208 | CI repair, independent review, base merge |
+| `docs/agent-guidance/arcadia-repository.md` | 30174 | Orientation; PR QA Plan; Working-Copy Safety including conflict recovery |
+| `docs/notes-to-self.md` | 34925 | Fixture criteria, dependency bridging, Vitest commands, settlement sync failures |
+| `docs/plans/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in.md` | 12407 | Exact initial current Action replay-environment-wall-session |
+| `docs/agent-guidance/native-app-sessions.md` (main) | 6733 | All; native Lead/Driver scope and handback |
+| `docs/agent-guidance/session-roles-and-briefs.md` (main) | 4195 | All; native Lead/Driver scope and handback |
+
+Final focused suite breakdown: agent-ask-settlement.test.ts 105; manual-preservation.test.ts 30; plan-acceptance-validation.test.ts 36; plan-amendment-runner.test.ts 28.

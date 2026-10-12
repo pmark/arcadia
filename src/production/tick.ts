@@ -39,11 +39,22 @@ import type { CandidatePreservationReceipt } from "../sessions/candidatePreserva
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
+import {
+  BUDGET_EXHAUSTED_ESCALATION_KIND,
+  decideTokenCeilingBreach,
+  describeBudgetExhausted,
+  resolveSessionTokenCeiling,
+  sessionTokenCeilingBreach
+} from "./sessionTokenCeiling.js";
 import { sessionLogPath } from "../sessions/sessionRecording.js";
+import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
   detectEnvironmentWalls,
   ENVIRONMENT_WALL_ESCALATION_KIND,
+  parseSessionProbe,
+  SESSION_PROBE_TOKEN_BUDGET,
+  sessionProbeWalls,
   sessionTokensFromLog,
   type EnvironmentWall
 } from "./sessionCapability.js";
@@ -91,10 +102,10 @@ export interface ManagedProductionTickOptions {
   /**
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
-   * no tokens are spent. The worker supplies `probeSessionCapability`; absent,
+   * no tokens are spent. The worker supplies `probeWorkerCapability`; absent,
    * no preflight runs.
    */
-  sessionCapability?: (workspace: string) => EnvironmentWall[];
+  workerCapability?: (workspace: string) => EnvironmentWall[];
   /**
    * Re-stamp the preservation transport heartbeat between per-Project steps.
    * The tick blocks the event loop for minutes, so the worker's own 5s timer
@@ -1326,11 +1337,12 @@ function recordRepairBudgetExhaustedEscalation(
   db: Database.Database,
   input: { actionKey: string; attempts: number; lastError: string | null; now: Date; log: (message: string) => void }
 ): string {
-  const wall = db.prepare("SELECT message FROM production_operator_escalations WHERE action_key = ? AND kind = ?").get(
+  const wall = db.prepare("SELECT message FROM production_operator_escalations WHERE action_key = ? AND kind IN (?, ?)").get(
     input.actionKey,
-    ENVIRONMENT_WALL_ESCALATION_KIND
+    ENVIRONMENT_WALL_ESCALATION_KIND,
+    BUDGET_EXHAUSTED_ESCALATION_KIND
   ) as { message: string } | undefined;
-  // A named environment wall already explains this exhaustion; never replace it with the generic row.
+  // A named environment wall or token-ceiling stop already explains this exhaustion; never replace it with the generic row.
   if (wall) return wall.message;
   const remedy = `Repair the underlying problem, then run \`arcadia production reset-repair-budget ${input.actionKey}\`.`;
   const reason = `Repair budget exhausted for ${input.actionKey} after ${input.attempts} failed launch attempt(s); most recent error: ${input.lastError ?? "unknown"}. ${remedy}`;
@@ -1689,7 +1701,8 @@ export function runManagedProductionTick(
           const { stopped, failed } = enforceSessionLifetime(db, {
             session: lease, tmux, now, stalled: activity.stalled,
             stallDeadlineMs: PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs,
-            headless: existsSync(sessionLogPath(workspace, lease.id))
+            headless: existsSync(sessionLogPath(workspace, lease.id)),
+            tokenCeilingBreach: sessionTokenCeilingBreach(db, { workspace, session: lease })?.message ?? null
           });
           if (stopped) {
             stoppedThisTick = true;
@@ -1741,6 +1754,16 @@ export function runManagedProductionTick(
         // recorded completion settlement with more work after it (Issue
         // #994): a continuation could only refuse "Action is already done";
         // the terminal guards take it instead (`recoverTerminalHandoff`).
+        // A Session over its platform token ceiling is recorded as stopped by
+        // it (also when it exited on its own): the receipt then names
+        // `budget_exhausted` with the ceiling and both token counts.
+        if (!lease.stop_reason) {
+          const overCeiling = sessionTokenCeilingBreach(db, { workspace, session: lease });
+          if (overCeiling) {
+            db.prepare("UPDATE agent_sessions SET stop_reason = ?, updated_at = ? WHERE id = ?").run(overCeiling.message, now.toISOString(), lease.id);
+            lease.stop_reason = overCeiling.message;
+          }
+        }
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const result = reconcileSessionExit({
@@ -2143,7 +2166,7 @@ function attemptProjectLaunch(
   // the same wall (the first production run: ~11.1M input tokens, no diff).
   // Refused here, before any Session is prepared; one named blocker, no repair
   // attempt counted because nothing was launched.
-  const walls = input.options.sessionCapability?.(input.workspace) ?? [];
+  const walls = input.options.workerCapability?.(input.workspace) ?? [];
   if (walls.length > 0) {
     const named = describeEnvironmentWalls(actionKey, walls, "preflight");
     const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
@@ -2176,7 +2199,7 @@ function attemptProjectLaunch(
       providerSignIn: input.options.providerSignIn,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
-      sessionCapability: input.options.sessionCapability,
+      workerCapability: input.options.workerCapability,
       // Clear a stale sign-in blocker the moment sign-in is confirmed, not
       // only on full launch success: a later, unrelated launch failure (a
       // repair-worthy defect, counted against the budget) must not leave
@@ -2278,7 +2301,7 @@ function attemptProjectLaunch(
       // metadata clears it, so it escalates the same way rather than
       // retrying the same refusal forever (the fate `planning_required` was
       // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
-      // A launch-side capability wall (assertSessionCapability, e.g. a read-only
+      // A launch-side capability wall (assertWorkerCapability, e.g. a read-only
       // profile sandbox the tick preflight cannot see) is one named blocker, not
       // a silent per-tick refusal.
       const environmentWall = rawCode === "session_environment_wall";
@@ -2366,7 +2389,7 @@ export function recordSessionExitAccounting(
   input: {
     workspace: string;
     projectSlug: string;
-    session: { id: string; action_id: string | null; worktree_path: string; launch_revision?: string | null; base_revision: string | null };
+    session: { id: string; action_id: string | null; worktree_path: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
     outcome: string;
     candidateRevision: string | null;
     now: Date;
@@ -2386,13 +2409,46 @@ export function recordSessionExitAccounting(
          VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
   }
+  // The Session's own first-step probe is the only truthful capability evidence,
+  // matched by this Session's recorded nonce. A passing probe is logged with its
+  // recorded budget here rather than on the reconcile receipt: that receipt is
+  // written by session reconciliation before this accounting runs.
+  const probe = parseSessionProbe(text, readSessionProbeNonce(input.workspace, input.session.id));
+  if (probe?.ok && probe.checks.every((check) => check.ok)) {
+    input.log(`Session probe passed for ${actionKey} in ${probe.ms ?? "?"} ms (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
+  }
   if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
-  const walls = detectEnvironmentWalls(text);
+  // A failed check ends the attempt even though the Session never got to edit.
+  const probeWalls = sessionProbeWalls(probe);
+  const walls = [...probeWalls, ...detectEnvironmentWalls(text).filter((wall) => !probeWalls.some((hit) => hit.wallClass === wall.wallClass))];
+  const breach = tokens
+    ? decideTokenCeilingBreach(tokens, resolveSessionTokenCeiling(db, {
+        workspace: input.workspace, session: { provider: input.session.provider ?? "", model: input.session.model ?? "" }
+      }).ceiling)
+    : null;
+  if (breach) {
+    // Over the platform ceiling: one named blocker, the budget set to its limit
+    // so the pre-launch check never relaunches, whether or not a wall is also named.
+    const named = describeBudgetExhausted(actionKey, breach, walls.map((wall) => wall.wallClass));
+    const at = input.now.toISOString();
+    const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+    db.prepare(
+      `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at)
+         VALUES (@action_key, @attempts, @last_error, @at, @at)
+       ON CONFLICT(action_key) DO UPDATE SET
+         attempts = @attempts, last_error = @last_error, last_attempt_at = @at, updated_at = @at`
+    ).run({ action_key: actionKey, attempts, last_error: named.message, at });
+    const newlyDetected = recordOperatorEscalation(db, {
+      actionKey, kind: BUDGET_EXHAUSTED_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
+    });
+    if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${BUDGET_EXHAUSTED_ESCALATION_KIND}): ${named.message}`);
+    return;
+  }
   if (walls.length === 0) return;
   const startRevision = input.session.launch_revision ?? input.session.base_revision;
   const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
-  if (!noDiff) return;
-  const named = describeEnvironmentWalls(actionKey, walls, "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
+  if (!noDiff && probeWalls.length === 0) return;
+  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
   const at = input.now.toISOString();
   const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   db.prepare(
@@ -2480,6 +2536,32 @@ export function getProductionRepairAttempts(db: Database.Database, actionKey: st
   return getRepairAttempts(db, actionKey);
 }
 
+/** The kind of the escalation currently recorded against an Action, or null when it has none. */
+export function getProductionOperatorEscalationKind(db: Database.Database, actionKey: string): string | null {
+  ensureProductionTickTables(db);
+  const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  return row?.kind ?? null;
+}
+
+/**
+ * Every escalation kind this module can record, assembled from the constants the recording sites use, so
+ * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
+ */
+export const EMITTED_ESCALATION_KINDS: readonly string[] = [
+  ENVIRONMENT_WALL_ESCALATION_KIND,
+  BUDGET_EXHAUSTED_ESCALATION_KIND,
+  "repair_budget_exhausted",
+  "dependency_unresolved",
+  "no_validation_commands",
+  OPERATOR_GATE_ESCALATION,
+  TERMINAL_CANDIDATE_ESCALATION,
+  PLANNER_ATTEMPTS_EXHAUSTED,
+  ...ATTEMPT_LINEAGE_ESCALATIONS,
+  ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,
+  ...VERDICT_WAIT_ESCALATIONS,
+  ...Object.values(STALLED_PLANNING_GATES).map((gate) => gate.kind)
+];
+
 /**
  * Reset a repository's exhausted repair budget after an operator has fixed
  * the underlying problem, so the next tick attempts admission again rather
@@ -2499,7 +2581,7 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
     | { kind: string }
     | undefined;
-  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
+  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
     clearOperatorEscalation(db, actionKey);
   }
   return { reviewStepsCleared };

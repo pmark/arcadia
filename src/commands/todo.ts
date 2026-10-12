@@ -21,6 +21,8 @@ import { resolveDispatch, resolveReadySet, type ReadySetResolution } from "../do
 import { discoverDocs, withDocsSnapshot } from "../docs/discover.js";
 import { listOperatorTasks, type OperatorTask } from "../docs/operatorTasks.js";
 import { listOperatorEscalations, type OperatorEscalation } from "../production/tick.js";
+import { listOpenRedAlerts } from "../production/redAlerts.js";
+import { blockerRemedyFor } from "../production/blockerRemedies.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary } from "../domain/types.js";
 import { ACTION_CLARIFICATION_INTENT } from "./review.js";
@@ -1062,7 +1064,19 @@ function readWithWorkspace(
       evidence: new Map()
     };
 
-    const escalations = listOperatorEscalations(db);
+    // The two platform-raised scope stops are blockers like any escalation: listed with the registry's existing control
+    // (Turn production Off on /production). Keyed `<project>/<alert id>`; they are never an Action's escalation row.
+    const scopeAlerts: OperatorEscalation[] = listOpenRedAlerts(db)
+      .filter((alert) => alert.trigger === "scope_successor_held" || alert.trigger === "scope_pointer_mismatch")
+      .map((alert) => ({
+        actionKey: `${alert.projectSlug}/${alert.id}`,
+        kind: alert.trigger,
+        message: alert.detail,
+        remedy: blockerRemedyFor(alert.trigger)?.consequence ?? null,
+        firstDetectedAt: alert.firstSeenAt,
+        lastSeenAt: alert.lastSeenAt
+      }));
+    const escalations = [...listOperatorEscalations(db), ...scopeAlerts];
     const escalationsOf = (slug: string): OperatorEscalation[] =>
       escalations.filter((row) => splitActionKey(row.actionKey).project.toLowerCase() === slug.toLowerCase());
 

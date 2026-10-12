@@ -28,8 +28,14 @@ describe("acceptance criteria on every Plan Action", () => {
     expect(result.doc).toBeNull();
     expect(result.errors.some((e) => e.field.startsWith("actions[0].acceptance_criteria"))).toBe(true);
   });
-  it.each(["Works correctly.", "The product is high-quality.", "The product is excellent.", "Improve the product so every user loves it.", "The UI is beautiful.", "The feature will delight users.", "The product has a nice design.", "Complete", "Pass", "Required", "Visible", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
+  it.each(["Works correctly.", "The product is high-quality.", "The product is excellent.", "Improve the product so every user loves it.", "The UI is beautiful.", "The feature will delight users.", "The product has a nice design.", "Complete", "Pass", "Required", "Visible", "Reset", "Reset counter", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
     expect(validateAcceptanceCriteria([criterion])).not.toEqual([]);
+  });
+  it.each(["Criterion A", "The second step happens.", "The Action is finished.", "The candidate wibbles as intended."])("keeps unknown clauses outside the observable grammar: %s", (criterion) => {
+    expect(validateAcceptanceCriteria([criterion])).toContainEqual(expect.objectContaining({
+      index: 0, message: expect.stringContaining("no observable assertion")
+    }));
+    expect(parseDoc("criteria.md", "/tmp/criteria.md", plan([criterion])).doc).toBeNull();
   });
   it("rejects normalized duplicate conditions", () => {
     expect(validateAcceptanceCriteria(["The command exits zero.", " the COMMAND exits zero "])).toContainEqual(expect.objectContaining({ index: 1 }));
@@ -38,6 +44,7 @@ describe("acceptance criteria on every Plan Action", () => {
     const criteria = [
       "Running pnpm test tests/migration.test.ts exits zero; two migrations leave exactly one status column.",
       "Proof exists.",
+      "A resumed Plan resets only its own counter; other Plans are untouched.",
       "p95<=100ms",
       "A probe fixture returns environment_wall within its 1,000 input tokens probe token budget and records exactly one launch.",
       "Opening /todo exposes the registered reset-repair-budget operator script.",

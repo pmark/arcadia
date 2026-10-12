@@ -121,7 +121,7 @@ actions:
     clarification: clarified
     confidence: high
     source: Approved plan
-    acceptance_criteria: [The result is observable.]
+    acceptance_criteria: [The generated story contains the configured Action references.]
     depends_on: []
     decisions: []
     references: [src/clarification.ts]

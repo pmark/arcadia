@@ -11,7 +11,7 @@ import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { assertSessionCapability, type EnvironmentWall } from "../production/sessionCapability.js";
+import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
   canonicalPath,
@@ -120,10 +120,10 @@ export interface GuardedLaunchInput {
   /**
    * Session capability preflight (workspace write, host validation,
    * preservation), run before any admission, worktree or process so a wall
-   * costs no tokens. Defaults to `probeSessionCapability`, skipped under
+   * costs no tokens. Defaults to `probeWorkerCapability`, skipped under
    * Vitest like the provider prerequisites; a caller or test may override.
    */
-  sessionCapability?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
+  workerCapability?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
   /**
@@ -339,11 +339,11 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // A selection reused from an immutable packet carries no profile; its sandbox is then unknown (null).
   // An already-durable own lease is returned (or resumed) above, before this
   // point: reused and resumed leases are covered only by the exit-side no-diff stop.
-  assertSessionCapability({
+  assertWorkerCapability({
     workspace: input.workspace,
     actionLabel: `${preview.projectSlug}/${preview.actionId}`,
     profileSandbox: preview.selection.profile?.sandbox ?? null,
-    override: input.sessionCapability
+    override: input.workerCapability
   });
   // Checked from this worker process's own context, before issueAdmission
   // reserves a concurrency slot and before any worktree or lease is created:

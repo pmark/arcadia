@@ -112,6 +112,20 @@
       "path": "docs/agent-guidance/standard-harness.md",
       "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
       "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
+    },
+    {
+      "id": "session-roles-and-briefs",
+      "trigger": "launch subagent, driver brief, session ledger row, model per role",
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
+      "sha256": "a7d65e49c0c57d874838e19bf83307002336ec59b33939e3ffd3d43f922e8b46"
+    },
+    {
+      "id": "native-app-sessions",
+      "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
+      "path": "docs/agent-guidance/native-app-sessions.md",
+      "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
+      "sha256": "aa6e1e5f1a807309d14a4ee6728bffe844759d35e5c23cb7f203dcc596616693"
     }
   ]
 }

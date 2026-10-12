@@ -18,6 +18,7 @@ import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { writeHeadlessClaudeSettings } from "./headlessPermissions.js";
+import { issueSessionProbe } from "./sessionProbeCommand.js";
 import { sessionRecordingFor, wrapRecordedLaunch, type SessionRecording } from "./sessionRecording.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { OperatorGateResolution } from "../docs/operatorGate.js";
@@ -1384,6 +1385,10 @@ function buildProviderLaunch(
   registry?: ModelTierRegistry
 ): { command: string; args: string[] } {
   const continuation = getSessionContinuation(db, session);
+  // Fails closed (named refusal) when the packaged probe script is missing.
+  const probe = workspace
+    ? issueSessionProbe({ workspace, sessionId: session.id, worktreePath: session.worktree_path })
+    : null;
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,
     projectSlug: session.project_slug,
@@ -1400,6 +1405,7 @@ function buildProviderLaunch(
     model: session.model,
     registry,
     headless,
+    probeCommand: probe?.command,
     partners: readProjectPartners(db, {
       projectSlug: session.project_slug,
       excludeSessionId: session.id,
@@ -1463,7 +1469,8 @@ function buildProviderLaunch(
     const settingsFile = writeHeadlessClaudeSettings({
       workspace,
       sessionId: session.id,
-      validationCommands: decodeStringArray(metadata?.validation_commands)
+      validationCommands: decodeStringArray(metadata?.validation_commands),
+      probeCommand: probe?.command
     });
     args = [
       "--print", "--output-format", "stream-json", "--verbose",

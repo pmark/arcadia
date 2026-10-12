@@ -65,7 +65,7 @@ describe("manual Go preservation binding", () => {
   it("refuses a declared browser measurement before preparing another manual candidate", () => {
     const f = fixture();
     const plan = path.join(f.repo, "docs/plans/proof.md");
-    writeFileSync(plan, readFileSync(plan, "utf8").replace("Marker is ready.", "Mobile Lighthouse results are recorded."));
+    writeFileSync(plan, readFileSync(plan, "utf8").replace("marker.txt contains the ready marker followed by a newline.", "Mobile Lighthouse results are recorded."));
     fixtureGit(f.repo, ["add", "docs/plans/proof.md"]);
     fixtureGit(f.repo, ["commit", "-m", "declare browser requirement"]);
     const before = fixtureGit(f.repo, ["worktree", "list", "--porcelain"]);
@@ -397,7 +397,7 @@ describe("manual Go preservation binding", () => {
       fm.actions.push({
         id: "second-action", title: "Second action", status: "open", responsibility: "agent",
         effort: "session", clarification: "clarified", next_action: "Do the second thing.",
-        expected_artifact: "second.txt", acceptance_criteria: ["Second thing done."],
+        expected_artifact: "second.txt", acceptance_criteria: ["second.txt contains the second marker."],
         depends_on: [], decisions: [], references: []
       });
       fm.current_action = "second-action";
@@ -460,7 +460,7 @@ describe("manual Go preservation binding", () => {
       expect(() => assertManualPreservationBinding(db, binding)).toThrow(/definitions changed/);
       db.prepare("UPDATE project_metadata SET validation_commands = '[\"node check.mjs\"]'").run();
       const plan = path.join(f.repo, "docs/plans/proof.md");
-      writeFileSync(plan, readFileSync(plan, "utf8").replace("Marker is ready.", "Different requirement."));
+      writeFileSync(plan, readFileSync(plan, "utf8").replace("marker.txt contains the ready marker followed by a newline.", "marker.txt contains a changed marker followed by a newline."));
       expect(() => assertManualPreservationBinding(db, binding)).toThrow(/Action authority changed/);
     });
   });
