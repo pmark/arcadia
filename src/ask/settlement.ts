@@ -25,6 +25,8 @@ import {
   getActiveWorktreeReservation,
   type ActionClaimFence
 } from "../sessions/index.js";
+import { getSessionExitReceipt } from "../sessions/reconciliation.js";
+import { activeScopeCoveringPlan, assertNoActiveScopeOverPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -518,6 +520,10 @@ export function settleAgentAsk(db: Database.Database, input: {
           addMilestoneMutations(fileMutations, projectPath, activePlanPath, proposal.normalized.desiredResult);
           effects.push(`Updated Project ${project.slug} and active Plan ${plan.slug} Milestone.`);
         } else if (targetRef === "status") {
+          // Pausing or completing a Project under an Active scope would strand the run (A6).
+          if (proposal.normalized.desiredResult.trim().toLowerCase() !== "active") {
+            assertNoActiveScopeOverPlan(db, project.slug, plan.slug, `setting the Project status to ${proposal.normalized.desiredResult}`);
+          }
           const before = readFileSync(projectPath, "utf8");
           fileMutations.push({ path: projectPath, before, after: replaceTopLevelField(before, "status", proposal.normalized.desiredResult) });
           effects.push(`Updated Project ${project.slug} Status to ${proposal.normalized.desiredResult}.`);
@@ -556,15 +562,33 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (input.activate) {
             if (proposedActions.length || input.responsibility) throw validationError("Activate an existing Plan separately from Action amendments.");
             if (target.slug === plan.slug || target.status !== "draft") throw validationError("Activation requires a different draft Plan.");
+            // Scope-drift guard (A6): the previous Plan is the Active production scope's Plan, so
+            // re-pointing the Project would strand the run. Refuse before any file is written.
+            const covering = activeScopeCoveringPlan(db, project.slug, plan.slug);
+            if (covering) {
+              throw validationError(
+                `Plan ${plan.slug} is inside the Active production scope; activating ${target.slug} would strand it. Nothing was changed.`,
+                { activePlan: covering.planKey, requestedPlan: `${project.slug}/${target.slug}`, remedy: SCOPE_DRIFT_REMEDY }
+              );
+            }
             if (!input.action || !input.model || !input.placement) throw validationError("Activation requires --action, --model and an explicit queue placement.");
             if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(input.model)) throw validationError("Activation model must be a CLI model identifier.");
             if (input.effort && !["low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort)) throw validationError("Activation effort is unsupported.");
             const activeRun = db.prepare(`SELECT er.id FROM execution_runs er JOIN work_items wi ON wi.id = er.work_item_id
               WHERE wi.project_id = ? AND er.status IN ('pending_execution', 'running') LIMIT 1`).get(project.id);
-            const activeSession = db.prepare(`SELECT id FROM agent_sessions
-              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input') LIMIT 1`).get(project.id);
-            if (activeRun || activeSession || queue.running.some((entry) => entry.projectId === project.id) ||
-                queue.attention.some((entry) => entry.projectId === project.id && entry.attentionKind === "session")) {
+            // A Session that has ended and already holds a durable exit receipt is reconciled:
+            // it can no longer run, so it must not pin activation (reconcile never changes its status).
+            const isDeadReceipted = (sessionId: string): boolean => {
+              const row = db.prepare("SELECT ended_at FROM agent_sessions WHERE id = ?").get(sessionId) as { ended_at: string | null } | undefined;
+              return !!row?.ended_at && !!getSessionExitReceipt(db, sessionId);
+            };
+            const blockingSessionEntry = (entry: { projectId: string | null; id: string }): boolean =>
+              entry.projectId === project.id && !(entry.id.startsWith("session:") && isDeadReceipted(entry.id.slice("session:".length)));
+            const activeSession = (db.prepare(`SELECT id FROM agent_sessions
+              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input')`).all(project.id) as Array<{ id: string }>)
+              .some((row) => !isDeadReceipted(row.id));
+            if (activeRun || activeSession || queue.running.some(blockingSessionEntry) ||
+                queue.attention.some((entry) => entry.attentionKind === "session" && blockingSessionEntry(entry))) {
               throw validationError("Reconcile the Project's existing Session or Run before activating another Plan.");
             }
             const selected = target.actions.find((action) => action.id === input.action);
@@ -892,7 +916,11 @@ export function settleAgentAsk(db: Database.Database, input: {
         // explicit queue may name exactly one approved successor Plan; activate
         // it here rather than leaving the pointer on a finished Plan. The Action
         // being completed is ignored so it is never offered as its own successor.
-        const activation = planComplete && completingActivePlan
+        // A10/A6 guard: when an Active production scope covers the completing Plan, auto-activating
+        // its successor would re-point the Project and strand the scope, so the successor stays
+        // queued behind and the pointer stays put until production is turned Off.
+        const scopeHoldsPlan = planComplete && completingActivePlan && !!activeScopeCoveringPlan(db, project.slug, targetPlan.slug);
+        const activation = planComplete && completingActivePlan && !scopeHoldsPlan
           ? resolvePlanActivation({
               repoRoot,
               projectSlug: project.slug,
@@ -924,7 +952,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (activatedNext) {
           effects.push(`Plan ${targetPlan.slug} is complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`);
         } else if (planComplete) {
-          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
+          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}${scopeHoldsPlan ? ` Successor activation was held: the Plan is inside the Active production scope. ${SCOPE_DRIFT_REMEDY}` : ""}`);
         } else if (completingActivePlan) {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         } else {

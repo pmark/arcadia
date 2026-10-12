@@ -18,9 +18,12 @@ import { agentAskFingerprint, normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
-import { createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createCodexInvocation, createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
+import { ensureSessionExitReceiptsTable } from "../src/sessions/reconciliation.js";
 import type { PlanDoc } from "../src/docs/types.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
+import { ensureRedAlertTables, listOpenRedAlerts, observeScopePointer } from "../src/production/redAlerts.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -67,6 +70,118 @@ describe("Agent Ask settlement", () => {
       workspace, proposal: "activate-production", requestId: "active-run", disposition: "accepted",
       activate: true, action: "first", model: "gpt-6-astra", top: true
     })).toThrow(/Reconcile/);
+  });
+
+  describe("activation guard and reconciled Sessions (#1284 F13)", () => {
+    const activationOptions = (requestId: string) => ({ workspace: "", proposal: "activate-production", requestId,
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra", top: true });
+
+    it("ignores a dead Session that has ended and already holds an exit receipt", () => {
+      const { workspace } = activationFixture();
+      seedSession(workspace, { id: "session_dead_receipted", status: "needs_input", endedAt: "2026-01-01T00:10:00.000Z", receipt: true });
+      const options = { ...activationOptions("dead-receipted"), workspace };
+      const preview = runAgentAskSettleCommand(options);
+      expect(() => runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint })).not.toThrow();
+    });
+
+    it("still blocks on a needs_input Session that has no exit receipt", () => {
+      const { workspace } = activationFixture();
+      seedSession(workspace, { id: "session_needs_input", status: "needs_input", endedAt: "2026-01-01T00:10:00.000Z", receipt: false });
+      expect(() => runAgentAskSettleCommand({ ...activationOptions("needs-input-no-receipt"), workspace })).toThrow(/Reconcile/);
+    });
+
+    it("still blocks on a running Session with no end and no exit receipt", () => {
+      const { workspace } = activationFixture();
+      seedSession(workspace, { id: "session_running", status: "running", endedAt: null, receipt: false });
+      expect(() => runAgentAskSettleCommand({ ...activationOptions("running-no-receipt"), workspace })).toThrow(/Reconcile/);
+    });
+  });
+
+  describe("scope-drift guard (A6, #1284)", () => {
+    const options = (requestId: string, workspace: string) => ({ workspace, proposal: "activate-production", requestId,
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra", top: true });
+    const activateScope = (workspace: string, plans: string[]) => withDatabase(workspace, (db) => {
+      const scope = normalizeProductionScope({ intent: "Run demo-plan.", projects: ["demo"], plans, actions: [],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+      activateProduction(db, { requestId: `scope-${plans.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
+
+    it("refuses activation of another Plan inside an Active scope, names STOP, and writes nothing", () => {
+      const { workspace, repo } = activationFixture();
+      activateScope(workspace, ["demo/demo-plan"]);
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+      let message = "";
+      try { runAgentAskSettleCommand(options("scope-refused", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
+      expect(message).toMatch(/inside the Active production scope/);
+      expect(message).toMatch(/Turn production Off/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+      expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+      expect(discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan")).toMatchObject({ status: "active" });
+      expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("demo-plan");
+    });
+
+    it("fails closed with a retry remedy when the production policy cannot be read, writing nothing", () => {
+      const { workspace, repo } = activationFixture();
+      withDatabase(workspace, (db) => { db.prepare("UPDATE production_policy SET scope_json = '{not json' WHERE id = 'workspace'").run(); });
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      let message = "";
+      try { runAgentAskSettleCommand(options("scope-unreadable", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
+      expect(message).toMatch(/could not be read/);
+      expect(message).toMatch(/Retry/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    });
+
+    it("refuses a project_update that pauses the Project under an Active scope, and allows it outside one", () => {
+      const { workspace, repo } = activationFixture();
+      const ask = (id: string, status: string) => runAgentAskPreviewCommand({ workspace, request: [
+        "agent_ask: v1", `request_id: ${id}`, "project: demo", "intent: project_update", "target_ref: status",
+        `desired_result: ${status}` ].join("\n") });
+      activateScope(workspace, ["demo/demo-plan"]);
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      const refused = ask("pause-scoped", "paused");
+      expect(() => runAgentAskSettleCommand({ workspace, proposal: refused.data.proposal.id, requestId: "settle-pause-scoped", disposition: "accepted" }))
+        .toThrow(/Active production scope/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+    });
+
+    it("still activates when the scope covers a different Plan", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/some-other-plan"]);
+      const opts = options("scope-elsewhere", workspace);
+      const preview = runAgentAskSettleCommand(opts);
+      expect(() => runAgentAskSettleCommand({ ...opts, apply: true, preview: preview.data.receipt.previewFingerprint })).not.toThrow();
+    });
+
+    it("lets a dead receipted Session through (F13) when the Plan is outside the scope", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/some-other-plan"]);
+      seedSession(workspace, { id: "session_dead_receipted_scope", status: "needs_input", endedAt: "2026-01-01T00:10:00.000Z", receipt: true });
+      const opts = options("scope-f13", workspace);
+      const preview = runAgentAskSettleCommand(opts);
+      expect(() => runAgentAskSettleCommand({ ...opts, apply: true, preview: preview.data.receipt.previewFingerprint })).not.toThrow();
+    });
+
+    it("raises one red alert when the pointer leaves the Active scope and clears when it returns", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/demo-plan"]);
+      withDatabase(workspace, (db) => {
+        ensureRedAlertTables(db);
+        const ctx = { db, workspace, projectSlug: "demo", now: new Date("2026-10-12T00:00:00Z") };
+        observeScopePointer(ctx, { activePlanSlug: "demo-plan" });
+        expect(listOpenRedAlerts(db)).toHaveLength(0);
+        observeScopePointer(ctx, { activePlanSlug: "production" });
+        observeScopePointer(ctx, { activePlanSlug: "production" });
+        const open = listOpenRedAlerts(db);
+        expect(open).toHaveLength(1);
+        expect(open[0]).toMatchObject({ trigger: "scope_pointer_mismatch", projectSlug: "demo", occurrences: 2 });
+        expect(open[0].detail).toMatch(/demo\/production.*Turn production Off/s);
+        observeScopePointer(ctx, { activePlanSlug: "demo-plan" });
+        expect(listOpenRedAlerts(db)).toHaveLength(0);
+      });
+    });
   });
 
   it("replaces only the activated Project's queue segment", () => {
@@ -2524,6 +2639,37 @@ function fixture(): { workspace: string; repo: string } {
     });
   });
   return { workspace, repo };
+}
+
+function seedSession(workspace: string, input: { id: string; status: string; endedAt: string | null; receipt: boolean }): void {
+  withDatabase(workspace, (db) => {
+    const project = getProjectBySlug(db, "demo")!;
+    const work = createWorkItemRecord(db, { projectId: project.id, title: "Session work", rawInput: "Session work",
+      queue: "work_queue", workClassification: "agent", nextAction: "Finish" });
+    createCodexInvocation(db, {
+      id: `packet_${input.id}`, purpose: "build", agentProfile: "claude_build", workspaceScope: "/tmp/seed-session",
+      command: "claude", promptPath: "prompts/p.md", jsonlOutputPath: "prompts/p.jsonl",
+      finalMessagePath: "prompts/p-final.md", status: "packet_created", workItemId: work.id
+    });
+    const at = "2026-01-01T00:00:00.000Z";
+    db.prepare(`INSERT INTO agent_sessions (
+        id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id, work_item_id,
+        packet_id, packet_path, packet_sha256, authorizing_decisions_json, execution_profile_json,
+        provider_profile, provider, model, effort, provider_mapping_id, provider_binding_id,
+        base_revision, branch, worktree_path, provider_session_id, display_name, terminal_transport,
+        tmux_session_name, host, status, prepared_at, started_at, ended_at, exit_status, created_at, updated_at
+      ) VALUES (?, ?, 'demo', '/tmp/seed-session-repo', 'docs/plans/p.md', 'p', 'existing', ?,
+        ?, 'prompts/p.md', 'sha', '[]', NULL, 'claude_build', 'claude-code-cli', 'sonnet', 'high', NULL, NULL,
+        '0000000', ?, '/tmp/seed-session-worktree', ?, 'Seed session', 'tmux', ?, 'host.local', ?, ?, ?, ?, NULL, ?, ?)`)
+      .run(input.id, project.id, work.id, `packet_${input.id}`, `claude/${input.id}`, input.id, `t-${input.id}`,
+        input.status, at, at, input.endedAt, at, at);
+    if (input.receipt) {
+      ensureSessionExitReceiptsTable(db);
+      db.prepare(`INSERT INTO session_exit_receipts (id, session_id, request_id, outcome, reason, next_action_json, created_at, updated_at)
+        VALUES (?, ?, ?, 'incomplete_resumable', 'Dead Session was reconciled.', '{}', ?, ?)`)
+        .run(`exit_${input.id}`, input.id, `req-${input.id}`, at, at);
+    }
+  });
 }
 
 function activationFixture() {

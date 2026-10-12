@@ -644,6 +644,15 @@ function gateDecisionIdOf(message: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * The review item a stalled planning gate names (`Launch of <key> is held by pending review item <id>: ...`,
+ * src/production/tick.ts), anchored at the start: that item carries the one-click button, so it is shown once, blocking.
+ */
+function gateReviewItemIdOf(message: string): string | null {
+  const match = /^Launch of \S+ is held by pending review item ([A-Za-z0-9][A-Za-z0-9_.-]*?):\s/.exec(message);
+  return match ? match[1] : null;
+}
+
 /** Which Project a `production_operator_escalations.action_key` (`<project>/<action>`) belongs to; the rest is the Action. */
 function splitActionKey(actionKey: string): { project: string; actionId: string } {
   const slash = actionKey.indexOf("/");
@@ -659,12 +668,18 @@ function splitActionKey(actionKey: string): { project: string; actionId: string 
 function withEscalations(found: TodoItem[], rows: OperatorEscalation[], projectSlug: string): TodoItem[] {
   if (rows.length === 0) return found;
   const decisions = listedIds(found, "decision");
+  const reviews = listedIds(found, "review_item");
   const promoted = new Set<string>();
   const added: TodoItem[] = [];
   for (const row of rows) {
     const gate = gateDecisionIdOf(row.message);
     if (gate !== null && decisions.has(gate)) {
       promoted.add(`decision:${projectSlug || "unknown"}/${gate}`);
+      continue;
+    }
+    const reviewGate = gateReviewItemIdOf(row.message);
+    if (reviewGate !== null && reviews.has(reviewGate)) {
+      promoted.add(`review_item:${projectSlug || "unknown"}/${reviewGate}`);
       continue;
     }
     added.push({

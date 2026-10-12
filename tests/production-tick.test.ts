@@ -39,6 +39,7 @@ import {
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
   listOperatorEscalations,
+  listProductionAttemptTokens,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
 } from "../src/production/tick.js";
 import { listPendingAgentAskNotifications, listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
@@ -280,6 +281,95 @@ describe("runManagedProductionTick", () => {
         .get("test-project/define-contract"))).toEqual({attempts: 1});
   });
 
+  it("refuses before launch, spending nothing, when the Session capability preflight names a wall (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      sessionCapability: () => [{ wallClass: "workspace_write", evidence: "attempt to write a readonly database", remedy: "Grant workspace write." }]
+    }));
+    const first = tick().projects.find((p) => p.projectSlug === "test-project")?.launch;
+    expect(first?.outcome).toBe("refused");
+    expect(first?.reason).toContain("no tokens were spent");
+    tick();
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations.filter((e) => e.kind === "environment_wall")).toHaveLength(1);
+    expect(escalations[0]?.remedy).toContain("Grant workspace write.");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM production_repair_attempts").get())).toEqual({ n: 0 });
+  });
+
+  it("names a launch-side capability wall as one environment_wall blocker, not a silent per-tick refusal (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      // The tick's own preflight passes no profile sandbox; only the launch does.
+      sessionCapability: (_workspace: string, sandbox?: string | null) => sandbox === undefined ? []
+        : [{ wallClass: "workspace_write" as const, evidence: "read-only sandbox", remedy: "Use a workspace-write profile." }]
+    }));
+    expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    tick();
+    expect(tmux.launches).toHaveLength(0);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "environment_wall", remedy: expect.stringContaining("Use a workspace-write profile.") });
+  });
+
+  it("replays a no-diff Session that hit workspace-write and sandbox refusals: one named blocker, no second launch (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    mkdirSync(path.dirname(sessionLogPath(fixture.workspace, first.id)), { recursive: true });
+    writeFileSync(sessionLogPath(fixture.workspace, first.id), [
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 11_100_000, output_tokens: 4000 } }),
+      "arcadia: SQLITE_WORKSPACE_WRITE_DENIED: attempt to write a readonly database",
+      "go test ./... -> operation not permitted (sandbox refused 81 of 84 tests)",
+      "preservation launcher produced no receipt"
+    ].join("\n"));
+    tmux.live.delete(first.tmux_session_name);
+    for (let i = 0; i < 4; i++) tick();
+    expect(tmux.launches).toHaveLength(1);
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ kind: "environment_wall" });
+    expect(escalations[0]?.message).toContain("workspace_write");
+    expect(escalations[0]?.message).toContain("11100000 input tokens");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
+      .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, cachedInputTokens: 0, outputTokens: 4000 })]);
+    const rendered = renderProductionStatusSuccess({
+      ok: true, command: "production.status", workspace: fixture.workspace,
+      data: {
+        read: { status: "unreadable", reason: "fixture" } as never,
+        display: { state: "off", label: "Off", observedAt: fixture.now.toISOString() },
+        liveAdmissions: 0, admissions: [], baseBranchAdvances: [], launchBlockers: [], operatorEscalations: [],
+        attemptTokens: withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db)),
+        offConsequence: "Off.", controlDeadlines: PRODUCTION_CONTROL_DEADLINES
+      },
+      artifacts: [], warnings: []
+    }).join("\n");
+    expect(rendered).toContain("test-project/define-contract");
+    expect(rendered).toContain("11100000 uncached input, 0 cached input, 4000 output");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") as { attempts: number }).attempts))
+      .toBeGreaterThanOrEqual(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+  });
+
   it("clears the no-progress retry count when a resumed candidate actually advances", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -441,7 +531,7 @@ describe("runManagedProductionTick", () => {
     expect(thirdTickLog).not.toHaveBeenCalledWith(expect.stringMatching(/Launch refused/));
   });
 
-  it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), and never escalates it to the operator", () => {
+  it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), then names the approval wait once after the dwell (A3)", () => {
     const fixture = preparedFixture({ skipPacket: true });
     const tmux = new FakeTmux();
     activatePolicy(fixture);
@@ -484,23 +574,32 @@ describe("runManagedProductionTick", () => {
 
     // The stall is resolved automatically the very first tick that discovers
     // it -- no human or agent had to notice and run `arcadia work plan` by
-    // hand -- and it is never escalated, on this or any later tick, because
-    // the resulting Decision is already operator-visible through Review.
+    // hand. The resulting approval wait is not escalated while it is young,
+    // then exactly once after the dwell (A3: the Review item alone hid it).
     expect(ticks[0].log).toHaveBeenCalledWith(
       expect.stringMatching(/Automatically requested a Decision-gated planning run for test-project\/define-contract/)
     );
-    for (const { log } of ticks) {
-      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
-    }
+    expect(ticks[0].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[2].log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract .*planning_run_approval_pending/));
     // Only the first tick does the work; once the Decision exists, later
     // ticks find `planning_approval_pending` and never re-invoke `work plan`.
     expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
     expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
 
-    // The pre-existing escalation seeded above is gone: it cleared through the
-    // tick's ordinary escalate/clear branch (the resolved kind is no longer in
-    // the non-self-resolving set), not a bespoke clearing path.
-    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    // The seeded planning_required row was replaced, in the one-row-per-Action
+    // table, by the named approval wait: exactly one blocker, one ping.
+    const named = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(named).toHaveLength(1);
+    expect(named[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_run_approval_pending" });
+    expect(named[0].message).toMatch(/planning-run approval for test-project\/define-contract/);
+    expect(named[0].remedy).toMatch(/Press "Approve planning run" on \/todo \(review_item:test-project\/review_/);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT kind, todo_key FROM operator_pings").all()
+    ) as Array<{ kind: string; todo_key: string }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0]).toMatchObject({ kind: "attention" });
+    expect(pings[0].todo_key).toMatch(/^review_item:test-project\/review_/);
 
     // The approval gate itself is preserved, not bypassed: exactly one open
     // CodexPlanningRunApproval Decision exists, unapproved, for this Action.
@@ -511,6 +610,132 @@ describe("runManagedProductionTick", () => {
         .all(workItem.id)
     ) as Array<{ resolved_intent: string; status: string }>;
     expect(decisions).toEqual([{ resolved_intent: "CodexPlanningRunApproval", status: "open" }]);
+  });
+
+  it.each([
+    ["CodexPlanningArtifactAcceptance", "planning_artifact_acceptance_pending", "Accept plan"],
+    ["CodexPlanningRetryApproval", "planning_run_approval_pending", "Approve planning retry"]
+  ])("names a %s wait once with its button and one ping (A3)", (intent, kind, button) => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const at = new Date(fixture.now.getTime() + 1_000).toISOString();
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'approved' WHERE work_item_id = ?").run(workItem.id);
+      db.prepare(`INSERT INTO review_items (id, work_item_id, status, decision_needed, recommendation, source_input, proposed_action, resolved_intent,
+          confidence_label, confidence, missing_fields, context_json, created_at, updated_at)
+        SELECT 'review_gate_wait', work_item_id, 'open', 'Gate wait', NULL, source_input, proposed_action, ?,
+          confidence_label, confidence, missing_fields, context_json, ?, ? FROM review_items WHERE work_item_id = ? LIMIT 1`)
+        .run(intent, at, at, workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind });
+    expect(rows[0].message).toContain("review item review_gate_wait");
+    expect(rows[0].remedy).toContain(`Press "${button}" on /todo`);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT todo_key FROM operator_pings").all()) as Array<{ todo_key: string }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0].todo_key).toBe("review_item:test-project/review_gate_wait");
+  });
+
+  it("never names a gate that is only an agent-review-flagged deferred item, which /todo hides (A3)", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: vi.fn(),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    tick(0);
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'deferred', context_json = ? WHERE work_item_id = ?")
+        .run(JSON.stringify({ agentReview: { status: "flagged" } }), workItem.id);
+    });
+    tick(70_000);
+    tick(140_000);
+    tick(150_000);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT 1 FROM operator_pings").all())).toHaveLength(0);
+  });
+
+  it("keeps the tick's gate button labels equal to the dashboard's one-click controls (A3 drift guard)", async () => {
+    const { PLANNING_REVIEW_CONTROLS } = await import("../apps/dashboard/lib/approvals.js");
+    const { STALLED_PLANNING_GATES } = await import("../src/production/tick.js");
+    for (const [intent, gate] of Object.entries(STALLED_PLANNING_GATES)) {
+      expect(PLANNING_REVIEW_CONTROLS[intent]?.approveLabel, intent).toBe(gate.button);
+    }
+  });
+
+  it("names the artifact-validation wait after the run approval, one ping per gate (A3)", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) => {
+      const log = vi.fn();
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log,
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+      return log;
+    };
+    const escalations = () => withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    const pings = () => withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT message FROM operator_pings").all()) as Array<{ message: string }>;
+
+    tick(0); // prepares the planning-run approval
+    expect(escalations()).toHaveLength(0); // young wait: not escalated yet
+    expect(pings()).toHaveLength(0);
+    tick(70_000); // the approval wait's own episode starts here
+    expect(escalations()).toHaveLength(0);
+    tick(140_000);
+    expect(escalations().map((row) => row.kind)).toEqual(["planning_run_approval_pending"]);
+    expect(pings()).toHaveLength(1);
+
+    // The run was approved and produced its artifact: a validation item is open.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const at = new Date(fixture.now.getTime() + 90_000).toISOString();
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE review_items SET status = 'approved' WHERE work_item_id = ?").run(workItem.id);
+      db.prepare(`INSERT INTO review_items (id, work_item_id, status, decision_needed, recommendation, source_input, proposed_action, resolved_intent,
+          confidence_label, confidence, missing_fields, context_json, created_at, updated_at)
+        SELECT 'review_validation_wait', work_item_id, 'open', 'Validate the planning artifact', NULL, source_input, proposed_action,
+          'codex_planning_artifact_validation', confidence_label, confidence, missing_fields, context_json, ?, ? FROM review_items WHERE work_item_id = ? LIMIT 1`)
+        .run(at, at, workItem.id);
+    });
+    tick(150_000);
+    tick(220_000);
+    const second = escalations();
+    expect(second).toHaveLength(1);
+    expect(second[0]).toMatchObject({ kind: "planning_artifact_validation_pending" });
+    expect(second[0].message).toContain("review item review_validation_wait: planning-artifact validation for test-project/define-contract");
+    expect(second[0].remedy).toContain('Press "Retry planning" on /todo');
+    // Same gate on later ticks: still one row, no second ping for it.
+    tick(250_000);
+    tick(280_000);
+    expect(escalations()).toHaveLength(1);
+    expect(pings()).toHaveLength(2);
+
+    // Answered: the row clears on the first tick after the gate is gone.
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE review_items SET status = 'approved' WHERE id = 'review_validation_wait'").run());
+    tick(310_000);
+    expect(escalations().map((row) => row.kind)).not.toContain("planning_artifact_validation_pending");
   });
 
   it("prunes an escalation left over from an Action that is no longer current", () => {
@@ -2314,6 +2539,54 @@ describe("a Session that dies on a provider sign-in failure (Issue #1155)", () =
     expect(tmux.launches).toHaveLength(2);
   });
 
+  it("consumes no development attempt: three sign-in deaths spaced by the hold never exhaust the lineage, and the fourth and fifth launches run (Issue #1243)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const developmentAttempts = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT ordinal, status, request_id FROM session_role_attempts WHERE role = 'development' ORDER BY ordinal").all() as Array<{ ordinal: number; status: string; request_id: string }>);
+    const HOLD = SIGN_IN_FAILURE_HOLD_MS;
+
+    // Dies at t=1m, t=17m and t=33m: each exit is reconciled one minute after its launch.
+    const first = launchThenExit(fixture, tmux, SIGNED_OUT);
+    tickAt(fixture, tmux, MIN);
+    const lineage = developmentAttempts();
+    expect(lineage).toEqual([{ ordinal: 1, status: "running", request_id: expect.any(String) }]);
+    const dead = [first.id];
+    for (const launchAt of [MIN + HOLD, 2 * MIN + 2 * HOLD]) {
+      const relaunched = launchThenExit(fixture, tmux, SIGNED_OUT, launchAt);
+      dead.push(relaunched.id);
+      tickAt(fixture, tmux, launchAt + MIN);
+      // The same live attempt, its ordinal unconsumed, after every sign-in death.
+      expect(developmentAttempts()).toEqual(lineage);
+      expect(blockers(fixture)[0]).toMatchObject({ code: "provider_sign_in_failed" });
+    }
+    expect(new Set(dead).size).toBe(3);
+    expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null });
+
+    // t=48m: the fourth launch is not refused attempt_limit_exhausted; it resumes the same attempt.
+    const fourthAt = 3 * MIN + 3 * HOLD;
+    const fourth = projectOf(tickAt(fixture, tmux, fourthAt));
+    expect(fourth.launch).toMatchObject({ attempted: true, outcome: "launched" });
+    expect(tmux.launches).toHaveLength(4);
+    expect(developmentAttempts()).toEqual(lineage);
+    expect(blockers(fixture)).toEqual([]);
+    expect(repairAttempts(fixture)).toEqual([]);
+
+    // That one dies on the same dead login too; t=63m launches a fifth, still the one attempt.
+    const fourthSession = lease(fixture)!;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(fourthSession.id));
+    mkdirSync(path.dirname(sessionLogPath(fixture.workspace, fourthSession.id)), { recursive: true });
+    writeFileSync(sessionLogPath(fixture.workspace, fourthSession.id), JSON.stringify({ type: "result", is_error: true, result: SIGNED_OUT }) + "\n");
+    tmux.live.delete(fourthSession.tmux_session_name);
+    tickAt(fixture, tmux, fourthAt + MIN);
+    expect(developmentAttempts()).toEqual(lineage);
+    const fifth = projectOf(tickAt(fixture, tmux, fourthAt + MIN + HOLD));
+    expect(fifth.launch).toMatchObject({ attempted: true, outcome: "launched" });
+    expect(tmux.launches).toHaveLength(5);
+    expect(developmentAttempts()).toEqual(lineage);
+  });
+
   it("still counts any other failed_execution against the failed-Run budget and records no sign-in blocker", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -2327,6 +2600,9 @@ describe("a Session that dies on a provider sign-in failure (Issue #1155)", () =
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, session.id))!.reason).not.toContain("sign-in");
     expect(scheduling(fixture).failedRuns).toBe(1);
     expect(blockers(fixture)).toEqual([]);
+    // Unlike a sign-in death, it did consume its development attempt.
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT ordinal, status FROM session_role_attempts WHERE role = 'development'").all())).toEqual([{ ordinal: 1, status: "failed" }]);
   });
 });
 
@@ -2434,6 +2710,105 @@ describe("red alerts from the worker tick", () => {
     tmux.paneOutput.set(session.tmux_session_name, "$ claude wrote a file\n");
     tickAt(fixture, tmux, stalledAt + 180_000);
     expect(openAlerts(fixture)).toHaveLength(0);
+  });
+
+  describe("scope drift (A6, #1284)", () => {
+    const successorPlan = `---
+arcadia: v1
+type: plan
+slug: plan-b
+project: test-project
+status: active
+milestone: Prove the continuous worker tick
+current_action: b1
+token_impact: medium
+token_budget: One bounded Session; all checks are deterministic.
+recommended_model: sonnet
+recommended_reasoning_effort: high
+updated: 2026-08-30
+actions:
+  - id: b1
+    title: Define the successor contract
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Define the bounded successor contract.
+    expected_artifact: docs/b1.md
+    acceptance_criteria:
+      - The successor contract exists.
+    decisions: ["0001"]
+---
+
+# Plan B
+`;
+    function finishScopedPlan(fixture: ReturnType<typeof preparedFixture>) {
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8")
+        .replace("status: active", "status: complete").replace("current_action: define-contract", "current_action: null")
+        .replace("    status: open", "    status: done"));
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "finish scoped plan"]);
+    }
+    const activeScopeFor = (plans: string[]) => normalizeProductionScope({
+      intent: "Prove scope drift.", projects: ["test-project"], plans, actions: [], providers: ["claude-code-cli"],
+      maxConcurrentSessions: 1, mechanicalTransitions: ["acceptance", "pointer"]
+    });
+    function activate(fixture: ReturnType<typeof preparedFixture>, plans: string[]) {
+      const scope = activeScopeFor(plans);
+      withDatabase(fixture.workspace, (db) => activateProduction(db, {
+        requestId: `scope-${plans.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator"
+      }));
+    }
+    const pointer = (fixture: ReturnType<typeof preparedFixture>) =>
+      /active_plan: (\S+)/.exec(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8"))![1];
+
+    it("holds the successor Plan while the scope covers the finished Plan: no activation, one alert, no failure", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/copy-proof"]);
+      const tmux = new FakeTmux();
+      const first = tickAt(fixture, tmux, 0, true);
+      const second = tickAt(fixture, tmux, 5_000, true);
+      expect(pointer(fixture)).toBe("copy-proof");
+      expect(first.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      expect(second.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      const alerts = openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].occurrences).toBe(2);
+      expect(alerts[0].detail).toMatch(/Turn production Off/);
+    });
+
+    it("still activates the successor when the Active scope covers a different Plan", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/some-other-plan"]);
+      tickAt(fixture, new FakeTmux(), 0, true);
+      expect(pointer(fixture)).toBe("plan-b");
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held")).toHaveLength(0);
+    });
+
+    it("raises scope_pointer_mismatch through the tick when the pointer leaves the scope, and clears when it returns", () => {
+      const fixture = preparedFixture();
+      activate(fixture, ["test-project/copy-proof"]);
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      const original = readFileSync(projectPath, "utf8");
+      writeFileSync(projectPath, original.replace("active_plan: copy-proof", "active_plan: plan-b").replace("current_action: define-contract", "current_action: b1"));
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "re-point to plan-b"]);
+      const tmux = new FakeTmux();
+      tickAt(fixture, tmux, 0, true);
+      const raised = openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch");
+      expect(raised).toHaveLength(1);
+      expect(raised[0].detail).toMatch(/test-project\/plan-b.*Turn production Off/s);
+      writeFileSync(projectPath, original);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "restore pointer"]);
+      tickAt(fixture, tmux, 5_000, true);
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch")).toHaveLength(0);
+    });
   });
 
   it("raises one reconcile_failed alert per Session, updates it on repeat, and clears once a reconcile succeeds", () => {

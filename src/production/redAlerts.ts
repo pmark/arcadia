@@ -2,10 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { discoverDocs } from "../docs/discover.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { insertSettlementRow, type AgentAskSettlementReceipt } from "../ask/settlement.js";
 import type { ManagedProductionLaunchAttempt } from "./tick.js";
-import { PRODUCTION_CONTROL_DEADLINES } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, SCOPE_DRIFT_REMEDY } from "./policy.js";
 import { classifySession } from "./sessionSignals.js";
 import type { TmuxAdapter } from "../sessions/index.js";
 
@@ -22,7 +23,9 @@ export const RED_ALERT_TRIGGERS = [
   "admission_refused_consecutive",
   "session_stalled",
   "reconcile_failed",
-  "repair_budget_repeat"
+  "repair_budget_repeat",
+  "scope_pointer_mismatch",
+  "scope_successor_held"
 ] as const;
 export type RedAlertTrigger = (typeof RED_ALERT_TRIGGERS)[number];
 
@@ -447,5 +450,86 @@ export function observeRepairBudget(ctx: AlertContext, launch: ManagedProduction
     trigger: "repair_budget_repeat",
     detail: () => `Launch failed ${attempts.attempts} time(s), exhausting the repair budget; most recent error: ${attempts.last_error ?? launch.reason}`,
     now: ctx.now
+  });
+}
+
+/**
+ * A Project the Active policy covers whose current Plan is not among the
+ * policy's Plans has drifted out of scope (the run is stranded). Raises one
+ * alert per Project naming the mismatch and the one-click remedy; clears once
+ * the pointer is back inside the scope, the Project leaves it, or production stops.
+ */
+export function observeScopePointer(ctx: AlertContext, input: { activePlanSlug: string | null }): void {
+  const { db, projectSlug, now } = ctx;
+  const read = readProductionPolicySafely(db);
+  const scope = read.status === "ok" && read.policy.desiredState === "active" ? read.policy.scope : null;
+  const planKey = input.activePlanSlug ? `${projectSlug}/${input.activePlanSlug}` : null;
+  if (!scope || !scope.projects.includes(projectSlug) || scope.plans.length === 0 || (planKey !== null && scope.plans.includes(planKey))) {
+    clearRedAlerts(db, { projectSlug, trigger: "scope_pointer_mismatch", now });
+    return;
+  }
+  raiseRedAlert(db, {
+    workspace: ctx.workspace,
+    projectSlug,
+    actionKey: null,
+    sessionId: null,
+    trigger: "scope_pointer_mismatch",
+    detail: () =>
+      `Project ${projectSlug}'s current Plan is ${planKey ?? "none"}, outside the Active production scope's Plans (${scope.plans.join(", ")}); the run is stranded. ` +
+      `Remedy: ${SCOPE_DRIFT_REMEDY} Then restore the pointer to a scoped Plan.`,
+    now
+  });
+}
+
+/**
+ * Once per tick per Project: observe both scope-drift conditions from the
+ * Project's own documents (never from a launch transition), so neither depends
+ * on which branch the tick took. Raises/clears `scope_pointer_mismatch` and
+ * `scope_successor_held`; with no Active scope covering the Project both clear.
+ */
+export function observeScopeDriftForProject(ctx: AlertContext, repoRoot: string): void {
+  const docs = discoverDocs(repoRoot).docs;
+  const project = docs.find((doc) => doc.type === "project" && doc.slug.toLowerCase() === ctx.projectSlug.toLowerCase());
+  const activePlanSlug = project && project.type === "project" ? project.activePlan : null;
+  const plan = activePlanSlug
+    ? docs.find((doc) => doc.type === "plan" && doc.project === ctx.projectSlug && doc.slug === activePlanSlug)
+    : null;
+  // A Project whose documents cannot be resolved says nothing about its pointer.
+  if (!project) return;
+  observeScopePointer(ctx, { activePlanSlug });
+  const held = plan?.type === "plan" && plan.status !== "active" && plan.status !== "draft";
+  observeScopeSuccessorHeld(ctx, { activePlanSlug, planFinished: !!held });
+}
+
+/**
+ * Clears a held-successor alert once its condition no longer holds (scope not
+ * Active, not covering the Plan, or the Plan not finished). It never raises:
+ * only an actual refused activation does (`raiseScopeSuccessorHeld`), so a
+ * finished Plan with no queued successor is not an alert.
+ */
+export function observeScopeSuccessorHeld(ctx: AlertContext, input: { activePlanSlug: string | null; planFinished: boolean }): void {
+  const { db, projectSlug, now } = ctx;
+  const read = readProductionPolicySafely(db);
+  const scope = read.status === "ok" && read.policy.desiredState === "active" ? read.policy.scope : null;
+  const planKey = input.activePlanSlug ? `${projectSlug}/${input.activePlanSlug}` : null;
+  if (!scope || !planKey || !input.planFinished || !scope.projects.includes(projectSlug) || !scope.plans.includes(planKey)) {
+    clearRedAlerts(db, { projectSlug, trigger: "scope_successor_held", now });
+  }
+}
+
+/** A successor activation was refused by the scope guard: one alert per Project until the hold lifts. */
+export function raiseScopeSuccessorHeld(ctx: AlertContext, input: { planKey: string }): void {
+  const { db, projectSlug, now } = ctx;
+  const planKey = input.planKey;
+  raiseRedAlert(db, {
+    workspace: ctx.workspace,
+    projectSlug,
+    actionKey: null,
+    sessionId: null,
+    trigger: "scope_successor_held",
+    detail: () =>
+      `Plan ${planKey} finished inside the Active production scope, so activating its successor is held to avoid stranding the scope. ` +
+      `Remedy: ${SCOPE_DRIFT_REMEDY}`,
+    now
   });
 }

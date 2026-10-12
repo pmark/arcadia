@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-11
+updated: 2026-10-12
 ---
 
 # Mission Log: Arcadia
@@ -2281,3 +2281,73 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1240
+
+- **Did:** PR 1240 is open: Decision 0121 asks whether sessions get a friction-watching supervisor, an arcadia bug utility and an insight harvest - https://github.com/pmark/arcadia/pull/1240
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1250
+
+- **Did:** PR #1250 stops an expired login from stranding an Action: a sign-in death now leaves its development attempt live, so signing in again resumes it instead of needing a governed amendment after about 33 minutes. Reviewed (pass); fast-rehearsal is running; it waits for your merge because it changes repair-budget accounting. https://github.com/pmark/arcadia/pull/1250
+- **Result:** Operator request 2026-10-11: prep #1243. Closes #1243; the attention-queue escalation for a login dead for hours is filed as #1249.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-issue-triage-plan-2026-10-11
+
+- **Did:** Activated every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route at snapshot-open-issues-and-build-packets.
+- **Result:** Operator-settled Plan transition. Previous Plan governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a remains draft with completion state preserved. Operator directed activation after PR 1246 merged; first Action is a light-tier snapshot.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-plans-project-route-2026-10-11
+
+- **Did:** Activated add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans at add-plans-project-route.
+- **Result:** Operator-settled Plan transition. Previous Plan every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route remains draft with completion state preserved. Operator asked for /plans/PROJECT to be a prioritized governed Action that runs soon (capture_6123f2ba). Activation replaces the active Plan; the issue-triage Plan stays draft with completion state preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1259-decision-answer-2026-10-11
+
+- **Did:** Your call: Decision 0122 (the spend bound for the first production run on Arcadia) is drafted in PR #1259 with four options and consequences; I recommend Codex only, gate on, attended first run. It was fact-checked and corrected. Merge the PR so it lands, then answer 0122 on the dashboard. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask correct-spend-bound-decision-number-2026-10-11
+
+- **Did:** Correction: the spend bound Decision is 0123, not 0122. Main already had a different 0122 (production admission follows an operator-owned Project, answered in #1260), so PR #1259 renumbers mine to 0123; it is still open and unanswered. An earlier notice named it 0122. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Parallel Decision-number allocation race (#1187). The Decision was unanswered and unmerged, so it was renumbered in place; CodeRabbit wording on provider substitution was also verified and fixed.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-seven-bug-plan-2026-10-11
+
+- **Did:** Activated seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and at keep-claim-when-passed-attempt-receipt-is-unparseable.
+- **Result:** Operator-settled Plan transition. Previous Plan add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans remains draft with completion state preserved. Operator instruction in chat, 2026-10-11: 'activate the bug plan', given together with the answer to Decision 0123 (Codex only, gate on, attended first run). No Action content changes; this Ask carries the settle-time --activate. Consequence accepted by the operator: the currently active Plan add-plans-project-route returns to draft with Action completion state unchanged.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-completed-governance-overlap-recovery-2026-10-11
+
+- **Did:** Activated recover-completed-governance-overlap-in-protected-go at reconcile-completed-governance-overlap.
+- **Result:** Operator-settled Plan transition. Previous Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and remains draft with completion state preserved. The operator explicitly instructed in this chat: Authorize acceptance and activation of the repair Plan, resolve the guidance gate, and launch through the managed host route. Yes, publish the technical Issue to pmark/arcadia. Draft Plan creation was canonically accepted at 3b21b7469. Issue #1280 is now published. The canonical node --import tsx scripts/check-agent-guidance.ts passed with zero problems; the earlier full-file hash comparison was incorrect because guidanceFingerprint hashes trimmed procedure bodies or managed regions. No source/index edit is needed and no stale-guidance refusal is claimed. Select only reconcile-completed-governance-overlap with the configured heavy tier and high effort; preserve every unfinished Action of the previous bug Plan and other Projects relative queue order. This activation grants no new production policy, packet approval, install, restart, production access, base push or publication authority. Managed launch must validate its own scope, packet, capacity, ownership and session binding; existing active bug-run policy is not silently reused for this repair.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Agent Ask activate-production-hardening-batch-2026-10-12
+
+- **Did:** Activated production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the at stop-spending-into-an-environment-wall.
+- **Result:** Operator-settled Plan transition. Previous Plan recover-completed-governance-overlap-in-protected-go remains draft with completion state preserved. Operator answered activate the batch Plan in chat on 2026-10-12. Accepted consequence: the governance-overlap Plan returns to draft with its Action unharmed and is re-activated after the batch merges.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Completed arcadia/stop-spending-into-an-environment-wall
+
+- **Did:** Completed Action arcadia/stop-spending-into-an-environment-wall from accepted evidence (Candidate e56fa5e7ac1bdf30aba5bf120548e0a902be4c3d).
+- **Result:** Every declared acceptance criterion was accepted as met: "An attempt that exits incomplete_resumable with no diff and a recorded environment blocker is counted by the repair budget on the first occurrence, raises exactly one named blocker, and is not relaunched automatically."; "A replay of the 2026-10-12 00:40Z Session (no diff, workspace write denied, sandbox test refusals) yields one named blocker and no second launch."; "Tokens per attempt are recorded and visible on the Action."; "Focused tests for the preflight and the repair-budget path exist and the production tick tests and pnpm fast-rehearsal pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/refuse-a-session-before-launch-when-its-sandbox-cannot-write immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-stop-spending-finished-slice-2026-10-12-v2).

@@ -41,6 +41,63 @@ describe("build packet to-do rows", () => {
   });
 });
 
+describe("planning review item to-do rows", () => {
+  const item = (id: string, origin: string, extra: Partial<OperatorTodoItem> = {}): OperatorTodoItem => ({
+    ...packet, key: `review_item:alpha/${id}`, origin, sourceRef: `review_items:${id}`, ...extra
+  });
+  const rows = {
+    run: item("rv-run", "CodexPlanningRunApproval"),
+    retry: item("rv-retry", "CodexPlanningRetryApproval"),
+    validation: item("rv-val", "codex_planning_artifact_validation", { blocking: true }),
+    acceptance: item("rv-acc", "CodexPlanningArtifactAcceptance")
+  };
+  const list = buildApprovals({ asks: [], decisions: [], todo: { items: [...Object.values(rows), clarification], unavailable: [] } });
+  const byId = (id: string) => list.approvals.find((a) => a.id === id)!;
+
+  it("gives each planning origin a control with its own label and an accurate consequence, and leaves other origins read-only", () => {
+    expect(byId("rv-run")).toMatchObject({ readOnly: false, buildPacket: false, reviewControl: { approveLabel: "Approve planning run", noExecute: false } });
+    expect(byId("rv-retry")).toMatchObject({ readOnly: false, buildPacket: false, reviewControl: { approveLabel: "Approve planning retry", noExecute: false } });
+    expect(byId("rv-val")).toMatchObject({ readOnly: false, blocking: true, reviewControl: { approveLabel: "Retry planning", noExecute: true } });
+    expect(byId("rv-acc")).toMatchObject({ readOnly: false, reviewControl: { approveLabel: "Accept plan", noExecute: true, canReject: false } });
+    expect(byId("rv2")).toMatchObject({ readOnly: true, reviewControl: null });
+    for (const id of ["rv-run", "rv-retry", "rv-val", "rv-acc"]) {
+      expect(byId(id).cost).not.toMatch(/no execution starts/i);
+    }
+    expect(byId("rv-run").cost).toMatch(/queues/i);
+    expect(byId("rv-acc").cost).toMatch(/no Run starts/i);
+  });
+
+  it("keeps a blocking one first", () => {
+    expect(list.approvals[0].id).toBe("rv-val");
+  });
+
+  it("keeps a stale planning row read-only", () => {
+    for (const row of Object.values(rows)) {
+      const stale = buildApprovals({ asks: [], decisions: [], todo: { items: [{ ...row, staleReason: "its work_item is done" }], unavailable: [] } });
+      expect(stale.approvals[0]).toMatchObject({ readOnly: true, reviewControl: null });
+    }
+  });
+
+  it("approves a planning run without noExecute so its Run is queued, and the other kinds with noExecute", () => {
+    // `review approve --no-execute` on a planning run approves it without queueing the Run, which would strand it.
+    expect(requestFor(byId("rv-run"), { label: "Approve", reviewAction: "approve" })).toEqual({
+      url: "/api/review-action", body: { id: "rv-run", action: "approve" }
+    });
+    expect(requestFor(byId("rv-retry"), { label: "Approve", reviewAction: "approve" })).toEqual({
+      url: "/api/review-action", body: { id: "rv-retry", action: "approve" }
+    });
+    expect(requestFor(byId("rv-val"), { label: "Approve", reviewAction: "approve" })).toEqual({
+      url: "/api/review-action", body: { id: "rv-val", action: "approve", noExecute: true }
+    });
+    expect(requestFor(byId("rv-acc"), { label: "Approve", reviewAction: "approve" })).toEqual({
+      url: "/api/review-action", body: { id: "rv-acc", action: "approve", noExecute: true }
+    });
+    expect(requestFor(byId("rv-val"), { label: "Reject", reviewAction: "reject" })).toEqual({
+      url: "/api/review-action", body: { id: "rv-val", action: "reject" }
+    });
+  });
+});
+
 describe("Agent Ask accept eligibility", () => {
   it("annotates and sorts asks that would not apply below the actionable ones, and makes no claim for unevaluated ones", () => {
     const asks = [ask("p-blocked", "2026-10-09T00:00:00Z"), ask("p-ok", "2026-10-01T00:00:00Z"), ask("p-unknown", "2026-10-02T00:00:00Z")];

@@ -598,6 +598,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   if (session.stop_reason && outcome !== "accepted_completion") {
     reason = `Stopped by Arcadia: ${session.stop_reason} ${reason}`;
   }
+  // The one definition of a sign-in-classified exit: the structured
+  // `providerFailure` below, the tick's launch hold and the attempt's settlement
+  // all key on it, so none re-derives it differently.
+  const providerSignInExit = Boolean(signInFailure) && reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX);
   const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
   const suppressHandoff = outcome === "incomplete_resumable" && input.suppressLeaseHandoff;
@@ -614,7 +618,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     evidence_json: JSON.stringify({
       ...evidence,
       ...(session.stop_reason ? { stopReason: session.stop_reason } : {}),
-      ...(signInFailure && reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX) ? { providerFailure: { kind: "sign_in", provider: session.provider, message: signInFailure } } : {})
+      ...(providerSignInExit ? { providerFailure: { kind: "sign_in", provider: session.provider, message: signInFailure } } : {})
     }),
     next_action_json: JSON.stringify(nextMove),
     lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
@@ -661,8 +665,11 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     ).run(row);
     // The development attempt's terminal state commits with this receipt or
     // not at all, so a restart either replays both or neither; a resumable
-    // exit leaves the attempt live for the next launch to resume.
-    if (hasRoleAttemptTable(db)) settleDevelopmentAttemptForExit(db, { session, outcome, exitReceiptId: row.id, now: new Date(now) });
+    // exit leaves the attempt live for the next launch to resume, and so does
+    // a provider sign-in failure, which did no work and spends no ordinal.
+    if (hasRoleAttemptTable(db)) {
+      settleDevelopmentAttemptForExit(db, { session, outcome, exitReceiptId: row.id, now: new Date(now), providerSignInFailure: providerSignInExit });
+    }
     input.onReceiptWrite?.(row);
   });
   write();

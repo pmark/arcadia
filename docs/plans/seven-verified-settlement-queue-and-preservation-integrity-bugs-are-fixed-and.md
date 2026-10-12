@@ -142,6 +142,8 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1160"]
 questions: []
 decisions: []
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: medium
 ---
 
 # Seven verified settlement, queue and preservation-integrity bugs are fixed and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.

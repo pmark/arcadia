@@ -85,6 +85,113 @@ describe("single-Action reopen rendering (pure)", () => {
     expect(singleActionProblems("chain-step-12", "run-9")).toEqual([]);
   });
 
+  describe("a completed chain (Plan complete, no pointers anywhere)", () => {
+    const donePlan = [
+      "---", "arcadia: v1", "type: plan", "slug: p", "project: x", "status: complete", "milestone: Run the bounded rehearsal", "token_impact: small", "token_budget: bounded", "updated: 2026-10-10", "actions:",
+      "  - id: write-start-marker", "    title: T1", "    status: done", "    responsibility: agent", "    next_action: old one", "    acceptance_criteria:", "      - c1", "    depends_on: []",
+      "  - id: transform-start-marker", "    title: T2", "    status: done", "    responsibility: agent", "    next_action: old two", "    depends_on: [write-start-marker]",
+      "---", "", "# Body", ""
+    ].join("\n");
+    const doneProject = ["---", "arcadia: v1", "type: project", "slug: x", "status: active", "milestone: Run the bounded rehearsal", "active_plan: p", "updated: 2026-10-10", "---", "", "# X", ""].join("\n");
+    const input = { actionId: "write-start-marker", runTag: "t1", resetDate: "2026-10-11" };
+
+    it("reopens the Action: Plan active, current_action after milestone, PROJECT.md current_action after active_plan; nothing else differs", () => {
+      const out = renderSingleActionReopen(donePlan, doneProject, input);
+      const before = donePlan.split("\n");
+      const after = out.plan.split("\n");
+      expect(after).toHaveLength(before.length + 1);
+      const milestoneAt = before.indexOf("milestone: Run the bounded rehearsal");
+      expect(after[milestoneAt + 1]).toBe("current_action: write-start-marker");
+      const withoutPointer = [...after.slice(0, milestoneAt + 1), ...after.slice(milestoneAt + 2)];
+      const changed = withoutPointer.map((line, i) => (line === before[i] ? null : [before[i], line])).filter((pair) => pair !== null);
+      expect(changed).toEqual([
+        ["status: complete", "status: active"],
+        ["updated: 2026-10-10", "updated: 2026-10-11"],
+        ["    status: done", "    status: open"],
+        ["    next_action: old one", expect.stringContaining("    next_action: Implement MARKER.md containing exactly the line")]
+      ]);
+      // The other Action and the acceptance criteria are byte for byte.
+      expect(after.slice(after.indexOf("  - id: transform-start-marker"))).toEqual(before.slice(before.indexOf("  - id: transform-start-marker")));
+      expect(after).toContain("      - c1");
+      expect(out.statusBefore).toBe("done");
+      expect(out.planUpdatedBefore).toBe("2026-10-10");
+
+      const projectBefore = doneProject.split("\n");
+      const projectAfter = out.project.split("\n");
+      expect(out.projectChanged).toBe(true);
+      expect(projectAfter).toHaveLength(projectBefore.length + 1);
+      expect(projectAfter).toEqual([
+        ...projectBefore.slice(0, projectBefore.indexOf("active_plan: p") + 1), "current_action: write-start-marker", "updated: 2026-10-11", ...projectBefore.slice(projectBefore.indexOf("updated: 2026-10-10") + 1)
+      ]);
+      expect(out.projectUpdatedBefore).toBe("2026-10-10");
+    });
+
+    it("refuses a reopen of the same tag again, and a PROJECT.md it cannot anchor a pointer in", () => {
+      const once = renderSingleActionReopen(donePlan, doneProject, input);
+      expect(() => renderSingleActionReopen(once.plan, doneProject, input)).toThrow(/already carries/);
+      expect(() => renderSingleActionReopen(donePlan, doneProject.replace("active_plan: p\n", ""), input)).toThrow(/does not carry exactly one current_action: line|active_plan/);
+      expect(() => renderSingleActionReopen(donePlan, doneProject.replace("active_plan: p\n", "active_plan: p\ncurrent_action: a\ncurrent_action: b\n"), input)).toThrow(/exactly one current_action: line/);
+      expect(() => renderSingleActionReopen(donePlan, doneProject.replace("updated: 2026-10-10", "updated: 2026-10-12"), input)).toThrow(/RESET_DATE_BEFORE_RECORD|before the base PROJECT.md|is before/);
+    });
+
+    it("refuses a complete Plan whose milestone: is missing, empty or duplicated", () => {
+      const milestone = "milestone: Run the bounded rehearsal\n";
+      for (const broken of [donePlan.replace(milestone, ""), donePlan.replace(milestone, "milestone:\n"), donePlan.replace(milestone, `${milestone}${milestone}`)]) {
+        expect(() => renderSingleActionReopen(broken, doneProject, input)).toThrow(/milestone: line/);
+      }
+      // An already-active Plan without a pointer keeps today's behaviour: no pointer is invented, the status stays active.
+      const activeNoPointer = donePlan.replace("status: complete", "status: active").replace(milestone, "");
+      const out = renderSingleActionReopen(activeNoPointer, doneProject, input);
+      expect(out.plan).not.toContain("current_action:");
+      expect(out.plan).toContain("status: active");
+    });
+
+    it("refuses unless the rendered Plan ends exactly `status: active`: quoted, commented, trailing-space, draft, superseded and missing spellings refuse; active and complete render", () => {
+      const spell = (status: string | null) => (status === null ? donePlan.replace("status: complete\n", "") : donePlan.replace("status: complete", status));
+      for (const status of ['status: "complete"', "status: complete # x", "status: complete ", "status: draft", "status: superseded", "status:complete", null]) {
+        expect(() => renderSingleActionReopen(spell(status), doneProject, input), String(status)).toThrow(/PLAN_STATUS_NOT_ACTIVE|not exactly "status: active"/);
+        try { renderSingleActionReopen(spell(status), doneProject, input); } catch (error) { expect((error as SingleActionResetError).reason).toBe("PLAN_STATUS_NOT_ACTIVE"); }
+      }
+      // A refused quoted-complete Plan is refused even when PROJECT.md already carries a pointer (nothing else would catch it).
+      expect(() => renderSingleActionReopen(spell('status: "complete"'), doneProject.replace("active_plan: p", "active_plan: p\ncurrent_action: x"), input)).toThrow(/not exactly "status: active"/);
+      expect(renderSingleActionReopen(spell("status: active"), doneProject, input).plan).toMatch(/^status: active$/m);
+      expect(renderSingleActionReopen(spell("status: complete"), doneProject, input).plan).toMatch(/^status: active$/m);
+    });
+
+    it("refuses a complete Plan with another Action not done (it would surface open after the flip), but not when only the reopened one is", () => {
+      const open = donePlan.replace("    status: done\n    responsibility: agent\n    next_action: old two", "    status: open\n    responsibility: agent\n    next_action: old two");
+      expect(open).not.toBe(donePlan);
+      expect(() => renderSingleActionReopen(open, doneProject, input)).toThrow(/transform-start-marker \(open\) is not done/);
+      try { renderSingleActionReopen(open, doneProject, input); } catch (error) { expect((error as SingleActionResetError).reason).toBe("PLAN_SIBLING_NOT_DONE"); }
+      // An active Plan may carry other open Actions (the pre-chain shape): unchanged.
+      expect(renderSingleActionReopen(open.replace("status: complete", "status: active").replace("milestone: Run the bounded rehearsal\n", "milestone: Run the bounded rehearsal\ncurrent_action: transform-start-marker\n"), doneProject, input).plan).toMatch(/^current_action: write-start-marker$/m);
+      expect(renderSingleActionReopen(donePlan, doneProject, input).plan).toContain("current_action: write-start-marker");
+    });
+
+    it("treats an empty `current_action:` line as the existing pointer, and refuses an anchor followed by an indented continuation", () => {
+      const emptyPlan = donePlan.replace("milestone: Run the bounded rehearsal\n", "milestone: Run the bounded rehearsal\ncurrent_action:\n");
+      const planOut = renderSingleActionReopen(emptyPlan, doneProject, input).plan;
+      expect(planOut.match(/^current_action:/gm)).toHaveLength(1);
+      expect(planOut).toMatch(/^current_action: write-start-marker$/m);
+      const emptyProject = doneProject.replace("active_plan: p\n", "active_plan: p\ncurrent_action:\n");
+      const projectOut = renderSingleActionReopen(donePlan, emptyProject, input).project;
+      expect(projectOut.match(/^current_action:/gm)).toHaveLength(1);
+      expect(projectOut).toMatch(/^current_action: write-start-marker$/m);
+      const folded = donePlan.replace("milestone: Run the bounded rehearsal\n", "milestone: >\n  Run the bounded\n  rehearsal\n");
+      expect(() => renderSingleActionReopen(folded, doneProject, input)).toThrow(/continuation line/);
+      expect(() => renderSingleActionReopen(donePlan, doneProject.replace("active_plan: p\n", "active_plan: >\n  p\n"), input)).toThrow(/continuation line/);
+    });
+
+    it("does not touch the pre-chain shapes: an active Plan with a pointer keeps its status and gains no second pointer", () => {
+      const active = donePlan.replace("status: complete", "status: active").replace("actions:", "actions:").replace("---\n\n# Body", "current_action: transform-start-marker\n---\n\n# Body");
+      const out = renderSingleActionReopen(active, doneProject.replace("active_plan: p", "active_plan: p\ncurrent_action: transform-start-marker"), input);
+      expect(out.plan.match(/^current_action: /gm)).toHaveLength(1);
+      expect(out.plan).toMatch(/^current_action: write-start-marker$/m);
+      expect(out.plan).toMatch(/^status: active$/m);
+      expect(out.project.match(/^current_action: /gm)).toHaveLength(1);
+    });
+  });
+
   it("removes only an Action's own artifacts and refuses output it would have to edit out of a shared file", () => {
     const files: Record<string, string> = { "MARKER.md": "three-action rehearsal start\n", "tests/marker.test.mjs": "x", "CHAIN.md": "chain step 04 follows three-action rehearsal verified\nchain step 05 follows chain step 04\n" };
     const read = (file: string) => files[file] ?? null;
@@ -231,6 +338,26 @@ function afterSettledRun(box: Box) {
   return head;
 }
 
+/** What a finished whole chain leaves on main: every Action done, the Plan complete and neither document pointing at an Action. */
+function afterCompletedChain(box: Box) {
+  const planPath = path.join(box.fixture, PLAN_FILE);
+  const plan = readFileSync(planPath, "utf8")
+    .replace(/^( {4}status: ).*$/gm, "$1done")
+    .replace(/^status: .*$/m, "status: complete")
+    .replace(/^current_action: .*\n/m, "")
+    .replace(/^updated: .*$/m, "updated: 2026-10-06");
+  writeFileSync(planPath, plan);
+  const projectPath = path.join(box.fixture, "PROJECT.md");
+  writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace(/^current_action: .*\n/m, "").replace(/^updated: .*$/m, "updated: 2026-10-06"));
+  writeFileSync(path.join(box.fixture, "MARKER.md"), "three-action rehearsal start\n");
+  const head = commitAll(box.fixture, "Settled whole chain");
+  git(box.fixture, ["push", "-q", "origin", "main"]);
+  expect((runDocsSyncCommand({ workspace: box.workspace, project: "three-action-rehearsal", apply: true }).data as unknown as { errorCount: number }).errorCount).toBe(0);
+  // Settlement marks the work items done in the workspace as well (as afterSettledRun does), so the reopen must really flip one back.
+  withDatabase(box.workspace, (db) => { db.prepare("UPDATE work_items SET status = 'done' WHERE doc_ref LIKE ?").run("plan/autonomous-three-action-rehearsal#%"); });
+  return head;
+}
+
 const bareRef = (box: Box, ref: string) => git(box.bare, ["rev-parse", ref]);
 const planText = (box: Box, ref: string) => git(box.bare, ["show", `${ref}:${PLAN_FILE}`]);
 const workItemStatus = (box: Box) => withDatabase(box.workspace, (db) => (db.prepare("SELECT status FROM work_items WHERE doc_ref = ?").get(`plan/autonomous-three-action-rehearsal#write-start-marker`) as { status: string } | undefined)?.status);
@@ -306,6 +433,38 @@ describe("single-Action reset: behavior", () => {
     expect(box.receipt()).toMatchObject({ outcome: "refused" });
     expect(box.receipt().reason).toContain("already succeeded");
     untouched(box, head, candidate);
+  });
+
+  it("a completed chain (Plan complete, no pointers in either document): reopens write-start-marker, flips the Plan to active, adds both pointers, syncs and queues it", { timeout: 280_000 }, () => {
+    const box = sandbox();
+    const { candidate } = fixtureAtGenesis(box);
+    const base = afterCompletedChain(box);
+    expect(workItemStatus(box)).toBe("done");
+    expect(planText(box, base)).toMatch(/^status: complete$/m);
+    expect(planText(box, base)).not.toMatch(/^current_action: /m);
+    expect(git(box.bare, ["show", `${base}:PROJECT.md`])).not.toMatch(/^current_action: /m);
+    const dry = box.run(["--dry-run", "--run-tag", "t1"]);
+    expect(dry.status, dry.stdout + dry.stderr).toBe(0);
+    expect(dry.stdout).toContain("-status: complete");
+    expect(dry.stdout).toContain("+status: active");
+    expect(dry.stdout).toContain("+current_action: write-start-marker");
+    expect(dry.stdout).toContain("DRY RUN: no refusal");
+    untouched(box, base, candidate);
+
+    const result = box.run(["run", "--run-tag", "t1"]);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const head = git(box.fixture, ["rev-parse", "refs/heads/main"]);
+    expect(git(box.fixture, ["rev-parse", `${head}^`])).toBe(base);
+    expect(git(box.fixture, ["diff", "--name-only", base, head]).split("\n").sort()).toEqual(["MARKER.md", "PROJECT.md", PLAN_FILE].sort());
+    const plan = planText(box, head);
+    expect(plan).toMatch(/^status: active$/m);
+    const lines = plan.split("\n");
+    expect(lines[lines.findIndex((line) => line.startsWith("milestone: ")) + 1]).toBe("current_action: write-start-marker");
+    const project = git(box.bare, ["show", `${head}:PROJECT.md`]).split("\n");
+    expect(project[project.findIndex((line) => line.startsWith("active_plan: ")) + 1]).toBe("current_action: write-start-marker");
+    expect(workItemStatus(box)).toBe("open");
+    expect(runAdvanceQueueCommand({ workspace: box.workspace }).data).toMatchObject({ orderValid: true, unpositionedCount: 0 });
+    expect(box.receipt()).toMatchObject({ outcome: "succeeded", baseHead: base, newHead: head, projectChanged: true, removedFiles: ["MARKER.md"] });
   });
 
   it("resumes a commit made but not pushed: the same arguments re-validate it and push without a second commit", { timeout: 280_000 }, () => {

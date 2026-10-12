@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Arcadia Today",
+  title: { default: "Arcadia", template: "%s · Arcadia" },
   description: "Today's project advantage, Decisions, and Runs in Arcadia",
   appleWebApp: {
     capable: true,

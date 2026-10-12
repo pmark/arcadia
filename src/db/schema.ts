@@ -800,6 +800,10 @@ function ensureSplitIntoColumn(db: Database.Database): void {
   if (!columns.has("split_into_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN split_into_json TEXT").run();
   }
+  // Declared route of a plan Action (`execution: build | plan-run`); NULL keeps keyword routing.
+  if (!columns.has("execution_route")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN execution_route TEXT").run();
+  }
 }
 
 /**

@@ -40,6 +40,8 @@ import {
   getProductionRepairAttempts,
   listLaunchBlockers,
   listOperatorEscalations,
+  listProductionAttemptTokens,
+  type ProductionAttemptTokens,
   listRecentBaseBranchAdvances,
   resetProductionRepairBudget,
   type BaseBranchAdvanceRecord,
@@ -132,6 +134,8 @@ export interface ProductionStatusData {
   launchBlockers: LaunchBlockerRecord[];
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: OperatorEscalation[];
+  /** Tokens recorded per Session attempt, next to each Action, oldest first. */
+  attemptTokens?: ProductionAttemptTokens[];
   /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
   redAlerts: RedAlert[];
   /** The one bounded diagnosis per alert episode, when one ran. */
@@ -188,6 +192,7 @@ export function runProductionStatusCommand(
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
+      attemptTokens: listProductionAttemptTokens(db),
       redAlerts: listOpenRedAlerts(db),
       redAlertDiagnoses: listRedAlertDiagnoses(db),
       inactiveConfiguration: readInactiveConfigurationSafely(db),
@@ -571,6 +576,17 @@ export function renderProductionStatusSuccess(
     }
   }
 
+  const attemptTokens = response.data.attemptTokens ?? [];
+  if (attemptTokens.length > 0) {
+    lines.push(`  Tokens per attempt (${attemptTokens.length}):`);
+    for (const attempt of attemptTokens) {
+      lines.push(
+        `    ${attempt.actionKey} Session ${attempt.sessionId} [${attempt.outcome ?? "unknown"}]: ` +
+          `${attempt.inputTokens} uncached input, ${attempt.cachedInputTokens} cached input, ${attempt.outputTokens} output`
+      );
+    }
+  }
+
   lines.push(`  Off consequence: ${response.data.offConsequence}`);
   return lines;
 }
@@ -597,6 +613,8 @@ export function renderProductionPreviewSuccess(
   ];
   for (const [index, action] of preview.orderedActions.entries()) {
     lines.push(`    ${index + 1}. ${action.actionKey} [${action.state}] ${action.title}`);
+    lines.push(`       Route: ${action.route.kind} (${action.route.declared ? "declared" : "not declared"})`);
+    for (const touch of action.route.operatorTouches) lines.push(`       Operator touch: ${touch}`);
   }
   lines.push("  Activation does not grant:");
   for (const stop of preview.explicitStops) {

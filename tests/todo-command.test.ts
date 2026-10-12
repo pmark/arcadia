@@ -1052,6 +1052,31 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
     expect(data.counts).toMatchObject({ blocking: 2, other: 0, byKind: { decision: 2, escalation: 0, clarify: 0, plan_action: 0 } });
   });
 
+  it("shows a stalled planning gate once, as the review item that carries its one-click button, marked blocking (A3)", () => {
+    const workspace = fixtureWorkspace(fixtureRepo());
+    withDatabase(workspace, (db) => {
+      const projectId = (db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string }).id;
+      db.prepare(
+        `INSERT INTO review_items (id, slug, project_id, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-run-wait', 'R-RUN', ?, 'open', 'Approve the planning run?', 's', 'p', 'CodexPlanningRunApproval', 'medium', 0, '[]', '{}',
+           '2026-10-08T07:00:00.000Z', '2026-10-08T07:00:00.000Z')`
+      ).run(projectId);
+    });
+    addEscalations(workspace, [
+      {
+        actionKey: "demo/second-step", kind: "planning_run_approval_pending", firstDetectedAt: "2026-10-08T08:00:00.000Z",
+        message: "Launch of demo/second-step is held by pending review item review-run-wait: planning-run approval for demo/second-step.",
+        remedy: 'Press "Approve planning run" on /todo (review_item:demo/review-run-wait).'
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.filter((item) => item.kind.startsWith("escalation"))).toEqual([]);
+    expect(data.items.find((item) => item.key === "review_item:demo/review-run-wait")).toMatchObject({ blocking: true, origin: "CodexPlanningRunApproval" });
+  });
+
   it("does not merge an escalation into a Decision that is only cited in its message (Ask title, lapsed grant)", () => {
     const workspace = fixtureWorkspace(fixtureRepo());
     addEscalations(workspace, [

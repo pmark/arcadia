@@ -6,7 +6,9 @@
 # fresh (git ls-remote), requires the clone clean and level with it, renders the
 # one reopened Action (status open, a fresh next_action carrying the completion
 # request id complete-<action>-<run-tag>, the Plan's and PROJECT.md's
-# current_action, their updated: dates), removes that Action's own prior
+# current_action, their updated: dates; a completed chain's `complete` Plan with
+# no pointers returns to `active` and gains current_action after its milestone:
+# and after PROJECT.md's active_plan:), removes that Action's own prior
 # artifact when present, validates the result with Arcadia's own discovery,
 # requirementIdentity, ready set and a read-only live dry-run docs sync, then
 # makes exactly one commit on fixture main, pushes it without force, runs docs
