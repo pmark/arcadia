@@ -31,6 +31,56 @@ Decision, Plan, Action — it just never had a codified sequence for using
 them together at the start of a planning cycle. This process is that
 sequence, not new machinery.
 
+## Behavioral requirements and evidence
+
+Use these practices when a feature has several behaviors, consequential edge
+cases, or requirements spread across Actions. A small fix with one clear
+acceptance criterion can use that criterion directly; do not add a separate
+specification, table, or interview just to satisfy a format.
+
+- Describe the highest-value user journey first, with an observable result
+  that can be demonstrated independently. State compatibility constraints and
+  non-goals alongside it; keep product behavior separate from implementation.
+- Give distinct behaviors stable, Plan-local labels such as `REQ-001` when
+  cross-Action traceability helps. Reuse existing labels during amendments;
+  never renumber or reuse a retired label for a different behavior. A label
+  identifies a requirement, not an Action, priority, or approval.
+- State consequential edge cases explicitly: empty or invalid input,
+  unavailable dependencies, retries or duplicate requests, interrupted work,
+  and unauthorized requests where relevant. Each selected case needs an
+  expected observable behavior. Skip irrelevant cases; surface unresolved
+  product choices as Decisions rather than inventing a default.
+- Put the full requirement and its expected proof in the owning Action's
+  existing `acceptance_criteria` strings (`acceptance` on Agent Ask children,
+  as shown in the Agent Ask procedure). Use Given/When/Then when it makes
+  the criterion clearer. Other contributing Actions cite the owning Plan,
+  Action, and requirement label in their criteria or existing `references`.
+  Keep one authoritative statement of each requirement, with no new schema
+  fields or separately maintained specification/task list.
+- Before proposing the Plan, check that every in-scope requirement maps to an
+  Action and a planned proof: a focused test, command/result, receipt, or
+  observable operator QA step. Label that proof as expected until it is run.
+  Preserve exclusions and deferred requirements with their revival triggers.
+- At completion, cite the actual Artifact and result for each applicable
+  criterion through the existing completion Agent Ask. Missing, failed, or
+  partial evidence stays visible. Requirement labels, checked boxes, and an
+  author's confidence do not prove completion or replace independent review.
+  Newly discovered scope goes through the existing amendment/Decision path.
+
+For example, an export feature might have this criterion on its owning
+Action:
+
+> [REQ-001] Given a filtered list, when the user exports it, then the CSV
+> contains exactly the visible rows in their displayed order. Expected proof:
+> a focused export test comparing the parsed CSV with those rows.
+
+An empty-list behavior belongs in a separate criterion only after it is
+confirmed, for example a headers-only CSV. A contributing UI Action can cite
+`docs/plans/csv-export.md`, Action `export-visible-rows`, requirement
+`REQ-001`, and name its observable download check. Completion
+then links the actual test result and QA receipt; neither proof is claimed
+while planning. No Spec-Kit installation or runtime is required.
+
 ## Phase 1 — Outcome Alignment Interview
 
 **Purpose:** turn a raw request into a confirmed Outcome and Milestone,
@@ -47,7 +97,8 @@ this is not the phase to economize on.
 sentence, and zero or more Decisions (each with 2-4 options and a stated
 consequence per option), captured as Agent Asks
 (`intent: outcome` / `intent: milestone` / `intent: decision`) ready to
-draft and settle.
+draft and settle. When useful, include a compact behavioral brief for Phase 2
+with confirmed journeys, requirement labels, edge cases, and exclusions.
 
 **How to run it today:** start a session with a high-reasoning model and
 paste the role prompt below. There is no automatic trigger yet: `arcadia
@@ -113,6 +164,16 @@ genuinely answered:
 6. **Constraints.** Deadlines, dependencies on other in-flight work,
    anything that changes sequencing.
 
+Before handing off a feature with several behaviors, summarize the confirmed
+user journey and measurable result. Label distinct requirements `REQ-001`,
+`REQ-002`, etc. only when traceability helps, and reuse labels already in the
+target Plan. State relevant edge cases and their expected behavior; distinguish
+confirmed requirements, non-goals, deferred items with revival triggers, and
+unresolved Decisions. Use what the operator and documents already supplied;
+do not add questions merely to populate a template. This brief is proposed
+input to Phase 2, not a second authoritative specification or permission to
+implement. Do not design tests or architecture in this phase.
+
 Stop the interview as soon as you can state the Outcome in one sentence,
 the Milestone in one sentence, and list every open Decision with real
 options and consequences. Do not keep interviewing past that point —
@@ -121,7 +182,8 @@ protect.
 
 # Deliverable
 
-1. The proposed Outcome and Milestone statements, one sentence each.
+1. The proposed Outcome and Milestone statements, one sentence each, plus
+   the compact behavioral brief when useful for the Phase 2 handoff.
 2. Every open Decision, each with 2-4 options and a stated consequence per
    option (mark your recommendation, if you have one, but never make the
    choice yourself).
@@ -143,8 +205,9 @@ acceptance criteria.
 determines whether the resulting Actions are actually dispatchable and
 finishable, or vague vertical slices that stall out mid-session.
 
-**Input:** Phase 1's confirmed Outcome, Milestone, and answered Decisions.
-Treat these as given constraints, not open questions to re-litigate.
+**Input:** Phase 1's confirmed Outcome, Milestone, answered Decisions, and
+behavioral brief when present. Treat these as given constraints, not open
+questions to re-litigate.
 
 **Output:** one Agent Ask (`intent: plan`), either amending an existing
 Plan or creating a new one, containing dependency-ordered Actions ready to
@@ -177,8 +240,9 @@ provable progress moving — and you are ruthless about not planning more
 than that.
 
 You act only after Phase 1 (the Outcome Alignment Interviewer) has produced
-a confirmed Outcome, Milestone, and answered Decisions. Treat those as
-given constraints, not open questions to re-litigate.
+a confirmed Outcome, Milestone, and answered Decisions. Carry forward its
+confirmed behavioral brief when present. Treat those as given constraints,
+not open questions to re-litigate.
 
 # Context
 
@@ -211,6 +275,14 @@ rather than guessing.
 - **Make it real**: prefer an Action whose acceptance criterion is a
   runnable command or a passing test over one whose criterion is a
   document existing.
+- **Behavior to proof**: preserve confirmed requirement labels and expected
+  edge-case behavior. Put each full requirement in its owning Action's
+  existing acceptance criteria, with a named expected test, command/result,
+  receipt, or operator QA step. Contributing Actions cite the owner and label.
+  Check coverage of every in-scope requirement before handing off; unresolved
+  behavior is a Decision, not an assumed requirement. Keep the simple case
+  simple: one direct criterion needs no separate table or label. Do not add
+  schema fields, a second task list, or claim planned checks have passed.
 - **Verify the writer exists before you plan the change.** Arcadia's
   Agent Ask intents do not cover every possible document mutation — for
   example, `agent-ask settle --responsibility` once silently rejected the
@@ -236,8 +308,11 @@ rather than guessing.
 2. One Agent Ask (`intent: plan`) — amending an existing Plan via
    `target_ref`, or creating a new one — containing dependency-ordered
    Actions. Every Action needs id, desired_result/next_action,
-   acceptance_criteria (objective, checkable), dependencies, responsibility,
-   effort, and references to real files.
+   objective, checkable acceptance criteria (`acceptance` on Ask children;
+   written as `acceptance_criteria` on the managed Action), dependencies, responsibility,
+   effort, and references to real files. Include the requirement-to-Action
+   and expected-proof links in the existing criteria/references when useful;
+   name any uncovered requirement as a gap rather than hiding it.
 3. Anything you found that should be an open Decision rather than an
    assumption baked into the plan.
 
