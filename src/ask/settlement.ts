@@ -1723,10 +1723,26 @@ export function settleAgentAsk(db: Database.Database, input: {
         const previouslyUnpositioned = new Set(queue.ordered.flatMap((entry) =>
           entry.orderStatus === "unpositioned" && entry.orderKey ? [entry.orderKey] : []));
         const arranged = (key: string): boolean => !previouslyUnpositioned.has(key) || queueActionKeys.includes(key);
-        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []).filter(arranged);
+        // The queue the order was resolved against can differ from the one the
+        // synced documents now project (another Project's Plan merged in
+        // between). Reconcile instead of refusing the whole arrange: positioned
+        // keys keep their relative place, and an Action nobody has positioned
+        // stays unpositioned unless this settlement queued it.
+        const positioned = loadActionOrder(db).positions;
+        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : [])
+          .filter((key) => arranged(key) && (positioned.has(key) || queueActionKeys.includes(key)));
+        const current = new Set(currentKeys);
+        const order = queueAfter.filter((key) => arranged(key) && current.has(key));
+        const byPosition = [...current].sort((left, right) =>
+          (positioned.get(left) ?? Number.MAX_SAFE_INTEGER) - (positioned.get(right) ?? Number.MAX_SAFE_INTEGER));
+        byPosition.forEach((key, index) => {
+          if (order.includes(key)) return;
+          const before = byPosition.slice(0, index).reverse().find((candidate) => order.includes(candidate));
+          order.splice(before === undefined ? 0 : order.indexOf(before) + 1, 0, key);
+        });
         arrangeActionOrder(db, {
           currentKeys,
-          order: queueAfter.filter(arranged),
+          order,
           requestId: `agent-ask:${input.settlementRequestId}`,
           expectedRevision: queue.revision,
           apply: true

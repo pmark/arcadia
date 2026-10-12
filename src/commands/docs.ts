@@ -2,7 +2,7 @@ import { projectNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { retryOnSqliteLock, withDatabase, writeTransaction } from "../db/connection.js";
 import { getProject, getProjectBySlug, listProjects } from "../db/repositories.js";
 import { syncProjectDocs, type DocChange, type ProjectSyncResult } from "../docs/sync.js";
 
@@ -74,7 +74,7 @@ export function runDocsSyncCommand(options: DocsSyncOptions): CommandSuccess<Doc
             }
           :
         options.apply
-          ? db.transaction(() => syncProjectDocs(db, project, { apply: true }))()
+          ? retryOnSqliteLock(() => writeTransaction(db, () => syncProjectDocs(db, project, { apply: true })))
           : syncProjectDocs(db, project, { apply: false })
       );
   });
