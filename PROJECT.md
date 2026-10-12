@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Recover completed governance overlap in protected Go
-active_plan: recover-completed-governance-overlap-in-protected-go
-current_action: reconcile-completed-governance-overlap
-updated: 2026-10-11
+milestone: "Production runs on Arcadia launch with zero host touches, stop spending into the same environment wall, name every stall with a one-click fix, and cannot be stranded by a Plan change under an Active scope: Actions A12, A3, A5 and A6 of the first supervised run plan are implemented and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal."
+active_plan: production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the
+current_action: stop-spending-into-an-environment-wall
+updated: 2026-10-12
 ---
 
 # Arcadia

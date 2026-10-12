@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-11
+updated: 2026-10-12
 ---
 
 # Mission Log: Arcadia
@@ -2328,5 +2328,12 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 
 - **Did:** Activated recover-completed-governance-overlap-in-protected-go at reconcile-completed-governance-overlap.
 - **Result:** Operator-settled Plan transition. Previous Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and remains draft with completion state preserved. The operator explicitly instructed in this chat: Authorize acceptance and activation of the repair Plan, resolve the guidance gate, and launch through the managed host route. Yes, publish the technical Issue to pmark/arcadia. Draft Plan creation was canonically accepted at 3b21b7469. Issue #1280 is now published. The canonical node --import tsx scripts/check-agent-guidance.ts passed with zero problems; the earlier full-file hash comparison was incorrect because guidanceFingerprint hashes trimmed procedure bodies or managed regions. No source/index edit is needed and no stale-guidance refusal is claimed. Select only reconcile-completed-governance-overlap with the configured heavy tier and high effort; preserve every unfinished Action of the previous bug Plan and other Projects relative queue order. This activation grants no new production policy, packet approval, install, restart, production access, base push or publication authority. Managed launch must validate its own scope, packet, capacity, ownership and session binding; existing active bug-run policy is not silently reused for this repair.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Agent Ask activate-production-hardening-batch-2026-10-12
+
+- **Did:** Activated production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the at stop-spending-into-an-environment-wall.
+- **Result:** Operator-settled Plan transition. Previous Plan recover-completed-governance-overlap-in-protected-go remains draft with completion state preserved. Operator answered activate the batch Plan in chat on 2026-10-12. Accepted consequence: the governance-overlap Plan returns to draft with its Action unharmed and is re-activated after the batch merges.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
