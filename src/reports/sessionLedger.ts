@@ -6,6 +6,8 @@
  * or time number you do not have; never estimate. When only a harness
  * subagent total exists, put it in `subagent_tokens_total` and leave the
  * uncached/cached split null. A `stopped` outcome needs a `stop_reason`.
+ * For subagents `model` is the requested alias (e.g. "sonnet"), not a resolved id.
+ * `notes` is an optional string of at most 200 characters.
  * `pnpm check:session-ledger` (CI runs it) rejects missing or mistyped fields.
  */
 export const SESSION_ROLES = ["lead", "driver", "reviewer", "replayer", "opus-planner"] as const;
@@ -31,18 +33,20 @@ export interface SessionLedgerRow {
   frictions: { id: string; cost_min: number | null; fix_ref: string | null }[];
   outcome: (typeof SESSION_OUTCOMES)[number];
   stop_reason?: string;
+  notes?: string;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 const isCount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+const isInt = (value: unknown): value is number => isCount(value) && Number.isInteger(value);
 const isCountOrNull = (value: unknown): boolean => value === null || isCount(value);
 
 const REQUIRED = [
   "session_id", "role", "model", "effort", "action_id", "pr", "tokens_in_uncached", "tokens_in_cached", "tokens_out",
   "wall_min", "attempts", "review_rounds", "blocking_findings", "operator_touches", "host_touches", "frictions", "outcome",
 ] as const;
-const ALLOWED = new Set<string>([...REQUIRED, "subagent_tokens_total", "stop_reason"]);
+const ALLOWED = new Set<string>([...REQUIRED, "subagent_tokens_total", "stop_reason", "notes"]);
 
 /** Returns every problem with one parsed row; an empty array means valid. */
 export function validateSessionLedgerRow(row: unknown): string[] {
@@ -59,12 +63,16 @@ export function validateSessionLedgerRow(row: unknown): string[] {
   check("effort", row.effort === null || isString(row.effort), "a string or null");
   check("action_id", isString(row.action_id), "a non-empty string");
   check("pr", row.pr === null || (isCount(row.pr) && Number.isInteger(row.pr)), "an integer or null");
-  for (const key of ["tokens_in_uncached", "tokens_in_cached", "tokens_out", "wall_min", "operator_touches", "host_touches"]) {
+  for (const key of ["tokens_in_uncached", "tokens_in_cached", "tokens_out", "wall_min"]) {
     check(key, isCountOrNull(row[key]), "a non-negative number or null");
   }
   if ("subagent_tokens_total" in row) check("subagent_tokens_total", isCountOrNull(row.subagent_tokens_total), "a non-negative number or null");
-  check("attempts", isCount(row.attempts), "a non-negative number");
-  check("review_rounds", isCount(row.review_rounds), "a non-negative number");
+  for (const key of ["operator_touches", "host_touches"]) {
+    check(key, row[key] === null || isInt(row[key]), "a non-negative integer or null");
+  }
+  check("attempts", isInt(row.attempts), "a non-negative integer");
+  check("review_rounds", isInt(row.review_rounds), "a non-negative integer");
+  if ("notes" in row) check("notes", typeof row.notes === "string" && row.notes.length <= 200, "a string of at most 200 characters");
   check("blocking_findings", Array.isArray(row.blocking_findings)
     && row.blocking_findings.every(f => isObject(f) && isString(f.class) && isString(f.caught_by)), "an array of {class, caught_by} strings");
   check("frictions", Array.isArray(row.frictions)
