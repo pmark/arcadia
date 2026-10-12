@@ -8,7 +8,6 @@ import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
-import { sessionProbeCommand } from "./sessionProbeCommand.js";
 
 /**
  * The actionable brief handed to a managed-production Session at launch.
@@ -65,21 +64,22 @@ export interface ActionBriefInput {
    */
   headless?: boolean;
   /**
-   * The configured workspace. With it the brief opens with the capability
-   * probe as the Session's first step; the host reads the probe's one JSON
-   * line from the Session log and ends the attempt on a failed check.
+   * The exact probe command (from `issueSessionProbe`). With it the brief
+   * opens with the capability probe as the Session's first step; the host
+   * reads the probe's one JSON line (echoing the command's nonce) from the
+   * Session log and ends the attempt on a failed check.
    */
-  workspace?: string;
+  probeCommand?: string;
 }
 
 /** The first-step probe instructions: one short command, then stop at once on any failed check. */
 function renderProbeStep(input: ActionBriefInput): string[] {
-  if (!input.workspace) return [];
+  if (!input.probeCommand) return [];
   return [
     "",
     "First step — environment probe (do this before anything else, even reading files):",
-    `  ${sessionProbeCommand(input.workspace, input.worktreePath)}`,
-    "  It prints one JSON line and exits non-zero when this Session's sandbox cannot write the workspace,",
+    `  ${input.probeCommand}`,
+    "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero when this Session's sandbox cannot write the workspace,",
     "  run host validation or write a completion receipt. If it exits non-zero or prints \"ok\":false, STOP",
     "  IMMEDIATELY: make no edits, run no other command, spend no more tokens, and exit. The host records",
     "  the named environment wall from that line; retrying or working around it only wastes budget."

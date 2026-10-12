@@ -47,11 +47,13 @@ import {
   sessionTokenCeilingBreach
 } from "./sessionTokenCeiling.js";
 import { sessionLogPath } from "../sessions/sessionRecording.js";
+import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
   detectEnvironmentWalls,
   ENVIRONMENT_WALL_ESCALATION_KIND,
   parseSessionProbe,
+  SESSION_PROBE_TOKEN_BUDGET,
   sessionProbeWalls,
   sessionTokensFromLog,
   type EnvironmentWall
@@ -2407,10 +2409,17 @@ export function recordSessionExitAccounting(
          VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
   }
+  // The Session's own first-step probe is the only truthful capability evidence,
+  // matched by this Session's recorded nonce. A passing probe is logged with its
+  // recorded budget here rather than on the reconcile receipt: that receipt is
+  // written by session reconciliation before this accounting runs.
+  const probe = parseSessionProbe(text, readSessionProbeNonce(input.workspace, input.session.id));
+  if (probe?.ok && probe.checks.every((check) => check.ok)) {
+    input.log(`Session probe passed for ${actionKey} in ${probe.ms ?? "?"} ms (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
+  }
   if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
-  // The Session's own first-step probe is the only truthful capability evidence;
-  // a failed check ends the attempt even though the Session never got to edit.
-  const probeWalls = sessionProbeWalls(parseSessionProbe(text));
+  // A failed check ends the attempt even though the Session never got to edit.
+  const probeWalls = sessionProbeWalls(probe);
   const walls = [...probeWalls, ...detectEnvironmentWalls(text).filter((wall) => !probeWalls.some((hit) => hit.wallClass === wall.wallClass))];
   const breach = tokens
     ? decideTokenCeilingBreach(tokens, resolveSessionTokenCeiling(db, {
@@ -2439,7 +2448,7 @@ export function recordSessionExitAccounting(
   const startRevision = input.session.launch_revision ?? input.session.base_revision;
   const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
   if (!noDiff && probeWalls.length === 0) return;
-  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit",tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
+  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
   const at = input.now.toISOString();
   const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   db.prepare(

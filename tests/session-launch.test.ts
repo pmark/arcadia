@@ -1,5 +1,4 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { SESSION_PROBE_COMMAND_PREFIX } from "../src/sessions/sessionProbeCommand.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1913,7 +1912,7 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
-          `Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`,
+          expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --nonce [0-9a-f]{32}\)$/),
           "Agent"
         ]
       }
@@ -1928,7 +1927,6 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(echo \\(a\\))",
       "Bash(arcadia agent-ask draft:*)",
       "Bash(pnpm arcadia agent-ask draft:*)",
-      `Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`,
       "Agent"
     ]);
   });

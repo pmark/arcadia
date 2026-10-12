@@ -1,7 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { validationError } from "../cli/errors.js";
 import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.js";
-import { SESSION_PROBE_COMMAND_PREFIX } from "./sessionProbeCommand.js";
 
 /**
  * The permission posture of a headless Claude Session, owned and checked in
@@ -59,21 +58,22 @@ function simpleCommands(command: string): string[] {
 }
 
 /** A Claude `Bash(...)` rule matching exactly one simple command. */
-function exactBashRule(command: string): string {
+export function exactBashRule(command: string): string {
   // `*` is Claude's wildcard (and `:*` its legacy prefix match), so a literal
   // star is escaped: a declared command ending in `:*` stays one exact command.
   return `Bash(${command.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("*", "\\*")})`;
 }
 
 /** The complete allow list for a Session whose Project declares `validationCommands`. */
-export function headlessClaudeAllowList(validationCommands: readonly string[]): string[] {
+export function headlessClaudeAllowList(validationCommands: readonly string[], probeCommand?: string | null): string[] {
   const rules = new Set<string>();
   for (const command of validationCommands) {
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
   for (const rule of HEADLESS_AGENT_ASK_DRAFT_RULES) rules.add(rule);
-  // The brief's first step: the in-Session capability probe (one short command).
-  rules.add(`Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`);
+  // The brief's first step: the in-Session capability probe, pinned to the one
+  // exact command string (path, arguments and this Session's nonce).
+  if (probeCommand) rules.add(exactBashRule(probeCommand));
   rules.add(HEADLESS_SUBAGENT_RULE);
   return [...rules];
 }
@@ -88,9 +88,10 @@ export function writeHeadlessClaudeSettings(input: {
   workspace: string;
   sessionId: string;
   validationCommands: readonly string[];
+  probeCommand?: string | null;
 }): string {
   const file = sessionSettingsPath(input.workspace, input.sessionId);
-  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands) } };
+  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands, input.probeCommand) } };
   try {
     mkdirSync(sessionRecordDirectory(input.workspace), { recursive: true });
     writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });

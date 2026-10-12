@@ -2,7 +2,8 @@
 // Session capability probe: runs INSIDE the coding Session as its first step.
 // Dependency-free and deterministic; its cost is one short Bash command.
 //
-//   node scripts/session-capability-probe.mjs --workspace <dir> --worktree <dir>
+//   node scripts/session-capability-probe.mjs --workspace <dir> --worktree <dir> --nonce <hex>
+//   (the host accepts only a probe line echoing the Session's recorded nonce)
 //   (or ARCADIA_WORKSPACE / ARCADIA_PROBE_WORKTREE; the worktree defaults to cwd)
 //
 // Prints exactly one JSON line {probe, ok, checks:[{name, ok, error?}], ms} and
@@ -22,6 +23,7 @@ const arg = (name) => {
 };
 const workspace = arg("workspace") ?? process.env.ARCADIA_WORKSPACE;
 const worktree = path.resolve(arg("worktree") ?? process.env.ARCADIA_PROBE_WORKTREE ?? process.cwd());
+const nonce = arg("nonce") ?? process.env.ARCADIA_PROBE_NONCE ?? null;
 const token = `.session-capability-probe-${process.pid}-${started}`;
 
 function check(name, fn) {
@@ -67,5 +69,5 @@ const checks = [
 ];
 
 const ok = checks.every((entry) => entry.ok);
-process.stdout.write(`${JSON.stringify({ probe: "session-capability/v1", ok, checks, ms: Date.now() - started })}\n`);
+process.stdout.write(`${JSON.stringify({ probe: "session-capability/v1", nonce, ok, checks, ms: Date.now() - started })}\n`);
 process.exit(ok ? 0 : 1);

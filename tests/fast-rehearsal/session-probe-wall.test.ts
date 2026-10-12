@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sessionLogPath } from "../../src/sessions/sessionRecording.js";
+import { readSessionProbeNonce, sessionProbeNoncePath } from "../../src/sessions/sessionProbeCommand.js";
 import { git } from "../helpers/rehearsalHarness.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
 import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helpers/world.js";
@@ -20,8 +21,12 @@ beforeAll(() => {
   world.start();
   world.expectError(/The candidate has no commits or changes beyond its base revision/);
   const { session, launch } = world.untilLaunched(ACTION_1, 3);
+  const nonce = readSessionProbeNonce(world.workspace, session.id) ?? "fixture-nonce";
+  const noncePath = sessionProbeNoncePath(world.workspace, session.id);
+  mkdirSync(path.dirname(noncePath), { recursive: true });
+  writeFileSync(noncePath, nonce);
   const probe = {
-    probe: "session-capability/v1", ok: false, ms: 31,
+    probe: "session-capability/v1", nonce, ok: false, ms: 31,
     checks: [
       { name: "workspace_write", ok: false, error: "EROFS: read-only file system, open 'database/.probe'" },
       { name: "host_validation", ok: true },

@@ -129,7 +129,7 @@ export function describeEnvironmentWalls(
   const message = stage === "preflight"
     ? `Environment wall for ${actionKey} (${names}) found by the worker probe (host-side, not Session evidence); no Session was launched and no tokens were spent. ${evidence}`
     : stage === "session_probe"
-      ? `Environment wall for ${actionKey} (${names}) found by the session probe, run inside the Session as its first step: the Session stopped before spending and will not be relaunched automatically.${tail} ${evidence}`
+      ? `Environment wall for ${actionKey} (${names}) found by the session probe, run inside the Session as its first step (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens): the Session was told to stop before spending and will not be relaunched automatically.${tail} ${evidence}`
       : `Environment wall for ${actionKey} (${names}): the Session exited with no diff and will not be relaunched automatically.${tail} ${evidence}`;
   const remedy = `${walls.map((wall) => wall.remedy).join(" ")} Then reset this Action's repair budget so production relaunches it.`;
   return { message, remedy };
@@ -176,19 +176,21 @@ export const SESSION_PROBE_ID = "session-capability/v1";
 export const SESSION_PROBE_TOKEN_BUDGET = 5_000;
 
 export interface SessionProbeCheck { name: string; ok: boolean; error?: string }
-export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
+export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; nonce?: string | null; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
 
-function probeFromString(text: string): SessionProbeResult | null {
-  let found: SessionProbeResult | null = null;
+function probesFromString(text: string, nonce: string, out: SessionProbeResult[]): void {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{") || !trimmed.includes(SESSION_PROBE_ID)) continue;
     try {
       const value = JSON.parse(trimmed) as Partial<SessionProbeResult>;
-      if (value.probe === SESSION_PROBE_ID && typeof value.ok === "boolean" && Array.isArray(value.checks)) found = value as SessionProbeResult;
+      // Only a line echoing this Session's recorded nonce counts: a probe-looking
+      // line from a cat'd file or injected text cannot carry it.
+      if (value.probe === SESSION_PROBE_ID && value.nonce === nonce && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
+        out.push(value as SessionProbeResult);
+      }
     } catch { /* not the probe line */ }
   }
-  return found;
 }
 
 function stringsIn(value: unknown, out: string[], depth = 0): void {
@@ -199,22 +201,24 @@ function stringsIn(value: unknown, out: string[], depth = 0): void {
 }
 
 /**
- * The last probe result a Session log carries: a bare line (plain log) or one
- * nested inside a provider event's tool-result text (Claude stream-json, Codex
- * JSONL). Null when the Session never ran the probe.
+ * The probe result a Session log carries for this Session's `nonce`: a bare
+ * line (plain log) or one nested inside a provider event's tool-result text
+ * (Claude stream-json, Codex JSONL). The FIRST failing line wins, so a later
+ * spoofed passing line cannot mask a real failure; otherwise the last passing
+ * line. Null when no nonce was issued or the Session never ran the probe.
  */
-export function parseSessionProbe(log: string | null): SessionProbeResult | null {
-  if (!log || !log.includes(SESSION_PROBE_ID)) return null;
-  let found: SessionProbeResult | null = null;
+export function parseSessionProbe(log: string | null, nonce: string | null): SessionProbeResult | null {
+  if (!log || !nonce || !log.includes(SESSION_PROBE_ID) || !log.includes(nonce)) return null;
+  const found: SessionProbeResult[] = [];
   for (const line of log.split(/\r?\n/)) {
     if (!line.includes(SESSION_PROBE_ID)) continue;
     const candidates: string[] = [line];
     if (line.startsWith("{")) {
       try { stringsIn(JSON.parse(line), candidates); } catch { /* plain line */ }
     }
-    for (const candidate of candidates) found = probeFromString(candidate) ?? found;
+    for (const candidate of candidates) probesFromString(candidate, nonce, found);
   }
-  return found;
+  return found.find((probe) => !probe.ok || probe.checks.some((check) => !check.ok)) ?? found[found.length - 1] ?? null;
 }
 
 /** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
