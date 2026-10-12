@@ -1161,7 +1161,7 @@ describe("Agent Ask settlement", () => {
       ...rows.flatMap((row) => [
         ...(row.target ? [`  - target_ref: action/${row.target}`] : [`  - id: ${row.id}`]),
         `    desired_result: Action ${row.id}`, `    why: ${JSON.stringify(row.why)}`,
-        "    acceptance:", `      - Criterion ${row.id}.`
+        "    acceptance:", `      - The fixture report names ${row.id}.`
       ]),
       "requested_authority: apply_if_approved", ""
     ].join("\n");
@@ -2875,7 +2875,7 @@ function existingDirectory(directory: string): string {
 
 
 describe("governed acceptance criteria repairs", () => {
-  it.each(["open", "done", "question_open"])("backfills missing criteria without changing %s Action state", (state) => {
+  it.each(["open", "done", "question_open", "unclarified", "legacy_done"])("backfills missing criteria without changing %s Action state", (state) => {
     const { workspace, repo } = fixture();
     const planPath = path.join(repo, "docs/plans/demo-plan.md");
     let before = readFileSync(planPath, "utf8").replace("    acceptance_criteria:\n      - Existing proof exists.\n", "");
@@ -2886,10 +2886,25 @@ describe("governed acceptance criteria repairs", () => {
     writeFileSync(planPath, before);
     execFileSync("git", ["add", "."], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Legacy criteria fixture"], { cwd: repo });
-    const desired = state === "question_open" ? "Keep existing work" : "Keep existing work moving.";
+    if (state === "unclarified" || state === "legacy_done") {
+      before = before.replace(/ {4}next_action:.*\n/, "").replace("    clarification: clarified\n", "");
+      if (state === "legacy_done") before = before.replace("    status: open", "    status: done");
+      before = before.replace("current_action: existing", "current_action: ready").replace("questions: []", [
+        "  - id: ready", "    title: Ready fixture", "    status: open", "    responsibility: agent",
+        "    clarification: clarified", "    next_action: Run the ready fixture.",
+        "    acceptance_criteria:", "      - The ready fixture exits zero.", "questions: []"
+      ].join("\n"));
+      const projectPath = path.join(repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: existing", "current_action: ready"));
+      writeFileSync(planPath, before);
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "Legacy missing next_action"], { cwd: repo });
+    }
+    const missingNext = ["question_open", "unclarified", "legacy_done"].includes(state);
+    const desired = missingNext ? "Keep existing work" : "Keep existing work moving.";
     const request = JSON.stringify({ agent_ask: "v1", request_id: `repair-${state}`, project: "demo", intent: "plan",
       target_ref: "plan/demo-plan", desired_result: "Backfill evaluation conditions", actions: [{ target_ref: "action/existing",
-        desired_result: desired, acceptance: ["The migration fixture leaves exactly one status column after two runs."] }] });
+        desired_result: desired, acceptance: ["The migration fixture leaves exactly one status column after two runs and records literal $$ and $& in its receipt."] }] });
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const options = { workspace, proposal: proposal.data.proposal.id, requestId: `settle-repair-${state}`, disposition: "accepted" as const };
     const preview = runAgentAskSettleCommand(options);
@@ -2898,9 +2913,9 @@ describe("governed acceptance criteria repairs", () => {
     const result = discoverDocs(repo);
     expect(result.errors).toEqual([]);
     const action = (result.docs.find((doc) => doc.type === "plan") as PlanDoc).actions[0];
-    expect(action.status).toBe(state === "done" ? "done" : "open");
-    expect(action.acceptanceCriteria).toEqual(["The migration fixture leaves exactly one status column after two runs."]);
-    expect(action.nextAction).toBe(state === "question_open" ? null : "Keep existing work moving.");
+    expect(action.status).toBe(["done", "legacy_done"].includes(state) ? "done" : "open");
+    expect(action.acceptanceCriteria).toEqual(["The migration fixture leaves exactly one status column after two runs and records literal $$ and $& in its receipt."]);
+    expect(action.nextAction).toBe(missingNext ? null : "Keep existing work moving.");
     if (state === "question_open") expect(action.question).toBe("Which limit?");
     expect(applied.data.receipt.queueActionKeys).toEqual([]);
   });

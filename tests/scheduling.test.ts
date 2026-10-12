@@ -145,7 +145,7 @@ describe("discovery", () => {
       originActionKey: "alpha/a",
       kind: "blocker",
       title: "Fix the broken migration",
-      acceptance: ["The migration applies cleanly."],
+      acceptance: ["Running the migration twice exits zero."],
       requestId: "disc-1"
     }));
     expect(result.outcome).toBe("queued");
@@ -164,7 +164,7 @@ describe("discovery", () => {
     expect(after.next).toBe("alpha/fix-the-broken-migration");
 
     // Replay returns the same receipt without writing again.
-    const replay = withDatabase(fx.workspace, (db) => recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Fix the broken migration", acceptance: ["x"], requestId: "disc-1" }));
+    const replay = withDatabase(fx.workspace, (db) => recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Fix the broken migration", acceptance: ["The corrective receipt exists."], requestId: "disc-1" }));
     expect(replay).toEqual(result);
     const log = withReadOnlyDatabase(fx.workspace, (db) => listSchedulingLog(db, { projectSlug: "alpha" }));
     expect(log.some((entry) => entry.source === "coding_run" && entry.reason.includes("Blocker"))).toBe(true);
@@ -173,8 +173,8 @@ describe("discovery", () => {
   it("queues a corrective ahead of planned work, FIFO behind earlier correctives, without touching the current Action", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }, { id: "c" }] }]);
     withDatabase(fx.workspace, (db) => {
-      recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: "First corrective", acceptance: ["one"], requestId: "c-1" });
-      recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: "Second corrective", acceptance: ["two"], requestId: "c-2" });
+      recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: "First corrective", acceptance: ["The first corrective receipt exists."], requestId: "c-1" });
+      recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: "Second corrective", acceptance: ["The second corrective receipt exists."], requestId: "c-2" });
     });
     const after = schedule(fx.workspace, "alpha");
     expect(after.queue).toEqual(["alpha/first-corrective", "alpha/second-corrective", "alpha/a", "alpha/b", "alpha/c"]);
@@ -196,9 +196,9 @@ describe("discovery", () => {
   it("stops at discovery depth 2 and opens a Decision instead of expanding further", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }] }]);
     const results = withDatabase(fx.workspace, (db) => {
-      const first = recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Depth one", acceptance: ["1"], requestId: "d-1" });
-      const second = recordDiscovery(db, { originActionKey: first.actionKey!, kind: "blocker", title: "Depth two", acceptance: ["2"], requestId: "d-2" });
-      const third = recordDiscovery(db, { originActionKey: second.actionKey!, kind: "blocker", title: "Depth three", acceptance: ["3"], requestId: "d-3" });
+      const first = recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Depth one", acceptance: ["The depth-one receipt exists."], requestId: "d-1" });
+      const second = recordDiscovery(db, { originActionKey: first.actionKey!, kind: "blocker", title: "Depth two", acceptance: ["The depth-two receipt exists."], requestId: "d-2" });
+      const third = recordDiscovery(db, { originActionKey: second.actionKey!, kind: "blocker", title: "Depth three", acceptance: ["The depth-three receipt exists."], requestId: "d-3" });
       return { first, second, third };
     });
     expect(results.second.outcome).toBe("queued");
@@ -214,7 +214,7 @@ describe("discovery", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }] }]);
     const outcomes = withDatabase(fx.workspace, (db) =>
       Array.from({ length: DISCOVERY_LIMITS.maxCorrectiveDescendantsPerRoot + 1 }, (_, index) =>
-        recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: `Corrective ${index + 1}`, acceptance: ["x"], requestId: `r-${index}` }).outcome
+        recordDiscovery(db, { originActionKey: "alpha/a", kind: "corrective", title: `Corrective ${index + 1}`, acceptance: ["The corrective receipt exists."], requestId: `r-${index}` }).outcome
       )
     );
     expect(outcomes).toEqual(["queued", "queued", "queued", "needs_operator"]);
@@ -225,7 +225,7 @@ describe("discovery", () => {
     const fx = fixture([{ slug: "alpha", current: "root0", actions }]);
     const outcomes = withDatabase(fx.workspace, (db) =>
       Array.from({ length: DISCOVERY_LIMITS.maxCorrectivesPerMilestone + 1 }, (_, index) =>
-        recordDiscovery(db, { originActionKey: `alpha/root${index % 4}`, kind: "corrective", title: `Milestone corrective ${index + 1}`, acceptance: ["x"], requestId: `m-${index}` }).outcome
+        recordDiscovery(db, { originActionKey: `alpha/root${index % 4}`, kind: "corrective", title: `Milestone corrective ${index + 1}`, acceptance: ["The corrective receipt exists."], requestId: `m-${index}` }).outcome
       )
     );
     expect(outcomes.filter((outcome) => outcome === "queued")).toHaveLength(DISCOVERY_LIMITS.maxCorrectivesPerMilestone);
@@ -308,7 +308,7 @@ describe("GitHub board projection and reconciliation", () => {
     withDatabase(fx.workspace, (db) => {
       const project = getProjectBySlug(db, "alpha")!;
       projectScheduleToBoard(db, buildProjectSchedule(db, project), board);
-      recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Unblock a", acceptance: ["done"], requestId: "gb-1" });
+      recordDiscovery(db, { originActionKey: "alpha/a", kind: "blocker", title: "Unblock a", acceptance: ["The blocker receipt exists."], requestId: "gb-1" });
       const result = reconcileBoard(db, buildProjectSchedule(db, project), board, { requestId: "rec-4", rebuild: () => buildProjectSchedule(db, project) });
       expect(result.operatorMoved).toBe(false);
       expect(result.projection?.issuesCreated).toEqual(["alpha/unblock-a"]);

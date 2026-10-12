@@ -753,7 +753,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             if (action.existing) {
               after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
-                action.amendedReferences, proposal.normalized.requestId, undefined, action.why);
+                action.amendedReferences, proposal.normalized.requestId, undefined, action.why, criteriaRepair);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
@@ -2692,14 +2692,15 @@ function amendAction(
   references: string[] | null,
   requestId: string,
   responsibility?: AgentAskResponsibility,
-  why?: string | null
+  why?: string | null,
+  criteriaOnly = false
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
   if (!/^ {4}next_action:/m.test(block)) {
-    if (!/^ {4}clarification: question_open\r?$/m.test(block)) {
+    if (!criteriaOnly) {
       throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
     }
     // Criteria for resolving an open question do not answer it or make it executable.
@@ -2742,7 +2743,7 @@ function amendAction(
   block = /^ {4}source:/m.test(block)
     ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
-  return content.replace(pattern, block);
+  return content.replace(pattern, () => block);
 }
 
 function markActionDone(content: string, actionId: string, requestId: string): string {

@@ -28,7 +28,7 @@ describe("acceptance criteria on every Plan Action", () => {
     expect(result.doc).toBeNull();
     expect(result.errors.some((e) => e.field.startsWith("actions[0].acceptance_criteria"))).toBe(true);
   });
-  it.each(["Works correctly.", "The product is high-quality.", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
+  it.each(["Works correctly.", "The product is high-quality.", "The product is excellent.", "Improve the product so every user loves it.", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
     expect(validateAcceptanceCriteria([criterion])).not.toEqual([]);
   });
   it("rejects normalized duplicate conditions", () => {

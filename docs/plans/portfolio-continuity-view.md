@@ -28,7 +28,7 @@ actions:
       - Every option has a typed allowlisted operation and target, checkable prerequisites, a plain-language consequence, the expected next state, and any authorization or external-system boundary.
       - Invocation reloads live state, rejects stale or unsafe options legibly, behaves idempotently, returns an outcome receipt, and refreshes the briefing from authoritative state.
       - Merge, deployment, spending, outward messaging, credentials, and other protected operations retain their specific approval or confirmation gates and are never concealed by a generic Advance button.
-      - One fixture reproduces the 2026-08-15 sequence in which PPN PR #39 is merged, the parsing anomaly is resolved, and the next portfolio move changes without manual queue repair.
+      - "One fixture reproduces the 2026-08-15 sequence in which PPN PR #39 is merged, the parsing anomaly is resolved, and the next portfolio move changes without manual queue repair."
       - START_HERE.md and the PR QA plan provide the exact local and phone-reachable URL, operator procedure, expected effects, and refusal behavior.
     decisions: ["0017"]
     references:

@@ -152,6 +152,13 @@ export function renderActionBrief(input: ActionBriefInput): string {
       doc.project.toLowerCase() === input.projectSlug.toLowerCase()
   );
   if (!plan) {
+    const errors = discovered.errors.filter((error) => error.relativePath === `docs/plans/${input.planSlug}.md`);
+    if (errors.length > 0) {
+      throw validationError(
+        `A managed-production Session cannot launch: plan "${input.planSlug}" is invalid: ${errors.map((error) => `${error.field}: ${error.message}`).join("; ")}`,
+        { planSlug: input.planSlug, projectSlug: input.projectSlug, errors }
+      );
+    }
     throw validationError(
       `A managed-production Session cannot launch: plan "${input.planSlug}" was not found in repository ${input.repoRoot}.`,
       { planSlug: input.planSlug, projectSlug: input.projectSlug, repoRoot: input.repoRoot }

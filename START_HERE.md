@@ -3346,3 +3346,7 @@ method or evidence, with explicit thresholds where applicable. `docs sync` and
 Agent Ask settlement reject invalid criteria; use a Plan amendment Ask to correct
 them. Deterministic validation catches structural defects and known vague wording;
 independent review still evaluates coverage and proof.
+When adoption seeds a Plan, every Action receives either its supplied conditions,
+a condition derived from its expected Artifact, or a requirement for a recorded
+clarification answer. Missing product criteria remain an open question and do not
+authorize implementation.
