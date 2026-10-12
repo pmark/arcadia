@@ -115,6 +115,10 @@ Issue or PR exists.
 | 18 | The adversarial reviewer needs a runnable validator; reading code by hand missed what a 3-line script found. | quality | Give reviewer briefs a read-only way to execute pure functions | Practice |
 | 19 | Operator-owned PRs left as drafts (#1291) block merge and review unnoticed. | one stall | Lead checks `isDraft`; `gh pr ready` is allowed when the operator asked for the merge | Practice |
 
+
+| 20 | Tightening every Action's acceptance validation exposed placeholder criteria across shared fixtures and eight missing historical lists; a passing targeted run did not prove the full corpus migration. | extra CI repair pass; unmeasured minutes | Preserve fixture assertions, run the full required suites, and use criteria-only Agent Asks for canonical records; guard regressions are tests/plan-acceptance-validation.test.ts | Code repair in #1307; governed record approval pending |
+| 21 | The Session-probe rehearsal asserts environment_wall but its report labels the two corresponding lifecycle diagnostics unexpected. | misleading report; unmeasured minutes | Register only the asserted environment_wall diagnostic and retain rejection of unrelated errors | Filed #1322; revive on next Session-probe rehearsal change |
+
 ## Tool and process notes
 
 - Decide the Driver's route before launch. If the Action's own subject is the

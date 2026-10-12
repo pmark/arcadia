@@ -273,3 +273,14 @@ sections state what was retrieved for this repair.
 | `docs/agent-guidance/session-roles-and-briefs.md` (main) | 4195 | All; native Lead/Driver scope and handback |
 
 Final focused suite breakdown: agent-ask-settlement.test.ts 105; manual-preservation.test.ts 30; plan-acceptance-validation.test.ts 36; plan-amendment-runner.test.ts 28.
+
+
+## Lead verification and remaining approval boundary (PR 1307 repair)
+
+The Lead independently ran the four repaired suites: 200 passed, two skipped, exit 0 (`/tmp/pr1307-lead-verification.log`). `pnpm build` exited 0 after reconciling both main merges. The deterministic production rehearsal exited 0: 18 suites, 69 passed and one expected failure; its retained combined report contains 33 scenarios. Two diagnostics are the asserted Session-probe environment wall misclassified by a pre-existing fixture; tracked in Issue #1322 rather than called a clean zero-diagnostic report.
+
+Issue #1321 now records the original implementation request. The earlier Issue-posting refusal was resolved by the newer operator-authored Routine GitHub delivery instruction in AGENTS.md; the original refusal remains historical evidence. That instruction authorizes intake, push and PR handoff, not governed Plan acceptance.
+
+The exact remaining build-blocking repairs are in `docs/reviews/pr1307-governed-criteria-repairs-2026-10-12.md`: eight missing historical lists and two numeric probe conditions. They are previewed, not applied. The narrow probe input uses the existing 5,000-token fixture budget and its 1,800 input usage, retains the original reconcile-receipt and passing-probe requirements, and omits references/dependencies so the repair changes criteria only. Two earlier preview revisions are explicitly superseded; no revision was applied.
+
+A static filesystem projection of all three official Plan outputs has zero validation errors, zero rejected documents, and one current Action with zero dispatch blockers. Comparison preserved every control field except criteria/source attribution and the update timestamp. Source Ask archival is normal receipt metadata and was excluded from the static control-document proof. Initial proof scripts exposed the host's older Python tar API, then the normal Ask archival outputs, then the required bootstrap missing from the snapshot; each was corrected without changing parser gates or live records. Failed receipts and disposable snapshots remain in /tmp. No live workspace or database was substituted.
