@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
+import { PullRequestLinkAudio } from "../../../components/pull-request-link-audio";
+import { PullRequestAudio } from "../../../components/pull-request-audio";
 import { DashboardChrome } from "../../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
 import type {
@@ -11,6 +13,7 @@ import type {
 } from "../../../lib/types";
 
 export default function AdminPullRequestsPage() {
+  const [readerRevision, setReaderRevision] = useState(0);
   const [data, setData] = useState<DashboardOutstandingPullRequests | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,10 +47,11 @@ export default function AdminPullRequestsPage() {
       subtitle={data ? `${data.counts.total} open across ${data.projectsScanned} Projects` : "Across every configured Project repository."}
       refreshing={refreshing}
       lastLoadedAt={lastLoadedAt}
-      onRefresh={() => void refresh()}
+      onRefresh={() => { setReaderRevision(value => value + 1); void refresh(); }}
     >
       {error ? <ErrorState title="Outstanding PRs unavailable" message={error} /> : null}
       {loading && !data ? <LoadingState /> : null}
+      <PullRequestLinkAudio refreshToken={readerRevision} />
       {data ? <PullRequestBody data={data} /> : null}
     </DashboardChrome>
   );
@@ -125,6 +129,7 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
             <div className="sm:col-span-2"><Detail label="Readiness" value={pullRequest.summary} /></div>
           </dl>
           <PullRequestBriefing briefing={pullRequest.briefing} />
+          <PullRequestAudio key={`${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             {pullRequest.isDraft ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> Draft</span> : null}
             {pullRequest.readiness === "merge_ready" ? <span className="inline-flex items-center gap-1 text-moss"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> Approved and merge-ready</span> : null}

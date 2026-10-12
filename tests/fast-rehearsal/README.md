@@ -14,6 +14,10 @@ pnpm fast-rehearsal --no-file-parallelism    # steadier per-phase timings (about
 pnpm fast-rehearsal --unsandboxed-validator  # skip Seatbelt even where it can run
 ```
 
+### Ask/To-do scout
+
+Run `pnpm fast-rehearsal -t 'Ask/To-do scout'` for the deterministic Hello World capture probe. Its binary product outcome is in the scenario `scout` report object; a passing harness test means the journey and report were captured, while the expected product outcome remains `no` until a completed Run and matching accepted Artifact exist. The reusable contract is in [`docs/agent-guidance/ask-todo-scout.md`](../../docs/agent-guidance/ask-todo-scout.md).
+
 Run it unsandboxed (an agent shell: `dangerouslyDisableSandbox`), inside the
 Project's mise environment (`mise exec -- pnpm fast-rehearsal`), and in a
 worktree only after `node scripts/bridge-worktree-deps.mjs`. Only on macOS in

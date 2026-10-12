@@ -98,3 +98,11 @@ would use.
 | Provider returns a non-audio response | `failed` | `SPEECH_INVALID_CONTENT_TYPE` |
 | Audio bytes are not decodable WAV | `failed` | `SPEECH_UNDECODABLE_AUDIO` |
 | Unknown semantic `voiceId` | `failed` | `SPEECH_UNKNOWN_VOICE` |
+
+## MP3 and long-form read-aloud
+
+The generic speech job now accepts `input.format: "mp3"`. Intelligence chunks
+long text, joins WAV utterances, encodes with FFmpeg/libmp3lame and stores one
+durable MP3 artifact. See [Shared read-aloud](./READ_ALOUD.md) for the request,
+limits, errors, Dashboard player and storage/playback contract. The smoke CLI
+continues to test its existing WAV path.

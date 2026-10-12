@@ -114,6 +114,13 @@
       "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
     },
     {
+      "id": "ask-todo-scout",
+      "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
+      "path": "docs/agent-guidance/ask-todo-scout.md",
+      "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
+      "sha256": "f95eed75ef768e2933a0d27b185dee489822baca0941987b8fd24c8b840eb410"
+    },
+    {
       "id": "session-roles-and-briefs",
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",

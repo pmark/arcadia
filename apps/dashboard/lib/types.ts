@@ -471,6 +471,7 @@ export interface DashboardPullRequestProjectError {
 }
 
 export interface DashboardOutstandingPullRequests {
+  repositories?: Array<{ projectId: string; projectName: string; repository: string; repositoryPath: string }>;
   generatedAt: string;
   projectsScanned: number;
   pullRequests: DashboardOutstandingPullRequest[];

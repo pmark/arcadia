@@ -4367,12 +4367,13 @@ Origin: every item has "origin" (a string from a field its source records, else 
   addJsonOption(
     intelligence
       .command("narrate")
-      .description("Narrate text, a file, or a GitHub issue's commentary into one WAV via the local speech route (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
+      .description("Narrate text, a file, a PR body, or a GitHub issue's commentary into one WAV via the local speech route (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--text <text>", "Text to narrate")
       .option("--file <path>", "Read narration text from a local file")
       .option("--issue <ref>", "GitHub issue URL, owner/repo#number, or number (with --repo)")
-      .option("--repo <owner/name>", "Repository for a bare --issue number")
+      .option("--pull-request <ref>", "Narrate only a GitHub PR body (URL, owner/repo#number, or number with --repo)")
+      .option("--repo <owner/name>", "Repository for a bare --issue or --pull-request number")
       .option("--voice-id <id>", "Semantic Arcadia voice id (e.g. arcadia.narrator)")
       .option("--route <name>", "Local speech route/model alias")
       .option("--out <path>", "Output WAV path (default: <workspace>/artifacts/narration/)")
@@ -4383,6 +4384,7 @@ Origin: every item has "origin" (a string from a field its source records, else 
     text?: string;
     file?: string;
     issue?: string;
+    pullRequest?: string;
     repo?: string;
     voiceId?: string;
     route?: string;

@@ -29,12 +29,13 @@ the app's domain.
   owned and stale attempts cannot overwrite a reclaimed job
 - Generic JSON Schema validation
 - Submit, status, retry, and health API endpoints
-- A local artifact store for generated binary results (currently images):
+- A local artifact store for generated binary results (images and speech audio):
   Arcadia downloads/decodes provider output, hashes and persists the bytes
   under the workspace, and returns a durable artifact-reference manifest
   (never a provider URL or inline base64) plus an HTTP endpoint to fetch
   those bytes back
 - Generic TypeScript client (including artifact retrieval)
+- Long-form speech jobs with WAV or locally encoded MP3 output and durable audio metadata; see `READ_ALOUD.md`
 - Paid usage gated separately from routing preference via
   `executionPolicy.allowPaidUsage` — never an automatic fallback
 - One retry maximum
