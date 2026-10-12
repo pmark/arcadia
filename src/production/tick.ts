@@ -18,7 +18,7 @@ import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBran
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -26,7 +26,7 @@ import {
   observeReconcileFailure,
   observeReconcileSuccess,
   observeRepairBudget,
-  observeScopePointer,
+  observeScopeDriftForProject,
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
@@ -1552,6 +1552,9 @@ export function runManagedProductionTick(
     let handoffHead: string | null = null;
     let terminalRefusal: TerminalRefusalFacts | null = null;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
+    // Scope drift is observed once per tick for every Project, before any early skip below, so a
+    // stranded scope is seen whether or not this tick could launch, wait or reconcile.
+    safelyRaiseRedAlerts(log, "scope drift", () => observeScopeDriftForProject(alertCtx, repoRoot));
     // Set only once the exit-reconcile branch starts, so a throw from the
     // live-session stall observation is never reported as a failed reconcile.
     let alertLease: ReturnType<typeof getRepositoryLease> = null;
@@ -1908,6 +1911,11 @@ function attemptProjectLaunch(
       activateNextPlan(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, requestId, apply: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A held successor is not a failure: the per-tick scope-drift observer already holds one
+      // named alert for it, so this tick stays quiet and skips (no log line, no retry storm).
+      if ((error as { details?: { code?: string } }).details?.code === SCOPE_HELD_CODE) {
+        return { attempted: false, outcome: "skipped", reason: message, actionKey: null };
+      }
       input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
@@ -1935,11 +1943,6 @@ function attemptProjectLaunch(
     // instead of every tick skipping the launch with no trace (Issue #997).
     const gateItem = transition.kind === "decision" ? transition.operatorGate?.blocking[0] : undefined;
     const context = transition.dispatch.context;
-    // An unresolved context says nothing about the pointer, so only a resolved one is observed.
-    if (context) {
-      safelyRaiseRedAlerts(input.log, "scope pointer", () =>
-        observeScopePointer({ db, workspace: input.workspace, projectSlug: input.projectSlug, now: input.now }, { activePlanSlug: context.activePlan }));
-    }
     if (currentActionKey && gateItem && context && actionInActiveScope(db, input.projectSlug, context.activePlan, context.action.id)) {
       if (input.gate) input.gate.actionKey = currentActionKey;
       try {

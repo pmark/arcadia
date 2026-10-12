@@ -26,7 +26,7 @@ import {
   type ActionClaimFence
 } from "../sessions/index.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
-import { activeScopeCoveringPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
+import { activeScopeCoveringPlan, assertNoActiveScopeOverPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -520,6 +520,10 @@ export function settleAgentAsk(db: Database.Database, input: {
           addMilestoneMutations(fileMutations, projectPath, activePlanPath, proposal.normalized.desiredResult);
           effects.push(`Updated Project ${project.slug} and active Plan ${plan.slug} Milestone.`);
         } else if (targetRef === "status") {
+          // Pausing or completing a Project under an Active scope would strand the run (A6).
+          if (proposal.normalized.desiredResult.trim().toLowerCase() !== "active") {
+            assertNoActiveScopeOverPlan(db, project.slug, plan.slug, `setting the Project status to ${proposal.normalized.desiredResult}`);
+          }
           const before = readFileSync(projectPath, "utf8");
           fileMutations.push({ path: projectPath, before, after: replaceTopLevelField(before, "status", proposal.normalized.desiredResult) });
           effects.push(`Updated Project ${project.slug} Status to ${proposal.normalized.desiredResult}.`);

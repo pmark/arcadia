@@ -9,6 +9,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { assertClean, untrackedDraftAskPaths, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
+import { assertNoActiveScopeOverPlan } from "../production/policy.js";
 import { buildAgentQueue } from "./queue.js";
 import { loadActionOrder, seedActionOrderFifo, type ActionOrderReceipt } from "./order.js";
 import { resolvePlanActivation, projectActionKeys, type PlanActivationResolution } from "./planActivation.js";
@@ -57,6 +58,9 @@ export function activatePlan(db: Database.Database, input: {
   previewFingerprint?: string;
   apply?: boolean;
 }): PlanActivationReceipt {
+  // Scope-drift guard (A6): re-pointing the Project while an Active production scope covers its
+  // current Plan would strand the run. Refused before the seed or any document is written.
+  assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug);
   const existing = db.prepare(
     "SELECT action_key, queue_revision, receipt_json FROM action_queue_pointer_receipts WHERE request_id = ?"
   ).get(input.requestId) as { action_key: string; queue_revision: number; receipt_json: string } | undefined;
@@ -317,6 +321,9 @@ export function activateNextPlan(db: Database.Database, input: {
   requestId: string;
   apply?: boolean;
 }): ActivateNextPlanResult {
+  // Scope-drift guard (A6): re-pointing the Project while an Active production scope covers its
+  // current Plan would strand the run. Refused before the seed or any document is written.
+  assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug);
   let resolution = resolvePlanActivation({
     repoRoot: input.repoRoot,
     projectSlug: input.projectSlug,
@@ -417,4 +424,11 @@ function currentSha256(filePath: string): string | null {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function assertNoActiveScopeOverCurrentPlan(db: Database.Database, repoRoot: string, projectSlug: string): void {
+  const project = discoverDocs(repoRoot).docs.find(
+    (doc): doc is ProjectDoc => doc.type === "project" && doc.slug.toLowerCase() === projectSlug.toLowerCase()
+  );
+  assertNoActiveScopeOverPlan(db, projectSlug, project?.activePlan ?? null, "activating the next Plan");
 }

@@ -858,6 +858,13 @@ export function activeScopeCoveringPlan(
   projectSlug: string,
   currentPlanSlug: string
 ): { scope: ProductionScope; planKey: string } | null {
+  // An absent policy row (or table) is "no policy has ever been written": no Active scope,
+  // so nothing can be stranded. Anything else that fails to read is unknown, and fails closed.
+  try {
+    if (!db.prepare("SELECT 1 FROM production_policy WHERE id = 'workspace'").get()) return null;
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return null;
+  }
   const read = readProductionPolicySafely(db);
   if (read.status !== "ok") {
     throw validationError(
@@ -869,6 +876,25 @@ export function activeScopeCoveringPlan(
   const planKey = `${projectSlug}/${currentPlanSlug}`;
   const scope = read.policy.scope;
   return scope.projects.includes(projectSlug) && scope.plans.includes(planKey) ? { scope, planKey } : null;
+}
+
+export const SCOPE_HELD_CODE = "production_scope_held";
+
+/**
+ * Refuse `change` before anything is written when an Active production scope
+ * covers the Project's current Plan. Membership is by Plan: a scope names Plans
+ * and (optionally) a subset of their Actions, and any Plan-level change under a
+ * covered Plan strands the run whichever Actions the scope lists. `code` lets a
+ * caller (the worker tick) treat the refusal as a hold, not a failure.
+ */
+export function assertNoActiveScopeOverPlan(db: Database.Database, projectSlug: string, currentPlanSlug: string | null, change: string): void {
+  if (!currentPlanSlug) return;
+  const covering = activeScopeCoveringPlan(db, projectSlug, currentPlanSlug);
+  if (!covering) return;
+  throw validationError(
+    `Plan ${currentPlanSlug} is inside the Active production scope; ${change} would strand it. Nothing was changed.`,
+    { code: SCOPE_HELD_CODE, activePlan: covering.planKey, remedy: SCOPE_DRIFT_REMEDY }
+  );
 }
 
 /** The Project/Plan/Action a caller wants checked against an active policy's scope. */

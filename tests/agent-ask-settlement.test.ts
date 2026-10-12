@@ -134,6 +134,19 @@ describe("Agent Ask settlement", () => {
       expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
     });
 
+    it("refuses a project_update that pauses the Project under an Active scope, and allows it outside one", () => {
+      const { workspace, repo } = activationFixture();
+      const ask = (id: string, status: string) => runAgentAskPreviewCommand({ workspace, request: [
+        "agent_ask: v1", `request_id: ${id}`, "project: demo", "intent: project_update", "target_ref: status",
+        `desired_result: ${status}` ].join("\n") });
+      activateScope(workspace, ["demo/demo-plan"]);
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      const refused = ask("pause-scoped", "paused");
+      expect(() => runAgentAskSettleCommand({ workspace, proposal: refused.data.proposal.id, requestId: "settle-pause-scoped", disposition: "accepted" }))
+        .toThrow(/Active production scope/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+    });
+
     it("still activates when the scope covers a different Plan", () => {
       const { workspace } = activationFixture();
       activateScope(workspace, ["demo/some-other-plan"]);
