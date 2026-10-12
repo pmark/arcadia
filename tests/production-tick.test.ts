@@ -2712,6 +2712,105 @@ describe("red alerts from the worker tick", () => {
     expect(openAlerts(fixture)).toHaveLength(0);
   });
 
+  describe("scope drift (A6, #1284)", () => {
+    const successorPlan = `---
+arcadia: v1
+type: plan
+slug: plan-b
+project: test-project
+status: active
+milestone: Prove the continuous worker tick
+current_action: b1
+token_impact: medium
+token_budget: One bounded Session; all checks are deterministic.
+recommended_model: sonnet
+recommended_reasoning_effort: high
+updated: 2026-08-30
+actions:
+  - id: b1
+    title: Define the successor contract
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Define the bounded successor contract.
+    expected_artifact: docs/b1.md
+    acceptance_criteria:
+      - The successor contract exists.
+    decisions: ["0001"]
+---
+
+# Plan B
+`;
+    function finishScopedPlan(fixture: ReturnType<typeof preparedFixture>) {
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8")
+        .replace("status: active", "status: complete").replace("current_action: define-contract", "current_action: null")
+        .replace("    status: open", "    status: done"));
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "finish scoped plan"]);
+    }
+    const activeScopeFor = (plans: string[]) => normalizeProductionScope({
+      intent: "Prove scope drift.", projects: ["test-project"], plans, actions: [], providers: ["claude-code-cli"],
+      maxConcurrentSessions: 1, mechanicalTransitions: ["acceptance", "pointer"]
+    });
+    function activate(fixture: ReturnType<typeof preparedFixture>, plans: string[]) {
+      const scope = activeScopeFor(plans);
+      withDatabase(fixture.workspace, (db) => activateProduction(db, {
+        requestId: `scope-${plans.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator"
+      }));
+    }
+    const pointer = (fixture: ReturnType<typeof preparedFixture>) =>
+      /active_plan: (\S+)/.exec(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8"))![1];
+
+    it("holds the successor Plan while the scope covers the finished Plan: no activation, one alert, no failure", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/copy-proof"]);
+      const tmux = new FakeTmux();
+      const first = tickAt(fixture, tmux, 0, true);
+      const second = tickAt(fixture, tmux, 5_000, true);
+      expect(pointer(fixture)).toBe("copy-proof");
+      expect(first.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      expect(second.projects[0].launch).toMatchObject({ attempted: false, outcome: "skipped" });
+      const alerts = openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].occurrences).toBe(2);
+      expect(alerts[0].detail).toMatch(/Turn production Off/);
+    });
+
+    it("still activates the successor when the Active scope covers a different Plan", () => {
+      const fixture = preparedFixture();
+      finishScopedPlan(fixture);
+      activate(fixture, ["test-project/some-other-plan"]);
+      tickAt(fixture, new FakeTmux(), 0, true);
+      expect(pointer(fixture)).toBe("plan-b");
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_successor_held")).toHaveLength(0);
+    });
+
+    it("raises scope_pointer_mismatch through the tick when the pointer leaves the scope, and clears when it returns", () => {
+      const fixture = preparedFixture();
+      activate(fixture, ["test-project/copy-proof"]);
+      writeFileSync(path.join(fixture.repo, "docs", "plans", "plan-b.md"), successorPlan);
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      const original = readFileSync(projectPath, "utf8");
+      writeFileSync(projectPath, original.replace("active_plan: copy-proof", "active_plan: plan-b").replace("current_action: define-contract", "current_action: b1"));
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "re-point to plan-b"]);
+      const tmux = new FakeTmux();
+      tickAt(fixture, tmux, 0, true);
+      const raised = openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch");
+      expect(raised).toHaveLength(1);
+      expect(raised[0].detail).toMatch(/test-project\/plan-b.*Turn production Off/s);
+      writeFileSync(projectPath, original);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-qm", "restore pointer"]);
+      tickAt(fixture, tmux, 5_000, true);
+      expect(openAlerts(fixture).filter((alert) => alert.trigger === "scope_pointer_mismatch")).toHaveLength(0);
+    });
+  });
+
   it("raises one reconcile_failed alert per Session, updates it on repeat, and clears once a reconcile succeeds", () => {
     const fixture = preparedFixture();
     const now = new Date(fixture.now.getTime());

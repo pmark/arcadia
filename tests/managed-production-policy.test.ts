@@ -15,6 +15,7 @@ import {
 } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { buildProgram } from "../src/cli.js";
+import { runDocsSyncCommand } from "../src/commands/docs.js";
 import {
   buildProductionActivationPreview,
   describeProductionState
@@ -994,7 +995,7 @@ describe("the control surface stays reachable when other sources are broken", ()
 });
 
 describe("activation preview", () => {
-  function fixtureWorkspace(): string {
+  function fixtureWorkspace(shipItExecution?: string): string {
     const repo = scratch();
     mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
     writeFileSync(
@@ -1020,6 +1021,7 @@ describe("activation preview", () => {
         "    acceptance_criteria:", "      - The fixture is prepared.", "    depends_on: []",
         "  - id: ship-it", "    title: Ship the view", "    status: open",
         "    responsibility: agent", "    next_action: Implement the view.",
+        ...(shipItExecution ? [`    execution: ${shipItExecution}`] : []),
         "    expected_artifact: A visible view", "    clarification: clarified",
         "    acceptance_criteria:", "      - The view is visible.", "    depends_on: [migrate]",
         "---", "", "# Queue plan", ""
@@ -1060,6 +1062,11 @@ describe("activation preview", () => {
       "demo/ship-it"
     ]);
     expect(preview.includedPlans).toEqual(["demo/queue-plan"]);
+    // Every Action lists its route and expected operator touches; none declares `execution`, so the preview says so.
+    for (const action of preview.orderedActions) {
+      expect(action.route.declared).toBe(false);
+      expect(action.route.operatorTouches.length).toBeGreaterThan(0);
+    }
     expect(preview.scope.providers).toEqual(["claude", "codex"]);
     expect(preview.scope.maxConcurrentSessions).toBe(2);
     expect(preview.scope.mechanicalTransitions).toEqual(["pointer", "validation"]);
@@ -1067,6 +1074,18 @@ describe("activation preview", () => {
     expect(preview.offConsequence).toContain("keeps running");
     expect(preview.explicitStops.join(" ")).toContain("needs its own Decision");
     expect(preview.controlDeadlines).toBe(PRODUCTION_CONTROL_DEADLINES);
+  });
+
+  it("lists a declared route and the operator touches it expects, overriding the Action's wording (#1277)", () => {
+    const target = fixtureWorkspace("plan-run");
+    runDocsSyncCommand({ workspace: target, apply: true });
+    const preview = withDatabase(target, (db) =>
+      buildProductionActivationPreview(db, { projects: ["demo"], providers: ["claude"], intent: "Finish the queue Plan." })
+    );
+    const route = preview.orderedActions.find((action) => action.actionKey === "demo/ship-it")?.route;
+    // "Implement the view." would keyword-route to build; the declaration makes it a plan run.
+    expect(route).toMatchObject({ kind: "plan-run", declared: true });
+    expect(route?.operatorTouches.join(" ")).toMatch(/Planning-run approval/);
   });
 
   it("keeps an exact Action allowlist and never adds an Action outside it (Issue #392)", () => {

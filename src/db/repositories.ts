@@ -1125,6 +1125,11 @@ export function updateWorkItem(
     updates.push("execution_requirement_json = @execution_requirement_json");
   }
 
+  if (input.executionRoute !== undefined) {
+    parameters.execution_route = nullable(input.executionRoute);
+    updates.push("execution_route = @execution_route");
+  }
+
   if (input.acceptanceCriteriaJson !== undefined) {
     parameters.acceptance_criteria_json = nullable(input.acceptanceCriteriaJson);
     updates.push("acceptance_criteria_json = @acceptance_criteria_json");

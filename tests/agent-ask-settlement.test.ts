@@ -22,6 +22,8 @@ import { createCodexInvocation, createExecutionPlan, createExecutionRun, createW
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { ensureSessionExitReceiptsTable } from "../src/sessions/reconciliation.js";
 import type { PlanDoc } from "../src/docs/types.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
+import { ensureRedAlertTables, listOpenRedAlerts, observeScopePointer } from "../src/production/redAlerts.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -92,6 +94,93 @@ describe("Agent Ask settlement", () => {
       const { workspace } = activationFixture();
       seedSession(workspace, { id: "session_running", status: "running", endedAt: null, receipt: false });
       expect(() => runAgentAskSettleCommand({ ...activationOptions("running-no-receipt"), workspace })).toThrow(/Reconcile/);
+    });
+  });
+
+  describe("scope-drift guard (A6, #1284)", () => {
+    const options = (requestId: string, workspace: string) => ({ workspace, proposal: "activate-production", requestId,
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra", top: true });
+    const activateScope = (workspace: string, plans: string[]) => withDatabase(workspace, (db) => {
+      const scope = normalizeProductionScope({ intent: "Run demo-plan.", projects: ["demo"], plans, actions: [],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+      activateProduction(db, { requestId: `scope-${plans.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
+
+    it("refuses activation of another Plan inside an Active scope, names STOP, and writes nothing", () => {
+      const { workspace, repo } = activationFixture();
+      activateScope(workspace, ["demo/demo-plan"]);
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+      let message = "";
+      try { runAgentAskSettleCommand(options("scope-refused", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
+      expect(message).toMatch(/inside the Active production scope/);
+      expect(message).toMatch(/Turn production Off/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+      expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+      expect(discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan")).toMatchObject({ status: "active" });
+      expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("demo-plan");
+    });
+
+    it("fails closed with a retry remedy when the production policy cannot be read, writing nothing", () => {
+      const { workspace, repo } = activationFixture();
+      withDatabase(workspace, (db) => { db.prepare("UPDATE production_policy SET scope_json = '{not json' WHERE id = 'workspace'").run(); });
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      let message = "";
+      try { runAgentAskSettleCommand(options("scope-unreadable", workspace)); } catch (error) { message = JSON.stringify({ m: (error as Error).message, d: (error as { details?: unknown }).details }); }
+      expect(message).toMatch(/could not be read/);
+      expect(message).toMatch(/Retry/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    });
+
+    it("refuses a project_update that pauses the Project under an Active scope, and allows it outside one", () => {
+      const { workspace, repo } = activationFixture();
+      const ask = (id: string, status: string) => runAgentAskPreviewCommand({ workspace, request: [
+        "agent_ask: v1", `request_id: ${id}`, "project: demo", "intent: project_update", "target_ref: status",
+        `desired_result: ${status}` ].join("\n") });
+      activateScope(workspace, ["demo/demo-plan"]);
+      const before = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      const refused = ask("pause-scoped", "paused");
+      expect(() => runAgentAskSettleCommand({ workspace, proposal: refused.data.proposal.id, requestId: "settle-pause-scoped", disposition: "accepted" }))
+        .toThrow(/Active production scope/);
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(before);
+    });
+
+    it("still activates when the scope covers a different Plan", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/some-other-plan"]);
+      const opts = options("scope-elsewhere", workspace);
+      const preview = runAgentAskSettleCommand(opts);
+      expect(() => runAgentAskSettleCommand({ ...opts, apply: true, preview: preview.data.receipt.previewFingerprint })).not.toThrow();
+    });
+
+    it("lets a dead receipted Session through (F13) when the Plan is outside the scope", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/some-other-plan"]);
+      seedSession(workspace, { id: "session_dead_receipted_scope", status: "needs_input", endedAt: "2026-01-01T00:10:00.000Z", receipt: true });
+      const opts = options("scope-f13", workspace);
+      const preview = runAgentAskSettleCommand(opts);
+      expect(() => runAgentAskSettleCommand({ ...opts, apply: true, preview: preview.data.receipt.previewFingerprint })).not.toThrow();
+    });
+
+    it("raises one red alert when the pointer leaves the Active scope and clears when it returns", () => {
+      const { workspace } = activationFixture();
+      activateScope(workspace, ["demo/demo-plan"]);
+      withDatabase(workspace, (db) => {
+        ensureRedAlertTables(db);
+        const ctx = { db, workspace, projectSlug: "demo", now: new Date("2026-10-12T00:00:00Z") };
+        observeScopePointer(ctx, { activePlanSlug: "demo-plan" });
+        expect(listOpenRedAlerts(db)).toHaveLength(0);
+        observeScopePointer(ctx, { activePlanSlug: "production" });
+        observeScopePointer(ctx, { activePlanSlug: "production" });
+        const open = listOpenRedAlerts(db);
+        expect(open).toHaveLength(1);
+        expect(open[0]).toMatchObject({ trigger: "scope_pointer_mismatch", projectSlug: "demo", occurrences: 2 });
+        expect(open[0].detail).toMatch(/demo\/production.*Turn production Off/s);
+        observeScopePointer(ctx, { activePlanSlug: "demo-plan" });
+        expect(listOpenRedAlerts(db)).toHaveLength(0);
+      });
     });
   });
 
