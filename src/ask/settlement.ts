@@ -25,6 +25,7 @@ import {
   getActiveWorktreeReservation,
   type ActionClaimFence
 } from "../sessions/index.js";
+import { getSessionExitReceipt } from "../sessions/reconciliation.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -561,10 +562,19 @@ export function settleAgentAsk(db: Database.Database, input: {
             if (input.effort && !["low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort)) throw validationError("Activation effort is unsupported.");
             const activeRun = db.prepare(`SELECT er.id FROM execution_runs er JOIN work_items wi ON wi.id = er.work_item_id
               WHERE wi.project_id = ? AND er.status IN ('pending_execution', 'running') LIMIT 1`).get(project.id);
-            const activeSession = db.prepare(`SELECT id FROM agent_sessions
-              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input') LIMIT 1`).get(project.id);
-            if (activeRun || activeSession || queue.running.some((entry) => entry.projectId === project.id) ||
-                queue.attention.some((entry) => entry.projectId === project.id && entry.attentionKind === "session")) {
+            // A Session that has ended and already holds a durable exit receipt is reconciled:
+            // it can no longer run, so it must not pin activation (reconcile never changes its status).
+            const isDeadReceipted = (sessionId: string): boolean => {
+              const row = db.prepare("SELECT ended_at FROM agent_sessions WHERE id = ?").get(sessionId) as { ended_at: string | null } | undefined;
+              return !!row?.ended_at && !!getSessionExitReceipt(db, sessionId);
+            };
+            const blockingSessionEntry = (entry: { projectId: string | null; id: string }): boolean =>
+              entry.projectId === project.id && !(entry.id.startsWith("session:") && isDeadReceipted(entry.id.slice("session:".length)));
+            const activeSession = (db.prepare(`SELECT id FROM agent_sessions
+              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input')`).all(project.id) as Array<{ id: string }>)
+              .some((row) => !isDeadReceipted(row.id));
+            if (activeRun || activeSession || queue.running.some(blockingSessionEntry) ||
+                queue.attention.some((entry) => entry.attentionKind === "session" && blockingSessionEntry(entry))) {
               throw validationError("Reconcile the Project's existing Session or Run before activating another Plan.");
             }
             const selected = target.actions.find((action) => action.id === input.action);
