@@ -571,8 +571,8 @@ describe("Agent Ask complete", () => {
 
     // An abbreviated sha of HEAD is exactly as applicable as the full one.
     const abbreviated = runAgentAskDraftCommand({
-      workspace: path.join(path.dirname(repo), "no-workspace-here"), dir: repo,
-      request: completeAsk("complete-draft-abbreviated", "first", JSON.stringify(head.slice(0, 12)))
+      workspace: path.join(path.dirname(repo), "no-workspace-here"), dir: candidate,
+      request: completeAsk("complete-draft-abbreviated", "first", JSON.stringify(execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim().slice(0, 12)))
     });
     expect(abbreviated.data.written).toBe("created");
   });
@@ -850,7 +850,7 @@ describe("Agent Ask complete", () => {
       workspace, proposal: proposalB.data.proposal.id, requestId: "settle-concurrent-b", disposition: "accepted",
       preview: previewB.data.receipt.previewFingerprint, apply: true, operator: true,
       hooks: {
-        beforeDocumentWrite: () => {
+        beforeGitReservation: () => {
           runAgentAskSettleCommand({
             workspace, proposal: proposalA.data.proposal.id, requestId: "settle-concurrent-a", disposition: "accepted",
             preview: previewA.data.receipt.previewFingerprint, apply: true, operator: true

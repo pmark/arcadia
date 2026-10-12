@@ -250,7 +250,7 @@ describe("renderActionBrief", () => {
     });
 
     it("refuses the rendered command run verbatim, with its placeholders unfilled, and writes nothing", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       expect(() => runAgentAskDraftCommand({ request: json, dir, workspace: path.join(repo, "no-workspace") }))
         .toThrowError(/still contains the placeholder <REPLACE:.*Replace each note/);
@@ -290,7 +290,7 @@ describe("renderActionBrief", () => {
     });
 
     it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       const filled = json.replaceAll("<REPLACE: the command you ran and what you observed for this criterion>", "ran the validation; it passed");
       const drafted = runAgentAskDraftCommand({ request: filled, dir, workspace: path.join(repo, "no-workspace") });
@@ -473,4 +473,12 @@ function brief(repo: string, baseRevision = head(repo)): string {
     repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
     worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode", baseRevision
   });
+}
+
+function candidateBriefRepo(): string {
+  const primary = briefRepo();
+  const candidate = `${primary}-candidate`;
+  roots.push(candidate);
+  execFileSync("git", ["worktree", "add", "-q", "-b", "brief/candidate", candidate], { cwd: primary });
+  return candidate;
 }

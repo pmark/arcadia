@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,7 +21,7 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import type { WorkItemSummary } from "../src/domain/types.js";
-import { assertClean, untrackedDraftAskPaths } from "../src/git/worktrees.js";
+import { assertClean } from "../src/git/worktrees.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { clarifyGoldenExamples, passingGrader, stubGrader } from "./clarifyFixtures.js";
 
@@ -143,18 +143,21 @@ describe("arcadia ask marks the Actions it creates unclarified", () => {
   });
 });
 
-describe("clarify --apply hands a graded coding-agent Action to a file", () => {
-  it("drafts one strict v1 Agent Ask into the Project repository and writes no Action status, pointer or queue entry", async () => {
+describe("clarify --apply registers a graded coding-agent handoff", () => {
+  it("registers one strict v1 Agent Ask without checkout scratch or Action status, pointer or queue changes", async () => {
     const { workspace, repo, action, captureId } = fixture();
 
     const response = await runClarifyCommand({ workspace, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
 
     const requestId = expectedRequestId(action.id);
     expect(handoffRequestId(action.id, String(YES.nextAction), String(YES.doneCondition))).toBe(requestId);
-    expect(response.data.applications[0].handoff).toMatchObject({ requestId, status: "drafted" });
-    expect(draftFiles(repo)).toEqual([`agent-ask-${requestId}.yaml`]);
+    expect(response.data.applications[0].handoff).toMatchObject({ requestId, status: "registered" });
+    expect(draftFiles(repo)).toEqual([]);
 
-    const ask = JSON.parse(readFileSync(path.join(repo, ".arcadia", "asks", `agent-ask-${requestId}.yaml`), "utf8")) as Record<string, unknown>;
+    const ask = withDatabase(workspace, db => {
+      const row = db.prepare("SELECT original_text FROM ask_capture_envelopes WHERE request_id = ?").get(requestId) as { original_text: string };
+      return JSON.parse(row.original_text) as Record<string, unknown>;
+    });
     expect(ask).toMatchObject({
       agent_ask: "v1",
       request_id: requestId,
@@ -175,14 +178,14 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
       positions: (db.prepare("SELECT COUNT(*) AS n FROM action_queue_positions").get() as { n: number }).n
     }));
     expect(counts).toEqual({ settlements: 0, positions: 0 });
-    expect(readdirSync(repo).sort()).toEqual([".arcadia"]);
+    expect(readdirSync(repo)).toEqual([]);
 
     // The Action itself is clarified by the existing path, nothing more.
     const after = withDatabase(workspace, (db) => getWorkItem(db, action.id));
     expect(after?.clarification_status).toBe("clarified");
     expect(after?.status).toBe(action.status);
 
-    expect(renderClarifySuccess(response).join("\n")).toContain(`Handoff: drafted Agent Ask ${requestId}`);
+    expect(renderClarifySuccess(response).join("\n")).toContain(`Handoff: registered Agent Ask ${requestId}`);
   });
 
   it("is idempotent: re-clarifying the same candidate reports the existing Ask and drafts nothing", async () => {
@@ -194,7 +197,7 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
 
     expect(again.data.applications[0].handoff).toMatchObject({ requestId, status: "skipped" });
     expect(again.data.applications[0].handoff?.reason).toContain("already hands off this Action");
-    expect(draftFiles(repo)).toHaveLength(1);
+    expect(draftFiles(repo)).toHaveLength(0);
     expect(proposalCount(workspace, requestId)).toBe(1);
   });
 
@@ -207,15 +210,16 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
     const response = await runClarifyCommand({ workspace, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
 
     const handoff = response.data.applications[0].handoff;
-    expect(handoff?.status).toBe("drafted");
-    expect(handoff?.workspaceStatus).toBe("previewed");
+    expect(handoff?.status).toBe("registered");
+    expect(handoff?.proposalId).toBeTruthy();
+    expect(handoff?.captureId).toBeTruthy();
+    expect(handoff?.fingerprint).toBeTruthy();
     expect(handoff?.requestId).toMatch(/^handoff-[a-z0-9-]+$/);
     expect(handoff?.requestId).toBe(expectedRequestId(action.id));
-    const drafts = untrackedDraftAskPaths(repo);
-    expect(drafts).toHaveLength(1);
-    // The draft is untracked intake: a clean check that ignores drafts passes.
-    expect(() => assertClean(repo, "Project repository", drafts)).not.toThrow();
-    expect(() => assertClean(repo, "Project repository")).toThrow();
+    expect(draftFiles(repo)).toEqual([]);
+    expect(git("status", "--porcelain").toString()).toBe("");
+    expect(() => assertClean(repo, "Project repository")).not.toThrow();
+
   });
 
   it("hands one Action off once even when a re-run produces different candidate text", async () => {
@@ -228,10 +232,10 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
 
     expect(again.data.applications[0].handoff).toMatchObject({ status: "skipped" });
     expect(again.data.applications[0].handoff?.reason).toContain("already hands off this Action");
-    expect(draftFiles(repo)).toHaveLength(1);
+    expect(draftFiles(repo)).toHaveLength(0);
 
     // Also when the earlier handoff was settled and archived: the file is gone, the proposal row remains.
-    rmSync(path.join(repo, ".arcadia", "asks", draftFiles(repo)[0]));
+    // Registered requests have no local draft custody to manage.
     const archived = await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: different, grader: passingGrader });
     expect(archived.data.applications[0].handoff?.status).toBe("skipped");
     expect(draftFiles(repo)).toHaveLength(0);
@@ -250,7 +254,7 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
     const requestId = expectedRequestId(action.id);
     await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
     // Settlement archives the draft file out of .arcadia/asks/; the proposal row stays.
-    rmSync(path.join(repo, ".arcadia", "asks", `agent-ask-${requestId}.yaml`));
+    // Proposal rows retain the handoff independently of local input files.
     expect(draftFiles(repo)).toHaveLength(0);
 
     const again = await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });

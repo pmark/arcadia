@@ -963,6 +963,16 @@ copy, draft file, settlement or new coding session is required on this path.
 If receipt writes are sandbox-denied, request the host's normal permission or
 approved host execution for this same command; proceed only if granted. Otherwise
 preserve a validated draft in an isolated checkout through the Git/PR handoff.
+`agent-ask draft` refuses the shared primary checkout and the base/default branch,
+even from a subdirectory or when a workspace is unavailable. Use inline
+`agent-ask preview '<json>'` there; create draft files only in your own candidate.
+Settlement reserves Git's HEAD and index locks before writing governed documents, uses
+private temporary indices, and never runs repository hooks or clean filters.
+Apply settlement from a named candidate branch; detached writes refuse before changes.
+An existing lock refuses without changing documents, HEAD, or the index; let its
+owning Git operation finish and retry. Settlement intentionally integrates
+approved governed records, and does not use the shared checkout for scratch.
+
 Before successful registration, local input storage alone is not registered
 intake or a remote backup. The detailed
 [agent-neutral procedure](docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work)
