@@ -1553,6 +1553,24 @@ describe("arcadia todo: collapsed Projects never hide a blocking item", () => {
     });
   }
 
+  it("lists an open scope stop (Red Alert) as a blocking escalation that names Turn production Off", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), []);
+    addBareProject(workspace, "Bare");
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        `INSERT INTO production_red_alerts (id, alert_key, project_slug, action_key, session_id, trigger, detail, evidence_path, status,
+           episode, occurrences, first_seen_at, last_seen_at)
+         VALUES ('alert-1', 'scope_successor_held:bare', 'bare', NULL, NULL, 'scope_successor_held', 'Plan bare/p finished inside the scope.', 'ev.json',
+           'open', 1, 1, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')`
+      ).run();
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    const stop = data.items.find((item) => item.kind === "escalation:scope_successor_held");
+    expect(stop).toMatchObject({ project: "bare", blocking: true, title: "Plan bare/p finished inside the scope." });
+    expect(stop?.answer).toContain("Turn production Off");
+  });
+
   it("lists a no-repo_path Project's escalation as blocking, and counts only its non-blocking Ask and review_item", () => {
     const workspace = fixtureWorkspace(fixtureRepo(0), [
       { id: "bare-ask", createdAt: "2026-09-05T00:00:00.000Z", project: "bare", desiredResult: "Asked of the bare Project." }

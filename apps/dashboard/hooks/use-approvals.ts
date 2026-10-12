@@ -12,6 +12,8 @@ export interface Choice {
   option?: string;
   /** For a build-packet or planning review item: approve or reject it through /api/review-action. */
   reviewAction?: "approve" | "reject";
+  /** For a platform blocker: clear exactly this pinned stop (POST /api/blocker-clear). */
+  blockerClear?: boolean;
 }
 
 /**
@@ -19,6 +21,9 @@ export interface Choice {
  * sent with noExecute unless the row's own control says otherwise (a planning run approval is what queues its Run).
  */
 export function requestFor(approval: Approval, choice: Choice): { url: string; body: Record<string, unknown> } {
+  if (choice.blockerClear && approval.blockerRemedy?.oneClick && approval.blockerRemedy.actionKey) {
+    return { url: "/api/blocker-clear", body: { actionKey: approval.blockerRemedy.actionKey, kind: approval.blockerRemedy.kind } };
+  }
   if (approval.kind === "review_item" && choice.reviewAction) {
     const noExecute = approval.reviewControl?.noExecute ?? true;
     return {
