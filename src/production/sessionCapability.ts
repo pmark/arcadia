@@ -2,7 +2,7 @@ import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/preservationTransport.js";
+import { agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
 
 /**
  * An environment wall is a missing capability a coding Session needs to finish
