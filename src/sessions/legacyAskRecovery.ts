@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { askGit as git, tryAskGit as tryGit, reserveAskGitIndex } from "../git/askIsolation.js";
@@ -86,7 +86,9 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
   if (JSON.stringify(currentStatus) !== JSON.stringify(status)) throw validationError("Agent Ask recovery checkout changed before isolation; preserved it.");
 
   const source = path.join(worktreePath, filePath);
-  if (!lstatSync(source).isFile() || !realpathSync(source).startsWith(`${realpathSync(worktreePath)}${path.sep}`)) throw validationError("Drifted Ask must be a regular file inside its checkout.");
+  const sourceStat = lstatSync(source);
+  const sourceParent = realpathSync(path.dirname(source));
+  if (!sourceStat.isFile() || sourceStat.nlink !== 1 || !realpathSync(source).startsWith(`${realpathSync(worktreePath)}${path.sep}`)) throw validationError("Drifted Ask must be a regular file inside its checkout.");
   const content = readFileSync(source, "utf8");
   const requestId = extractRequestId(content);
   // Deriving the stub from the request id and the exact content, rather than
@@ -130,13 +132,24 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
 
   testHooks?.afterCommitBeforeCleanup?.();
 
-  if (readFileSync(source, "utf8") !== content) throw validationError("Drifted Agent Ask changed during recovery; preserved current content.");
+  // Bind cleanup to the exact original file, never a replacement symlink or peer inode.
+  if (realpathSync(path.dirname(source)) !== sourceParent) throw validationError("Drifted Agent Ask parent changed during recovery; preserved current content.");
   const isTracked = tryGit(worktreePath, ["ls-files", "--error-unmatch", filePath]) !== null;
-  if (isTracked) {
-    writeFileSync(source, git(worktreePath, ["show", `HEAD:${filePath}`], undefined, false));
-  } else {
-    rmSync(path.join(worktreePath, filePath));
-  }
+  const fd = openSync(source, (isTracked ? constants.O_RDWR : constants.O_RDONLY) | constants.O_NOFOLLOW);
+  try {
+    const current = fstatSync(fd);
+    if (!current.isFile() || current.nlink !== 1 || current.dev !== sourceStat.dev || current.ino !== sourceStat.ino || readFileSync(fd, "utf8") !== content) throw validationError("Drifted Agent Ask changed during recovery; preserved current content.");
+    if (isTracked) {
+      const original = Buffer.from(git(worktreePath, ["show", `HEAD:${filePath}`], undefined, false));
+      writeSync(fd, original, 0, original.length, 0);
+      ftruncateSync(fd, original.length);
+    } else {
+      const entry = lstatSync(source);
+      if (entry.dev !== sourceStat.dev || entry.ino !== sourceStat.ino || !entry.isFile()) throw validationError("Drifted Agent Ask was replaced during recovery; preserved replacement.");
+      rmSync(source);
+    }
+  } finally { closeSync(fd); }
+
 
   return { recovered: true, askFile: askRelativePath, branch, requestId };
   } finally { reservation.release(); }

@@ -165,6 +165,8 @@ export interface AgentAskSettlementTestHooks {
    * compare-and-set re-reads and re-applies rather than overwriting it.
    */
   beforeDocumentWrite?: () => void;
+  /** After resolution, before Git identity/index reservation; permits serialized race fixtures. */
+  beforeGitReservation?: () => void;
   /** Runs inside the operational-projection transaction, before the sync. */
   beforeOperationalSync?: () => void;
   /**
@@ -1539,6 +1541,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   };
 
+  hooks?.beforeGitReservation?.();
   const gitReservation = fileMutations.length > 0 ? reserveAskGitIndex(repoRoot) : null;
   try {
   if (fileMutations.length > 0) {

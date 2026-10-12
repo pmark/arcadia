@@ -1,14 +1,39 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reserveAskGitIndex, askGit } from "../src/git/askIsolation.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { recoverLegacyAgentAskDrift } from "../src/sessions/legacyAskRecovery.js";
+const commandHooks = vi.hoisted(() => ({ afterUpdate: undefined as (() => void) | undefined, afterBuild: undefined as (() => void) | undefined, beforeUpdate: undefined as (() => void) | undefined, crossDevice: false }));
+vi.mock("node:child_process", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const wrapped = (...args: Parameters<typeof actual.execFileSync>) => {
+    if (args[0] === "git" && Array.isArray(args[1]) && args[1].includes("update-ref") && args[1].includes("--no-deref")) {
+      const hook = commandHooks.beforeUpdate; commandHooks.beforeUpdate = undefined; hook?.();
+    }
+    const result = actual.execFileSync(...args);
+    if (args[0] === "git" && Array.isArray(args[1]) && args[1].includes("update-ref") && args[1].includes("--no-deref")) {
+      const hook = commandHooks.afterUpdate; commandHooks.afterUpdate = undefined; hook?.();
+    }
+    if (args[0] === "git" && Array.isArray(args[1]) && args[1].includes("write-tree")) {
+      const hook = commandHooks.afterBuild; commandHooks.afterBuild = undefined; hook?.();
+    }
+    return result;
+  };
+  return { ...actual, execFileSync: wrapped as typeof actual.execFileSync };
+});
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, renameSync: (source: string, target: string) => {
+    if (commandHooks.crossDevice && path.basename(target) === "index" && !path.resolve(source).startsWith(path.dirname(path.resolve(target)) + path.sep)) throw Object.assign(new Error("cross-device rename"), { code: "EXDEV" });
+    return actual.renameSync(source, target);
+  } };
+});
 const roots: string[] = [];
-afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { commandHooks.afterUpdate = undefined; commandHooks.afterBuild = undefined; commandHooks.beforeUpdate = undefined; commandHooks.crossDevice = false; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-ask-isolation-")); roots.push(root);
   const main = path.join(root, "main"); const candidate = path.join(root, "candidate");
@@ -73,16 +98,66 @@ describe("Agent Ask isolation", () => {
     expect(askGit(f.candidate, ["status", "--porcelain=v1"])).toContain("record.md");
     expect(existsSync(marker)).toBe(false);
   });
-  it("refuses ref changes after reservation rather than committing another branch", () => {
-    const f = fixture(); const held = reserveAskGitIndex(f.candidate); git(f.candidate, "symbolic-ref", "HEAD", "refs/heads/main"); const before = snapshot(f.main);
-    try { expect(held.commit(["record.md"], "record")).toMatch(/checkout changed/); } finally { held.release(); }
+  it("holds HEAD identity against ordinary symbolic-ref movement throughout a write", () => {
+    const f = fixture(); const held = reserveAskGitIndex(f.candidate); const before = snapshot(f.main);
+    writeFileSync(path.join(f.candidate, "record.md"), "changed\n");
+    commandHooks.afterBuild = () => { expect(() => git(f.candidate, "symbolic-ref", "HEAD", "refs/heads/main")).toThrow(); };
+    try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
     expect(snapshot(f.main)).toEqual(before);
+  });
+  it("refuses detached writes and foreign HEAD locks before mutation", () => {
+    const f = fixture(); git(f.candidate, "checkout", "--detach", "-q");
+    expect(() => reserveAskGitIndex(f.candidate)).toThrow(/named candidate branch/);
+    git(f.candidate, "checkout", "candidate", "-q"); const headPath = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "HEAD"); writeFileSync(headPath + ".lock", "peer HEAD lock");
+    expect(() => reserveAskGitIndex(f.candidate)).toThrow(/HEAD is locked/); expect(readFileSync(headPath + ".lock", "utf8")).toBe("peer HEAD lock");
+  });
+  it("refuses a candidate branch converted into a symbolic ref to main", () => {
+    const f = fixture(); const held = reserveAskGitIndex(f.candidate); const before = snapshot(f.main);
+    expect(() => git(f.candidate, "symbolic-ref", "refs/heads/candidate", "refs/heads/main")).toThrow();
+    const candidateRef = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "refs/heads/candidate");
+    writeFileSync(candidateRef, "ref: refs/heads/main\n");
+    writeFileSync(path.join(f.candidate, "record.md"), "changed\n");
+    try { expect(held.commit(["record.md"], "record")).toMatch(/branch identity changed|checkout changed/); } finally { held.release(); }
+    expect(snapshot(f.main)).toEqual(before);
+  });
+
+  it("never dereferences a pinned branch converted to a symref at the publication boundary", () => {
+    const f = fixture(); writeFileSync(path.join(f.candidate, "record.md"), "changed\n"); const main = snapshot(f.main);
+    const ref = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "refs/heads/candidate");
+    const held = reserveAskGitIndex(f.candidate); commandHooks.beforeUpdate = () => writeFileSync(ref, "ref: refs/heads/main\n");
+    try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
+    expect(snapshot(f.main)).toEqual(main); expect(git(f.candidate, "show", "HEAD:record.md")).toBe("changed");
+  });
+  it("preserves a foreign lock replacing ours after ref update and rolls back only our commit", () => {
+    const f = fixture(); writeFileSync(path.join(f.candidate, "record.md"), "changed\n"); const before = snapshot(f.candidate);
+    const lock = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "index") + ".lock";
+    const held = reserveAskGitIndex(f.candidate);
+    commandHooks.afterUpdate = () => { rmSync(lock); writeFileSync(lock, "foreign-peer-index"); };
+    try { expect(held.commit(["record.md"], "record")).toMatch(/ownership changed after ref update/); } finally { held.release(); }
+    expect(readFileSync(lock, "utf8")).toBe("foreign-peer-index"); expect(snapshot(f.candidate)).toEqual(before);
+  });
+  it("publishes from the index filesystem even when OS temporary storage is on another device", () => {
+    const f = fixture(); writeFileSync(path.join(f.candidate, "record.md"), "changed\n"); commandHooks.crossDevice = true;
+    const held = reserveAskGitIndex(f.candidate); try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
+    expect(git(f.candidate, "show", "HEAD:record.md")).toBe("changed");
   });
   it("recovers a tracked dirty Ask without modifying the source index or HEAD", () => {
     const f = fixture(); const file = path.join(f.main, "agent-ask.yaml"); writeFileSync(file, "original without newline"); git(f.main, "add", "agent-ask.yaml"); git(f.main, "commit", "-qm", "tracked Ask");
     writeFileSync(file, ask); const before = snapshot(f.main); const recovered = recoverLegacyAgentAskDrift(f.main, f.main);
     expect(recovered.recovered).toBe(true); expect(readFileSync(file, "utf8")).toBe("original without newline"); expect(snapshot(f.main)).toEqual(before);
     expect(git(f.main, "show", `${recovered.branch}:${recovered.askFile}`)).toBe(ask.trim());
+  });
+  it.each([true, false])("preserves a replacement cleanup symlink and its peer target (tracked=%s)", tracked => {
+    const f = fixture(); const source = path.join(f.main, "agent-ask.yaml"); const peer = path.join(f.root, "peer-important.yaml");
+    if (tracked) { writeFileSync(source, "original\n"); git(f.main, "add", "agent-ask.yaml"); git(f.main, "commit", "-qm", "tracked"); }
+    writeFileSync(source, ask); writeFileSync(peer, ask);
+    expect(() => recoverLegacyAgentAskDrift(f.main, f.main, { afterCommitBeforeCleanup: () => { rmSync(source); symlinkSync(peer, source); } })).toThrow();
+    expect(readFileSync(peer, "utf8")).toBe(ask); expect(readFileSync(source, "utf8")).toBe(ask);
+  });
+  it("refuses a hardlinked source rather than overwriting a peer inode", () => {
+    const f = fixture(); const peer = path.join(f.root, "important.yaml"); const source = path.join(f.main, "agent-ask.yaml");
+    writeFileSync(peer, ask); linkSync(peer, source); const before = snapshot(f.main);
+    expect(() => recoverLegacyAgentAskDrift(f.main, f.main)).toThrow(/regular file/); expect(readFileSync(peer, "utf8")).toBe(ask); expect(snapshot(f.main)).toEqual(before);
   });
   it("does not reserve the real index for a no-op recovery", () => {
     const f = fixture(); const lock = git(f.main, "rev-parse", "--path-format=absolute", "--git-path", "index") + ".lock"; writeFileSync(lock, "peer lock");

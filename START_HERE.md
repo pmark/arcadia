@@ -944,8 +944,9 @@ preserve a validated draft in an isolated checkout through the Git/PR handoff.
 `agent-ask draft` refuses the shared primary checkout and the base/default branch,
 even from a subdirectory or when a workspace is unavailable. Use inline
 `agent-ask preview '<json>'` there; create draft files only in your own candidate.
-Settlement reserves Git's index lock before writing governed documents, uses
+Settlement reserves Git's HEAD and index locks before writing governed documents, uses
 private temporary indices, and never runs repository hooks or clean filters.
+Apply settlement from a named candidate branch; detached writes refuse before changes.
 An existing lock refuses without changing documents, HEAD, or the index; let its
 owning Git operation finish and retry. Settlement intentionally integrates
 approved governed records, and does not use the shared checkout for scratch.
