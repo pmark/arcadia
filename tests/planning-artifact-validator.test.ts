@@ -110,10 +110,29 @@ describe("approval contradiction is judged per sentence (Issue #1277)", () => {
     ).not.toContain("approval_boundary_contradiction");
   });
 
+  it.each([
+    "Planning requires no approval, and implementation requires a separate approved Codex goal.",
+    "The run itself needs no approval. The later implementation needs a separate approved goal.",
+    "Implementation requires a separate approved goal; planning itself needs no approval."
+  ])("passes a benign variant of the standard phrasing: %s", (line) => {
+    expect(failureCodes(line)).not.toContain("approval_boundary_contradiction");
+  });
+
   it("still fails a sentence saying the implementation needs no approval", () => {
     expect(failureCodes("Implementation requires no approval.")).toContain("approval_boundary_contradiction");
     expect(failureCodes("Planning requires no approval. Implementation requires no approval.")).toContain(
       "approval_boundary_contradiction"
     );
+  });
+
+  it.each([
+    "Implementation requires no approval, but a separate approval is nice to have.",
+    "Implementation needs no approval; it requires a separate approval for nothing.",
+    "Implementation requires no approval, whereas planning needs a separate approval gate.",
+    "Implementation, i.e. the code change, needs no approval.",
+    "Implementation can proceed directly; planning requires a separate approved goal.",
+    "Implementation needs no approval for a separate approved goal."
+  ])("fails closed on an adversarial pairing: %s", (line) => {
+    expect(failureCodes(line)).toContain("approval_boundary_contradiction");
   });
 });

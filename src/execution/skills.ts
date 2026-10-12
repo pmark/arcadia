@@ -154,15 +154,20 @@ export function planStepsForWorkItem(workItem: WorkItemSummary): PlannedSkillSte
     ];
   }
 
-  if (workItem.work_classification === "agent" || workItem.execution_route || requiresCodex(raw)) {
+  // A declared route is honoured only for agent or autonomous Actions; it never
+  // pulls an operator-owned Action into Codex routing.
+  const declaredRoute = workItem.work_classification === "agent" || workItem.work_classification === "autonomous"
+    ? workItem.execution_route
+    : null;
+  if (workItem.work_classification === "agent" || declaredRoute || requiresCodex(raw)) {
     // A declared route (`execution: build | plan-run`) outranks the keyword
     // match below. A Codex Action whose concrete next step is to write an
     // implementation plan is still a planning handoff, even when the
     // surrounding context mentions implementation. Keep this deterministic so
     // docs-backed planning Actions do not get misrouted to build mode.
     const planning = raw.includes("implementation plan") || raw.includes("planning");
-    const executor: "codex_build" | "codex_planning" = workItem.execution_route
-      ? (workItem.execution_route === "build" ? "codex_build" : "codex_planning")
+    const executor: "codex_build" | "codex_planning" = declaredRoute
+      ? (declaredRoute === "build" ? "codex_build" : "codex_planning")
       : (raw.includes("implement") || raw.includes("code") || raw.includes("prototype")) && !planning
         ? "codex_build"
         : "codex_planning";

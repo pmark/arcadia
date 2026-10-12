@@ -101,7 +101,20 @@ function previewRoute(db: Database.Database, projectSlug: string, planSlug: stri
       ]
     };
   }
-  return { kind: "unrouted", declared, operatorTouches: ["No Codex route applies; the Action needs operator review or a deterministic skill."] };
+  if (executor === "deterministic") {
+    return {
+      kind: "unrouted",
+      declared,
+      operatorTouches: [`Runs as the deterministic skill ${steps[0]?.skillName}; no Codex route applies${declared ? " (the declared route is not used)" : ""}.`]
+    };
+  }
+  return {
+    kind: "unrouted",
+    declared,
+    operatorTouches: [
+      `Operator review required (${workItem.work_classification}); no Codex route applies${declared ? " (the declared route is not used)" : ""}.`
+    ]
+  };
 }
 
 export interface ProductionActivationPreview {

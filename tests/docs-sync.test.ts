@@ -969,6 +969,18 @@ describe("docs sync", () => {
     });
   });
 
+  it("refuses a declared route on an operator-owned Action instead of routing it to a coding agent (#1277)", () => {
+    const operatorOwned = PLAN.replace("    responsibility: codex", "    responsibility: requires_review").replace(
+      "    depends_on: []",
+      "    depends_on: []\n    execution: build"
+    );
+    const result = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", operatorOwned);
+    expect(result.errors.map((error) => error.message).join("\n")).toMatch(/only valid on an agent or autonomous Action/);
+    expect(
+      planStepsForWorkItem({ work_classification: "requires_review", queue: "work_queue", execution_route: "build", title: "t", raw_input: "", next_action: "n" } as never)[0]?.executorType
+    ).toBe("operator");
+  });
+
   it("follows a renamed title without forking a second Action", () => {
     const repo = scratch();
     writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
