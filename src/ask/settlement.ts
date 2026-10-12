@@ -20,7 +20,8 @@ import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
-import { assertClean, commitOnlyPaths, git, projectCheckoutFor, tryGit, untrackedDraftAskPaths } from "../git/worktrees.js";
+import { reserveAskGitIndex, askGit as git, tryAskGit as tryGit } from "../git/askIsolation.js";
+import { assertClean, projectCheckoutFor, untrackedDraftAskPaths } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
   getActiveWorktreeReservation,
@@ -1538,12 +1539,14 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   };
 
+  const gitReservation = fileMutations.length > 0 ? reserveAskGitIndex(repoRoot) : null;
+  try {
   if (fileMutations.length > 0) {
     // Draft Ask files are bounded intake, not incidental dirt. A complete
     // settlement consumes one of them, while other pending drafts must remain
     // available for their own future settlement. Nothing else in the working
     // tree is exempted.
-    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot));
+    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot), git);
   }
 
   // A settlement's durable record is the committed managed document, not the
@@ -1710,7 +1713,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // is recorded, and the working tree is reported as the recoverable part.
   let commitError: string | null = null;
   if (fileMutations.length > 0) {
-    commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt);
+    commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt, gitReservation!.commit);
     if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
     else baseReceipt.documentsCommit = tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
   }
@@ -1866,6 +1869,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
   return settled;
+  } finally { gitReservation?.release(); }
 }
 
 /**
@@ -2096,7 +2100,8 @@ export function insertSettlementRow(
 function commitSettlementOutput(
   repoRoot: string,
   fileMutations: FileMutation[],
-  receipt: AgentAskSettlementReceipt
+  receipt: AgentAskSettlementReceipt,
+  commit: (paths: string[], message: string) => string | null
 ): string | null {
   const allPaths = fileMutations.map((mutation) => ({ relative: path.relative(repoRoot, mutation.path), deleted: mutation.after === null }));
   // A deletion mutation whose file was never tracked — the drafted Ask file
@@ -2134,7 +2139,7 @@ function commitSettlementOutput(
     "decision they record."
   ].join("\n");
   if (paths.length === 0) return null;
-  return commitOnlyPaths(repoRoot, paths, message);
+  return commit(paths, message);
 }
 
 const NOTIFICATION_UPCOMING_ACTION_LIMIT = 5;

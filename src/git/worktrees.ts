@@ -62,10 +62,10 @@ export function existingDirectory(input: string, label: string): string {
  * caller-named untracked paths (repo-relative, e.g. an Agent Ask file a
  * settlement is about to consume and archive in the same transaction). A
  * tracked file at one of those paths remains dirty and is still refused. */
-export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []): string[] {
+export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = [], readGit: typeof git = git): string[] {
   const ignored = new Set([GO_REQUEST_FILE, PRESERVATION_REQUEST_FILE, ...ignoreUntracked]);
   // A pure read: never take the optional index lock to refresh stat data.
-  return git(cwd, ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"])
+  return readGit(cwd, ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
     .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
 }
@@ -84,8 +84,8 @@ export function untrackedDraftAskPaths(repoRoot: string): string[] {
   }
 }
 
-export function assertClean(cwd: string, label: string, ignoreUntracked: string[] = []): void {
-  const changes = uncommittedChanges(cwd, ignoreUntracked);
+export function assertClean(cwd: string, label: string, ignoreUntracked: string[] = [], readGit: typeof git = git): void {
+  const changes = uncommittedChanges(cwd, ignoreUntracked, readGit);
   if (changes.length > 0) {
     throw validationError(`The ${label} is not clean; Arcadia will not preserve or discard changes implicitly.`, {
       path: cwd,
@@ -301,6 +301,8 @@ const GIT_LOCATION_ENV = [
 function tryGitAt(cwd: string, args: string[]): string | null {
   const env = { ...process.env };
   for (const key of GIT_LOCATION_ENV) delete env[key];
+  for (const key of Object.keys(env)) if (key.startsWith("GIT_CONFIG")) delete env[key];
+  env.GIT_OPTIONAL_LOCKS = "0";
   const result = spawnSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return result.status === 0 ? result.stdout.trim() : null;
 }

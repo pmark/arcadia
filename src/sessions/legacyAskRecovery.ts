@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { git, tryGit } from "../git/worktrees.js";
+import { tmpdir } from "node:os";
+import { askGit as git, tryAskGit as tryGit, reserveAskGitIndex } from "../git/askIsolation.js";
+import { validationError } from "../cli/errors.js";
 
 /**
  * The shape an agent used to be told to author Agent Asks at — directly in the
@@ -66,18 +68,26 @@ export interface AskRecoveryTestHooks {
  * this does not recognize.
  */
 export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, testHooks?: AskRecoveryTestHooks): LegacyAskRecovery {
-  const status = git(worktreePath, ["status", "--porcelain=v1", "--untracked-files=all"])
+  const status = git(worktreePath, ["status", "--porcelain=v1", "--untracked-files=all"], undefined, false)
     .split("\n")
     .filter(Boolean);
   if (status.length !== 1) return NOT_RECOVERED;
 
   const line = status[0];
+  // Staged content belongs to its Git operation; recovery never rewrites or unstages it.
+  if (!line.startsWith("?? ") && !line.startsWith(" M ")) return NOT_RECOVERED;
   const filePath = line.slice(3).trim();
   const isLegacy = LEGACY_AGENT_ASK_PATTERN.test(filePath);
   const isIsolatedDraftInBaseCheckout = ISOLATED_ASK_FILE_PATTERN.test(filePath);
   if (!isLegacy && !isIsolatedDraftInBaseCheckout) return NOT_RECOVERED;
+  const reservation = reserveAskGitIndex(worktreePath);
+  try {
+  const currentStatus = git(worktreePath, ["status", "--porcelain=v1", "--untracked-files=all"], undefined, false).split("\n").filter(Boolean);
+  if (JSON.stringify(currentStatus) !== JSON.stringify(status)) throw validationError("Agent Ask recovery checkout changed before isolation; preserved it.");
 
-  const content = readFileSync(path.join(worktreePath, filePath), "utf8");
+  const source = path.join(worktreePath, filePath);
+  if (!lstatSync(source).isFile() || !realpathSync(source).startsWith(`${realpathSync(worktreePath)}${path.sep}`)) throw validationError("Drifted Ask must be a regular file inside its checkout.");
+  const content = readFileSync(source, "utf8");
   const requestId = extractRequestId(content);
   // Deriving the stub from the request id and the exact content, rather than
   // a timestamp and random bytes, makes recovery retry-safe: a call
@@ -93,38 +103,43 @@ export function recoverLegacyAgentAskDrift(repo: string, worktreePath: string, t
   const branch = `ask/recover-${stub}`;
   const recoveryWorktree = path.join(path.dirname(worktreePath), `.arcadia-ask-recovery-${stub}`);
 
-  const alreadyCommitted = tryGit(repo, ["cat-file", "-e", `${branch}:${askRelativePath}`]) !== null;
-  if (!alreadyCommitted) {
-    // A branch ref can exist without the file when a prior attempt was
-    // interrupted between creating the worktree and committing into it;
-    // `worktree add -b` refuses an existing branch name, so that stale,
-    // contentless ref is cleared before retrying rather than left to block
-    // every future retry under this same deterministic stub.
-    if (tryGit(repo, ["show-ref", "--verify", `refs/heads/${branch}`]) !== null) {
-      git(repo, ["branch", "-D", branch]);
-    }
-    git(repo, ["worktree", "add", "-b", branch, recoveryWorktree, "HEAD"]);
+  // Never check out, delete, or force-remove a recovery branch/worktree owned by another session.
+  const registered = git(repo, ["worktree", "list", "--porcelain"]);
+  if (existsSync(recoveryWorktree) || registered.split("\n").includes(`branch refs/heads/${branch}`)) throw validationError("Agent Ask recovery branch/worktree is in use; preserve it and resolve ownership before retrying.", { branch, recoveryWorktree });
+  const existing = tryGit(repo, ["show-ref", "--verify", `refs/heads/${branch}`]);
+  if (existing) {
+    let recovered: string | null = null;
+    try { recovered = git(repo, ["show", `${branch}:${askRelativePath}`], undefined, false); } catch { /* Missing content refuses below. */ }
+    if (recovered !== content) throw validationError("Existing Agent Ask recovery branch has different or missing content; it was preserved.", { branch });
+  } else {
+    const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-ask-recovery-"));
     try {
       testHooks?.afterWorktreeCreatedBeforeWrite?.();
-      mkdirSync(path.join(recoveryWorktree, path.dirname(askRelativePath)), { recursive: true });
-      writeFileSync(path.join(recoveryWorktree, askRelativePath), content);
-      git(recoveryWorktree, ["add", askRelativePath]);
-      git(recoveryWorktree, ["commit", "-m", `Recover drifted Agent Ask into ${askRelativePath}`]);
-    } finally {
-      git(repo, ["worktree", "remove", recoveryWorktree, "--force"]);
-    }
+      const index = path.join(scratch, "index");
+      const input = path.join(scratch, "ask");
+      writeFileSync(input, content, { flag: "wx" });
+      const head = git(worktreePath, ["rev-parse", "HEAD"]);
+      git(repo, ["read-tree", head], index);
+      const blob = git(repo, ["hash-object", "-w", "--no-filters", "--", input]);
+      git(repo, ["update-index", "--add", "--cacheinfo", "100644", blob, askRelativePath], index);
+      const tree = git(repo, ["write-tree"], index);
+      const commit = git(repo, ["commit-tree", tree, "-p", head, "-m", `Recover drifted Agent Ask into ${askRelativePath}`]);
+      git(repo, ["update-ref", `refs/heads/${branch}`, commit, "0".repeat(head.length)]);
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
   }
 
   testHooks?.afterCommitBeforeCleanup?.();
 
+  if (readFileSync(source, "utf8") !== content) throw validationError("Drifted Agent Ask changed during recovery; preserved current content.");
   const isTracked = tryGit(worktreePath, ["ls-files", "--error-unmatch", filePath]) !== null;
   if (isTracked) {
-    git(worktreePath, ["checkout", "--", filePath]);
+    writeFileSync(source, git(worktreePath, ["show", `HEAD:${filePath}`], undefined, false));
   } else {
     rmSync(path.join(worktreePath, filePath));
   }
 
   return { recovered: true, askFile: askRelativePath, branch, requestId };
+  } finally { reservation.release(); }
 }
 
 /**
