@@ -53,6 +53,17 @@ export interface ScenarioReport {
   notes: string[];
   /** The worker's own log lines (`[tick N] ...`), sanitised. */
   workerLog: string[];
+  /** Machine-readable result for small operator-directed Ask/To-do probes. */
+  scout?: {
+    outcome: "yes" | "no";
+    firstBlocker: string | null;
+    identifiers: Record<string, string | null>;
+    transcript: Array<{ command: "ask" | "todo" | "ask-trail"; input: string; result: unknown }>;
+    artifactCheck: { path: string; expectedSha256: string; exists: boolean; exactBytes: boolean; acceptedCompletionEvidence: boolean; evidence: unknown[] };
+    launched: { queued: boolean; launched: boolean; publicRunId: string | null; runId: string | null; runStatus: string | null; executionObserved: boolean };
+    modelUsage: { calls: 0; tokens: 0; guardCalls: string[]; proof: string[] };
+    findings: Array<{ code: string; detail: string; fingerprint: string; proposedNextStep: string }>;
+  };
 }
 
 function emptyPhases(): Record<Phase, PhaseTotals> {
