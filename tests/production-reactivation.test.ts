@@ -52,7 +52,7 @@ function planDocument(actions: Array<{ id: string; status?: string; dependsOn?: 
       `  - id: ${action.id}`, `    title: ${action.id}`, `    status: ${action.status ?? "open"}`,
       "    responsibility: agent", `    next_action: Do ${action.id}.`,
       `    expected_artifact: ${action.id} artifact`, "    clarification: clarified",
-      "    acceptance_criteria:", `      - ${action.id} is done.`,
+      "    acceptance_criteria:", `      - The proof for ${action.id} exists.`,
       `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`
     ]),
     "---", "", "# Queue plan", ""

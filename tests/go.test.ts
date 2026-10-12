@@ -1947,7 +1947,7 @@ function commitGovernedPointer(cwd: string): void {
     next_action: Dispatch the next governed Action.
     expected_artifact: docs/next.md
     acceptance_criteria:
-      - The next Action is dispatchable.
+      - Dispatch resolves the next Action without blockers.
 ---
 
 # Copy proof`
@@ -1974,7 +1974,7 @@ function settleNextAction(cwd: string): void {
     next_action: Dispatch the next governed Action.
     expected_artifact: docs/next.md
     acceptance_criteria:
-      - The next Action is dispatchable.
+      - Dispatch resolves the next Action without blockers.
 ---
 
 # Copy proof`

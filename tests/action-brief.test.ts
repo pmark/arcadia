@@ -250,7 +250,7 @@ describe("renderActionBrief", () => {
     });
 
     it("refuses the rendered command run verbatim, with its placeholders unfilled, and writes nothing", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       expect(() => runAgentAskDraftCommand({ request: json, dir, workspace: path.join(repo, "no-workspace") }))
         .toThrowError(/still contains the placeholder <REPLACE:.*Replace each note/);
@@ -290,7 +290,7 @@ describe("renderActionBrief", () => {
     });
 
     it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       const filled = json.replaceAll("<REPLACE: the command you ran and what you observed for this criterion>", "ran the validation; it passed");
       const drafted = runAgentAskDraftCommand({ request: filled, dir, workspace: path.join(repo, "no-workspace") });
@@ -394,6 +394,10 @@ describe("renderActionBrief", () => {
 
   it("fails closed when the Action declares no acceptance criteria", () => {
     const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace(
+      "    acceptance_criteria:\n      - The legacy contract record exists.", "    acceptance_criteria: []"
+    ));
     try {
       renderActionBrief({
         repoRoot: repo,
@@ -409,7 +413,8 @@ describe("renderActionBrief", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ArcadiaError);
       expect((error as ArcadiaError).code).toBe("VALIDATION_ERROR");
-      expect((error as Error).message).toContain('Action "legacy-action" declares no acceptance criteria');
+      expect((error as Error).message).toContain("actions[1].acceptance_criteria");
+      expect((error as Error).message).toContain("precise, checkable conditions");
     }
   });
 });
@@ -449,7 +454,8 @@ actions:
     status: open
     responsibility: agent
     next_action: Finish the legacy action.
-    acceptance_criteria: []
+    acceptance_criteria:
+      - The legacy contract record exists.
 ---
 `);
   execFileSync("git", ["init", "-q"], { cwd: root });
@@ -467,4 +473,12 @@ function brief(repo: string, baseRevision = head(repo)): string {
     repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
     worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode", baseRevision
   });
+}
+
+function candidateBriefRepo(): string {
+  const primary = briefRepo();
+  const candidate = `${primary}-candidate`;
+  roots.push(candidate);
+  execFileSync("git", ["worktree", "add", "-q", "-b", "brief/candidate", candidate], { cwd: primary });
+  return candidate;
 }

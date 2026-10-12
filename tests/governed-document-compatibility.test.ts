@@ -53,6 +53,8 @@ actions:
     title: Operator-owned work
     status: open
     responsibility: operator
+    acceptance_criteria:
+      - A Decision records the operator's selected disposition.
   - id: record-verdict
     title: Record the verdict
     status: open

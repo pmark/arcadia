@@ -352,7 +352,12 @@ export type IntelligenceImageGenerationResult = {
  * is a durable Arcadia locator fetchable via `GET {uri}` /
  * `ArcadiaIntelligenceClient.getArtifact(uri)`.
  */
+/** Generic speech input. Intelligence chunks long text and encodes the requested format. */
+export type IntelligenceSpeechInput = { text: string; voiceId: string; format?: "wav" | "mp3"; speed?: number; language?: string; instructions?: string };
+
 export type IntelligenceSpeechGenerationResult = {
+  /** Number of provider-sized utterances assembled into this artifact. */
+  chunkCount?: number;
   /** Durable Arcadia audio artifact (id, uri, mimeType, format, sha256, byteSize, durationSeconds, sampleRateHz, channels). */
   artifact: IntelligenceArtifactRecord;
   /** The semantic Arcadia voice identifier the request asked for. */

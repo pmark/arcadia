@@ -62,7 +62,7 @@ function planDoc(): string {
     "  - id: second-step", "    title: Take the blocked second step", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Take the second step.",
     "    expected_artifact: A second receipt", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - The second step happens.", "    depends_on: []",
+    "    acceptance_criteria:", "      - The second receipt exists.", "    depends_on: []",
     "    decisions: [\"0001\"]", "    references: []",
     "questions: []", "---", "", "# Main plan", ""
   ].join("\n");
@@ -335,7 +335,7 @@ function planWithDoneAction(): string {
       "  - id: first-step", "    title: Take the finished first step", "    status: done",
       "    responsibility: agent", "    effort: session", "    next_action: Take the first step.",
       "    expected_artifact: A first receipt", "    clarification: clarified", "    confidence: high",
-      "    acceptance_criteria:", "      - The first step happened.", "    depends_on: []",
+      "    acceptance_criteria:", "      - The first receipt exists.", "    depends_on: []",
       "    decisions: []", "    references: []",
       ""
     ].join("\n")
@@ -1282,7 +1282,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
         ...(action.question
           ? ["    clarification: question_open", "    gap_type: missing-decision", `    question: ${action.question}`]
           : [`    next_action: Do ${action.id}.`, "    expected_artifact: A receipt", "    clarification: clarified", "    confidence: high"]),
-        "    acceptance_criteria:", "      - It happens.",
+        "    acceptance_criteria:", "      - The fixture receipt exists.",
         `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
         `    decisions: [${(action.decisions ?? []).map((id) => `"${id}"`).join(", ")}]`, "    references: []"
       );

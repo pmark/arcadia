@@ -377,6 +377,12 @@ changed field, and the exact recovery step with a durable receipt. If settlement
 committed but publication failed, retrying that same action verifies and publishes
 the existing commit without settling twice. It never changes a queue or pointer. The [shared runner contract](docs/operator-plan-amendments.md) documents pinned inputs and safe recovery.
 
+The `run-scout-hello-world-probe` action runs the bounded Ask/To-do Hello World
+scout and retains its machine-readable report, log, and receipt. A captured
+report can correctly say product outcome `no`; harness success only means the
+observation completed. This action appears in Operator actions after its
+reviewed script library is published. See the [scout instructions](docs/agent-guidance/ask-todo-scout.md).
+
 **Test headless Codex, OpenCode and Claude single-Action runs (experiment
 fixture)** (`test-headless-provider-single-action`, from `/runs` or the terminal)
 tries each coding agent independently, in that order, on its own disposable
@@ -476,7 +482,7 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
 
-Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. Each card now includes a deterministic **Briefing**: changed paths, files not named in the PR body, managed pointer or plan changes, governed Decision documents, schema or migration changes, outward-facing paths, branch-order collisions, and the current CI conclusion. Expand the changed-path list when you need the evidence behind a fact. This view is read-only and never approves, merges, comments, or dispatches a PR; if GitHub cannot provide the detail payload, the inventory remains visible and the card says that briefing facts are unavailable.
+Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. Each card now includes a deterministic **Briefing**: changed paths, files not named in the PR body, managed pointer or plan changes, governed Decision documents, schema or migration changes, outward-facing paths, branch-order collisions, and the current CI conclusion. Expand the changed-path list when you need the evidence behind a fact. Use **Listen to a PR by link** to select a merged or closed PR from a configured repository, or open `/admin/pull-requests?pr=https://github.com/pmark/arcadia/pull/1308` for a specific example. Hit **Play body** to prepare a local TLDR followed by the full description (comments are excluded). The TLDR appears above the original Markdown-formatted body. Audio is generated as a durable MP3 by Arcadia Intelligence; the player supports pause/seek and **Download MP3**, and identical narration reuses the stored asset. Long descriptions may take a few minutes; a page reload can reconnect to the same job. Existing local speech and text routes must be configured; FFmpeg/libmp3lame belongs on the **Intelligence service** PATH, not the Dashboard. There is no paid/cloud fallback. If TLDR generation is unavailable, that is labelled and audio reads the original body only. On mobile Safari, the original tap initializes playback; explicit browser blocking produces a visible recovery message. Refreshing a changed PR generates from the current body. This view is read-only and never approves, merges, comments, or dispatches a PR; if GitHub cannot provide the detail payload, the inventory remains visible and the card says that briefing facts are unavailable.
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. **Check** runs the live reachability probe without delaying page load; an access-protected target that returns 403 is labelled unverifiable from here, not unhealthy. Above the Candidate cards, a **project strip** shows each configured Project once — the branch its checkout is actually on, its HEAD, how far it has drifted, and what its services report. Updating a checkout is a Project operation, so it lives there rather than repeating on every target card. Each strip offers one primary action for the state it is in: **Check for updates** fetches origin's refs and touches nothing else, **Pull *n* commits** fast-forwards without restarting, and **Restart services** is offered separately — and only when the incoming diff says it is needed. The verdict is computed from the changed paths before you pull, so a lockfile change reads as *install then restart* while a stylesheet reads as *HMR should cover this*; the files behind every verdict are one tap away, and the wording never claims a restart is unnecessary, only that HMR should cover it. **Check** stays available even when the pull is refused, because fetching never touches the working tree. When a checkout is on some other branch or detached, the strip offers **Switch to *base*** — one destination, the Project's own base branch, never a branch picker. Switching leaves the branch it moved away from exactly where it was, and says whether that branch had commits origin does not, so moving away from unmerged work is stated rather than silent. A dirty tree is refused before anything happens, and being ahead of origin is refused too — those stay yours to resolve. Remote targets never offer pull or restart because their deployment workflow owns that authority, and Projects without `scripts/services.sh` say plainly that Arcadia cannot restart them. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Target configuration lives in the workspace at `config/qa-targets.json` — repository paths and LAN hostnames are facts about one machine, so they are not checked in; `config/qa-targets.example.json` documents the shape. Revision, validation, and evidence freshness are computed from each project's checkout rather than typed by hand.
 
@@ -935,6 +941,16 @@ copy, draft file, settlement or new coding session is required on this path.
 If receipt writes are sandbox-denied, request the host's normal permission or
 approved host execution for this same command; proceed only if granted. Otherwise
 preserve a validated draft in an isolated checkout through the Git/PR handoff.
+`agent-ask draft` refuses the shared primary checkout and the base/default branch,
+even from a subdirectory or when a workspace is unavailable. Use inline
+`agent-ask preview '<json>'` there; create draft files only in your own candidate.
+Settlement reserves Git's HEAD and index locks before writing governed documents, uses
+private temporary indices, and never runs repository hooks or clean filters.
+Apply settlement from a named candidate branch; detached writes refuse before changes.
+An existing lock refuses without changing documents, HEAD, or the index; let its
+owning Git operation finish and retry. Settlement intentionally integrates
+approved governed records, and does not use the shared checkout for scratch.
+
 Before successful registration, local input storage alone is not registered
 intake or a remote backup. The detailed
 [agent-neutral procedure](docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work)
@@ -3339,3 +3355,14 @@ file audit does not prove agent understanding. See
 The JSON parameters use schema `arcadia-rehearsal-dry-preparation-v1`, `runId`, `actionCount`, the existing fixture pins (`fixtureRepoPath` and `fixtureGithubRepo`), `requiredCommits` entries (`commit`, `why`), and `preservation` (`resetRunId`, `resetHead`, `terminalOffRunId`, `localMain`). The existing required-commit floor cannot be removed; unfilled bindings refuse. These are supplied bindings, not proof that prerequisite receipts were ratified or commits installed.
 
 This command stages two reviewed documents and a receipt only. Its neutral Action IDs are not yet supported by the existing live rehearsal-chain operator scripts. Applying the baseline requires that adapter and the governed Ask path. Real `SMOKE_DRY=1` review dispatch, first-attempt reviewer receipts and unattended V1 evidence remain separate integration work; this generator makes none of those claims and starts no Session.
+
+Every Plan Action must declare precise, checkable `acceptance_criteria`, including
+completed and non-current Actions. State the observable result and its verification
+method or evidence, with explicit thresholds where applicable. `docs sync` and
+Agent Ask settlement reject invalid criteria; use a Plan amendment Ask to correct
+them. Deterministic validation catches structural defects and known vague wording;
+independent review still evaluates coverage and proof.
+When adoption seeds a Plan, every Action receives either its supplied conditions,
+a condition derived from its expected Artifact, or a requirement for a recorded
+clarification answer. Missing product criteria remain an open question and do not
+authorize implementation.

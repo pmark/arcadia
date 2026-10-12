@@ -62,14 +62,14 @@
       "trigger": "Project, Plan, Action, Decision, status, acceptance",
       "path": "docs/managed-documents.md",
       "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "40a0b99dcad5948c70670c664cd0ac6b7b8cc312b3d3c516186aadff40fdfb2a"
+      "sha256": "09a26196fa657894956c84e6f9dd1f7377ae50110b3803ee92b07b61d0d2cb04"
     },
     {
       "id": "planning",
       "trigger": "new planning cycle, raw outcome, interview, architect",
       "path": "docs/planning-process.md",
       "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
-      "sha256": "a426d88c54aac5f434a71af6270147c9b69b646d592d272bf328a06faa5f2c22"
+      "sha256": "4adb5e415decc021a2ce9b0b919e2e55abdb6ba2fedacdbd1edfd001b08ebc50"
     },
     {
       "id": "working-copy",
@@ -112,6 +112,13 @@
       "path": "docs/agent-guidance/standard-harness.md",
       "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
       "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
+    },
+    {
+      "id": "ask-todo-scout",
+      "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
+      "path": "docs/agent-guidance/ask-todo-scout.md",
+      "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
+      "sha256": "f95eed75ef768e2933a0d27b185dee489822baca0941987b8fd24c8b840eb410"
     },
     {
       "id": "session-roles-and-briefs",

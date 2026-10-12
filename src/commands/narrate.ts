@@ -19,6 +19,7 @@ import {
   formatIssueCommentary,
   parseIssueRef,
   splitNarrationText,
+  stripMarkdownForSpeech,
   type NarrationIssueInput,
 } from "../intelligence/speech/narration.js";
 import { parseWavMetadata } from "../intelligence/speech/wavMeta.js";
@@ -36,6 +37,7 @@ export interface IntelligenceNarrateOptions {
   text?: string;
   file?: string;
   issue?: string;
+  pullRequest?: string;
   repo?: string;
   voiceId?: string;
   route?: string;
@@ -69,14 +71,14 @@ export interface IntelligenceNarrateData {
 export async function runIntelligenceNarrateCommand(
   options: IntelligenceNarrateOptions,
 ): Promise<CommandSuccess<IntelligenceNarrateData>> {
-  const sources = [options.text, options.file, options.issue].filter(
+  const sources = [options.text, options.file, options.issue, options.pullRequest].filter(
     (value) => value !== undefined && value !== "",
   );
   if (sources.length === 0) {
-    throw validationError("Provide exactly one of --text, --file, or --issue.", {});
+    throw validationError("Provide exactly one of --text, --file, --issue, or --pull-request.", {});
   }
   if (sources.length > 1) {
-    throw validationError("Provide only one of --text, --file, or --issue.", {});
+    throw validationError("Provide only one of --text, --file, --issue, or --pull-request.", {});
   }
 
   const { sourceText, sourceLabel } = resolveSource(options);
@@ -251,11 +253,14 @@ function resolveSource(options: IntelligenceNarrateOptions): { sourceText: strin
       );
     }
   }
+  if (options.pullRequest) {
+    return { sourceText: fetchPullRequestBody(options.pullRequest, options.repo), sourceLabel: `PR ${options.pullRequest} body` };
+  }
   if (options.issue) {
     const issue = fetchIssueCommentary(options.issue, options.repo);
     return { sourceText: formatIssueCommentary(issue), sourceLabel: `issue #${issue.number}` };
   }
-  throw validationError("Provide exactly one of --text, --file, or --issue.", {});
+  throw validationError("Provide exactly one of --text, --file, --issue, or --pull-request.", {});
 }
 
 /**
@@ -368,4 +373,24 @@ function buildNarrationRequest(input: {
 
 function timestamp(): string {
   return new Date().toISOString().replaceAll(/[-:.]/g, "");
+}
+
+/** Read only the PR body; comments and the title never enter narration. */
+export function fetchPullRequestBody(ref: string, repo?: string): string {
+  const { repository, number } = parseIssueRef(ref.replace(/(https?:\/\/github\.com\/[^/]+\/[^/]+)\/pull\//, "$1/issues/"), repo);
+  if (!Number.isSafeInteger(number) || number < 1 || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    throw validationError("Invalid pull-request reference.", {});
+  }
+  const result = spawnSync("gh", ["pr", "view", String(number), "--repo", repository, "--json", "body"], {
+    encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new ArcadiaError("UNEXPECTED_ERROR", `Could not read PR ${repository}#${number}: ${result.error?.message ?? result.stderr.trim()}`, 1, {});
+  }
+  let body: unknown;
+  try { body = JSON.parse(result.stdout).body; } catch {
+    throw validationError("GitHub returned an unreadable PR body.", {});
+  }
+  if (typeof body !== "string" || !body.trim()) throw validationError("This pull request has no body to read aloud.", {});
+  return stripMarkdownForSpeech(body);
 }

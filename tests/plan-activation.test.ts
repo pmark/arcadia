@@ -79,7 +79,7 @@ function planDoc(input: {
     `    expected_artifact: Evidence for ${action.id}`,
     `    clarification: ${action.clarification ?? "clarified"}`,
     "    acceptance_criteria:",
-    `      - ${action.id} is done.`,
+    `      - The proof for ${action.id} exists.`,
     `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
     `    decisions: [${(action.decisions ?? []).join(", ")}]`
   ]);

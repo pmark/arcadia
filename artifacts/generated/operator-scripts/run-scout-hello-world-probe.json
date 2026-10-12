@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "run-scout-hello-world-probe",
+  "title": "Run the zero-model Ask/To-do Hello World scout",
+  "script": "run-scout-hello-world-probe.sh",
+  "repeatable": true,
+  "problem": "The Ask/To-do Hello World journey needs a cheap, repeatable observation with a machine-readable outcome and a durable failure report.",
+  "desired_effect": "Run only `pnpm fast-rehearsal -t 'Ask/To-do scout'` in this checkout, with a five-minute cap. The focused scenario creates a disposable workspace and Project, routes one exact Hello World file request through Ask, transports a separately labelled fixture approval through Ask, and observes Ask show and To-do. The scenario writes a binary yes/no result, IDs, transcript, exact file check, queued-versus-launched state, zero-model evidence, findings fingerprint, and next step into the ordinary fast-rehearsal report. The current expected product result is no: a review Run is queued but no fixture worker executes it. Harness exit 0 means only that the bounded report was captured. It does not claim the file was completed.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/run-scout-hello-world-probe.sh run",
+  "preconditions": [
+    "The reviewed Arcadia checkout and its dependencies are available to the script.",
+    "Python 3, mise, pnpm, and Node.js are available on PATH.",
+    "No account, provider sign-in, GitHub, live workspace, or running service is required."
+  ],
+  "expected_duration": "Under one minute normally; hard cap of five minutes for the focused harness run.",
+  "cost_note": "Deterministic local scenario only. The scout invokes zero model calls and spends zero model tokens; this says nothing about the coding-agent work that produced or reviews the scout.",
+  "authority": {
+    "does": [
+      "Runs the existing focused fast-rehearsal command once with a five-minute process-group timeout.",
+      "Uses only disposable test workspaces and records timestamped logs, a launcher receipt, a retained report when produced, and a failure handoff under this script library's runs directory.",
+      "Reports the exact temporary harness report.json path and the scout's independent yes/no product outcome."
+    ],
+    "never_does": [
+      "Never calls a provider or model, accesses the configured live workspace, or uses an account or credential.",
+      "Never runs a worker, review, clarify, Agent Ask, Go, Git, or a rescue action as part of the scout journey.",
+      "Never creates or publishes an Issue, PR, Decision, service change, or production change.",
+      "Never reports harness exit 0 as Hello World completion; only the report's exact file and correlated completion evidence can produce scout outcome yes."
+    ]
+  },
+  "success": {
+    "effect": "The focused harness exits 0, produces a parseable combined report, and the launcher receipt records its exact path and scout outcome. The expected current scout outcome is no.",
+    "next": "Read the receipt and the named report. Use its first blocker, identifiers, transcript, and findings fingerprint to decide the next bounded product change."
+  },
+  "failure": {
+    "effect": "The harness exits nonzero, times out, or produces a missing, malformed, or incomplete report. The launcher writes a receipt and failure handoff in every case and retains any report bytes it found, including malformed bytes for diagnosis.",
+    "next": "Read the concise blocker and Issue #1320 reference in the launcher log, then inspect the retained report and handoff before deciding whether to retry."
+  }
+}

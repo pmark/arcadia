@@ -31,10 +31,31 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Agent Ask settlement", () => {
-  it("rehearses the checked-in production handoff Asks in an isolated repository", () => {
+  it("refuses the raw historical production handoff Ask before managed-document or queue writes", () => {
     const { workspace, repo } = fixture();
     const request = readFileSync(path.resolve("docs/plans/mission-control-view/19-managed-production-bootstrap-ask.yaml"), "utf8")
       .replace("project: arcadia", "project: demo");
+    const projectBefore = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+    const planBefore = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    const queueBefore = withDatabase(workspace, db => [...loadActionOrder(db).positions]);
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id,
+      requestId: "raw-bootstrap-refused", disposition: "accepted", responsibility: "agent" }))
+      .toThrow("Acceptance criteria must be precise and checkable.");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(projectBefore);
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toBe(planBefore);
+    expect(existsSync(path.join(repo, "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"))).toBe(false);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    withDatabase(workspace, db => expect([...loadActionOrder(db).positions]).toEqual(queueBefore));
+  });
+  it("rehearses the checked-in production handoff Asks with legacy criteria migrated to the current contract", () => {
+    const { workspace, repo } = fixture();
+    const request = readFileSync(path.resolve("docs/plans/mission-control-view/19-managed-production-bootstrap-ask.yaml"), "utf8")
+      .replace("project: arcadia", "project: demo")
+      // The historical Ask uses implementation instructions for these two
+      // conditions. Preserve their requirements as observable fixture results.
+      .replace("Demonstrate automatic selection/launch", "The fixture evidence records automatic selection/launch")
+      .replace("Exercise failed validation, bounded repair", "The fault matrix covers failed validation, bounded repair");
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const creation = { workspace, proposal: proposal.data.proposal.id, requestId: "bootstrap-rehearsal",
       disposition: "accepted" as const, responsibility: "agent" as const };
@@ -325,12 +346,29 @@ describe("Agent Ask settlement", () => {
     })).toThrow(/eligible first Action/);
   });
 
+  it("refuses a foreign Git index lock before any document, archive, queue or receipt mutation", () => {
+    const { workspace, repo } = activationFixture();
+    const options = { workspace, proposal: "activate-production", requestId: "locked-activation", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", top: true };
+    const preview = runAgentAskSettleCommand(options);
+    const index = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-path", "index"], { cwd: repo, encoding: "utf8" }).trim();
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+    const before = ["PROJECT.md", "docs/plans/production.md"].map(file => readFileSync(path.join(repo, file), "utf8"));
+    const beforeIndex = readFileSync(index); writeFileSync(`${index}.lock`, "foreign live lock");
+    expect(() => runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint })).toThrow(/index is locked/);
+    expect(readFileSync(`${index}.lock`, "utf8")).toBe("foreign live lock"); expect(readFileSync(index)).toEqual(beforeIndex);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+    expect(["PROJECT.md", "docs/plans/production.md"].map(file => readFileSync(path.join(repo, file), "utf8"))).toEqual(before);
+    withDatabase(workspace, db => { expect((db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements WHERE request_id = ?").get(options.requestId) as { count: number }).count).toBe(0); expect([...loadActionOrder(db).positions.keys()]).toEqual(["demo/existing"]); });
+  });
+
   it("preserves settled documents if the Git commit fails after database commit", () => {
     const { workspace, repo } = activationFixture();
     execFileSync("git", ["config", "core.hooksPath", path.join(repo, ".git", "failing-hooks")], { cwd: repo });
     mkdirSync(path.join(repo, ".git", "failing-hooks"));
     const hook = path.join(repo, ".git", "failing-hooks", "pre-commit");
     writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    execFileSync("git", ["config", "user.name", ""], { cwd: repo });
     const options = { workspace, proposal: "activate-production", requestId: "commit-failure", disposition: "accepted" as const,
       activate: true, action: "first", model: "gpt-6-astra", top: true };
     const preview = runAgentAskSettleCommand(options);
@@ -1235,7 +1273,7 @@ describe("Agent Ask settlement", () => {
       ...rows.flatMap((row) => [
         ...(row.target ? [`  - target_ref: action/${row.target}`] : [`  - id: ${row.id}`]),
         `    desired_result: Action ${row.id}`, `    why: ${JSON.stringify(row.why)}`,
-        "    acceptance:", `      - Criterion ${row.id}.`
+        "    acceptance:", `      - The fixture report names ${row.id}.`
       ]),
       "requested_authority: apply_if_approved", ""
     ].join("\n");
@@ -2076,7 +2114,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("archives an accepted Ask's own .arcadia/asks/ source file into the same settlement commit", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-accept", project: "demo", intent: "log", desired_result: "Record something archivable" })
@@ -2102,7 +2141,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("archives a rejected Ask's source file too, since nothing further will ever act on it", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-reject", project: "demo", intent: "log", desired_result: "Record something that gets rejected" })
@@ -2120,7 +2160,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("commits the settled documents when the Project gitignores its .arcadia/asks/ directory (Issue #512)", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     writeFileSync(path.join(repo, ".gitignore"), ".arcadia/asks/\n", "utf8");
     execFileSync("git", ["add", ".gitignore"], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Ignore Agent Asks"], { cwd: repo });
@@ -2225,7 +2266,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("leaves an already-settled Ask file untouched (a no-op, not an error) if it was already archived or removed by hand", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-already-gone", project: "demo", intent: "log", desired_result: "Record something, then remove it by hand" })
@@ -2790,7 +2832,7 @@ function bundleAsk(requestId: string, actions: Array<{ id?: string; desiredResul
         : action.id ? [`  - id: ${action.id}`, `    desired_result: ${JSON.stringify(action.desiredResult)}`]
         : [`  - desired_result: ${JSON.stringify(action.desiredResult)}`]),
       "    acceptance:",
-      "      - The handle is typeable.",
+      "      - The Action handle resolves to exactly one queued Action.",
       "    dependencies: []"
     ]),
     "requested_authority: apply_if_approved",
@@ -2843,7 +2885,7 @@ function activePlanAsk(requestId: string): string {
     "acceptance: []", "dependencies: []", "references:", "  - docs/release.md",
     "target_ref: plan/demo-plan", "actions:",
     "  - target_ref: action/existing", "    desired_result: Tighten existing release proof",
-    "    acceptance:", "      - Existing release proof is deterministic.", "    dependencies: []",
+    "    acceptance:", "      - Repeated fixture runs produce identical existing release proof.", "    dependencies: []",
     "    references:", "      - tests/existing.test.ts",
     "  - desired_result: Audit release", "    acceptance:", "      - Release audit passes.",
     "    dependencies:", "      - existing", "    references:", "      - src/release.ts",
@@ -2945,4 +2987,74 @@ function planDoc(): string {
 function existingDirectory(directory: string): string {
   mkdirSync(directory, { recursive: true });
   return directory;
+}
+
+
+describe("governed acceptance criteria repairs", () => {
+  it.each(["open", "done", "question_open", "unclarified", "legacy_done"])("backfills missing criteria without changing %s Action state", (state) => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    let before = readFileSync(planPath, "utf8").replace("    acceptance_criteria:\n      - Existing proof exists.\n", "");
+    if (state === "done") before = before.replace("    status: open", "    status: done");
+    if (state === "question_open") before = before
+      .replace(/ {4}next_action:.*\n/, "")
+      .replace("    clarification: clarified", "    clarification: question_open\n    question: Which limit?\n    gap_type: missing-decision");
+    writeFileSync(planPath, before);
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Legacy criteria fixture"], { cwd: repo });
+    if (state === "unclarified" || state === "legacy_done") {
+      before = before.replace(/ {4}next_action:.*\n/, "").replace("    clarification: clarified\n", "");
+      if (state === "legacy_done") before = before.replace("    status: open", "    status: done");
+      before = before.replace("current_action: existing", "current_action: ready").replace("questions: []", [
+        "  - id: ready", "    title: Ready fixture", "    status: open", "    responsibility: agent",
+        "    clarification: clarified", "    next_action: Run the ready fixture.",
+        "    acceptance_criteria:", "      - The ready fixture exits zero.", "questions: []"
+      ].join("\n"));
+      const projectPath = path.join(repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: existing", "current_action: ready"));
+      writeFileSync(planPath, before);
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "Legacy missing next_action"], { cwd: repo });
+    }
+    const missingNext = ["question_open", "unclarified", "legacy_done"].includes(state);
+    const desired = missingNext ? "Keep existing work" : "Keep existing work moving.";
+    const request = JSON.stringify({ agent_ask: "v1", request_id: `repair-${state}`, project: "demo", intent: "plan",
+      target_ref: "plan/demo-plan", desired_result: "Backfill evaluation conditions", actions: [{ target_ref: "action/existing",
+        desired_result: desired, acceptance: ["The migration fixture leaves exactly one status column after two runs and records literal $$ and $& in its receipt."] }] });
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: `settle-repair-${state}`, disposition: "accepted" as const };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.applied).toBe(true);
+    const result = discoverDocs(repo);
+    expect(result.errors).toEqual([]);
+    const action = (result.docs.find((doc) => doc.type === "plan") as PlanDoc).actions[0];
+    expect(action.status).toBe(["done", "legacy_done"].includes(state) ? "done" : "open");
+    expect(action.acceptanceCriteria).toEqual(["The migration fixture leaves exactly one status column after two runs and records literal $$ and $& in its receipt."]);
+    expect(action.nextAction).toBe(missingNext ? null : "Keep existing work moving.");
+    if (state === "question_open") expect(action.question).toBe("Which limit?");
+    expect(applied.data.receipt.queueActionKeys).toEqual([]);
+  });
+  it("rejects a subjective criterion before a settlement preview can write a Plan", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    const proposal = runAgentAskPreviewCommand({ workspace, request: JSON.stringify({ agent_ask: "v1",
+      request_id: "vague-criterion", project: "demo", intent: "plan", target_ref: "plan/demo-plan",
+      desired_result: "Amend evaluation", actions: [{ target_ref: "action/existing",
+        desired_result: "Keep existing work moving.", acceptance: ["Works correctly."] }] }) });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id,
+      requestId: "settle-vague", disposition: "accepted" })).toThrow("precise and checkable");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
+});
+
+function isolatedAskFixture(workspace: string, main: string): string {
+  const candidate = path.join(path.dirname(main), `candidate-${path.basename(main)}`);
+  execFileSync("git", ["worktree", "add", "-q", "-b", "ask-test-candidate", candidate], { cwd: main });
+  withDatabase(workspace, (db) => {
+    const project = db.prepare("SELECT id FROM projects WHERE slug = 'demo'").get() as { id: string };
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: candidate });
+  });
+  return candidate;
 }

@@ -40,7 +40,7 @@ function plan(nextAction: string, status = "open", secondNext = "Append the seco
     "    depends_on: []", "    decisions: []",
     "  - id: second-step", "    title: Append a line.", "    status: open", "    responsibility: agent", "    effort: session",
     `    next_action: ${secondNext}`, "    expected_artifact: MARKER.md", "    clarification: clarified",
-    "    confidence: high", "    acceptance_criteria:", '      - "MARKER.md has two lines."', `    depends_on: [${ID}]`, "    decisions: []",
+    "    confidence: high", "    acceptance_criteria:", '      - "MARKER.md contains exactly two lines."', `    depends_on: [${ID}]`, "    decisions: []",
     "questions: []", "decisions: []", "recommended_model: claude-sonnet-5", "recommended_reasoning_effort: medium", `current_action: ${ID}`,
     "---", "", "# Synthetic rehearsal plan", ""
   ].join("\n");

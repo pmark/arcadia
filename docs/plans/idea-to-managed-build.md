@@ -205,7 +205,7 @@ actions:
       - Arcadia records agent-process exit time and exit status once, idempotently, and distinguishes completed, failed, and needs-input outcomes without treating a live tmux pane as semantic progress.
       - After exit, Arcadia reruns the existing document readiness resolver and computes needs input only when authoritative repository state resolves to an open Decision; it does not scrape terminal output for questions.
       - The Session receipt links the resulting Log entry, Decisions, Artifacts, Candidate revision, pull request, changed-file evidence, and validation receipts when those records exist, while leaving missing proof explicitly missing.
-      - Session outcome remains distinct from implementation acceptance: a zero agent exit does not mark an Action done, approve a Candidate, merge, push, deploy, publish, spend, message, use credentials, or cross any other Decision boundary.
+      - "Session outcome remains distinct from implementation acceptance: a zero agent exit does not mark an Action done, approve a Candidate, merge, push, deploy, publish, spend, message, use credentials, or cross any other Decision boundary."
       - One real dogfood Session proves the complete prepared to running to exited to next-state path, including a failure or needs-input fixture and a recovery instruction for an orphaned tmux or agent process.
       - The Agent Queue and Needs you projections consume the Session receipt and computed dispatch state rather than maintaining a second session-attention truth store.
       - Focused tests cover normal exit, non-zero exit, missing governed output, open-Decision resolution, idempotent reconciliation, stale process identity, and preservation of prior receipts.

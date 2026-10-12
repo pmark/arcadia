@@ -42,6 +42,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const artifact = await getIntelligenceClient().getArtifact(`/api/intelligence/artifacts/${encodeURIComponent(id)}`);
     const totalLength = artifact.bytes.byteLength;
+    const download = new URL(request.url).searchParams.get("download") === "1";
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+    const extension = artifact.contentType === "audio/mpeg" ? "mp3" : artifact.contentType === "audio/wav" ? "wav" : "bin";
+    const disposition: Record<string, string> = download ? { "content-disposition": `attachment; filename="arcadia-audio-${safeId}.${extension}"` } : {};
     const range = parseRange(request.headers.get("range"), totalLength);
 
     if (range === null) {
@@ -54,6 +58,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (range === undefined) {
       return new Response(artifact.bytes, {
         headers: {
+          ...disposition,
+          "cache-control": "private, max-age=3600",
           "content-type": artifact.contentType,
           "content-length": String(totalLength),
           "accept-ranges": "bytes",
@@ -65,6 +71,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return new Response(artifact.bytes.slice(start, end + 1), {
       status: 206,
       headers: {
+        ...disposition,
+        "cache-control": "private, max-age=3600",
         "content-type": artifact.contentType,
         "content-length": String(end - start + 1),
         "content-range": `bytes ${start}-${end}/${totalLength}`,

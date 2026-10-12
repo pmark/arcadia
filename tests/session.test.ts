@@ -667,7 +667,7 @@ actions:
     next_action: ${responsibility === "agent" ? "Build the bounded slice." : "Choose whether to proceed."}
     expected_artifact: A transition receipt
     acceptance_criteria:
-      - The transition is explicit.
+      - The transition receipt names the selected Action.
 ---
 \n# Transition\n`);
   }
