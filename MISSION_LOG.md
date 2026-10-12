@@ -2386,3 +2386,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The schema requires session_id, role, model, effort, action_id, pr, tokens_in_uncached, tokens_in_cached, tokens_out, wall_min, attempts, review_rounds, blocking_findings, operator_touches, host_touches, frictions and outcome with a stop_reason."; "The validator rejects a row with a missing or mistyped field and the CI job runs it on every pull request that touches the ledger."; "The ledger has four backfilled rows for A12, A3, A5 and A6 taken from the living notes, and the living notes link to the ledger."; "Focused validator tests pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-record-session-ledger-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/enforce-session-token-ceiling
+
+- **Did:** Completed Action arcadia/enforce-session-token-ceiling from accepted evidence (Candidate df6799f372bf93250398397dfa463a08d1cfd152).
+- **Result:** Every declared acceptance criterion was accepted as met: "The replay scenario stops at the ceiling and the stop receipt names budget_exhausted with the ceiling value and both token counts."; "An attempt that hits the ceiling is not relaunched automatically and raises exactly one named blocker."; "The ceiling has a per-tier default and cannot be disabled or raised from a prompt, brief or Action text."; "Focused tests for the ceiling and the production tick pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-session-token-ceiling-2026-10-12).

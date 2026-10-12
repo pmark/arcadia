@@ -49,10 +49,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: enforce-session-token-ceiling
     title: Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.
+    next_action: Completed via Agent Ask complete-enforce-session-token-ceiling-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask enforce-session-token-ceiling
     clarification: clarified
     confidence: high
@@ -144,7 +144,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
 questions: []
 decisions: []
-current_action: enforce-session-token-ceiling
+current_action: probe-environment-inside-session
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
