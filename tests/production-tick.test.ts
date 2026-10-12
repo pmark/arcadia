@@ -347,9 +347,9 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(1);
     const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     expect(escalations).toHaveLength(1);
-    expect(escalations[0]).toMatchObject({ kind: "environment_wall" });
+    expect(escalations[0]).toMatchObject({ kind: "budget_exhausted" });
     expect(escalations[0]?.message).toContain("workspace_write");
-    expect(escalations[0]?.message).toContain("11100000 input tokens");
+    expect(escalations[0]?.message).toContain("11100000 input tokens (11100000 uncached + 0 cached)");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
       .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, cachedInputTokens: 0, outputTokens: 4000 })]);
     const rendered = renderProductionStatusSuccess({
