@@ -53,6 +53,10 @@ was A12's own subject); reviewers = fresh Sonnet read-only subagents.
 | Real defects the reviewers found before merge | 2 low (hidden deferred items, missing gate tests) | 12 validator bypass classes, route on human-owned Action | unguarded `activateNextPlan`/`activatePlan`, half-finished `go --apply`, status change, fail-open store |
 | Outcome | partial slice, `split` still to record | heuristic validator, term-list gaps disclosed | guard covers activation, completion hold, status; no pause path |
 
+Per-session numbers for these Actions are recorded as validated rows in
+`session-ledger.jsonl` (same directory; add one row per session, see the header
+of `src/reports/sessionLedger.ts`).
+
 Totals for the night: 4 Actions built by Sonnet Drivers in isolated worktrees,
 8 PRs opened and merged or queued, 0 host touches, 0 Codex Session spend,
 0 Grants. Operator touches: the activation answer and the PR merges.
