@@ -27,6 +27,8 @@ jobs:
         run: mise exec -- pnpm check:agent-guidance
       - name: Validate every generated operator action
         run: mise exec -- pnpm check:operator-scripts
+      - name: Validate the session ledger
+        run: mise exec -- pnpm check:session-ledger
 
   unit-1:
     runs-on: ubuntu-latest
