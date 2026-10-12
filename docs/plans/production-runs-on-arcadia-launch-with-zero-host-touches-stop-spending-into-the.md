@@ -50,10 +50,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
   - id: declare-action-route-and-fix-the-approval-check
     title: "Implement an explicit execution field on Plan Actions (build or plan-run), validated when a Plan is created or amended and shown in the production preview with the expected operator touches per Action, replacing the keyword match on Action prose; and fix the artifact validator so an approval-contradiction is judged per sentence, with a golden test of the planner's standard phrasing (Issue #1277)."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement an explicit execution field on Plan Actions (build or plan-run), validated when a Plan is created or amended and shown in the production preview with the expected operator touches per Action, replacing the keyword match on Action prose; and fix the artifact validator so an approval-contradiction is judged per sentence, with a golden test of the planner's standard phrasing (Issue #1277)."
+    next_action: Completed via Agent Ask complete-declare-action-route-and-fix-the-approval-check-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask declare-action-route-and-fix-the-approval-check
     clarification: clarified
     confidence: high

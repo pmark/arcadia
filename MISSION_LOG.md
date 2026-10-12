@@ -2358,3 +2358,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the remains draft with completion state preserved. Operator asked in chat on 2026-10-12 to create and activate this Plan with minimal interaction. Accepted consequence: the production-hardening batch Plan returns to draft with its remainder Action and completion records preserved.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Completed arcadia/declare-action-route-and-fix-the-approval-check
+
+- **Did:** Completed Action arcadia/declare-action-route-and-fix-the-approval-check from accepted evidence (Candidate c35c01f2c10d81878d6d7c0ef135d957be618fc2).
+- **Result:** Every declared acceptance criterion was accepted as met: "An Action with execution: build routes to a build packet regardless of its wording; an Action with execution: plan-run routes to a plan run; an Action with neither keeps today's behaviour and the preview says so."; "The production preview lists each Action's route and the operator touches it expects."; "The artifact sentence pair quoted in Issue #1277 (a statement that the run itself needs no approval followed by one that the later implementation needs a separate approved goal) passes the validator, and a sentence saying the implementation needs no approval still fails it."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-declare-action-route-and-fix-the-approval-check-2026-10-12).
