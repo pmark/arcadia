@@ -38,14 +38,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask name-every-production-stall-with-a-one-click-fix
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-production-run-hardening-batch-2026-10-12
+    source: Agent Ask amend-a3-drop-remainder-dependency-2026-10-12
     why: "The first stall was visible only as a generic not-ready alert after ten minutes, with the real cause in a worker log on disk."
     acceptance_criteria:
       - "A replay of the 2026-10-11 21:10Z worker log lines produces a named escalation with a one-click resolution within three minutes and exactly one ping."
       - The escalation extends the existing production_operator_escalations mechanism; no parallel detector exists.
       - Each escalation names the gate class, the Action, and a resolution button that needs no copied text.
       - Focused tests exist and the production tick tests and pnpm fast-rehearsal pass.
-    depends_on: [stop-spending-into-an-environment-wall, refuse-a-session-before-launch-when-its-sandbox-cannot-write]
+    depends_on: [stop-spending-into-an-environment-wall]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
   - id: declare-action-route-and-fix-the-approval-check
