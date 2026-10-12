@@ -409,7 +409,7 @@ describe("launchGuardedHostSession", () => {
         db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "req-wall",
         previewFingerprint: preview.previewFingerprint, profiles, adapters, now: fixture.now, tmux,
         agentWorktreeRoot: path.join(fixture.root, "wall-wt"),
-        sessionCapability: (_workspace, sandbox) => {
+        workerCapability: (_workspace, sandbox) => {
           seen.push(sandbox);
           return [{ wallClass: "preservation", evidence: "no preservation heartbeat", remedy: "Restart the worker." }];
         }
@@ -1912,6 +1912,7 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
+          expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --nonce [0-9a-f]{32}\)$/),
           "Agent"
         ]
       }
