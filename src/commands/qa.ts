@@ -7,7 +7,7 @@ import { withDatabase } from "../db/connection.js";
 import { createReviewItem, getProjectBySlug, listReviewItems, updateReviewItemStatus } from "../db/repositories.js";
 import type { ReviewItemSummary } from "../domain/types.js";
 import { buildModelEffectivenessReport, type ModelEffectivenessReport } from "../reports/modelEffectiveness.js";
-import { parsePersistedQaContext, type PrReviewRole } from "../qa/prReview.js";
+import { parsePersistedQaContext, verifyPersistedQaContextEvidence, type PrReviewRole } from "../qa/prReview.js";
 import { listMonitoredProjects } from "./workMonitor.js";
 import { validateSessionLedger, type SessionLedgerRow } from "../reports/sessionLedger.js";
 import {
@@ -110,16 +110,30 @@ export function runQaEffectivenessCommand(options: { workspace: string }): Comma
         : item.resolved_intent === "IndependentPullRequestCodeReview" ? "code-review" : null;
       if (!role) return [];
       const context = parsePersistedQaContext(item.context_json, role);
-      if (!context) return [];
+      if (!context) {
+        sourceWarnings.push(`${item.slug ?? item.id}: ignored invalid QA receipt context`);
+        return [];
+      }
+      if (item.project_id !== context.candidate.projectId || item.source_input !== context.candidate.url || item.artifact_path !== context.reportPath ||
+          !verifyPersistedQaContextEvidence(workspacePath, context)) {
+        sourceWarnings.push(`${item.slug ?? item.id}: ignored QA receipt whose candidate identity or immutable evidence did not verify`);
+        return [];
+      }
       const attemptRequestId = context.effectiveness?.attemptRequestId ?? null;
       const linkedRows = attemptRequestId === null ? [] : ledgerFor(context.candidate.projectId).filter(row =>
         row.review_attempt_request_id === attemptRequestId && row.candidate_head === context.candidate.headSha);
+      const distinct = (values: Array<string | null | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))];
+      const taskClasses = distinct(linkedRows.map(row => row.task_class));
+      const difficulties = distinct(linkedRows.map(row => row.difficulty));
+      if (taskClasses.length > 1 || difficulties.length > 1) {
+        sourceWarnings.push(`${item.slug ?? item.id}: conflicting observed task classification; task class and difficulty reported as unknown`);
+      }
       return [{
         id: item.id,
         role,
         context,
-        observedTaskClass: linkedRows.find(row => row.task_class)?.task_class ?? null,
-        observedDifficulty: linkedRows.find(row => row.difficulty)?.difficulty ?? null,
+        observedTaskClass: taskClasses.length === 1 && difficulties.length <= 1 ? taskClasses[0] : null,
+        observedDifficulty: difficulties.length === 1 && taskClasses.length <= 1 ? difficulties[0] : null,
         linkedResources: linkedRows.filter(row => row.resource_scope === "lineage-additional").map(row => ({
           id: row.session_id,
           attemptRequestId: row.review_attempt_request_id!,
@@ -136,16 +150,22 @@ export function runQaEffectivenessCommand(options: { workspace: string }): Comma
 
 export function renderQaEffectivenessSuccess(response: CommandSuccess<QaEffectivenessCommandData>): string[] {
   const { report, sourceWarnings } = response.data;
-  if (report.groups.length === 0) return ["No valid QA or code-review receipts were found."];
+  if (report.groups.length === 0) return [
+    "No valid QA or code-review receipts were found.",
+    ...sourceWarnings.map(warning => `Source warning: ${warning}`)
+  ];
   return [
     `Review effectiveness: ${report.deduplicatedRecords} unique receipt${report.deduplicatedRecords === 1 ? "" : "s"} (${report.records - report.deduplicatedRecords} replay duplicate${report.records - report.deduplicatedRecords === 1 ? "" : "s"} ignored).`,
     ...report.groups.map(group => {
       const task = group.taskClass ?? "task class unknown";
       const effort = group.effectiveEffort ?? "effort unknown";
+      const difficulty = group.difficulty ?? "difficulty unknown";
       const usage = `${group.reviewerResources.inputTokens}+${group.reviewerResources.cachedInputTokens} input, ${group.reviewerResources.outputTokens} output tokens (complete ${group.reviewerResources.samplesWithCompleteUsage}/${group.sampleSize})`;
       const billed = group.billedCostKnown ? `$${group.actualBilledCostUsd?.toFixed(4)} actual billed` : "actual billed cost unknown";
-      const estimated = group.estimatedCostKnown ? `$${group.estimatedCostUsd?.toFixed(4)} estimated` : "pricing estimate unknown";
-      return `${group.role} / ${task} / ${group.provider}:${group.model} / ${effort}: n=${group.sampleSize}, pass=${group.passes}, judgment-fail=${group.judgmentFailures}, environment-fail=${group.environmentFailures}, reviewer usage ${usage}; ${billed}; ${estimated}; task-class coverage ${group.taskClassKnown}/${group.sampleSize}.`;
+      const estimated = group.estimatedCostKnown ? `$${group.estimatedCostUsd?.toFixed(4)} estimated as of ${group.pricingAsOf}` : "pricing estimate unknown";
+      const capacity = group.includedCapacityKnown ? `${group.includedCapacityConsumption} included-capacity units` : "included-capacity consumption unknown";
+      const total = `${group.totalResourcesThroughOutcome.inputTokens}+${group.totalResourcesThroughOutcome.cachedInputTokens} input, ${group.totalResourcesThroughOutcome.outputTokens} output tokens, ${group.totalResourcesThroughOutcome.elapsedMs} ms`;
+      return `${group.role} / ${task} / ${difficulty} / rubric ${group.rubricVersion ?? "unknown"} / ${group.provider}:${group.model} / configured ${group.configuredEffort ?? "unknown"} (${group.configuredEffortKnown}/${group.sampleSize}) / effective ${effort} (${group.effectiveEffortKnown}/${group.sampleSize}): n=${group.sampleSize}, rounds=${group.reviewRounds}, fresh=${group.freshInvocations}, retries=${group.retryCount}, repairs=${group.repairCount}, pass=${group.passes}, judgment-fail=${group.judgmentFailures}, gate-fail=${group.deterministicGateFailures}, environment-fail=${group.environmentFailures}, confirmed blockers=${group.confirmedBlockingFindings}, rejected-or-duplicate=${group.rejectedOrDuplicateRate === null ? "unknown" : group.rejectedOrDuplicateRate.toFixed(3)}, reviewer usage ${usage}; total resources through verified outcome ${total} (${group.linkedResourceReceiptCount} linked receipts); ${billed}; ${estimated}; ${capacity}; class coverage ${group.taskClassKnown}/${group.sampleSize}, difficulty coverage ${group.difficultyKnown}/${group.sampleSize}.`;
     }),
     ...sourceWarnings.map(warning => `Source warning: ${warning}`)
   ];

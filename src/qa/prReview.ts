@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -588,7 +589,10 @@ export function runQaPrReviewCommand(
     parentAttemptRequestId: lineage?.parentRequestId ?? null,
     attemptOrdinal: lineage?.ordinal ?? null,
     evidenceSource: toWorkspaceRelativePath(workspacePath, executorOutputPath),
-    invocation: "fresh",
+    invocation: reviewerInvoked ? "fresh" : "not-invoked",
+    modelVerdict: parsedModel.verdict.verdict,
+    deterministicGateVerdict: deterministic.gate ?? "pass",
+    deterministicGateReasons: deterministic.reasons,
     findingEvidence: findings.map((finding, findingIndex) => ({
       findingIndex,
       severity: finding.severity,
@@ -1824,7 +1828,6 @@ export function parsePersistedQaContext(value: string | null, role: PrReviewRole
     if (unavailableKeyed && !isNonEmptyString(context.reviewerUnavailable)) return null;
     if (varianceKeyed && !isNonEmptyString(context.varianceReason)) return null;
     if (roleKeyed && context.role !== role) return null;
-    if (effectivenessKeyed && !isReviewEffectivenessTelemetry(context.effectiveness, role)) return null;
     if (
       context.schemaVersion !== 2 ||
       !isQaCandidate(context.candidate) ||
@@ -1840,6 +1843,7 @@ export function parsePersistedQaContext(value: string | null, role: PrReviewRole
       !isSha256(context.evidenceFingerprint) ||
       !isReceiptFileList(context.receiptFiles)
     ) return null;
+    if (effectivenessKeyed && !isReviewEffectivenessTelemetry(context.effectiveness, role, context.candidate, context.findings)) return null;
     const requiredPaths = new Set(context.receiptFiles.map((file) => file.path));
     if (![context.reportPath, context.evidencePath, context.metadataPath].every((filePath) => requiredPaths.has(filePath))) return null;
     return context as unknown as PersistedQaContext;
@@ -1901,24 +1905,33 @@ function isQaReviewerProvenance(value: unknown): value is QaReviewerProvenance {
       [usage.inputTokens, usage.cachedInputTokens, usage.outputTokens].every(entry => typeof entry === "number" && Number.isFinite(entry) && entry >= 0)));
 }
 
-function isReviewEffectivenessTelemetry(value: unknown, role: PrReviewRole): value is ReviewEffectivenessTelemetry {
+function isReviewEffectivenessTelemetry(value: unknown, role: PrReviewRole, candidate: QaPrCandidate, findings: QaPrFinding[]): value is ReviewEffectivenessTelemetry {
+  const modelVerdictKeyed = value !== null && typeof value === "object" && "modelVerdict" in value;
+  const gateVerdictKeyed = value !== null && typeof value === "object" && "deterministicGateVerdict" in value;
+  const gateReasonsKeyed = value !== null && typeof value === "object" && "deterministicGateReasons" in value;
   if (!isRecordWithExactKeys(value, [
     "schemaVersion", "role", "projectId", "projectSlug", "actionId", "taskClass", "difficulty", "candidateHead",
     "rubricVersion", "attemptId", "attemptRequestId", "parentAttemptRequestId", "attemptOrdinal", "evidenceSource",
-    "invocation", "findingEvidence", "escapedDefects", "linkedResourceReceipts"
+    "invocation", ...(modelVerdictKeyed ? ["modelVerdict"] : []), ...(gateVerdictKeyed ? ["deterministicGateVerdict"] : []),
+    ...(gateReasonsKeyed ? ["deterministicGateReasons"] : []), "findingEvidence", "escapedDefects", "linkedResourceReceipts"
   ])) return false;
   const nullableString = (entry: unknown) => entry === null || isNonEmptyString(entry);
-  if (value.schemaVersion !== 1 || value.role !== role || !isNonEmptyString(value.projectId) || !isNonEmptyString(value.candidateHead) ||
-      !isSha256(value.rubricVersion) || !isNonEmptyString(value.evidenceSource) || value.invocation !== "fresh" ||
+  if (value.schemaVersion !== 1 || value.role !== role || value.projectId !== candidate.projectId || value.candidateHead !== candidate.headSha ||
+      !isSha256(value.rubricVersion) || !isNonEmptyString(value.evidenceSource) || !["fresh", "not-invoked"].includes(String(value.invocation)) ||
       ![value.projectSlug, value.actionId, value.taskClass, value.difficulty, value.attemptId, value.attemptRequestId, value.parentAttemptRequestId].every(nullableString) ||
       !(value.attemptOrdinal === null || (Number.isInteger(value.attemptOrdinal) && Number(value.attemptOrdinal) > 0)) ||
       !Array.isArray(value.findingEvidence) || !Array.isArray(value.linkedResourceReceipts)) return false;
+  if (modelVerdictKeyed && !["pass", "fail", "needs-follow-up"].includes(String(value.modelVerdict))) return false;
+  if (gateVerdictKeyed && value.deterministicGateVerdict !== null && !["pass", "fail", "needs-follow-up"].includes(String(value.deterministicGateVerdict))) return false;
+  if (gateReasonsKeyed && (!Array.isArray(value.deterministicGateReasons) || !value.deterministicGateReasons.every(isNonEmptyString))) return false;
   if (!(value.escapedDefects === null || (Array.isArray(value.escapedDefects) && value.escapedDefects.every(defect =>
     isRecordWithExactKeys(defect, ["id", "evidence"]) && isNonEmptyString(defect.id) && isNonEmptyString(defect.evidence))))) return false;
+  const indexes = new Set<number>();
   return value.findingEvidence.every(finding => isRecordWithExactKeys(finding, [
     "findingIndex", "severity", "disposition", "resolutionState", "validationOutcome", "validationEvidence", "repairHead", "repairEvidence"
-  ]) && Number.isInteger(finding.findingIndex) && Number(finding.findingIndex) >= 0 &&
-    ["blocker", "high", "medium", "low"].includes(String(finding.severity)) &&
+  ]) && Number.isInteger(finding.findingIndex) && Number(finding.findingIndex) >= 0 && Number(finding.findingIndex) < findings.length &&
+    !indexes.has(Number(finding.findingIndex)) && (indexes.add(Number(finding.findingIndex)), true) &&
+    finding.severity === findings[Number(finding.findingIndex)]?.severity &&
     (finding.disposition === null || ["required-correction", "worthwhile-improvement", "follow-up-opportunity"].includes(String(finding.disposition))) &&
     ["open", "repaired", "accepted-risk", "not-actionable"].includes(String(finding.resolutionState)) &&
     ["confirmed", "rejected", "unresolved", "duplicate"].includes(String(finding.validationOutcome)) &&
@@ -1960,6 +1973,20 @@ function verifyReceiptFile(workspace: string, file: { path: string; sha256: stri
   const relativePath = path.relative(workspaceRoot, absolutePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath) || !existsSync(absolutePath)) return false;
   return sha256File(absolutePath) === file.sha256;
+}
+
+/** Confirms that every immutable file named by a persisted QA context still matches its captured hash. */
+export function verifyPersistedQaContextEvidence(workspace: string, context: PersistedQaContext): boolean {
+  if (!context.receiptFiles.every(file => verifyReceiptFile(workspace, file))) return false;
+  try {
+    const metadataPath = path.resolve(workspace, context.metadataPath);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as Record<string, unknown>;
+    return isDeepStrictEqual(metadata.candidate, context.candidate) &&
+      metadata.verdict === context.verdict &&
+      (context.effectiveness === undefined || isDeepStrictEqual(metadata.effectiveness, context.effectiveness));
+  } catch {
+    return false;
+  }
 }
 
 function sha256File(filePath: string): string {

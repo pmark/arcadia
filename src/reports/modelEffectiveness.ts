@@ -30,7 +30,12 @@ export interface ReviewEffectivenessTelemetry {
   parentAttemptRequestId: string | null;
   attemptOrdinal: number | null;
   evidenceSource: string;
-  invocation: "fresh";
+  invocation: "fresh" | "not-invoked";
+  /** The reviewer's own judgment, before deterministic repository gates. */
+  modelVerdict?: "pass" | "fail" | "needs-follow-up";
+  /** Repository evidence outcome, kept separate from model judgment. */
+  deterministicGateVerdict?: "pass" | "fail" | "needs-follow-up" | null;
+  deterministicGateReasons?: string[];
   findingEvidence: ReviewFindingEvidence[];
   escapedDefects: Array<{ id: string; evidence: string }> | null;
   linkedResourceReceipts: Array<{
@@ -68,6 +73,7 @@ export interface ModelEffectivenessGroup {
   rubricVersion: string | null;
   provider: string;
   model: string;
+  configuredEffort: string | null;
   effectiveEffort: string | null;
   sampleSize: number;
   configuredEffortKnown: number;
@@ -80,6 +86,7 @@ export interface ModelEffectivenessGroup {
   reviewRounds: number;
   environmentFailures: number;
   judgmentFailures: number;
+  deterministicGateFailures: number;
   passes: number;
   confirmedBlockingFindings: number;
   rejectedFindings: number;
@@ -99,7 +106,9 @@ export interface ModelEffectivenessGroup {
   estimatedCostUsd: number | null;
   billedCostKnown: number;
   estimatedCostKnown: number;
+  pricingAsOf: string | null;
   includedCapacityKnown: number;
+  includedCapacityConsumption: number | null;
 }
 
 export interface ModelEffectivenessReport {
@@ -136,7 +145,7 @@ function addResources(target: ResourceTotals, value: {
 function deduplicationKey(record: EffectivenessReviewRecord): string {
   const telemetry = record.context.effectiveness;
   return telemetry?.attemptRequestId
-    ? `attempt:${telemetry.attemptRequestId}`
+    ? `attempt:${telemetry.projectId}:${telemetry.candidateHead}:${record.role}:${telemetry.attemptRequestId}`
     : `decision:${record.id}`;
 }
 
@@ -149,6 +158,7 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
   const unique = new Map<string, EffectivenessReviewRecord>();
   for (const record of records) if (!unique.has(deduplicationKey(record))) unique.set(deduplicationKey(record), record);
   const groups = new Map<string, ModelEffectivenessGroup>();
+  const linkedResourceIds = new Map<string, Set<string>>();
   for (const record of unique.values()) {
     const context = record.context;
     const telemetry = context.effectiveness ?? null;
@@ -156,29 +166,34 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     const taskClass = telemetry?.taskClass ?? record.observedTaskClass ?? null;
     const difficulty = telemetry?.difficulty ?? record.observedDifficulty ?? null;
     const effectiveEffort = context.reviewer.effectiveEffort ?? null;
+    const configuredEffort = context.reviewer.configuredEffort ?? null;
+    const pricingAsOf = context.reviewer.estimatedCostUsd == null ? null : context.reviewer.pricingAsOf ?? null;
     const rubricVersion = telemetry?.rubricVersion ?? null;
     // Unknown class or difficulty is not a comparable cohort: retain it as a
     // one-receipt group instead of silently comparing unrelated changes.
     const comparabilityKey = taskClass === null || difficulty === null ? record.id : `${taskClass}:${difficulty}`;
-    const key = JSON.stringify([comparabilityKey, role, rubricVersion, context.reviewer.provider, context.reviewer.model, effectiveEffort]);
+    const key = JSON.stringify([comparabilityKey, role, rubricVersion, context.reviewer.provider, context.reviewer.model, configuredEffort, effectiveEffort, pricingAsOf]);
     let group = groups.get(key);
     if (!group) {
       group = {
         taskClass, difficulty, role, rubricVersion,
         provider: context.reviewer.provider,
         model: context.reviewer.model,
+        configuredEffort,
         effectiveEffort,
         sampleSize: 0, configuredEffortKnown: 0, effectiveEffortKnown: 0, taskClassKnown: 0, difficultyKnown: 0,
         freshInvocations: 0, retryCount: 0, repairCount: 0, reviewRounds: 0,
-        environmentFailures: 0, judgmentFailures: 0, passes: 0,
+        environmentFailures: 0, judgmentFailures: 0, deterministicGateFailures: 0, passes: 0,
         confirmedBlockingFindings: 0, rejectedFindings: 0, duplicateFindings: 0, validatedFindings: 0,
         unresolvedFindings: 0, dispositionsKnown: 0, requiredCorrectionFindings: 0,
         worthwhileImprovementFindings: 0, followUpOpportunityFindings: 0,
         rejectedOrDuplicateRate: null, escapedDefects: 0,
         reviewerResources: zeroResources(), totalResourcesThroughOutcome: zeroResources(), linkedResourceReceiptCount: 0,
-        actualBilledCostUsd: null, estimatedCostUsd: null, billedCostKnown: 0, estimatedCostKnown: 0, includedCapacityKnown: 0
+        actualBilledCostUsd: null, estimatedCostUsd: null, billedCostKnown: 0, estimatedCostKnown: 0, pricingAsOf,
+        includedCapacityKnown: 0, includedCapacityConsumption: null
       };
       groups.set(key, group);
+      linkedResourceIds.set(key, new Set());
     }
     group.sampleSize += 1;
     group.reviewRounds += 1;
@@ -188,10 +203,17 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     group.taskClassKnown += taskClass !== null ? 1 : 0;
     group.difficultyKnown += difficulty !== null ? 1 : 0;
     group.retryCount += telemetry?.parentAttemptRequestId ? 1 : 0;
-    group.repairCount += telemetry?.findingEvidence.filter(finding => finding.repairHead !== null && finding.repairEvidence !== null).length ?? 0;
+    group.repairCount += telemetry?.findingEvidence.filter(finding => finding.repairHead === context.candidate.headSha &&
+      finding.repairEvidence !== null && context.receiptFiles.some(file => file.path === finding.repairEvidence)).length ?? 0;
     if (context.reviewerUnavailable) group.environmentFailures += 1;
-    else if (context.verdict !== "pass") group.judgmentFailures += 1;
-    else group.passes += 1;
+    else if (telemetry === null || telemetry.invocation === "fresh") {
+      const modelVerdict = telemetry?.modelVerdict ?? context.verdict;
+      if (modelVerdict !== "pass") group.judgmentFailures += 1;
+      else group.passes += 1;
+    }
+    if (telemetry?.deterministicGateVerdict && telemetry.deterministicGateVerdict !== "pass") {
+      group.deterministicGateFailures += 1;
+    }
 
     const findingEvidence = telemetry?.findingEvidence ?? context.findings.map((finding, findingIndex) => ({
       findingIndex, severity: finding.severity, disposition: null,
@@ -202,12 +224,13 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
       if (finding.disposition === "required-correction") group.requiredCorrectionFindings += 1;
       if (finding.disposition === "worthwhile-improvement") group.worthwhileImprovementFindings += 1;
       if (finding.disposition === "follow-up-opportunity") group.followUpOpportunityFindings += 1;
-      if (finding.validationOutcome === "confirmed" && finding.validationEvidence && (finding.severity === "blocker" || finding.severity === "high")) {
+      const validationEvidenced = finding.validationEvidence !== null && context.receiptFiles.some(file => file.path === finding.validationEvidence);
+      if (finding.validationOutcome === "confirmed" && validationEvidenced && finding.disposition === "required-correction") {
         group.confirmedBlockingFindings += 1;
       }
-      if (finding.validationOutcome === "rejected" && finding.validationEvidence) group.rejectedFindings += 1;
-      if (finding.validationOutcome === "duplicate" && finding.validationEvidence) group.duplicateFindings += 1;
-      if (finding.validationOutcome === "unresolved" || !finding.validationEvidence) group.unresolvedFindings += 1;
+      if (finding.validationOutcome === "rejected" && validationEvidenced) group.rejectedFindings += 1;
+      if (finding.validationOutcome === "duplicate" && validationEvidenced) group.duplicateFindings += 1;
+      if (finding.validationOutcome === "unresolved" || !validationEvidenced) group.unresolvedFindings += 1;
       else group.validatedFindings += 1;
     }
     group.rejectedOrDuplicateRate = group.validatedFindings > 0
@@ -221,12 +244,13 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
       group.actualBilledCostUsd = (group.actualBilledCostUsd ?? 0) + context.reviewer.actualBilledCostUsd;
       group.billedCostKnown += 1;
     }
-    if (context.reviewer.estimatedCostUsd !== null && context.reviewer.estimatedCostUsd !== undefined) {
+    if (context.reviewer.estimatedCostUsd !== null && context.reviewer.estimatedCostUsd !== undefined && context.reviewer.pricingAsOf) {
       group.estimatedCostUsd = (group.estimatedCostUsd ?? 0) + context.reviewer.estimatedCostUsd;
       group.estimatedCostKnown += 1;
     }
     if (context.reviewer.includedCapacityConsumption !== null && context.reviewer.includedCapacityConsumption !== undefined) {
       group.includedCapacityKnown += 1;
+      group.includedCapacityConsumption = (group.includedCapacityConsumption ?? 0) + context.reviewer.includedCapacityConsumption;
     }
     addResources(group.reviewerResources, {
       inputTokens: reviewerUsage?.inputTokens ?? null,
@@ -240,8 +264,11 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
       outputTokens: reviewerUsage?.outputTokens ?? null,
       elapsedMs: context.reviewer.modelCallElapsedMs ?? null
     });
-    const linkedResources = new Map([...(telemetry?.linkedResourceReceipts ?? []), ...(record.linkedResources ?? [])].map(linked => [linked.id, linked]));
+    const linkedResources = new Map((record.linkedResources ?? []).map(linked => [linked.id, linked]));
+    const seenLinked = linkedResourceIds.get(key)!;
     for (const linked of linkedResources.values()) {
+      if (seenLinked.has(linked.id)) continue;
+      seenLinked.add(linked.id);
       addResources(group.totalResourcesThroughOutcome, linked);
       group.linkedResourceReceiptCount += 1;
     }
