@@ -34,6 +34,7 @@ import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdow
 import { renderRunSummary } from "../markdown/executionArtifacts.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 import { runManagedProductionTick } from "../production/tick.js";
+import { probeSessionCapability } from "../production/sessionCapability.js";
 import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagnosis.js";
 import { createId } from "../utils/id.js";
 
@@ -1156,6 +1157,7 @@ export function runManagedProductionIteration(
     runManagedProductionTick(db, workspacePath, {
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters,
+      sessionCapability: probeSessionCapability,
       heartbeat: () => {
         // The worker's own record is stamped here for the same reason the
         // preservation projection is: a tick that re-stamped only the

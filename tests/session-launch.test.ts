@@ -399,6 +399,27 @@ describe("launchGuardedHostSession", () => {
     expect(() => launchWith(0, "req-1")).toThrow(/positive whole number/);
   });
 
+  it("refuses at the shared launch point, before any lease or process, when the capability preflight names a wall (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture, "req-wall");
+    const seen: Array<string | null> = [];
+    expect(() => withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "req-wall",
+        previewFingerprint: preview.previewFingerprint, profiles, adapters, now: fixture.now, tmux,
+        agentWorktreeRoot: path.join(fixture.root, "wall-wt"),
+        sessionCapability: (_workspace, sandbox) => {
+          seen.push(sandbox);
+          return [{ wallClass: "preservation", evidence: "no preservation heartbeat", remedy: "Restart the worker." }];
+        }
+      })
+    )).toThrow(/Environment wall .*no tokens were spent/);
+    expect(seen).toHaveLength(1);
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
   it("exposes --time-limit-minutes on `session launch` and refuses a non-positive value", () => {
     const run = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", path.resolve(import.meta.dirname, "../src/cli.ts"), ...args], { encoding: "utf8" });
     expect(run(["session", "launch", "--help"]).stdout).toContain("--time-limit-minutes");
