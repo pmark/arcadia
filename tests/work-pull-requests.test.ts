@@ -1,5 +1,9 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  listOutstandingPullRequests,
   buildPullRequestBriefing,
   derivePullRequestReadiness,
   normalizeCheck,
@@ -118,4 +122,13 @@ describe("outstanding pull-request readiness", () => {
       { name: "CodeRabbit", status: "PENDING", conclusion: null, url: null }
     ]);
   });
+});
+
+it("retains configured repositories when no PR is open", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-pr-registry-"));
+  try {
+    const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], { runCommand: (_cwd, command, args) => ({ ok: true, stdout: command === "git" ? "true" : args[0] === "repo" ? "owner/repo" : "[]", stderr: "" }) });
+    expect(snapshot.pullRequests).toEqual([]);
+    expect(snapshot.repositories).toEqual([{ projectId: "project", projectName: "Project", repository: "owner/repo", repositoryPath: realpathSync(directory) }]);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

@@ -248,9 +248,10 @@ export class ArcadiaIntelligenceClient {
     /**
      * Defines a text-to-speech operation. Mirrors image generation: submit +
      * poll through the same job API. `input` carries `text` + a semantic
-     * `voiceId` (never a provider voice name) plus optional `format` ("wav"),
+     * `voiceId` (never a provider voice name) plus optional `format` ("wav" or "mp3"),
      * `speed`, `language`, `instructions`. The result is an
      * IntelligenceSpeechGenerationResult carrying a durable audio artifact.
+     * Long text is chunked and assembled by Intelligence, not the companion app.
      */
     defineSpeechOperation: <
       TInput extends JsonValue,

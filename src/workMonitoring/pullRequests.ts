@@ -67,6 +67,7 @@ export interface PullRequestProjectError {
 export interface OutstandingPullRequestsSnapshot {
   generatedAt: string;
   projectsScanned: number;
+  repositories?: Array<{ projectId: string; projectName: string; repository: string; repositoryPath: string }>;
   pullRequests: OutstandingPullRequest[];
   errors: PullRequestProjectError[];
   counts: {
@@ -167,6 +168,7 @@ export function listOutstandingPullRequests(
 ): OutstandingPullRequestsSnapshot {
   const runCommand = options.runCommand ?? run;
   const pullRequests: OutstandingPullRequest[] = [];
+  const repositories: NonNullable<OutstandingPullRequestsSnapshot["repositories"]> = [];
   const errors: PullRequestProjectError[] = [];
   const seenRepositories = new Set<string>();
   const detailsByPullRequest = new Map<string, PullRequestDetails>();
@@ -196,6 +198,8 @@ export function listOutstandingPullRequests(
       errors.push(projectError(project, repositoryPath, repositoryResult.stderr.trim() || "GitHub repository could not be identified."));
       continue;
     }
+
+    repositories.push({ projectId: project.id, projectName: project.name, repository, repositoryPath });
 
     const result = runCommand(repositoryPath, "gh", [
       "pr", "list", "--repo", repository, "--state", "open", "--limit", "1000",
@@ -255,6 +259,7 @@ export function listOutstandingPullRequests(
   return {
     generatedAt: (options.now ?? new Date()).toISOString(),
     projectsScanned: projects.length,
+    repositories,
     pullRequests: sorted,
     errors,
     counts: {

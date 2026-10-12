@@ -1,0 +1,252 @@
+# PR body audio — candidate evidence, 2026-10-12
+
+Operator-directed implementation; no governed Action exists for this request.
+The active Plan/current Action (`replay-environment-wall-session`), queue and
+other candidates were not changed. Candidate: `codex/pr-body-audio`.
+
+Operator request: “I want a simple Arcadia utility built into the existing pull requests page that uses text-to-speech in order to produce an audio file so that I can have the pull request text read aloud to me. I just want to hit a play button and have it read to me. Start with just the body and then we'll figure out what to do about comments. Ideally it would be converted to MP3.”
+
+## Behavior and validation
+
+- Outstanding PR cards provide Play body, an audio player and download. Only the GitHub body enters local narration; Markdown formatting is stripped while body words/code are retained. Comments and titles are excluded.
+- Existing local-required Intelligence narration chunks and joins WAV; the Dashboard encodes MP3 using FFmpeg, falling back to WAV if conversion is unavailable. No paid/cloud fallback is introduced.
+- Only configured open PR inventory entries can reach the endpoint. In-flight duplicate requests share synthesis; other simultaneous PR generation is refused within a Dashboard process. Temporary combined files are removed after success/failure; ordinary durable Intelligence chunk artifacts follow the existing store lifecycle.
+- 30 tests passed across PR narration source, audio generation, HTTP endpoint, existing narration command and PR inventory suites.
+- Full lint and core/Discord build passed. Final focused lint and Dashboard production build also passed.
+- An actual FFmpeg encode of a synthetic PCM WAV was inspected with FFprobe: MP3 format, 0.1-second duration.
+- Browser test: isolated Next dev server at `http://127.0.0.1:3041/admin/pull-requests`, Chromium with `--autoplay-policy=user-gesture-required`, 390×844 viewport, mocked inventory and delayed audio endpoint. One click starts the element synchronously; delayed MP3 plays and a download appears, with exactly one synthesis request. Server was stopped after verification. This does not prove live TTS availability or physical iOS Safari behavior.
+
+## Independent internal review
+
+Two rounds by read-only reviewer `/root/review_pr_audio`. First found a blocking mobile playback initialization flaw and a nonblocking five-minute narration deadline. The fix starts the same audio element synchronously on the tap with looping silent PCM, then switches to generated audio; playback rejection is now visible. Second round: no unresolved blocking finding. Primary checkout reflog was unchanged before/after review.
+
+Real iPhone Safari verification remains operator QA. Each request has a five-minute synthesis deadline. If a healthy local engine exceeds it on a real PR, revive a queued generation/polling enhancement; do not silently raise budgets. Browser autoplay permission can still be refused by explicit settings; the UI displays a recovery message.
+
+## Friction and boundaries
+
+- Issue publication was rejected by automatic approval review: creating a GitHub Issue was treated as external publication requiring explicit authorization/Decision. No Issue, push, PR or notification was performed. Publication must be approved before continuing. The precise request and prepared PR text are preserved locally.
+- First Dashboard build ran before core package exports were generated and failed resolving `@pmark/arcadia/intelligence/client`. Core build succeeded; Dashboard build was then rerun sequentially. Source: `docs/AGENT_ORIENTATION.md` worktree/package build guidance. No source workaround was needed.
+- Identity through `pnpm arcadia` failed because mise attempted a protected host trust write. Direct `node --import tsx src/cli.ts identity resolve --agent codex --tier heavy` succeeded, matching the existing Notes To Self remedy. No trust config was changed.
+- Initial browser assertion selected an unrelated empty global Dashboard alert. Scoping the assertion to the PR audio component proved there was no playback alert. The failure was in the test selector.
+
+## Instruction retrieval
+
+Byte counts name the source files loaded; sections were bounded where noted.
+Active Plan: exact `replay-environment-wall-session` Action. Arcadia repository
+procedure: Orientation, Arcadia Semantics, Operator Guide, PR QA Plan and
+Working-Copy Safety. Notes: targeted speech/audio/PR/agent-ask/worktree searches,
+matching settlement, dependency bridging, sandbox trust and preservation sections.
+The Agent Ask skill was inspected but not invoked: operator-directed work applies.
+
+| Instruction source | UTF-8 bytes |
+| --- | ---: |
+| `CONSTITUTION.md` | 3320 |
+| `PROJECT.md` | 31609 |
+| `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 |
+| `.arcadia/repo-context.md` | 703 |
+| `.arcadia/context-policy.json` | 870 |
+| `docs/agent-guidance/index.json` | 6393 |
+| `docs/agent-guidance/operator-directed-work.md` | 4494 |
+| `docs/agent-guidance/agent-asks.md` | 22884 |
+| `docs/agent-guidance/continuation.md` | 6239 |
+| `docs/agent-guidance/learning.md` | 1636 |
+| `docs/working-copy-safety.md` | 15818 |
+| `docs/agent-guidance/pull-requests.md` | 17208 |
+| `docs/agent-guidance/git-identity.md` | 5248 |
+| `docs/agent-guidance/arcadia-repository.md` | 30174 |
+| `docs/arcadia-semantics.md` | 14180 |
+| `docs/AGENT_ORIENTATION.md` | 13594 |
+| `docs/intelligence/NARRATION.md` | 4312 |
+| `docs/notes-to-self.md` | 34925 |
+
+## Live PR #1308 test
+
+The operator selected https://github.com/pmark/arcadia/pull/1308 for testing.
+GitHub reports it merged, so direct PR URL selection and `?pr=` deep links were
+added to the same page. The API allows merged PR numbers only in repositories
+represented by the current open inventory; unknown repositories are refused.
+A configured repository with no open PRs remains unsupported for direct links.
+
+Initial live narration failed with `SPEECH_PROVIDER_REJECTED`, HTTP 401, because
+the candidate process lacked the existing proxy credential. The retry passed
+using only existing local speech/proxy settings from the main checkout's `.env`
+inside the process; no credential values were printed or configuration changed.
+Three chunks produced 97.6 seconds of body-only audio via LOCAL standard speech.
+
+First live page POST then returned 502: speech progress on stdout contaminated
+the CLI JSON response. Fixed speech progress output in `src/intelligence/jobs/worker.ts`
+to stderr; `test/intelligence/narrate-command.test.ts` verifies stdout stays free
+of those messages. All 19 focused tests and scoped lint passed after the fix.
+The real endpoint retry returned HTTP 200, `audio/mpeg`, download name
+`pr-1308-body.mp3`; FFprobe confirmed 97.6 seconds and 725,612 bytes.
+
+Browser test selected merged PR1308 through the deep link with a different open
+PR in its mocked inventory, then played the real generated MP3 with one tap.
+Physical iOS Safari remains unverified. A read-only fourth review was justified
+by the significant integration failure after round three; no blocking findings.
+
+A standalone Dashboard `tsc --noEmit` check reported an existing unrelated type
+error in `app/api/operator-script/route.test.ts:71`: `NODE_ENV: "dashboard-runtime"`
+is outside Node's declared production/development/test union. The same source
+was verified present on the original candidate head, unchanged by this request.
+The prior Dashboard production build passed; this standalone check is not
+claimed as passing. The direct-link view compiled and ran in the candidate dev
+server. No gate or test was weakened.
+
+The isolated localhost candidate remains running at
+`http://127.0.0.1:3041/admin/pull-requests?pr=https%3A%2F%2Fgithub.com%2Fpmark%2Farcadia%2Fpull%2F1308`
+for operator testing. Shared services were not restarted. Downloadable MP3:
+`/Users/pmark/.codex/visualizations/2026/10/12/01a130f8-9330-77f0-9cd8-12622f7ee808/arcadia-pr1308-body.mp3`.
+Issue/PR publication remains awaiting the prior approval question.
+
+## TLDR and formatted body on the phone player
+
+Operator request: add a TLDR above the actual Markdown-formatted PR body and,
+if possible, include that TLDR at the beginning of the audio. The same approved
+Tailscale player at `http://arcadia-1.alpine-rattlesnake.ts.net:3042/` was updated.
+The summary was written from the refreshed PR body, which was verified unchanged
+from the audio's source. The page renders that body's headings, numbered and
+unordered lists, bold emphasis, inline code and link; source HTML is escaped.
+
+Existing local speech generated the summary and an explicit transition in two
+chunks (25.9 seconds). The WAV concatenation helper placed it ahead of the
+unchanged 97.6-second description; a PCM byte comparison proves the combined
+audio equals summary frames followed by body frames. FFprobe identifies the new
+MP3 as 123.5 seconds and 919,436 bytes. Both the new audio URL and the prior
+body-audio URL serve the summary-first recording.
+
+A phone-width browser layout check passed: TLDR precedes the formatted body,
+without horizontal overflow. The live Tailscale audio endpoint returns HTTP 206
+for byte-range playback. Screenshot, rendered HTML, source JSON, summary text,
+MP3 and the bounded single-file server/builder are retained in this chat's
+visualization artifact directory. Physical iPhone playback remains operator QA.
+
+The old tool session was unavailable and no port-3042 listener remained when
+updating it (cause unverified). The approved single-file player now runs detached
+from the chat tool turn as PID 60881, with a receipt at
+`/tmp/pr1308-audio-server-process.json` and log at `/tmp/pr1308-audio-server.log`.
+No shared Arcadia service, Tailscale configuration, active Plan or queue changed.
+This is a PR1308-specific test page; reusable Dashboard TLDR generation has not
+been added by this page update. GitHub Issue/PR publication remains awaiting
+separate authorization.
+
+## Shared Intelligence read-aloud refactor
+
+Operator request: “It's important that Arcadia Intelligence is able to easily
+ offer MP3 encoding” and “refactor what you've done and integrate it with the
+ existing Arcadia pull requests feature.” This remains operator-directed work
+without a governed Action; active Plan, current Action and queue are unchanged.
+The candidate is `codex/pr-body-audio`. Work monitor evidence is retained at
+`/tmp/pr-read-aloud-refactor-monitor.json`; no overlapping relevant dirty paths
+were found before edits.
+
+Intelligence now accepts WAV or MP3 speech requests, chunks long text, validates
+and assembles compatible PCM, encodes once, and persists one final asset in its
+existing artifact store. FFmpeg/libmp3lame is checked before provider inference.
+There is no separate audio server or asset database in the integrated feature.
+WAV remains the default. Resource leases, local-only routing, paid-use refusal,
+content-key reuse and the existing bounded retry budget remain enforced.
+The Dashboard's generic `/api/read-aloud` and `ReadAloud` player let other text
+surfaces reuse this path. PRs add a separately cached, labelled local TLDR, speak
+it first, and display the original GFM body below it. Summary failure is labelled
+and falls back to original-body narration. Page opening performs no inference.
+Merged PR links now use configured repository identities even with zero open PRs.
+
+A real encoding experiment caught a duration defect: piping VBR MP3 omitted a
+seekable-file header and FFprobe estimated 187.937 seconds for 123.5 seconds of
+source PCM. Constant 64-kbit/s mono 24-kHz MP3 fixes this: the shared encoder's
+PR1308 output is 988,460 bytes, recognised as `audio/mpeg`, with FFprobe duration
+123.552 seconds (normal compressed encoder padding). This real encoder proof
+uses the previously generated local speech PCM, not a new production worker job.
+
+Focused suites passed: 66 tests across 10 files, 16 compatibility tests across
+4 files, and 20 additional tests across 4 files. Dashboard production build
+passed. The independent read-only shared-audio review found no blocking issues.
+Its suggested later-chunk failure case was strengthened to synthesize one chunk,
+fail the second, and assert no final artifact or encoder invocation.
+
+Phone-width Chromium QA passed against the built candidate on localhost3041,
+with controlled queued/completed job responses and the real encoded MP3: one tap
+starts playback, the URL points to the durable artifact proxy, a delayed original
+source GET preserves the prepared TLDR, GFM headings render, no horizontal
+overflow occurs, and selecting the same PR again clears the old player. Evidence:
+`/tmp/pr-read-aloud-shared-browser.mjs` and this chat's
+`pr1308-shared-player.png`. This is a browser integration proof with fixtures;
+physical iPhone Safari and live managed-service rollout remain unverified.
+
+New verification failures were repaired without weakening checks: API download
+header construction produced a `HeadersInit` union with undefined values;
+Markdown image props allow a Blob as well as string; execFile's promisify mock
+needed its real custom return contract. An initial root `pnpm exec next start`
+failed because Next belongs to the Dashboard package; running from that package
+started the built candidate. Next warns that this standalone build's installed
+service should use its standalone server entry point; no shared service changed.
+
+Loaded/retrieved guidance for this phase: existing Constitution, Project, current
+Action, context policy/index and operator-directed-work/working-copy procedures;
+Arcadia repository Orientation, Semantics and PR QA; Intelligence scope, routing
+and speech/artifact code; targeted notes searches before implementation and new
+failures; git-identity and pull-requests before preservation. The initial guessed
+`docs/agent-guidance/identity.md` was absent; the index resolves the authoritative
+`git-identity.md`, which was read before committing. No missing authoritative
+reference remains. Existing main checkout changes from other sessions were not
+edited or reset.
+
+GitHub Issue/PR publication remains beyond the earlier automatic approval
+rejection pending explicit operator authorization. Installation, shared-service
+restarts and retirement of the approved temporary Tailnet player are a separate
+approved rollout step. The phone-test URL remains the preserved PR1308 fixture,
+not a claim that the new generic Intelligence worker is installed.
+
+Final core/Discord build, full lint and public package boundary passed. The
+strengthened MP3 suite passed all 5 tests; the independent reviewer confirmed
+that its second-chunk failure delta closes the earlier coverage gap with no
+blocking concern. Staged diff whitespace checks passed. Additional source-byte
+counts read in this phase: `git-identity.md` 5,248; `pull-requests.md` 17,208;
+`operator-directed-work.md` 4,494; shared `READ_ALOUD.md` 4,408 bytes.
+
+The full-suite run exposed two unrelated headless-provider logged-out fixture
+failures (lines 338 and 707). A focused rerun reproduced them. Their fixture,
+fake provider and preflight sources are unchanged by this candidate. The host
+process has an inherited Claude token (presence only inspected; no value read
+or printed), which production preflight correctly treats as a login. Removing
+that variable only for the focused test process made both cases pass. No host
+credential or trust setting changed. A defect Issue draft is preserved at
+`/tmp/pr-read-aloud-fixture-defect-issue.md`; publication waits with the feature
+Issue/PR. Revival trigger: authorized publication or next headless-fixture
+maintenance. The verified bounded command is recorded in Notes To Self.
+
+An archived pre-refactor HEAD was also tested. Initial archive attempts hit
+mise's untrusted-directory guard in the runner and then its fake-provider
+subprocess shebangs. The final check uses the installed Node executable and
+places its directory ahead of the mise shim, without changing trust settings.
+The archive is `/private/tmp/arcadia-read-aloud-baseline.Lr9SfL`.
+The archived pre-refactor check passed both cases once its subprocess PATH used
+the installed Node runtime and the inherited token was absent. This matches
+the current candidate's clean-environment result; the reported failure is not
+an audio regression. No full-suite pass is claimed for the contaminated run.
+Adding a separate Notes To Self entry exceeded its 25-entry contract. The remedy
+was merged into the existing headless-fixture entry instead; all 3 notes tests
+then passed. This preserves the cache gate and existing knowledge.
+
+## Final refactor handoff state
+
+Implementation preserved locally in `c245d7e64` on `codex/pr-body-audio`.
+Full run: 370 test files passed, 1 failed, 3 skipped; 5,621 tests passed,
+2 failed, 1 expected failure and 22 skipped, over 1,957.20 seconds. Its only
+failures were the two diagnosed inherited-token login fixtures. Both passed
+in the isolated current-candidate rerun and the installed-Node/pre-refactor
+archive check. The original broad run is not described as green; required CI
+on a published head still must run and pass. No gates or assertions weakened.
+
+Final notes contract: 3 tests passed. Core/Discord and production Dashboard
+builds, full lint, package boundary, focused audio suites, real encoding proof
+and phone-width browser QA passed. Independent review found no blocker.
+The owned localhost3041 QA server was stopped after verification. The approved
+PR1308-only phone player remains the detached PID60881 listener on Tailnet3042;
+managed services and main checkout were not installed, restarted or edited.
+
+Prepared external artifacts: `/tmp/pr-read-aloud-feature-issue.md`,
+`/tmp/pr-read-aloud-refactor-pr.md`, and
+`/tmp/pr-read-aloud-fixture-defect-issue.md`. These are drafts, not published
+Issues or a PR. External authorization is the remaining handoff boundary.

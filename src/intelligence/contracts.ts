@@ -18,6 +18,7 @@ export type {
   IntelligenceRequest,
   IntelligenceRequirements,
   IntelligenceSpeechGenerationResult,
+  IntelligenceSpeechInput,
   IntelligenceUsage,
   JsonPrimitive,
   JsonValue,
@@ -39,3 +40,5 @@ export {
   INTELLIGENCE_CAPABILITIES,
   INTELLIGENCE_PROFILES,
 } from "./types.js";
+
+export { stripMarkdownForSpeech } from "./text/markdown.js";

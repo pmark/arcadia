@@ -1654,3 +1654,21 @@ function statusForArcadiaError(code: string, details: unknown): number {
 
   return 500;
 }
+
+export async function loadPullRequestDescription(repository: string, number: number) {
+  const inventory = (await loadOutstandingPullRequests()).data.snapshot;
+  const known = (inventory.repositories ?? inventory.pullRequests).find(pr => pr.repository.toLowerCase() === repository.toLowerCase());
+  if (!known) throw new ArcadiaCliError("This repository is not configured in Arcadia.", 404);
+  const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "title,body,url,state"], {
+    cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,
+  });
+  const source = JSON.parse(result.stdout) as { title?: unknown; body?: unknown; url?: unknown; state?: unknown };
+  if (typeof source.body !== "string" || !source.body.trim()) throw new ArcadiaCliError("This PR has no body to read aloud.", 400);
+  return {
+    repository: known.repository, number,
+    title: typeof source.title === "string" ? source.title : `PR #${number}`,
+    body: source.body,
+    url: typeof source.url === "string" ? source.url : `https://github.com/${known.repository}/pull/${number}`,
+    state: typeof source.state === "string" ? source.state : "UNKNOWN",
+  };
+}
