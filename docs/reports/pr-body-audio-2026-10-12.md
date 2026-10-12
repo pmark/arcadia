@@ -98,3 +98,34 @@ The isolated localhost candidate remains running at
 for operator testing. Shared services were not restarted. Downloadable MP3:
 `/Users/pmark/.codex/visualizations/2026/10/12/01a130f8-9330-77f0-9cd8-12622f7ee808/arcadia-pr1308-body.mp3`.
 Issue/PR publication remains awaiting the prior approval question.
+
+## TLDR and formatted body on the phone player
+
+Operator request: add a TLDR above the actual Markdown-formatted PR body and,
+if possible, include that TLDR at the beginning of the audio. The same approved
+Tailscale player at `http://arcadia-1.alpine-rattlesnake.ts.net:3042/` was updated.
+The summary was written from the refreshed PR body, which was verified unchanged
+from the audio's source. The page renders that body's headings, numbered and
+unordered lists, bold emphasis, inline code and link; source HTML is escaped.
+
+Existing local speech generated the summary and an explicit transition in two
+chunks (25.9 seconds). The WAV concatenation helper placed it ahead of the
+unchanged 97.6-second description; a PCM byte comparison proves the combined
+audio equals summary frames followed by body frames. FFprobe identifies the new
+MP3 as 123.5 seconds and 919,436 bytes. Both the new audio URL and the prior
+body-audio URL serve the summary-first recording.
+
+A phone-width browser layout check passed: TLDR precedes the formatted body,
+without horizontal overflow. The live Tailscale audio endpoint returns HTTP 206
+for byte-range playback. Screenshot, rendered HTML, source JSON, summary text,
+MP3 and the bounded single-file server/builder are retained in this chat's
+visualization artifact directory. Physical iPhone playback remains operator QA.
+
+The old tool session was unavailable and no port-3042 listener remained when
+updating it (cause unverified). The approved single-file player now runs detached
+from the chat tool turn as PID 60881, with a receipt at
+`/tmp/pr1308-audio-server-process.json` and log at `/tmp/pr1308-audio-server.log`.
+No shared Arcadia service, Tailscale configuration, active Plan or queue changed.
+This is a PR1308-specific test page; reusable Dashboard TLDR generation has not
+been added by this page update. GitHub Issue/PR publication remains awaiting
+separate authorization.
