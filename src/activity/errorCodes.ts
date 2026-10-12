@@ -18,6 +18,7 @@ export function activityErrorCode(error: unknown, normalized: ArcadiaError): str
   const sqlite = sqliteCode(error);
   if (sqlite) return sqlite;
   const cause = typeof normalized.details.cause === "string" ? normalized.details.cause : "";
+  if (normalized.code === "SQLITE_LOCK_RETRIES_EXHAUSTED") return "SQLITE_BUSY";
   if (normalized.code === "SQLITE_ERROR" && /database is locked|SQLITE_BUSY/i.test(cause)) return "SQLITE_BUSY";
   if (normalized.code === "VALIDATION_ERROR" || normalized.code === "USAGE_ERROR") {
     const message = normalized.message;

@@ -18,6 +18,7 @@ import { agentAskFingerprint, normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
+import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { createCodexInvocation, createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { ensureSessionExitReceiptsTable } from "../src/sessions/reconciliation.js";
@@ -193,6 +194,79 @@ describe("Agent Ask settlement", () => {
     const preview = runAgentAskSettleCommand(options);
     runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
     withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()]).toEqual(["other/waiting", "demo/first"]));
+  });
+
+  it("positions every queued Action of the activated Plan in the apply and leaves the queue valid", () => {
+    const { workspace, repo } = activationFixture();
+    addOtherProject(workspace, repo);
+    const file = path.join(repo, "docs/plans/production.md");
+    const content = readFileSync(file, "utf8");
+    const template = content.slice(content.indexOf("  - id:"), content.indexOf("questions:"));
+    const block = (id: string, responsibility: string, depends: string, status = "open"): string => template
+      .replace("id: first", `id: ${id}`).replace("status: open", `status: ${status}`).replace("responsibility: codex", `responsibility: ${responsibility}`)
+      .replace("depends_on: []", `depends_on: ${depends}`);
+    writeFileSync(file, content.replace("questions: []",
+      block("second", "codex", "[first]") + block("operator-step", "operator", "[]") +
+      block("parked", "codex", "[]", "deferred") + "questions: []"));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add Actions to production Plan"], { cwd: repo });
+    const options = { workspace, proposal: "activate-production", requestId: "activation-multi-action",
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra",
+      after: "other/waiting", revision: 2 };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.recovery).toBeUndefined();
+    withDatabase(workspace, (db) => {
+      const keys = [...loadActionOrder(db).positions.keys()];
+      expect(keys[0]).toBe("other/waiting");
+      expect(keys.slice(1).sort()).toEqual(["demo/first", "demo/operator-step", "demo/parked", "demo/second"]);
+      const queue = buildAgentQueue(db);
+      expect(queue.orderValid).toBe(true);
+      expect(queue.unpositionedCount).toBe(0);
+    });
+  });
+
+  it("fails loudly when an Action the activation queued is missing from the synced projection", () => {
+    const { workspace, repo } = activationFixture();
+    const file = path.join(repo, "docs/plans/production.md");
+    const content = readFileSync(file, "utf8");
+    const template = content.slice(content.indexOf("  - id:"), content.indexOf("questions:"));
+    writeFileSync(file, content.replace("questions: []", template.replace("id: first", "id: second") + "questions: []"));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add second Action"], { cwd: repo });
+    const options = { workspace, proposal: "activate-production", requestId: "activation-missing-projection",
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra", top: true, revision: 1 };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint,
+      hooks: { beforeOperationalProjection: () => {
+        // The queued Action vanishes from the documents the projection reads.
+        const current = readFileSync(file, "utf8");
+        writeFileSync(file, current.slice(0, current.lastIndexOf("  - id: second")) + "questions: []\n---\n\n# Plan\n");
+      } } });
+    expect(applied.data.receipt.recovery?.reason).toMatch(/exactly once/);
+  });
+
+  it("activates when another Project gains an Action after the order was resolved", () => {
+    const { workspace, repo } = activationFixture();
+    addOtherProject(workspace, repo);
+    const otherPlan = path.join(path.dirname(repo), "other-repo/docs/plans/other-plan.md");
+    const options = { workspace, proposal: "activate-production", requestId: "activation-stale-queue",
+      disposition: "accepted" as const, activate: true, action: "first", model: "gpt-6-astra",
+      after: "other/waiting", revision: 2 };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint,
+      hooks: { beforeOperationalProjection: () => {
+        const content = readFileSync(otherPlan, "utf8");
+        const template = content.slice(content.indexOf("  - id:"), content.indexOf("questions:"));
+        writeFileSync(otherPlan, content.replace("questions: []", template.replace("id: waiting", "id: late") + "questions: []"));
+      } } });
+    expect(applied.data.receipt.recovery).toBeUndefined();
+    withDatabase(workspace, (db) => {
+      expect([...loadActionOrder(db).positions.keys()]).toEqual(["other/waiting", "demo/first"]);
+      // Nobody chose a place for the newcomer; it stays visibly unpositioned.
+      expect(buildAgentQueue(db).ordered.filter((entry) => entry.orderStatus === "unpositioned").map((entry) => entry.orderKey))
+        .toEqual(["other/late"]);
+    });
   });
 
   it("refuses a first Action with an unmet dependency", () => {
