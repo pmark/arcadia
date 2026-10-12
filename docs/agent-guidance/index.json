@@ -69,7 +69,7 @@
       "trigger": "new planning cycle, raw outcome, interview, architect",
       "path": "docs/planning-process.md",
       "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
-      "sha256": "a426d88c54aac5f434a71af6270147c9b69b646d592d272bf328a06faa5f2c22"
+      "sha256": "2f1f3863551e8b36fb67baed8edc98c473eba6fb1d47d1daa626fd637913c2c0"
     },
     {
       "id": "working-copy",
