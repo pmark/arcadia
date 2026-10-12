@@ -2372,3 +2372,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Applying an activation or pause that changes the current Plan of a Project covered by an Active policy scope is refused before any document is written, naming STOP as the remedy."; "A pointer that leaves an Active policy's scope raises a red alert naming the mismatch, with a one-click remedy."; "With production Inactive the existing activation behaviour is unchanged."; "Focused tests exist and pnpm fast-rehearsal passes.".
 - **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-plan-changes-inside-an-active-production-scope-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/replay-environment-wall-session
+
+- **Did:** Completed Action arcadia/replay-environment-wall-session from accepted evidence (Candidate 2c668b00c08eac8089802d1e65efd938ef17231c).
+- **Result:** Every declared acceptance criterion was accepted as met: "The scenario exists in the fast-rehearsal set, is deterministic and runs in under 30 seconds, and on a tree without the environment-wall stop it fails."; "scripts/fast-rehearsal.mjs prints the report path and exits non-zero when report.json is missing or unparsable."; "The scenario asserts exactly one named environment blocker, no second launch and a recorded per-attempt token record."; "Focused tests for the scenario builder pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-replay-environment-wall-session-2026-10-12).

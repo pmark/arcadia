@@ -11,10 +11,10 @@ updated: 2026-10-12
 actions:
   - id: replay-environment-wall-session
     title: "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly."
+    next_action: Completed via Agent Ask complete-replay-environment-wall-session-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask replay-environment-wall-session
     clarification: clarified
     confidence: high
@@ -144,7 +144,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
 questions: []
 decisions: []
-current_action: replay-environment-wall-session
+current_action: record-session-ledger
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
