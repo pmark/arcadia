@@ -24,6 +24,9 @@ export function validateAcceptanceCriteria(raw: unknown): AcceptanceCriterionPro
       return;
     }
     const text = criterion.trim();
+    if (text.split(/\s+/).length < 2 && !/[a-z_][a-z0-9_.]*\s*(?:<=|>=|<|>|=|≤|≥)\s*\d/i.test(text)) {
+      problems.push({ index, message: "Acceptance criterion must name what is checked and its observable result; an isolated predicate or state is not a condition." });
+    }
     const normalized = text.toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/, "");
     if (seen.has(normalized)) problems.push({ index, message: "Duplicate acceptance criterion; each condition must add a distinct check." });
     seen.add(normalized);
@@ -35,7 +38,7 @@ export function validateAcceptanceCriteria(raw: unknown): AcceptanceCriterionPro
         /\b(?:is|are|will be|should be|looks?|feels?) (?:good|great|fine|excellent|awesome|amazing|correct|robust|efficient|fast|secure|accessible|intuitive|production[- ]ready)\b/i.test(text)) {
       problems.push({ index, message: "Subjective acceptance criterion; replace the quality claim with an observable pass/fail result and a verification method." });
     }
-    if (/^(?:implement|build|improve|ensure|optimize|fix|outline|make)\b/i.test(text) && text.split(/\s+/).length < 6) {
+    if (/^(?:implement|build|improve|ensure|optimize|fix|outline|make|complete|pass)\b/i.test(text) && text.split(/\s+/).length < 6) {
       problems.push({ index, message: "Acceptance criteria describe a result, not an implementation instruction; name what must be observed and how to verify it." });
     }
     if (!OBSERVABLE_ASSERTION.test(text) && !ENUMERATED_FIELDS.test(text) && !NUMERIC_COMPARISON.test(text) && !OBSERVABLE_STATE.test(text)) {

@@ -202,7 +202,10 @@ decisions: []
   The bounded assertion grammar accepts inspectable active/passive predicates
   (for example exists, returns, rejects, recorded or written), named field/value
   enumerations, and explicit numeric comparisons. Bare copulas or modals such as
-  "is" or "will" do not satisfy it. Rephrase an unsupported condition as a named
+  "is" or "will" do not satisfy it. A condition must name what is checked and
+  its result; isolated words such as "Pass" or "Required" are rejected. A compact
+  comparison must name its field (for example `p95<=100ms`).
+  Rephrase an unsupported condition as a named
   command, fixture or Artifact check and its expected result.
   These deterministic checks are a minimum: independent review must still judge
   whether the conditions cover the Action and whether the evidence proves them.

@@ -28,7 +28,7 @@ describe("acceptance criteria on every Plan Action", () => {
     expect(result.doc).toBeNull();
     expect(result.errors.some((e) => e.field.startsWith("actions[0].acceptance_criteria"))).toBe(true);
   });
-  it.each(["Works correctly.", "The product is high-quality.", "The product is excellent.", "Improve the product so every user loves it.", "The UI is beautiful.", "The feature will delight users.", "The product has a nice design.", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
+  it.each(["Works correctly.", "The product is high-quality.", "The product is excellent.", "Improve the product so every user loves it.", "The UI is beautiful.", "The feature will delight users.", "The product has a nice design.", "Complete", "Pass", "Required", "Visible", "TBD", "<REPLACE: criterion>", "Implement the feature.", "The probe is refused within the probe token budget."])("rejects an uncheckable condition: %s", (criterion) => {
     expect(validateAcceptanceCriteria([criterion])).not.toEqual([]);
   });
   it("rejects normalized duplicate conditions", () => {
@@ -37,6 +37,8 @@ describe("acceptance criteria on every Plan Action", () => {
   it("accepts reproducible success, refusal, threshold and Decision conditions", () => {
     const criteria = [
       "Running pnpm test tests/migration.test.ts exits zero; two migrations leave exactly one status column.",
+      "Proof exists.",
+      "p95<=100ms",
       "A probe fixture returns environment_wall within its 1,000 input tokens probe token budget and records exactly one launch.",
       "Opening /todo exposes the registered reset-repair-budget operator script.",
       "A Decision records the operator-selected limit; the Action remains question_open until the answer is recorded."
