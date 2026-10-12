@@ -27,7 +27,11 @@ Passed local checks of required front matter, draft status, receipt link, intend
 
 ## Independent review
 
-Pending an independent read-only review of the article and receipt's exact committed revision. No author self-approval or publication eligibility is claimed.
+- Independent reviewer: `/root/studio_article_review`, separate lineage, gpt-6-luna at medium effort; read-only.
+- Reviewed candidate: `bc5c18d1a2f3aab9c912dcd4eaaef2d825d383a5` against `b485386a3f2541773d24649c80400a13d6bf623d`.
+- Verdict: **PASS**, no blocking findings.
+- Report: the article consistently frames Studio, personas, portfolios, and workflow as proposals. The pinned scout test and launcher support the disposable-fixture, zero-model, queued-Run, and incomplete Hello World claims. README and receipt identify the future site destination without claiming publication. Review used local pinned source and did not independently verify external PR/Issue web pages.
+- This section records review of the preceding exact revision. The article bytes are unchanged; the reviewer did not review the later commit recording its own result. No publication eligibility is claimed.
 
 ## Delivery handoff
 
