@@ -92,17 +92,102 @@ NEXT_STEP="Inspect the handoff and report before retrying."
 if [[ -n "$RETAINED_REPORT_PATH" ]]; then
   if SCOUT_FIELDS="$(python3 - "$RETAINED_REPORT_PATH" <<'PY'
 import json
+import math
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as report_file:
     report = json.load(report_file)
-scouts = [scenario.get("scout") for scenario in report.get("scenarios", []) if scenario.get("scenario") == "Ask/To-do scout"]
-if not scouts or not scouts[0]:
-    raise SystemExit("Ask/To-do scout scenario missing")
-scout = scouts[0]
-if scout.get("outcome") not in {"yes", "no"}:
-    raise SystemExit("Ask/To-do scout outcome must be yes or no")
-finding = scout.get("findings", [{}])[0] if scout.get("findings") else {}
+def require(condition, message):
+    if not condition:
+        raise SystemExit(message)
+
+def is_text(value):
+    return isinstance(value, str)
+
+def is_string_list(value):
+    return isinstance(value, list) and all(is_text(item) for item in value)
+
+require(isinstance(report, dict), "combined report must be an object")
+require(isinstance(report.get("wallMs"), (int, float)) and not isinstance(report.get("wallMs"), bool) and math.isfinite(report["wallMs"]), "combined report wallMs missing")
+require(isinstance(report.get("vitestStatus"), int) and not isinstance(report.get("vitestStatus"), bool) and report.get("vitestStatus") == 0, "combined report does not record a passing focused test")
+require(is_text(report.get("reportDir")), "combined report reportDir missing")
+scenarios = report.get("scenarios")
+require(isinstance(scenarios, list), "combined report scenarios missing")
+matches = [scenario for scenario in scenarios if isinstance(scenario, dict) and scenario.get("scenario") == "Ask/To-do scout"]
+require(len(matches) == 1, "combined report must contain exactly one Ask/To-do scout")
+scenario = matches[0]
+for field in ("file",):
+    require(is_text(scenario.get(field)), f"scenario {field} missing")
+require(scenario.get("validator") in {"seatbelt", "unsandboxed"}, "scenario validator invalid")
+require(isinstance(scenario.get("wallMs"), (int, float)) and not isinstance(scenario.get("wallMs"), bool) and math.isfinite(scenario["wallMs"]), "scenario wallMs missing")
+require(isinstance(scenario.get("ticks"), int) and not isinstance(scenario.get("ticks"), bool), "scenario ticks missing")
+for field in ("actions", "tickLog", "errors"):
+    require(isinstance(scenario.get(field), list), f"scenario {field} missing")
+for field in ("notes", "workerLog"):
+    require(is_string_list(scenario.get(field)), f"scenario {field} invalid")
+
+scout = scenario.get("scout")
+require(isinstance(scout, dict), "scout object missing")
+require(scout.get("outcome") in {"yes", "no"}, "scout outcome must be yes or no")
+require(scout.get("firstBlocker") is None or is_text(scout.get("firstBlocker")), "scout firstBlocker invalid")
+identifiers = scout.get("identifiers")
+require(isinstance(identifiers, dict), "scout identifiers missing")
+for field in ("requestId", "captureId", "askId", "reviewId", "approvalRequestId", "approvalCaptureId", "approvalAskId", "runId"):
+    require(field in identifiers and (identifiers[field] is None or is_text(identifiers[field])), f"scout identifier {field} invalid")
+transcript = scout.get("transcript")
+require(isinstance(transcript, list) and len(transcript) > 0, "scout transcript missing")
+for entry in transcript:
+    require(isinstance(entry, dict) and entry.get("command") in {"ask", "todo"} and is_text(entry.get("input")) and "result" in entry, "scout transcript entry invalid")
+require(any(entry.get("command") == "ask" for entry in transcript) and any(entry.get("command") == "todo" for entry in transcript) and any(entry.get("command") == "ask" and entry.get("input", "").startswith("show ") for entry in transcript), "scout transcript must include Ask, Ask show, and To-do")
+
+artifact = scout.get("artifactCheck")
+require(isinstance(artifact, dict), "artifactCheck missing")
+require(artifact.get("path") == "HelloWorld.txt" and artifact.get("canonicalPath") == "HelloWorld.txt", "artifactCheck path is not canonical HelloWorld.txt")
+require(isinstance(artifact.get("expectedSha256"), str) and len(artifact["expectedSha256"]) == 64 and all(c in "0123456789abcdef" for c in artifact["expectedSha256"]), "artifactCheck expectedSha256 invalid")
+require("actualSha256" in artifact, "artifactCheck actualSha256 missing")
+actual_sha = artifact.get("actualSha256")
+require(actual_sha is None or (isinstance(actual_sha, str) and len(actual_sha) == 64 and all(c in "0123456789abcdef" for c in actual_sha)), "artifactCheck actualSha256 invalid")
+for field in ("exists", "exactBytes", "acceptedCompletionEvidence"):
+    require(isinstance(artifact.get(field), bool), f"artifactCheck {field} invalid")
+require((artifact.get("exists") and actual_sha is not None) or (not artifact.get("exists") and actual_sha is None), "artifactCheck existence and actualSha256 disagree")
+require(artifact.get("exactBytes") == bool(artifact.get("exists") and actual_sha == artifact.get("expectedSha256")), "artifactCheck exactBytes disagrees with SHA-256")
+evidence = artifact.get("evidence")
+require(isinstance(evidence, list), "artifactCheck evidence missing")
+for item in evidence:
+    require(isinstance(item, dict) and is_text(item.get("id")) and (item.get("path") is None or is_text(item.get("path"))) and (item.get("canonicalPath") is None or is_text(item.get("canonicalPath"))) and is_text(item.get("status")) and (item.get("work_item_id") is None or is_text(item.get("work_item_id"))) and is_string_list(item.get("linkedRunIds")), "artifact evidence item invalid")
+
+launched = scout.get("launched")
+require(isinstance(launched, dict), "launched state missing")
+for field in ("queued", "launched", "executionObserved"):
+    require(isinstance(launched.get(field), bool), f"launched {field} invalid")
+for field in ("publicRunId", "runId", "runStatus", "workItemId"):
+    require(launched.get(field) is None or is_text(launched.get(field)), f"launched {field} invalid")
+require(is_string_list(launched.get("linkedArtifactIds")), "launched linkedArtifactIds invalid")
+require(launched.get("runId") == identifiers.get("runId"), "scout run identifiers disagree")
+require(launched.get("queued") == (launched.get("runStatus") == "pending_execution"), "queued flag disagrees with run status")
+require(launched.get("executionObserved") == (launched.get("runId") is not None and launched.get("runStatus") != "pending_execution"), "executionObserved disagrees with run state")
+require(launched.get("launched") == launched.get("executionObserved"), "launched flag disagrees with execution state")
+
+usage = scout.get("modelUsage")
+require(isinstance(usage, dict) and isinstance(usage.get("calls"), int) and not isinstance(usage.get("calls"), bool) and usage.get("calls") == 0 and isinstance(usage.get("tokens"), int) and not isinstance(usage.get("tokens"), bool) and usage.get("tokens") == 0 and is_string_list(usage.get("guardCalls")) and len(usage["guardCalls"]) == 0 and is_string_list(usage.get("proof")), "zero-model evidence missing or inconsistent")
+findings = scout.get("findings")
+require(isinstance(findings, list), "scout findings missing")
+for finding in findings:
+    require(isinstance(finding, dict) and all(is_text(finding.get(field)) for field in ("code", "detail", "fingerprint", "proposedNextStep")), "scout finding invalid")
+    require(len(finding["fingerprint"]) == 64 and all(c in "0123456789abcdef" for c in finding["fingerprint"]) and bool(finding["proposedNextStep"]), "scout finding fingerprint or next step invalid")
+require(scout.get("outcome") == "yes" or len(findings) > 0, "no outcome must include an actionable finding")
+
+linked_evidence = [item for item in evidence if item.get("canonicalPath") == "HelloWorld.txt" and item.get("status") in {"ready", "published"} and item.get("work_item_id") == launched.get("workItemId") and item.get("id") in launched.get("linkedArtifactIds", []) and launched.get("runId") in item.get("linkedRunIds", [])]
+computed_evidence = bool(launched.get("runId") and launched.get("runStatus") == "completed" and launched.get("launched") and launched.get("workItemId") and linked_evidence)
+require(artifact.get("acceptedCompletionEvidence") == computed_evidence, "acceptedCompletionEvidence disagrees with the linked Run and Artifact evidence")
+computed_yes = bool(artifact.get("exists") and artifact.get("exactBytes") and artifact.get("actualSha256") == artifact.get("expectedSha256") and computed_evidence)
+require((scout.get("outcome") == "yes") == computed_yes, "scout outcome contradicts exact file and linked completion evidence")
+if scout.get("outcome") == "yes":
+    require(scout.get("firstBlocker") is None, "successful scout cannot have a first blocker")
+else:
+    require(is_text(scout.get("firstBlocker")) and bool(scout.get("firstBlocker")), "no outcome must name its first blocker")
+
+finding = findings[0] if findings else {}
 values = [scout.get("outcome"), scout.get("firstBlocker", ""), finding.get("fingerprint", ""), finding.get("proposedNextStep", "")]
 for value in values:
     print(str(value).replace("\t", " ").replace("\n", " ").replace("\r", " "))
