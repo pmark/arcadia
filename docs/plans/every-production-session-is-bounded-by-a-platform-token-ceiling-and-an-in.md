@@ -125,10 +125,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: revise-agent-roles-and-session-briefs
     title: Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.
+    next_action: Completed via Agent Ask complete-revise-agent-roles-and-session-briefs-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask revise-agent-roles-and-session-briefs
     clarification: clarified
     confidence: high

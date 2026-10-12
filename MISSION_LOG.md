@@ -2393,3 +2393,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The replay scenario stops at the ceiling and the stop receipt names budget_exhausted with the ceiling value and both token counts."; "An attempt that hits the ceiling is not relaunched automatically and raises exactly one named blocker."; "The ceiling has a per-tier default and cannot be disabled or raised from a prompt, brief or Action text."; "Focused tests for the ceiling and the production tick pass and pnpm fast-rehearsal passes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-session-token-ceiling-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/revise-agent-roles-and-session-briefs
+
+- **Did:** Completed Action arcadia/revise-agent-roles-and-session-briefs from accepted evidence (Candidate c84eed3b4c8b5b2b6a7c59aee3510b6fcda34c11).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/agent-guidance records Lead as one Action per session, Driver on standard tier returning only diff, test command and exit code, Reviewer as one fresh role replacing Critic, a deterministic Replayer script role, and the live Observer deferred with its revisit trigger."; "A brief template names file:line ranges, focused test files, the adversarial strings for any guard or validator Action, and forbids repeating sandbox text in hand-backs."; "The model and effort per role are stated with the cost reasoning and the guidance index routes to the new section."; "The documentation budget check and docs link check pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-revise-agent-roles-and-session-briefs-2026-10-12).
