@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, normalizeAgentAsk, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, type AgentAskProposal } from "../ask/agentAsk.js";
@@ -8,7 +8,7 @@ import { WORK_CLASSIFICATIONS } from "../domain/constants.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
-import { tryGit } from "../git/worktrees.js";
+import { assertAskDraftCheckout, tryAskGit, tryAskGit as tryGit } from "../git/askIsolation.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -38,7 +38,7 @@ import {
  */
 function callerRepositoryRoot(dir: string): string {
   const requested = path.resolve(dir);
-  const toplevel = existsSync(requested) ? tryGit(requested, ["rev-parse", "--show-toplevel"]) : null;
+  const toplevel = existsSync(requested) ? tryAskGit(requested, ["rev-parse", "--show-toplevel"]) : null;
   if (!toplevel) return requested;
   const realToplevel = realpathSync(toplevel);
   // Walk up the caller's spelling rather than joining `..` onto it: `..` is
@@ -175,23 +175,34 @@ export interface AgentAskDraftData {
 export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandSuccess<AgentAskDraftData> {
   if (options.request && options.file) throw validationError("Pass either an Agent Ask argument or --file, not both.");
   const repoDir = callerRepositoryRoot(options.dir ?? invocationRoot());
+  assertAskDraftCheckout(repoDir);
   const request = options.file !== undefined ? readAskFile(options.file, options.dir, repoDir).content : options.request ?? "";
   const normalized = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
   const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
   if (normalized.intent === "complete") assertCompletionApplicableAtHead(repoDir, normalized.candidateRevision);
   const askDir = path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
-  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
+  // Refuse symlinks at every component, including a dangling final symlink.
+  // Exclusive creation closes the exists/write collision race without overwriting another draft.
+  for (const component of [path.join(repoDir, ".arcadia"), askDir, filePath]) {
+    try {
+      if (lstatSync(component).isSymbolicLink()) throw validationError("Agent Ask draft path cannot contain symlinks.", { path: component });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  mkdirSync(askDir, { recursive: true });
   let written: "created" | "unchanged";
-  if (existing !== null) {
-    if (existing.trim() !== content.trim()) {
+  try {
+    writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
+    written = "created";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (!lstatSync(filePath).isFile() || lstatSync(filePath).isSymbolicLink()) throw validationError("Agent Ask draft must be a regular file.", { path: filePath });
+    if (readFileSync(filePath, "utf8").trim() !== content.trim()) {
       throw validationError("An Agent Ask file already exists for this request id with different content.", { path: filePath, requestId: normalized.requestId });
     }
     written = "unchanged";
-  } else {
-    mkdirSync(askDir, { recursive: true });
-    writeFileSync(filePath, content, "utf8");
-    written = "created";
   }
   let preview: { proposal: AgentAskProposal; fingerprint: string } | null = null;
   let workspaceStatus: AgentAskDraftData["workspaceStatus"];

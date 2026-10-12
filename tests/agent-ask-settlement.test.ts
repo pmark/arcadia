@@ -346,12 +346,29 @@ describe("Agent Ask settlement", () => {
     })).toThrow(/eligible first Action/);
   });
 
+  it("refuses a foreign Git index lock before any document, archive, queue or receipt mutation", () => {
+    const { workspace, repo } = activationFixture();
+    const options = { workspace, proposal: "activate-production", requestId: "locked-activation", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", top: true };
+    const preview = runAgentAskSettleCommand(options);
+    const index = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-path", "index"], { cwd: repo, encoding: "utf8" }).trim();
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+    const before = ["PROJECT.md", "docs/plans/production.md"].map(file => readFileSync(path.join(repo, file), "utf8"));
+    const beforeIndex = readFileSync(index); writeFileSync(`${index}.lock`, "foreign live lock");
+    expect(() => runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint })).toThrow(/index is locked/);
+    expect(readFileSync(`${index}.lock`, "utf8")).toBe("foreign live lock"); expect(readFileSync(index)).toEqual(beforeIndex);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+    expect(["PROJECT.md", "docs/plans/production.md"].map(file => readFileSync(path.join(repo, file), "utf8"))).toEqual(before);
+    withDatabase(workspace, db => { expect((db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements WHERE request_id = ?").get(options.requestId) as { count: number }).count).toBe(0); expect([...loadActionOrder(db).positions.keys()]).toEqual(["demo/existing"]); });
+  });
+
   it("preserves settled documents if the Git commit fails after database commit", () => {
     const { workspace, repo } = activationFixture();
     execFileSync("git", ["config", "core.hooksPath", path.join(repo, ".git", "failing-hooks")], { cwd: repo });
     mkdirSync(path.join(repo, ".git", "failing-hooks"));
     const hook = path.join(repo, ".git", "failing-hooks", "pre-commit");
     writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    execFileSync("git", ["config", "user.name", ""], { cwd: repo });
     const options = { workspace, proposal: "activate-production", requestId: "commit-failure", disposition: "accepted" as const,
       activate: true, action: "first", model: "gpt-6-astra", top: true };
     const preview = runAgentAskSettleCommand(options);
@@ -2097,7 +2114,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("archives an accepted Ask's own .arcadia/asks/ source file into the same settlement commit", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-accept", project: "demo", intent: "log", desired_result: "Record something archivable" })
@@ -2123,7 +2141,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("archives a rejected Ask's source file too, since nothing further will ever act on it", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-on-reject", project: "demo", intent: "log", desired_result: "Record something that gets rejected" })
@@ -2141,7 +2160,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("commits the settled documents when the Project gitignores its .arcadia/asks/ directory (Issue #512)", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     writeFileSync(path.join(repo, ".gitignore"), ".arcadia/asks/\n", "utf8");
     execFileSync("git", ["add", ".gitignore"], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Ignore Agent Asks"], { cwd: repo });
@@ -2246,7 +2266,8 @@ describe("Agent Ask settlement", () => {
   });
 
   it("leaves an already-settled Ask file untouched (a no-op, not an error) if it was already archived or removed by hand", () => {
-    const { workspace, repo } = fixture();
+    const { workspace, repo: main } = fixture();
+    const repo = isolatedAskFixture(workspace, main);
     const draft = runAgentAskDraftCommand({
       dir: repo, workspace,
       request: JSON.stringify({ agent_ask: "v1", request_id: "archive-already-gone", project: "demo", intent: "log", desired_result: "Record something, then remove it by hand" })
@@ -3027,3 +3048,13 @@ describe("governed acceptance criteria repairs", () => {
     expect(readFileSync(planPath, "utf8")).toBe(before);
   });
 });
+
+function isolatedAskFixture(workspace: string, main: string): string {
+  const candidate = path.join(path.dirname(main), `candidate-${path.basename(main)}`);
+  execFileSync("git", ["worktree", "add", "-q", "-b", "ask-test-candidate", candidate], { cwd: main });
+  withDatabase(workspace, (db) => {
+    const project = db.prepare("SELECT id FROM projects WHERE slug = 'demo'").get() as { id: string };
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: candidate });
+  });
+  return candidate;
+}

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { runAgentAskDraftCommand } from "../commands/agentAsk.js";
+import { runAgentAskPreviewCommand } from "../commands/agentAsk.js";
 import { withDatabase } from "../db/connection.js";
 import { getProject, getProjectMetadata } from "../db/repositories.js";
 import type { WorkItemSummary } from "../domain/types.js";
@@ -8,20 +8,23 @@ import { sha256Hex } from "./grader.js";
 import type { ClarifiedVerdict } from "./types.js";
 
 /**
- * The file handoff from a graded Action to a coding agent.
+ * The registered Agent Ask handoff from a graded Action to a coding agent.
  *
  * A handoff is a checked-in file or an Agent Ask, never chat. When a clarified
  * verdict that the separate grader passed names a coding agent as the actor and
- * the Action came from a captured Ask, `clarify --apply` drafts one strict v1
- * Agent Ask into the Project repository's `.arcadia/asks/` through the existing
- * draft writer. The Ask is a proposal: it appears in `arcadia todo` as a pending
+ * the Action came from a captured Ask, `clarify --apply` registers one strict v1
+ * Agent Ask inline in the configured workspace, without creating checkout scratch. The Ask is a proposal: it appears in `arcadia todo` as a pending
  * proposal and nothing happens until it is settled. Clarify itself writes no
  * Action status, pointer or queue.
  */
 
 export interface HandoffReport {
   requestId: string;
-  status: "drafted" | "skipped";
+  status: "registered" | "drafted" | "skipped";
+  /** Durable inline registration receipt, without checkout scratch. */
+  proposalId?: string;
+  captureId?: string;
+  fingerprint?: string;
   /** Why nothing was drafted, or what failed. */
   reason?: string;
   /** The drafted file, when `status` is `drafted`. */
@@ -90,7 +93,7 @@ export function buildHandoffAsk(input: {
 }
 
 /**
- * Draft the handoff Ask for one passing verdict. Never throws for an expected
+ * Register the handoff Ask for one passing verdict. Never throws for an expected
  * refusal: a Project with no repository path, or a request id that already
  * exists (even one already settled and archived), is reported and skipped.
  */
@@ -133,19 +136,19 @@ export function draftHandoffAsk(workspacePath: string, workItem: WorkItemSummary
   }
 
   try {
-    const drafted = runAgentAskDraftCommand({
+    const registered = runAgentAskPreviewCommand({
       request: buildHandoffAsk({ requestId, projectSlug: context.project.slug, workItem, verdict }),
       workspace: workspacePath,
       dir: context.repoPath
     });
-    return { requestId, status: "drafted", path: drafted.data.path, workspaceStatus: drafted.data.workspaceStatus };
+    return { requestId, status: "registered", proposalId: registered.data.proposal.id, captureId: registered.data.proposal.captureId, fingerprint: registered.data.proposal.fingerprint };
   } catch (error) {
-    // The clarification is already recorded; a failed draft must not undo or
+    // The clarification is already recorded; a failed registration must not undo or
     // hide it. Report why and let the operator re-run `clarify --work`.
     return {
       requestId,
       status: "skipped",
-      reason: `drafting failed: ${error instanceof Error ? error.message : String(error)}`
+      reason: `registration failed: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }

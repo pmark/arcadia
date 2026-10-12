@@ -68,7 +68,7 @@ export interface ClarifyApplication {
   graderEventId?: string;
   /**
    * Set when a graded coding-agent Action from a captured Ask was eligible for a
-   * file handoff: the Agent Ask drafted into the Project repository, or why not.
+   * registered handoff: the Agent Ask proposal receipt in the workspace, or why not.
    */
   handoff?: HandoffReport;
 }

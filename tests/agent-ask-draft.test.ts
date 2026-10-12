@@ -160,7 +160,9 @@ describe("Agent Ask --file through the real CLI parser", () => {
     const main = gitRepo(path.join(root, "main"), "demo");
     const candidate = path.join(root, "candidate");
     git(main, "worktree", "add", "-q", "-b", "claude/candidate", candidate);
-    const other = gitRepo(path.join(root, "other"), "other");
+    const otherMain = gitRepo(path.join(root, "other-main"), "other");
+    const other = path.join(root, "other");
+    git(otherMain, "worktree", "add", "-q", "-b", "other/candidate", other);
     const workspace = path.join(root, "workspace");
     initWorkspace(workspace);
     withDatabase(workspace, (db) => {
@@ -211,16 +213,15 @@ describe("Agent Ask --file through the real CLI parser", () => {
       (db.prepare("SELECT COUNT(*) AS count FROM agent_ask_proposals WHERE request_id = ?").get(requestId) as { count: number }).count);
   }
 
-  it("reads a relative --file from the main checkout when that is where it was run", async () => {
+  it("refuses draft on the shared main checkout before writes or workspace resolution", async () => {
     const fixture = cliFixture();
-    writeFileSync(path.join(fixture.main, "ask.yaml"), askFor("file-from-main", "demo", "Drafted in main"), "utf8");
-    const result = await runCli(["agent-ask", "draft", "--file", "ask.yaml", "--workspace", fixture.workspace], fixture.main, fixture.main);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    same(result.data.path, path.join(asksIn(fixture.main), "agent-ask-file-from-main.yaml"));
-    expect(result.data.written).toBe("created");
-    expect(result.data.workspaceStatus).toBe("previewed");
-    expect(result.data.preview.proposal.normalized.desiredResult).toBe("Drafted in main");
+    const index = git(fixture.main, "rev-parse", "--path-format=absolute", "--git-path", "index");
+    const before = readFileSync(index);
+    const result = await runCli(["agent-ask", "draft", askFor("file-from-main", "demo", "Drafted in main"), "--workspace", "missing"], fixture.main, fixture.main);
+    expect(result.ok).toBe(false);
+    expect(existsSync(asksIn(fixture.main))).toBe(false);
+    expect(readFileSync(index)).toEqual(before);
+    expectMainUntouched(fixture);
   });
 
   it("reads, validates and previews a relative --file from the linked candidate worktree, leaving the runtime main checkout untouched", async () => {
@@ -328,7 +329,7 @@ describe("Agent Ask --file through the real CLI parser", () => {
       for (const attempt of attempts) {
         const result = await runCli(["agent-ask", command, ...attempt, "--workspace", fixture.workspace], fixture.candidate, fixture.main);
         expect(result, `${command} ${attempt.join(" ")}`).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
-        if (!result.ok) expect(result.error.message).toContain("resolves outside the caller's repository");
+        if (!result.ok) expect(result.error.message).toMatch(/resolves outside the caller's repository|shared primary\/base checkout/);
       }
     }
     expect(proposalCount(fixture.workspace, "outside-sibling")).toBe(0);

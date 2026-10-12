@@ -622,10 +622,11 @@ is the contract any deterministic replacement grader must pass.
 
 `arcadia ask` creates its Actions `unclarified`, so they enter this pass. When a
 graded YES names a coding agent as the actor and the Action came from a captured
-Ask, `--apply` also drafts one strict v1 Agent Ask (intent `action`, request id
+Ask, `--apply` also registers one strict v1 Agent Ask (intent `action`, request id
 `handoff-<work-item-id with underscores as hyphens>-<first 12 hex of sha256(next action + done-condition)>`,
-the done-condition as its acceptance) into the Project repository's
-`.arcadia/asks/` through `agent-ask draft`, so the handoff is a file and appears
+the done-condition as its acceptance) inline through `agent-ask preview` in the
+configured workspace. The returned proposal receipt is the handoff; no draft
+file or Git dirt is created in the Project checkout. It appears
 in `arcadia todo` as a pending proposal. It is skipped, with the reason printed
 under `Handoff:`, when the Project has no `repo_path` or any handoff Ask for that
 Action already exists (proposed, settled or archived), so one Action is handed
