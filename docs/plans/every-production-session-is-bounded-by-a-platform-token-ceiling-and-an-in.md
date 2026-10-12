@@ -68,21 +68,21 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: probe-environment-inside-session
     title: Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.
+    next_action: Completed via Agent Ask split-probe-environment-inside-session-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask probe-environment-inside-session
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-autonomous-production-hardening-2026-10-12
+    source: Agent Ask split-probe-environment-inside-session-2026-10-12
     why: "Session sandbox writable roots cannot be read offline, so only a probe inside the Session is truthful; the ceiling keeps it cheap."
     acceptance_criteria:
-      - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
       - The host-worker side probe is no longer counted as evidence of Session capability.
       - A passing probe adds a bounded, recorded token cost and a failing probe raises exactly one environment_wall blocker with its remedy.
       - Focused tests and pnpm fast-rehearsal pass.
     depends_on: [enforce-session-token-ceiling]
+    split_into: [attach-the-session-probe-result-to-the-reconcile-receipt]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: one-click-clear-every-blocker-kind
@@ -101,7 +101,7 @@ actions:
       - Each registered clear is a button on /todo or /actions that resolves in at most two interactions and runs through the existing operator-script machinery without copy or paste.
       - reset-repair-budget is reachable from /todo for an environment_wall and budget_exhausted stop.
       - Focused todo and dashboard tests pass and the dashboard graph has no containerAuditTransport import.
-    depends_on: [enforce-session-token-ceiling, probe-environment-inside-session]
+    depends_on: [enforce-session-token-ceiling, probe-environment-inside-session, attach-the-session-probe-result-to-the-reconcile-receipt]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: fix-docs-sync-lock-and-activation-order
@@ -142,9 +142,24 @@ actions:
     depends_on: [record-session-ledger]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
+  - id: attach-the-session-probe-result-to-the-reconcile-receipt
+    title: Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.
+    expected_artifact: Evidence satisfying Agent Ask attach-the-session-probe-result-to-the-reconcile-receipt
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-probe-environment-inside-session-2026-10-12
+    acceptance_criteria:
+      - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
-current_action: probe-environment-inside-session
+current_action: attach-the-session-probe-result-to-the-reconcile-receipt
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---

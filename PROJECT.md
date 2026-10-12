@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every production Session is bounded by a platform token ceiling and an in-Session environment probe, and every stop it raises clears from /todo in at most two clicks, proven by replays of recorded sessions and one validated ledger row per session.
 active_plan: every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in
-current_action: probe-environment-inside-session
+current_action: attach-the-session-probe-result-to-the-reconcile-receipt
 updated: 2026-10-12
 ---
 
