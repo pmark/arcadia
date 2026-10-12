@@ -11,22 +11,22 @@ updated: 2026-10-12
 actions:
   - id: stop-spending-into-an-environment-wall
     title: "Implement a Session capability preflight and a no-diff stop: before a coding Session is admitted, check that the sandbox can perform the Action's required workspace write, host validation and preservation; and extend the existing repair budget (recordRepairAttempt and maxRepairAttemptsPerAction in the production tick) so a first attempt that ends with no diff and a named environment blocker is counted and raises one named operator blocker instead of relaunching into the same wall. Record tokens per attempt next to the Action."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement a Session capability preflight and a no-diff stop: before a coding Session is admitted, check that the sandbox can perform the Action's required workspace write, host validation and preservation; and extend the existing repair budget (recordRepairAttempt and maxRepairAttemptsPerAction in the production tick) so a first attempt that ends with no diff and a named environment blocker is counted and raises one named operator blocker instead of relaunching into the same wall. Record tokens per attempt next to the Action."
+    next_action: Completed via Agent Ask split-stop-spending-finished-slice-2026-10-12-v2; no further action.
     expected_artifact: Evidence satisfying Agent Ask stop-spending-into-an-environment-wall
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-production-run-hardening-batch-2026-10-12
+    source: Agent Ask split-stop-spending-finished-slice-2026-10-12-v2
     why: "The first Session spent about 11.1M input tokens in 9 minutes and produced no code; the repair budget counted only resumed Sessions, so nothing stopped a second attempt into the same environment wall."
     acceptance_criteria:
-      - A Session whose sandbox cannot write the workspace database, run host validation or produce a preservation receipt is refused before launch with a named remedy and spends no tokens.
       - An attempt that exits incomplete_resumable with no diff and a recorded environment blocker is counted by the repair budget on the first occurrence, raises exactly one named blocker, and is not relaunched automatically.
       - "A replay of the 2026-10-12 00:40Z Session (no diff, workspace write denied, sandbox test refusals) yields one named blocker and no second launch."
       - Tokens per attempt are recorded and visible on the Action.
       - Focused tests for the preflight and the repair-budget path exist and the production tick tests and pnpm fast-rehearsal pass.
     depends_on: []
+    split_into: [refuse-a-session-before-launch-when-its-sandbox-cannot-write]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "https://github.com/pmark/arcadia/issues/1286", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
   - id: name-every-production-stall-with-a-one-click-fix
@@ -45,7 +45,7 @@ actions:
       - The escalation extends the existing production_operator_escalations mechanism; no parallel detector exists.
       - Each escalation names the gate class, the Action, and a resolution button that needs no copied text.
       - Focused tests exist and the production tick tests and pnpm fast-rehearsal pass.
-    depends_on: [stop-spending-into-an-environment-wall]
+    depends_on: [stop-spending-into-an-environment-wall, refuse-a-session-before-launch-when-its-sandbox-cannot-write]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
   - id: declare-action-route-and-fix-the-approval-check
@@ -86,9 +86,24 @@ actions:
     depends_on: [declare-action-route-and-fix-the-approval-check]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/first-supervised-production-run-learnings-2026-10-11.md"]
+  - id: refuse-a-session-before-launch-when-its-sandbox-cannot-write
+    title: Refuse a coding Session before launch when its own sandbox cannot write the workspace database, run host validation or produce a preservation receipt, by probing the provider sandbox roots or running a probe inside the Session.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Refuse a coding Session before launch when its own sandbox cannot write the workspace database, run host validation or produce a preservation receipt, by probing the provider sandbox roots or running a probe inside the Session.
+    expected_artifact: Evidence satisfying Agent Ask refuse-a-session-before-launch-when-its-sandbox-cannot-write
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-stop-spending-finished-slice-2026-10-12-v2
+    acceptance_criteria:
+      - A Session whose sandbox cannot write the workspace database, run host validation or produce a preservation receipt is refused before launch with a named remedy and spends no tokens.
+    depends_on: []
+    decisions: []
+    references: ["src/production/sessionCapability.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/pull/1290", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
-current_action: stop-spending-into-an-environment-wall
+current_action: refuse-a-session-before-launch-when-its-sandbox-cannot-write
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
