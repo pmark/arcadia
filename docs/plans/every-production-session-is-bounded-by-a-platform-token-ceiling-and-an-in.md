@@ -11,10 +11,10 @@ updated: 2026-10-12
 actions:
   - id: replay-environment-wall-session
     title: "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly."
+    next_action: Completed via Agent Ask complete-replay-environment-wall-session-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask replay-environment-wall-session
     clarification: clarified
     confidence: high
@@ -30,10 +30,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: record-session-ledger
     title: Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.
+    next_action: Completed via Agent Ask complete-record-session-ledger-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask record-session-ledger
     clarification: clarified
     confidence: high
@@ -49,10 +49,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: enforce-session-token-ceiling
     title: Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.
+    next_action: Completed via Agent Ask complete-enforce-session-token-ceiling-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask enforce-session-token-ceiling
     clarification: clarified
     confidence: high
@@ -68,21 +68,21 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: probe-environment-inside-session
     title: Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.
+    next_action: Completed via Agent Ask split-probe-environment-inside-session-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask probe-environment-inside-session
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-autonomous-production-hardening-2026-10-12
+    source: Agent Ask split-probe-environment-inside-session-2026-10-12
     why: "Session sandbox writable roots cannot be read offline, so only a probe inside the Session is truthful; the ceiling keeps it cheap."
     acceptance_criteria:
-      - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
       - The host-worker side probe is no longer counted as evidence of Session capability.
       - A passing probe adds a bounded, recorded token cost and a failing probe raises exactly one environment_wall blocker with its remedy.
       - Focused tests and pnpm fast-rehearsal pass.
     depends_on: [enforce-session-token-ceiling]
+    split_into: [attach-the-session-probe-result-to-the-reconcile-receipt]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: one-click-clear-every-blocker-kind
@@ -101,34 +101,33 @@ actions:
       - Each registered clear is a button on /todo or /actions that resolves in at most two interactions and runs through the existing operator-script machinery without copy or paste.
       - reset-repair-budget is reachable from /todo for an environment_wall and budget_exhausted stop.
       - Focused todo and dashboard tests pass and the dashboard graph has no containerAuditTransport import.
-    depends_on: [enforce-session-token-ceiling, probe-environment-inside-session]
+    depends_on: [enforce-session-token-ceiling, probe-environment-inside-session, attach-the-session-probe-result-to-the-reconcile-receipt]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: fix-docs-sync-lock-and-activation-order
     title: Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.
+    next_action: Completed via Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask fix-docs-sync-lock-and-activation-order
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-autonomous-production-hardening-2026-10-12
+    source: Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12
     why: "Activation left four unpositioned Actions and a stale pointer that needed a manual arrange and an extra pull request (frictions 3, 14)."
     acceptance_criteria:
-      - A test reproduces the post-activation SQLite lock and afterwards advance queue reports orderValid true with unpositionedCount 0.
       - Other Projects relative queue order is unchanged by an activation.
-      - A queue reorder stages the matching pointer change in the same settlement so current_action does not stay on a moved Action.
       - Focused settlement and queue tests pass.
     depends_on: []
+    split_into: [stage-pointer-with-queue-reorder-and-reproduce-live-lock]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: revise-agent-roles-and-session-briefs
     title: Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.
+    next_action: Completed via Agent Ask complete-revise-agent-roles-and-session-briefs-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask revise-agent-roles-and-session-briefs
     clarification: clarified
     confidence: high
@@ -142,9 +141,40 @@ actions:
     depends_on: [record-session-ledger]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
+  - id: attach-the-session-probe-result-to-the-reconcile-receipt
+    title: Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.
+    expected_artifact: Evidence satisfying Agent Ask attach-the-session-probe-result-to-the-reconcile-receipt
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-probe-environment-inside-session-2026-10-12
+    acceptance_criteria:
+      - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
+  - id: stage-pointer-with-queue-reorder-and-reproduce-live-lock
+    title: Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.
+    expected_artifact: Evidence satisfying Agent Ask stage-pointer-with-queue-reorder-and-reproduce-live-lock
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12
+    acceptance_criteria:
+      - A test reproduces the post-activation SQLite lock and afterwards advance queue reports orderValid true with unpositionedCount 0.
+      - A queue reorder stages the matching pointer change in the same settlement so current_action does not stay on a moved Action.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
-current_action: replay-environment-wall-session
+current_action: attach-the-session-probe-result-to-the-reconcile-receipt
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
