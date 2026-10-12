@@ -92,6 +92,7 @@ Issue or PR exists.
 | 10 | A reviewer or Driver hand-back repeats the long sandbox preamble in every message, inflating the Lead's context. | measurable context growth | Keep sandbox text out of subagent hand-backs; summarize in one line | Open |
 | 11 | The first sandbox probe the Driver can do runs in the host worker, so `accessSync(W_OK)` always passes. The Session's own sandbox roots are not readable offline. | A12 criterion 1 only partly met | Provider adapters expose sandbox roots, or a probe runs inside the Session | Remainder Action |
 | 12 | Clearing an `environment_wall` blocker is CLI-only (`production reset-repair-budget`). | host touch | A /todo or /actions one-click | Open |
+| 14 | After the split and a canonical queue reorder, PROJECT.md `current_action` still names the remainder; the pointer only advances inside a settlement, so the operator's chosen order (A3 first) needs another governed PR (#1295) and the pointer stays wrong until then. | one more PR, a stale pointer that `arcadia go` would follow | Advance the pointer when the explicit queue order changes, or let `queue reorder` stage the pointer change as a settlement | Open |
 | 13 | Review comments on the PR and dashboard-reachable code exposed that "tokens per attempt" mixed cached and uncached for Codex (`input_tokens` already includes cached). | wrong cost numbers | Fixed in #1290; keep the unit test | Fixed |
 
 ## Tool and process notes
