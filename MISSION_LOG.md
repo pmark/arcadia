@@ -2351,3 +2351,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "An attempt that exits incomplete_resumable with no diff and a recorded environment blocker is counted by the repair budget on the first occurrence, raises exactly one named blocker, and is not relaunched automatically."; "A replay of the 2026-10-12 00:40Z Session (no diff, workspace write denied, sandbox test refusals) yields one named blocker and no second launch."; "Tokens per attempt are recorded and visible on the Action."; "Focused tests for the preflight and the repair-budget path exist and the production tick tests and pnpm fast-rehearsal pass.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/refuse-a-session-before-launch-when-its-sandbox-cannot-write immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-stop-spending-finished-slice-2026-10-12-v2).
+
+## 2026-10-12 — Agent Ask activate-autonomous-production-hardening-2026-10-12
+
+- **Did:** Activated every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in at replay-environment-wall-session.
+- **Result:** Operator-settled Plan transition. Previous Plan production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the remains draft with completion state preserved. Operator asked in chat on 2026-10-12 to create and activate this Plan with minimal interaction. Accepted consequence: the production-hardening batch Plan returns to draft with its remainder Action and completion records preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
