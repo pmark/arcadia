@@ -9,7 +9,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { assertClean, untrackedDraftAskPaths, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
-import { assertNoActiveScopeOverPlan } from "../production/policy.js";
+import { activeScopeCoveringPlan, assertNoActiveScopeOverPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { buildAgentQueue } from "./queue.js";
 import { loadActionOrder, seedActionOrderFifo, type ActionOrderReceipt } from "./order.js";
 import { resolvePlanActivation, projectActionKeys, type PlanActivationResolution } from "./planActivation.js";
@@ -58,9 +58,6 @@ export function activatePlan(db: Database.Database, input: {
   previewFingerprint?: string;
   apply?: boolean;
 }): PlanActivationReceipt {
-  // Scope-drift guard (A6): re-pointing the Project while an Active production scope covers its
-  // current Plan would strand the run. Refused before the seed or any document is written.
-  assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug);
   const existing = db.prepare(
     "SELECT action_key, queue_revision, receipt_json FROM action_queue_pointer_receipts WHERE request_id = ?"
   ).get(input.requestId) as { action_key: string; queue_revision: number; receipt_json: string } | undefined;
@@ -95,6 +92,10 @@ export function activatePlan(db: Database.Database, input: {
     });
   }
   const candidate = resolution.candidate;
+  // Scope-drift guard (A6): re-pointing the Project to a different Plan while an Active production
+  // scope covers its current Plan would strand the run. After the idempotent replay above (a replay
+  // returns the original receipt), before any write.
+  assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug, candidate.planSlug);
 
   const discovered = discoverDocs(input.repoRoot);
   const project = discovered.docs.find(
@@ -321,9 +322,6 @@ export function activateNextPlan(db: Database.Database, input: {
   requestId: string;
   apply?: boolean;
 }): ActivateNextPlanResult {
-  // Scope-drift guard (A6): re-pointing the Project while an Active production scope covers its
-  // current Plan would strand the run. Refused before the seed or any document is written.
-  assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug);
   let resolution = resolvePlanActivation({
     repoRoot: input.repoRoot,
     projectSlug: input.projectSlug,
@@ -332,6 +330,10 @@ export function activateNextPlan(db: Database.Database, input: {
   if (resolution.status !== "unordered" && resolution.status !== "candidate") {
     return { queueRevision: loadActionOrder(db).revision, seed: null, activation: null, resolution };
   }
+  // Scope-drift guard (A6): a successor exists, and activating it would re-point the Project away
+  // from a Plan an Active production scope covers. Refused before the seed or any write; a
+  // Project with no queued successor is never refused.
+  if (resolution.candidate) assertNoActiveScopeOverCurrentPlan(db, input.repoRoot, input.projectSlug, resolution.candidate.planSlug);
   if (resolution.status === "unordered" && !input.apply) {
     // Preview the seed but do not apply it: applying would bump the queue
     // revision, so an activation preview computed now would be stale.
@@ -426,9 +428,30 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function assertNoActiveScopeOverCurrentPlan(db: Database.Database, repoRoot: string, projectSlug: string): void {
+/**
+ * The Active production scope hold on activating the next Plan, or null when
+ * none applies. Used by `arcadia go` to refuse (or report) before it integrates
+ * or retires anything. Fails closed when the policy store is unreadable.
+ */
+export function scopeHoldOnActivation(db: Database.Database, repoRoot: string, projectSlug: string, candidatePlanSlug: string | null = null): ScopeActivationHold | null {
   const project = discoverDocs(repoRoot).docs.find(
     (doc): doc is ProjectDoc => doc.type === "project" && doc.slug.toLowerCase() === projectSlug.toLowerCase()
   );
+  // Re-selecting the current Plan's own Action moves no pointer between Plans, so it strands nothing.
+  if (!project?.activePlan || project.activePlan === candidatePlanSlug) return null;
+  const covering = activeScopeCoveringPlan(db, projectSlug, project.activePlan);
+  return covering
+    ? { activePlan: covering.planKey, remedy: SCOPE_DRIFT_REMEDY,
+        message: `Plan ${project.activePlan} is inside the Active production scope; activating the next Plan would strand it. Nothing was changed.` }
+    : null;
+}
+
+export interface ScopeActivationHold { activePlan: string; remedy: string; message: string }
+
+function assertNoActiveScopeOverCurrentPlan(db: Database.Database, repoRoot: string, projectSlug: string, candidatePlanSlug: string | null): void {
+  const project = discoverDocs(repoRoot).docs.find(
+    (doc): doc is ProjectDoc => doc.type === "project" && doc.slug.toLowerCase() === projectSlug.toLowerCase()
+  );
+  if (project?.activePlan && project.activePlan === candidatePlanSlug) return;
   assertNoActiveScopeOverPlan(db, projectSlug, project?.activePlan ?? null, "activating the next Plan");
 }
