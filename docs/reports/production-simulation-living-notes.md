@@ -114,6 +114,12 @@ Issue or PR exists.
 | 17 | Fast-rehearsal run from the wrong working directory silently produced no report (exit 124, `jq` error). | wasted 10 min | Print the report path and fail loudly if `report.json` is missing | Open |
 | 18 | The adversarial reviewer needs a runnable validator; reading code by hand missed what a 3-line script found. | quality | Give reviewer briefs a read-only way to execute pure functions | Practice |
 | 19 | Operator-owned PRs left as drafts (#1291) block merge and review unnoticed. | one stall | Lead checks `isDraft`; `gh pr ready` is allowed when the operator asked for the merge | Practice |
+| 20 | `git cherry-pick` and `--reset-author` keep the operator's git identity unless the author env is set; two PRs were closed and republished. | two superseded PRs | `cherry-pick -n` then `commit` with GIT_AUTHOR_*/GIT_COMMITTER_* set; add an identity check to the PR step | Practice |
+| 21 | A `split` of an Action in a draft (inactive) Plan fails with "queue anchor not found" because the remainder placement needs a queued anchor. | one Action left unrecorded (A3) | Accept a draft-Plan split without placement, or place the remainder at the Plan top | Open |
+| 22 | Remainder Action ids over about 64 characters are refused with a generic "lowercase hyphenated slug" error. | two wasted previews | State the length limit in the message | Open |
+| 23 | Subagent worktrees could not write `.git/config`, so `git checkout -B` left the named branch uncreated and the first PR attempt said "no commits". | one stalled PR | Briefs: create the named branch with `git branch -f <name> HEAD` before committing | Practice |
+| 24 | A `gh pr checks --watch --fail-fast` watcher exits non-zero when a push restarts CI; the merge state also lags GitHub. | several missed merges | Retry loop with a bounded wait for CLEAN (done in the Lead script); a Replayer/merge card removes it | Practice |
+| 25 | A complete or split settlement needs `candidate_revision` equal to the main checkout HEAD, so nine settlements ran sequentially on local main and had to be replayed onto a clean branch for the PR. | one hour of ceremony | Action `settle-from-candidate-and-publish` (resilience Plan) | Open |
 
 ## Tool and process notes
 

@@ -2358,3 +2358,59 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the remains draft with completion state preserved. Operator asked in chat on 2026-10-12 to create and activate this Plan with minimal interaction. Accepted consequence: the production-hardening batch Plan returns to draft with its remainder Action and completion records preserved.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Completed arcadia/declare-action-route-and-fix-the-approval-check
+
+- **Did:** Completed Action arcadia/declare-action-route-and-fix-the-approval-check from accepted evidence (Candidate c35c01f2c10d81878d6d7c0ef135d957be618fc2).
+- **Result:** Every declared acceptance criterion was accepted as met: "An Action with execution: build routes to a build packet regardless of its wording; an Action with execution: plan-run routes to a plan run; an Action with neither keeps today's behaviour and the preview says so."; "The production preview lists each Action's route and the operator touches it expects."; "The artifact sentence pair quoted in Issue #1277 (a statement that the run itself needs no approval followed by one that the later implementation needs a separate approved goal) passes the validator, and a sentence saying the implementation needs no approval still fails it."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-declare-action-route-and-fix-the-approval-check-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/refuse-plan-changes-inside-an-active-production-scope
+
+- **Did:** Completed Action arcadia/refuse-plan-changes-inside-an-active-production-scope from accepted evidence (Candidate dc0cb021b79ac8826b921e6f32df6e90b07fa03a).
+- **Result:** Every declared acceptance criterion was accepted as met: "Applying an activation or pause that changes the current Plan of a Project covered by an Active policy scope is refused before any document is written, naming STOP as the remedy."; "A pointer that leaves an Active policy's scope raises a red alert naming the mismatch, with a one-click remedy."; "With production Inactive the existing activation behaviour is unchanged."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-plan-changes-inside-an-active-production-scope-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/replay-environment-wall-session
+
+- **Did:** Completed Action arcadia/replay-environment-wall-session from accepted evidence (Candidate 2c668b00c08eac8089802d1e65efd938ef17231c).
+- **Result:** Every declared acceptance criterion was accepted as met: "The scenario exists in the fast-rehearsal set, is deterministic and runs in under 30 seconds, and on a tree without the environment-wall stop it fails."; "scripts/fast-rehearsal.mjs prints the report path and exits non-zero when report.json is missing or unparsable."; "The scenario asserts exactly one named environment blocker, no second launch and a recorded per-attempt token record."; "Focused tests for the scenario builder pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-replay-environment-wall-session-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/record-session-ledger
+
+- **Did:** Completed Action arcadia/record-session-ledger from accepted evidence (Candidate 917b38e1f352c2186f0d6d5d3aadd40edb55fccd).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema requires session_id, role, model, effort, action_id, pr, tokens_in_uncached, tokens_in_cached, tokens_out, wall_min, attempts, review_rounds, blocking_findings, operator_touches, host_touches, frictions and outcome with a stop_reason."; "The validator rejects a row with a missing or mistyped field and the CI job runs it on every pull request that touches the ledger."; "The ledger has four backfilled rows for A12, A3, A5 and A6 taken from the living notes, and the living notes link to the ledger."; "Focused validator tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-record-session-ledger-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/enforce-session-token-ceiling
+
+- **Did:** Completed Action arcadia/enforce-session-token-ceiling from accepted evidence (Candidate df6799f372bf93250398397dfa463a08d1cfd152).
+- **Result:** Every declared acceptance criterion was accepted as met: "The replay scenario stops at the ceiling and the stop receipt names budget_exhausted with the ceiling value and both token counts."; "An attempt that hits the ceiling is not relaunched automatically and raises exactly one named blocker."; "The ceiling has a per-tier default and cannot be disabled or raised from a prompt, brief or Action text."; "Focused tests for the ceiling and the production tick pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-session-token-ceiling-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/revise-agent-roles-and-session-briefs
+
+- **Did:** Completed Action arcadia/revise-agent-roles-and-session-briefs from accepted evidence (Candidate c84eed3b4c8b5b2b6a7c59aee3510b6fcda34c11).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/agent-guidance records Lead as one Action per session, Driver on standard tier returning only diff, test command and exit code, Reviewer as one fresh role replacing Critic, a deterministic Replayer script role, and the live Observer deferred with its revisit trigger."; "A brief template names file:line ranges, focused test files, the adversarial strings for any guard or validator Action, and forbids repeating sandbox text in hand-backs."; "The model and effort per role are stated with the cost reasoning and the guidance index routes to the new section."; "The documentation budget check and docs link check pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-revise-agent-roles-and-session-briefs-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/probe-environment-inside-session
+
+- **Did:** Completed Action arcadia/probe-environment-inside-session from accepted evidence (Candidate 2c84a20d7d09356ed7220f497623d1c335298af3).
+- **Result:** Every declared acceptance criterion was accepted as met: "The host-worker side probe is no longer counted as evidence of Session capability."; "A passing probe adds a bounded, recorded token cost and a failing probe raises exactly one environment_wall blocker with its remedy."; "Focused tests and pnpm fast-rehearsal pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/attach-the-session-probe-result-to-the-reconcile-receipt immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-probe-environment-inside-session-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/fix-docs-sync-lock-and-activation-order
+
+- **Did:** Completed Action arcadia/fix-docs-sync-lock-and-activation-order from accepted evidence (Candidate f14fc522b3302b87068a06fcdf0e2547a2177dda).
+- **Result:** Every declared acceptance criterion was accepted as met: "Other Projects relative queue order is unchanged by an activation."; "Focused settlement and queue tests pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/stage-pointer-with-queue-reorder-and-reproduce-live-lock immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12).
