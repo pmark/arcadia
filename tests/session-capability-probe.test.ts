@@ -109,7 +109,16 @@ describe("issuing the probe and pinning its allowance", () => {
       expect(issued.nonce).toMatch(/^[0-9a-f]{32}$/);
       expect(issued.command).toContain(` --nonce ${issued.nonce}`);
       expect(readSessionProbeNonce(ws, "s1")).toBe(issued.nonce);
-      expect(issueSessionProbe({ workspace: ws, sessionId: "s1", worktreePath: "/wt" }).nonce).toBe(issued.nonce);
+      // Rotated per launch: a resume gets a fresh nonce, and the recorded one follows it.
+      const resumed = issueSessionProbe({ workspace: ws, sessionId: "s1", worktreePath: "/wt" });
+      expect(resumed.nonce).not.toBe(issued.nonce);
+      expect(readSessionProbeNonce(ws, "s1")).toBe(resumed.nonce);
+      const stale = JSON.stringify({ probe: "session-capability/v1", nonce: issued.nonce, ok: false, checks: [{ name: "workspace_write", ok: false }] });
+      const fresh = JSON.stringify({ probe: "session-capability/v1", nonce: resumed.nonce, ok: true, checks: [{ name: "workspace_write", ok: true }] });
+      // Launch 1 failed, the operator fixed the sandbox, launch 2 passed: no wall.
+      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n${fresh}\n`, resumed.nonce))).toEqual([]);
+      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n`, resumed.nonce))).toEqual([]);
+      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n`, issued.nonce))).toHaveLength(1);
       expect(issueSessionProbe({ workspace: ws, sessionId: "s2", worktreePath: "/wt" }).nonce).not.toBe(issued.nonce);
       const allow = headlessClaudeAllowList(["pnpm test"], issued.command);
       expect(allow).toContain(exactBashRule(issued.command));
