@@ -306,7 +306,7 @@ describe("tmux-backed Sessions", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     expect(() => launch(fixture, tmux, "launch", {
-      sessionCapability: () => [{ wallClass: "workspace_write", evidence: "readonly database", remedy: "Grant workspace write." }]
+      workerCapability: () => [{ wallClass: "workspace_write", evidence: "readonly database", remedy: "Grant workspace write." }]
     } as never)).toThrow(/Environment wall .*no tokens were spent/);
     expect(tmux.launches).toHaveLength(0);
     expect(existsSync(path.join(fixture.root, "launch"))).toBe(false);

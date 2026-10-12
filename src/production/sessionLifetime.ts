@@ -34,7 +34,7 @@ function lastLines(text: string, count: number): string {
   return text.split(/\r?\n/).filter((line) => line.trim() !== "").slice(-count).join("\n");
 }
 
-export type SessionStopKind = "time_limit" | "blocking_signal";
+export type SessionStopKind = "time_limit" | "blocking_signal" | "token_ceiling";
 
 export interface SessionStopDecision {
   kind: SessionStopKind;
@@ -70,12 +70,15 @@ export function decideSessionStop(input: {
    * prompts are ignored for it.
    */
   headless?: boolean;
+  /** A `budget_exhausted` message when the Session's log is already over its token ceiling. */
+  tokenCeilingBreach?: string | null;
 }): SessionStopDecision | null {
   const startedMs = new Date(input.session.prepared_at).getTime();
   const runningMs = input.now.getTime() - startedMs;
   if (Number.isFinite(runningMs) && runningMs >= input.limitMs) {
     return { kind: "time_limit", reason: `Session time limit of ${Math.round(input.limitMs / 60_000)} minutes reached (running ${Math.round(runningMs / 60_000)} minutes).` };
   }
+  if (input.tokenCeilingBreach) return { kind: "token_ceiling", reason: input.tokenCeilingBreach };
   if (!input.stalled) return null;
   // Only the last few lines: a blocking Session is silent and sits on its
   // message, so the message is at the very end; older output is not evidence.
@@ -106,6 +109,7 @@ export function enforceSessionLifetime(
     stalled: boolean;
     stallDeadlineMs?: number;
     headless?: boolean;
+    tokenCeilingBreach?: string | null;
   }
 ): { stopped: SessionStopDecision | null; failed: SessionStopDecision | null } {
   const none = { stopped: null, failed: null };
@@ -118,7 +122,8 @@ export function enforceSessionLifetime(
     stalled: input.stalled,
     paneText,
     stallDeadlineMs: input.stallDeadlineMs,
-    headless: input.headless
+    headless: input.headless,
+    tokenCeilingBreach: input.tokenCeilingBreach
   });
   if (!decision) return none;
   // Written first: if the tick dies between here and the reconcile, the next

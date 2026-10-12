@@ -289,7 +289,7 @@ describe("runManagedProductionTick", () => {
     const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
       profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
       capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
-      sessionCapability: () => [{ wallClass: "workspace_write", evidence: "attempt to write a readonly database", remedy: "Grant workspace write." }]
+      workerCapability: () => [{ wallClass: "workspace_write", evidence: "attempt to write a readonly database", remedy: "Grant workspace write." }]
     }));
     const first = tick().projects.find((p) => p.projectSlug === "test-project")?.launch;
     expect(first?.outcome).toBe("refused");
@@ -313,7 +313,7 @@ describe("runManagedProductionTick", () => {
       profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
       capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
       // The tick's own preflight passes no profile sandbox; only the launch does.
-      sessionCapability: (_workspace: string, sandbox?: string | null) => sandbox === undefined ? []
+      workerCapability: (_workspace: string, sandbox?: string | null) => sandbox === undefined ? []
         : [{ wallClass: "workspace_write" as const, evidence: "read-only sandbox", remedy: "Use a workspace-write profile." }]
     }));
     expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
@@ -347,9 +347,9 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(1);
     const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     expect(escalations).toHaveLength(1);
-    expect(escalations[0]).toMatchObject({ kind: "environment_wall" });
+    expect(escalations[0]).toMatchObject({ kind: "budget_exhausted" });
     expect(escalations[0]?.message).toContain("workspace_write");
-    expect(escalations[0]?.message).toContain("11100000 input tokens");
+    expect(escalations[0]?.message).toContain("11100000 input tokens (11100000 uncached + 0 cached)");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
       .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, cachedInputTokens: 0, outputTokens: 4000 })]);
     const rendered = renderProductionStatusSuccess({

@@ -56,20 +56,21 @@ export function detectEnvironmentWalls(log: string | null): EnvironmentWall[] {
 }
 
 /**
- * Pre-launch capability preflight: can a Session admitted now reach the
- * workspace database, host validation and preservation? Deterministic,
- * read-only, spends no tokens. The go route is only a wall when absent
- * (`unavailable`); `busy` is a transient wait, not a missing capability.
+ * Pre-launch WORKER probe: can the host worker reach the workspace database,
+ * host validation and preservation transports? Deterministic, read-only,
+ * spends no tokens. The go route is only a wall when absent (`unavailable`);
+ * `busy` is a transient wait, not a missing capability.
  *
- * Known gap: the file-access probe runs as the host worker, which can always
- * write the workspace, so it only catches a broken host. What the *Session's*
- * sandbox may write lives in the provider's runtime configuration (Codex
- * writable roots, Claude permissions.additionalDirectories) and is not
- * readable offline here, so it is not probed. The one fact knowable offline is
- * the selected profile's declared sandbox mode: `read-only` can never write the
- * workspace database. Any other denial is caught by the no-diff stop on exit.
+ * This is evidence about the worker and the host, never about the Session:
+ * the file-access check runs as the host worker, which can always write the
+ * workspace. What the *Session's* sandbox may write lives in the provider's
+ * runtime configuration and is not readable offline, so only the in-Session
+ * probe (`scripts/session-capability-probe.mjs`, the Session's first step,
+ * parsed by `parseSessionProbe`) is truthful. The one fact knowable offline is
+ * the profile's declared sandbox mode: `read-only` can never write the
+ * workspace database.
  */
-export function probeSessionCapability(workspace: string, profileSandbox?: string | null): EnvironmentWall[] {
+export function probeWorkerCapability(workspace: string, profileSandbox?: string | null): EnvironmentWall[] {
   const walls: EnvironmentWall[] = [];
   if (profileSandbox === "read-only") {
     walls.push({
@@ -101,7 +102,7 @@ export function probeSessionCapability(workspace: string, profileSandbox?: strin
  * prerequisites). A `conflict` refusal, so the production tick treats it as a
  * wait state rather than a counted launch failure.
  */
-export function assertSessionCapability(input: {
+export function assertWorkerCapability(input: {
   workspace: string;
   actionLabel: string;
   profileSandbox: string | null;
@@ -109,7 +110,7 @@ export function assertSessionCapability(input: {
 }): void {
   const walls = input.override
     ? input.override(input.workspace, input.profileSandbox)
-    : process.env.VITEST ? [] : probeSessionCapability(input.workspace, input.profileSandbox);
+    : process.env.VITEST ? [] : probeWorkerCapability(input.workspace, input.profileSandbox);
   if (walls.length === 0) return;
   const named = describeEnvironmentWalls(input.actionLabel, walls, "preflight");
   throw validationError(named.message, { code: "session_environment_wall", walls, remedy: named.remedy, conflict: true });
@@ -119,15 +120,17 @@ export function assertSessionCapability(input: {
 export function describeEnvironmentWalls(
   actionKey: string,
   walls: EnvironmentWall[],
-  stage: "preflight" | "exit",
+  stage: "preflight" | "exit" | "session_probe",
   inputTokens?: number | null
 ): { message: string; remedy: string } {
   const names = walls.map((wall) => wall.wallClass).join(", ");
   const evidence = walls.map((wall) => `${wall.wallClass}: ${wall.evidence}`).join("; ");
   const tail = inputTokens ? ` The attempt spent ${inputTokens} input tokens.` : "";
   const message = stage === "preflight"
-    ? `Environment wall for ${actionKey} (${names}); no Session was launched and no tokens were spent. ${evidence}`
-    : `Environment wall for ${actionKey} (${names}): the Session exited with no diff and will not be relaunched automatically.${tail} ${evidence}`;
+    ? `Environment wall for ${actionKey} (${names}) found by the worker probe (host-side, not Session evidence); no Session was launched and no tokens were spent. ${evidence}`
+    : stage === "session_probe"
+      ? `Environment wall for ${actionKey} (${names}) found by the session probe, run inside the Session as its first step (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens): the Session was told to stop before spending and will not be relaunched automatically.${tail} ${evidence}`
+      : `Environment wall for ${actionKey} (${names}): the Session exited with no diff and will not be relaunched automatically.${tail} ${evidence}`;
   const remedy = `${walls.map((wall) => wall.remedy).join(" ")} Then reset this Action's repair budget so production relaunches it.`;
   return { message, remedy };
 }
@@ -161,4 +164,75 @@ export function sessionTokensFromLog(log: string | null): { inputTokens: number;
     } catch { /* not a JSON event line */ }
   }
   return seen ? { inputTokens: input, cachedInputTokens: cached, outputTokens: output } : null;
+}
+
+export const SESSION_PROBE_ID = "session-capability/v1";
+/**
+ * Recorded token expectation for the probe: one short Bash command (about two
+ * thousand input tokens through the Session's cached context plus a one-line
+ * result). The platform token ceiling still bounds the attempt; a failing
+ * probe ends it here, before any further spend.
+ */
+export const SESSION_PROBE_TOKEN_BUDGET = 5_000;
+
+export interface SessionProbeCheck { name: string; ok: boolean; error?: string }
+export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; nonce?: string | null; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
+
+function probesFromString(text: string, nonce: string, out: SessionProbeResult[]): void {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.includes(SESSION_PROBE_ID)) continue;
+    try {
+      const value = JSON.parse(trimmed) as Partial<SessionProbeResult>;
+      // Only a line echoing this Session's recorded nonce counts: a probe-looking
+      // line from a cat'd file or injected text cannot carry it.
+      if (value.probe === SESSION_PROBE_ID && value.nonce === nonce && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
+        out.push(value as SessionProbeResult);
+      }
+    } catch { /* not the probe line */ }
+  }
+}
+
+function stringsIn(value: unknown, out: string[], depth = 0): void {
+  if (depth > 8) return;
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) for (const item of value) stringsIn(item, out, depth + 1);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) stringsIn(item, out, depth + 1);
+}
+
+/**
+ * The probe result a Session log carries for this Session's `nonce`: a bare
+ * line (plain log) or one nested inside a provider event's tool-result text
+ * (Claude stream-json, Codex JSONL). The FIRST failing line wins, so a later
+ * spoofed passing line cannot mask a real failure; otherwise the last passing
+ * line. Null when no nonce was issued or the Session never ran the probe.
+ */
+export function parseSessionProbe(log: string | null, nonce: string | null): SessionProbeResult | null {
+  if (!log || !nonce || !log.includes(SESSION_PROBE_ID) || !log.includes(nonce)) return null;
+  const found: SessionProbeResult[] = [];
+  for (const line of log.split(/\r?\n/)) {
+    if (!line.includes(SESSION_PROBE_ID)) continue;
+    const candidates: string[] = [line];
+    if (line.startsWith("{")) {
+      try { stringsIn(JSON.parse(line), candidates); } catch { /* plain line */ }
+    }
+    for (const candidate of candidates) probesFromString(candidate, nonce, found);
+  }
+  return found.find((probe) => !probe.ok || probe.checks.some((check) => !check.ok)) ?? found[found.length - 1] ?? null;
+}
+
+/** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
+export function sessionProbeWalls(result: SessionProbeResult | null): EnvironmentWall[] {
+  if (!result || (result.ok && result.checks.every((check) => check.ok))) return [];
+  const failed: SessionProbeCheck[] = result.checks.filter((check) => !check.ok);
+  const evidenceJson = clip(JSON.stringify(result), 600);
+  const known: ReadonlySet<string> = new Set<EnvironmentWallClass>(["workspace_write", "host_validation", "preservation"]);
+  const walls = new Map<EnvironmentWallClass, EnvironmentWall>();
+  for (const check of failed.length > 0 ? failed : [{ name: "workspace_write", ok: false } as SessionProbeCheck]) {
+    const wallClass = (known.has(check.name) ? check.name : "workspace_write") as EnvironmentWallClass;
+    if (!walls.has(wallClass)) {
+      walls.set(wallClass, { wallClass, evidence: `${check.name}: ${check.error ?? "failed"} | session probe ${evidenceJson}`, remedy: WALL_REMEDY[wallClass] });
+    }
+  }
+  return [...walls.values()];
 }
