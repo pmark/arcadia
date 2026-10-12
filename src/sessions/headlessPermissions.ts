@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { validationError } from "../cli/errors.js";
 import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.js";
+import { SESSION_PROBE_COMMAND_PREFIX } from "./sessionProbeCommand.js";
 
 /**
  * The permission posture of a headless Claude Session, owned and checked in
@@ -71,6 +72,8 @@ export function headlessClaudeAllowList(validationCommands: readonly string[]): 
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
   for (const rule of HEADLESS_AGENT_ASK_DRAFT_RULES) rules.add(rule);
+  // The brief's first step: the in-Session capability probe (one short command).
+  rules.add(`Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`);
   rules.add(HEADLESS_SUBAGENT_RULE);
   return [...rules];
 }

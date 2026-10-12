@@ -82,7 +82,7 @@ import { readPreservationReadiness, type PreservationReadiness } from "../sessio
 import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { readProjectPartners } from "../sessions/partners.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { assertSessionCapability, type EnvironmentWall } from "../production/sessionCapability.js";
+import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 
 /**
@@ -136,7 +136,7 @@ export interface GoCommandOptions {
   /** Test-only process boundary. */
   tmux?: TmuxAdapter;
   /** Session capability preflight override; defaults to the real probe (skipped under Vitest). */
-  sessionCapability?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
+  workerCapability?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
   /** Deterministic fault injection after Git creation but before reservation commit. */
   testHooks?: {
     afterWorktreeCreatedBeforeReservationCommit?: () => void;
@@ -676,11 +676,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       // The same Session capability preflight the guarded launch runs: a wall
       // (workspace write, host validation, preservation) refuses here, before
       // any worktree, claim or process, so no tokens are spent against it.
-      assertSessionCapability({
+      assertWorkerCapability({
         workspace: workspacePath,
         actionLabel: dispatch.context?.action?.id ? String(dispatch.context.action.id) : "the next Action",
         profileSandbox: null,
-        override: options.sessionCapability
+        override: options.workerCapability
       });
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
         repoRoot: dispatchRoot,

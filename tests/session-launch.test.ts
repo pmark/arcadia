@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { SESSION_PROBE_COMMAND_PREFIX } from "../src/sessions/sessionProbeCommand.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -409,7 +410,7 @@ describe("launchGuardedHostSession", () => {
         db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "req-wall",
         previewFingerprint: preview.previewFingerprint, profiles, adapters, now: fixture.now, tmux,
         agentWorktreeRoot: path.join(fixture.root, "wall-wt"),
-        sessionCapability: (_workspace, sandbox) => {
+        workerCapability: (_workspace, sandbox) => {
           seen.push(sandbox);
           return [{ wallClass: "preservation", evidence: "no preservation heartbeat", remedy: "Restart the worker." }];
         }
@@ -1912,6 +1913,7 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
+          `Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`,
           "Agent"
         ]
       }
@@ -1926,6 +1928,7 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(echo \\(a\\))",
       "Bash(arcadia agent-ask draft:*)",
       "Bash(pnpm arcadia agent-ask draft:*)",
+      `Bash(${SESSION_PROBE_COMMAND_PREFIX}:*)`,
       "Agent"
     ]);
   });

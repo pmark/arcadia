@@ -1400,6 +1400,7 @@ function buildProviderLaunch(
     model: session.model,
     registry,
     headless,
+    workspace,
     partners: readProjectPartners(db, {
       projectSlug: session.project_slug,
       excludeSessionId: session.id,
