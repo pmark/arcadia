@@ -17,7 +17,9 @@ answer, a host step, a pasted log) is a gap: record it as friction (section 7).
 Roles, models and briefs: `session-roles-and-briefs.md`. In a native session:
 
 - **Lead** = the app session. One Action (or one operator-directed request).
-  Owns brief, gates and merge-on-green; never writes product code.
+  Owns the brief and the gates and applies the Merge on green gate in
+  `pull-requests.md` (merge authority is Decision 0060/0080, never the role);
+  never writes product code.
 - **Driver** = a subagent in an isolated worktree, the only code writer. The
   Lead supervises it: a wall-clock and token budget, a midpoint check, and a
   stop after one no-diff attempt. To stop or replace a Driver, end it, keep its
