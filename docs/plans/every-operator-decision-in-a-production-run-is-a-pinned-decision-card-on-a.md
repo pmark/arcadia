@@ -161,6 +161,25 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
+  - id: batch-merge-decision-card
+    title: Implement a /todo batch merge card that lists every pull request awaiting the operator with why it needs them, the decisions it makes and its consequences, and one button that merges them in stack order from pinned head shas.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a /todo batch merge card that lists every pull request awaiting the operator with why it needs them, the decisions it makes and its consequences, and one button that merges them in stack order from pinned head shas.
+    expected_artifact: Evidence satisfying Agent Ask batch-merge-decision-card
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-plan-add-batch-merge-card-2026-10-12
+    why: "One page and one button per decision round is the operator-effort target; merges are the largest remaining operator touch."
+    acceptance_criteria:
+      - Each listed pull request shows the authority boundary its diff touches from a path-based classifier, the independent review verdict, the required checks and a one-sentence consequence, and the card orders stacked pull requests base first.
+      - The button posts only the card id and the pinned head sha of each pull request; it refuses the whole batch and names the reason when any head moved, any required check is not green or any independent review is missing.
+      - The merge runs as an operator script whose descriptor is published for review and is never executed by an agent; it writes one receipt per pull request and is idempotent when re-run.
+      - The Discord ping for a pending batch links the card and states the count, and a focused test with fixture pull requests covers the stale-head refusal, the stack order and the receipt.
+    depends_on: [decision-card-contract]
+    decisions: []
+    references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md"]
 questions: []
 decisions: []
 ---
