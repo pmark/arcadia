@@ -35,7 +35,7 @@ function action(id: string, title: string, dependsOn: string[] = []): string {
     `    expected_artifact: docs/${id}.md`,
     "    clarification: clarified",
     "    acceptance_criteria:",
-    `      - ${id} is finished.`,
+    `      - The expected Artifact exists at docs/${id}.md.`,
     `    depends_on: [${dependsOn.join(", ")}]`,
     "    decisions: []",
     "    references: []"

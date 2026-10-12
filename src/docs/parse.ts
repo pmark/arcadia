@@ -1,4 +1,5 @@
-import { parse as parseYaml } from "yaml";
+import { validateAcceptanceCriteria } from "./acceptanceCriteria.js";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   CLARIFICATION_CONFIDENCE_LEVELS,
   CLARIFICATION_STATUSES,
@@ -441,11 +442,12 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       return;
     }
 
-    // The continuation contract's executable-action test, enforced where it
-    // matters most. Applied only to the current action: requiring criteria on
-    // every clarified action would retroactively invalidate completed history,
-    // while the objective a coding agent is about to start must say what
-    // finished means before anyone starts it.
+    // Every Action carries reviewable conditions, including history and blocked work.
+    // Do not silently coerce numbers or discard malformed entries as stringArray does.
+    for (const problem of validateAcceptanceCriteria(value.acceptance_criteria)) {
+      const suffix = problem.index === null ? "" : `[${problem.index}]`;
+      problems.add(`${field}.acceptance_criteria${suffix}`, problem.message);
+    }
     const acceptanceCriteria = stringArray(value.acceptance_criteria);
     // `execution` is either the vendor-neutral requirement mapping or, as a
     // plain string, the Action's declared route. A string never reaches the
@@ -472,12 +474,6 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       problems.add(`${field}.${issue.field}`, issue.message);
     }
     if (id && id === currentAction) {
-      if (clarification === "clarified" && acceptanceCriteria.length === 0) {
-        problems.add(
-          `${field}.acceptance_criteria`,
-          "The current action must define objective acceptance criteria before it can be dispatched."
-        );
-      }
       if (!clarification) {
         problems.add(
           `${field}.clarification`,
@@ -1123,3 +1119,26 @@ function stringArray(raw: unknown): string[] {
 }
 
 export { MILESTONE_STATUSES };
+
+/**
+ * Read a Plan only to repair acceptance defects. Ordinary parsing/dispatch stays
+ * strict. No other error is tolerated, and the writer must validate its result.
+ */
+export function parsePlanForAcceptanceRepair(relativePath: string, absolutePath: string, content: string): ParseResult {
+  const original = parseDoc(relativePath, absolutePath, content);
+  if (original.doc || original.errors.length === 0 ||
+      original.errors.some((error) => !/^actions\[\d+\]\.acceptance_criteria(?:\[\d+\])?$/.test(error.field))) return original;
+  const match = FRONTMATTER.exec(content);
+  if (!match) return original;
+  const data = parseYaml(match[1]) as Record<string, unknown>;
+  if (data.type !== "plan" || !Array.isArray(data.actions)) return original;
+  const rawActions = data.actions as Record<string, unknown>[];
+  const repairedInput = { ...data, actions: rawActions.map((action) => ({
+    ...action, acceptance_criteria: ["An Agent Ask records the corrected evaluation condition."]
+  })) };
+  const parsed = parseDoc(relativePath, absolutePath, `---\n${stringifyYaml(repairedInput)}---\n${match[2] ?? ""}`);
+  if (!parsed.doc || parsed.doc.type !== "plan" || parsed.errors.length > 0) return original;
+  return { doc: { ...parsed.doc, actions: parsed.doc.actions.map((action, index) => ({
+    ...action, acceptanceCriteria: stringArray(rawActions[index].acceptance_criteria)
+  })) }, errors: original.errors };
+}

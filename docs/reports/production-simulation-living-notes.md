@@ -121,6 +121,10 @@ Issue or PR exists.
 | 24 | A `gh pr checks --watch --fail-fast` watcher exits non-zero when a push restarts CI; the merge state also lags GitHub. | several missed merges | Retry loop with a bounded wait for CLEAN (done in the Lead script); a Replayer/merge card removes it | Practice |
 | 25 | A complete or split settlement needs `candidate_revision` equal to the main checkout HEAD, so nine settlements ran sequentially on local main and had to be replayed onto a clean branch for the PR. | one hour of ceremony | Action `settle-from-candidate-and-publish` (resilience Plan) | Open |
 
+
+| 20 | Tightening every Action's acceptance validation exposed placeholder criteria across shared fixtures and eight missing historical lists; a passing targeted run did not prove the full corpus migration. | extra CI repair pass; unmeasured minutes | Preserve fixture assertions, run the full required suites, and use criteria-only Agent Asks for canonical records; guard regressions are tests/plan-acceptance-validation.test.ts | Code repair in #1307; governed record approval pending |
+| 21 | The Session-probe rehearsal asserts environment_wall but its report labels the two corresponding lifecycle diagnostics unexpected. | misleading report; unmeasured minutes | Register only the asserted environment_wall diagnostic and retain rejection of unrelated errors | Filed #1322; revive on next Session-probe rehearsal change |
+
 ## Tool and process notes
 
 - Decide the Driver's route before launch. If the Action's own subject is the

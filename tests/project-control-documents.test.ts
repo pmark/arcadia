@@ -143,10 +143,12 @@ describe("adoption seeds the work pointer chain", () => {
     runProjectSetupContextCommand({ workspace, projectId });
     const resolution = resolveDispatch(repo, "martian-rover");
 
-    // Nothing observable exists to assert, so the Action is recorded as the
-    // open question it already was -- not given criteria nobody agreed to.
+    // Product criteria are not invented. The observable condition is a recorded
+    // clarification answer, and the Action remains blocked on its open question.
     expect(resolution.operatorQuestion).toContain("Wait for missing access");
-    expect(resolution.context?.action.acceptanceCriteria).toEqual([]);
+    expect(resolution.context?.action.acceptanceCriteria).toEqual([
+      'A clarification Decision records the observable completion conditions and verification method for Action "Wait for missing access" before implementation.'
+    ]);
     expect(isDispatchable(resolution)).toBe(false);
   });
 

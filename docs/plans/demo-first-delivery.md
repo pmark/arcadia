@@ -81,7 +81,7 @@ actions:
       - The command writes a human-readable QA report Artifact and a decided pass, fail, or needs-follow-up Decision carrying the PR URL, immutable SHA, reviewer provenance, evidence paths, and explicit not-checked reasons.
       - Repeating review for an already completed revision with unchanged pull-request evidence returns the existing receipts without another model invocation only after reconstructing the result from the persisted Decision context and cross-checking its Artifact, source, status, fingerprint, paths, and independently stored file hashes; changed evidence, any mismatch, or an explicit rerun creates a preserved new attempt and updates the cache hint.
       - The reviewer receives a patch fetched by exact base/head SHAs rather than a mutable working copy; its shell cannot read the operator home or access the network, and the command does not post, approve, merge, deploy, release, repair, or create arbitrary shell execution.
-      - The real dogfood result for PR #54 truthfully explains its conflicting push and pull-request CI evidence and therefore cannot report Pass while that contradiction remains.
+      - "The real dogfood result for PR #54 truthfully explains its conflicting push and pull-request CI evidence and therefore cannot report Pass while that contradiction remains."
       - START_HERE.md documents the exact command, consequences, output locations, idempotency, and authority boundary.
     execution:
       schema: arcadia.execution/v1
@@ -131,7 +131,7 @@ actions:
       - A ready pull request with completed successful checks and an acceptable merge state follows the existing exact-revision independent review path unchanged.
       - Mutable pull-request evidence is revalidated immediately before the model call; a changed snapshot skips the model and is preserved as Needs follow-up by the existing evidence-bound QA path.
       - The CLI-response workspace-precedence test runs from an isolated temporary directory and cannot observe `.arcadia-workspace` created by another test file.
-      - START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional.
+      - "START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional."
       - Arcadia's checked-in Project documentation states the north-star development orchestration vision and records every excluded enhancement with an observable reactivation trigger.
       - This Action does not add automatic invocation, notifications, browser proof, local validation reruns, GitHub posting, repair, merge, deployment, or release automation.
     execution:

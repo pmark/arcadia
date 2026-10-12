@@ -58,7 +58,7 @@ function seedPlan(root: string): void {
     `    expected_artifact: docs/${id}.md`,
     "    clarification: clarified",
     "    acceptance_criteria:",
-    `      - ${id} is finished.`,
+    `      - The expected Artifact exists at docs/${id}.md.`,
     "    depends_on: []",
     "    decisions: []",
     "    references: []"
@@ -90,7 +90,7 @@ function seedPlan(root: string): void {
       "    expected_artifact: docs/operator-proof.md",
       "    clarification: clarified",
       "    acceptance_criteria:",
-      "      - The proof ran.",
+      "      - The operator proof command exits with code 0 and records its receipt.",
       "    depends_on: []",
       "    decisions: []",
       "    references: []"
@@ -105,7 +105,7 @@ function seedPlan(root: string): void {
       "    expected_artifact: docs/parked-action.md",
       "    clarification: clarified",
       "    acceptance_criteria:",
-      "      - parked-action is finished.",
+      "      - The expected Artifact exists at docs/parked-action.md.",
       "    depends_on: []",
       "    decisions: []",
       "    references: []"

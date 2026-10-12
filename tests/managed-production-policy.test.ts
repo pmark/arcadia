@@ -1053,12 +1053,12 @@ describe("activation preview", () => {
         "  - id: migrate", "    title: Prepare the fixture", "    status: open",
         "    responsibility: agent", "    next_action: Prepare the fixture.",
         "    expected_artifact: A prepared fixture", "    clarification: clarified",
-        "    acceptance_criteria:", "      - The fixture is prepared.", "    depends_on: []",
+        "    acceptance_criteria:", "      - The fixture exists with its configured queue entries.", "    depends_on: []",
         "  - id: ship-it", "    title: Ship the view", "    status: open",
         "    responsibility: agent", "    next_action: Implement the view.",
         ...(shipItExecution ? [`    execution: ${shipItExecution}`] : []),
         "    expected_artifact: A visible view", "    clarification: clarified",
-        "    acceptance_criteria:", "      - The view is visible.", "    depends_on: [migrate]",
+        "    acceptance_criteria:", "      - The view lists the configured Actions.", "    depends_on: [migrate]",
         "---", "", "# Queue plan", ""
       ].join("\n"),
       "utf8"
@@ -1415,7 +1415,7 @@ describe("judgment requests", () => {
     };
 
     expect(() =>
-      buildJudgmentRequest({ ...base, options: [{ label: "Only choice", consequence: "It happens." }] })
+      buildJudgmentRequest({ ...base, options: [{ label: "Only choice", consequence: "The fixture receipt exists." }] })
     ).toThrow(/two or more meaningful options/);
 
     expect(() =>

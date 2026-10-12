@@ -78,7 +78,7 @@ function writeDoc(repoRoot: string, relativePath: string, content: string): void
 
 /** A minimal inactive plan whose only job is to own the named Action ids. */
 function fixturePlan(slug: string, actionIds: string[]): string {
-  const actions = actionIds.map((id) => `  - id: ${id}\n    title: ${id}\n    status: done`).join("\n");
+  const actions = actionIds.map((id) => `  - id: ${id}\n    title: ${id}\n    status: done\n    acceptance_criteria:\n      - The fixture report names ${id}.`).join("\n");
   return `---
 arcadia: v1
 type: plan
@@ -118,6 +118,8 @@ actions:
     clarification: clarified
     confidence: high
     source: conversation
+    acceptance_criteria:
+      - Running the migration twice leaves exactly one migrated column.
     depends_on: []
   - id: blocked-thing
     title: Blocked thing
@@ -126,6 +128,8 @@ actions:
     clarification: question_open
     gap_type: missing-decision
     question: Which environment goes first?
+    acceptance_criteria:
+      - A Decision records the selected first environment.
     depends_on: [do-the-thing]
 questions:
   - id: rollout
@@ -447,9 +451,8 @@ describe("docs sync", () => {
       repo,
       "docs/plans/sample-plan.md",
       PLAN.replace(
-        "    source: conversation",
+        "    acceptance_criteria:\n      - Running the migration twice leaves exactly one migrated column.",
         [
-          "    source: conversation",
           "    acceptance_criteria:",
           "      - The migration runs twice without duplicating a column.",
           "      - The command is covered by a test."
@@ -466,18 +469,17 @@ describe("docs sync", () => {
       "The command is covered by a test."
     ]);
 
-    // An action that declares none is explicitly empty, not an empty list, so
-    // downstream cannot mistake "declared nothing" for "declared something".
+    // A question-open Action also carries its observable Decision criterion.
     const blocked = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing"));
-    expect(blocked!.acceptance_criteria_json).toBeNull();
+    expect(JSON.parse(blocked!.acceptance_criteria_json!)).toEqual(["A Decision records the selected first environment."]);
   });
 
   it("updates the Action when the plan's acceptance criteria change", () => {
     const repo = scratch();
     const withCriteria = (criterion: string): string =>
       PLAN.replace(
-        "    source: conversation",
-        ["    source: conversation", "    acceptance_criteria:", `      - ${criterion}`].join("\n")
+        "    acceptance_criteria:\n      - Running the migration twice leaves exactly one migrated column.",
+        ["    acceptance_criteria:", `      - ${criterion}`].join("\n")
       );
 
     writeDoc(repo, "docs/plans/sample-plan.md", withCriteria("The old bar is cleared."));

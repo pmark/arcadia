@@ -185,7 +185,7 @@ describe("arcadia go — one ready Action per concurrent session", () => {
   it("skips unavailable browser-measurement fallbacks and claims the next executable Action", () => {
     const fixture = createFixture();
     const plan = path.join(fixture.main, "docs/plans/parallel-plan.md");
-    writeFileSync(plan, readFileSync(plan, "utf8").replace("The third Action is done.", "Comparable Lighthouse scores are recorded."));
+    writeFileSync(plan, readFileSync(plan, "utf8").replace("The third Artifact exists.", "Comparable Lighthouse scores are recorded."));
     git(fixture.main, ["add", "docs/plans/parallel-plan.md"]);
     git(fixture.main, ["commit", "-qm", "require browser measurement for gamma"]);
     dispatch(fixture, 0);
@@ -393,7 +393,7 @@ actions:
     next_action: Implement the first Action.
     expected_artifact: docs/alpha.md
     acceptance_criteria:
-      - The first Action is done.
+      - The first Artifact exists.
     depends_on: []
   - id: beta
     title: Second Action
@@ -404,7 +404,7 @@ actions:
     next_action: Implement the second Action.
     expected_artifact: docs/beta.md
     acceptance_criteria:
-      - The second Action is done.
+      - The second Artifact exists.
     depends_on: [alpha]
   - id: gamma
     title: Third Action
@@ -415,7 +415,7 @@ actions:
     next_action: Implement the third Action.
     expected_artifact: docs/gamma.md
     acceptance_criteria:
-      - The third Action is done.
+      - The third Artifact exists.
     depends_on: []
   - id: delta
     title: Fourth Action
@@ -426,7 +426,7 @@ actions:
     next_action: Implement the fourth Action.
     expected_artifact: docs/delta.md
     acceptance_criteria:
-      - The fourth Action is done.
+      - The fourth Artifact exists.
     depends_on: []
 ---
 

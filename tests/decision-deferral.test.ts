@@ -54,7 +54,7 @@ function fixture(options: {
     "    clarification: clarified",
     "    confidence: high",
     "    acceptance_criteria:",
-    `      - ${action.id} is finished.`,
+    `      - The proof for ${action.id} exists.`,
     "    depends_on: []",
     "    decisions: []",
     "    references: []"

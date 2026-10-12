@@ -1,3 +1,4 @@
+import { validateAcceptanceCriteria } from "../docs/acceptanceCriteria.js";
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../d
 import { discoverDocs } from "../docs/discover.js";
 import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
-import { parseDoc } from "../docs/parse.js";
+import { parseDoc, parsePlanForAcceptanceRepair } from "../docs/parse.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
@@ -358,6 +359,25 @@ export function settleAgentAsk(db: Database.Database, input: {
     // file -- so it is not fenced; every accepted settlement is.
     if (settlingClaim) claimFence = { ...settlingClaim };
     const discovered = discoverDocs(repoRoot);
+    // A criteria-only amendment must be able to repair the very validation
+    // error that otherwise hides its target. This read never grants dispatch.
+    let criteriaRepair = proposal.normalized.intent === "plan" && !!proposal.normalized.targetRef &&
+      proposal.normalized.actions.length > 0 && proposal.normalized.actions.every((action) =>
+        !!action.targetRef && action.omittedLists?.includes("dependencies") &&
+        action.omittedLists?.includes("references") && action.why === undefined) &&
+      proposal.normalized.references.length === 0 && !input.activate && !input.placement &&
+      !input.anchor && !input.responsibility;
+    if (criteriaRepair) {
+      const projectContext = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
+      const targetSlug = resolveManagedTargetRef(proposal.normalized.targetRef!, "plan", project.slug);
+      for (const relativePath of discovered.rejected) {
+        if (!relativePath.startsWith("docs/plans/")) continue;
+        const absolutePath = path.join(repoRoot, relativePath);
+        const repaired = parsePlanForAcceptanceRepair(relativePath, absolutePath, readFileSync(absolutePath, "utf8"));
+        if (repaired.doc?.type === "plan" && repaired.doc.project === project.slug &&
+            [targetSlug, projectContext?.activePlan].includes(repaired.doc.slug)) discovered.docs.push(repaired.doc);
+      }
+    }
     const projectDoc = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
     const plan = discovered.docs.find(
       (doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === projectDoc?.activePlan
@@ -374,6 +394,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposal.normalized.acceptance.length === 0) {
             throw validationError("Accepted Action settlement requires at least one observable acceptance criterion in the proposal.");
           }
+          assertCheckableAcceptance(proposal.normalized.acceptance);
           const dependencies = normalizeDependencies(proposal.normalized.dependencies, project.slug);
           const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
           if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
@@ -413,6 +434,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           // A child carrying its own `target_ref` amends that existing Action
           // instead of creating a duplicate with an id derived from its
           // desired_result -- matching what `plan` intent amendments already
@@ -660,6 +682,17 @@ export function settleAgentAsk(db: Database.Database, input: {
             break;
           }
 
+          if (criteriaRepair) {
+            const onlyCriteria = proposedActions.every((proposed) => {
+              const id = resolveManagedTargetRef(proposed.targetRef!, "action", project.slug);
+              const existing = target.actions.find((action) => action.id === id);
+              return existing && proposed.desiredResult === (existing.nextAction ?? existing.title);
+            });
+            if (!onlyCriteria && (discovered.rejected.includes(target.relativePath) || discovered.rejected.includes(plan.relativePath))) {
+              throw validationError("Criteria repair must preserve each Action's next_action and title.");
+            }
+            criteriaRepair = onlyCriteria;
+          }
           const takenIds = new Set(target.actions.map((action) => action.id));
           const newActionIds = proposedActions.map((action) => action.targetRef
             ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
@@ -675,6 +708,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             const existing = action.targetRef !== null;
             if (existing && !existingIds.has(id)) throw validationError("Agent Ask Plan Action amendment target was not found.", { targetRef: action.targetRef });
             if (action.acceptance.length === 0) throw validationError("Every created or amended Plan Action requires at least one observable acceptance criterion.", { action: id });
+            assertCheckableAcceptance(action.acceptance);
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
             const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
             if (unknownDependencies.length > 0) {
@@ -719,14 +753,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             if (action.existing) {
               after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
-                action.amendedReferences, proposal.normalized.requestId, undefined, action.why);
+                action.amendedReferences, proposal.normalized.requestId, undefined, action.why, criteriaRepair);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
                 dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
-              actionIdsToValidate.push(action.id);
+              if (!criteriaRepair) actionIdsToValidate.push(action.id);
             } else {
               after = appendPlanAction(after, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
@@ -778,6 +812,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every draft Plan Action requires at least one observable acceptance criterion.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           const planSlug = uniquePlanSlug(discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug), slugify(proposal.normalized.desiredResult));
           const targetPath = path.join(repoRoot, "docs", "plans", `${planSlug}.md`);
           const takenIds = new Set<string>();
@@ -1113,6 +1148,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (proposedActions.some((remainderAction) => remainderAction.acceptance.length === 0)) {
           throw validationError("Every remainder Action requires at least one observable acceptance criterion.");
         }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
         // Placing the remainder in the queue needs it on the base branch, the
         // same constraint `action` intent's queue placement enforces; the
         // generic `arrangeQueue` guard below refuses this from a candidate
@@ -2683,21 +2719,32 @@ function amendAction(
   references: string[] | null,
   requestId: string,
   responsibility?: AgentAskResponsibility,
-  why?: string | null
+  why?: string | null,
+  criteriaOnly = false
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^ {4}next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
-  block = block.replace(/^ {4}next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
+  if (!/^ {4}next_action:/m.test(block)) {
+    if (!criteriaOnly) {
+      throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
+    }
+    // Criteria for resolving an open question do not answer it or make it executable.
+  } else {
+    block = block.replace(/^ {4}next_action:.*$/m, () => `    next_action: ${yamlScalar(nextAction)}`);
+  }
   if (responsibility) {
     if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
     block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
   if (acceptance.length > 0) {
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
-    block = block.replace(/^ {4}acceptance_criteria:\r?\n(?: {6}- .*\r?\n?)*/m, `${replacement}\n`);
+    if (/^ {4}acceptance_criteria:/m.test(block)) {
+      block = block.replace(/^ {4}acceptance_criteria:.*\r?\n(?: {6}- .*\r?\n?)*/m, () => `${replacement}\n`);
+    } else {
+      block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n${replacement}`);
+    }
   }
   // depends_on/references may already be written as a multi-line block list
   // (each item on its own "      - " line) rather than an inline [a, b]; the
@@ -2723,7 +2770,7 @@ function amendAction(
   block = /^ {4}source:/m.test(block)
     ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
-  return content.replace(pattern, block);
+  return content.replace(pattern, () => block);
 }
 
 function markActionDone(content: string, actionId: string, requestId: string): string {
@@ -3162,4 +3209,11 @@ function today(): string {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function assertCheckableAcceptance(criteria: string[]): void {
+  const problems = validateAcceptanceCriteria(criteria);
+  if (problems.length > 0) {
+    throw validationError("Acceptance criteria must be precise and checkable.", { problems });
+  }
 }

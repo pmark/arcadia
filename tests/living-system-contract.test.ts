@@ -258,6 +258,8 @@ actions:
     responsibility: codex
     clarification: clarified
     next_action: Record the accepted result.
+    acceptance_criteria:
+      - The Log records the accepted contract revision.
     depends_on: []
 ---
 `);

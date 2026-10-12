@@ -65,9 +65,9 @@ export function seedControlDocuments(input: SeedControlDocumentsInput): SeedCont
   const unfinished = input.workItems.filter((item) => item.status !== "done");
   const faithful = unfinished.map((item) => toPlanAction(item, unfinished));
   const currentActionId = pickCurrentAction(faithful);
-  // Only the Action being pointed at is held to the schema's clarification
-  // rules, so only that one is adjusted. The rest stay exactly as the database
-  // recorded them.
+  // Only the pointer's clarification is promoted here. Every emitted Action
+  // carries criteria; missing implementation conditions remain a clarification
+  // obligation, never invented product requirements or execution authority.
   const actions = faithful.map((action) => (action.id === currentActionId ? promoteToCurrent(action) : action));
 
   let plan: string | null = null;
@@ -381,9 +381,11 @@ export function renderBootstrapPlan(input: {
       entry.confidence = action.confidence;
     }
     entry.source = action.source;
-    if (action.acceptanceCriteria.length > 0) {
-      entry.acceptance_criteria = action.acceptanceCriteria;
-    }
+    entry.acceptance_criteria = action.acceptanceCriteria.length > 0
+      ? action.acceptanceCriteria
+      : action.expectedArtifact
+        ? [`The expected Artifact exists: ${action.expectedArtifact}`]
+        : [`A clarification Decision records the observable completion conditions and verification method for Action "${action.title}" before implementation.`];
     return entry;
   });
 
@@ -399,8 +401,8 @@ export function renderBootstrapPlan(input: {
     "",
     "Every Action below carries a `source` naming the record it came from. Where",
     "an Action had no acceptance criteria, one was derived from its expected",
-    "Artifact; where it had neither, the Action is recorded as the open question",
-    "it actually is, rather than given criteria nobody agreed to.",
+    "Artifact; where it had neither, evaluation requires a recorded clarification",
+    "answer. Product requirements are not invented, and open questions remain blocked.",
     "",
     "Rewrite this into a real plan as soon as the work has a shape. Nothing",
     "regenerates this file.",

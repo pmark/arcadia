@@ -394,6 +394,10 @@ describe("renderActionBrief", () => {
 
   it("fails closed when the Action declares no acceptance criteria", () => {
     const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace(
+      "    acceptance_criteria:\n      - The legacy contract record exists.", "    acceptance_criteria: []"
+    ));
     try {
       renderActionBrief({
         repoRoot: repo,
@@ -409,7 +413,8 @@ describe("renderActionBrief", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ArcadiaError);
       expect((error as ArcadiaError).code).toBe("VALIDATION_ERROR");
-      expect((error as Error).message).toContain('Action "legacy-action" declares no acceptance criteria');
+      expect((error as Error).message).toContain("actions[1].acceptance_criteria");
+      expect((error as Error).message).toContain("precise, checkable conditions");
     }
   });
 });
@@ -449,7 +454,8 @@ actions:
     status: open
     responsibility: agent
     next_action: Finish the legacy action.
-    acceptance_criteria: []
+    acceptance_criteria:
+      - The legacy contract record exists.
 ---
 `);
   execFileSync("git", ["init", "-q"], { cwd: root });

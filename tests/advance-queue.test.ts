@@ -75,7 +75,7 @@ function planDoc(): string {
     "    expected_artifact: A prepared fixture",
     "    clarification: clarified",
     "    acceptance_criteria:",
-    "      - The fixture is prepared.",
+    "      - The fixture exists with its configured queue entries.",
     "    depends_on: []",
     "  - id: ship-it",
     "    title: Ship the queue view",
@@ -85,7 +85,7 @@ function planDoc(): string {
     "    expected_artifact: A visible queue view",
     "    clarification: clarified",
     "    acceptance_criteria:",
-    "      - The queue is visible.",
+    "      - The queue view lists the configured Actions.",
     "    depends_on: [migrate]",
     "---",
     "",
@@ -139,7 +139,7 @@ describe("Agent Queue", () => {
       tokenBudget: "One bounded implementation pass; validation is deterministic.",
       outcome: "Exercise the Agent Queue.",
       milestone: "Queue milestone",
-      acceptanceCriteria: ["The fixture is prepared."],
+      acceptanceCriteria: ["The fixture exists with its configured queue entries."],
       dependencies: [],
       decisions: []
     });

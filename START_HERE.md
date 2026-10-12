@@ -3345,3 +3345,14 @@ file audit does not prove agent understanding. See
 The JSON parameters use schema `arcadia-rehearsal-dry-preparation-v1`, `runId`, `actionCount`, the existing fixture pins (`fixtureRepoPath` and `fixtureGithubRepo`), `requiredCommits` entries (`commit`, `why`), and `preservation` (`resetRunId`, `resetHead`, `terminalOffRunId`, `localMain`). The existing required-commit floor cannot be removed; unfilled bindings refuse. These are supplied bindings, not proof that prerequisite receipts were ratified or commits installed.
 
 This command stages two reviewed documents and a receipt only. Its neutral Action IDs are not yet supported by the existing live rehearsal-chain operator scripts. Applying the baseline requires that adapter and the governed Ask path. Real `SMOKE_DRY=1` review dispatch, first-attempt reviewer receipts and unattended V1 evidence remain separate integration work; this generator makes none of those claims and starts no Session.
+
+Every Plan Action must declare precise, checkable `acceptance_criteria`, including
+completed and non-current Actions. State the observable result and its verification
+method or evidence, with explicit thresholds where applicable. `docs sync` and
+Agent Ask settlement reject invalid criteria; use a Plan amendment Ask to correct
+them. Deterministic validation catches structural defects and known vague wording;
+independent review still evaluates coverage and proof.
+When adoption seeds a Plan, every Action receives either its supplied conditions,
+a condition derived from its expected Artifact, or a requirement for a recorded
+clarification answer. Missing product criteria remain an open question and do not
+authorize implementation.

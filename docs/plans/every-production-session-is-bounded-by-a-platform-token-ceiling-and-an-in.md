@@ -75,11 +75,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask probe-environment-inside-session
     clarification: clarified
     confidence: high
-    source: Agent Ask split-probe-environment-inside-session-2026-10-12
+    source: Agent Ask precise-criteria-split-probe-budget-20261012-r4
     why: "Session sandbox writable roots cannot be read offline, so only a probe inside the Session is truthful; the ceiling keeps it cheap."
     acceptance_criteria:
       - The host-worker side probe is no longer counted as evidence of Session capability.
-      - A passing probe adds a bounded, recorded token cost and a failing probe raises exactly one environment_wall blocker with its remedy.
+      - A passing probe records its configured numeric input-token budget and cached and uncached usage whose sum is no greater than that budget; the session-probe-wall fixture records 1,800 input tokens within a 5,000 token budget, and a failing probe raises exactly one environment_wall blocker naming its remedy.
       - Focused tests and pnpm fast-rehearsal pass.
     depends_on: [enforce-session-token-ceiling]
     split_into: [attach-the-session-probe-result-to-the-reconcile-receipt]
@@ -150,9 +150,9 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask attach-the-session-probe-result-to-the-reconcile-receipt
     clarification: clarified
     confidence: high
-    source: Agent Ask split-probe-environment-inside-session-2026-10-12
+    source: Agent Ask precise-criteria-split-probe-budget-20261012-r4
     acceptance_criteria:
-      - A fake provider with a read-only database is refused within the probe token budget and the probe JSON is attached to the reconcile receipt.
+      - Running tests/fast-rehearsal/session-probe-wall.test.ts with its 5,000 input-token fixture budget (cached plus uncached) refuses the fake provider's read-only workspace database with environment_wall and attaches the probe JSON to the reconcile receipt.
     depends_on: []
     decisions: []
     references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]

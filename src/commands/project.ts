@@ -325,7 +325,7 @@ export function runProjectPrepareCommand(options: {
       acceptanceCriteriaJson: JSON.stringify([
         "The planning Artifact defines ordered implementation phases and the smallest useful first build.",
         "The planning Artifact names repository impact, validation strategy, risks, open questions, and approval requirements.",
-        "The planning Artifact ends with one concrete implementation Action suitable for a coding agent."
+        "The planning Artifact contains one final implementation Action with a concrete next verb, expected Artifact, acceptance criteria and agent responsibility."
       ])
     });
     if (!workItem) {

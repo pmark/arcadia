@@ -308,11 +308,14 @@ rather than guessing.
 2. One Agent Ask (`intent: plan`) — amending an existing Plan via
    `target_ref`, or creating a new one — containing dependency-ordered
    Actions. Every Action needs id, desired_result/next_action,
-   objective, checkable acceptance criteria (`acceptance` on Ask children;
-   written as `acceptance_criteria` on the managed Action), dependencies, responsibility,
-   effort, and references to real files. Include the requirement-to-Action
-   and expected-proof links in the existing criteria/references when useful;
-   name any uncovered requirement as a gap rather than hiding it.
+   precise, objective and checkable acceptance criteria (`acceptance` on Ask
+   children; written as `acceptance_criteria` on the managed Action), dependencies,
+   responsibility, effort, and references to real files. Every criterion names
+   an observable result, its verification method/evidence, and explicit thresholds
+   with units where applicable; placeholders and subjective quality claims do not
+   qualify. Include the requirement-to-Action and expected-proof links in the
+   existing criteria/references when useful; name any uncovered requirement as a
+   gap rather than hiding it.
 3. Anything you found that should be an open Decision rather than an
    assumption baked into the plan.
 

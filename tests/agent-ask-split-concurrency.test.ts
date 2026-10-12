@@ -128,7 +128,7 @@ describe("Agent Ask split settlement under a concurrent dependency edit (Issue #
     staleReadState.active = true;
 
     const request = splitAsk("split-concurrent-cycle", headAfterConcurrentEdit)
-      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+      .replace('    acceptance:\n      - "The second slice proof exists."', '    acceptance:\n      - "The second slice proof exists."\n    dependencies:\n      - second');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-concurrent-cycle", disposition: "accepted"
@@ -176,7 +176,7 @@ describe("Agent Ask split settlement under a concurrent dependency edit (Issue #
     staleReadState.active = true;
 
     const request = splitAsk("split-concurrent-pointer", head)
-      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+      .replace('    acceptance:\n      - "The second slice proof exists."', '    acceptance:\n      - "The second slice proof exists."\n    dependencies:\n      - second');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-concurrent-pointer", disposition: "accepted"
@@ -216,7 +216,7 @@ function fixture(): { workspace: string; repo: string; head: string; planPath: s
     "  - id: first", "    title: First Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the first Action.",
     "    expected_artifact: First proof", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - First slice done.", "      - Second slice done.",
+    "    acceptance_criteria:", "      - The first slice proof exists.", "      - The second slice proof exists.",
     "    depends_on: []", "    decisions: []", "    references: []",
     "  - id: second", "    title: Second Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the second Action.",
@@ -259,12 +259,12 @@ function splitAsk(requestId: string, candidateRevision: string): string {
     "target_ref: action/first", "desired_result: Finish the first slice of the first Action",
     "rationale: The session could only finish half of the declared criteria.",
     `candidate_revision: ${candidateRevision}`,
-    "acceptance:", '  - "First slice done."',
-    "evidence:", '  - criterion: "First slice done."', "    status: met",
+    "acceptance:", '  - "The first slice proof exists."',
+    "evidence:", '  - criterion: "The first slice proof exists."', "    status: met",
     "actions:",
     "  - id: first-remainder",
     '    desired_result: "Finish the second slice of the first Action"',
     "    acceptance:",
-    '      - "Second slice done."'
+    '      - "The second slice proof exists."'
   ].join("\n");
 }
