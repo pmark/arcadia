@@ -238,7 +238,7 @@ describe("platform blocker controls (#1284)", () => {
   const clear = { kind: "environment_wall", label: "Clear environment stop", consequence: "Clears this stop only.", oneClick: true, actionKey: "alpha/act-1", href: null };
 
   it("renders the consequence and one pinned clear button, which sends the pin and nothing typed", () => {
-    const approval = blocker("environment_wall", { readOnly: false, blockerRemedy: clear });
+    const approval = blocker("environment_wall", { readOnly: true, blockerRemedy: clear });
     const html = renderToStaticMarkup(<TodoCard approval={approval} expanded={false} pendingId={null} onAct={() => undefined} />);
     expect(html).toContain("Clear environment stop…");
     expect(html).toContain("Clears this stop only.");

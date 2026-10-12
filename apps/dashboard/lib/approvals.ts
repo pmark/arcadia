@@ -273,7 +273,8 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
       ? "Deterministic — approving records the Decision; no execution starts."
       : reviewControl?.consequence ?? (blockerRemedy?.oneClick ? blockerRemedy.consequence : READ_ONLY_COST),
     createdAt: item.createdAt,
-    readOnly: !buildPacket && !reviewControl && !blockerRemedy?.oneClick,
+    // A blocker's pinned clear is rendered by its own control, never as a settle control, so the row stays read-only.
+    readOnly: !buildPacket && !reviewControl,
     blocking: item.blocking,
     staleReason: item.staleReason ?? null,
     answer: item.answer,

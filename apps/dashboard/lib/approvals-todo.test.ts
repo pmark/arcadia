@@ -76,7 +76,7 @@ describe("platform blocker remedies (#1284)", () => {
     const list = buildApprovals({ asks: [], decisions: [], todo: { items: [esc("environment_wall", "act-1"), esc("budget_exhausted", "act-2")], unavailable: [] } });
     for (const [kind, id] of [["environment_wall", "act-1"], ["budget_exhausted", "act-2"]]) {
       const found = list.approvals.find((a) => a.id === id)!;
-      expect(found.readOnly).toBe(false);
+      expect(found.readOnly).toBe(true);
       expect(found.blockerRemedy).toMatchObject({ kind, oneClick: true, actionKey: `alpha/${id}` });
     }
   });

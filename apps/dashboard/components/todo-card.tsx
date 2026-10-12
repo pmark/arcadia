@@ -131,7 +131,8 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
               {clearControl.label}…
             </button>
           )
-        ) : approval.readOnly ? null : approval.buildPacket ? (
+        ) : null}
+        {approval.readOnly ? null : approval.buildPacket ? (
           <>
             <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Approve", reviewAction: "approve" })} className={PRIMARY_BUTTON}>
               {pendingId === `${key}:Approve` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
