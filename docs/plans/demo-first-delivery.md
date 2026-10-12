@@ -131,7 +131,7 @@ actions:
       - A ready pull request with completed successful checks and an acceptable merge state follows the existing exact-revision independent review path unchanged.
       - Mutable pull-request evidence is revalidated immediately before the model call; a changed snapshot skips the model and is preserved as Needs follow-up by the existing evidence-bound QA path.
       - The CLI-response workspace-precedence test runs from an isolated temporary directory and cannot observe `.arcadia-workspace` created by another test file.
-      - START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional.
+      - "START_HERE.md states the token-efficient sequence: finish the Candidate, publish its QA plan, mark it ready, await CI, then invoke Arcadia QA once; `--rerun` remains exceptional."
       - Arcadia's checked-in Project documentation states the north-star development orchestration vision and records every excluded enhancement with an observable reactivation trigger.
       - This Action does not add automatic invocation, notifications, browser proof, local validation reruns, GitHub posting, repair, merge, deployment, or release automation.
     execution:

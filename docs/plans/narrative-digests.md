@@ -21,7 +21,7 @@ actions:
     source: Decision 0006
     acceptance_criteria:
       - Given a Project and a window (day/week/month), the composer gathers that Project's mission_logs, dispatch_events, and Decision activity strictly within the window -- nothing before it, nothing after.
-      - The gathered facts are handed to a local-preferred Intelligence job whose prompt instructs it to narrate, not invent: every claim in the output must trace to a gathered fact, and the job must not fabricate outcomes the data does not support.
+      - "The gathered facts are handed to a local-preferred Intelligence job whose prompt instructs it to narrate, not invent: every claim in the output must trace to a gathered fact, and the job must not fabricate outcomes the data does not support."
       - The result is stored as a narrative_digest Artifact scoped to that Project and window, and is never written back into the Project's own repository.
       - Re-running for a (Project, window) that already has a stored digest updates it in place, keyed on the pair, rather than creating a duplicate.
       - A window with no activity at all produces an honest "nothing happened" digest, not a fabricated one.

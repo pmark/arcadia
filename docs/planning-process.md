@@ -236,7 +236,9 @@ rather than guessing.
 2. One Agent Ask (`intent: plan`) — amending an existing Plan via
    `target_ref`, or creating a new one — containing dependency-ordered
    Actions. Every Action needs id, desired_result/next_action,
-   acceptance_criteria (objective, checkable), dependencies, responsibility,
+   acceptance_criteria (observable result, verification method/evidence, and explicit
+   thresholds with units where applicable; no placeholders or subjective quality
+   claims), dependencies, responsibility,
    effort, and references to real files.
 3. Anything you found that should be an open Decision rather than an
    assumption baked into the plan.

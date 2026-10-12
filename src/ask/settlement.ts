@@ -1,3 +1,4 @@
+import { validateAcceptanceCriteria } from "../docs/acceptanceCriteria.js";
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -374,6 +375,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposal.normalized.acceptance.length === 0) {
             throw validationError("Accepted Action settlement requires at least one observable acceptance criterion in the proposal.");
           }
+          assertCheckableAcceptance(proposal.normalized.acceptance);
           const dependencies = normalizeDependencies(proposal.normalized.dependencies, project.slug);
           const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
           if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
@@ -413,6 +415,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           // A child carrying its own `target_ref` amends that existing Action
           // instead of creating a duplicate with an id derived from its
           // desired_result -- matching what `plan` intent amendments already
@@ -675,6 +678,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             const existing = action.targetRef !== null;
             if (existing && !existingIds.has(id)) throw validationError("Agent Ask Plan Action amendment target was not found.", { targetRef: action.targetRef });
             if (action.acceptance.length === 0) throw validationError("Every created or amended Plan Action requires at least one observable acceptance criterion.", { action: id });
+            assertCheckableAcceptance(action.acceptance);
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
             const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
             if (unknownDependencies.length > 0) {
@@ -778,6 +782,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every draft Plan Action requires at least one observable acceptance criterion.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           const planSlug = uniquePlanSlug(discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug), slugify(proposal.normalized.desiredResult));
           const targetPath = path.join(repoRoot, "docs", "plans", `${planSlug}.md`);
           const takenIds = new Set<string>();
@@ -1113,6 +1118,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (proposedActions.some((remainderAction) => remainderAction.acceptance.length === 0)) {
           throw validationError("Every remainder Action requires at least one observable acceptance criterion.");
         }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
         // Placing the remainder in the queue needs it on the base branch, the
         // same constraint `action` intent's queue placement enforces; the
         // generic `arrangeQueue` guard below refuses this from a candidate
@@ -3135,4 +3141,11 @@ function today(): string {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function assertCheckableAcceptance(criteria: string[]): void {
+  const problems = validateAcceptanceCriteria(criteria);
+  if (problems.length > 0) {
+    throw validationError("Acceptance criteria must be precise and checkable.", { problems });
+  }
 }

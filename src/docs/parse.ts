@@ -1,3 +1,4 @@
+import { validateAcceptanceCriteria } from "./acceptanceCriteria.js";
 import { parse as parseYaml } from "yaml";
 import {
   CLARIFICATION_CONFIDENCE_LEVELS,
@@ -441,11 +442,12 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       return;
     }
 
-    // The continuation contract's executable-action test, enforced where it
-    // matters most. Applied only to the current action: requiring criteria on
-    // every clarified action would retroactively invalidate completed history,
-    // while the objective a coding agent is about to start must say what
-    // finished means before anyone starts it.
+    // Every Action carries reviewable conditions, including history and blocked work.
+    // Do not silently coerce numbers or discard malformed entries as stringArray does.
+    for (const problem of validateAcceptanceCriteria(value.acceptance_criteria)) {
+      const suffix = problem.index === null ? "" : `[${problem.index}]`;
+      problems.add(`${field}.acceptance_criteria${suffix}`, problem.message);
+    }
     const acceptanceCriteria = stringArray(value.acceptance_criteria);
     // `execution` is either the vendor-neutral requirement mapping or, as a
     // plain string, the Action's declared route. A string never reaches the
@@ -472,12 +474,6 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       problems.add(`${field}.${issue.field}`, issue.message);
     }
     if (id && id === currentAction) {
-      if (clarification === "clarified" && acceptanceCriteria.length === 0) {
-        problems.add(
-          `${field}.acceptance_criteria`,
-          "The current action must define objective acceptance criteria before it can be dispatched."
-        );
-      }
       if (!clarification) {
         problems.add(
           `${field}.clarification`,

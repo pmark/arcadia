@@ -51,7 +51,7 @@ actions:
     confidence: high
     source: Decision 0016 and operator direction on 2026-08-15
     acceptance_criteria:
-      - The projection exposes four distinct horizons: Past, Now, Next, and Later, at portfolio scope or filtered to one Project.
+      - "The projection exposes four distinct horizons: Past, Now, Next, and Later, at portfolio scope or filtered to one Project."
       - Past uses observed timestamps from completed Actions, Decisions, Runs, Artifacts, and Logs; unknown timestamps remain unknown rather than inferred.
       - Now identifies the authoritative current Action, active Runs, open Decisions, and blocked Actions without confusing merely ready work with current work.
       - Next preserves managed-plan pointer, dependency, and Decision order without inventing calendar dates or automatic priority.

@@ -187,10 +187,19 @@ decisions: []
   way. Leave it `[]` rather than inventing edges — the graph is only useful if
   it means something.
 
-- **`acceptance_criteria`** are required on the current Action and are quoted
-  **verbatim to the coding agent**, ahead of Arcadia's generated guardrails.
-  Write them as the conditions you would actually check at review, not as
-  restatements of the title.
+- **`acceptance_criteria`** are mandatory on **every Plan Action**, including
+  non-current, completed, deferred, blocked and question-open Actions. They are
+  quoted **verbatim to the coding agent**, ahead of generated guardrails.
+  State the observable result, verification method or evidence, and numeric
+  thresholds with units where limits matter. Name the input and expected
+  refusal for negative cases. Do not restate the title, prescribe implementation,
+  leave placeholders, or substitute subjective quality claims for pass/fail
+  conditions. An unresolved requirement remains an explicit question; its
+  criteria may describe the required Decision record without answering it.
+  Parsing and settlement reject missing, malformed, duplicate, placeholder,
+  subjective-only or unspecified-token-limit criteria with field-level remedies.
+  These deterministic checks are a minimum: independent review must still judge
+  whether the conditions cover the Action and whether the evidence proves them.
 
 - **`why`** is optional: one sentence on why this Action matters. `docs sync`
   mirrors it onto the Action's work item, and `arcadia path`, the dashboard

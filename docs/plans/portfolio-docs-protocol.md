@@ -657,10 +657,11 @@ Rules:
 - `current_action` must name an action id in this plan. A dangling pointer
   fails validation: leaving an agent with no objective is worse than leaving it
   with no pointer.
-- The **current action** must carry `acceptance_criteria` when it is
-  `clarified`. Other actions may omit them — requiring criteria on completed
-  history would invalidate it retroactively — but work about to be started must
-  say what finished means before anyone starts it.
+- **Every Plan Action** must carry a non-empty `acceptance_criteria` list,
+  regardless of status, clarification or pointer. Each condition names an
+  observable result and a verification method or evidence, with explicit limits
+  where relevant. Parsing and settlement reject missing or malformed criteria;
+  historical backfills specify evaluation conditions without claiming new proof.
 - Only the plan named by `active_plan` may declare `current_action`. A second
   plan declaring one is a competing objective and is reported as a blocker.
 - An action may name its own `milestone:` when a plan spans more than one
@@ -797,10 +798,12 @@ should be current, do not guess: write the candidates into a decision file with
 `status: open` and leave `current_action` pointing at the action that is
 blocked on it.
 
-**Acceptance criteria.** The action named by `current_action` must carry
-`acceptance_criteria` — a list of objective, checkable conditions — whenever it
-is `clarified`. "Works correctly" is not a criterion; "the migration runs twice
-without duplicating a column" is. Other actions may omit them. An action may
+**Acceptance criteria.** Every Plan Action must carry `acceptance_criteria`,
+a non-empty list of precise, checkable conditions, including completed and
+question-open Actions. State the observable result, verification method or
+evidence, and thresholds with units where relevant. "Works correctly" is not a
+criterion; "running the migration twice leaves exactly one column named x" is.
+Unresolved requirements stay explicit questions, not invented answers. An Action may
 also list `decisions: ["0007"]` for decisions that must be answered before it
 starts, and `references:` for paths a worker needs to read.
 

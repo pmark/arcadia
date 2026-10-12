@@ -177,7 +177,7 @@ describe("dispatch resolution", () => {
 
     expect(resolution.context).toBeNull();
     expect(
-      resolution.blockers.some((entry) => entry.message.includes("objective acceptance criteria"))
+      resolution.blockers.some((entry) => entry.message.includes("precise, checkable conditions"))
     ).toBe(true);
   });
 
