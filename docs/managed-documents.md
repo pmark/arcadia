@@ -199,6 +199,11 @@ decisions: []
   Parsing and settlement reject missing, malformed, duplicate, placeholder,
   subjective-only, assertion-free or unspecified-token-limit criteria with
   field-level remedies.
+  The bounded assertion grammar accepts inspectable active/passive predicates
+  (for example exists, returns, rejects, recorded or written), named field/value
+  enumerations, and explicit numeric comparisons. Bare copulas or modals such as
+  "is" or "will" do not satisfy it. Rephrase an unsupported condition as a named
+  command, fixture or Artifact check and its expected result.
   These deterministic checks are a minimum: independent review must still judge
   whether the conditions cover the Action and whether the evidence proves them.
 
