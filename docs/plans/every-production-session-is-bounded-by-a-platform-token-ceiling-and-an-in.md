@@ -30,10 +30,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
   - id: record-session-ledger
     title: Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.
+    next_action: Completed via Agent Ask complete-record-session-ledger-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask record-session-ledger
     clarification: clarified
     confidence: high
@@ -144,7 +144,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1284", "docs/reports/production-simulation-living-notes.md"]
 questions: []
 decisions: []
-current_action: record-session-ledger
+current_action: enforce-session-token-ceiling
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---

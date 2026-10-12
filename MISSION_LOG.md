@@ -2379,3 +2379,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The scenario exists in the fast-rehearsal set, is deterministic and runs in under 30 seconds, and on a tree without the environment-wall stop it fails."; "scripts/fast-rehearsal.mjs prints the report path and exits non-zero when report.json is missing or unparsable."; "The scenario asserts exactly one named environment blocker, no second launch and a recorded per-attempt token record."; "Focused tests for the scenario builder pass and pnpm fast-rehearsal passes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-replay-environment-wall-session-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/record-session-ledger
+
+- **Did:** Completed Action arcadia/record-session-ledger from accepted evidence (Candidate 917b38e1f352c2186f0d6d5d3aadd40edb55fccd).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema requires session_id, role, model, effort, action_id, pr, tokens_in_uncached, tokens_in_cached, tokens_out, wall_min, attempts, review_rounds, blocking_findings, operator_touches, host_touches, frictions and outcome with a stop_reason."; "The validator rejects a row with a missing or mistyped field and the CI job runs it on every pull request that touches the ledger."; "The ledger has four backfilled rows for A12, A3, A5 and A6 taken from the living notes, and the living notes link to the ledger."; "Focused validator tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-record-session-ledger-2026-10-12).
