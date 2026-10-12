@@ -223,6 +223,14 @@ export interface ProductionScope {
    * A per-launch `agent_sessions.time_limit_ms` override wins over it.
    */
   sessionTimeLimitMs?: number;
+  /**
+   * Per-Session ceiling on input tokens (uncached + cached) for each managed
+   * Session launched under this scope. Absent means the Session's tier default
+   * (`SESSION_INPUT_TOKEN_CEILING_DEFAULTS`). This policy record is the ONLY
+   * source of a non-default value: no prompt, brief or Action text reads it.
+   * See `src/production/sessionTokenCeiling.ts`.
+   */
+  sessionInputTokenCeiling?: number;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -349,7 +357,9 @@ const REVIEWED_SCOPE_FIELDS = [
   // never added by Off, reactivation or the dashboard toggle.
   "remotePreservation",
   // A reviewed bound on how long a Session may run; carried like the others.
-  "sessionTimeLimitMs"
+  "sessionTimeLimitMs",
+  // A reviewed per-Session input-token ceiling; carried like the time limit.
+  "sessionInputTokenCeiling"
 ] as const satisfies ReadonlyArray<keyof ProductionScope>;
 
 /** The names of scope fields an Off dropped (grants, exceptions, delegation expiry). */
@@ -607,6 +617,15 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
     }
     normalized.sessionTimeLimitMs = input.sessionTimeLimitMs;
   }
+  if (input.sessionInputTokenCeiling !== undefined) {
+    if (!Number.isSafeInteger(input.sessionInputTokenCeiling) || input.sessionInputTokenCeiling < 1) {
+      throw validationError("The Session input-token ceiling must be a positive whole number of tokens.", {
+        field: "sessionInputTokenCeiling",
+        value: input.sessionInputTokenCeiling
+      });
+    }
+    normalized.sessionInputTokenCeiling = input.sessionInputTokenCeiling;
+  }
   return normalized;
 }
 
@@ -741,7 +760,9 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // And for the packet-approval expiry.
     ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {}),
     // And for the Session time limit.
-    ...(scope.sessionTimeLimitMs ? { sessionTimeLimitMs: scope.sessionTimeLimitMs } : {})
+    ...(scope.sessionTimeLimitMs ? { sessionTimeLimitMs: scope.sessionTimeLimitMs } : {}),
+    // And for the Session input-token ceiling.
+    ...(scope.sessionInputTokenCeiling ? { sessionInputTokenCeiling: scope.sessionInputTokenCeiling } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
