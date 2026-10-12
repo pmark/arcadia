@@ -125,7 +125,7 @@
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "235c13f1d09bee3bf4f38549d317d42125904cd1225396e96cc8eaf493e62f16"
+      "sha256": "aa6e1e5f1a807309d14a4ee6728bffe844759d35e5c23cb7f203dcc596616693"
     }
   ]
 }
