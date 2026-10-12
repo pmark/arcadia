@@ -304,6 +304,26 @@ describe("runManagedProductionTick", () => {
       db.prepare("SELECT COUNT(*) AS n FROM production_repair_attempts").get())).toEqual({ n: 0 });
   });
 
+  it("names a launch-side capability wall as one environment_wall blocker, not a silent per-tick refusal (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      // The tick's own preflight passes no profile sandbox; only the launch does.
+      sessionCapability: (_workspace: string, sandbox?: string | null) => sandbox === undefined ? []
+        : [{ wallClass: "workspace_write" as const, evidence: "read-only sandbox", remedy: "Use a workspace-write profile." }]
+    }));
+    expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    tick();
+    expect(tmux.launches).toHaveLength(0);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "environment_wall", remedy: expect.stringContaining("Use a workspace-write profile.") });
+  });
+
   it("replays a no-diff Session that hit workspace-write and sandbox refusals: one named blocker, no second launch (A12)", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

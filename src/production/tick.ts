@@ -2072,6 +2072,9 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+      // The launch re-runs the same preflight with the selected profile's
+      // sandbox, which this tick's profile-less preflight cannot see.
+      sessionCapability: input.options.sessionCapability,
       // Clear a stale sign-in blocker the moment sign-in is confirmed, not
       // only on full launch success: a later, unrelated launch failure (a
       // repair-worthy defect, counted against the budget) must not leave
@@ -2173,7 +2176,13 @@ function attemptProjectLaunch(
       // metadata clears it, so it escalates the same way rather than
       // retrying the same refusal forever (the fate `planning_required` was
       // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
-      const escalationKind = rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
+      // A launch-side capability wall (assertSessionCapability, e.g. a read-only
+      // profile sandbox the tick preflight cannot see) is one named blocker, not
+      // a silent per-tick refusal.
+      const environmentWall = rawCode === "session_environment_wall";
+      const escalationKind = environmentWall
+        ? ENVIRONMENT_WALL_ESCALATION_KIND
+        : rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
         : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED
@@ -2181,7 +2190,9 @@ function attemptProjectLaunch(
             ? resolvedLifecycleKind
             : null;
       if (escalationKind) {
-        const remedy = rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
+        const remedy = environmentWall
+          ? typeof error.details?.remedy === "string" ? error.details.remedy : null
+          : rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
           ? developmentLineageRemedy(rawCode, error.details)
           : escalationKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED_REMEDY
@@ -2270,7 +2281,7 @@ export function recordSessionExitAccounting(
   const startRevision = input.session.launch_revision ?? input.session.base_revision;
   const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
   if (!noDiff) return;
-  const named = describeEnvironmentWalls(actionKey, walls, "exit", tokens?.inputTokens ?? null);
+  const named = describeEnvironmentWalls(actionKey, walls, "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
   const at = input.now.toISOString();
   const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   db.prepare(

@@ -146,8 +146,17 @@ export function sessionTokensFromLog(log: string | null): { inputTokens: number;
       const event = JSON.parse(line) as { type?: unknown; usage?: Record<string, unknown> };
       if (!event.usage || (event.type !== "result" && event.type !== "turn.completed")) continue;
       seen = true;
-      input += num(event.usage.input_tokens);
-      cached += num(event.usage.cache_creation_input_tokens) + num(event.usage.cache_read_input_tokens) + num(event.usage.cached_input_tokens);
+      if (event.type === "turn.completed") {
+        // Codex: input_tokens is the TOTAL and cached_input_tokens a subset of it.
+        const total = num(event.usage.input_tokens);
+        const subset = Math.min(num(event.usage.cached_input_tokens), total);
+        input += total - subset;
+        cached += subset;
+      } else {
+        // Claude `result`: input_tokens is uncached; the cache fields are separate and additive.
+        input += num(event.usage.input_tokens);
+        cached += num(event.usage.cache_creation_input_tokens) + num(event.usage.cache_read_input_tokens);
+      }
       output += num(event.usage.output_tokens);
     } catch { /* not a JSON event line */ }
   }
