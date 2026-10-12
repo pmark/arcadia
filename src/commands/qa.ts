@@ -1,9 +1,15 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { createReviewItem, getProjectBySlug, updateReviewItemStatus } from "../db/repositories.js";
+import { createReviewItem, getProjectBySlug, listReviewItems, updateReviewItemStatus } from "../db/repositories.js";
 import type { ReviewItemSummary } from "../domain/types.js";
+import { buildModelEffectivenessReport, type ModelEffectivenessReport } from "../reports/modelEffectiveness.js";
+import { parsePersistedQaContext, type PrReviewRole } from "../qa/prReview.js";
+import { listMonitoredProjects } from "./workMonitor.js";
+import { validateSessionLedger, type SessionLedgerRow } from "../reports/sessionLedger.js";
 import {
   freshnessSummary,
   loadQaTargetsFile,
@@ -74,6 +80,76 @@ export interface QaCandidate {
 
 export interface QaListCommandData { candidates: QaCandidate[]; }
 export interface QaRecordCommandData { candidate: QaCandidate; decision: QaDecision; review: ReviewItemSummary; }
+export interface QaEffectivenessCommandData { report: ModelEffectivenessReport; sourceWarnings: string[]; }
+
+/** Read-only effectiveness projection over existing QA/code-review Decisions; invokes no model. */
+export function runQaEffectivenessCommand(options: { workspace: string }): CommandSuccess<QaEffectivenessCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const sourceWarnings: string[] = [];
+  const records = withDatabase(workspacePath, db => {
+    const repositoryByProject = new Map(listMonitoredProjects(db, { includeInactive: true }).map(project => [project.id, project.repositoryPath]));
+    const ledgers = new Map<string, SessionLedgerRow[]>();
+    const ledgerFor = (projectId: string): SessionLedgerRow[] => {
+      if (ledgers.has(projectId)) return ledgers.get(projectId)!;
+      const repositoryPath = repositoryByProject.get(projectId);
+      const ledgerPath = repositoryPath ? path.join(repositoryPath, "docs", "reports", "session-ledger.jsonl") : null;
+      if (!ledgerPath || !existsSync(ledgerPath)) return ledgers.set(projectId, []).get(projectId)!;
+      const text = readFileSync(ledgerPath, "utf8");
+      const ledgerErrors = validateSessionLedger(text);
+      if (ledgerErrors.length > 0) {
+        sourceWarnings.push(`${ledgerPath}: ignored invalid session ledger (${ledgerErrors.length} validation error${ledgerErrors.length === 1 ? "" : "s"})`);
+        return ledgers.set(projectId, []).get(projectId)!;
+      }
+      const rows = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line) as SessionLedgerRow);
+      ledgers.set(projectId, rows);
+      return rows;
+    };
+    return listReviewItems(db, "all").flatMap(item => {
+      const role: PrReviewRole | null = item.resolved_intent === "IndependentPullRequestQa"
+        ? "qa"
+        : item.resolved_intent === "IndependentPullRequestCodeReview" ? "code-review" : null;
+      if (!role) return [];
+      const context = parsePersistedQaContext(item.context_json, role);
+      if (!context) return [];
+      const attemptRequestId = context.effectiveness?.attemptRequestId ?? null;
+      const linkedRows = attemptRequestId === null ? [] : ledgerFor(context.candidate.projectId).filter(row =>
+        row.review_attempt_request_id === attemptRequestId && row.candidate_head === context.candidate.headSha);
+      return [{
+        id: item.id,
+        role,
+        context,
+        observedTaskClass: linkedRows.find(row => row.task_class)?.task_class ?? null,
+        observedDifficulty: linkedRows.find(row => row.difficulty)?.difficulty ?? null,
+        linkedResources: linkedRows.filter(row => row.resource_scope === "lineage-additional").map(row => ({
+          id: row.session_id,
+          attemptRequestId: row.review_attempt_request_id!,
+          inputTokens: row.tokens_in_uncached,
+          cachedInputTokens: row.tokens_in_cached,
+          outputTokens: row.tokens_out,
+          elapsedMs: row.wall_min === null ? null : row.wall_min * 60_000
+        }))
+      }];
+    });
+  });
+  return createSuccess({ command: "qa.effectiveness", workspace: workspacePath, data: { report: buildModelEffectivenessReport(records), sourceWarnings } });
+}
+
+export function renderQaEffectivenessSuccess(response: CommandSuccess<QaEffectivenessCommandData>): string[] {
+  const { report, sourceWarnings } = response.data;
+  if (report.groups.length === 0) return ["No valid QA or code-review receipts were found."];
+  return [
+    `Review effectiveness: ${report.deduplicatedRecords} unique receipt${report.deduplicatedRecords === 1 ? "" : "s"} (${report.records - report.deduplicatedRecords} replay duplicate${report.records - report.deduplicatedRecords === 1 ? "" : "s"} ignored).`,
+    ...report.groups.map(group => {
+      const task = group.taskClass ?? "task class unknown";
+      const effort = group.effectiveEffort ?? "effort unknown";
+      const usage = `${group.reviewerResources.inputTokens}+${group.reviewerResources.cachedInputTokens} input, ${group.reviewerResources.outputTokens} output tokens (complete ${group.reviewerResources.samplesWithCompleteUsage}/${group.sampleSize})`;
+      const billed = group.billedCostKnown ? `$${group.actualBilledCostUsd?.toFixed(4)} actual billed` : "actual billed cost unknown";
+      const estimated = group.estimatedCostKnown ? `$${group.estimatedCostUsd?.toFixed(4)} estimated` : "pricing estimate unknown";
+      return `${group.role} / ${task} / ${group.provider}:${group.model} / ${effort}: n=${group.sampleSize}, pass=${group.passes}, judgment-fail=${group.judgmentFailures}, environment-fail=${group.environmentFailures}, reviewer usage ${usage}; ${billed}; ${estimated}; task-class coverage ${group.taskClassKnown}/${group.sampleSize}.`;
+    }),
+    ...sourceWarnings.map(warning => `Source warning: ${warning}`)
+  ];
+}
 
 /**
  * Candidates, with the three freshness fields computed rather than declared.

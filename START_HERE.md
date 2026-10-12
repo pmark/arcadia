@@ -541,6 +541,28 @@ under `artifacts/code-review/pull-requests/`. For a managed candidate it records
 the exact-head code-review verdict the worker needs before it integrates (see
 the managed-production section below).
 
+Read the model-and-effort effectiveness projection without running another
+reviewer:
+
+```sh
+pnpm arcadia qa effectiveness
+```
+
+The report groups only receipts with the same explicitly observed task class,
+difficulty, review role, and rubric version. Unknown class or difficulty stays
+visible as unknown rather than being inferred from the rubric. It separates
+configured from runtime-effective effort, reviewer-only usage from additional
+resource receipts explicitly linked to the exact review attempt and head, and
+reviewer environment failures from judgment failures. Cached receipt replay is
+deduplicated by attempt identity. Findings count as confirmed, rejected, or
+duplicate only when a separate evidence source records that validation; a Pass
+or author acceptance is not ground truth and no escaped-defect record is not
+reported as zero misses. Finding disposition (Required correction, Worthwhile
+improvement, or Follow-up opportunity) stays separate from its resolution state
+and remains unknown when the receipt did not observe it. Missing tokens, time, billed cost, pricing, and
+included-capacity consumption remain null/unknown; the command makes no model
+call and changes no routing policy.
+
 Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
 evidence for the operator's Decision, not that Decision's external effect.

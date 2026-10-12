@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -33,6 +34,8 @@ import { getSessionRoleAttempt, latestRoleAttempt, type IndependentVerdictRole }
 import { readProductionPolicySafely } from "../production/policy.js";
 import { normalizeStatusCheck, type NormalizedStatusCheck, type RawStatusCheck } from "../workMonitoring/pullRequests.js";
 import { classifyPatchApplicability, evaluateNotApplicableClaims } from "./patchApplicability.js";
+import { sessionTokensFromLog } from "../production/sessionCapability.js";
+import type { ReviewEffectivenessTelemetry } from "../reports/modelEffectiveness.js";
 
 export type QaPrVerdict = "pass" | "fail" | "needs-follow-up";
 /**
@@ -171,9 +174,21 @@ export interface QaReviewerProvenance {
   profile: string;
   provider: string;
   model: string;
+  modelSource?: string | null;
   mappingId: string;
   bindingId: string;
   exitStatus: number | null;
+  configuredEffort?: string | null;
+  effectiveEffort?: string | null;
+  configuredEffortSource?: string | null;
+  effectiveEffortSource?: string | null;
+  usage?: { inputTokens: number; cachedInputTokens: number; outputTokens: number } | null;
+  usageSource?: string | null;
+  modelCallElapsedMs?: number | null;
+  actualBilledCostUsd?: number | null;
+  estimatedCostUsd?: number | null;
+  pricingAsOf?: string | null;
+  includedCapacityConsumption?: number | null;
 }
 
 export interface QaPrReviewOptions {
@@ -263,6 +278,10 @@ export interface PersistedQaContext {
   reviewerUnavailable?: string | null;
   /** See `QaPrReviewCommandData.varianceReason`; absent unless the verdict is variance, and in receipts written before it existed. */
   varianceReason?: string | null;
+  /** Absent on legacy receipts; present on newly observed fresh invocations. */
+  role?: PrReviewRole;
+  /** Evidence-only analytics. Unknown values are null and cached replay creates no new context. */
+  effectiveness?: ReviewEffectivenessTelemetry;
 }
 
 export interface QaSandboxProof {
@@ -412,16 +431,24 @@ export function runQaPrReviewCommand(
     const session = lineageBoundSessionForBranch(db, { repositoryPath: project.repositoryPath, branch: pullRequest.headRefName });
     if (!session) return null;
     const readiness = independentVerdictReadiness(db, { session, repoRoot: project.repositoryPath });
+    let previous: ReturnType<typeof latestRoleAttempt> = null;
     if (readiness.ready) {
       assertVerdictHead(readiness.binding, candidate.headSha);
       assertManagedProductionOn(db, profile);
+      previous = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, profile.role);
     }
     const begun = beginIndependentVerdict(db, {
       role: profile.role, session, repoRoot: project.repositoryPath,
       requestId: `${profile.role}-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
       actorId: reviewerActorId, executionCwd: process.cwd(), reviewerBindingId: reviewer.bindingId, retryAuthorized: options.rerun === true, now: now()
     });
-    return { session, requestId: begun.attempt.request_id };
+    return {
+      session,
+      requestId: begun.attempt.request_id,
+      attemptId: begun.attempt.id,
+      ordinal: begun.attempt.ordinal,
+      parentRequestId: previous?.request_id ?? null,
+    };
   });
   const sandboxProof = runQaSandboxPreflight({
     command: reviewer.profile.command,
@@ -445,7 +472,9 @@ export function runQaPrReviewCommand(
     : pullRequest;
   const preReviewFingerprint = preReviewPullRequest ? fingerprintPullRequestEvidence(preReviewPullRequest) : null;
   const evidenceCurrentBeforeReview = preReviewFingerprint === evidenceFingerprint;
-  const reviewRun = sandboxProof.passed && evidenceCurrentBeforeReview
+  const reviewerInvoked = sandboxProof.passed && evidenceCurrentBeforeReview;
+  const reviewStartedAtMs = reviewerInvoked ? performance.now() : null;
+  const reviewRun = reviewerInvoked
     ? runCommand({
         command: reviewer.profile.command,
         args: [
@@ -481,6 +510,7 @@ export function runQaPrReviewCommand(
           : `Reviewer sandbox preflight failed: ${sandboxProof.output}`,
         error: sandboxProof.passed ? "stale pull-request evidence" : sandboxProof.error
       };
+  const modelCallElapsedMs = reviewStartedAtMs === null ? null : Math.max(0, Math.round(performance.now() - reviewStartedAtMs));
   writeFileSync(
     executorOutputPath,
     [reviewRun.stdout, reviewRun.stderr].filter(Boolean).join("\n"),
@@ -527,9 +557,50 @@ export function runQaPrReviewCommand(
     profile: reviewer.profile.name,
     provider: reviewer.provider,
     model: reviewer.model,
+    modelSource: `provider binding ${reviewer.bindingId} --model launch argument`,
     mappingId: reviewer.mappingId,
     bindingId: reviewer.bindingId,
-    exitStatus: reviewRun.status
+    exitStatus: reviewRun.status,
+    configuredEffort: reviewer.effort,
+    effectiveEffort: codexReasoningEffort(reviewer.effort),
+    configuredEffortSource: `provider binding ${reviewer.bindingId}`,
+    effectiveEffortSource: "codex model_reasoning_effort launch argument",
+    usage: reviewerInvoked ? sessionTokensFromLog([reviewRun.stdout, reviewRun.stderr].filter(Boolean).join("\n")) : null,
+    usageSource: reviewerInvoked ? "provider reviewer-events JSONL" : null,
+    modelCallElapsedMs,
+    actualBilledCostUsd: null,
+    estimatedCostUsd: null,
+    pricingAsOf: null,
+    includedCapacityConsumption: null
+  };
+  const effectiveness: ReviewEffectivenessTelemetry = {
+    schemaVersion: 1,
+    role: profile.role,
+    projectId: candidate.projectId,
+    projectSlug: lineage?.session.project_slug ?? null,
+    actionId: lineage?.session.action_id ?? null,
+    taskClass: null,
+    difficulty: null,
+    candidateHead: candidate.headSha,
+    rubricVersion: createHash("sha256").update(JSON.stringify(profile.criteria)).digest("hex"),
+    attemptId: lineage?.attemptId ?? null,
+    attemptRequestId: lineage?.requestId ?? null,
+    parentAttemptRequestId: lineage?.parentRequestId ?? null,
+    attemptOrdinal: lineage?.ordinal ?? null,
+    evidenceSource: toWorkspaceRelativePath(workspacePath, executorOutputPath),
+    invocation: "fresh",
+    findingEvidence: findings.map((finding, findingIndex) => ({
+      findingIndex,
+      severity: finding.severity,
+      disposition: null,
+      resolutionState: "open",
+      validationOutcome: "unresolved",
+      validationEvidence: null,
+      repairHead: null,
+      repairEvidence: null
+    })),
+    escapedDefects: null,
+    linkedResourceReceipts: []
   };
   writeFileSync(reportPath, renderQaReport({ label: profile.label, candidate, verdict, summary, findings, checks, residualRisks, provenance }), "utf8");
   writeFileSync(metadataPath, `${JSON.stringify({
@@ -543,6 +614,7 @@ export function runQaPrReviewCommand(
     patchSha256: sha256File(patchPath),
     sandboxProof,
     reviewer: provenance,
+    effectiveness,
     reviewerError: parsedModel.error,
     artifacts: [evidencePath, patchPath, schemaPath, promptPath, modelOutputPath, executorOutputPath, sandboxProofPath, reportPath]
       .map((value) => toWorkspaceRelativePath(workspacePath, value))
@@ -567,6 +639,7 @@ export function runQaPrReviewCommand(
     metadataPath,
     evidenceFingerprint,
     receiptFiles: requiredFiles,
+    effectiveness,
     lineageRequestId: lineage?.requestId ?? null,
     reviewerUnavailable,
     varianceReason
@@ -1451,6 +1524,7 @@ function persistQaResult(
     checks: QaPrCheck[];
     residualRisks: string[];
     reviewer: QaReviewerProvenance;
+    effectiveness: ReviewEffectivenessTelemetry;
     reportPath: string;
     evidencePath: string;
     metadataPath: string;
@@ -1489,6 +1563,8 @@ function persistQaResult(
         checks: input.checks,
         residualRisks: input.residualRisks,
         reviewer: input.reviewer,
+        role: input.profile.role,
+        effectiveness: input.effectiveness,
         reportPath: toWorkspaceRelativePath(input.workspace, input.reportPath),
         evidencePath: toWorkspaceRelativePath(input.workspace, input.evidencePath),
         metadataPath: toWorkspaceRelativePath(input.workspace, input.metadataPath),
@@ -1733,16 +1809,22 @@ export function parsePersistedQaContext(value: string | null, role: PrReviewRole
     const lineageKeyed = context !== null && typeof context === "object" && "lineageRequestId" in context;
     const unavailableKeyed = context !== null && typeof context === "object" && "reviewerUnavailable" in context;
     const varianceKeyed = context !== null && typeof context === "object" && "varianceReason" in context;
+    const roleKeyed = context !== null && typeof context === "object" && "role" in context;
+    const effectivenessKeyed = context !== null && typeof context === "object" && "effectiveness" in context;
     if (!isRecordWithExactKeys(context, [
       "schemaVersion", "candidate", "verdict", "summary", "findings", "checks", "residualRisks",
       "reviewer", "reportPath", "evidencePath", "metadataPath", "evidenceFingerprint", "receiptFiles",
       ...(lineageKeyed ? ["lineageRequestId"] : []),
       ...(unavailableKeyed ? ["reviewerUnavailable"] : []),
-      ...(varianceKeyed ? ["varianceReason"] : [])
+      ...(varianceKeyed ? ["varianceReason"] : []),
+      ...(roleKeyed ? ["role"] : []),
+      ...(effectivenessKeyed ? ["effectiveness"] : [])
     ])) return null;
     if (lineageKeyed && context.lineageRequestId !== null && !isNonEmptyString(context.lineageRequestId)) return null;
     if (unavailableKeyed && !isNonEmptyString(context.reviewerUnavailable)) return null;
     if (varianceKeyed && !isNonEmptyString(context.varianceReason)) return null;
+    if (roleKeyed && context.role !== role) return null;
+    if (effectivenessKeyed && !isReviewEffectivenessTelemetry(context.effectiveness, role)) return null;
     if (
       context.schemaVersion !== 2 ||
       !isQaCandidate(context.candidate) ||
@@ -1799,9 +1881,53 @@ function isQaCheck(value: unknown, allowsNotApplicable: boolean): value is QaPrC
 }
 
 function isQaReviewerProvenance(value: unknown): value is QaReviewerProvenance {
-  return isRecordWithExactKeys(value, ["profile", "provider", "model", "mappingId", "bindingId", "exitStatus"]) &&
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const extended = "configuredEffort" in value;
+  if (!isRecordWithExactKeys(value, ["profile", "provider", "model", ...(extended ? ["modelSource"] : []), "mappingId", "bindingId", "exitStatus",
+    ...(extended ? ["configuredEffort", "effectiveEffort", "configuredEffortSource", "effectiveEffortSource", "usage", "usageSource", "modelCallElapsedMs",
+      "actualBilledCostUsd", "estimatedCostUsd", "pricingAsOf", "includedCapacityConsumption"] : [])])) return false;
+  const base =
     [value.profile, value.provider, value.model, value.mappingId, value.bindingId].every(isNonEmptyString) &&
     (value.exitStatus === null || Number.isInteger(value.exitStatus));
+  if (!base || !extended) return base;
+  const countOrNull = (entry: unknown) => entry === null || (typeof entry === "number" && Number.isFinite(entry) && entry >= 0);
+  const nullableString = (entry: unknown) => entry === null || isNonEmptyString(entry);
+  const usage = value.usage;
+  return nullableString(value.modelSource) && nullableString(value.configuredEffort) && nullableString(value.effectiveEffort) &&
+    nullableString(value.configuredEffortSource) && nullableString(value.effectiveEffortSource) &&
+    nullableString(value.usageSource) && countOrNull(value.modelCallElapsedMs) && countOrNull(value.actualBilledCostUsd) &&
+    countOrNull(value.estimatedCostUsd) && nullableString(value.pricingAsOf) && countOrNull(value.includedCapacityConsumption) &&
+    (usage === null || (isRecordWithExactKeys(usage, ["inputTokens", "cachedInputTokens", "outputTokens"]) &&
+      [usage.inputTokens, usage.cachedInputTokens, usage.outputTokens].every(entry => typeof entry === "number" && Number.isFinite(entry) && entry >= 0)));
+}
+
+function isReviewEffectivenessTelemetry(value: unknown, role: PrReviewRole): value is ReviewEffectivenessTelemetry {
+  if (!isRecordWithExactKeys(value, [
+    "schemaVersion", "role", "projectId", "projectSlug", "actionId", "taskClass", "difficulty", "candidateHead",
+    "rubricVersion", "attemptId", "attemptRequestId", "parentAttemptRequestId", "attemptOrdinal", "evidenceSource",
+    "invocation", "findingEvidence", "escapedDefects", "linkedResourceReceipts"
+  ])) return false;
+  const nullableString = (entry: unknown) => entry === null || isNonEmptyString(entry);
+  if (value.schemaVersion !== 1 || value.role !== role || !isNonEmptyString(value.projectId) || !isNonEmptyString(value.candidateHead) ||
+      !isSha256(value.rubricVersion) || !isNonEmptyString(value.evidenceSource) || value.invocation !== "fresh" ||
+      ![value.projectSlug, value.actionId, value.taskClass, value.difficulty, value.attemptId, value.attemptRequestId, value.parentAttemptRequestId].every(nullableString) ||
+      !(value.attemptOrdinal === null || (Number.isInteger(value.attemptOrdinal) && Number(value.attemptOrdinal) > 0)) ||
+      !Array.isArray(value.findingEvidence) || !Array.isArray(value.linkedResourceReceipts)) return false;
+  if (!(value.escapedDefects === null || (Array.isArray(value.escapedDefects) && value.escapedDefects.every(defect =>
+    isRecordWithExactKeys(defect, ["id", "evidence"]) && isNonEmptyString(defect.id) && isNonEmptyString(defect.evidence))))) return false;
+  return value.findingEvidence.every(finding => isRecordWithExactKeys(finding, [
+    "findingIndex", "severity", "disposition", "resolutionState", "validationOutcome", "validationEvidence", "repairHead", "repairEvidence"
+  ]) && Number.isInteger(finding.findingIndex) && Number(finding.findingIndex) >= 0 &&
+    ["blocker", "high", "medium", "low"].includes(String(finding.severity)) &&
+    (finding.disposition === null || ["required-correction", "worthwhile-improvement", "follow-up-opportunity"].includes(String(finding.disposition))) &&
+    ["open", "repaired", "accepted-risk", "not-actionable"].includes(String(finding.resolutionState)) &&
+    ["confirmed", "rejected", "unresolved", "duplicate"].includes(String(finding.validationOutcome)) &&
+    [finding.validationEvidence, finding.repairHead, finding.repairEvidence].every(nullableString)) &&
+    value.linkedResourceReceipts.every(receipt => isRecordWithExactKeys(receipt, [
+      "id", "attemptRequestId", "inputTokens", "cachedInputTokens", "outputTokens", "elapsedMs"
+    ]) && isNonEmptyString(receipt.id) && isNonEmptyString(receipt.attemptRequestId) &&
+      [receipt.inputTokens, receipt.cachedInputTokens, receipt.outputTokens, receipt.elapsedMs].every(entry => entry === null ||
+        (typeof entry === "number" && Number.isFinite(entry) && entry >= 0)));
 }
 
 function isReceiptFileList(value: unknown): value is Array<{ path: string; sha256: string }> {

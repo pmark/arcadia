@@ -77,6 +77,24 @@ describe("session ledger validator", () => {
   it("rejects an unknown role", () => {
     expect(validateSessionLedgerRow({ ...row(), role: "observer" }).join()).toContain("field role must be one of");
   });
+  it("preserves exact review linkage and separate configured/effective effort", () => {
+    expect(validateSessionLedgerRow({
+      ...row(),
+      configured_effort: "e2_standard",
+      effective_effort: "medium",
+      effort_source: "runtime launch receipt",
+      review_attempt_request_id: "code-review-request-1",
+      resource_scope: "lineage-additional",
+      candidate_head: "a".repeat(40),
+      evidence_source: "artifacts/session/result.json",
+      task_class: "typescript-cli",
+      difficulty: "medium"
+    })).toEqual([]);
+  });
+  it("requires linked resource scope so totals cannot double count reviewer usage", () => {
+    expect(validateSessionLedgerRow({ ...row(), review_attempt_request_id: "code-review-request-1" }))
+      .toContain("review_attempt_request_id requires resource_scope to prevent double counting");
+  });
   it("rejects stopped without a stop_reason", () => {
     expect(validateSessionLedgerRow({ ...row(), outcome: "stopped" })).toContain("outcome stopped requires a stop_reason");
     expect(validateSessionLedgerRow({ ...row(), outcome: "stopped", stop_reason: "token ceiling" })).toEqual([]);

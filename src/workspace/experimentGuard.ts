@@ -296,6 +296,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "review resolve-reply": ALLOWED,
   "review weekly": ALLOWED,
   "qa list": ALLOWED,
+  "qa effectiveness": ALLOWED,
   "qa record": ALLOWED,
   "qa status": ALLOWED,
   "qa fetch": ALLOWED,
