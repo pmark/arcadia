@@ -168,14 +168,6 @@ Inspect `git status --porcelain`, `git ls-files` and `git check-ignore`: new gen
 Preserve unrelated runtime receipts with exact hashes in ignored custody; inspect private metadata before choosing what a public recovery PR may contain.
 Hermetic Git shims must pass through `-c` options unchanged; stripping `core.hooksPath` invalidates the hook-isolation test. See `docs/reports/three-action-managed-production-scope-design-2026-10-02.md` for the disclosed operator recovery boundary.
 
-## `agent-ask draft` printed "Failed to auto-discover N files"
-
-keys: auto-discover, already used with different content, draft noise
-
-Ignore it when the listed files are old, already-settled Asks: it is a false
-positive. Look only at the lines above it (`Agent Ask drafted`,
-`Previewed: fingerprint`). Expires when #592 closes.
-
 ## Protected brief fails at `next` despite the correct Codex profile
 
 keys: sandbox, brief broker, arcadia-unattended, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, restart
@@ -333,11 +325,8 @@ Live single-Action run on a fixture (operator Launch, 2026-10-09):
 - A rehearsal handoff prompt (runbook section 10) goes stale within a day: before acting, `git log` the runbook, `rg -l -i "chain|rehears" docs/decisions` for Decisions answered since (0097 retired stacked chains on 2026-10-09), list open PRs and ask the peer session that last held the fixture. A fix a prior release manager left as a dirty open PR (#1033) is cheaper to port with `git apply --3way` onto fresh main than to rebase.
 - Do not put a literal dollar-ampersand (`$&`), dollar-backtick or dollar-apostrophe in an Agent Ask that amends an Action until #1213 lands: `amendAction` passes the text to `String.replace` as a string, the replacement pattern expands, the Plan stops parsing, and `settle --apply` fails with "did not produce a ready canonical Action" (the preview still passes; the apply rolls back, nothing is written). Spell the sequence in words, reject the proposal and re-draft under a new request id (2026-10-10, bug Plan amendment).
 
-## First supervised production run (2026-10-11): do not repeat
-Full report and plan: `docs/reports/first-supervised-production-run-learnings-2026-10-11.md`.
-- A START/activation button must verify the exact state it will read, from `origin/main`, not the live workspace; a preview that reads the workspace passes while the real precondition (Plan file on `origin/main`, `main` level with origin, installed release runtime-identical) fails.
-- Governed settlement commits can sit only in the primary checkout's local `main`; check `gh api compare main...<branch>` and open the PR before announcing a Plan as startable. Merge such a PR as a merge commit (squash makes local `main` diverge and START refuse "main is not level").
-- Never describe a run as hands-off before checking each Action's route: `planStepsForWorkItem` sends text lacking "implement"/"code"/"prototype" to a planning run, which adds a Decision, a validation and an acceptance per Action.
-- The planning validator flags any line containing "no approval" with "implementation" (#1277); a failed validation offers only retry or reject.
-- Watcher scripts must not substring-match words that occur inside Action ids (`completed`).
-- `$TMPDIR` differs sandboxed versus unsandboxed; write the file and read it in the same command mode.
+## Before announcing a production run as startable or hands-off
+
+keys: production, START, supervised run, hands-off, planning run, planStepsForWorkItem, unpublished settlement, main level, merge commit, 1277, 1284
+
+Check each Action's route: `planStepsForWorkItem` sends text without "implement", "code" or "prototype" to a planning run (extra Decision, validation, acceptance; the validator flags "no approval" next to "implementation", #1277). Check the Plan file and pointer are on the remote main and that the checkout is level with it; a settlement can sit only in the local main, and a squash merge of it makes local main diverge, so merge it as a merge commit. Full report and plan: `docs/reports/first-supervised-production-run-learnings-2026-10-11.md`; sandbox write denial is covered by the SQLITE_WORKSPACE_WRITE_DENIED entries above.
