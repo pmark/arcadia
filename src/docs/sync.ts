@@ -710,6 +710,7 @@ function syncAction(
     confidence: action.confidence,
     clarification_source: action.source,
     why: action.why,
+    execution_route: action.executionRoute,
     execution_requirement_json: action.execution
       ? JSON.stringify(executionRequirementToPortableValue(action.execution))
       : null,
@@ -747,6 +748,7 @@ function syncAction(
         confidence: desired.confidence,
         clarificationSource: desired.clarification_source,
         executionRequirementJson: desired.execution_requirement_json,
+        executionRoute: desired.execution_route,
         acceptanceCriteriaJson: desired.acceptance_criteria_json,
         splitIntoJson: desired.split_into_json,
         why: desired.why
@@ -774,6 +776,7 @@ function syncAction(
     ["confidence", existing.confidence, desired.confidence],
     ["source", existing.clarification_source, desired.clarification_source],
     ["execution", existing.execution_requirement_json, desired.execution_requirement_json],
+    ["execution_route", existing.execution_route, desired.execution_route],
     ["acceptance_criteria", existing.acceptance_criteria_json, desired.acceptance_criteria_json],
     ["split_into", existing.split_into_json, desired.split_into_json],
     ["why", existing.why, desired.why]
@@ -810,6 +813,7 @@ function syncAction(
       confidence: desired.confidence,
       clarificationSource: desired.clarification_source,
       executionRequirementJson: desired.execution_requirement_json,
+      executionRoute: desired.execution_route,
       acceptanceCriteriaJson: desired.acceptance_criteria_json,
       splitIntoJson: desired.split_into_json,
       why: desired.why

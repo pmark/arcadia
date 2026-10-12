@@ -155,6 +155,8 @@ export interface PlanActionDoc {
   references: string[];
   /** Vendor-neutral execution requirements declared by the plan author. */
   execution: ExecutionRequirement | null;
+  /** Declared route from `execution: build | plan-run`; `null` keeps keyword routing. */
+  executionRoute: "build" | "plan-run" | null;
   /** Complete effective requirements after expanding the named profile. */
   resolvedExecution: ResolvedExecutionRequirement | null;
 }
