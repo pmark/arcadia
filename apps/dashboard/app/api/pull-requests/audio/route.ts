@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   }
   try {
     const inventory = await loadOutstandingPullRequests();
-    if (!inventory.data.snapshot.pullRequests.some(pr => pr.repository === input.repository && pr.number === input.number)) {
-      return NextResponse.json({ error: "This PR is no longer in the configured open PR inventory. Refresh the page." }, { status: 404 });
+    if (!inventory.data.snapshot.pullRequests.some(pr => pr.repository.toLowerCase() === String(input.repository).toLowerCase())) {
+      return NextResponse.json({ error: "This repository is not in the open PR inventory. Select a PR from a repository shown on this page." }, { status: 404 });
     }
     const audio = await generatePullRequestAudio(input.repository, Number(input.number));
     return new Response(audio.bytes, {

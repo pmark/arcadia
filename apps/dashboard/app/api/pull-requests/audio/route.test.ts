@@ -14,13 +14,13 @@ describe("PR audio endpoint", () => {
     expect(loadOutstandingPullRequests).not.toHaveBeenCalled();
     expect(generatePullRequestAudio).not.toHaveBeenCalled();
   });
-  it("refuses PRs outside the configured open inventory", async () => {
+  it("refuses repositories outside the configured open inventory", async () => {
     vi.mocked(loadOutstandingPullRequests).mockResolvedValue({ data: { snapshot: { pullRequests: [] } } } as never);
     expect((await POST(request({ repository: "owner/repo", number: 2 }))).status).toBe(404);
     expect(generatePullRequestAudio).not.toHaveBeenCalled();
   });
-  it("returns playable downloadable audio for an allowed PR", async () => {
-    vi.mocked(loadOutstandingPullRequests).mockResolvedValue({ data: { snapshot: { pullRequests: [{ repository: "owner/repo", number: 2 }] } } } as never);
+  it("returns playable downloadable audio for a merged PR in an allowed repository", async () => {
+    vi.mocked(loadOutstandingPullRequests).mockResolvedValue({ data: { snapshot: { pullRequests: [{ repository: "owner/repo", number: 99 }] } } } as never);
     vi.mocked(generatePullRequestAudio).mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), format: "mp3" });
     const response = await POST(request({ repository: "owner/repo", number: 2 }));
     expect(response.status).toBe(200);

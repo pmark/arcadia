@@ -467,7 +467,7 @@ export class IntelligenceWorker {
 
     // Make it obvious in logs whether this used a free local route or a paid
     // cloud route.
-    process.stdout.write(
+    process.stderr.write(
       `[intelligence] audio.speech.generate job ${job.id} produced ${artifact.byteSize}B ` +
         `${artifact.format ?? "audio"} via ${route.location === "local" ? "LOCAL" : "PAID CLOUD"} ` +
         `route ${route.routeId} (provider ${generation.provider})\n`,

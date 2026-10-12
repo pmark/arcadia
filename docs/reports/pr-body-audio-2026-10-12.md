@@ -58,3 +58,43 @@ The Agent Ask skill was inspected but not invoked: operator-directed work applie
 | `docs/AGENT_ORIENTATION.md` | 13594 |
 | `docs/intelligence/NARRATION.md` | 4312 |
 | `docs/notes-to-self.md` | 34925 |
+
+## Live PR #1308 test
+
+The operator selected https://github.com/pmark/arcadia/pull/1308 for testing.
+GitHub reports it merged, so direct PR URL selection and `?pr=` deep links were
+added to the same page. The API allows merged PR numbers only in repositories
+represented by the current open inventory; unknown repositories are refused.
+A configured repository with no open PRs remains unsupported for direct links.
+
+Initial live narration failed with `SPEECH_PROVIDER_REJECTED`, HTTP 401, because
+the candidate process lacked the existing proxy credential. The retry passed
+using only existing local speech/proxy settings from the main checkout's `.env`
+inside the process; no credential values were printed or configuration changed.
+Three chunks produced 97.6 seconds of body-only audio via LOCAL standard speech.
+
+First live page POST then returned 502: speech progress on stdout contaminated
+the CLI JSON response. Fixed speech progress output in `src/intelligence/jobs/worker.ts`
+to stderr; `test/intelligence/narrate-command.test.ts` verifies stdout stays free
+of those messages. All 19 focused tests and scoped lint passed after the fix.
+The real endpoint retry returned HTTP 200, `audio/mpeg`, download name
+`pr-1308-body.mp3`; FFprobe confirmed 97.6 seconds and 725,612 bytes.
+
+Browser test selected merged PR1308 through the deep link with a different open
+PR in its mocked inventory, then played the real generated MP3 with one tap.
+Physical iOS Safari remains unverified. A read-only fourth review was justified
+by the significant integration failure after round three; no blocking findings.
+
+A standalone Dashboard `tsc --noEmit` check reported an existing unrelated type
+error in `app/api/operator-script/route.test.ts:71`: `NODE_ENV: "dashboard-runtime"`
+is outside Node's declared production/development/test union. The same source
+was verified present on the original candidate head, unchanged by this request.
+The prior Dashboard production build passed; this standalone check is not
+claimed as passing. The direct-link view compiled and ran in the candidate dev
+server. No gate or test was weakened.
+
+The isolated localhost candidate remains running at
+`http://127.0.0.1:3041/admin/pull-requests?pr=https%3A%2F%2Fgithub.com%2Fpmark%2Farcadia%2Fpull%2F1308`
+for operator testing. Shared services were not restarted. Downloadable MP3:
+`/Users/pmark/.codex/visualizations/2026/10/12/01a130f8-9330-77f0-9cd8-12622f7ee808/arcadia-pr1308-body.mp3`.
+Issue/PR publication remains awaiting the prior approval question.

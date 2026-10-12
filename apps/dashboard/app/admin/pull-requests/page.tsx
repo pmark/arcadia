@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
+import { PullRequestLinkAudio } from "../../../components/pull-request-link-audio";
 import { PullRequestAudio } from "../../../components/pull-request-audio";
 import { DashboardChrome } from "../../../components/chrome";
 import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
@@ -49,6 +50,7 @@ export default function AdminPullRequestsPage() {
     >
       {error ? <ErrorState title="Outstanding PRs unavailable" message={error} /> : null}
       {loading && !data ? <LoadingState /> : null}
+      <PullRequestLinkAudio />
       {data ? <PullRequestBody data={data} /> : null}
     </DashboardChrome>
   );

@@ -26,6 +26,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => closeServer(server)));
   for (const workspace of workspaces.splice(0)) removeWorkspace(workspace);
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function newWorkspace(): string {
@@ -42,6 +43,8 @@ describe("intelligence narrate command", () => {
     servers.push(server);
     vi.stubEnv("ARCADIA_LITELLM_BASE_URL", baseUrl);
 
+    const stdout = vi.spyOn(process.stdout, "write");
+    const stderr = vi.spyOn(process.stderr, "write");
     const out = path.join(workspace, "narration.wav");
     const response = await runIntelligenceNarrateCommand({
       workspace,
@@ -53,6 +56,8 @@ describe("intelligence narrate command", () => {
     expect(response.data.jobIds).toHaveLength(1);
     expect(response.data.durationSeconds).toBeCloseTo(0.4, 2);
     expect(response.data.source).toBe("inline text");
+    expect(stdout.mock.calls.some(([chunk]) => String(chunk).includes("[intelligence] audio.speech.generate"))).toBe(false);
+    expect(stderr.mock.calls.some(([chunk]) => String(chunk).includes("[intelligence] audio.speech.generate"))).toBe(true);
     expect(existsSync(out)).toBe(true);
     expect(readFileSync(out).subarray(0, 4).toString("latin1")).toBe("RIFF");
   });
