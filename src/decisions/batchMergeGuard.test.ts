@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -8,7 +8,9 @@ import {
   BATCH_GUARD_TRACKED,
   bindDescriptorText,
   parseGitRemoteSlug,
+  GIT_SAFE_ARGS,
   runBatchMergeGuard,
+  sanitizedGitEnv,
   systemGit,
   type GuardGit,
 } from "./batchMergeGuard.js";
@@ -77,9 +79,8 @@ function fixture(opts: { origin?: "bare" | "bad" } = {}) {
   git(root, ["commit", "-q", "-m", "init"]);
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
   if (opts.origin === "bad") {
-    // A slug-shaped origin that cannot be fetched: ssh is replaced by a failing command.
-    git(root, ["remote", "add", "origin", "git@github.com:pmark/arcadia.git"]);
-    git(root, ["config", "core.sshCommand", "false"]);
+    // An origin that cannot be fetched (nothing listens on port 1); the slug is supplied by the wrapper.
+    git(root, ["remote", "add", "origin", "ssh://git@127.0.0.1:1/pmark/arcadia.git"]);
   } else {
     git(root, ["remote", "add", "origin", bare]);
     git(root, ["push", "-q", "origin", "main"]);
@@ -138,8 +139,38 @@ describe("guard against a scratch git repo (B4')", () => {
   });
   it("a failed fetch of origin is fatal on a real run (never a swallowed null)", () => {
     const f = fixture({ origin: "bad" });
-    const r = runBatchMergeGuard({ repoRoot: f.root, descriptorPath: f.descriptorPath, env: f.env, dryRun: false, git: f.real });
+    const r = runBatchMergeGuard({ repoRoot: f.root, descriptorPath: f.descriptorPath, env: f.env, dryRun: false, git: f.withSlug });
     expect(r).toMatchObject({ ok: false, code: "fetch_failed" });
+  });
+  it("a hostile GIT_SSH_COMMAND in the environment never reaches the fetch", () => {
+    const f = fixture({ origin: "bad" });
+    const marker = path.join(f.base, "hostile-ran");
+    const hook = path.join(f.base, "hook.sh");
+    writeFileSync(hook, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`, { mode: 0o755 });
+    const saved = { ssh: process.env.GIT_SSH_COMMAND, proxy: process.env.GIT_PROXY_COMMAND };
+    process.env.GIT_SSH_COMMAND = hook;
+    process.env.GIT_PROXY_COMMAND = hook;
+    try {
+      const r = runBatchMergeGuard({ repoRoot: f.root, descriptorPath: f.descriptorPath, env: f.env, dryRun: false, git: f.withSlug });
+      expect(r).toMatchObject({ ok: false, code: "fetch_failed" });
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      if (saved.ssh === undefined) delete process.env.GIT_SSH_COMMAND;
+      else process.env.GIT_SSH_COMMAND = saved.ssh;
+      if (saved.proxy === undefined) delete process.env.GIT_PROXY_COMMAND;
+      else process.env.GIT_PROXY_COMMAND = saved.proxy;
+    }
+  });
+  it("sanitizedGitEnv drops transport, location and config overrides and the base args neutralise config", () => {
+    const env = sanitizedGitEnv({
+      PATH: "/evil", HOME: "/h", GIT_SSH_COMMAND: "x", GIT_SSH: "x", GIT_PROXY_COMMAND: "x", GIT_EXEC_PATH: "/x", GIT_DIR: "/x",
+      GIT_WORK_TREE: "/x", GIT_CONFIG_GLOBAL: "/x", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "a", GIT_ALTERNATE_OBJECT_DIRECTORIES: "/x",
+      GIT_FUTURE_THING: "x", KEEP: "1",
+    });
+    expect(Object.keys(env).filter((k) => k.startsWith("GIT_") && k !== "GIT_TERMINAL_PROMPT")).toEqual([]);
+    expect(env.PATH).not.toContain("/evil");
+    expect(env.HOME).toBe("/h");
+    expect(GIT_SAFE_ARGS).toEqual(expect.arrayContaining(["core.sshCommand=", "http.proxy=", "protocol.ext.allow=never"]));
   });
   it("compares to the fetched sha, not a stale local origin/main ref", () => {
     const f = fixture();

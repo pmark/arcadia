@@ -8,6 +8,12 @@
  * side-effecting call is the injected gateway, which `runBatchMerge` uses and
  * which the operator script wires to `gh`.
  *
+ * Not a trust root: operator-only execution is enforced by host permission rules.
+ * The guard in batchMergeGuard.ts protects against accidental or unmodified
+ * invocation; forging the fetch transport, editing the guard or importing
+ * runBatchMerge directly are accepted residuals (see that module's header).
+ * Follow-up: replace the path denylist below with an inverse allowlist.
+ *
  * Nothing here grants authority. The pinned spec is published in the operator
  * script's descriptor for review; the script, never an agent, runs it.
  */
@@ -37,6 +43,7 @@ export type AuthorityBoundary =
   | "ci_and_gates"
   | "operator_authority"
   | "dependency_manifest"
+  | "deploy_config"
   | "unclassifiable_path";
 
 export const AUTHORITY_BOUNDARIES: readonly AuthorityBoundary[] = [
@@ -50,6 +57,7 @@ export const AUTHORITY_BOUNDARIES: readonly AuthorityBoundary[] = [
   "ci_and_gates",
   "operator_authority",
   "dependency_manifest",
+  "deploy_config",
   "unclassifiable_path",
 ];
 
@@ -63,7 +71,8 @@ const BOUNDARY_MEANING: Record<AuthorityBoundary, string> = {
   arcadia_control_state: "Arcadia control state (.arcadia/)",
   ci_and_gates: "CI workflows and merge gates",
   operator_authority: "operator scripts and the decision-card contract",
-  dependency_manifest: "dependency manifests and lockfiles",
+  dependency_manifest: "dependency manifests, lockfiles and package-manager config",
+  deploy_config: "environment files and deployment config",
   unclassifiable_path: "a path that could not be safely classified",
 };
 
@@ -94,6 +103,11 @@ const BASENAMES: Record<string, AuthorityBoundary> = {
   ".gitmodules": "ci_and_gates",
   "package.json": "dependency_manifest",
   "pnpm-lock.yaml": "dependency_manifest",
+  "package-lock.json": "dependency_manifest",
+  "yarn.lock": "dependency_manifest",
+  "pnpm-workspace.yaml": "dependency_manifest",
+  ".npmrc": "dependency_manifest",
+  "wrangler.toml": "deploy_config",
 };
 const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["docs/decisions/", "decisions"],
@@ -105,6 +119,13 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["apps/dashboard/app/api/", "dashboard_api_route"],
   ["apps/dashboard/pages/api/", "dashboard_api_route"],
   ["scripts/", "operator_authority"],
+  ["apps/dashboard/server/", "dashboard_api_route"],
+  [".husky/", "ci_and_gates"],
+  [".githooks/", "ci_and_gates"],
+  ["bin/", "operator_authority"],
+  ["src/identity/", "operator_authority"],
+  ["src/server/", "operator_authority"],
+  ["src/cli/", "operator_authority"],
   [".agents/", "agent_guidance"],
   ["src/ask/", "operator_authority"],
   [".arcadia/", "arcadia_control_state"],
@@ -114,7 +135,8 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["src/decisions/", "operator_authority"],
 ];
 const PERMISSION_NAME_RE = /(permission|allow[-_ .]?(list|rules?)|settings(\.local)?\.json)/;
-const DASHBOARD_ROUTE_RE = /^apps\/dashboard\/app\/(?:.*\/)?route\.(?:ts|tsx|js|jsx|mjs)$/;
+const DASHBOARD_ROUTE_RE = /^apps\/dashboard\/(?:.*\/)?(?:app\/(?:.*\/)?route|actions)\.(?:ts|tsx|js|jsx|mjs)$/;
+const ENV_FILE_RE = /^\.env(?:\..*)?$/;
 const PRODUCTION_POLICY_RE = /production[-_]?polic/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060\ufeff]/;
@@ -150,6 +172,7 @@ export function classifyAuthorityPath(input: unknown): AuthorityBoundary[] {
   if (PERMISSION_NAME_RE.test(segments[segments.length - 1])) found.add("agent_permissions");
   if (PRODUCTION_POLICY_RE.test(path)) found.add("production_policy");
   if (DASHBOARD_ROUTE_RE.test(path)) found.add("dashboard_api_route");
+  if (ENV_FILE_RE.test(segments[segments.length - 1])) found.add("deploy_config");
   return AUTHORITY_BOUNDARIES.filter((b) => found.has(b));
 }
 

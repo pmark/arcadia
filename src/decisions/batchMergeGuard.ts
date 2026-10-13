@@ -15,13 +15,19 @@
  *    any pre-existing local ref;
  *  - the files are tracked and unmodified against HEAD.
  *
- * Residual, stated plainly: environment variables are forgeable and a fully
- * attacker-controlled clone with a rewritten remote can satisfy every local
- * check. Only host permission rules stop that. The guard's job is to make
- * forging require rewriting the real remote and the published, merged files.
+ * What this is NOT: a trust root. Operator-only execution is enforced by the host
+ * permission rules that keep agents from running operator scripts; this guard
+ * protects against accidental or unmodified invocation (fetched-main equality,
+ * origin slug, contract, text binding). Accepted residuals, none of which the
+ * code can stop from inside a checkout the caller controls: forging the fetch
+ * transport (environment or config such as GIT_SSH_COMMAND, core.sshCommand,
+ * http.proxy, a substituted git binary; the git calls below neutralise the
+ * obvious ones but that is hygiene, not a boundary), editing this guard, and
+ * importing runBatchMerge directly. Follow-up, not done here: invert the
+ * classifier into an allowlist of known-safe paths instead of a denylist.
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { validateOperatorScriptContract } from "../operatorActions/libraryContract.js";
 import {
@@ -38,10 +44,35 @@ export interface GuardGitResult {
 }
 export type GuardGit = (args: string[]) => GuardGitResult;
 
-/** Real git in `cwd`. A spawn failure is status -1, never a thrown value. */
+const GIT_CANDIDATES = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"];
+const SAFE_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin";
+/** Config forced on every guard git call so repo or environment config cannot redirect the transport. */
+export const GIT_SAFE_ARGS: readonly string[] = ["-c", "core.sshCommand=", "-c", "http.proxy=", "-c", "protocol.ext.allow=never"];
+
+/** The environment git runs with: every GIT_* variable dropped, a fixed PATH, no prompts. */
+export function sanitizedGitEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined || key.startsWith("GIT_") || key === "PATH") continue;
+    out[key] = value;
+  }
+  out.PATH = SAFE_PATH;
+  out.GIT_TERMINAL_PROMPT = "0";
+  return out;
+}
+
+function gitBinary(): string {
+  return GIT_CANDIDATES.find((candidate) => existsSync(candidate)) ?? "git";
+}
+
+/** Real git in `cwd`, with the sanitized environment and safe config. A spawn failure is status -1, never a throw. */
 export function systemGit(cwd: string): GuardGit {
   return (args) => {
-    const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const r = spawnSync(gitBinary(), ["-C", cwd, ...GIT_SAFE_ARGS, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: sanitizedGitEnv(process.env),
+    });
     return { status: typeof r.status === "number" ? r.status : -1, stdout: (r.stdout ?? "").trim() };
   };
 }

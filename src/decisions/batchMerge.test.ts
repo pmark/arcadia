@@ -590,6 +590,32 @@ describe("round 1 blockers", () => {
     for (const [path, boundary] of cases) expect(classifyAuthorityPath(path), path).toContain(boundary);
     expect(classifyAuthorityPath("apps/dashboard/app/todo/page.tsx")).toEqual([]);
   });
+  it("round 3 classifier additions", () => {
+    const cases: Array<[string, string]> = [
+      ["apps/dashboard/lib/actions.ts", "dashboard_api_route"],
+      ["apps/dashboard/components/deep/actions.tsx", "dashboard_api_route"],
+      ["apps/dashboard/server/db.ts", "dashboard_api_route"],
+      ["apps/dashboard/src/app/todo/clear/route.ts", "dashboard_api_route"],
+      [".husky/pre-commit", "ci_and_gates"],
+      [".githooks/pre-push", "ci_and_gates"],
+      [".npmrc", "dependency_manifest"],
+      ["apps/dashboard/.npmrc", "dependency_manifest"],
+      ["pnpm-workspace.yaml", "dependency_manifest"],
+      ["package-lock.json", "dependency_manifest"],
+      ["yarn.lock", "dependency_manifest"],
+      [".env", "deploy_config"],
+      ["apps/dashboard/.env.production", "deploy_config"],
+      [".env.local", "deploy_config"],
+      ["wrangler.toml", "deploy_config"],
+      ["sites/x/wrangler.toml", "deploy_config"],
+      ["bin/arcadia.js", "operator_authority"],
+      ["src/identity/resolve.ts", "operator_authority"],
+      ["src/server/app.ts", "operator_authority"],
+      ["src/cli/main.ts", "operator_authority"],
+    ];
+    for (const [path, boundary] of cases) expect(classifyAuthorityPath(path), path).toContain(boundary);
+    expect(classifyAuthorityPath("apps/dashboard/components/environment.tsx")).toEqual([]);
+  });
   it("rejects a review written by the PR's own author and records reviewers on the receipt", () => {
     const own = pr(1, { author: "mark", reviews: [{ verdict: "APPROVED", headSha: sha("1"), author: "mark" }] });
     const r = buildBatchMergeCard({ prs: [own], now: NOW, expires: EXPIRES });
