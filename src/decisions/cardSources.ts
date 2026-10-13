@@ -24,6 +24,7 @@
  *   identical pin on every call.
  */
 import { createHash } from "node:crypto";
+import type { DecisionOptionEffect } from "../docs/types.js";
 import { DECISION_CARD_LIMITS, DECISION_CARD_SCHEMA, parseCardExpiry, validateDecisionCard, type DecisionCard } from "./card.js";
 import {
   AUTHORITY_BOUNDARIES,
@@ -69,7 +70,7 @@ export interface DecisionFacts {
   id: string;
   status: string;
   question: string;
-  options: ReadonlyArray<{ label: string; consequence: string; recommended?: boolean; effect?: string | null }>;
+  options: ReadonlyArray<{ label: string; consequence: string; recommended?: boolean; effect?: DecisionOptionEffect | null }>;
   /** Last-updated stamp from the record; part of the pinned state. */
   updated?: string;
 }
@@ -99,6 +100,8 @@ export interface PullRequestFacts {
   /** Why the PR needs the operator, in one sentence. */
   why: string;
   files: ReadonlyArray<BatchFileEntry>;
+  /** The PR's own changed_files count; must equal files.length or the list is truncated. */
+  changedFiles: number;
 }
 
 export type CardSourceInput =
@@ -126,6 +129,7 @@ export type CardRefusalCode =
   | "too_many_options"
   | "text_too_long"
   | "too_many_files"
+  | "files_incomplete"
   | "bad_head_sha"
   | "bad_expires"
   | "expired_descriptor"
@@ -278,8 +282,15 @@ function buildDecision(raw: unknown, expires: string): Built {
     if (overLimit(o.label, DECISION_CARD_LIMITS.label) || overLimit(o.consequence, DECISION_CARD_LIMITS.consequence)) {
       return refuse(`decision-${id}`, "text_too_long", `option ${i + 1} text exceeds its limit; refused, not truncated.`);
     }
-    options.push({ id: `option-${i + 1}`, label: o.label, consequence: o.consequence });
-    stateOptions.push({ label: o.label, consequence: o.consequence, recommended: o.recommended === true, effect: o.effect ?? null });
+    const effect = o.effect ?? null;
+    if (effect !== null && !nonEmpty(effect)) return refuse(`decision-${id}`, "bad_source", `option ${i + 1} effect must be a non-empty string or absent`);
+    // What the operator reads is what the pin binds: the machine effect is rendered.
+    const shown = effect === null ? o.consequence : `${o.consequence} [effect: ${effect}]`;
+    if (overLimit(shown, DECISION_CARD_LIMITS.consequence)) {
+      return refuse(`decision-${id}`, "text_too_long", `option ${i + 1} consequence with its effect exceeds its limit; refused, not truncated.`);
+    }
+    options.push({ id: `option-${i + 1}`, label: o.label, consequence: shown });
+    stateOptions.push({ label: o.label, consequence: o.consequence, recommended: o.recommended === true, effect });
   }
   const cardId = `decision-${id}`;
   const stateHash = fingerprint("decision", id, {
@@ -399,6 +410,9 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
   if (raw.files.length > CARD_SOURCE_LIMITS.maxFiles) {
     return refuse(cardId, "too_many_files", `The diff lists more than ${CARD_SOURCE_LIMITS.maxFiles} files; it cannot be classified completely.`);
   }
+  if (typeof raw.changedFiles !== "number" || !Number.isSafeInteger(raw.changedFiles) || raw.changedFiles < 1 || raw.changedFiles !== raw.files.length) {
+    return refuse(cardId, "files_incomplete", "changedFiles must be a safe integer equal to the listed files; the diff may be truncated, so its boundaries cannot be named.");
+  }
   const names: Array<{ filename: string; previous: string | null }> = [];
   for (const f of raw.files) {
     const parsed = fileNames(f);
@@ -424,7 +438,11 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
   }
   const files = names
     .map((f) => ({ filename: f.filename, previous_filename: f.previous }))
-    .sort((a, b) => (a.filename + "\u0000" + (a.previous_filename ?? "")).localeCompare(b.filename + "\u0000" + (b.previous_filename ?? "")));
+    .sort((a, b) => {
+      const x = a.filename + "\u0000" + (a.previous_filename ?? "");
+      const y = b.filename + "\u0000" + (b.previous_filename ?? "");
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
   const stateHash = fingerprint("pull-request", cardId, {
     repo,
     number: n,
@@ -434,6 +452,7 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
     headSha: head,
     state: raw.state,
     draft: raw.draft,
+    changedFiles: raw.changedFiles,
     files,
   });
   return {
@@ -479,19 +498,21 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
     out.refusals.push({ index: -1, sourceKind: null, sourceId: null, code: "bad_input", message });
     return out;
   };
-  let snap: { sources: unknown[]; now: unknown; expires: unknown; repo: unknown };
+  let snap: { sources: unknown[]; expires: unknown; repo: unknown };
+  let nowMs = Number.NaN;
   try {
+    // One read of `now`, through the intrinsic: a Proxy or subclass trick refuses, never throws.
+    nowMs = Date.prototype.getTime.call(input?.now);
     const shot = snapshot(
       { sources: input?.sources, expires: input?.expires, repo: input?.repo },
       0,
       { n: 0 },
     ) as { sources: unknown; expires: unknown; repo: unknown };
     if (!Array.isArray(shot.sources)) return bad("sources must be a list");
-    snap = { sources: shot.sources, now: input.now, expires: shot.expires, repo: shot.repo };
+    snap = { sources: shot.sources, expires: shot.expires, repo: shot.repo };
   } catch (error) {
-    return bad(error instanceof Unreadable ? error.message : "input could not be read safely");
+    return bad(error instanceof Unreadable ? error.message : "input could not be read safely (is now a real Date?)");
   }
-  const nowMs = snap.now instanceof Date ? snap.now.getTime() : Number.NaN;
   if (!Number.isFinite(nowMs)) return bad("now must be a valid Date");
   if (typeof snap.expires !== "string" || parseCardExpiry(snap.expires) === null) return bad("expires must be strict ISO-8601 with an offset");
   const repo = snap.repo === undefined ? DEFAULT_CARD_REPO : snap.repo;
@@ -561,6 +582,21 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
   if (conflicted.size > 0) {
     out.cards = out.cards.filter((c) => !conflicted.has(c.card.id));
   }
+  // An id that was skipped or refused by one source and carded by another is a
+  // contradiction regardless of order: no card, both outcomes stay reported.
+  const blocked = new Set<string>();
+  for (const k of out.skipped) blocked.add(k.sourceId);
+  for (const r of out.refusals) if (r.sourceId !== null) blocked.add(r.sourceId);
+  for (const c of out.cards.filter((x) => blocked.has(x.card.id))) {
+    out.refusals.push({
+      index: -1,
+      sourceKind: c.sourceKind,
+      sourceId: c.card.id,
+      code: "conflicting_duplicate",
+      message: `${c.card.id} was generated by one source and skipped or refused by another; no card is issued.`,
+    });
+  }
+  out.cards = out.cards.filter((c) => !blocked.has(c.card.id));
   return out;
 }
 

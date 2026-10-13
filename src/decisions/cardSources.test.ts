@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateDecisionCard } from "./card.js";
 import { AUTHORITY_BOUNDARIES } from "./batchMerge.js";
@@ -54,8 +55,9 @@ const script = (over: Record<string, unknown> = {}, top: Record<string, unknown>
     },
   });
 
-const pr = (over: Record<string, unknown> = {}): CardSourceInput =>
-  ({
+const pr = (over: Record<string, unknown> = {}): CardSourceInput => {
+  const files = (over.files as unknown[] | undefined) ?? ["src/decisions/cardSources.ts", "docs/notes.md"];
+  return {
     kind: "pull-request",
     pr: {
       number: 1360,
@@ -65,10 +67,12 @@ const pr = (over: Record<string, unknown> = {}): CardSourceInput =>
       state: "open",
       draft: false,
       why: "Touches the decision-card contract.",
-      files: ["src/decisions/cardSources.ts", "docs/notes.md"],
+      files,
+      changedFiles: files.length,
       ...over,
     },
-  });
+  } as CardSourceInput;
+};
 
 const gen = (sources: unknown[], over: Record<string, unknown> = {}) =>
   generateCardsFromSources({ sources, now: NOW, expires: EXPIRES, ...over });
@@ -111,6 +115,74 @@ describe("each source yields a valid card (criterion 1)", () => {
     const r = gen([d]);
     expect(reads).toBe(1);
     expect(r.cards[0].card.what).toBe("Answer Decision 0123: Question read number 1?");
+  });
+});
+
+describe("Decision option effects are shown and pinned", () => {
+  const withEffect = (effect: string | null) =>
+    decision({ options: [{ label: "Defer it", consequence: "The Action is parked.", effect }, { label: "Keep", consequence: "Nothing changes." }] });
+
+  it("renders the effect into the option text and the pin changes with it", () => {
+    const none = gen([withEffect(null)]).cards[0];
+    const defer = gen([withEffect("defer")]).cards[0];
+    const odd = gen([withEffect("DELETE ALL")]).cards[0];
+    expect(none.card.options[0].consequence).toBe("The Action is parked.");
+    expect(defer.card.options[0].consequence).toBe("The Action is parked. [effect: defer]");
+    expect(odd.card.options[0].consequence).toContain("[effect: DELETE ALL]");
+    expect(new Set([none, defer, odd].map((c) => c.card.pins.stateHash)).size).toBe(3);
+  });
+
+  it("refuses an effect that pushes the text past the limit, or breaks the text rule", () => {
+    const long = decision({ options: [{ label: "A", consequence: "c".repeat(995), effect: "defer" }] });
+    expect(gen([long]).refusals[0].code).toBe("text_too_long");
+    expect(gen([withEffect("de\nfer")]).refusals[0].code).toBe("invalid_card");
+  });
+
+  it("keeps the effect union in step with docs/types.ts", () => {
+    const src = readFileSync(new URL("../docs/types.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/export type DecisionOptionEffect = "defer";/);
+  });
+});
+
+describe("clock and contradiction handling", () => {
+  it("refuses a Proxy or non-Date now without throwing", () => {
+    const proxied = new Proxy(new Date(NOW), {});
+    for (const now of [proxied, "2026-10-12", 5, null, undefined]) {
+      let r: ReturnType<typeof generateCardsFromSources> | undefined;
+      expect(() => {
+        r = generateCardsFromSources({ sources: [pr()], now: now as never, expires: EXPIRES });
+      }).not.toThrow();
+      expect(r?.cards).toEqual([]);
+      expect(r?.refusals[0].code).toBe("bad_input");
+    }
+  });
+
+  it("refuses an id that one source cards and another skips, in either order", () => {
+    for (const order of [[pr(), pr({ draft: true })], [pr({ draft: true }), pr()]]) {
+      const r = gen(order);
+      expect(r.cards).toEqual([]);
+      expect(r.skipped).toHaveLength(1);
+      expect(r.refusals.map((x) => x.code)).toContain("conflicting_duplicate");
+    }
+    for (const order of [[pr(), pr({ headSha: "zz" })], [pr({ headSha: "zz" }), pr()]]) {
+      expect(gen(order).cards).toEqual([]);
+    }
+  });
+
+  it("pins NFC and NFD paths identically regardless of input order", () => {
+    const nfc = "docs/caf\u00e9.md";
+    const nfd = "docs/cafe\u0301.md";
+    const a = pinOf(pr({ files: [nfc, nfd] }));
+    const b = pinOf(pr({ files: [nfd, nfc] }));
+    expect(a).toBeDefined();
+    expect(a).toBe(b);
+    expect(pinOf(pr({ files: [nfc, "docs/x.md"] }))).not.toBe(pinOf(pr({ files: [nfd, "docs/x.md"] })));
+  });
+
+  it("refuses a descriptor whose expires_at equals now exactly", () => {
+    const r = gen([script({}, { expires_at: "2026-10-12T12:00:00Z" })]);
+    expect(r.refusals[0].code).toBe("expired_descriptor");
+    expect(gen([script({}, { expires_at: "2026-10-12T12:00:01Z" })]).cards).toHaveLength(1);
   });
 });
 
@@ -207,8 +279,19 @@ describe("PR cards name the authority boundary (criterion 2)", () => {
   });
 
   it("fails closed on an empty or traversal file list", () => {
-    expect(gen([pr({ files: [] })]).cards[0].boundaries).toEqual(["unclassifiable_path"]);
+    expect(gen([pr({ files: [] })]).refusals[0].code).toBe("files_incomplete");
     expect(gen([pr({ files: ["../etc/passwd"] })]).cards[0].boundaries).toEqual(["unclassifiable_path"]);
+  });
+
+  it("refuses a truncated file list, so PROJECT.md cannot go unnamed", () => {
+    const short = gen([pr({ files: ["docs/notes.md"], changedFiles: 2 })]);
+    expect(short.cards).toEqual([]);
+    expect(short.refusals[0].code).toBe("files_incomplete");
+    for (const bad of [0, -1, 1.5, "1", undefined]) {
+      expect(gen([pr({ files: ["docs/notes.md"], changedFiles: bad })]).refusals[0].code).toBe("files_incomplete");
+    }
+    const full = gen([pr({ files: ["docs/notes.md", "PROJECT.md"], changedFiles: 2 })]);
+    expect(full.cards[0].boundaries).toEqual(["project_governance"]);
   });
 
   it("refuses a malformed head sha", () => {
