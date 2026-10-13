@@ -8,6 +8,7 @@ import { PullRequestInventorySkeleton } from "../../../components/pull-request-i
 import { PullRequestDetailsPanel } from "../../../components/pull-request-details";
 import { DashboardChrome } from "../../../components/chrome";
 import { EmptyState, ErrorState, Metric, Section } from "../../../components/dashboard-ui";
+import { sortPullRequestsNewestFirst } from "../../../lib/pull-request-order";
 import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import type {
   DashboardOutstandingPullRequest,
@@ -93,7 +94,7 @@ function PullRequestBody({ data, retainedProjectIds }: { data: DashboardOutstand
             : "No open pull requests found across the configured Project repositories."} />
         ) : (
           <div className="grid min-w-0 gap-3">
-            {data.pullRequests.map((pullRequest) => (
+            {sortPullRequestsNewestFirst(data.pullRequests).map((pullRequest) => (
               <PullRequestCard key={`${pullRequest.repository}:${pullRequest.number}`} pullRequest={pullRequest} />
             ))}
           </div>

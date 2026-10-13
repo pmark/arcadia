@@ -65,4 +65,23 @@ describe("pull-request inventory rendering", () => {
     }
     expect(consoleError.mock.calls.some(call => /same key|unique.*key/i.test(call.map(String).join(" ")))).toBe(false);
   });
+  it("shows the newest-created PR first without changing the readiness-ordered snapshot", () => {
+    const older = {
+      projectId: "project", projectName: "Project", repositoryPath: "/repo", repository: "owner/repo", number: 1,
+      title: "Older PR with recent CI", url: "https://github.com/owner/repo/pull/1", state: "OPEN" as const,
+      isDraft: false, headBranch: "old", baseBranch: "main", author: null, mergeStateStatus: null, reviewDecision: null,
+      createdAt: "2026-10-12T12:00:00Z", updatedAt: "2026-10-14T12:00:00Z", checks: [],
+      readiness: "checks_failing" as const, readinessLabel: "CHECKS FAILING", summary: "CI failed", briefing: null
+    };
+    const newer = { ...older, number: 2, title: "Newest created PR", createdAt: "2026-10-13T12:00:00Z", updatedAt: "2026-10-13T12:01:00Z" };
+    pageMocks.inventory = {
+      generatedAt: "2026-10-14T12:00:00Z", projectsScanned: 1, errors: [],
+      counts: { total: 2, blocked: 0, checksFailing: 2, checksPending: 0, drafts: 0, ready: 0, mergeReady: 0, unknown: 0 },
+      pullRequests: [older, newer]
+    };
+    const html = renderToStaticMarkup(<AdminPullRequestsPage />);
+    expect(html.indexOf("Newest created PR")).toBeLessThan(html.indexOf("Older PR with recent CI"));
+    expect(pageMocks.inventory.pullRequests).toEqual([older, newer]);
+  });
+
 });
