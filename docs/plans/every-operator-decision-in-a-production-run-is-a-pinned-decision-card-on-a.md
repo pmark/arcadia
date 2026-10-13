@@ -249,10 +249,10 @@ actions:
     references: []
   - id: todo-next-steps-route-to-forward
     title: Add a /todo Next steps list ordering every operator touch, PR merges in stack order included, by what unblocks the queue.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Add a /todo Next steps list ordering every operator touch, PR merges in stack order included, by what unblocks the queue.
+    next_action: Completed via Agent Ask complete-todo-next-steps-route-to-forward-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask todo-next-steps-route-to-forward
     clarification: clarified
     confidence: high
@@ -267,7 +267,7 @@ actions:
     references: ["src/decisions/cardSources.ts", "src/decisions/batchMerge.ts", "src/commands/todo.ts", "docs/strategy/autonomous-production-strategy.md"]
 questions: []
 decisions: []
-current_action: todo-next-steps-route-to-forward
+current_action: delegation-policy-records
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
