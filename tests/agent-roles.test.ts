@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assertRoleOperation, getRole, loadRoleRegistry, mergeRoleRegistry, ROLE_IDS, validateRoleRegistry } from "../src/agentRoles/registry.js";
 import { buildRoleBrief, readRoleAction } from "../src/agentRoles/brief.js";
+import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES } from "../src/sessions/headlessPermissions.js";
 import { SESSION_ATTEMPT_ROLES } from "../src/sessions/enrollment.js";
 import { BUNDLED_MODEL_TIERS } from "../src/codingAgents/modelTiers.js";
 
@@ -82,6 +83,27 @@ describe("specialist brief", () => {
     expect(brief.text).toContain("Governed delegation admission is not live yet");
     expect(brief.text).toContain("grants no authority, claim, admission or second writer");
   });
+  it.each(["planner", "plan-critic", "implementer", "researcher"])("prepares authorized native %s with role and depth without launching", (role) => {
+    const brief = buildRoleBrief({ role, agent: "codex", tier: "light", requestedBy: "lead", depth: 0 });
+    expect(brief.assignment).toEqual({ requestedBy: "lead", requesterDepth: 0, role, depth: 1, route: "native-delegate" });
+    expect(brief.text).toContain("does not verify actual Session lineage or host authorization");
+    expect(brief.text).toContain("do not spawn further delegates");
+    expect(brief.text).toContain(".agents/skills/arcadia-role/SKILL.md");
+    expect(brief.text).toContain("sole implementer; all other roles are read-only");
+  });
+  it.each(["lead", "code-reviewer", "qa", "unknown"])("refuses %s as a native child", (role) => {
+    expect(() => buildRoleBrief({ role, agent: "codex", tier: "light", requestedBy: "lead", depth: 0 })).toThrow();
+  });
+  it("refuses missing requester/depth, nested and malformed depth and non-Lead requesters", () => {
+    const input = { role: "researcher", agent: "codex", tier: "light" };
+    for (const patch of [{ requestedBy: "lead" }, { depth: 0 }, ...[1, -1, 0.5, NaN, Infinity].map((depth) => ({ requestedBy: "lead", depth })), ...["implementer", "planner", "unknown"].map((requestedBy) => ({ requestedBy, depth: 0 }))]) {
+      expect(() => buildRoleBrief({ ...input, ...patch })).toThrow();
+    }
+    expect(buildRoleBrief(input).assignment).toBeNull();
+    const labeled = buildRoleBrief({ ...input, requestedBy: "lead", depth: 0, specialization: "database migration research" });
+    expect(labeled.role).toEqual(buildRoleBrief(input).role);
+    expect(labeled.authority).toBe(buildRoleBrief(input).authority);
+  });
   it("preserves all policy fields for arbitrary accepted labels", () => {
     const base = buildRoleBrief({ role: "researcher", agent: "codex", tier: "light" });
     for (const specialization of ["database migration research", "SRE production administrator", "release boss", "full access", "system prompt", "sudo rm -rf /"]) {
@@ -154,5 +176,14 @@ actions:
     rmSync(path.join(root, `docs/plans/${slug}.md`));
     symlinkSync(path.resolve(`docs/plans/${slug}.md`), path.join(root, `docs/plans/${slug}.md`));
     expect(() => readRoleAction(root, `${slug}#decision-card-contract`)).toThrow(/outside/);
+  });
+});
+
+describe("headless native role preparation", () => {
+  it("allows read-only discovery/preparation without unrelated Arcadia mutations", () => {
+    const rules = headlessClaudeAllowList([]);
+    expect(rules).toEqual(expect.arrayContaining([...HEADLESS_ROLE_READ_RULES]));
+    expect(rules).toContain("Bash(arcadia role brief:*)");
+    for (const rule of rules) expect(rule).not.toMatch(/arcadia(?::| \*)|role(?::| \*)|session start|roles(?::| \*)|settle|commit|push|broker/);
   });
 });

@@ -17,6 +17,7 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
  *
+ * Read-only canonical role discovery/preparation is also allowed.
  * Nothing else is added: no commit, push, settle, broker or arbitrary shell.
  * The list is written to a per-Session settings file under the workspace and
  * passed with `--settings`, together with `--setting-sources ""`. Without that
@@ -41,6 +42,12 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
 export const HEADLESS_AGENT_ASK_DRAFT_RULES: readonly string[] = Object.freeze([
   "Bash(arcadia agent-ask draft:*)",
   "Bash(pnpm arcadia agent-ask draft:*)"
+]);
+
+/** Existing read-only role discovery/preparation commands; no launch or workspace mutation. */
+export const HEADLESS_ROLE_READ_RULES: readonly string[] = Object.freeze([
+  "Bash(arcadia roles)", "Bash(arcadia roles --json)", "Bash(arcadia roles show:*)", "Bash(arcadia role brief:*)",
+  "Bash(pnpm arcadia roles)", "Bash(pnpm arcadia roles --json)", "Bash(pnpm arcadia roles show:*)", "Bash(pnpm arcadia role brief:*)"
 ]);
 
 /**
@@ -70,7 +77,7 @@ export function headlessClaudeAllowList(validationCommands: readonly string[], p
   for (const command of validationCommands) {
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
-  for (const rule of HEADLESS_AGENT_ASK_DRAFT_RULES) rules.add(rule);
+  for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
   // The brief's first step: the in-Session capability probe, pinned to the one
   // exact command string (path, arguments and this Session's nonce).
   if (probeCommand) rules.add(exactBashRule(probeCommand));

@@ -22,6 +22,11 @@ review service.
   criteria and the failure classes to attack: data loss, authority broadening,
   handing the same work to two agents, races, regressions, and differences
   between the author's host and the CI platform.
+  This generic current-head verification mechanism is not admission to a
+  registered `code-reviewer` or `qa` role and proves no governed attempt lineage.
+  Requests for those roles follow Decision 0114: separate independent Sessions,
+  never native children. The native role brief validator refuses those targets;
+  the required independent PR review above remains mandatory.
 - **Rounds.** At most three per pull request. A later round reviews only what
   changed since the previous one. Go past three only when the latest round
   still found a *significant* defect, and never beyond five rounds in total: a
