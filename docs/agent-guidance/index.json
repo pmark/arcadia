@@ -41,7 +41,7 @@
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "02b133d34ead16c10b6d85b93b1b353f6524726197e9ce0239081aad3180a9f3"
+      "sha256": "f22e2c95ab9aff98d96ade26517415b80e30a02df6bbeeff5715c8d293344000"
     },
     {
       "id": "learning",
@@ -125,14 +125,14 @@
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "a7d65e49c0c57d874838e19bf83307002336ec59b33939e3ffd3d43f922e8b46"
+      "sha256": "b7e3e0a776101070b4c6fdec4170d7d3e6db719e4384edceecd30e6fc031ddb4"
     },
     {
       "id": "native-app-sessions",
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "aa6e1e5f1a807309d14a4ee6728bffe844759d35e5c23cb7f203dcc596616693"
+      "sha256": "240df94338fb310f8e3b87101d22363a756886097a49c7ff635562fb5074bd88"
     }
   ]
 }

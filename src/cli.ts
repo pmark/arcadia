@@ -4201,8 +4201,10 @@ Origin: every item has "origin" (a string from a field its source records, else 
   const roles = program.command("roles").description("Read the governed role registry; grants no authority");
   addJsonOption(roles.option("--workspace <path>", "Read-only workspace config override")).action((options: { workspace?: string; json?: boolean }) =>
     runCliAction("roles", options, () => runRolesCommand(options), renderRolesSuccess));
-  addJsonOption(roles.command("show <id>").option("--workspace <path>", "Read-only workspace config override")).action((id: string, options: { workspace?: string; json?: boolean }) =>
-    runCliAction("roles show", options, () => runRolesCommand({ ...options, id }), renderRolesSuccess));
+  addJsonOption(roles.command("show <id>").option("--workspace <path>", "Read-only workspace config override")).action((id: string, _options: { workspace?: string; json?: boolean }, command: Command) => {
+    const options: { workspace?: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction("roles show", options, () => runRolesCommand({ ...options, id }), renderRolesSuccess);
+  });
   const role = program.command("role").description("Read a governed specialist brief");
   addJsonOption(role.command("brief")
     .requiredOption("--role <id>", "Registered role ID")
@@ -4210,9 +4212,11 @@ Origin: every item has "origin" (a string from a field its source records, else 
     .requiredOption("--tier <tier>", "light, standard or heavy")
     .option("--action <ref>", "Exact plan-slug#action-id")
     .option("--specialization <label>", "Domain label only; cannot grant permissions")
+    .option("--requested-by <role>", "Validate native delegate eligibility for this requester role; pair with --depth")
+    .option("--depth <number>", "Requester depth (top-level Lead is 0); pair with --requested-by", (value: string) => /^\d+$/.test(value) ? Number(value) : NaN)
     .option("--repo <path>", "Repository to read the Action from", resolveInvocationPath, invocationRoot())
     .option("--workspace <path>", "Read-only workspace config override"))
-    .action((options: { role: string; agent: string; tier: string; action?: string; specialization?: string; repo: string; workspace?: string; json?: boolean }) =>
+    .action((options: { role: string; agent: string; tier: string; action?: string; specialization?: string; requestedBy?: string; depth?: number; repo: string; workspace?: string; json?: boolean }) =>
       runCliAction("role brief", options, () => runRoleBriefCommand({ ...options, repoRoot: options.repo }), renderRoleBriefSuccess));
 
   const identityCommand = program

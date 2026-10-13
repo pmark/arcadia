@@ -31,6 +31,13 @@ describe("renderActionBrief", () => {
     });
 
     expect(brief).toContain("Role: lead");
+    expect(brief).toContain("arcadia roles --json");
+    expect(brief).toContain(".agents/skills/arcadia-role/SKILL.md");
+    expect(brief).toContain("--requested-by lead --depth 0 --action 'copy-proof#define-contract'");
+    expect(brief).toContain("Code-reviewer and qa require separate independent Sessions");
+    expect(brief).toContain("Only a top-level Lead (depth 0)");
+    expect(brief).toContain("Governed capacity admission remains unavailable");
+    expect(brief).toContain("if the skill is unavailable, preserve the assignment");
     expect(brief).toContain("grants no authority, claim, admission or second writer");
     expect(brief).toContain("Project: test-project");
     expect(brief).toContain("Plan: copy-proof — docs/plans/copy-proof.md");

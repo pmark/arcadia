@@ -30,7 +30,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
-import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
+import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES } from "../src/sessions/headlessPermissions.js";
 import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
@@ -1886,7 +1886,7 @@ describe("launch preflight and headless permission posture", () => {
     expect(sessionView(result.session, tmux).reattachCommand).toBe(`tmux attach-session -t ${result.session.tmux_session_name}`);
   });
 
-  it("allows only the Project's validation commands and `arcadia agent-ask draft`, in a workspace file no shared settings file feeds", () => {
+  it("allows only validation, role reads and `arcadia agent-ask draft`, in a workspace file no shared settings file feeds", () => {
     const fixture = preparedFixture();
     withDatabase(fixture.workspace, (db) => {
       const project = db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string };
@@ -1912,6 +1912,7 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
+          ...HEADLESS_ROLE_READ_RULES,
           expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --nonce [0-9a-f]{32}\)$/),
           "Agent"
         ]
@@ -1927,6 +1928,7 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(echo \\(a\\))",
       "Bash(arcadia agent-ask draft:*)",
       "Bash(pnpm arcadia agent-ask draft:*)",
+      ...HEADLESS_ROLE_READ_RULES,
       "Agent"
     ]);
   });

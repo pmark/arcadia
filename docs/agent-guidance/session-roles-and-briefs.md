@@ -5,29 +5,65 @@ subagent. The compact bootstrap and CONSTITUTION.md still bind; roles and
 briefs grant no authority. Evidence: `docs/reports/production-simulation-living-notes.md`
 (headings "What works" and "Friction").
 
-## Roles
+## Canonical roles and discovery
 
-| Role | Does | Never |
-|---|---|---|
-| Lead | One Action per session. Starts from a generated brief: Plan pointer, open blockers, last three rows of `docs/reports/session-ledger.jsonl`. Owns Plan, queue and scope. Applies the Merge on green gate in `pull-requests.md`; merge authority is Decision 0060/0080 only, never the Lead role. Checks `isDraft` before calling a PR ready. | Writes product code. |
-| Driver | The only code writer, standard tier. Works from one brief and returns only the diff sha, the test command with its exit code, and gaps. | Repeats sandbox text, pastes logs, or claims acceptance from its own test counts. |
-| Reviewer | The read-only role for every review; it signs with `arcadia identity resolve --role critic` (see `git-identity.md`). Plan critique is also Reviewer work. Follows the independent review gate in `pull-requests.md` (rounds, brief prohibitions). A new Reviewer each round, adversarial, given raw evidence and runnable pure functions plus the failure classes to attack. | Is the author; reviews its own fix of the same head; edits, checks out or adds a worktree in any live checkout. |
-| Replayer | A deterministic script, not a model. Turns each run's receipts into fast-rehearsal fixtures so the next run catches the defect offline. | Needs a model call. |
-| Observer (live) | Deferred. Revisit when three consecutive ledger rows show `stop_reason` `none` and zero diffs, or a stop needs judgment the platform cannot make. Building one needs a Decision; this row grants nothing. | Is built before that trigger. |
-| Planner | Opus, for Plan design only; grants no model or Plan authority. | Executes Actions. |
+Read `config/defaults/agent-roles.json` through `arcadia roles --json`, then
+`arcadia roles show <id>`. Read the shared execution skill
+[arcadia-role](../../.agents/skills/arcadia-role/SKILL.md) before assignment;
+load [arcadia-supervisor](../../.agents/skills/arcadia-supervisor/SKILL.md) when
+supervision is assigned. Adopting Projects use installed `arcadia` and their
+installed skill; missing skills stop affected dispatch until installed.
 
-Self-reported test counts are not evidence: on guards and validators the
-Reviewer's adversarial strings found bypasses the Driver's tests missed.
+The registered IDs are `lead`, `planner`, `plan-critic`, `implementer`,
+`code-reviewer`, `qa` and `researcher`. Historical Driver means implementer;
+Reviewer must resolve to plan-critic, code-reviewer or qa for the actual task.
+Replayer is a deterministic script, not a registered role. Observer automation
+remains deferred. Supervisor is a relationship, not an eighth role.
 
-## Model and effort
+Decision 0112 allows the Lead to do routine development. Lead and implementer
+never write concurrently. Native-app sessions retain their scoped Lead/Driver
+convention: only the implementer writes product code. Decision 0114 allows only a top-level Lead at depth 0
+to request planner, plan-critic, implementer or researcher at depth 1. Delegates
+never delegate. Code-reviewer and qa are separate independent Sessions, never
+in-process children. A plan-critic is independent of the planner it judges.
 
-- Lead: Sonnet, medium. Coordination and merge gating are bounded reads; a
-  larger model adds cost without changing outcomes.
-- Driver: Sonnet, medium; high only for guards and validators, where a missed
-  bypass costs review rounds that cost more than the extra effort.
-- Reviewer: Sonnet, high. Review yield per token was the best of any role, and
-  a fresh context each round is what finds new defects.
-- Planner: Opus, only when designing a Plan; its output is a document, not a loop.
+## Native dispatch and model selection
+
+Read role defaults from the registry and resolve the authorized model/identity
+with `arcadia role brief`; legacy provider-specific recommendations do not
+replace the registry or current model bindings. State actual model/effort and
+budget before launch. A displayed default grants no spend or launch authority.
+
+For explicitly authorized native help, prepare:
+
+```sh
+arcadia role brief --role researcher --agent codex --tier light --requested-by lead --depth 0 --json
+```
+
+Replace researcher, agent and tier with the chosen registered role and authorized
+configuration. Add `--action '<plan-slug>#<action-id>' --repo <candidate>` for an
+existing Action. Both requester options are required together; the command
+refuses unsupported targets and depth. Supplied labels prove policy eligibility
+only, not actual lineage or authorization. Standalone role briefs remain valid
+for separate independent Sessions.
+
+Use existing Codex `spawn_agent` or Claude `Agent` with the complete generated
+brief and the assignment template below. Require skill retrieval, target role,
+depth 1 and no further delegation in the child's prompt. Preserve candidate
+ownership and raw evidence. If an implementer writes, the Lead pauses its edits.
+OpenCode's native path is unverified; unavailable tools or skills require a
+preserved brief and authorized relaunch/installation, never a replacement runner.
+
+Governed capacity admission is not live. Native launch evidence is recorded
+separately and does not claim, enroll or reserve an Arcadia Session. Without
+explicit host authorization, submit an Agent Ask proposal; preview grants
+nothing. Follow `pull-requests.md` for independent review/QA Sessions.
+
+The existing PR procedure permits a fresh read-only reviewer context (including a
+sandboxed reviewer or subagent) for generic current-head verification. This is
+not admission to the registered code-reviewer or qa role and proves no governed
+attempt lineage. Requests for those registered roles still require separate
+independent Sessions under Decision 0114; native role dispatch refuses them.
 
 ## Brief template
 
@@ -37,7 +73,7 @@ Keep the brief under one screen. Fields:
 2. **Context**: file:line ranges to read, and the exact focused test files.
    Name `rg -n` patterns, not whole files.
 3. **Acceptance**: observable criteria copied from the Action.
-4. **Ownership**: the files the Driver may write; everything else is read-only.
+4. **Ownership**: the files the implementer may write; everything else is read-only.
 5. **Checks**: focused tests; repo lint on touched files; for dashboard-reachable
    code `cd apps/dashboard && tsc --noEmit --listFiles | rg <module>` must give
    empty output; `node scripts/fast-rehearsal.mjs` run from the worktree root, and

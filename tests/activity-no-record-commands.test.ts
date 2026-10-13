@@ -164,6 +164,41 @@ describe("commands that read no workspace state record no activity", () => {
     expect(liveActivityRows()).toBe(1);
   });
 
+  it("renders roles show JSON even when the parent command consumes the flag", async () => {
+    tracking.opened.length = 0; tracking.recorded.length = 0;
+    let output = "";
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((value) => { output += String(value); return true; });
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await buildProgram().parseAsync(["node", "arcadia", "roles", "show", "researcher", "--json"]);
+      expect(JSON.parse(output)).toMatchObject({ ok: true, data: { roles: [{ id: "researcher", may_delegate: false }] } });
+      expect(tracking.opened).toEqual([]); expect(tracking.recorded).toEqual([]);
+    } finally { out.mockRestore(); err.mockRestore(); }
+  });
+
+  it("validates native role requester/depth through CLI without workspace writes", async () => {
+    const base = ["role", "brief", "--role", "researcher", "--agent", "codex", "--tier", "light", "--json"];
+    async function invoke(flags: string[]) {
+      tracking.opened.length = 0; tracking.recorded.length = 0;
+      const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      process.exitCode = undefined;
+      try {
+        await buildProgram().parseAsync(["node", "arcadia", ...base, ...flags]);
+        return process.exitCode;
+      } finally {
+        out.mockRestore(); err.mockRestore(); process.exitCode = undefined;
+      }
+    }
+    expect(await invoke(["--requested-by", "lead", "--depth", "0"])).toBeUndefined();
+    for (const flags of [["--requested-by", "lead"], ["--depth", "0"], ...["", " ", "oops", "0.5", "1", "-1"].map((depth) => ["--requested-by", "lead", "--depth", depth])]) {
+      expect(await invoke(flags), JSON.stringify(flags)).toBe(2);
+      expect(tracking.opened).toEqual([]);
+      expect(tracking.recorded).toEqual([]);
+    }
+    expect(liveActivityRows()).toBe(0);
+  });
+
   it("runs each no-record command uninlined without recording, or opening the default workspace's database", async () => {
     for (const [key, runs] of Object.entries(invocations())) {
       for (const args of runs) {
