@@ -3055,8 +3055,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     work
       .command("prs")
       .description("List outstanding GitHub pull requests across Project repositories")
+      .option("--lightweight", "List PRs and CI without per-PR bodies, files or briefing")
+      .option("--repositories-only", "Resolve configured GitHub origins locally without GitHub reads")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  ).action((options: { workspace: string; lightweight?: boolean; repositoriesOnly?: boolean; json?: boolean }) =>
     runCliAction(
       "work.pull-requests",
       options,

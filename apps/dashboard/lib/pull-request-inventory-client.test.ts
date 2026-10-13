@@ -92,6 +92,16 @@ describe("remembered pull-request inventory", () => {
     expect(readRememberedInventory(storage, now + 5000)?.snapshot).toEqual(inventory.snapshot);
   });
 
+  it("does not revive the old rich inventory storage namespace", () => {
+    const requestedKeys: string[] = [];
+    const restored = readRememberedInventory({ getItem: key => {
+      requestedKeys.push(key);
+      return key === "arcadia.pr-inventory.v1" ? JSON.stringify(inventory) : null;
+    } }, now);
+    expect(restored).toBeNull();
+    expect(requestedKeys).toEqual(["arcadia.pr-inventory.lightweight.v2"]);
+  });
+
   it("ignores expired, malformed, future and unavailable browser storage", () => {
     const read = (value: unknown) => readRememberedInventory({ getItem: () => JSON.stringify(value) }, now);
     expect(read({ ...inventory, checkedAt: new Date(now - 25 * 60 * 60_000).toISOString() })).toBeNull();

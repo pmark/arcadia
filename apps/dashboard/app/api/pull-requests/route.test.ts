@@ -28,6 +28,7 @@ describe("GET /api/pull-requests", () => {
     cli.load.mockResolvedValueOnce({ data: { snapshot } });
     const cold = await GET(new Request("http://arcadia.test/api/pull-requests"));
     expect(cold.status).toBe(200);
+    expect(cli.load).toHaveBeenCalledTimes(1);
     await expect(cold.json()).resolves.toMatchObject({ snapshot: { counts: { total: 1 } }, refreshing: false });
 
     cli.load.mockReturnValueOnce(new Promise(() => undefined));
