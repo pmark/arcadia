@@ -201,6 +201,16 @@ describe("offline scout isolation preflight", () => {
     expect(result.priorHold).toEqual({ status: "unresolved" });
   });
 
+  it("accepts the recorded go-broker link marker schema and emits only a digest", () => {
+    const base = input();
+    const before = snapshot({ goBroker: { "link:/opt/arcadia/broker": "link:/opt/arcadia/broker" } });
+    const after = snapshot({ goBroker: { "link:/opt/arcadia/broker": "link:/opt/arcadia/broker" },
+      hashes: { ...base.before.hashes, codexConfig: hash(configBefore + trustSection) } });
+    const result = evaluateScoutPreflight({ ...base, before, after });
+    expect(result.before?.goBroker.entries).toBe(1);
+    expect(JSON.stringify(result)).not.toContain("/opt/arcadia/broker");
+  });
+
   it("blocks a workspace traversal outside the fixture root", () => {
     const base = input();
     expect(evaluateScoutPreflight({ ...base, pins: { ...base.pins, workspace: `${root}/../live` } }).reasons)
