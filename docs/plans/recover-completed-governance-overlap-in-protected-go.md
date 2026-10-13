@@ -31,10 +31,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1376", "https://github.com/pmark/arcadia/issues/1280", "https://github.com/pmark/arcadia/pull/1283", "src/agentRoles/registry.ts", "src/commands/goBrokerInstall.ts", "src/sessions/hostEnrollment.ts", "docs/agent-guidance/operator-actions.md", "src/commands/go.ts", "src/sessions/enrollment.ts", "tests/go.test.ts", "docs/working-copy-safety.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "/Users/pmark/Dev/PrivatePracticeNow/platform/.arcadia/asks/agent-ask-repair-nagel-go-base-overlap-2026-10-11.yaml"]
   - id: package-protected-broker-role-registry
     title: Stage and validate the canonical agent role registry in the protected broker release so fixed launchers load entirely from their installed release.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Stage and validate the canonical agent role registry in the protected broker release so fixed launchers load entirely from their installed release.
+    next_action: Completed via Agent Ask complete-native-package-protected-broker-role-registry-20261013; no further action.
     expected_artifact: Evidence satisfying Agent Ask package-protected-broker-role-registry
     clarification: clarified
     confidence: high
