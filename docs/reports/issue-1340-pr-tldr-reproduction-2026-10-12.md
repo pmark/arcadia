@@ -79,7 +79,12 @@ attempted.
   v1 fingerprint order is retained so
   existing Intelligence results remain addressable.
 - Play TLDR requires a completed matching summary and submits only the summary
-  text to speech. There is no body or comment fallback.
+  text to speech. The request carries the displayed source revision and
+  summary-job identity; the server reloads the current source and exact
+  completed summary and refuses a stale mismatch before speech submission.
+  The player is keyed by repository, PR, revision and summary job so an older
+  artifact cannot survive an in-place TLDR or PR change. There is no body or
+  comment fallback.
 - Source, summary, audio and browser playback remain separate stages. The UI
   shows elapsed time, safe failure text and job identity; it does not invent a
   percentage or an encoding stage.
@@ -94,6 +99,9 @@ attempted.
   exposed five blockers; the R1 regression suite now covers 9 files and 37
   tests, including the existing description test and exact-key Intelligence
   API, and exits 0.
+- R2 identity-mismatch regression: 5 focused files / 19 tests pass, including
+  stale displayed-A/current-B refusal with zero speech calls, matching-pin
+  success and player reset on PR/revision/summary-job change.
 - Touched-file ESLint: exit 0 after R1 repair.
 - Root package TypeScript compile: exit 0.
 - Dashboard TypeScript currently exits 2 on the pre-existing

@@ -41,7 +41,10 @@ export function PullRequestAudio({ repository, number, showDescription = false }
       job = body.job;
     }
     if (!job) { setStage("ready"); return; }
-    if (job.status !== "completed") throw new Error(job.error?.message ?? "TLDR generation did not complete.");
+    if (job.status !== "completed") {
+      setResult({ ...initial, job });
+      throw new Error(job.error?.message ?? "TLDR generation did not complete.");
+    }
     const refreshedResponse = await fetch(`/api/pull-requests/summary?repository=${encodeURIComponent(repository)}&number=${number}`, { cache: "no-store", signal: abort.signal });
     const refreshedBody = await refreshedResponse.json();
     if (!refreshedResponse.ok) throw new Error(refreshedBody.error ?? "Could not revalidate the PR source.");
@@ -99,7 +102,7 @@ export function PullRequestAudio({ repository, number, showDescription = false }
           <p className="mt-2 text-sm leading-6">{result.summary.text}</p>
           <p className="mt-2 text-xs text-muted">Generated from this PR title and description · {formatFreshness(result.summary.generatedAt)} · Source {result.summary.sourceRevision.slice(0, 8)}</p>
         </section>
-        <ReadAloud endpoint="/api/pull-requests/audio" request={{ repository, number }} label="Play TLDR" filename={`${repository.replace("/", "-")}-pr-${number}-tldr.mp3`} />
+        <ReadAloud endpoint="/api/pull-requests/audio" request={{ repository, number, sourceRevision: result.summary.sourceRevision, summaryJobId: result.summary.jobId }} label="Play TLDR" filename={`${repository.replace("/", "-")}-pr-${number}-tldr.mp3`} />
       </> : null}
       {showDescription && result?.source ? <section aria-label="Pull request body" className="mt-4 min-w-0 rounded-md border border-line p-3"><h4 className="font-semibold">Pull request body</h4><MarkdownBody text={result.source.body} /><details className="mt-3 text-xs text-muted"><summary className="cursor-pointer">Source Markdown</summary><pre className="mt-2 whitespace-pre-wrap break-words">{result.source.body}</pre></details></section> : null}
     </div>

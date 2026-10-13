@@ -9,7 +9,11 @@ type ReadAloudProps = {
 };
 
 export function ReadAloud(props: ReadAloudProps) {
-  return <ReadAloudPlayer key={`${props.endpoint ?? "/api/read-aloud"}:${JSON.stringify(props.request)}`} {...props} />;
+  return <ReadAloudPlayer key={readAloudPlayerKey(props.endpoint, props.request)} {...props} />;
+}
+
+export function readAloudPlayerKey(endpoint: string | undefined, request: unknown): string {
+  return `${endpoint ?? "/api/read-aloud"}:${JSON.stringify(request)}`;
 }
 
 function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play", filename = "arcadia-read-aloud.mp3" }: ReadAloudProps) {
