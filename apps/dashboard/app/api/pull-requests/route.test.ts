@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const cli = vi.hoisted(() => ({ load: vi.fn(), scope: vi.fn(), read: vi.fn() }));
+const cli = vi.hoisted(() => ({ load: vi.fn(), scope: vi.fn(), read: vi.fn(), write: vi.fn() }));
 
 vi.mock("../../../lib/arcadia-cli", () => ({
   loadOutstandingPullRequests: cli.load,
@@ -13,7 +13,7 @@ vi.mock("../../../lib/arcadia-cli", () => ({
 
 vi.mock("../../../lib/pull-request-inventory-persistence", () => ({
   inventoryPersistenceScope: cli.scope,
-  createInventoryPersistence: () => ({ read: cli.read, write: async () => undefined })
+  createInventoryPersistence: (scope: { identity: string }) => ({ read: cli.read, write: (value: unknown) => cli.write(scope.identity, value) })
 }));
 
 import { GET } from "./route";
@@ -28,14 +28,14 @@ const snapshot = {
 };
 
 describe("GET /api/pull-requests", () => {
-  beforeEach(() => { cli.load.mockReset(); cli.read.mockResolvedValue(null); cli.scope.mockResolvedValue({ identity: "test", directory: "/cache", workspacePath: "/workspace" }); (globalThis as typeof globalThis & { arcadiaPrInventoryCaches?: Map<string, unknown> }).arcadiaPrInventoryCaches?.clear(); });
+  beforeEach(() => { cli.load.mockReset(); cli.write.mockReset(); cli.read.mockResolvedValue(null); cli.scope.mockResolvedValue({ identity: "test", directory: "/cache", workspacePath: "/workspace" }); (globalThis as typeof globalThis & { arcadiaPrInventoryCaches?: Map<string, unknown> }).arcadiaPrInventoryCaches?.clear(); });
 
   it("returns the cached contract immediately while a requested revalidation runs", async () => {
     cli.load.mockResolvedValueOnce({ data: { snapshot } });
     const cold = await GET(new Request("http://arcadia.test/api/pull-requests"));
     expect(cold.status).toBe(200);
     expect(cli.load).toHaveBeenCalledTimes(1);
-    expect(cli.load).toHaveBeenCalledWith({ workspace: "/workspace" });
+    expect(cli.load).toHaveBeenCalledWith({ workspace: "/workspace", scopeIdentity: "test" });
     await expect(cold.json()).resolves.toMatchObject({ snapshot: { counts: { total: 1 } }, refreshing: false });
 
     cli.load.mockReturnValueOnce(new Promise(() => undefined));
@@ -70,6 +70,24 @@ describe("GET /api/pull-requests", () => {
     const response = await GET(new Request("http://arcadia.test/api/pull-requests"));
     expect(response.status).toBe(503); expect(cli.load).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({ error: "Workspace identity unavailable" });
+  });
+
+  it("returns and persists the new identity's snapshot independently of a pending old scan", async () => {
+    let resolveOld!: (value: { data: { snapshot: typeof snapshot } }) => void;
+    const oldScan = new Promise<{ data: { snapshot: typeof snapshot } }>(resolve => { resolveOld = resolve; });
+    const currentSnapshot = { ...snapshot, counts: { ...snapshot.counts, total: 2 } };
+    cli.scope.mockResolvedValueOnce({ identity: "A", directory: "/cache", workspacePath: "/workspace" });
+    cli.load.mockImplementation((options: { scopeIdentity?: string }) => options.scopeIdentity === "B" ? Promise.resolve({ data: { snapshot: currentSnapshot } }) : oldScan);
+    const old = GET(new Request("http://arcadia.test/api/pull-requests"));
+    await vi.waitFor(() => expect(cli.load).toHaveBeenCalledTimes(1));
+    cli.scope.mockResolvedValue({ identity: "B", directory: "/cache", workspacePath: "/workspace" });
+    const current = GET(new Request("http://arcadia.test/api/pull-requests"));
+    await vi.waitFor(() => expect(cli.write).toHaveBeenCalledWith("B", expect.objectContaining({ snapshot: currentSnapshot })));
+    expect(await (await current).json()).toMatchObject({ snapshot: { counts: { total: 2 } }, stale: false });
+    expect(cli.write).not.toHaveBeenCalledWith("B", expect.objectContaining({ snapshot }));
+    resolveOld({ data: { snapshot } });
+    expect(await (await old).json()).toMatchObject({ snapshot: { counts: { total: 1 } } });
+    expect(cli.write).toHaveBeenCalledWith("A", expect.objectContaining({ snapshot }));
   });
 
 });

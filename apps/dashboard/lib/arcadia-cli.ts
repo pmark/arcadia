@@ -484,8 +484,9 @@ type ConfiguredPullRequestRepository = { repository: string; repositoryPath: str
 let pullRequestRepositories: { expiresAt: number; entries: ConfiguredPullRequestRepository[] } | null = null;
 const outstandingPullRequestsInFlight = new Map<string, Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>>>();
 
-export async function loadOutstandingPullRequests(options: { workspace?: string } = {}): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
-  const key = options.workspace ?? "default";
+export async function loadOutstandingPullRequests(options: { workspace?: string; scopeIdentity?: string } = {}): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
+  // A changed checkout/config/database identity must never join the prior scan.
+  const key = JSON.stringify([options.workspace ?? null, options.scopeIdentity ?? null]);
   const pending = outstandingPullRequestsInFlight.get(key);
   if (pending) return pending;
   const request = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--lightweight", ...(options.workspace ? ["--workspace", options.workspace] : [])]).then(response => {

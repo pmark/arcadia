@@ -13,7 +13,7 @@ async function inventoryCache() {
   let cache = inventoryCaches.get(scope.identity);
   if (!cache) {
     cache = createPullRequestInventoryCache({
-      load: async () => (await loadOutstandingPullRequests({ workspace: scope.workspacePath })).data.snapshot,
+      load: async () => (await loadOutstandingPullRequests({ workspace: scope.workspacePath, scopeIdentity: scope.identity })).data.snapshot,
       persistence: createInventoryPersistence(scope)
     });
     // Only the currently resolved workspace/checkout scope needs a live cache.

@@ -23,6 +23,22 @@ describe("configured PR description access", () => {
     expect(exec).toHaveBeenCalledTimes(2);
     expect(exec.mock.calls[1][1]).toContain("--repositories-only");
   });
+  it("separates pending inventory scans across full identities within the same workspace", async () => {
+    const { loadOutstandingPullRequests } = await import("./arcadia-cli");
+    const callbacks: ((error: null, stdout: string, stderr: string) => void)[] = [];
+    exec.mockImplementation((_command, _args, _options, callback) => callbacks.push(callback));
+    const old = loadOutstandingPullRequests({ workspace: "/workspace", scopeIdentity: "config-db-A" });
+    const current = loadOutstandingPullRequests({ workspace: "/workspace", scopeIdentity: "config-db-B" });
+    const repeated = loadOutstandingPullRequests({ workspace: "/workspace", scopeIdentity: "config-db-B" });
+    expect(exec).toHaveBeenCalledTimes(2);
+    const oldSnapshot = { pullRequests: [{ repository: "old/repo", number: 1 }], repositories: [] };
+    const newSnapshot = { pullRequests: [{ repository: "new/repo", number: 2 }], repositories: [] };
+    callbacks[0](null, JSON.stringify({ ok: true, data: { snapshot: oldSnapshot } }), "");
+    callbacks[1](null, JSON.stringify({ ok: true, data: { snapshot: newSnapshot } }), "");
+    expect((await old).data.snapshot).toEqual(oldSnapshot);
+    expect((await current).data.snapshot).toEqual(newSnapshot);
+    expect((await repeated).data.snapshot).toEqual(newSnapshot);
+  });
   it("reads merged PRs from configured repositories with zero open PRs", async () => {
     const { loadPullRequestDescription } = await import("./arcadia-cli");
     exec.mockImplementationOnce((_command, _args, _options, callback) => callback(null, JSON.stringify({ ok: true, data: { snapshot: { pullRequests: [], repositories: [{ repository: "owner/repo", repositoryPath: "/configured/repo" }] } } }), ""));
