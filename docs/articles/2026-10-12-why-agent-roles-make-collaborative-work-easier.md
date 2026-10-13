@@ -16,7 +16,7 @@ channels: ["site", "rss"]
 
 A capable agent can research a problem, suggest a plan, write code and check the result. Giving it a clear role helps you decide which of those jobs it should be doing right now, what it may change, and what evidence it should return.
 
-Arcadia defines seven roles. The **Lead** owns a bounded assignment and coordinates its progress. A **Planner** proposes how to approach larger work, while a **Plan critic** challenges that proposal before time is spent building it. A **Researcher** investigates questions and brings back sources and uncertainty. The **Implementer** makes the change. A **Code reviewer** independently examines the candidate for defects, and **QA** checks whether it meets the agreed acceptance criteria.
+Arcadia defines seven roles. The **Lead** owns a bounded assignment and coordinates its progress. Where its work contract permits, the Lead can also implement routine changes as the sole development writer. A **Planner** proposes how to approach larger work, while a **Plan critic** challenges that proposal before time is spent building it. A **Researcher** investigates questions and brings back sources and uncertainty. The **Implementer** makes the change. A **Code reviewer** independently examines the candidate for defects, and independent **QA** checks whether it meets the agreed acceptance criteria.
 
 Imagine adding a CSV export to an app. A Researcher might inspect the existing data model and identify sensitive fields. A Planner could propose a small first version; the Plan critic might notice that the proposal never defines who may download it. The Lead keeps the assignment focused, and one Implementer builds it. A fresh Code reviewer examines access checks and tricky inputs. QA tries the actual download and verifies the promised columns and contents.
 
@@ -26,7 +26,7 @@ Roles help control access, too. A researcher can investigate a production proble
 
 You can start with a small version of this approach. Name the assignment, identify its owner, define what success looks like, and arrange an independent review. Add planning, research or QA roles when the task needs them. One agent can take different assignments over time, while ownership and review independence stay clear.
 
-As your workflows grow, you can assign supervision duties to notice friction and gather lessons. Arcadia treats supervision as a relationship rather than an eighth role. Clear responsibilities make the work easier to inspect and hand over with less repeated explanation.
+Supervision can help you notice friction and gather lessons. Arcadia treats supervision as a relationship rather than an eighth role. Clear responsibilities make the work easier to inspect and hand over with less repeated explanation.
 
 ## What is not done
 
