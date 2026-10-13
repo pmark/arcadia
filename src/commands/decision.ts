@@ -155,6 +155,12 @@ export interface DecisionApproveOptions {
   expectUpdated?: string;
   /** Refuse (decision_precondition_failed, nothing written) unless sha256 of the question and options (src/decisions/optionsDigest.ts) equals this. */
   expectOptions?: string;
+  /**
+   * Refuse (DECISION_PRECONDITION_FAILED, details.reason `defer_would_move_pointer`, nothing written) when a `defer`
+   * option's target is the CURRENT Action, because applying it would move the active pointer (Plan and PROJECT.md).
+   * Computed with the deferral's own dry-run pass before any write. Unset means the existing behaviour.
+   */
+  expectNoPointerMove?: boolean;
   /** The caller already holds a capture id for this answer; no new envelope is made. */
   captureId?: string | null;
 }
@@ -429,7 +435,7 @@ function applyDecisionApprove(
           remedy: "Add `action: <action-id>` to the Decision so its consequence can be applied."
         });
       }
-      const result = applyDecisionDeferral(db, {
+      const deferralInput = {
         repoRoot,
         projectSlug: decisionDoc.project,
         decisionId: decisionDoc.id,
@@ -438,9 +444,20 @@ function applyDecisionApprove(
         decisionAbsolutePath: absolutePath,
         decisionRelativePath: relativePath,
         decisionAfter: updatedContent,
-        decisionAnswer: prepared.answer,
-        dryRun: options.dryRun === true
-      });
+        decisionAnswer: prepared.answer
+      };
+      if (options.expectNoPointerMove === true && options.dryRun !== true) {
+        // The deferral's own dry-run pass: no document or receipt is written. A recorded receipt (receiptId set) is a
+        // replay of an earlier application, which moves nothing again.
+        const probe = applyDecisionDeferral(db, { ...deferralInput, dryRun: true });
+        if (probe.receiptId === null && probe.consequence.kind === "defer" && probe.consequence.pointerMoved) {
+          throw decisionPreconditionFailed(
+            "Applying this option would move the active pointer, because it defers the current Action; nothing was written. Answer it from the CLI.",
+            { decision: options.id, reason: "defer_would_move_pointer", action: decisionDoc.action }
+          );
+        }
+      }
+      const result = applyDecisionDeferral(db, { ...deferralInput, dryRun: options.dryRun === true });
       return createSuccess({
         command: "decision.approve",
         workspace: workspacePath,

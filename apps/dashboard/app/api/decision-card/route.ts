@@ -163,10 +163,16 @@ export async function POST(request: Request) {
           expectStatus: target.status,
           expectUpdated: target.updated,
           // Closes same-day edits and the window between regeneration and the writer's own read.
-          expectOptions: target.optionsDigest
+          expectOptions: target.optionsDigest,
+          // A defer on the current Action would move the active pointer unseen; the writer refuses that case.
+          expectNoPointerMove: true
         });
         return NextResponse.json({ ok: true, cardId: card.id, verb: "answer", optionId, message: `Answered ${card.id}.`, applied: response.data.applied });
       } catch (error) {
+        const details = error instanceof ArcadiaCliError && typeof error.details === "object" ? (error.details as { reason?: unknown } | null) : null;
+        if (details?.reason === "defer_would_move_pointer") {
+          return refuseWith(409, "defer_would_move_pointer", "Deferring the current Action would move the active pointer. Nothing was written; answer it from the CLI.");
+        }
         const precondition =
           error instanceof ArcadiaCliError &&
           (/^DECISION_PRECONDITION_FAILED\b/.test(error.message) ||

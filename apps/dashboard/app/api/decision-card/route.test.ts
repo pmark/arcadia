@@ -174,7 +174,8 @@ describe("decision cards end to end", () => {
       answer: "Use 9090",
       expectStatus: "open",
       expectUpdated: "2026-10-13T10:00:00Z",
-      expectOptions: expect.stringMatching(/^[0-9a-f]{64}$/)
+      expectOptions: expect.stringMatching(/^[0-9a-f]{64}$/),
+      expectNoPointerMove: true
     });
     expect(optionId).toBe("option-2");
     // Replay of the same press: the Decision is closed, so it is refused and nothing more is written.
@@ -511,6 +512,21 @@ describe("decision cards end to end", () => {
     const stale = await POST(post({ cardId: first.card.id, fingerprint: first.pressable["option-1"] }));
     expect(stale.status).toBe(409);
     expect(world.approve).not.toHaveBeenCalled();
+  });
+
+  it("a defer option whose target is the current Action is refused by the writer with defer_would_move_pointer", async () => {
+    world.decisions = [decision({ action: "act-1", project: "alpha", options: [{ label: "Park it", consequence: "Parks.", recommended: true, effect: "defer" }] })];
+    const answer = (await views()).find((v) => v.card.verb === "answer")!;
+    expect(answer.card.options[0].consequence).toContain("Refused if this is the current Action; answer that case from the CLI.");
+    world.approve.mockImplementation(async () => {
+      throw new ArcadiaCliError("DECISION_PRECONDITION_FAILED: /Users/pmark/x", 400, { reason: "defer_would_move_pointer" });
+    });
+    const response = await POST(post({ cardId: answer.card.id, fingerprint: answer.pressable["option-1"] }));
+    expect(response.status).toBe(409);
+    const text = await response.text();
+    expect(text).toContain("defer_would_move_pointer");
+    expect(text).not.toContain("/Users/pmark");
+    expect(world.approve).toHaveBeenCalledWith(expect.objectContaining({ expectNoPointerMove: true }));
   });
 
   it("N3: a grant that IS the derived next action has no button and its press is refused", async () => {

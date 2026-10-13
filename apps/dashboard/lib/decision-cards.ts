@@ -37,6 +37,7 @@ export type CardPressRefusalReason =
   | "descriptor_changed"
   | "next_action_unknown"
   | "decision_precondition_failed"
+  | "defer_would_move_pointer"
   | "decision_write_refused"
   | "script_start_refused"
   | "cli_unparsable";

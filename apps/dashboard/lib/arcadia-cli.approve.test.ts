@@ -23,7 +23,8 @@ describe("approveDecision argv", () => {
       answer: "Use 8080",
       expectStatus: "open",
       expectUpdated: "2026-10-13",
-      expectOptions: "a".repeat(64)
+      expectOptions: "a".repeat(64),
+      expectNoPointerMove: true
     });
     const args = exec.calls[0];
     const at = (flag: string) => args[args.indexOf(flag) + 1];
@@ -33,6 +34,7 @@ describe("approveDecision argv", () => {
     expect(at("--expect-status")).toBe("open");
     expect(at("--expect-updated")).toBe("2026-10-13");
     expect(at("--expect-options")).toBe("a".repeat(64));
+    expect(args).toContain("--expect-no-pointer-move");
   });
 
   it("omits the flags when no precondition is given", async () => {
@@ -40,5 +42,6 @@ describe("approveDecision argv", () => {
     expect(exec.calls[0]).not.toContain("--expect-status");
     expect(exec.calls[0]).not.toContain("--expect-updated");
     expect(exec.calls[0]).not.toContain("--expect-options");
+    expect(exec.calls[0]).not.toContain("--expect-no-pointer-move");
   });
 });

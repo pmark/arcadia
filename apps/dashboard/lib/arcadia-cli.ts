@@ -462,6 +462,8 @@ export async function approveDecision(input: {
   expectUpdated?: string;
   /** sha256 of the question and options as shown (src/decisions/optionsDigest.ts); the writer refuses on mismatch. */
   expectOptions?: string;
+  /** The writer refuses (defer_would_move_pointer) when applying the answer would move the active pointer. */
+  expectNoPointerMove?: boolean;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
@@ -469,7 +471,8 @@ export async function approveDecision(input: {
     "--answer", input.answer,
     ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
     ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : []),
-    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : [])
+    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : []),
+    ...(input.expectNoPointerMove === true ? ["--expect-no-pointer-move"] : [])
   ], { timeoutMs: 60_000 });
 }
 

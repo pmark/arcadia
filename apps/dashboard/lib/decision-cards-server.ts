@@ -130,7 +130,7 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
             label: option.label,
             // A defer option applies its effect to the Decision's own `action` in its own `project`; show that target
             // in the consequence (which is pinned). The generator refuses over-long text rather than truncating.
-            consequence: option.effect === "defer" ? `${option.consequence} Parks ${deferProject}/${actionId}.` : option.consequence,
+            consequence: option.effect === "defer" ? `${option.consequence} Parks ${deferProject}/${actionId}. Refused if this is the current Action; answer that case from the CLI.` : option.consequence,
             recommended: option.recommended,
             effect: (option.effect ?? null) as DecisionOptionEffect | null
           })),
