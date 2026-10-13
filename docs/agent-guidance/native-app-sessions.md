@@ -14,24 +14,42 @@ answer, a host step, a pasted log) is a gap: record it as friction (section 7).
 
 ## 2. Roles and supervision
 
-Roles, models and briefs: `session-roles-and-briefs.md`. In a native session:
+Canonical roles, defaults and dispatch: [session-roles-and-briefs.md](session-roles-and-briefs.md),
+`config/defaults/agent-roles.json` (`arcadia roles --json`) and
+[arcadia-role](../../.agents/skills/arcadia-role/SKILL.md). Read them before launch;
+use the installed skill in adopting Projects. Historical Driver/Reviewer names
+are descriptions, not additional role IDs.
 
-- **Lead** = the app session. One Action (or one operator-directed request).
-  Owns the brief and the gates and applies the Merge on green gate in
-  `pull-requests.md` (merge authority is Decision 0060/0080, never the role);
-  never writes product code.
-- **Driver** = a subagent in an isolated worktree, the only code writer. The
-  Lead supervises it: a wall-clock and token budget, a midpoint check, and a
-  stop after one no-diff attempt. To stop or replace a Driver, end it, keep its
-  branch, and brief a fresh Driver with the gap; never repair its diff yourself.
-- **Reviewer** = a new read-only subagent each round; never the author.
-- **Replayer** = a script, run by the Lead; no model.
-- **Observer** = deferred. It attaches when the trigger in
-  `session-roles-and-briefs.md` fires and a Decision builds it; until then the
-  Lead is its own watcher.
-- **Operator** = the decider, never the typist. Acts only through a card:
-  a /todo answer, an /actions or /review button, a PR merge, a Discord reply,
-  or a picker choice in the app (`operator-actions.md`, "The host is offsite").
+- **Lead** = the top-level app Session, depth 0. Owns one Action or direct
+  request and its gates. This native-app convention keeps the Lead from writing
+  product code; the implementer (historical Driver) is the sole code writer.
+  Decision 0112 permits routine Lead development outside this scoped convention.
+- **Implementer** = the sole writer when the Lead delegates implementation.
+  The Lead pauses edits, supervises its budget and hand-back, and preserves its
+  candidate on replacement. Other native delegate roles are planner,
+  plan-critic and researcher; each is depth 1 and cannot delegate further.
+- **Code-reviewer / QA** = separate independent Sessions under Decision 0114
+  and `pull-requests.md`, never native children. Plan critique uses plan-critic
+  independently of the planner whose output it judges.
+- **Replayer** = a deterministic script; no model. Observer automation is
+  deferred, not a registered role. Supervision is an assigned relationship.
+- **Operator** = the decider through the existing cards and approval gates.
+
+Native delegation needs explicit operator or existing launch authorization.
+Prepare with `arcadia role brief --role <id> --agent <agent> --tier <tier>
+--requested-by lead --depth 0`, then pass the complete result and bounded
+assignment to the existing Codex `spawn_agent` or Claude `Agent`. Require the
+child to read arcadia-role, declare role/depth and return help requests to the
+Lead. The command validates supplied labels only; actual lineage, launch and
+host authorization need separate evidence. Missing tools/skills stop dispatch
+with a preserved assignment. Governed capacity admission remains unavailable;
+native dispatch is not a broker, enrollment or slot reservation.
+
+The existing PR procedure permits a fresh read-only reviewer context (including a
+sandboxed reviewer or subagent) for generic current-head verification. This is
+not admission to the registered code-reviewer or qa role and proves no governed
+attempt lineage. Requests for those registered roles still require separate
+independent Sessions under Decision 0114; native role dispatch refuses them.
 
 ## 3. Start protocol
 
@@ -48,7 +66,7 @@ Roles, models and briefs: `session-roles-and-briefs.md`. In a native session:
 
 ## 4. The working loop
 
-brief -> Driver -> deterministic checks -> fresh Reviewer -> repair -> merge or card.
+brief -> implementer (when needed) -> deterministic checks -> separate independent review Session -> repair -> merge or card.
 
 - Brief with the template in `session-roles-and-briefs.md`; name the branch.
 - Deterministic checks first: focused tests, eslint on touched files,

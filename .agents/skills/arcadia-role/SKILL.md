@@ -59,13 +59,60 @@ Load procedures by operation from the index, rather than copying them here:
 
 Lead and implementer are both eligible for development; they never become two
 simultaneous writers. Ownership changes require the existing governed path.
-Only a top-level Lead is eligible to request delegates, at depth one. Delegates
-return requests for help to the Lead. Code-reviewer and QA requests need separate
-independent Sessions, never in-process children. **Governed delegation admission
-is not live yet:** capture a request with `arcadia agent-ask preview` using
-`intent: proposal` and `requested_authority: propose`, following the indexed Ask
-procedure. A preview is a receipt, not permission to execute. Host tools require
-their own explicit authorization; do not infer it from role eligibility.
+Only a top-level Lead (depth 0) may request planner, plan-critic, implementer or
+researcher at depth 1. Delegates return help requests to the Lead and never spawn
+children. Code-reviewer and QA need separate independent Sessions, never native
+children. Decisions 0112/0114 govern these limits.
+
+## Prepare and dispatch authorized native help
+
+Use the standard harness unmodified. Native dispatch requires explicit operator
+or existing launch authorization; role eligibility alone authorizes nothing.
+Read the indexed session-roles-and-briefs procedure before dispatch.
+
+```sh
+arcadia roles --json
+arcadia roles show researcher
+arcadia role brief --role researcher --agent codex --tier light --requested-by lead --depth 0 --json
+```
+
+Replace the target, agent and tier with the assignment's authorized values. Pair
+`--requested-by` and `--depth`; depth describes the requester, so only `lead` at
+0 passes. Unknown roles, nested delegates, Lead targets and code-reviewer/QA
+native targets fail. This read-only command validates supplied policy labels;
+it cannot prove actual Session lineage or host authorization, and launches,
+claims, reserves and admits nothing.
+
+Pass the complete generated brief to Codex `spawn_agent` or Claude `Agent`, plus
+Task, Project/Milestone/Action or direct instruction, candidate/revision, files,
+acceptance, raw checks, budget/deadline, sole writer and the hand-back Artifact
+path. Require the child to read this skill, declare its role and depth 1, and
+return help requests to the Lead. Specialization never expands authority. If an
+implementer writes, the Lead pauses its edits until hand-back. A plan-critic must
+be independent of the planner whose output it critiques. Other delegates are
+read-only. Follow the PR procedure for separate independent review/QA Sessions.
+The existing PR procedure permits a fresh read-only reviewer context (including a
+sandboxed reviewer or subagent) for generic current-head verification. This is
+not admission to the registered code-reviewer or qa role and proves no governed
+attempt lineage. Requests for those registered roles still require separate
+independent Sessions under Decision 0114; native role dispatch refuses them.
+
+Record actual native launch and returned evidence separately from preparation.
+
+Use the installed `arcadia` command in adopting Projects, not Arcadia's source
+CLI. The Lead and child must have this skill available; if the Project has no
+copy, use its explicitly installed arcadia-role skill. If neither is readable,
+preserve the assignment and request installation; do not guess the protocol.
+OpenCode native dispatch is unverified here: preserve the brief and request an
+authorized relaunch when no native tool is available.
+
+**Governed delegation admission is not live yet.** Native tool dispatch does not
+admit or enroll an Arcadia Session, enforce capacity caps or reserve a slot. For
+an unauthorized or unavailable path submit an Agent Ask proposal with
+`requested_authority: propose` following the indexed Ask procedure. A preview
+is a receipt, not permission to execute. Do not substitute `session start` for a
+delegation broker or claim its development enrollment creates reviewer/QA
+independence.
 
 ## Common hand-back
 

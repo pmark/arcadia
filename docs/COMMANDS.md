@@ -16,6 +16,18 @@ no model calls, write no workspace state and do not claim or admit a Session.
 The tier selects the displayed model/identity; it does not change the running
 agent. Unknown roles and unsafe specialization labels fail.
 
+For an explicitly authorized native delegate, add `--requested-by lead --depth 0`
+to `role brief`. Both options must be supplied together. This validates supplied
+policy labels only: only top-level Lead can prepare planner, plan-critic,
+implementer or researcher at depth 1. Nested/unknown targets and code-reviewer/QA
+native targets fail; review and QA require separate independent Sessions.
+Pass the full brief plus bounded assignment and mandatory arcadia-role skill read
+to existing Codex `spawn_agent` or Claude `Agent`. Native dispatch requires host
+authorization and records its own launch evidence; this command launches nothing.
+Governed capacity admission remains unavailable. Use installed `arcadia` and the
+installed role skill in adopting Projects; missing skills stop dispatch until
+installed. Lead and implementer never write concurrently.
+
 The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 `config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
 `roles` object keyed by registered ID, with only `default_tier` and
@@ -24,7 +36,7 @@ The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 Pass `--workspace` or let Arcadia resolve its configured workspace; never infer
 one from a Project slug. Model bindings use the existing coding-agent-models
 registry. Action launch briefs include the canonical Lead charter, preserving
-existing launcher ownership and native-app Lead/Driver constraints.
+existing launcher ownership and sole-writer constraints.
 
 Use the repository's [shared role skill](../.agents/skills/arcadia-role/SKILL.md) and
 [supervisor skill](../.agents/skills/arcadia-supervisor/SKILL.md) for the common protocol and assigned

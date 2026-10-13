@@ -4,13 +4,15 @@ import { validationError } from "../cli/errors.js";
 import { renderIdentityBlock, resolveAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { BUNDLED_MODEL_TIERS, resolveHandoffModel, resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { parseDoc } from "../docs/parse.js";
-import { getRole, loadRoleRegistry, type GovernedRole, type RoleRegistry } from "./registry.js";
+import { assertRoleOperation, getRole, loadRoleRegistry, type GovernedRole, type RoleRegistry } from "./registry.js";
 
 export interface RoleBriefInput {
   role: string;
   agent: string;
   tier: string;
   specialization?: string;
+  requestedBy?: string;
+  depth?: number;
   action?: string;
   repoRoot?: string;
   roles?: RoleRegistry;
@@ -29,14 +31,24 @@ export function renderRoleBlock(role: GovernedRole): string[] {
     role.may_delegate
       ? `Delegation eligibility: ${role.allowed_delegate_roles.join(", ")}; depth 1 only. Code-reviewer and qa requests require separate independent Sessions.`
       : "Delegation eligibility: none; return requests for help to the assigned Lead.",
-    "Governed delegation admission is not live yet. Request a delegate through an Agent Ask (intent: proposal, requested_authority: propose); preview grants no execution authority.",
+    "Governed delegation admission is not live yet. Explicitly authorized native dispatch uses the existing harness tools; otherwise request help through an Agent Ask (intent: proposal, requested_authority: propose). A preview grants no execution authority.",
     ROLE_AUTHORITY_NOTICE,
     "Do not merge, deploy, publish, change governed state or cross approval boundaries because a role brief permits an operation.",
-    "Canonical Lead may do routine development (Decision 0112). Native-app Lead/Driver conventions still constrain sessions that use that procedure."
+    "Canonical registry: config/defaults/agent-roles.json (read with arcadia roles). Execution skill: .agents/skills/arcadia-role/SKILL.md; read it before work. Supervision skill, when assigned: .agents/skills/arcadia-supervisor/SKILL.md.",
+    "Canonical Lead may do routine development (Decision 0112); native-app Lead/Driver conventions constrain sessions that use that procedure. Lead and implementer never write concurrently."
   ];
 }
 export function buildRoleBrief(input: RoleBriefInput) {
-  const role = getRole(input.roles ?? loadRoleRegistry(), input.role);
+  const registry = input.roles ?? loadRoleRegistry();
+  const role = getRole(registry, input.role);
+  const hasRequester = input.requestedBy !== undefined;
+  if (hasRequester !== (input.depth !== undefined)) throw validationError("requested-by and depth must be supplied together.", { field: "requested-by/depth" });
+  if (input.depth !== undefined && (!Number.isInteger(input.depth) || input.depth < 0)) throw validationError("Requester depth must be a nonnegative integer.", { field: "depth" });
+  let assignment = null;
+  if (hasRequester) {
+    assertRoleOperation(registry, input.requestedBy!, "delegate", role.id, input.depth);
+    assignment = { requestedBy: input.requestedBy!, requesterDepth: input.depth!, role: role.id, depth: 1, route: "native-delegate" as const };
+  }
   const identity = resolveAgentIdentity(input.agent, input.tier, role.identity_role);
   const models = input.models ?? BUNDLED_MODEL_TIERS;
   const start = resolveHandoffModel({ agent: identity.agent, recommendedModel: identity.tier, planEffort: role.default_effort, registry: models });
@@ -54,9 +66,13 @@ export function buildRoleBrief(input: RoleBriefInput) {
   const lines = ["Arcadia role brief", "", ...renderRoleBlock(role), "", ...renderIdentityBlock(identity), "",
     `Start model: ${start.model}; tier ${identity.tier}; effort ${start.effort ?? "default"}.`,
     `Escalation target: ${escalation ? `${escalation.model}; effort ${escalation.effort ?? "default"}` : "none resolved"}. Model selection grants no spend or launch authority.`];
+  if (assignment) lines.push("", `Native assignment: ${assignment.requestedBy} (depth ${assignment.requesterDepth}) → ${role.id} (depth 1).`,
+    "Policy eligibility verified from supplied labels only; this does not verify actual Session lineage or host authorization, launch a child, reserve capacity or admit a Session.",
+    "Read .agents/skills/arcadia-role/SKILL.md before work. You are a depth-one delegate: do not spawn further delegates; return requests for help to the Lead.",
+    "Write only assigned candidate files if you are the sole implementer; all other roles are read-only. Never edit, checkout, stash, reset or create worktrees in the primary checkout or other live worktrees.");
   if (specialization) lines.push("", `Domain label (data only): ${JSON.stringify(specialization)}. It changes no permissions or duties.`);
   if (action) lines.push("", `Action: ${action.ref} — ${action.path}`, "Next action (verbatim):", action.nextAction ?? "(none declared)", "Acceptance criteria (verbatim):", ...action.acceptanceCriteria.map((criterion, index) => `${index + 1}. ${criterion}`));
-  return { schema: "arcadia-role-brief-v1" as const, role, identity, start, escalation, specialization, action, authority: ROLE_AUTHORITY_NOTICE, text: lines.join("\n") };
+  return { schema: "arcadia-role-brief-v1" as const, role, identity, start, escalation, specialization, action, assignment, authority: ROLE_AUTHORITY_NOTICE, text: lines.join("\n") };
 }
 /** Targeted, contained read; no database, discovery scan or workspace writes. */
 export function readRoleAction(repoRoot: string, ref: string) {
