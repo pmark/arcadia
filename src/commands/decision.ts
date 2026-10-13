@@ -447,10 +447,12 @@ function applyDecisionApprove(
         decisionAnswer: prepared.answer
       };
       if (options.expectNoPointerMove === true && options.dryRun !== true) {
-        // The deferral's own dry-run pass: no document or receipt is written. A recorded receipt (receiptId set) is a
-        // replay of an earlier application, which moves nothing again.
-        const probe = applyDecisionDeferral(db, { ...deferralInput, dryRun: true });
-        if (probe.receiptId === null && probe.consequence.kind === "defer" && probe.consequence.pointerMoved) {
+        // The deferral's own dry-run pass, under a DISTINCT request id so no stored receipt (for example one left by an
+        // earlier apply and reverse of this Decision) can short-circuit it with a stale consequence: the consequence
+        // is computed fresh from current state, and the dry-run path returns before any document or receipt write.
+        // An already-applied deferral is safe: its Action is then deferred, so a fresh probe reports no pointer move.
+        const probe = applyDecisionDeferral(db, { ...deferralInput, requestId: `${deferralInput.requestId}~pointer-probe`, dryRun: true });
+        if (probe.consequence.kind === "defer" && probe.consequence.pointerMoved) {
           throw decisionPreconditionFailed(
             "Applying this option would move the active pointer, because it defers the current Action; nothing was written. Answer it from the CLI.",
             { decision: options.id, reason: "defer_would_move_pointer", action: decisionDoc.action }
