@@ -4,7 +4,7 @@ type: decision
 id: "0127"
 slug: decide-whether-to-authorize-one-bounded-native-packaging-repair-exception-using
 project: arcadia
-status: open
+status: approved
 question: Decide whether to authorize one bounded native packaging-repair exception using a Codex host-managed exclusive candidate, while preserving Arcadia's current active Plan and queue.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 updated: 2026-10-13
+answer: Authorize the bounded native packaging repair
+decided: 2026-10-13
 ---
 
 # Decision 0127: Decide whether to authorize one bounded native packaging-repair exception using a Codex host-managed exclusive candidate, while preserving Arcadia's current active Plan and queue.
