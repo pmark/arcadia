@@ -101,11 +101,11 @@ function summarizeSnapshot(snapshot: LeakSnapshot): SnapshotSummary {
 }
 
 function exactTrustEntryDiff(beforeText: string, afterText: string, fixtureTrustPath: string): boolean {
-  if (/[\n\r\\"]/.test(fixtureTrustPath)) return false;
+  if (/[\n\r\\"]/.test(fixtureTrustPath) || beforeText.includes("\\")) return false;
   const section = `[projects."${fixtureTrustPath}"]\ntrust_level = "trusted"\n`;
   if (!afterText.endsWith(section)) return false;
   // Attribute only when every pre-existing project table uses this simple header form;
-  // unsupported TOML variants stop the trust-only claim instead of being normalized.
+  // unsupported TOML variants and backslash escapes stop the trust-only claim instead of being normalized.
   for (const sourceLine of beforeText.split(/\r?\n/)) {
     const line = sourceLine.trim();
     if (!line.startsWith("[")) continue;

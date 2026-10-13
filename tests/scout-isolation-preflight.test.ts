@@ -162,8 +162,9 @@ describe("offline scout isolation preflight", () => {
     `[projects."${trustPath}"] # existing commented table`,
     `[ projects . "${trustPath}" ]`,
     `[projects.'${trustPath}']`,
+    `[projects."${trustPath.replaceAll("/", "\\u002f")}"]`,
     `[projects.\n"${trustPath}"]`
-  ])("fails closed on existing or unsupported project table syntax", (header) => {
+  ])("fails closed on existing or unsupported project table syntax, including escaped paths", (header) => {
     const before = `${configBefore}${header}\ntrust_level = "untrusted"\n`;
     const after = `${before}\n${trustSection}`;
     const base = input();
