@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DashboardOutstandingPullRequests } from "../lib/types";
-import { createInventoryRequestCoordinator } from "../lib/pull-request-inventory-client";
+import { createInventoryRequestCoordinator, readRememberedInventory, rememberInventory } from "../lib/pull-request-inventory-client";
 
 const POLL_INTERVAL_MS = 2_000;
 const MAX_REFRESH_POLLS = 30;
@@ -55,6 +55,7 @@ export function usePullRequestInventory() {
 
       if (result.status === "success") {
         const inventory = result.inventory;
+        try { rememberInventory(window.sessionStorage, inventory); } catch { /* Browser storage is optional. */ }
         setState({
           data: inventory.snapshot,
           checkedAt: inventory.checkedAt,
@@ -101,7 +102,15 @@ export function usePullRequestInventory() {
 
   useEffect(() => {
     mounted.current = true;
-    void request(true);
+    try {
+      const remembered = readRememberedInventory(window.sessionStorage);
+      if (remembered) setState({
+        data: remembered.snapshot, checkedAt: remembered.checkedAt, error: null,
+        loading: false, refreshing: true, stale: true, incomplete: remembered.incomplete,
+        retainedProjectIds: remembered.retainedProjectIds
+      });
+    } catch { /* Browser storage is optional. */ }
+    void request(false);
     return () => {
       mounted.current = false;
       runGeneration.current += 1;
