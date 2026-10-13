@@ -102,7 +102,7 @@ export function validateBoundedScoutDecision(input: { text: string; canonicalPat
   const parsed = decisionFrontmatter(input.text);
   const now = input.now ?? new Date().toISOString();
   const expectedPath = "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md";
-  if (!parsed || path.posix.normalize(input.canonicalPath) !== expectedPath || sha256(input.text) !== BOUNDED_DECISION_FILE_SHA256 || parsed.id !== BOUNDED_DECISION_ID
+  if (!parsed || input.canonicalPath !== expectedPath || sha256(input.text) !== BOUNDED_DECISION_FILE_SHA256 || parsed.id !== BOUNDED_DECISION_ID
     || parsed.status !== "approved" || parsed.answer !== BOUNDED_DECISION_ANSWER
     || parsed.decided !== "2026-10-13" || !Array.isArray(parsed.options)) {
     return { approved: false, decisionSha256: sha256(input.text), reason: "canonical approved Decision 0128 and its exact answer are required" };
@@ -192,6 +192,8 @@ function reserveBoundedScoutBudget(input: { kind: "attempt" | "repair"; ledgerPa
     const fd = openSync(temporary, "wx", 0o600);
     try { writeSync(fd, `${JSON.stringify(ledger, null, 2)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, ledgerPath);
+    const directoryFd = openSync(parent, "r");
+    try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
     return { ok: true, reason: null, ledger, attemptNumber, repairCycle };
   } catch {
     return blocked("budget reservation failed closed");
@@ -231,10 +233,12 @@ export function evaluateBoundedScoutIsolation(input: {
       reasons.push("protected-state witnesses must be ordered, current, and no more than five minutes old");
     }
   }
-  const livePath = path.resolve(input.pins.liveWorkspacePath);
-  const fixtureRootPath = path.resolve(input.pins.fixtureRoot);
-  if (livePath === fixtureRootPath || livePath.startsWith(`${fixtureRootPath}${path.sep}`)
-    || fixtureRootPath.startsWith(`${livePath}${path.sep}`)) reasons.push("fixture scope overlaps the protected live workspace");
+  try {
+    const livePath = realpathSync(input.pins.liveWorkspacePath);
+    const fixtureRootPath = realpathSync(input.pins.fixtureRoot);
+    if (livePath === fixtureRootPath || livePath.startsWith(`${fixtureRootPath}${path.sep}`)
+      || fixtureRootPath.startsWith(`${livePath}${path.sep}`)) reasons.push("fixture scope overlaps the protected live workspace");
+  } catch { reasons.push("protected live workspace or fixture root is missing or cannot be verified"); }
   // Existing-path pins must name real directories directly; a symlink cannot disguise a live path.
   try {
     const realRoot = realpathSync(input.pins.fixtureRoot);
