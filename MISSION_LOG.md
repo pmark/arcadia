@@ -2449,3 +2449,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A card shows its consequence and evidence links on /todo or /actions and one verb button."; "The button request carries only the card id and pinned fingerprint and a stale card shows a refusal with the reason."; "An end-to-end dashboard test covers a run card and an answer card and the dashboard build passes."; "Existing /todo and /actions behaviour is unchanged for items with no card.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-todo-actions-render-cards-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/todo-next-steps-route-to-forward
+
+- **Did:** Completed Action arcadia/todo-next-steps-route-to-forward from accepted evidence (Candidate 94c21b15fec917bfbd43919c9e21ce15e98ed8f8).
+- **Result:** Every declared acceptance criterion was accepted as met: "/todo lists every open pull request awaiting the operator as one step, ordered so a pull request's stack parents come first and a pull request that advances the active-Plan pointer or unblocks a queued Action comes before an unrelated one."; "Each step names its one click, the pinned head sha and what it unblocks; a step the operator cannot take yet shows the step it waits on instead of a button."; "The top of /todo shows exactly one step to do now, and when nothing needs the operator it says production is moving and lists nothing else."; "Focused tests with fixtures cover stacked pull request order, a pointer-advancing pull request ahead of an unrelated one, a stale head, a waiting step and the empty state, and the dashboard build passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-todo-next-steps-route-to-forward-2026-10-13).

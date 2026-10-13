@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 active_plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
-current_action: todo-next-steps-route-to-forward
+current_action: delegation-policy-records
 updated: 2026-10-13
 ---
 
