@@ -106,12 +106,13 @@ export function PullRequestAudio({ repository, number, showDescription = false }
   return (
     <div className="mt-3 min-w-0">
       {stage === "idle" ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Load TLDR / Listen</button> : null}
-      {!result?.summary && busy ? <button type="button" disabled className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">Generate TLDR</button> : null}
+      {!result?.summary && busy ? <button type="button" disabled className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">Generate TLDR · Fast Text Cloud</button> : null}
 
       {stage === "ready" && result?.summary ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Refresh TLDR</button> : null}
       {stage === "failed" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
       {stage === "observation_timeout" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
-      {result && !result.summary && !busy ? <button type="button" onClick={() => void request(summaryActionForStage(stage))} disabled={retryExhausted} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">{retryExhausted ? "TLDR retry limit reached" : stage === "observation_timeout" ? "Reconnect TLDR" : stage === "failed" || result.job ? "Retry TLDR" : "Generate TLDR"}</button> : null}
+      {result && !result.summary && !busy ? <button type="button" onClick={() => void request(summaryActionForStage(stage))} disabled={retryExhausted} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">{retryExhausted ? "TLDR retry limit reached" : stage === "observation_timeout" ? "Reconnect TLDR" : stage === "failed" || result.job ? "Retry TLDR · Fast Text Cloud" : "Generate TLDR · Fast Text Cloud"}</button> : null}
+      {result && !result.summary ? <p className="mt-2 text-xs text-muted">Generate TLDR uses Fast Text Cloud and may incur charges. Loading an existing TLDR does not generate a new one.</p> : null}
       {statusText ? <p role="status" className="mt-2 text-xs text-muted">{statusText} · {formatElapsed(elapsed)}{result?.job ? ` · Job ${result.job.id}` : ""}</p> : null}
       {error ? <p role="alert" className="mt-2 text-xs text-clay">{error}</p> : null}
       {result?.summary ? <>
