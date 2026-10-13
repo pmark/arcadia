@@ -464,8 +464,20 @@ export interface OutstandingPullRequestsResponse {
   snapshot: DashboardOutstandingPullRequests;
 }
 
+type ConfiguredPullRequestRepository = { repository: string; repositoryPath: string };
+let pullRequestRepositories: { expiresAt: number; entries: ConfiguredPullRequestRepository[] } | null = null;
+let outstandingPullRequestsInFlight: Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> | null = null;
+
 export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
-  return runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]);
+  if (outstandingPullRequestsInFlight) return outstandingPullRequestsInFlight;
+  outstandingPullRequestsInFlight = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]).then(response => {
+    pullRequestRepositories = {
+      expiresAt: Date.now() + 5 * 60_000,
+      entries: (response.data.snapshot.repositories ?? response.data.snapshot.pullRequests).map(entry => ({ repository: entry.repository, repositoryPath: entry.repositoryPath })),
+    };
+    return response;
+  }).finally(() => { outstandingPullRequestsInFlight = null; });
+  return outstandingPullRequestsInFlight;
 }
 
 export interface ProjectContinuationResponse {
@@ -1656,8 +1668,8 @@ function statusForArcadiaError(code: string, details: unknown): number {
 }
 
 export async function loadPullRequestDescription(repository: string, number: number) {
-  const inventory = (await loadOutstandingPullRequests()).data.snapshot;
-  const known = (inventory.repositories ?? inventory.pullRequests).find(pr => pr.repository.toLowerCase() === repository.toLowerCase());
+  if (!pullRequestRepositories || pullRequestRepositories.expiresAt <= Date.now()) await loadOutstandingPullRequests();
+  const known = pullRequestRepositories?.entries.find(entry => entry.repository.toLowerCase() === repository.toLowerCase());
   if (!known) throw new ArcadiaCliError("This repository is not configured in Arcadia.", 404);
   const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "title,body,url,state"], {
     cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,

@@ -1,6 +1,6 @@
 # Articles for Arcadia Mission Control
 
-`docs/articles/` is the repository home for article drafts intended for eventual publication on **ArcadiaMissionControl.com**. Keeping a draft here does not mean it is live on the site.
+When the operator explicitly requests repository storage, `docs/articles/` holds article drafts for eventual adaptation or publication on **ArcadiaMissionControl.com**. Otherwise, use the operator's existing Arcadia Articles folder, resolving its path or link before saving. Keeping a draft here does not mean it is live on the site.
 
 ## Drafts
 

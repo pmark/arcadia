@@ -1,18 +1,69 @@
-# Pull Requests Page UX Design
+# Shared To Dos and Pull Requests Experience Requirements
 
 Design proposal · 12 October 2026 · Design only; no implementation
 
-Make every PR a distinct card. Lead with its title and a prominent flag explaining whether it needs the operator or has a confirmed automatic merge scheduled. Follow with a short reason, compact merge evidence, any evidenced dependency, and one useful next step. Keep the original description, optional TLDR and audio inside that card.
+Make To-Dos the primary management surface: the operator can understand and act on PR-related work there without visiting the Pull Requests page. Both pages embed the same PR card, summary, Markdown description, read-aloud player, merge preview and result components. Pull Requests remains a focused inventory and investigation view. Use progressive disclosure to keep scanning compact while preserving every useful action in place.
 
 The key distinction is **who must act**, **whether the merge gate passes**, and **whether automatic execution is actually scheduled**. A green GitHub status establishes neither authority nor execution.
 
 ## Goal and boundaries
 
-The operator should be able to scan this page from a phone, identify their part, understand the change and merge an eligible PR without opening several GitHub tabs. Card clarity, ownership, dependency evidence and in-page merge are the core. TLDR is optional and never blocks them.
+From a phone, the operator should be able to use To-Dos to identify what needs them, understand the associated PR, listen to its summary and description, inspect merge order and evidence, and complete an authorized merge. Visiting Pull Requests is optional. Both surfaces have equivalent PR capabilities; their selection, grouping and surrounding navigation differ. TLDR remains a nice-to-have and never blocks the core flow.
 
 This proposal creates no Action, Decision, queue entry or merge authorization. The active Milestone concerns bounded production Sessions and clearing `/todo` stops. Its current Action, `attach-the-session-probe-result-to-the-reconcile-receipt`, is agent-owned and requires evidence that the Session probe and budget appear in the reconcile receipt. It does not govern this separate design request.
 
 Non-goals: a new scheduler/review system, bulk merge, changing policy, automatic model calls, silently answering Decisions, deployment, service installation/restart or worktree management.
+
+## To Dos as the management surface
+
+To-Dos continues to show canonical pending operator work, rather than importing every open PR as a new task. An explicitly associated PR appears inside its existing To-do, with the shared PR card and all permitted controls. Important Decisions are proposed, decided, approved and enacted through their PRs; To-Dos presents that same lifecycle and action in place. One PR associated with several obligations is one resource with explicitly identified scope. Several associated PRs appear as distinct cards within the work item.
+
+Provide a Pull requests filter within To-Dos for associated pending work. A secondary, collapsed Related PR activity section may expose explicitly associated automatic, blocked or recently completed PR activity without counting it as an operator To-do. The dedicated Pull Requests page remains the complete inventory. Unknown associations are visible as missing context; never manufacture obligations from titles, Project membership or absent automation. This preserves a single place to manage operator work without turning the To-do count into an open-PR count.
+
+## Shared components and service contract
+
+| Shared unit | Required behavior on both pages |
+| --- | --- |
+| PR card | Repository and PR identity, full title, actual target, canonical operator reason, compact readiness, dependency and confirmed execution state. |
+| PR details | Optional TLDR above the original Markdown body, with source revision, freshness and source links. |
+| Read aloud | Play from the compact card; expanded playback, seek, speed, retry and MP3 download where supported. Narration begins with TLDR when available, then description. Comments remain outside this scope. |
+| Merge controls | Same permitted action, pinned server preview, explicit confirmation, drift refusal, durable attempt and verified receipt. |
+| Evidence and dependencies | Same review, required checks, authority, source freshness and sourced merge-order information. |
+
+Use one shared PR resource keyed by repository and PR number, with explicit canonical To-do associations. Keep the code head/base revision distinct from the title/body content revision. A common server projection supplies facts and permissions; page adapters select and arrange resources without reimplementing eligibility, operator classification, summary generation or merge logic. Reuse the existing reader and Intelligence audio service. Component names and exact file boundaries are implementation choices, not a requirement for a generic task framework.
+
+Both surfaces invoke the same backend merge operation and observe the same attempt. Concurrent tabs, page switches and an automatic executor cannot create duplicate attempts. Confirmed remote results refresh the PR resource and reconcile associated To-dos through their owning source rules; a local success badge or hidden card is never task completion evidence. Keep the receipt visible before a resolved item leaves the pending list.
+
+TLDR and audio assets are shared across surfaces and keyed by source content revision and generation settings. Selecting Play reuses a matching MP3 or requests generation; opening a page or disclosure starts no inference or speech. Cached TLDR is displayed without generating speech. If no TLDR exists, use the existing summary-plus-description generation flow where available; any later body-only option must label its narration scope. Stale assets are labelled and never silently replace current content. Audio failures leave text and merge controls usable.
+
+## Progressive disclosure
+
+| Level | Visible content and controls |
+| --- | --- |
+| Scan | Full PR title and identity; operator reason; immediate blocker or next step; compact readiness; actual merge target; direct Listen and permitted primary action; Details and Evidence controls. A cached TLDR may show two lines with an explicit expand control. |
+| Understand | Expanded TLDR followed by the original Markdown body, full audio controls and MP3 download; related obligation controls and useful dependency context. Missing TLDR offers optional Generate TLDR without blocking reading. |
+| Verify | Review and check receipts, exact revisions, authority source, dependency provenance, changed paths and execution history. |
+| Commit | A focused confirmation naming the exact PR/head, actual destination, method and effect, followed by progress and a verified receipt. |
+
+Do not hide the only usable action in a menu or require expansion merely to start listening. Merge preview opens its own confirmation without requiring body or evidence expansion. Avoid deep accordion nesting: one Details disclosure and one Evidence disclosure per card are sufficient; the long Markdown description can have a labelled Show full description control. Show a compact player while playback is active even if Details is collapsed. Starting another narration pauses the current one; no overlapping voices.
+
+Disclosure, filters and deep links preserve orientation and keyboard focus across refresh. A cross-page PR deep link opens the same resource and requested section; playback position and active attempt are retained during dashboard navigation. Temporary presentation state is not a new truth store. Narrow screens use wrapping labels and 44px controls. Critical failures, stale merge proof and changed confirmation scope interrupt the relevant action visibly, even when evidence is collapsed.
+
+## Shared experience acceptance criteria
+
+- A phone operator can find a PR-associated To-do, understand it, listen, inspect evidence and complete a permitted merge entirely on To-Dos. Pull Requests is not a required step.
+
+- Both pages render the same shared PR modules and invoke the same projection, asset service and mutation contract. The same PR revision produces matching reason, gates, target and execution state.
+
+- Switching surfaces reuses the matching summary and MP3, retains playback position and observes the same merge attempt. Concurrent clicks or an automatic executor reconcile one attempt.
+
+- A compact card exposes the operator reason, blocker, destination, Listen and primary action. Collapsing details never hides active playback or a material authority warning.
+
+- TLDR precedes Markdown and narration when available. No automatic generation occurs on load, refresh or expansion; stale content and failed generation remain legible.
+
+- Important Decisions show their linked PR, proposal, operator approval and verified enactment state on both pages. Only explicitly scoped Decision effects reconcile after the verified merge; unrelated obligations retain their canonical identity. Related activity does not inflate pending operator counts.
+
+- Keyboard, screen reader, 320px viewport and 200% zoom QA exercises both surfaces, all disclosure levels, active audio, confirmation drift, duplicate submission and lost-response recovery.
 
 ## Page and card hierarchy
 
@@ -50,12 +101,12 @@ Needs operator (2)
 │ Record the approved authority change     │
 │                                          │
 │ Carries important Decision 0122,          │ C
-│ already answered. Operator merge needed. │
+│ approved, not enacted. Merge needed.     │
 │                                          │
 │ Review ✓  Checks 7/7 ✓  Merge state ✓    │ D
 │ After #1401 ↗ · Declared dependency       │ E
 │                                          │
-│ [What changes ▾] [Evidence ▾]            │ F
+│ [Listen] [Details ▾] [Evidence ▾]        │ F
 │ [Merge into main… disabled]              │ G
 │ Waiting for #1401 to merge.               │
 │ View on GitHub ↗           Checked 20s ago│
@@ -72,17 +123,17 @@ Needs operator (2)
 
 **A:** A full-width ownership strip, not a tiny readiness badge. Gold/person icon means Needs operator; steel/clock means confirmed scheduling; neutral/question icon means unknown. Clay marks failure. Text carries the meaning independently of color.
 
-**B–C:** Identity, full title, then one or two sentences explaining the actual reason and next step. An unanswered Decision gets an **Answer Decision 0122…** control with its real options and consequences; a generic approval never doubles as merge.
+**B–C:** Identity, full title, then the important Decision's proposal and current stage: Needs your decision, Approved · not enacted, or Enacted via merged PR. Show the actual options and consequences. The focused PR confirmation explicitly names the decision being approved and the merge that will enact it; no generic approval label.
 
 **D–E:** Three compact gate summaries and a linked dependency when applicable. “Review” means valid independent review; “Checks” means passed versus expected required jobs. Unknown is explicit. The card names both the authority reason and immediate blocker.
 
-**F:** “What changes” holds TLDR, original description and reader. “Evidence” holds review/check details, source bindings, changed paths and dependency provenance. Critical authority warnings stay outside disclosures.
+**F:** Compact actions include **Listen**, **Details** and **Evidence**. Details reveals the optional TLDR above the original Markdown description and the full reader. Evidence reveals review/check details, source bindings, changed paths and dependency provenance. The operator reason, immediate blocker, uncertain state and critical authority warnings remain visible when collapsed.
 
 **G:** Once #1401 is confirmed merged and all other gates revalidate, this becomes an actionable **Merge into main…** button. Always name the actual target: a stacked child might instead say **Merge into feature/base…**. Disabled reasons are adjacent text with working evidence/remedy links.
 
 ## Ownership eligibility and scheduling
 
-Use the same canonical operator-work projection as the To-dos page: `arcadia todo --all`, served through the shared approvals feed (`GET /api/approvals`). A PR's **Needs operator** flag must link to the same active item key, reason, source reference and resolution state. Match an explicit repository/PR or governed-record association, never a title or Project alone. Keep merge readiness and actual automatic scheduling separate. The current shared schema has no explicit PR-merge binding; extend that shared projection where needed rather than building a second PR-page classifier. Missing, stale or unavailable evidence stays unknown. Answering a Decision and completing a separate operator merge obligation remain distinct.
+Use the same canonical operator-work projection as the To-dos page: `arcadia todo --all`, served through the shared approvals feed (`GET /api/approvals`). A PR's **Needs operator** flag must link to the same active item key, reason, source reference and resolution state. Match an explicit repository/PR or governed-record association, never a title or Project alone. Keep merge readiness and actual automatic scheduling separate. The current shared schema has no explicit PR-merge binding; extend that shared projection where needed rather than building a second PR-page classifier. Missing, stale or unavailable evidence stays unknown. Project the Decision-through-PR lifecycle from that shared source: Needs your decision → Approved · not enacted → Merging → Enacted via merged PR. Approval and enactment are distinct states in one workflow; neither requires the operator to visit a second page.
 
 | Evidence | Prominent wording and behavior |
 | --- | --- |
@@ -121,11 +172,11 @@ Show the current base and intended final target for stacks. Merging into a featu
 
 The collapsed card needs no summary. If a current cached TLDR exists, show up to two sentences labelled **Generated from PR description**, with expansion. Otherwise leave that space out.
 
-“What changes” exposes the **Original PR description** as GFM, with Source Markdown available. The current inventory's `summary` is readiness copy; `briefing.materialFacts` is deterministic evidence. Neither is a content TLDR. Generated summaries cover the title/body, not comments, the diff or review findings; they never supply authority or gate judgments.
+“Details” exposes the **Original PR description** as GFM, with Source Markdown available. The current inventory's `summary` is readiness copy; `briefing.materialFacts` is deterministic evidence. Neither is a content TLDR. Generated summaries cover the title/body, not comments, the diff or review findings; they never supply authority or gate judgments.
 
 Provide **Generate TLDR** independently from **Listen** when the optional integration is added: retrieve cached text without inference, and generate missing text only on a tap. Do not make someone generate audio to read a summary.
 
-The merged PR1328 source already supports a bounded unpaid local TLDR and MP3, but presently starts both on Play: summary followed by the original description, with Markdown normalized for speech. Opening the page or original body triggers no model call. A failed TLDR falls back to original-body narration with an explicit label; no cloud fallback. Preserve native audio controls, seeking, download, visible preparation/errors and existing bounded retry. PR1328 was merged before this design was written; managed-service availability was not verified during design inspection.
+The merged PR1328 source already supports a bounded unpaid local TLDR and MP3, but presently starts both on Play: summary followed by the original description, with Markdown normalized for speech. Opening the page or original body triggers no model call. A failed TLDR falls back to original-body narration with an explicit label; no cloud fallback. Preserve native audio controls, seeking, download, visible preparation/errors and existing bounded retry. PR1328 is merged; managed-service availability was not verified during design inspection.
 
 Reuse that reader, label its current action **Listen: summary + description**, and split out optional text-summary retrieval/generation rather than pretending it exists already. Source freshness should bind title/body content separately from code head: body edits stale TLDR/audio, while code pushes stale merge proof. Mark older generated content and offer explicit regeneration. TLDR/audio failure never blocks scanning, evidence or merge. No automatic narration or inference on refresh.
 
@@ -133,7 +184,7 @@ Reuse that reader, label its current action **Listen: summary + description**, a
 
 1. **Merge into [target]…** obtains a fresh server preview without mutating GitHub. Bind configured repository/PR, exact head, base, merge method, authority, gate/dependency evidence and expiry to an opaque confirmation reference.
 
-2. **Inline confirmation** shows title, branch → actual target, short/full head SHA, method and the passed gate. Example: “Squash-merge #1403 at a1b2c3d into main.” State any linked-Issue effect. Use the standing squash rule unless the governed path supplies a specific evidenced exception. Branch deletion, Decision settlement, installation/restart and deployment are separate operations.
+2. **Inline confirmation** shows title, branch → actual target, short/full head SHA, method and the passed gate. Example: “Squash-merge #1403 at a1b2c3d into main.” State any linked-Issue effect. Use the standing squash rule unless the governed path supplies a specific evidenced exception. For an important Decision, confirmation explicitly states the proposed answer, scope and consequences alongside the exact change: Approve Decision 0122 and merge into main. A prior valid approval is shown rather than requested again. Persist auditable approval evidence before attempting merge; if merge fails, retain Approved · not enacted and offer safe retry. Decision record reconciliation follows the governed path after verified merge. Branch deletion, installation/restart and deployment remain separate operations.
 
 3. **Confirm** revalidates current head/base/authority, all required jobs, independent review and clean merge state immediately before mutation. Use the provider's expected-head precondition. The browser supplies the opaque reference, not shell text, paths or self-asserted proof. Any drift disables confirmation and offers a fresh preview.
 
@@ -143,7 +194,7 @@ Reuse that reader, label its current action **Listen: summary + description**, a
 
 Decision 0060/0080 requires a valid independent review of the current head with no unresolved blocking finding, every required CI job green on that head, and clean merge state. Drafts cannot pass. Only the backend may recognize documented, proven review-carry-forward exceptions; they do not waive current checks or mergeability. Empty check lists are not passed proof. CodeRabbit is advisory and its silence/rate limit never blocks progress.
 
-The target experience includes in-page merging for operator-owned PRs, conditional on resolving the authorization channel before activation. Important Decision/authority PRs remain Needs operator even when technically green. Current guidance specifically calls for operator chat instruction for those merges. Treating verified in-page confirmation as equivalent needs an explicit governance decision before enabling it. An answered linked Decision is not itself that merge instruction. A GitHub link with the in-page control disabled is an interim state while this integration is missing, not the intended final experience.
+Important Decisions are decided, approved and enacted through pull requests. The shared card must present the proposed decision and exact change, capture the operator's explicit approval for that scope, and enact it through a gated merge. To-Dos hosts the complete experience; Pull Requests shows the same record and controls. Approval without a successful merge remains Approved · not enacted. A verified merge enacts the exact approved repository change, with PR, head and merge-commit evidence. These PRs require operator judgment even when technically green; agents cannot infer approval from passing checks.
 
 The documented application has no authenticated operator identity layer; same-origin guards alone do not prove who clicked. Before remote credentialed merging, establish the permitted caller and authorization through the reviewed deployment/execution boundary. Reuse validated operator-script/descriptor and receipt machinery where applicable, returning results into this card. A raw new shellout endpoint is insufficient. This is an integration gap, not permission granted by the design.
 
@@ -155,7 +206,7 @@ Cards are labelled articles with unique PR-scoped controls; no hover-only or col
 
 ## Existing capabilities and missing integrations
 
-Source paths are repository-relative. The reader inspection used the published PR1328 source.
+Paths below are repository-relative. Reader source was inspected in the PR1328 candidate; managed-service availability was not verified.
 
 | Capability | Evidence and reuse | Gap for this design |
 | --- | --- | --- |
@@ -165,7 +216,7 @@ Source paths are repository-relative. The reader inspection used the published P
 | Independent-review evidence and guarded integration | `src/production/independentReview.ts:411`; `src/production/sessionHandoff.ts:393`, `:422`; `src/qa/prReview.ts:710`, `:896` | Reuse proof concepts; do not equate production local fast-forward integration with a scheduled GitHub merge. Add an explicit projection/adaptor for PR gate evidence. |
 | Shared operator To-dos and existing Decision controls | `apps/dashboard/lib/approvals-feed.ts:16`; `apps/dashboard/lib/arcadia-cli.ts:417`; `src/commands/todo.ts:81`; `apps/dashboard/app/api/approvals/route.ts:10` | Reuse the same canonical item key, source reference, pending/resolved state and controls. Add explicit PR/source association and any missing PR-merge obligation to the shared projection, not a separate PR classifier. The existing approval endpoint answers Decisions; it does not merge PRs. |
 | Validated execution and receipts | `apps/dashboard/app/api/operator-script/route.ts:72`, `:179`; `docs/agent-guidance/operator-actions.md` | A reviewed, pinned merge operation with proper authorization, exact-head gate and idempotent outcome reconciliation. No general in-page PR merge endpoint was found in the bounded inspection. |
-| PR1328 TLDR + MP3 | Read-only source: `apps/dashboard/components/pull-request-audio.tsx:8`, `components/read-aloud.tsx:18`, `lib/pull-request-audio.ts:9`, `app/api/pull-requests/audio/route.ts:13`; `docs/intelligence/READ_ALOUD.md` | Merged source inspected; managed-service availability was not verified during design inspection. Reuse after installation; optional source revision/cached-TLDR projection remains additional work. |
+| PR1328 TLDR + MP3 | Read-only source: `apps/dashboard/components/pull-request-audio.tsx:8`, `components/read-aloud.tsx:18`, `lib/pull-request-audio.ts:9`, `app/api/pull-requests/audio/route.ts:13`; `docs/intelligence/READ_ALOUD.md` | PR1328 is merged; managed-service availability was not verified during design inspection. Reuse when available; optional source revision/cached-TLDR projection remains additional work. |
 
 A future server projection should join the PR inventory to the canonical operator To-dos projection by explicit source association. Extend the common projection to represent an operator PR-merge obligation when existing items cannot express it, so the obligation appears consistently on both pages. Keep the same item identity, explanation, source and resolution rules; add PR identity/head references needed for safe display and execution. Project merge gates and actual automation attempts from their existing sources separately. Do not maintain a parallel operator queue, infer authority from a TLDR, or mark every PR in a Project as needing attention because that Project has an unrelated to-do.
 
@@ -179,7 +230,7 @@ A future server projection should join the PR inventory to the canonical operato
 
 - Stale head/base/policy, missing/failing checks, invalid review, draft and non-clean state refuse merge. Duplicate taps/lost responses reconcile one attempt; success requires a remote merge receipt.
 
-- Important-Decision/authority PRs retain their operator boundary. Merge cannot silently settle Decisions, deploy, restart, delete branches or change the Action queue.
+- Important-Decision/authority PRs preserve explicit operator approval. Their verified merge enacts only the approved Decision/change carried by that PR and reconciles its canonical record through the governed path. It cannot approve unrelated Decisions, deploy, restart, delete branches or reorder the Action queue.
 
 - Opening page/body starts no model/speech work. Optional written TLDR can be obtained without audio once its integration exists; source/errors are honest and never block the core page.
 
@@ -187,7 +238,7 @@ A future server projection should join the PR inventory to the canonical operato
 
 ## Small future sequence
 
-1. Improve the read-only cards, ownership/unknown wording, filters and dependency provenance. Reuse the installed reader when available.
+1. Extract the shared PR resource and card/details/evidence/reader modules. Embed them in explicitly associated To-dos and the PR inventory with compact progressive disclosure. Do not duplicate classification or count informational PR activity as operator work.
 
 2. Project exact-head gate, authority and actual execution records from existing sources; add required-check inventory and stale/contradictory evidence handling. No new scheduler.
 
@@ -195,8 +246,8 @@ A future server projection should join the PR inventory to the canonical operato
 
 4. Add optional lazy/cached text TLDR separately from speech. Rich dependency visuals wait for stacks that need them; neither enhancement delays the core UX.
 
-The remaining consequential judgment is whether verified in-page confirmation can replace the specifically required chat instruction for important-Decision/authority PRs. This proposal recommends that integration but does not authorize it. The visual design and honest read-only state projection do not depend on that decision.
+The operator's required product workflow is important Decisions decided, approved and enacted through PRs, available directly on To-Dos. Existing guidance treats Decision answers and PR merges as separate operations and requires chat instruction for important-Decision merges. Implementation must reconcile that guidance and the verified operator identity/authorization contract through the governed path before activation. This requirements update records the requested workflow; it does not silently amend policy or claim the integration already exists.
 
-## Design provenance
+## Provenance and authority
 
-Prepared by the operator-requested heavy design sub-agent (GPT-6 Astra, high reasoning) on 2026-10-12, then clarified to require the same canonical operator-work source as To-dos. This is an ordinary design document, not a governed Plan, Action or Decision. Implementation begins only on a subsequent authorized request; recording this proposal does not change merge authority or activate an in-page merge endpoint. Source evidence and instruction-retrieval notes remain with the original design artifact.
+Operator-requested requirements update on 12 October 2026 following PR #1334. The operator specified To-Dos as the single management surface, shared PR components on both pages, progressive disclosure, and important Decisions decided, approved and enacted through PRs. This document records those product requirements. It does not amend the Constitution, grant agent merge authority, settle a Decision, activate a Plan, or implement the workflow. Existing governance and operator authentication must be reconciled before enabling the proposed Decision-through-PR controls.

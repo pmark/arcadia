@@ -1,5 +1,37 @@
 # Arcadia Command Guide
 
+## Governed specialist roles
+
+Read the seven canonical roles and render a bounded brief from the repository:
+
+```sh
+node --import tsx src/cli.ts roles --json
+node --import tsx src/cli.ts roles show researcher
+node --import tsx src/cli.ts role brief --role researcher --agent codex --tier light --specialization 'database migration research'
+```
+
+For an existing Action add `--action '<plan-slug>#<action-id>'` and optionally
+`--repo <repository>`. `--json` returns a structured brief. These commands make
+no model calls, write no workspace state and do not claim or admit a Session.
+The tier selects the displayed model/identity; it does not change the running
+agent. Unknown roles and unsafe specialization labels fail.
+
+The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
+`config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
+`roles` object keyed by registered ID, with only `default_tier` and
+`default_effort` patches; authority fields cannot be overridden. For example:
+`{"schema":"arcadia-agent-roles-v1","roles":{"researcher":{"default_tier":"standard"}}}`.
+Pass `--workspace` or let Arcadia resolve its configured workspace; never infer
+one from a Project slug. Model bindings use the existing coding-agent-models
+registry. Action launch briefs include the canonical Lead charter, preserving
+existing launcher ownership and native-app Lead/Driver constraints.
+
+Use the repository's [shared role skill](../.agents/skills/arcadia-role/SKILL.md) and
+[supervisor skill](../.agents/skills/arcadia-supervisor/SKILL.md) for the common protocol and assigned
+supervision. Supervisor event automation, enforced caps and `arcadia bug` remain
+unavailable; the installed release-manager skill remains usable.
+
+
 This guide shows the most common command paths for daily use.
 
 All examples use:
@@ -622,10 +654,11 @@ is the contract any deterministic replacement grader must pass.
 
 `arcadia ask` creates its Actions `unclarified`, so they enter this pass. When a
 graded YES names a coding agent as the actor and the Action came from a captured
-Ask, `--apply` also drafts one strict v1 Agent Ask (intent `action`, request id
+Ask, `--apply` also registers one strict v1 Agent Ask (intent `action`, request id
 `handoff-<work-item-id with underscores as hyphens>-<first 12 hex of sha256(next action + done-condition)>`,
-the done-condition as its acceptance) into the Project repository's
-`.arcadia/asks/` through `agent-ask draft`, so the handoff is a file and appears
+the done-condition as its acceptance) inline through `agent-ask preview` in the
+configured workspace. The returned proposal receipt is the handoff; no draft
+file or Git dirt is created in the Project checkout. It appears
 in `arcadia todo` as a pending proposal. It is skipped, with the reason printed
 under `Handoff:`, when the Project has no `repo_path` or any handoff Ask for that
 Action already exists (proposed, settled or archived), so one Action is handed

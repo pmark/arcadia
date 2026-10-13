@@ -337,10 +337,13 @@ export function buildSmokeCandidate(options: SmokeOptions): SmokeCandidate {
   if (readdirSync(out).length > 0) throw new SmokeRefusal(`--out ${out} is not empty; pass a fresh directory.`);
 
   // (a) clone the fixture; only the clone is ever written. Point its origin at GitHub's name so nothing can reach the fixture.
+  const primary = path.join(out, "fixture-primary");
   const repo = path.join(out, "repo");
-  execFileSync("git", ["clone", "--quiet", "--no-hardlinks", "--", fixture, repo], { stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["clone", "--quiet", "--no-hardlinks", "--", fixture, primary], { stdio: ["ignore", "pipe", "pipe"] });
+  const fixtureBranch = tryGit(primary, ["symbolic-ref", "--short", "HEAD"])?.trim() || "main";
+  git(primary, ["worktree", "add", "--quiet", "-b", "reviewer-smoke-candidate", repo, "HEAD"]);
   const tip = git(repo, ["rev-parse", "HEAD"]).trim();
-  const branch = tryGit(repo, ["symbolic-ref", "--short", "HEAD"])?.trim() || "main";
+  const branch = fixtureBranch;
   git(repo, ["remote", "set-url", "origin", `https://github.com/${repository}.git`]);
   for (const [key, value] of [["user.name", SMOKE_IDENTITY.GIT_AUTHOR_NAME], ["user.email", SMOKE_IDENTITY.GIT_AUTHOR_EMAIL], ["core.hooksPath", "/dev/null"], ["commit.gpgsign", "false"]]) {
     git(repo, ["config", key, value]);
@@ -360,7 +363,7 @@ export function buildSmokeCandidate(options: SmokeOptions): SmokeCandidate {
     if (!found) throw new SmokeRefusal("The fixture history has no commit whose subject starts with `Reopen ` or `Reset the rehearsal fixture`; pass --base <rev>.");
     baseRevision = found.sha;
   }
-  git(repo, ["checkout", "--quiet", "-B", branch, baseRevision, "--"]);
+  git(repo, ["checkout", "--quiet", "-B", "reviewer-smoke-candidate", baseRevision, "--"]);
 
   const basePlan = planAt(repo);
   const baseActions = basePlan.actions.map((action) => ({ id: action.id, status: action.status, nextAction: action.nextAction }));
