@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { LeakSnapshot } from "../src/workspace/leakCheck.js";
-import { deriveRetainedScoutObservations, evaluateScoutPreflight } from "../src/scout/isolationPreflight.js";
+import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateScoutPreflight, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
 
 const root = "/tmp/scout-fixture";
 const workspace = `${root}/workspace`;
@@ -16,6 +19,30 @@ const unsafeTrustPaths = [
   `${root}/workspace/repo/evil\\project`,
   `${root}/workspace/repo/${String.fromCharCode(34)}project`
 ];
+const consumedFiles = [
+  "report.json", "arcadia-luna-scout-before.json", "arcadia-luna-scout-leak-after.json",
+  "arcadia-luna-scout-trust-attribution.json", "evidence/retry-01-ask.json",
+  "evidence/operator-approval.json", "evidence/worker-result.json", "evidence/04-todo-final.json",
+  "builder/metadata.json", "builder/prompt.md"
+];
+const tempRoots: string[] = [];
+afterEach(() => { for (const rootPath of tempRoots.splice(0)) rmSync(rootPath, { recursive: true, force: true }); });
+
+function makeEvidenceRoot(entries = consumedFiles) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-scout-manifest-"));
+  tempRoots.push(root);
+  const manifest: Record<string, string> = {};
+  for (const [index, relative] of entries.entries()) {
+    const file = path.join(root, relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const bytes = `fixture-${index}`;
+    writeFileSync(file, bytes);
+    manifest[relative] = hash(bytes);
+  }
+  const raw = JSON.stringify(manifest);
+  writeFileSync(path.join(root, "sha256-manifest.json"), raw);
+  return { root, expected: hash(raw), manifest };
+}
 
 function snapshot(overrides: Partial<LeakSnapshot> = {}): LeakSnapshot {
   return {
@@ -69,6 +96,31 @@ function retainedEvidence() {
 }
 
 describe("offline scout isolation preflight", () => {
+  it("requires a custody-pinned manifest covering every consumed replay file", () => {
+    const full = makeEvidenceRoot();
+    expect(verifyEvidenceManifest(full.root, full.expected)).toEqual({ checked: consumedFiles.length, mismatches: [], manifestSha256: full.expected });
+    const omitted = makeEvidenceRoot(consumedFiles.filter((file) => file !== "report.json"));
+    expect(verifyEvidenceManifest(omitted.root, omitted.expected).mismatches).toContain("manifest omits consumed evidence");
+  });
+
+  it("rejects empty, tampered, altered-file, and unsafe-path manifests", () => {
+    const empty = makeEvidenceRoot([]);
+    expect(verifyEvidenceManifest(empty.root, empty.expected).mismatches).toContain("manifest schema, paths, or hashes are invalid");
+    const tampered = makeEvidenceRoot();
+    expect(verifyEvidenceManifest(tampered.root, "0".repeat(64)).mismatches).toContain("manifest SHA does not match custody pin");
+    const changed = makeEvidenceRoot();
+    writeFileSync(path.join(changed.root, "report.json"), "changed");
+    expect(verifyEvidenceManifest(changed.root, changed.expected).mismatches).toContain("report.json");
+    const unsafe = makeEvidenceRoot([...consumedFiles, "../outside"]);
+    expect(verifyEvidenceManifest(unsafe.root, unsafe.expected).mismatches).toContain("manifest schema, paths, or hashes are invalid");
+  });
+
+  it("reports source history as changed only from two distinct valid saved SHAs", () => {
+    expect(deriveHistoricalSourcePin("a".repeat(40), "b".repeat(40)).status).toBe("changed-between-captured-heads");
+    expect(deriveHistoricalSourcePin("a".repeat(40), "a".repeat(40)).status).toBe("unverified");
+    expect(deriveHistoricalSourcePin("not-a-sha", undefined).status).toBe("unverified");
+  });
+
   it("derives the preserved scope, packet markers, null Action, and missing-file observations", () => {
     const facts = deriveRetainedScoutObservations(retainedEvidence());
     expect(facts.originalScopeOneFile).toBe(true);
@@ -96,7 +148,7 @@ describe("offline scout isolation preflight", () => {
   it("refuses missing typed replay evidence", () => {
     const evidence = retainedEvidence();
     evidence.builder.changedFiles = undefined as never;
-    expect(() => deriveRetainedScoutObservations(evidence)).toThrow("missing required typed");
+    expect(() => deriveRetainedScoutObservations(evidence)).toThrow("required replay evidence is missing or malformed");
   });
 
   it("records every immutable runtime, model and explicit scope pin without config content", () => {
@@ -108,7 +160,7 @@ describe("offline scout isolation preflight", () => {
     expect(result.before.hashes.codexConfig).toBe(hash(configBefore));
     expect(JSON.stringify(result)).not.toContain(configBefore);
     expect(result.verdict).toBe("blocked");
-    expect(result.reasons).toContain("prior isolation hold remains unresolved; fresh baselines or unverified approval text do not clear it");
+    expect(result.reasons).toContain("historical isolation hold unresolved; this observation-only slice has no hold-resolution implementation");
   });
 
   it("admits only the exact new fixture trust section with reproducible before and after hashes", () => {
@@ -146,19 +198,19 @@ describe("offline scout isolation preflight", () => {
     const after = snapshot({ hashes: { ...hashes, codexConfig: hash(configBefore + trustSection) } });
     const result = evaluateScoutPreflight({ ...base, before, after });
     expect(result.reasons).not.toContain("protected before/after observations are missing or unobserved");
-    expect(result.priorHold.unresolved).toBe(true);
+    expect(result.priorHold).toEqual({ status: "unresolved" });
   });
 
   it("blocks a workspace traversal outside the fixture root", () => {
     const base = input();
     expect(evaluateScoutPreflight({ ...base, pins: { ...base.pins, workspace: `${root}/../live` } }).reasons)
-      .toContain("fixture workspace must be an explicit child of the fixture root");
+      .toContain("fixture workspace must be inside the explicit fixture root");
   });
 
   it.each(unsafeTrustPaths)("blocks a trust path outside or malformed for the fixture repository", (fixtureTrustPath) => {
     const base = input();
     expect(evaluateScoutPreflight({ ...base, pins: { ...base.pins, fixtureTrustPath } }).reasons)
-      .toContain("fixture trust path must be a safe child of the pinned fixture repository");
+      .toContain("fixture trust path must equal or be inside the pinned repository");
   });
 
   it("blocks live queue, Project and production changes", () => {
@@ -168,7 +220,7 @@ describe("offline scout isolation preflight", () => {
         productionPolicy: { desiredState: "active", revision: 5, epoch: 3 } }
     });
     expect(evaluateScoutPreflight({ ...base, after }).reasons)
-      .toContain("protected state changed outside the permitted Codex fixture trust entry");
+      .toContain("after snapshot is malformed, unobserved, or contains unknown fields");
   });
 
   it.each([
@@ -181,8 +233,8 @@ describe("offline scout isolation preflight", () => {
   it("keeps the historical hold blocked when a new clean baseline is supplied", () => {
     const result = evaluateScoutPreflight(input());
     expect(result.verdict).toBe("blocked");
-    expect(result.priorHold).toEqual({ unresolved: true, resolvedBy: null });
-    expect(result.reasons).toContain("prior isolation hold remains unresolved; fresh baselines or unverified approval text do not clear it");
+    expect(result.priorHold).toEqual({ status: "unresolved" });
+    expect(result.reasons).toContain("historical isolation hold unresolved; this observation-only slice has no hold-resolution implementation");
   });
 
   it("does not accept an arbitrary approval string or missing hold evidence", () => {
@@ -191,7 +243,28 @@ describe("offline scout isolation preflight", () => {
     const missing = evaluateScoutPreflight({ ...base, priorHold: undefined as never });
     expect(arbitrary.verdict).toBe("blocked");
     expect(missing.verdict).toBe("blocked");
-    expect(arbitrary.priorHold.unresolved).toBe(true);
-    expect(missing.reasons).toContain("prior isolation hold state is missing or invalid");
+    expect(arbitrary.priorHold).toEqual({ status: "unresolved" });
+    expect(missing.reasons).toContain("prior isolation hold is missing or invalid");
+  });
+
+  it("returns a sanitized blocked receipt for null or unknown input shapes", () => {
+    const base = input();
+    const nullLive = evaluateScoutPreflight({ ...base, before: { ...base.before, liveWorkspace: null } });
+    const nullPins = evaluateScoutPreflight({ ...base, pins: null });
+    const secretField = evaluateScoutPreflight({ ...base, secret: "do-not-return" });
+    const secretSnapshot = evaluateScoutPreflight({ ...base, before: { ...base.before, leakedToken: "do-not-return" } });
+    for (const receipt of [nullLive, nullPins, secretField, secretSnapshot]) {
+      expect(receipt.verdict).toBe("blocked");
+      expect(JSON.stringify(receipt)).not.toContain("do-not-return");
+    }
+  });
+
+  it("allows the Codex trust entry at the fixture repository root while blocking repositories outside scope", () => {
+    const base = input();
+    const rootTrust = { ...base, pins: { ...base.pins, fixtureTrustPath: fixtureRepo } };
+    const acceptedScope = evaluateScoutPreflight(rootTrust);
+    expect(acceptedScope.reasons).not.toContain("fixture trust path must equal or be inside the pinned repository");
+    const outsideRepo = evaluateScoutPreflight({ ...base, pins: { ...base.pins, fixtureRepo: `${root}/outside` } });
+    expect(outsideRepo.reasons).toContain("fixture repository must be inside the disposable workspace");
   });
 });

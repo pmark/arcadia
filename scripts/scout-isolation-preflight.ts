@@ -25,22 +25,24 @@ try {
     throw new Error("output must be inside the explicit fixture root");
   }
   if (existsSync(output)) throw new Error("refusing to overwrite an existing retained evidence file");
-  const report = replayRetainedScout(fixtureRoot);
   const candidateRoot = fileURLToPath(new URL("../", import.meta.url));
   const dirtySource = execFileSync("git", ["-C", candidateRoot, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8" });
   if (dirtySource.trim()) throw new Error("source checkout must be clean before recording an immutable revision");
   const sourceRevision = execFileSync("git", ["-C", candidateRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sourceRevision)) throw new Error("could not pin immutable source revision");
+  const manifestSha256 = option("--manifest-sha256");
+  const pins = {
+    sourceRevision, nodeVersion: process.version, model: "gpt-6-luna", effort: "low",
+    fixtureRoot, workspace, fixtureRepo: workspace, liveWorkspacePath: "/unobserved-live-workspace", fixtureTrustPath: workspace
+  };
+  const report = replayRetainedScout(fixtureRoot, manifestSha256, pins);
   const receipt = {
     ...report,
     authority: "observation-only; grants no execution or admission",
-    executionPins: {
-      sourceRevision, nodeVersion: process.version, requestedModel: "gpt-6-luna", requestedEffort: "low",
-      modelInvocations: 0, fixtureRoot, workspace
-    }
+    executionPins: { ...pins, requestedModel: pins.model, requestedEffort: pins.effort, modelInvocations: 0 }
   };
   writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });
-  process.stdout.write(`${JSON.stringify({ ok: true, output, verdict: report.preflightVerdict, checks: report.evidenceIntegrity.checked })}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, output, verdict: report.preflight.verdict, checks: report.evidenceIntegrity.checked })}\n`);
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
