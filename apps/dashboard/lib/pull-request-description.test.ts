@@ -11,6 +11,18 @@ beforeEach(() => {
   vi.resetModules();
 });
 describe("configured PR description access", () => {
+  it("keeps scoped inventory coalesced and separate from source authorization", async () => {
+    const { loadOutstandingPullRequests, loadPullRequestDescription } = await import("./arcadia-cli");
+    exec.mockImplementationOnce((_command, _args, _options, callback) => callback(null, JSON.stringify({ ok: true, data: { snapshot: { pullRequests: [], repositories: [{ repository: "outside/repo", repositoryPath: "/outside" }] } } }), ""));
+    await Promise.all([loadOutstandingPullRequests({ workspace: "/other-workspace" }), loadOutstandingPullRequests({ workspace: "/other-workspace" })]);
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec.mock.calls[0][1]).toContain("--lightweight");
+    expect(exec.mock.calls[0][1]).toContain("/other-workspace");
+    exec.mockImplementationOnce((_command, _args, _options, callback) => callback(null, JSON.stringify({ ok: true, data: { snapshot: { repositories: [] } } }), ""));
+    await expect(loadPullRequestDescription("outside/repo", 2)).rejects.toMatchObject({ statusCode: 404 });
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(exec.mock.calls[1][1]).toContain("--repositories-only");
+  });
   it("reads merged PRs from configured repositories with zero open PRs", async () => {
     const { loadPullRequestDescription } = await import("./arcadia-cli");
     exec.mockImplementationOnce((_command, _args, _options, callback) => callback(null, JSON.stringify({ ok: true, data: { snapshot: { pullRequests: [], repositories: [{ repository: "owner/repo", repositoryPath: "/configured/repo" }] } } }), ""));

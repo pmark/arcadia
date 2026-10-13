@@ -142,7 +142,7 @@ if [[ ! "$ATTEMPTS" =~ ^([1-9]|10)$ ]]; then
   exit 2
 fi
 attempt=1
-until "$IMPL" "$ACTION" "$REPO"; do
+until "$IMPL" "$ACTION" "$REPO" | sed 's/^Arcadia services are ready for /Arcadia services passed health checks for /'; do
   status=$?
   if [[ "$attempt" -ge "$ATTEMPTS" ]]; then
     echo "Restart failed after $attempt attempt(s)." >&2
@@ -152,6 +152,20 @@ until "$IMPL" "$ACTION" "$REPO"; do
   attempt=$((attempt + 1))
   sleep "${ARCADIA_RESTART_RETRY_DELAY:-3}"
 done
+
+# The restart is not complete until the operator's PR routes are compiled.
+# Health gates remain in the implementation. Optional warming fails softly,
+# never rolling back healthy services or waiting for a missing cache's scan.
+if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
+  DASHBOARD_URL="${ARCADIA_DASHBOARD_URL:-http://127.0.0.1:3020}"
+  if (source "$REPO/scripts/lib/ready-probe.sh"; warm_pull_request_routes "$DASHBOARD_URL" "$READY_DEADLINE"); then
+    echo "Arcadia services are ready for $REPO (PR routes warmed; inventory may still be refreshing)."
+  else
+    echo "Arcadia services are ready for $REPO (PR route warmup incomplete; see warning)."
+  fi
+else
+  echo "Arcadia services are ready for $REPO (PR route warmup disabled)."
+fi
 
 # Warm the development dashboard's slowest reads so the operator's first visit
 # after a restart is not a cold page compile plus a cold CLI projection (the

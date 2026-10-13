@@ -218,7 +218,9 @@ export function listOutstandingPullRequests(
 
     const result = runCommand(repositoryPath, "gh", [
       "pr", "list", "--repo", repository, "--state", "open", "--limit", "1000",
-      "--json", "number,title,url,state,isDraft,mergeStateStatus,headRefName,baseRefName,author,reviewDecision,createdAt,updatedAt,statusCheckRollup"
+      "--json", options.lightweight
+        ? "number,title,url,state,isDraft,createdAt,updatedAt,statusCheckRollup"
+        : "number,title,url,state,isDraft,mergeStateStatus,headRefName,baseRefName,author,reviewDecision,createdAt,updatedAt,statusCheckRollup"
     ]);
     if (!result.ok) {
       errors.push(projectError(project, repositoryPath, result.stderr.trim() || "Open pull requests could not be read."));
