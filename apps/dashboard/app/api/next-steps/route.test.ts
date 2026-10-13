@@ -25,6 +25,6 @@ describe("/api/next-steps", () => {
     const response = await route.GET();
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toMatchObject({ moving: true, steps: [], unavailable: [] });
+    await expect(response.json()).resolves.toMatchObject({ state: "moving", steps: [], unavailable: [] });
   });
 });

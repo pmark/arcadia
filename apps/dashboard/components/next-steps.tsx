@@ -1,4 +1,4 @@
-import type { NextStep } from "../../../src/decisions/nextSteps";
+import type { NextStep, NextStepsSource } from "../../../src/decisions/nextSteps";
 import type { NextStepsResponse } from "../lib/next-steps-server";
 
 export interface NextStepsProps {
@@ -8,6 +8,12 @@ export interface NextStepsProps {
 }
 
 const SHA_RE = /^[0-9a-f]{40}$/;
+const SOURCE_LABEL: Record<NextStepsSource, string> = {
+  prs: "the pull-request list",
+  queue: "the work queue",
+  cards: "the decision cards",
+  checks: "pull-request reviews and checks"
+};
 
 function Click({ step }: { step: NextStep }) {
   if (step.kind === "wait" || step.click === null || step.href === null) return null;
@@ -36,7 +42,8 @@ function Head({ step }: { step: NextStep }) {
 /**
  * Every operator touch in the order that unblocks the queue. Read-only: the one click a step names is a plain link
  * (to the pull request on GitHub, or to the card below); a step that cannot be taken yet shows what it waits on
- * and has no link and no button. All text is rendered as text.
+ * and has no link and no button. All text is rendered as text. Production is only said to be moving in state
+ * `moving`; every other state says what it knows.
  */
 export function NextSteps({ data, failed = false }: NextStepsProps) {
   if (data === null) {
@@ -50,15 +57,20 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
   const now = data.nowStep;
   const rest = data.steps.filter((step) => now === null || step.id !== now.id);
   return (
-    <section aria-label="Next steps" className="mb-6" data-testid="next-steps">
+    <section aria-label="Next steps" className="mb-6" data-testid="next-steps" data-state={data.state}>
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Next steps</h2>
       {failed ? <p role="alert" className="mb-2 text-sm text-red-700">The latest read failed; this list may be out of date.</p> : null}
-      {data.unavailable.length > 0 ? (
-        <p role="alert" className="mb-2 text-sm text-red-700" data-testid="next-steps-unavailable">
-          Could not read: {data.unavailable.map((source) => source.replace("_", " ")).join(", ")}. Steps may be missing.
+      {data.inventoryStale ? (
+        <p className="mb-2 text-sm text-muted" data-testid="next-steps-stale">
+          PR list may be out of date: last read {data.inventoryCheckedAt ?? "at an unknown time"}.
         </p>
       ) : null}
-      {now !== null ? (
+      {data.unavailable.length > 0 ? (
+        <p role="alert" className="mb-2 text-sm text-red-700" data-testid="next-steps-unavailable">
+          Could not read: {data.unavailable.map((source) => SOURCE_LABEL[source] ?? source).join(", ")}. Steps may be missing, so nothing can be said about what is next beyond what is listed.
+        </p>
+      ) : null}
+      {data.state === "now" && now !== null ? (
         <article className="rounded-md border-2 border-ink bg-panel p-4 shadow-soft" data-testid="next-step-now">
           <span className="block text-xs font-bold uppercase tracking-wide text-ink">Do this now</span>
           <h3 className="mt-1 break-words font-semibold">{now.title}</h3>
@@ -66,8 +78,19 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
           <Head step={now} />
           <p className="mt-2 break-words text-sm"><strong>Unblocks:</strong> {now.unblocks}</p>
           <p className="mt-1 break-words text-xs text-muted">{now.reason}</p>
+          {data.waitingAhead.length > 0 ? (
+            <ul className="mt-2 grid gap-1 text-sm" aria-label="Higher priority, waiting" data-testid="next-step-waiting-ahead">
+              {data.waitingAhead.map((line) => (
+                <li key={line} className="break-words">{line}</li>
+              ))}
+            </ul>
+          ) : null}
         </article>
-      ) : data.moving ? (
+      ) : data.state === "waiting" ? (
+        <p className="rounded-md border border-line bg-panel p-4 text-sm font-semibold" role="status" data-testid="next-steps-waiting">
+          {data.waitingSummary}
+        </p>
+      ) : data.state === "moving" ? (
         <p className="rounded-md border border-line bg-panel p-4 text-sm font-semibold" role="status" data-testid="next-steps-moving">
           Production is moving. Nothing needs you right now.
         </p>

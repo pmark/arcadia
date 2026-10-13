@@ -122,7 +122,7 @@ describe("what makes a step wait", () => {
     });
     const by = Object.fromEntries(r.steps.map((s) => [s.id, s.waitCode]));
     expect(by).toMatchObject({ "pr-50": "review_missing", "pr-51": "review_stale_head", "pr-52": "review_not_approved" });
-    expect(run({ prs: [pr(50, { reviews: [] })] }).moving).toBe(true);
+    expect(run({ prs: [pr(50, { reviews: [] })] }).state).toBe("waiting");
   });
 
   it("refuses a stale head visibly against the earlier pinned sha", () => {
@@ -136,7 +136,7 @@ describe("what makes a step wait", () => {
 
   it("a head sha that is not hex is refused and never pinned", () => {
     const r = run({ prs: [pr(62, { headSha: "not-a-sha" })] });
-    expect(r.moving).toBe(true);
+    expect(r.state).toBe("waiting");
     const r2 = run({ prs: [pr(62, { headSha: "not-a-sha" }), pr(63)] });
     expect(r2.steps.find((s) => s.id === "pr-62")).toMatchObject({ waitCode: "bad_head_sha", pinnedHeadSha: null });
   });
@@ -169,7 +169,7 @@ describe("hostile structure", () => {
     expect(r.steps.find((s) => s.id === "pr-81")?.waitCode).toBe("stack_cycle");
     expect(r.nowStep?.id).toBe("pr-82");
     const self = run({ prs: [pr(83, { baseRef: "branch-83" })] });
-    expect(self.moving).toBe(true);
+    expect(self.state).toBe("waiting");
   });
 
   it("a base that is not an open PR's head is base_pr_missing; its child waits on it", () => {
@@ -216,13 +216,11 @@ describe("cap, cards and the empty state", () => {
     expect(r.total).toBe(61);
     // The now step is past the cap: it is shown separately, so it is not counted as hidden.
     expect(r.hidden).toBe(61 - 10 - 1);
-    expect(r.moving).toBe(false);
+    expect(r.state).toBe("now");
   });
 
-  it("says production is moving and lists nothing when no step is takeable", () => {
-    const r = run({ prs: [pr(300, { isDraft: true }), pr(301, { reviews: [] })], cards: [] });
-    expect(r).toEqual({ moving: true, nowStep: null, steps: [], hidden: 0, total: 0, ignored: 0 });
-    expect(run({ prs: [] })).toMatchObject({ moving: true, steps: [] });
+  it("is state moving only for zero steps with every source read", () => {
+    expect(run({ prs: [] })).toMatchObject({ state: "moving", nowStep: null, steps: [], total: 0, unavailable: [] });
   });
 
   it("orders an answer card that unblocks the current Action ahead of an unrelated merge", () => {

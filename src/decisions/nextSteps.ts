@@ -4,12 +4,15 @@
  * Operator directive, 2026-10-13: /todo always shows exactly what the operator must do to move production
  * forward, including the order in which pull requests must be merged. This module is pure: injected plain data
  * in, an ordered list of steps out. No clock, no randomness, no I/O, no commander, no database. It reads nothing
- * and grants nothing; the one click a step names is a plain link the operator follows.
+ * and grants nothing; the one click a step names is a plain link the operator follows. The pinned head sha is a
+ * display and verification aid: the GitHub merge page is the guard that actually refuses a moved head.
  *
  * ORDERING RULE (tested):
- *  1. A pull request's stack parents come before it (parents derived from baseRef/headRef; the stack order
- *     comes from batchMerge.orderStack). A child never precedes its parent.
- *  2. Among steps whose parents are placed, lower rank first:
+ *  1. A pull request's stack parents come before it (parents derived from baseRef/headRef, matched on head
+ *     repository + ref so a fork branch never becomes a parent; the stack order comes from batchMerge.orderStack).
+ *  2. Among steps whose parents are placed, lower EFFECTIVE rank first. A node's effective rank is the minimum of
+ *     its own rank and the ranks of all its descendants (priority inheritance), so a parent that unlocks a
+ *     pointer-advancing child is ordered ahead of unrelated pull requests, and its step says so. Own ranks:
  *       rank 0  advances governance: touches PROJECT.md, the active Plan document, or the current Action's
  *               expected artifact path (a rename OUT of such a path counts); an answer/run card that unblocks
  *               the current Action.
@@ -21,11 +24,16 @@
  *
  * A pull request is a takeable `merge` step only when it is not a draft, its head sha is a full hex sha equal to
  * any earlier pinned sha, its file list is complete (fetched count equals the PR's own changed-file count, as
- * batchMerge requires), it has an approving independent review at that head, every required check is green, it
- * is not conflicting, and its parent is not an open pull request. Otherwise it is a `wait` step that names what
- * it waits on (the parent step id, or the named check) and has NO click and NO link. Exactly one step is
- * `nowStep`: the first takeable step in order, computed over ALL pull requests before any display cap. When no
- * step is takeable the result is `{ moving: true, steps: [] }`: production is moving, nothing is asked.
+ * batchMerge requires), it has an approving independent review at that head, every required check is green, its
+ * merge state is CLEAN (or HAS_HOOKS), and its parent is not an open pull request. Otherwise it is a `wait` step
+ * that names what it waits on and has NO click and NO link.
+ *
+ * Result `state` is a closed union and the only thing a UI may say production's status from:
+ *   now          a takeable step exists (`nowStep`, the first takeable in order, over ALL pull requests).
+ *   unavailable  no takeable step and a source could not be read (or a pull request's facts were unreadable);
+ *                names which. Never "moving".
+ *   waiting      no takeable step, no unread source, but wait steps exist: every one is listed.
+ *   moving       zero steps AND every source was read.
  *
  * Reuses batchMerge's classifier (`classifyAuthorityPaths`, `normalizeAuthorityPath`), its readiness gate
  * (`assessPr`) and its stack order (`orderStack`); nothing is forked.
@@ -49,6 +57,7 @@ import type { DecisionCard } from "./card.js";
 export const NEXT_STEPS_DEFAULT_CAP = 25;
 const TITLE_MAX = 120;
 const CHECK_MAX = 80;
+const WAITING_AHEAD_MAX = 5;
 
 /* --------------------------------- input -------------------------------- */
 
@@ -66,7 +75,10 @@ export interface NextStepsPr {
   reviews: ReadonlyArray<BatchPrReview>;
   checks: ReadonlyArray<BatchPrCheck>;
   requiredChecks: ReadonlyArray<string>;
+  /** GitHub's mergeStateStatus from the same fresh read as headSha; only CLEAN and HAS_HOOKS are takeable. */
   mergeStateStatus?: string | null;
+  /** owner/name of the head repository; a fork's head ref is never matched as a stack parent. Null means the base repo. */
+  headRepo?: string | null;
   /**
    * Set by the reader when this pull request's facts could not be read; it is shown as a refused wait step,
    * never classified from the partial data.
@@ -98,6 +110,9 @@ export interface NextStepsCard {
   unblocksActionId?: string | null;
 }
 
+/** What a reader may fail to read; any of them blocks "moving". */
+export type NextStepsSource = "prs" | "queue" | "cards" | "checks";
+
 export interface NextStepsInput {
   prs: ReadonlyArray<NextStepsPr>;
   queue?: NextStepsQueue | null;
@@ -108,6 +123,8 @@ export interface NextStepsInput {
   repo?: string;
   /** Most steps returned in `steps`; the rest are counted in `hidden`, never dropped silently. */
   cap?: number;
+  /** Sources the caller could not read. */
+  unavailable?: ReadonlyArray<NextStepsSource>;
 }
 
 /* --------------------------------- output ------------------------------- */
@@ -131,6 +148,7 @@ export type NextStepWaitCode =
   | "check_failing"
   | "check_pending"
   | "merge_conflict"
+  | "merge_state_not_clean"
   | "unreadable";
 
 export interface NextStep {
@@ -152,19 +170,28 @@ export interface NextStep {
   waitCode: NextStepWaitCode | null;
   authorityBoundaries: AuthorityBoundary[];
   reason: string;
+  /** Own priority rank (0 advances governance, 1 unblocks a queued Action, 2 other). */
+  rank: 0 | 1 | 2;
 }
 
+export type NextStepsState = "now" | "waiting" | "moving" | "unavailable";
+
 export interface NextStepsResult {
-  /** True when no step is takeable: production is moving and nothing is asked of the operator. */
-  moving: boolean;
+  state: NextStepsState;
   nowStep: NextStep | null;
-  /** Ordered steps, capped; always empty when `moving`. */
+  /** Ordered steps, capped. Wait steps are always listed; only `moving` has none. */
   steps: NextStep[];
   /** Steps beyond the cap that are not shown (the now step is always shown separately). */
   hidden: number;
   total: number;
   /** Unreadable pull-request or card inputs and cards of a verb this list does not carry. */
   ignored: number;
+  /** Sources that could not be read (including pull requests whose facts were unreadable). */
+  unavailable: NextStepsSource[];
+  /** Higher-priority pull requests that are waiting, said in words next to the now step. */
+  waitingAhead: string[];
+  /** State `waiting` only: "Nothing for you to click; waiting on <named>". */
+  waitingSummary: string | null;
 }
 
 /* -------------------------------- helpers -------------------------------- */
@@ -176,7 +203,7 @@ const UNSAFE_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u20
 export function safeText(value: unknown, max: number): string {
   const raw = typeof value === "string" ? value : "";
   const cleaned = raw.replace(UNSAFE_TEXT_RE, " ").replace(/\s+/g, " ").trim();
-  return cleaned.length <= max ? cleaned : `${cleaned.slice(0, max - 1)}…`;
+  return cleaned.length <= max ? cleaned : `${cleaned.slice(0, max - 1)}\u2026`;
 }
 
 const isPrNumber = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n > 0;
@@ -219,6 +246,12 @@ interface Node {
   forced: { code: NextStepWaitCode; text: string } | null;
   touched: string[];
   rank: 0 | 1 | 2;
+  /** Effective rank: min of own and all descendants' ranks. */
+  effRank: 0 | 1 | 2;
+  /** The descendant whose rank this node inherits, when lower than its own. */
+  inheritedFrom: number | null;
+  /** What this node's own rank means, in words; empty at rank 2. */
+  phrase: string;
   unblocks: string;
 }
 
@@ -239,14 +272,15 @@ function classifyPriority(
   pr: NextStepsPr,
   touched: string[],
   queue: NextStepsQueue | null,
-): { rank: 0 | 1 | 2; unblocks: string } {
+): { rank: 0 | 1 | 2; unblocks: string; phrase: string } {
   if (queue !== null) {
     if (matchesPath(touched, "PROJECT.md")) {
-      return { rank: 0, unblocks: "Advances the active-Plan pointer: it changes PROJECT.md." };
+      return { rank: 0, phrase: "advances the active-Plan pointer", unblocks: "Advances the active-Plan pointer: it changes PROJECT.md." };
     }
     if (queue.planPath !== null && matchesPath(touched, queue.planPath)) {
       return {
         rank: 0,
+        phrase: "changes the active Plan",
         unblocks:
           queue.currentActionId !== null
             ? `Changes the active Plan (${safeText(queue.planPath, 120)}), which settles or moves Action ${safeText(queue.currentActionId, 80)}.`
@@ -256,6 +290,7 @@ function classifyPriority(
     if (queue.currentExpectedArtifact != null && matchesPath(touched, queue.currentExpectedArtifact)) {
       return {
         rank: 0,
+        phrase: "delivers the current Action's artifact",
         unblocks: `Delivers ${safeText(queue.currentExpectedArtifact, 120)}, the artifact that completes current Action ${safeText(queue.currentActionId, 80)}.`,
       };
     }
@@ -263,18 +298,26 @@ function classifyPriority(
       const candidates = [action.expectedArtifact, ...action.dependencies.filter((d) => typeof d === "string" && d.includes("/"))];
       const hit = candidates.find((c) => c != null && matchesPath(touched, c));
       if (hit != null) {
-        return { rank: 1, unblocks: `Delivers ${safeText(hit, 120)}, which queued Action ${safeText(action.actionId, 80)} needs.` };
+        return {
+          rank: 1,
+          phrase: `delivers an artifact queued Action ${safeText(action.actionId, 80)} needs`,
+          unblocks: `Delivers ${safeText(hit, 120)}, which queued Action ${safeText(action.actionId, 80)} needs.`,
+        };
       }
     }
   }
   return {
     rank: 2,
+    phrase: "",
     unblocks: `Merges #${pr.number} into ${safeText(pr.baseRef, 80)}; no queued Action was derived as waiting on it.`,
   };
 }
 
+const sameRepo = (headRepo: string | null | undefined, repo: string): boolean =>
+  typeof headRepo !== "string" || headRepo.trim() === "" || headRepo.trim().toLowerCase() === repo.toLowerCase();
+
 /** Per-PR parent derivation from baseRef/headRef. Unlike batchMerge's all-or-nothing form, one bad PR never hides the rest. */
-function buildNodes(prs: NextStepsPr[], trunk: string, queue: NextStepsQueue | null): Map<number, Node> {
+function buildNodes(prs: NextStepsPr[], trunk: string, repo: string, queue: NextStepsQueue | null): Map<number, Node> {
   const nodes = new Map<number, Node>();
   const duplicated = new Set<number>();
   for (const pr of prs) {
@@ -283,11 +326,13 @@ function buildNodes(prs: NextStepsPr[], trunk: string, queue: NextStepsQueue | n
       continue;
     }
     const touched = touchedPaths(pr.files);
-    const { rank, unblocks } = classifyPriority(pr, touched, queue);
-    nodes.set(pr.number, { pr, parent: null, orderParent: null, forced: null, touched, rank, unblocks });
+    const { rank, unblocks, phrase } = classifyPriority(pr, touched, queue);
+    nodes.set(pr.number, { pr, parent: null, orderParent: null, forced: null, touched, rank, effRank: rank, inheritedFrom: null, phrase, unblocks });
   }
+  // Only a branch in the base repository can be a stack parent: head repository + ref, never the ref alone.
   const byHead = new Map<string, number[]>();
   for (const node of nodes.values()) {
+    if (!sameRepo(node.pr.headRepo, repo)) continue;
     const list = byHead.get(node.pr.headRef) ?? [];
     list.push(node.pr.number);
     byHead.set(node.pr.headRef, list);
@@ -336,7 +381,34 @@ function buildNodes(prs: NextStepsPr[], trunk: string, queue: NextStepsQueue | n
     }
     for (const n of path) state.set(n, 2);
   }
+  inheritRanks(nodes);
   return nodes;
+}
+
+/** Effective rank = min(own, all descendants). `orderParent` links are acyclic, so a memoised walk terminates. */
+function inheritRanks(nodes: Map<number, Node>): void {
+  const children = new Map<number, number[]>();
+  for (const node of nodes.values()) {
+    if (node.orderParent === null) continue;
+    const list = children.get(node.orderParent) ?? [];
+    list.push(node.pr.number);
+    children.set(node.orderParent, list);
+  }
+  const done = new Set<number>();
+  const visit = (n: number): void => {
+    if (done.has(n)) return;
+    done.add(n);
+    const node = nodes.get(n)!;
+    for (const c of [...(children.get(n) ?? [])].sort((a, b) => a - b)) {
+      visit(c);
+      const child = nodes.get(c)!;
+      if (child.effRank < node.effRank) {
+        node.effRank = child.effRank;
+        node.inheritedFrom = child.inheritedFrom ?? c;
+      }
+    }
+  };
+  for (const n of [...nodes.keys()].sort((a, b) => a - b)) visit(n);
 }
 
 function checkState(pr: NextStepsPr, name: string): "green" | "pending" | "failing" {
@@ -347,6 +419,21 @@ function checkState(pr: NextStepsPr, name: string): "green" | "pending" | "faili
   const settledBad = concl.some((c) => c !== "" && c !== "success" && c !== "pending" && c !== "queued" && c !== "in_progress" && c !== "expected");
   return settledBad ? "failing" : "pending";
 }
+
+/** Review states at the pinned head, named, so a COMMENTED review beside an APPROVED one is visible. */
+function reviewStatesAtHead(pr: NextStepsPr): string {
+  const rows = pr.reviews
+    .filter((r) => r.headSha === pr.headSha)
+    .map((r) => `${safeText(r.verdict, 30).toUpperCase() || "UNKNOWN"} by ${safeText(r.author ?? "an unknown reviewer", 40)}`);
+  return rows.length === 0 ? "none at this head" : rows.join(", ");
+}
+
+const MERGE_STATE_TEXT: Record<string, string> = {
+  BLOCKED: "GitHub reports the merge as blocked (a required review or check is not satisfied)",
+  BEHIND: "it is behind its base branch and must be updated",
+  UNKNOWN: "GitHub has not computed the merge state yet",
+  UNSTABLE: "non-required checks are failing",
+};
 
 /* --------------------------------- build -------------------------------- */
 
@@ -363,7 +450,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
     if (isValidPr(candidate)) prs.push(candidate);
     else ignored += 1;
   }
-  const nodes = buildNodes(prs, trunk, queue);
+  const nodes = buildNodes(prs, trunk, repo, queue);
 
   // Stack order from batchMerge: the deterministic tie-break among equal ranks.
   const stackInput = [...nodes.values()].map((n) => ({ number: n.pr.number, parent: n.orderParent }));
@@ -381,6 +468,10 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
     const shaOk = isPinnedHeadSha(pr.headSha);
     const boundaries = classifyAuthorityPaths(pr.files);
     const title = safeText(pr.title, TITLE_MAX) || `Pull request #${pr.number}`;
+    const unblocks =
+      node.inheritedFrom !== null
+        ? `Merging #${pr.number} unlocks #${node.inheritedFrom}, which ${nodes.get(node.inheritedFrom)?.phrase ?? "ranks higher"}.`
+        : node.unblocks;
     const base = {
       id,
       kind: "wait" as const,
@@ -388,8 +479,9 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       click: null,
       href: null,
       pinnedHeadSha: shaOk ? pr.headSha : null,
-      unblocks: node.unblocks,
+      unblocks,
       authorityBoundaries: boundaries,
+      rank: node.rank,
     };
     const wait = (code: NextStepWaitCode, reason: string, waitingFor: string, waitingOn: string | null = null): Omit<NextStep, "order"> => ({
       ...base,
@@ -411,9 +503,8 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       return wait("parent_unmerged", `Its stack parent #${parent} is not merged yet.`, `step ${parentStepId} (merge #${parent})`, parentStepId);
     }
     if (pr.isDraft === true) return wait("draft", "It is a draft; mark it ready for review.", "the author marking it ready for review");
-    let facts: BatchPrFacts;
     try {
-      facts = {
+      const facts: BatchPrFacts = {
         number: pr.number,
         title,
         headSha: pr.headSha,
@@ -440,22 +531,33 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       }
       if (codes.has("review_missing")) return wait("review_missing", "It has no independent review.", "an independent review");
       if (codes.has("review_stale_head")) return wait("review_stale_head", "Its only reviews are of an earlier head.", "an independent review of this head");
-      if (codes.has("review_not_approved")) return wait("review_not_approved", "Its independent review at this head is not an approval.", "an approving independent review");
+      if (codes.has("review_not_approved")) {
+        return wait(
+          "review_not_approved",
+          `Its reviews at this head are not all approvals (${reviewStatesAtHead(pr)}).`,
+          "an approving independent review",
+        );
+      }
       if (codes.has("no_required_checks")) return wait("no_required_checks", "It names no required checks, so green cannot be established.", "required checks being reported");
       for (const name of pr.requiredChecks) {
         const state = checkState(pr, name);
         if (state === "green") continue;
         const label = safeText(name, CHECK_MAX);
         return state === "failing"
-          ? wait("check_failing", `Required check ${label} is failing at ${short(pr.headSha)}.`, `required check ${label} to pass`)
-          : wait("check_pending", `Required check ${label} has not finished at ${short(pr.headSha)}.`, `required check ${label} to finish`);
+          ? wait("check_failing", `Required check ${label} is failing at ${short(pr.headSha)}.`, `required check ${label} to pass on #${pr.number}`)
+          : wait("check_pending", `Required check ${label} has not finished at ${short(pr.headSha)}.`, `required check ${label} to finish on #${pr.number}`);
       }
       if (codes.has("check_not_green")) return wait("check_pending", "A required check is not green.", "required checks to pass");
     } catch {
       return wait("unreadable", "Its review or check facts could not be read.", "readable review and check facts");
     }
-    if (typeof pr.mergeStateStatus === "string" && pr.mergeStateStatus.trim().toUpperCase() === "DIRTY") {
+    const mergeState = typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.trim().toUpperCase() : "";
+    if (mergeState === "DIRTY") {
       return wait("merge_conflict", "It conflicts with its base branch; the author must resolve the conflict.", "the author resolving the merge conflict");
+    }
+    if (mergeState !== "CLEAN" && mergeState !== "HAS_HOOKS") {
+      const named = mergeState === "" ? "the merge state was not reported" : (MERGE_STATE_TEXT[mergeState] ?? `GitHub reports merge state ${safeText(mergeState, 30)}`);
+      return wait("merge_state_not_clean", `Merge state is ${mergeState || "not reported"}: ${named}.`, `GitHub to report a clean merge state on #${pr.number}`);
     }
     return {
       ...base,
@@ -471,7 +573,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
     };
   };
 
-  // Cards first-class: answer/run steps.
+  // Cards: answer/run steps.
   const cardSteps: Placed[] = [];
   const seenCards = new Set<string>();
   for (const card of Array.isArray(input.cards) ? input.cards : []) {
@@ -508,13 +610,13 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
         waitCode: null,
         authorityBoundaries: [],
         reason: `${card.verb === "answer" ? "Open Decision" : "Operator script"} card (${safeText(card.kind, 40)}).`,
+        rank,
       },
     });
   }
 
-  // Priority-topological placement over the PRs.
+  // Priority-topological placement over the PRs, by effective rank.
   const remaining = new Set(nodes.keys());
-  const ordered: Array<Omit<NextStep, "order">> = [];
   const prSteps: Placed[] = [];
   while (remaining.size > 0) {
     let best: Node | null = null;
@@ -523,22 +625,21 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       if (node.orderParent !== null && remaining.has(node.orderParent)) continue;
       if (
         best === null ||
-        node.rank < best.rank ||
-        (node.rank === best.rank && (stackIndex.get(n) ?? 0) < (stackIndex.get(best.pr.number) ?? 0))
+        node.effRank < best.effRank ||
+        (node.effRank === best.effRank && (stackIndex.get(n) ?? 0) < (stackIndex.get(best.pr.number) ?? 0))
       ) {
         best = node;
       }
     }
-    if (best === null) break; // unreachable: cycles are cut loose; every remaining node has an unplaced parent otherwise
+    if (best === null) break; // unreachable: cycles are cut loose
     remaining.delete(best.pr.number);
     const parentStep = best.parent !== null ? placedSteps.get(best.parent) : undefined;
     const step = buildPrStep(best, parentStep ? parentStep.id : null);
     placedSteps.set(best.pr.number, step);
-    prSteps.push({ rank: best.rank, index: prSteps.length, step });
+    prSteps.push({ rank: best.effRank, index: prSteps.length, step });
   }
 
-  // Merge the PR sequence and the card sequence by (rank, original sequence). PR order already honours
-  // parents; cards have no parents, so a stable merge keeps every parent before its child.
+  // Merge the PR sequence and the card sequence by (rank, sequence); PR order already honours parents.
   const merged: Placed[] = [];
   let i = 0;
   let j = 0;
@@ -554,21 +655,59 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       j += 1;
     }
   }
-  for (const p of merged) ordered.push(p.step);
 
-  const numbered: NextStep[] = ordered.map((s, idx) => ({ ...s, order: idx + 1 }));
+  const numbered: NextStep[] = merged.map((p, idx) => ({ ...p.step, order: idx + 1 }));
   const nowStep = numbered.find((s) => s.kind !== "wait") ?? null;
-  if (nowStep === null) {
-    return { moving: true, nowStep: null, steps: [], hidden: 0, total: 0, ignored };
+
+  const unavailable: NextStepsSource[] = [...new Set(input.unavailable ?? [])].sort();
+  if (prs.some((p) => typeof p.unreadable === "string") && !unavailable.includes("checks")) {
+    unavailable.push("checks");
+    unavailable.sort();
   }
+
+  // Higher-priority pull requests that are waiting (and are not just the now step's own descendants).
+  const waitingAhead: string[] = [];
+  if (nowStep !== null) {
+    const nowNumber = /^pr-(\d+)$/.exec(nowStep.id)?.[1];
+    const descendsFromNow = (n: number): boolean => {
+      let cursor: number | null = nodes.get(n)?.parent ?? null;
+      const seen = new Set<number>();
+      while (cursor !== null && !seen.has(cursor)) {
+        if (String(cursor) === nowNumber) return true;
+        seen.add(cursor);
+        cursor = nodes.get(cursor)?.parent ?? null;
+      }
+      return false;
+    };
+    for (const step of numbered) {
+      if (waitingAhead.length >= WAITING_AHEAD_MAX) break;
+      const m = /^pr-(\d+)$/.exec(step.id);
+      if (step.kind !== "wait" || m === null || step.rank >= nowStep.rank) continue;
+      const n = Number(m[1]);
+      if (descendsFromNow(n)) continue;
+      const phrase = nodes.get(n)?.phrase ?? "";
+      waitingAhead.push(`#${n} ${phrase !== "" ? `${phrase} ` : "ranks higher "}but is waiting on ${step.waitingFor ?? "something"}.`);
+    }
+  }
+
+  const state: NextStepsState =
+    nowStep !== null ? "now" : unavailable.length > 0 ? "unavailable" : numbered.length > 0 ? "waiting" : "moving";
+  const waitingSummary =
+    state === "waiting"
+      ? `Nothing for you to click; waiting on ${numbered[0].waitingFor ?? "something"}${numbered.length > 1 ? ` (and ${numbered.length - 1} more)` : ""}.`
+      : null;
+
   const shown = numbered.slice(0, cap);
-  const nowShown = shown.some((s) => s.id === nowStep.id);
+  const nowShown = nowStep === null || shown.some((s) => s.id === nowStep.id);
   return {
-    moving: false,
+    state,
     nowStep,
     steps: shown,
     hidden: numbered.length - shown.length - (nowShown ? 0 : 1),
     total: numbered.length,
     ignored,
+    unavailable,
+    waitingAhead,
+    waitingSummary,
   };
 }

@@ -16,24 +16,41 @@ export const runtime = "nodejs";
 const CACHE_MS = 30_000;
 let cached: { at: number; value: NextStepsResponse } | null = null;
 let inFlight: Promise<NextStepsResponse> | null = null;
+// Heads read by the previous computation: a head that moved since then is shown as head_moved.
+let previousHeads: Record<number, string> | null = null;
 
 function load(): Promise<NextStepsResponse> {
-  return loadNextSteps({
-    async readInventory() {
-      const response = await readPullRequests(new Request("http://localhost/api/pull-requests"));
-      if (!response.ok) throw new Error("pull-request inventory unavailable");
-      const body = (await response.json()) as { snapshot: DashboardOutstandingPullRequests; stale?: boolean };
-      return { pullRequests: body.snapshot.pullRequests, stale: body.stale === true };
+  return loadNextSteps(
+    {
+      async readInventory() {
+        const response = await readPullRequests(new Request("http://localhost/api/pull-requests"));
+        if (!response.ok) throw new Error("pull-request inventory unavailable");
+        const body = (await response.json()) as {
+          snapshot: DashboardOutstandingPullRequests;
+          stale?: boolean;
+          checkedAt?: string;
+          refreshError?: string | null;
+          incomplete?: boolean;
+        };
+        return {
+          pullRequests: body.snapshot.pullRequests,
+          stale: body.stale === true,
+          checkedAt: typeof body.checkedAt === "string" ? body.checkedAt : null,
+          refreshError: typeof body.refreshError === "string" ? body.refreshError : null,
+          incomplete: body.incomplete === true || (body.snapshot.errors?.length ?? 0) > 0
+        };
+      },
+      async readQueue() {
+        return (await loadWorkQueue()).data;
+      },
+      async readCards() {
+        const { cards, targets } = await loadCurrentCards();
+        return { cards, targets };
+      },
+      runGh: ghRunner()
     },
-    async readQueue() {
-      return (await loadWorkQueue()).data;
-    },
-    async readCards() {
-      const { cards, targets } = await loadCurrentCards();
-      return { cards, targets };
-    },
-    runGh: ghRunner()
-  });
+    { pinnedHeads: previousHeads }
+  );
 }
 
 export async function GET() {
@@ -44,6 +61,7 @@ export async function GET() {
   inFlight ??= load()
     .then((value) => {
       cached = { at: Date.now(), value };
+      previousHeads = value.heads;
       return value;
     })
     .finally(() => {
