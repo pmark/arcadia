@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-12
+updated: 2026-10-13
 ---
 
 # Mission Log: Arcadia
@@ -2421,3 +2421,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in remains draft with completion state preserved. Operator answered in chat on 2026-10-12 to run the decision-cards Plan after the hardening Plan, and confirmed the program order. Accepted consequence: the autonomous-production hardening Plan returns to draft with its completion state preserved; its open Actions (one-click clears awaiting PR 1309, the probe-receipt remainder, the pointer/lock remainder) carry forward as drafts.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-13 — Completed arcadia/decision-card-contract
+
+- **Did:** Completed Action arcadia/decision-card-contract from accepted evidence (Candidate 17f05f789b416bc091d47d14d433dc511cc58d52).
+- **Result:** Every declared acceptance criterion was accepted as met: "The validator rejects a card with a missing consequence, missing pins or an unknown verb, and rejects a stale pin (state hash, head sha or preview fingerprint) at use time."; "Fixtures exist for the merge, run and answer verbs and each validates."; "A card carries a policy_match field that is null or a policy id and an expiry that the validator enforces."; "Focused tests pass and the dashboard import graph has no containerAuditTransport or commander edge.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-decision-card-contract-2026-10-12).

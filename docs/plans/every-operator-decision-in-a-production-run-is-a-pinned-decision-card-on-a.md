@@ -7,14 +7,14 @@ status: active
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-12
+updated: 2026-10-13
 actions:
   - id: decision-card-contract
     title: Implement the arcadia-decision-card-v1 schema and validator in src/decisions/card.ts so every operator touch is one pinned card with a verb, consequence, evidence and receipt.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement the arcadia-decision-card-v1 schema and validator in src/decisions/card.ts so every operator touch is one pinned card with a verb, consequence, evidence and receipt.
+    next_action: Completed via Agent Ask complete-decision-card-contract-2026-10-12; no further action.
     expected_artifact: Evidence satisfying Agent Ask decision-card-contract
     clarification: clarified
     confidence: high
@@ -220,7 +220,7 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
-current_action: decision-card-contract
+current_action: cards-from-existing-sources
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
