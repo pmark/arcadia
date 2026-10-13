@@ -76,11 +76,20 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "docs/managed-production-readiness.md": "production_policy",
   "apps/dashboard/app/actions.ts": "dashboard_api_route",
   "apps/dashboard/middleware.ts": "dashboard_api_route",
+  "north_star.md": "project_governance",
+  "operator_context.md": "project_governance",
+  ".coderabbit.yaml": "ci_and_gates",
+  "src/commands/agentask.ts": "operator_authority",
+  "src/commands/review.ts": "operator_authority",
+  "src/commands/project.ts": "operator_authority",
+  "src/docs/sync.ts": "operator_authority",
 };
 /** Matched on the last path segment wherever the file sits. */
 const BASENAMES: Record<string, AuthorityBoundary> = {
   "claude.md": "project_governance",
   "agents.md": "project_governance",
+  "project.md": "project_governance",
+  "constitution.md": "project_governance",
   codeowners: "ci_and_gates",
   ".gitmodules": "ci_and_gates",
   "package.json": "dependency_manifest",
@@ -96,6 +105,8 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["apps/dashboard/app/api/", "dashboard_api_route"],
   ["apps/dashboard/pages/api/", "dashboard_api_route"],
   ["scripts/", "operator_authority"],
+  [".agents/", "agent_guidance"],
+  ["src/ask/", "operator_authority"],
   [".arcadia/", "arcadia_control_state"],
   [".github/", "ci_and_gates"],
   ["artifacts/generated/operator-scripts/", "operator_authority"],
@@ -103,6 +114,7 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["src/decisions/", "operator_authority"],
 ];
 const PERMISSION_NAME_RE = /(permission|allow[-_ .]?(list|rules?)|settings(\.local)?\.json)/;
+const DASHBOARD_ROUTE_RE = /^apps\/dashboard\/app\/(?:.*\/)?route\.(?:ts|tsx|js|jsx|mjs)$/;
 const PRODUCTION_POLICY_RE = /production[-_]?polic/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060\ufeff]/;
@@ -137,6 +149,7 @@ export function classifyAuthorityPath(input: unknown): AuthorityBoundary[] {
   if (base) found.add(base);
   if (PERMISSION_NAME_RE.test(segments[segments.length - 1])) found.add("agent_permissions");
   if (PRODUCTION_POLICY_RE.test(path)) found.add("production_policy");
+  if (DASHBOARD_ROUTE_RE.test(path)) found.add("dashboard_api_route");
   return AUTHORITY_BOUNDARIES.filter((b) => found.has(b));
 }
 
@@ -166,6 +179,8 @@ export function classifyAuthorityPaths(paths: unknown): AuthorityBoundary[] {
 export interface BatchPrReview {
   verdict: string;
   headSha: string;
+  /** Reviewer login; required to count when the PR author is known. */
+  author?: string | null;
 }
 export interface BatchPrCheck {
   name: string;
@@ -178,6 +193,8 @@ export interface BatchPrFacts {
   headSha: string;
   baseRef: string;
   headRef: string;
+  /** The PR author's login. When set, a review by this login (or by an unknown login) is not independent. */
+  author?: string | null;
   files: BatchFileEntry[];
   /** The PR's own changed_files count; the fetched list must match it exactly. */
   changedFiles?: number | null;
@@ -353,6 +370,8 @@ function deriveParents(
 export interface PrReadiness {
   boundaries: AuthorityBoundary[];
   reviewVerdict: "approved" | "missing" | "stale_head" | "not_approved";
+  /** Logins of the approving reviews at the pinned head. */
+  reviewers: string[];
   checks: { name: string; conclusion: string }[];
   refusals: BatchRefusal[];
 }
@@ -389,8 +408,15 @@ export function assessPr(
   }
 
   let reviewVerdict: PrReadiness["reviewVerdict"];
-  const atHead = facts.reviews.filter((r) => r.headSha === pinned.headSha);
+  const authorLogin = typeof facts.author === "string" && facts.author.trim() !== "" ? facts.author.trim().toLowerCase() : null;
+  const independent = facts.reviews.filter(
+    (r) =>
+      authorLogin === null ||
+      (typeof r.author === "string" && r.author.trim() !== "" && r.author.trim().toLowerCase() !== authorLogin),
+  );
+  const atHead = independent.filter((r) => r.headSha === pinned.headSha);
   if (facts.reviews.length === 0) reviewVerdict = "missing";
+  else if (independent.length === 0) reviewVerdict = "not_approved";
   else if (atHead.length === 0) reviewVerdict = "stale_head";
   else if (atHead.every((r) => typeof r.verdict === "string" && r.verdict.trim().toLowerCase() === "approved")) reviewVerdict = "approved";
   else reviewVerdict = "not_approved";
@@ -411,7 +437,11 @@ export function assessPr(
       refuse("check_not_green", `#${n} required check ${name} is not green on the pinned head.`);
     }
   }
-  return { boundaries, reviewVerdict, checks, refusals };
+  const reviewers =
+    reviewVerdict === "approved"
+      ? [...new Set(atHead.map((x) => (typeof x.author === "string" ? x.author.trim() : "")).filter((x) => x !== ""))]
+      : [];
+  return { boundaries, reviewVerdict, reviewers, checks, refusals };
 }
 
 /* ------------------------------ card build ------------------------------- */
@@ -653,6 +683,10 @@ export interface BatchReceipt {
   outcome: "merged" | "already_merged" | "refused" | "failed" | "not_attempted";
   reason: string | null;
   at: string;
+  /** Approving reviewer logins at the pinned head, recorded at merge time. */
+  reviewers?: string[];
+  /** Merged only: false when the post-merge re-read did not show MERGED into the trunk. */
+  verified?: boolean;
 }
 
 export type BatchEvaluation =
@@ -715,7 +749,10 @@ export function evaluateBatchMerge(
         changedFiles: f.changedFiles ?? null,
         why: "",
         decisions: [],
-        reviews: Array.isArray(f.reviews) ? f.reviews.map((r) => ({ verdict: r.verdict, headSha: r.headSha })) : [],
+        author: f.author ?? null,
+        reviews: Array.isArray(f.reviews)
+          ? f.reviews.map((r) => ({ verdict: r.verdict, headSha: r.headSha, author: r.author ?? null }))
+          : [],
         checks: Array.isArray(f.checks) ? f.checks.map((c) => ({ name: c.name, conclusion: c.conclusion })) : [],
         requiredChecks: Array.isArray(f.requiredChecks) ? [...f.requiredChecks] : [],
         state: f.state,
@@ -836,7 +873,12 @@ export function runBatchMerge(
   const order = (orderStack(spec.prs) as { ok: true; order: number[] }).order;
   const byNumber = new Map(spec.prs.map((p) => [p.number, p]));
   const prior = new Map<number, BatchReceipt | null>();
-  const write = (number: number, outcome: BatchReceipt["outcome"], reason: string | null) => {
+  const write = (
+    number: number,
+    outcome: BatchReceipt["outcome"],
+    reason: string | null,
+    extra: { reviewers?: string[]; verified?: boolean } = {},
+  ) => {
     if (options.dryRun) return;
     // A merged receipt is final: nothing is written over it.
     if (prior.get(number)?.outcome === "merged") return;
@@ -848,6 +890,7 @@ export function runBatchMerge(
       outcome,
       reason,
       at,
+      ...extra,
     };
     receipts.push(r);
     try {
@@ -929,7 +972,23 @@ export function runBatchMerge(
       return stopAt(i, { code: "pr_unreadable", number: n, message: `#${n} merge failed: ${errorText(error)}` }, "failed");
     }
     merged.push(n);
-    write(n, "merged", null);
+    // Post-merge verification: the PR must now read as MERGED into the trunk. The merge happened and is
+    // never repeated either way; an unverified state is recorded and stops the rest of the run.
+    let after: BatchPrFacts | null;
+    try {
+      after = gateway.readPr(n);
+    } catch {
+      after = null;
+    }
+    const verified = after !== null && after.number === n && after.state === "merged" && after.baseRef === spec.trunk;
+    const reviewers = fresh ? assessPr(fresh, pinned).reviewers : [];
+    write(n, "merged", verified ? null : "post-merge re-read did not show MERGED into the trunk", { reviewers, verified });
+    if (!verified) {
+      for (const rest of evaluation.toMerge.slice(i + 1)) write(rest, "not_attempted", `stopped after #${n} could not be verified`);
+      return result("stopped", [
+        { code: "stack_changed", number: n, message: `#${n} was merged but, after merging, it does not read as MERGED into ${spec.trunk}.` },
+      ]);
+    }
   }
   return result(merged.length === 0 ? "nothing_to_merge" : "merged", []);
 }
@@ -1008,7 +1067,9 @@ export function buildBatchMergeDescriptor(spec: BatchMergeSpec, items: readonly 
     problem: `These PRs await the operator: ${list}. Each was read with a green required-check set and an independent review at the pinned head.`,
     desired_effect:
       `Merges each listed PR of ${spec.repo} into ${spec.trunk}, base first, only at its pinned head sha, writing one receipt per PR. ` +
-      `Any moved head, non-green required check, missing review or unacknowledged authority boundary refuses the whole batch and merges none. A rerun skips PRs already merged.`,
+      `Any moved head, non-green required check, missing review or unacknowledged authority boundary refuses the whole batch and merges none. A rerun skips PRs already merged. ` +
+      `Stacked children: after a parent merges, GitHub must have retargeted the child to ${spec.trunk}; a child that was not retargeted stops the run ` +
+      `(nothing further is merged) and you must retarget it manually, then press the button again.`,
     authority: {
       does: spec.prs.map((p) => `Merge PR #${p.number} at head ${p.headSha}`),
       never_does: [

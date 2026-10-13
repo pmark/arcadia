@@ -1,10 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-  assertBatchExecutionContext, parseBatchMergeRequest, runBatchMerge, validateBatchMergeSpec,
-  type BatchMergeGateway, type BatchPrFacts, type BatchReceipt
-} from "../src/decisions/batchMerge.js";
+import { runBatchMerge, type BatchMergeGateway, type BatchPrFacts, type BatchReceipt } from "../src/decisions/batchMerge.js";
+import { runBatchMergeGuard, systemGit } from "../src/decisions/batchMergeGuard.js";
 
 // Entry point for the operator action whose id is a batch card id (descriptor built by
 // buildBatchMergeDescriptor; the pinned spec lives in the descriptor's `batchMerge` and the
@@ -23,44 +21,11 @@ function refuse(code: string, message: string): never {
 }
 
 const descriptorPath = path.resolve(descriptorArg);
-const repoRoot = realpathSync(path.resolve(path.dirname(descriptorPath), "../../.."));
-const scriptId = path.basename(descriptorPath, ".json");
-const git = (args: string[]): string | null => {
-  try {
-    return execFileSync("git", ["-C", repoRoot, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  } catch {
-    return null;
-  }
-};
-const TRACKED = [
-  `artifacts/generated/operator-scripts/${scriptId}.json`,
-  `artifacts/generated/operator-scripts/${scriptId}.sh`,
-  "scripts/merge-decision-card-batch.ts",
-  "src/decisions/batchMerge.ts",
-  "src/decisions/card.ts"
-];
-const envDescriptor = process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR;
-if (!dryRun) git(["fetch", "origin", "main"]);
-const guard = assertBatchExecutionContext({
-  scriptId,
-  descriptorPath,
-  env: { ...process.env, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: envDescriptor ? path.resolve(envDescriptor) : undefined },
-  allTracked: TRACKED.every((file) => git(["ls-files", "--error-unmatch", file]) !== null),
-  modifiedLocally: git(["diff", "--quiet", "HEAD", "--", ...TRACKED]) === null,
-  differsFromOriginMain: git(["diff", "--quiet", "origin/main", "--", ...TRACKED]) === null,
-  dryRun
-});
-if (guard) refuse(guard.code, guard.message);
-
-const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as { id?: unknown; batchMerge?: unknown; batchMergeRequest?: unknown };
-const parsedSpec = validateBatchMergeSpec(descriptor.batchMerge);
-if (!parsedSpec.ok) refuse(parsedSpec.refusal.code, parsedSpec.refusal.message);
-const spec = parsedSpec.spec;
-if (descriptor.id !== scriptId || spec.cardId !== scriptId) refuse("card_id_mismatch", "The descriptor id, file name and pinned card id must be one value.");
-// The request is what the published card's button posts; it is read from the descriptor, never rebuilt from the spec.
-const parsedRequest = parseBatchMergeRequest(descriptor.batchMergeRequest);
-if (!parsedRequest.ok) refuse(parsedRequest.refusal.code, parsedRequest.refusal.message);
-const request = parsedRequest.request;
+// Anchor to this script's own checkout, never to wherever the descriptor claims to live.
+const repoRoot = realpathSync(path.resolve(import.meta.dirname, ".."));
+const guarded = runBatchMergeGuard({ repoRoot, descriptorPath, env: process.env, dryRun, git: systemGit(repoRoot) });
+if (!guarded.ok) refuse(guarded.code, guarded.message);
+const { spec, request } = guarded;
 
 const REPO = spec.repo;
 const receiptDir = path.join(path.resolve(runDirectory), "receipts", spec.cardId);
@@ -71,9 +36,10 @@ interface GhFileRow { filename: string; previous_filename?: string | null }
 const gateway: BatchMergeGateway = {
   readPr(number): BatchPrFacts | null {
     const pr = JSON.parse(gh(["pr", "view", String(number), "--repo", REPO, "--json",
-      "number,title,state,headRefOid,baseRefName,headRefName,reviews,statusCheckRollup"])) as {
+      "number,title,state,headRefOid,baseRefName,headRefName,author,reviews,statusCheckRollup"])) as {
       number: number; title: string; state: string; headRefOid: string; baseRefName: string; headRefName: string;
-      reviews: Array<{ state: string; commit?: { oid?: string } }>;
+      author?: { login?: string };
+      reviews: Array<{ state: string; author?: { login?: string }; commit?: { oid?: string } }>;
       statusCheckRollup: Array<{ name?: string; context?: string; conclusion?: string; state?: string }>;
     };
     // The REST file list names renames' old paths too and is paginated; any page error throws and
@@ -85,7 +51,8 @@ const gateway: BatchMergeGateway = {
     return {
       number: pr.number, title: pr.title, headSha: pr.headRefOid, baseRef: pr.baseRefName, headRef: pr.headRefName,
       files, changedFiles: meta.changed_files ?? null, why: "", decisions: [],
-      reviews: pr.reviews.map((r) => ({ verdict: r.state, headSha: r.commit?.oid ?? "" })),
+      author: pr.author?.login ?? null,
+      reviews: pr.reviews.map((r) => ({ verdict: r.state, headSha: r.commit?.oid ?? "", author: r.author?.login ?? null })),
       checks: pr.statusCheckRollup.map((c) => ({ name: c.name ?? c.context ?? "", conclusion: c.conclusion ?? c.state })),
       requiredChecks: required.map((c) => c.name),
       state: pr.state === "MERGED" ? "merged" : pr.state === "CLOSED" ? "closed" : "open",

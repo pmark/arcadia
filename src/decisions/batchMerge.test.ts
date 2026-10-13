@@ -571,6 +571,58 @@ describe("round 1 blockers", () => {
     expect(r.outcome).toBe("refused");
     expect(written.map((x) => x.number)).toEqual([2]);
   });
+  it("round 2 classifier additions", () => {
+    const cases: Array<[string, string]> = [
+      [".agents/skills/x/SKILL.md", "agent_guidance"],
+      ["NORTH_STAR.md", "project_governance"],
+      ["OPERATOR_CONTEXT.md", "project_governance"],
+      [".coderabbit.yaml", "ci_and_gates"],
+      ["packages/sub/PROJECT.md", "project_governance"],
+      ["docs/CONSTITUTION.md", "project_governance"],
+      ["src/ask/settlement.ts", "operator_authority"],
+      ["src/commands/agentAsk.ts", "operator_authority"],
+      ["src/commands/review.ts", "operator_authority"],
+      ["src/commands/project.ts", "operator_authority"],
+      ["src/docs/sync.ts", "operator_authority"],
+      ["apps/dashboard/app/todo/clear/route.ts", "dashboard_api_route"],
+      ["apps/dashboard/app/route.ts", "dashboard_api_route"],
+    ];
+    for (const [path, boundary] of cases) expect(classifyAuthorityPath(path), path).toContain(boundary);
+    expect(classifyAuthorityPath("apps/dashboard/app/todo/page.tsx")).toEqual([]);
+  });
+  it("rejects a review written by the PR's own author and records reviewers on the receipt", () => {
+    const own = pr(1, { author: "mark", reviews: [{ verdict: "APPROVED", headSha: sha("1"), author: "mark" }] });
+    const r = buildBatchMergeCard({ prs: [own], now: NOW, expires: EXPIRES });
+    expect(r.ok ? "ok" : r.refusal.code).toBe("review_not_approved");
+    const anon = pr(1, { author: "mark", reviews: [{ verdict: "APPROVED", headSha: sha("1") }] });
+    expect(buildBatchMergeCard({ prs: [anon], now: NOW, expires: EXPIRES }).ok).toBe(false);
+    const good = pr(1, { author: "mark", reviews: [{ verdict: "APPROVED", headSha: sha("1"), author: "reviewer-bot" }] });
+    const b = build([good]);
+    const g = gatewayOf([good]);
+    const run = runBatchMerge(b.spec, requestFromSpec(b.spec), g.gateway, NOW);
+    expect(run.outcome).toBe("merged");
+    expect(run.receipts[0]).toMatchObject({ outcome: "merged", reviewers: ["reviewer-bot"], verified: true });
+  });
+  it("verifies the PR is MERGED into the trunk after the merge and records it", () => {
+    const prs = [pr(1), pr(2)];
+    const b = build(prs);
+    const g = gatewayOf(prs);
+    const original = g.gateway.merge.bind(g.gateway);
+    g.gateway.merge = (n, head) => {
+      original(n, head);
+      if (n === 1) g.live.get(1)!.baseRef = "elsewhere";
+    };
+    const r = runBatchMerge(b.spec, requestFromSpec(b.spec), g.gateway, NOW);
+    expect(r.outcome).toBe("stopped");
+    expect(r.receipts.map((x) => `${x.number}:${x.outcome}:${String(x.verified)}`)).toEqual(["1:merged:false", "2:not_attempted:undefined"]);
+    expect(r.refusals[0].message).toMatch(/after merging/);
+  });
+  it("tells the operator in the descriptor that a non-retargeted child stops the run", () => {
+    const b = build(STACK());
+    const d = buildBatchMergeDescriptor(b.spec, b.items) as { desired_effect: string };
+    expect(d.desired_effect).toMatch(/not retargeted/i);
+    expect(d.desired_effect).toMatch(/retarget it manually/i);
+  });
   it("the card's acknowledged boundaries come from the pinned input, so a files change at the same head refuses", () => {
     const b = build([pr(1)]);
     const live = liveOf([pr(1, { files: ["src/feature1.ts", "PROJECT.md"], changedFiles: 2 })]);
