@@ -76,3 +76,25 @@ function errorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
   return "error" in body && typeof body.error === "string" ? body.error : fallback;
 }
+
+const REMEMBERED_INVENTORY_KEY = "arcadia.pr-inventory.v1";
+const REMEMBERED_INVENTORY_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/** Browser-session cards are display evidence only; every revisit checks the server. */
+export function readRememberedInventory(storage: Pick<Storage, "getItem">, now = Date.now()): PullRequestInventoryState | null {
+  try {
+    const raw = storage.getItem(REMEMBERED_INVENTORY_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as PullRequestInventoryState;
+    const checkedAt = Date.parse(value.checkedAt);
+    if (!Number.isFinite(checkedAt) || checkedAt > now || now - checkedAt > REMEMBERED_INVENTORY_MAX_AGE_MS
+      || !value.snapshot?.counts || !Array.isArray(value.snapshot.pullRequests) || !Array.isArray(value.snapshot.errors)
+      || !Array.isArray(value.retainedProjectIds)) return null;
+    return { ...value, stale: true, refreshing: true, refreshError: null };
+  } catch { return null; }
+}
+
+export function rememberInventory(storage: Pick<Storage, "setItem">, inventory: PullRequestInventoryState): void {
+  try { storage.setItem(REMEMBERED_INVENTORY_KEY, JSON.stringify(inventory)); }
+  catch { /* Storage may be disabled or full; the live inventory remains usable. */ }
+}
