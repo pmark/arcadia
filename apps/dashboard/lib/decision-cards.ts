@@ -35,6 +35,7 @@ export type CardPressRefusalReason =
   | "duplicate_option_labels"
   | "off_path_requires_confirmation"
   | "descriptor_changed"
+  | "next_action_unknown"
   | "decision_precondition_failed"
   | "write_refused";
 
@@ -202,8 +203,15 @@ export function decisionCardKey(projectSlug: string, decisionId: string): string
 
 /** Server-side only: what a card's source is, so the route can act on it. Never sent to the browser. */
 export type CardTarget =
-  | { kind: "decision"; projectSlug: string; decisionId: string; labels: string[]; status: string; updated: string }
-  | { kind: "script"; scriptId: string; eligible: boolean; confirmation: string | null }
+  | { kind: "decision"; projectSlug: string; decisionId: string; labels: string[]; status: string; updated: string; optionsDigest: string }
+  | {
+      kind: "script";
+      scriptId: string;
+      eligible: boolean;
+      confirmation: string | null;
+      /** Why a press is refused when not eligible. */
+      refusal: "off_path_requires_confirmation" | "next_action_unknown";
+    }
   | { kind: "pull-request" };
 
 /**

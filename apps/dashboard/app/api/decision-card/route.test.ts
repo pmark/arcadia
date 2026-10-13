@@ -11,7 +11,7 @@ interface MockDecision {
   status: string;
   gateQuestion: string | null;
   recommendation: string | null;
-  options: Array<{ label: string; consequence: string; recommended: boolean }>;
+  options: Array<{ label: string; consequence: string; recommended: boolean; effect?: string | null }>;
   relativePath: string;
   updated: string;
 }
@@ -31,6 +31,7 @@ const world = vi.hoisted(() => ({
   scripts: [] as unknown[],
   bytes: "descriptor-v1",
   reads: 0,
+  productionReadable: true,
   flipAfterReads: Number.POSITIVE_INFINITY,
   openError: null as Error | null,
   approve: vi.fn(),
@@ -61,7 +62,11 @@ vi.mock("node:fs/promises", () => ({
   })
 }));
 vi.mock("../production-control/route", () => ({
-  GET: vi.fn(async () => Response.json({ production: { read: { status: "ok", policy: { desiredState: "inactive" } } } }))
+  GET: vi.fn(async () =>
+    world.productionReadable
+      ? Response.json({ production: { read: { status: "ok", policy: { desiredState: "inactive" } } } })
+      : Response.json({ error: "unreadable" }, { status: 500 })
+  )
 }));
 vi.mock("../operator-script/route", () => ({
   LIBRARY_PATH: "/library",
@@ -73,6 +78,7 @@ vi.mock("../operator-script/route", () => ({
 import { GET, POST } from "./route";
 import { ArcadiaCliError } from "../../../lib/arcadia-cli";
 import { optionFingerprint } from "../../../lib/decision-cards";
+import { decisionOptionsDigest } from "../../../../../src/decisions/optionsDigest";
 import { DecisionCards } from "../../../components/decision-cards";
 import type { DecisionCardView } from "../../../lib/decision-cards";
 
@@ -93,6 +99,16 @@ const decision = (over: Partial<MockDecision> = {}): MockDecision => ({
   updated: "2026-10-13T10:00:00Z",
   ...over
 });
+
+const prereq = (): MockScript =>
+  script({
+    id: "prereq-check",
+    title: "Prereq check",
+    repeatable: true,
+    lastRunReceipt: { outcome: "succeeded", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }
+  });
+/** A library where rotate-logs is exactly the derived next operator action. */
+const chain = (over: Partial<MockScript> = {}): MockScript[] => [prereq(), script({ nextAfter: { id: "prereq-check", within_minutes: 60 }, ...over })];
 
 const script = (over: Partial<MockScript> = {}): MockScript => ({
   id: "rotate-logs",
@@ -118,9 +134,10 @@ async function views(): Promise<DecisionCardView[]> {
 
 beforeEach(() => {
   world.decisions = [decision()];
-  world.scripts = [script()];
+  world.scripts = chain();
   world.bytes = "descriptor-v1";
   world.reads = 0;
+  world.productionReadable = true;
   world.flipAfterReads = Number.POSITIVE_INFINITY;
   world.openError = null;
   world.approve.mockReset();
@@ -130,7 +147,7 @@ beforeEach(() => {
     return { data: { relativePath: "decisions/0042.md", applied: true } };
   });
   world.launch.mockImplementation(async () => {
-    world.scripts = [script({ state: { status: "running" } })];
+    world.scripts = chain({ state: { status: "running" } });
     return Response.json({ runId: "r1", scriptId: "rotate-logs", status: "running", message: "Rotate logs started." }, { status: 202 });
   });
 });
@@ -154,7 +171,8 @@ describe("decision cards end to end", () => {
       decisionId: "0042",
       answer: "Use 9090",
       expectStatus: "open",
-      expectUpdated: "2026-10-13T10:00:00Z"
+      expectUpdated: "2026-10-13T10:00:00Z",
+      expectOptions: expect.stringMatching(/^[0-9a-f]{64}$/)
     });
     expect(optionId).toBe("option-2");
     // Replay of the same press: the Decision is closed, so it is refused and nothing more is written.
@@ -165,7 +183,7 @@ describe("decision cards end to end", () => {
   });
 
   it("renders a run card and starts the script only through the existing operator-script entry", async () => {
-    const run = (await views()).find((v) => v.card.verb === "run")!;
+    const run = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
     expect(Object.keys(run.pressable)).toEqual(["run"]);
     const html = renderToStaticMarkup(createElement(DecisionCards, { views: [run], pendingId: null, outcomes: {}, onPress: () => undefined, verbs: ["run"] }));
     expect(html).toContain("Old logs are archived and the log directory is emptied.");
@@ -181,7 +199,7 @@ describe("decision cards end to end", () => {
   });
 
   it("refuses the Do-not-run option of a run card: no button, no execution", async () => {
-    const run = (await views()).find((v) => v.card.verb === "run")!;
+    const run = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
     const skipFingerprint = run.pressable.run.replace("option=run", "option=skip");
     const response = await POST(post({ cardId: run.card.id, fingerprint: skipFingerprint }));
     expect(response.status).toBe(422);
@@ -199,7 +217,7 @@ describe("decision cards end to end", () => {
   });
 
   it("refuses a run card whose descriptor bytes changed after render", async () => {
-    const run = (await views()).find((v) => v.card.verb === "run")!;
+    const run = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
     world.bytes = "descriptor-v2";
     const response = await POST(post({ cardId: run.card.id, fingerprint: run.pressable.run }));
     expect(response.status).toBe(409);
@@ -336,11 +354,11 @@ describe("decision cards end to end", () => {
   });
 
   it("(b) a fingerprint captured before a repeatable script ran is stale after it", async () => {
-    world.scripts = [script({ repeatable: true })];
-    const before = (await views()).find((v) => v.card.verb === "run")!;
-    world.scripts = [script({ repeatable: true, state: { status: "succeeded", runId: "run-1", finishedAt: "2026-10-13T11:00:00Z" } })];
-    const after = (await views()).find((v) => v.card.verb === "run")!;
-    expect(after.pressable.run).not.toBe(before.pressable.run);
+    world.scripts = chain({ repeatable: true });
+    const before = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
+    world.scripts = chain({ repeatable: true, state: { status: "succeeded", runId: "run-1", finishedAt: "2026-10-13T11:00:00Z" } });
+    const after = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
+    expect(after.card.pins.previewFingerprint).not.toBe(before.card.pins.previewFingerprint);
     const stale = await POST(post({ cardId: before.card.id, fingerprint: before.pressable.run }));
     expect(stale.status).toBe(409);
     expect(await stale.json()).toMatchObject({ reason: "stale_state_hash" });
@@ -348,10 +366,10 @@ describe("decision cards end to end", () => {
   });
 
   it("(c) the descriptor bytes are re-hashed immediately before launch and a change refuses", async () => {
-    const run = (await views()).find((v) => v.card.verb === "run")!;
-    // The press reads once to regenerate (2 reads per script); the re-check read after that sees changed bytes.
+    const run = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
+    // The press reads once to regenerate (2 reads per script, 2 scripts); the re-check read after that sees changed bytes.
     world.reads = 0;
-    world.flipAfterReads = 2;
+    world.flipAfterReads = 4;
     const response = await POST(post({ cardId: run.card.id, fingerprint: run.pressable.run }));
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ reason: "descriptor_changed" });
@@ -390,6 +408,82 @@ describe("decision cards end to end", () => {
     const text = await response.text();
     expect(text).toContain("decisions_unreadable");
     expect(text).not.toContain("secret");
+  });
+
+  it("N1a: an option's effect is passed through, rendered, pinned and handed to the writer's digest", async () => {
+    const plain = (await views()).find((v) => v.card.verb === "answer")!;
+    const withEffect = decision({
+      options: [
+        { label: "Use 8080", consequence: "The service binds 8080 on the next restart.", recommended: true, effect: "defer" },
+        { label: "Use 9090", consequence: "The service binds 9090 on the next restart.", recommended: false }
+      ]
+    });
+    world.decisions = [withEffect];
+    const deferred = (await views()).find((v) => v.card.verb === "answer")!;
+    expect(deferred.card.options[0].consequence).toContain("[effect: defer]");
+    expect(plain.card.options[0].consequence).not.toContain("[effect:");
+    expect(deferred.card.pins.stateHash).not.toBe(plain.card.pins.stateHash);
+    const html = renderToStaticMarkup(createElement(DecisionCards, { views: [deferred], pendingId: null, outcomes: {}, onPress: () => undefined }));
+    expect(html).toContain("[effect: defer]");
+    const press = await POST(post({ cardId: deferred.card.id, fingerprint: deferred.pressable["option-1"] }));
+    expect(press.status).toBe(200);
+    expect(world.approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectOptions: decisionOptionsDigest(withEffect.question, [
+          { label: "Use 8080", consequence: "The service binds 8080 on the next restart.", effect: "defer" },
+          { label: "Use 9090", consequence: "The service binds 9090 on the next restart.", effect: null }
+        ])
+      })
+    );
+  });
+
+  it("N1a: an unknown effect is a visible refusal, not a card", async () => {
+    world.decisions = [
+      decision({ options: [{ label: "Use 8080", consequence: "Binds 8080.", recommended: true, effect: "explode" }] })
+    ];
+    const response = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Host: "localhost:3000" } }));
+    const body = (await response.json()) as { cards: DecisionCardView[]; refused: Array<{ id: string; reason: string; message: string }> };
+    expect(body.cards.filter((v) => v.card.verb === "answer")).toHaveLength(0);
+    expect(body.refused).toContainEqual(expect.objectContaining({ id: "decision-k.alpha.0042", reason: "bad_source" }));
+    const html = renderToStaticMarkup(createElement(DecisionCards, { views: body.cards, refused: body.refused, pendingId: null, outcomes: {}, onPress: () => undefined }));
+    expect(html).toContain("not a known Decision option effect");
+  });
+
+  it("N1b: the route passes the options digest computed by the shared function", async () => {
+    const answer = (await views()).find((v) => v.card.verb === "answer")!;
+    await POST(post({ cardId: answer.card.id, fingerprint: answer.pressable["option-1"] }));
+    expect(world.approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectOptions: decisionOptionsDigest("Which port should the service use?", [
+          { label: "Use 8080", consequence: "The service binds 8080 on the next restart." },
+          { label: "Use 9090", consequence: "The service binds 9090 on the next restart." }
+        ])
+      })
+    );
+  });
+
+  it("N2: with no next action, or an unknown one, no script card is pressable and a press is refused", async () => {
+    world.scripts = [script({ id: "lonely", title: "Lonely" })];
+    const none = (await views()).find((v) => v.card.id === "script-lonely")!;
+    expect(Object.keys(none.pressable)).toEqual([]);
+    expect(none.actionsHref).toBe("/actions?q=lonely");
+    const refusedNone = await POST(post({ cardId: none.card.id, fingerprint: optionFingerprint(none.card, "run") }));
+    expect(refusedNone.status).toBe(409);
+    expect(await refusedNone.json()).toMatchObject({ reason: "off_path_requires_confirmation" });
+
+    // A rule that needs production Off, with production unreadable, makes the next action unknown.
+    const now = new Date().toISOString();
+    world.scripts = [
+      script({ id: "needs-off", title: "Needs off", nextAfter: { id: "pre", within_minutes: 60, when_production: "inactive" } as never }),
+      script({ id: "pre", title: "Pre", repeatable: true, lastRunReceipt: { outcome: "succeeded", startedAt: now, finishedAt: now } })
+    ];
+    world.productionReadable = false;
+    const unknown = (await views()).find((v) => v.card.id === "script-needs-off")!;
+    expect(Object.keys(unknown.pressable)).toEqual([]);
+    const refusedUnknown = await POST(post({ cardId: unknown.card.id, fingerprint: optionFingerprint(unknown.card, "run") }));
+    expect(refusedUnknown.status).toBe(409);
+    expect(await refusedUnknown.json()).toMatchObject({ reason: "next_action_unknown" });
+    expect(world.launch).not.toHaveBeenCalled();
   });
 
   it("renders hostile card text as text, and a non-web evidence url as inert text", () => {

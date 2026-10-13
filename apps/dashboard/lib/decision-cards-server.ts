@@ -3,9 +3,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { generateCardsFromSources, type CardSourceInput } from "../../../src/decisions/cardSources";
 import type { DecisionCard } from "../../../src/decisions/card";
+import type { DecisionOptionEffect } from "../../../src/docs/types";
 import { LIBRARY_PATH, GET as listOperatorScripts, POST as launchOperatorScript, SAFE_ID } from "../app/api/operator-script/route";
 import { GET as readProductionControl } from "../app/api/production-control/route";
 import { loadOpenDecisions } from "./arcadia-cli";
+import { decisionOptionsDigest } from "../../../src/decisions/optionsDigest";
 import { decisionCardKey, hasDuplicateOptionLabels, type CardTarget, type DecisionCardRefusalView } from "./decision-cards";
 import { deriveNextOperatorAction, offPathConfirmation, productionObservation, type NextOperatorAction, type SequencedScript } from "./nextOperatorAction";
 
@@ -111,11 +113,29 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
           id: key,
           status: decision.status,
           question: decision.question,
-          options: decision.options.map((option) => ({ label: option.label, consequence: option.consequence, recommended: option.recommended })),
+          // The effect is passed through unchanged: the card renders and pins it, and the generator refuses unknown ones.
+          options: decision.options.map((option) => ({
+            label: option.label,
+            consequence: option.consequence,
+            recommended: option.recommended,
+            effect: (option.effect ?? null) as DecisionOptionEffect | null
+          })),
           updated: decision.updated
         }
       });
-      claim(cardId, { kind: "decision", projectSlug: decision.projectSlug, decisionId: decision.id, labels, status: decision.status, updated: String(decision.updated) });
+      claim(cardId, {
+        kind: "decision",
+        projectSlug: decision.projectSlug,
+        decisionId: decision.id,
+        labels,
+        status: decision.status,
+        updated: String(decision.updated),
+        // The same function the writer uses, over the question and options exactly as they were read for this card.
+        optionsDigest: decisionOptionsDigest(
+          decision.question,
+          decision.options.map((option) => ({ label: option.label, consequence: option.consequence, effect: option.effect ?? null }))
+        )
+      });
     }
   } catch {
     refused.push({ id: "decisions", reason: "decisions_unreadable", message: "Open Decisions could not be read, so no Decision cards are shown." });
@@ -128,10 +148,13 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
       if (!SAFE_ID.test(script.id)) continue;
       const status = script.state?.status;
       if (status === "running" || (status === "succeeded" && script.repeatable !== true)) continue;
-      // Allowlist for one-press execution: not a grant, not running, not consumed, and no off-path confirmation
-      // would be shown for it on /actions. Anything else still gets its card, but only a link to /actions.
-      const confirmation = offPathConfirmation(next, script, scripts);
-      const eligible = script.kind === undefined && confirmation === null;
+      // Allowlist for one-press execution: not a grant, not running, not consumed, AND it is exactly the derived
+      // next operator action. When the next action is none or unknown, nothing is eligible (fail closed). Anything
+      // else still gets its card, but only a link to /actions where the confirmation flow lives.
+      const isNext = next.status === "next" && next.scriptId === script.id;
+      const eligible = script.kind === undefined && isNext;
+      const unknown = next.status === "none" && next.unknown === true;
+      const confirmation = isNext ? null : offPathConfirmation(next, script, scripts);
       const descriptorSha256 = await scriptDigest(script);
       sources.push({
         kind: "operator-script",
@@ -150,7 +173,15 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
         kind: "script",
         scriptId: script.id,
         eligible,
-        confirmation: eligible ? null : confirmation ?? "This is a grant; confirm and run it from the Actions page."
+        confirmation: eligible
+          ? null
+          : confirmation ??
+            (script.kind !== undefined
+              ? "This is a grant; confirm and run it from the Actions page."
+              : unknown
+                ? "Your next operator action cannot be determined right now, so nothing is run from a card; use the Actions page."
+                : "No operator action is currently derived as next, so nothing is run from a card; use the Actions page."),
+        refusal: unknown ? "next_action_unknown" : "off_path_requires_confirmation"
       });
     }
   } catch {
@@ -167,7 +198,7 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
     cards.push(generated.card);
   }
   for (const refusal of generation.refusals) {
-    refused.push({ id: refusal.sourceId ?? "source", reason: refusal.code, message: "This source produced no card." });
+    refused.push({ id: refusal.sourceId ?? "source", reason: refusal.code, message: refusal.message });
   }
   return { cards, targets, refused };
 }

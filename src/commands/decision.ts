@@ -22,6 +22,7 @@ import {
 import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
 import { commitOnlyPaths, projectCheckoutFor, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
+import { decisionOptionsDigest } from "../decisions/optionsDigest.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DECISION_FILENAME = /^(\d{4})-(.+)\.md$/;
@@ -152,6 +153,8 @@ export interface DecisionApproveOptions {
   expectStatus?: string;
   /** Refuse (decision_precondition_failed, nothing written) unless the Decision's `updated` field equals this. */
   expectUpdated?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless sha256 of the question and options (src/decisions/optionsDigest.ts) equals this. */
+  expectOptions?: string;
   /** The caller already holds a capture id for this answer; no new envelope is made. */
   captureId?: string | null;
 }
@@ -262,6 +265,7 @@ export function prepareDecisionAnswer(
     /** Optional caller precondition on the Decision as it is now; unset means no check (existing behaviour). */
     expectStatus?: string;
     expectUpdated?: string;
+    expectOptions?: string;
   }
 ): PreparedDecisionAnswer {
   const recorded = input.answer.trim();
@@ -303,6 +307,16 @@ export function prepareDecisionAnswer(
       "The Decision changed after it was shown (its updated field differs); nothing was written.",
       { decision: input.decisionRef, expected: input.expectUpdated, actual: decisionDoc === null ? null : String(decisionDoc.updated), field: "updated" }
     );
+  }
+
+  if (input.expectOptions !== undefined) {
+    const actual = decisionDoc === null ? null : decisionOptionsDigest(decisionDoc.question, decisionDoc.options);
+    if (actual === null || actual !== input.expectOptions) {
+      throw decisionPreconditionFailed(
+        "The Decision's question or options changed after they were shown; nothing was written.",
+        { decision: input.decisionRef, expected: input.expectOptions, actual, field: "options" }
+      );
+    }
   }
 
   // A Decision that offered specific options records one of them, verbatim —
@@ -378,7 +392,8 @@ function applyDecisionApprove(
       status,
       decided: options.decided,
       expectStatus: options.expectStatus,
-      expectUpdated: options.expectUpdated
+      expectUpdated: options.expectUpdated,
+      expectOptions: options.expectOptions
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
     reply.entityId = prepared.decisionId ?? relativePath;

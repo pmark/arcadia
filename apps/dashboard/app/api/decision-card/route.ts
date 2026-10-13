@@ -19,11 +19,19 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Decision cards on /todo and /actions. GET regenerates the current cards from current source state and returns them
- * with one pinned fingerprint per pressable option. POST takes ONLY `{cardId, fingerprint}`: it regenerates the card
- * again server side, refuses with a named reason when the pin no longer matches, and otherwise performs the card's
- * one verb through its existing writer (`answer`: `decision approve` with status/updated preconditions; `run`: the
- * operator-script entry). It grants no authority, accepts no free text and writes nothing else.
+ * Decision cards on /todo and /actions. What is enforced, exactly:
+ * - GET regenerates the current cards from current source state and returns them with one pinned fingerprint per
+ *   pressable option.
+ * - POST takes ONLY `{cardId, fingerprint}`; it regenerates the card server side and refuses with a named reason when
+ *   the fingerprint no longer equals the pins computed now.
+ * - `answer` calls the canonical `decision approve` writer with the card's option label and three writer-side
+ *   preconditions (--expect-status, --expect-updated, --expect-options), so the writer itself refuses, writing
+ *   nothing, if the Decision was answered or its question or options changed after the card was read.
+ * - `run` starts a script through the existing operator-script entry only when that script is exactly the derived
+ *   next operator action; its descriptor, script bytes and run state are re-hashed against the pin immediately
+ *   before launch (a residual window remains until that entry's own read; its launch lock prevents a double start).
+ * - Pull-request cards are not built here; `merge` and `veto` have no button.
+ * It grants no authority, accepts no free text and writes nothing else.
  */
 
 // A second press of the same card (any option) while the first is still executing is refused, not queued. This set is
@@ -132,7 +140,7 @@ export async function POST(request: Request) {
       return refuseWith(409, "duplicate_option_labels", notExecutableMessage(card, target));
     }
     if (target?.kind === "script" && !target.eligible && card.verb === "run") {
-      return refuseWith(409, "off_path_requires_confirmation", notExecutableMessage(card, target));
+      return refuseWith(409, target.refusal, notExecutableMessage(card, target));
     }
     if (!executableOptions(card, target).includes(optionId)) {
       const reason: CardPressRefusalReason =
@@ -153,7 +161,9 @@ export async function POST(request: Request) {
           answer,
           // The writer re-checks these against the file on disk: answered or edited since the card was read.
           expectStatus: target.status,
-          expectUpdated: target.updated
+          expectUpdated: target.updated,
+          // Closes same-day edits and the window between regeneration and the writer's own read.
+          expectOptions: target.optionsDigest
         });
         return NextResponse.json({ ok: true, cardId: card.id, verb: "answer", optionId, message: `Answered ${card.id}: ${answer}.`, receipt: response.data });
       } catch (error) {

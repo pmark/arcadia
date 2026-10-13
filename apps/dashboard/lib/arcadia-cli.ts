@@ -366,6 +366,8 @@ export interface OpenDecisionOption {
   label: string;
   consequence: string;
   recommended: boolean;
+  /** The machine effect the writer applies when this option is chosen (e.g. "defer"); null or absent when none. Unknown values are kept as-is. */
+  effect?: string | null;
 }
 
 export interface OpenDecisionItem {
@@ -455,13 +457,16 @@ export async function approveDecision(input: {
   /** Writer preconditions: refused with nothing written unless the Decision still has this status / updated value. */
   expectStatus?: string;
   expectUpdated?: string;
+  /** sha256 of the question and options as shown (src/decisions/optionsDigest.ts); the writer refuses on mismatch. */
+  expectOptions?: string;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
     "--project", input.projectSlug,
     "--answer", input.answer,
     ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
-    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : [])
+    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : []),
+    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : [])
   ], { timeoutMs: 60_000 });
 }
 

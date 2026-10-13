@@ -9,6 +9,7 @@ import {
   runDecisionNewCommand,
   runDecisionValidateCommand
 } from "../src/commands/decision.js";
+import { decisionOptionsDigest } from "../src/decisions/optionsDigest.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -361,6 +362,37 @@ describe("decision approve", () => {
       expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
       expect(error.details?.reason).toBe("decision_precondition_failed");
       expect(readFileSync(file, "utf8")).toBe(before);
+    });
+
+    it("--expect-options: applies when the shared digest of the listed question and options matches", () => {
+      const { workspace, projectSlug, file, ...rest } = seeded();
+      const listed = runDecisionListCommand({ workspace, project: projectSlug }).data.decisions[0];
+      const digest = decisionOptionsDigest(listed.question, listed.options);
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Hold", expectOptions: digest });
+      expect(readFileSync(file, "utf8")).toContain("status: approved");
+      expect(rest.updated).toBeTruthy();
+    });
+
+    it("--expect-options: refuses a same-day edit that adds a defer effect, writing nothing, even when status and updated still match", () => {
+      const { workspace, projectSlug, file, updated } = seeded();
+      const listed = runDecisionListCommand({ workspace, project: projectSlug }).data.decisions[0];
+      const digest = decisionOptionsDigest(listed.question, listed.options);
+      const edited = readFileSync(file, "utf8").replace("    recommended: false", "    recommended: false\n    effect: defer");
+      expect(edited).not.toBe(readFileSync(file, "utf8"));
+      writeFileSync(file, edited, "utf8");
+      const error = refusal(() =>
+        runDecisionApproveCommand({
+          workspace,
+          project: projectSlug,
+          id: "0001",
+          answer: "Hold",
+          expectStatus: "open",
+          expectUpdated: updated,
+          expectOptions: digest
+        })
+      );
+      expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
+      expect(readFileSync(file, "utf8")).toBe(edited);
     });
 
     it("refuses, writing nothing, when the Decision was edited after it was shown", () => {
