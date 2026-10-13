@@ -24,7 +24,7 @@ The running Dashboard process had its working directory in the primary checkout.
 
 ## Cache boundary and measured candidate behavior
 
-The API now owns one process-local stale-while-revalidate cache around the existing inventory loader. A cold process still waits for one real scan. Any later page visit receives the most recent inventory immediately and starts one coalesced refresh. The client polls the cheap cache response while that refresh runs, shows checked-at, stale and refreshing state, and keeps prior cards visible. Automatic retry after a failure is cooled down for 30 seconds; the visible Retry action can request a new attempt immediately.
+The API now owns one process-local stale-while-revalidate cache around the existing inventory loader. A cold process still waits for one real scan. Any later page visit receives the most recent inventory immediately and starts one coalesced refresh. The client polls the cheap cache response while that refresh runs, shows checked-at, stale and refreshing state, and keeps prior cards visible. Automatic retry after a failure is cooled down for 30 seconds; the visible Retry action can request a new attempt immediately. Every client request has a 65-second deadline. A new request or unmount aborts the prior request, and request generations prevent an older response from overwriting newer inventory.
 
 A candidate-local benchmark used the real `loadOutstandingPullRequests` loader without serving or installing the candidate:
 
@@ -35,7 +35,7 @@ A candidate-local benchmark used the real `loadOutstandingPullRequests` loader w
 | Forced refresh response using cached cards | 2.776 ms |
 | Concurrent forced refresh response, coalesced onto the same scan | 0.036 ms |
 
-Both cold and final scans returned 13 PRs in this later sample. The final scan disclosed eight Project exceptions, so the cache response remained marked incomplete/stale. When a refresh has a per-Project error, prior cards for only that failed Project are merged into the new snapshot, counts are recomputed, and the exception names that those cards came from the last successful scan. A transport-level failure preserves the entire prior snapshot. Neither cache state nor the inventory's existing readiness label is used to authorize a merge; this page remains read-only.
+Both cold and final scans returned 13 PRs in this later sample. The final scan disclosed eight Project exceptions, so the cache response remained marked incomplete/stale. When a refresh has a per-Project error, prior cards are retained only when their normalized repository remains in the current inventory and that repository's scan failed. Retained cards are remapped to current Project metadata and counts are recomputed; a removed repository is not retained, and a recovered scan discards the retained copy. A transport-level failure preserves the entire prior snapshot. Neither cache state nor the inventory's existing readiness label is used to authorize a merge; this page remains read-only.
 
 ## User-visible behavior
 
@@ -49,7 +49,8 @@ The same cache response contract can be reused by the shared To-Dos PR component
 
 ## Validation
 
-- `pnpm exec vitest run apps/dashboard/lib/pull-request-inventory-cache.test.ts apps/dashboard/app/api/pull-requests/route.test.ts apps/dashboard/app/admin/pull-requests/page.test.tsx` — exit 0; 3 files, 7 tests.
+- Initial focused suite — exit 0; 3 files, 7 tests.
+- Post-review focused suite: `pnpm exec vitest run apps/dashboard/lib/pull-request-inventory-client.test.ts apps/dashboard/lib/pull-request-inventory-cache.test.ts apps/dashboard/app/api/pull-requests/route.test.ts apps/dashboard/app/admin/pull-requests/page.test.tsx` — exit 0; 4 files, 12 tests. It covers a never-settling request, unmount cancellation, out-of-order explicit refresh, both repository/Project identity inversions, and recovered-scan cleanup.
 - Touched-file `pnpm exec eslint ...` — exit 0.
 - `git diff --check` — exit 0.
 - `pnpm build` — exit 0.
@@ -63,6 +64,7 @@ The same cache response contract can be reused by the shared To-Dos PR component
 2. The first Dashboard build lacked root `dist` package exports used by existing Intelligence imports. `pnpm build` produced candidate-local package output; the retry reached the changed page.
 3. That retry found an invalid named helper export from a Next page module. Moving the skeleton to a focused component repaired the framework contract; the next Dashboard build passed.
 4. One cache test initially waited for a mocked loader call rather than for the cache's rejected refresh to settle. It now waits for the observable `refreshing: false` state.
+5. Independent review round 1 found that a never-settling client fetch could leave the cold skeleton indefinitely and that partial retention used Project ID instead of current repository identity. The bounded request coordinator and normalized current-repository merge close both blockers. The first repair lint run found render-time ref access and a recursive callback; a stable coordinator plus generation-aware polling loop repaired both, and the second lint run exited 0.
 
 No failed command was repeated unchanged, and each named failure used one repair attempt.
 

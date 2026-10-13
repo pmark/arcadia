@@ -92,6 +92,12 @@ describe("pull-request inventory cache", () => {
     previous.counts.ready = 1;
 
     const partial = snapshot(0);
+    partial.repositories = [{
+      projectId: "project-a",
+      projectName: "Project A",
+      repository: "owner/project-a",
+      repositoryPath: "/project-a"
+    }];
     partial.errors = [{
       projectId: "project-a",
       projectName: "Project A",
@@ -116,6 +122,75 @@ describe("pull-request inventory cache", () => {
       retainedProjectIds: ["project-a"]
     });
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retain cards for a repository removed from a reconfigured project", async () => {
+    const previous = snapshot(1);
+    previous.repositories = [{ projectId: "project-a", projectName: "Project A", repository: "owner/old", repositoryPath: "/old" }];
+    previous.pullRequests = [{
+      projectId: "project-a",
+      projectName: "Project A",
+      repository: "owner/old",
+      repositoryPath: "/old",
+      number: 42,
+      readiness: "ready"
+    } as DashboardOutstandingPullRequest];
+
+    const reconfigured = snapshot(0);
+    reconfigured.repositories = [{ projectId: "project-a", projectName: "Project A", repository: "owner/new", repositoryPath: "/new" }];
+    reconfigured.errors = [{ projectId: "project-a", projectName: "Project A", repositoryPath: "/new", message: "scan failed" }];
+
+    const load = vi.fn().mockResolvedValueOnce(previous).mockResolvedValueOnce(reconfigured);
+    const cache = createPullRequestInventoryCache({ load });
+    await cache.read();
+    await cache.read({ refresh: true });
+    await vi.waitFor(async () => expect((await cache.read()).refreshing).toBe(false));
+
+    await expect(cache.read()).resolves.toMatchObject({
+      snapshot: { pullRequests: [], counts: { total: 0 } },
+      retainedProjectIds: []
+    });
+  });
+
+  it("retains a failed repository across project identity changes and discards it after recovery", async () => {
+    const previous = snapshot(1);
+    previous.repositories = [{ projectId: "project-old", projectName: "Old Project", repository: "OWNER/repo.git", repositoryPath: "/old/repo" }];
+    previous.pullRequests = [{
+      projectId: "project-old",
+      projectName: "Old Project",
+      repository: "OWNER/repo.git",
+      repositoryPath: "/old/repo",
+      number: 42,
+      readiness: "ready"
+    } as DashboardOutstandingPullRequest];
+
+    const failed = snapshot(0);
+    failed.repositories = [{ projectId: "project-new", projectName: "New Project", repository: "owner/repo", repositoryPath: "/new/repo/" }];
+    failed.errors = [{ projectId: "project-new", projectName: "New Project", repositoryPath: "/new/repo", message: "scan failed" }];
+    const recovered = snapshot(0);
+    recovered.repositories = failed.repositories;
+
+    const load = vi.fn().mockResolvedValueOnce(previous).mockResolvedValueOnce(failed).mockResolvedValueOnce(recovered);
+    const cache = createPullRequestInventoryCache({ load });
+    await cache.read();
+    await cache.read({ refresh: true });
+    await vi.waitFor(async () => expect((await cache.read()).refreshing).toBe(false));
+
+    await expect(cache.read()).resolves.toMatchObject({
+      snapshot: {
+        pullRequests: [{ projectId: "project-new", projectName: "New Project", repository: "owner/repo", repositoryPath: "/new/repo/", number: 42 }],
+        counts: { total: 1, ready: 1 }
+      },
+      retainedProjectIds: ["project-new"]
+    });
+
+    await cache.read({ refresh: true });
+    await vi.waitFor(async () => expect((await cache.read()).refreshing).toBe(false));
+    await expect(cache.read()).resolves.toMatchObject({
+      snapshot: { pullRequests: [], counts: { total: 0 } },
+      incomplete: false,
+      retainedProjectIds: []
+    });
   });
 
   it("surfaces a cold scan failure", async () => {

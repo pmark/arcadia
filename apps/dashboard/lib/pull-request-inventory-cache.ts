@@ -102,11 +102,30 @@ function mergePartialSnapshot(
 ): { snapshot: DashboardOutstandingPullRequests; retainedProjectIds: string[] } {
   if (!previous || next.errors.length === 0) return { snapshot: next, retainedProjectIds: [] };
 
-  const failedProjectIds = new Set(next.errors.map((error) => error.projectId));
-  const currentKeys = new Set(next.pullRequests.map((pullRequest) => `${pullRequest.repository}:${pullRequest.number}`));
-  const retained = previous.pullRequests.filter((pullRequest) =>
-    failedProjectIds.has(pullRequest.projectId) && !currentKeys.has(`${pullRequest.repository}:${pullRequest.number}`)
-  );
+  const repositories = next.repositories ?? [];
+  const repositoriesByProjectId = new Map(repositories.map((repository) => [repository.projectId, repository]));
+  const repositoriesByPath = new Map(repositories.map((repository) => [normalizePath(repository.repositoryPath), repository]));
+  const repositoriesByName = new Map(repositories.map((repository) => [normalizeRepository(repository.repository), repository]));
+  const failedRepositories = new Set<string>();
+  for (const error of next.errors) {
+    const repository = repositoriesByProjectId.get(error.projectId)
+      ?? (error.repositoryPath ? repositoriesByPath.get(normalizePath(error.repositoryPath)) : undefined);
+    if (repository) failedRepositories.add(normalizeRepository(repository.repository));
+  }
+
+  const currentKeys = new Set(next.pullRequests.map(pullRequestKey));
+  const retained = previous.pullRequests.flatMap((pullRequest) => {
+    const repositoryKey = normalizeRepository(pullRequest.repository);
+    const currentRepository = repositoriesByName.get(repositoryKey);
+    if (!currentRepository || !failedRepositories.has(repositoryKey) || currentKeys.has(pullRequestKey(pullRequest))) return [];
+    return [{
+      ...pullRequest,
+      projectId: currentRepository.projectId,
+      projectName: currentRepository.projectName,
+      repository: currentRepository.repository,
+      repositoryPath: currentRepository.repositoryPath
+    }];
+  });
   if (retained.length === 0) return { snapshot: next, retainedProjectIds: [] };
 
   const pullRequests = [...next.pullRequests, ...retained];
@@ -114,6 +133,18 @@ function mergePartialSnapshot(
     snapshot: { ...next, pullRequests, counts: countReadiness(pullRequests) },
     retainedProjectIds: [...new Set(retained.map((pullRequest) => pullRequest.projectId))]
   };
+}
+
+function normalizeRepository(repository: string): string {
+  return repository.trim().replace(/\.git$/i, "").toLowerCase();
+}
+
+function normalizePath(repositoryPath: string): string {
+  return repositoryPath.trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+function pullRequestKey(pullRequest: DashboardOutstandingPullRequests["pullRequests"][number]): string {
+  return `${normalizeRepository(pullRequest.repository)}:${pullRequest.number}`;
 }
 
 function countReadiness(pullRequests: DashboardOutstandingPullRequests["pullRequests"]): DashboardOutstandingPullRequests["counts"] {
