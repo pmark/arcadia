@@ -1,0 +1,58 @@
+{
+  "command": "pnpm exec vitest run tests/rehearsal-chain-operator-scripts.test.ts tests/rehearsal-chain-reset.test.ts tests/rehearsal-chain-reset-queue.test.ts tests/rehearsal-chain-launch-gates.test.ts tests/rehearsal-chain-emergency-off.test.ts tests/rehearsal-chain-capacity.test.ts tests/rehearsal-chain-preflight-coherence.test.ts tests/rehearsal-chain-end-to-end.test.ts --reporter=json --outputFile=/private/tmp/issue1330-split-results.json",
+  "exitCode": 0,
+  "numPassedTests": 47,
+  "numFailedTests": 0,
+  "wallSeconds": 276.441,
+  "note": "Measured before final descriptive file renames/private-export pruning. Test bodies and fixture statements remain identical; final imports/collection/type/lint checks pass. Durations are local, not comparable to prior GitHub CI for a speed ratio.",
+  "files": [
+    {
+      "file": "tests/rehearsal-chain-preflight-capacity.test.ts",
+      "cases": 2,
+      "durationSeconds": 187.539,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-emergency-stop.test.ts",
+      "cases": 7,
+      "durationSeconds": 60.403,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-end-to-end.test.ts",
+      "cases": 1,
+      "durationSeconds": 135.257,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-g6-g7-g8.test.ts",
+      "cases": 3,
+      "durationSeconds": 36.181,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-operator-scripts.test.ts",
+      "cases": 13,
+      "durationSeconds": 16.872,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-preflight-coherence.test.ts",
+      "cases": 1,
+      "durationSeconds": 93.707,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-reset-queue.test.ts",
+      "cases": 11,
+      "durationSeconds": 268.586,
+      "passed": true
+    },
+    {
+      "file": "tests/rehearsal-chain-fixture-reset.test.ts",
+      "cases": 9,
+      "durationSeconds": 218.495,
+      "passed": true
+    }
+  ]
+}
