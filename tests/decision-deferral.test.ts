@@ -909,3 +909,66 @@ describe("reverse an applied Decision deferral", () => {
     ).toThrow(/changed after the failed commit/i);
   });
 });
+
+describe("--expect-no-pointer-move", () => {
+  const snapshot = (repo: string) => ({ plan: planFile(repo), decision: decisionFile(repo), project: projectFile(repo) });
+
+  it("refuses a defer whose target is the current Action, writing nothing", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const before = snapshot(repo);
+    let error: { code?: string; details?: { reason?: string } } | null = null;
+    try {
+      runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later", expectNoPointerMove: true });
+    } catch (caught) {
+      error = caught as typeof error;
+    }
+    expect(error?.code).toBe("DECISION_PRECONDITION_FAILED");
+    expect(error?.details?.reason).toBe("defer_would_move_pointer");
+    expect(snapshot(repo)).toEqual(before);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("applies when the deferred Action is not the current one", () => {
+    const { workspace, repo, decisionId } = fixture({ decisionAction: "after" });
+    const result = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later", expectNoPointerMove: true });
+    expect(result.data.applied).toBe(true);
+    expect(planFile(repo)).toMatch(/^ {2}- id: after[\s\S]*?^ {4}status: deferred$/m);
+    expect(projectFile(repo)).toContain("current_action: park-me");
+  });
+
+  it("still refuses after an apply and reverse left a stale receipt for the same request id (regression)", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    runDecisionReverseCommand({ workspace, project: "demo", id: decisionId });
+    expect(projectFile(repo)).toContain("current_action: park-me");
+    const before = snapshot(repo);
+    let error: { code?: string; details?: { reason?: string } } | null = null;
+    try {
+      runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later", expectNoPointerMove: true });
+    } catch (caught) {
+      error = caught as typeof error;
+    }
+    expect(error?.code).toBe("DECISION_PRECONDITION_FAILED");
+    expect(error?.details?.reason).toBe("defer_would_move_pointer");
+    expect(snapshot(repo)).toEqual(before);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("a retry of an already-applied, non-pointer-moving deferral with the flag replays instead of refusing", () => {
+    const { workspace, repo, decisionId } = fixture({ decisionAction: "after" });
+    const first = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later", expectNoPointerMove: true });
+    expect(first.data.applied).toBe(true);
+    const after = snapshot(repo);
+    const retry = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later", expectNoPointerMove: true });
+    expect(retry.data.applied).toBe(true);
+    expect(retry.data.receiptId).toBe(first.data.receiptId);
+    expect(snapshot(repo)).toEqual(after);
+  });
+
+  it("without the flag, a defer of the current Action behaves exactly as before", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const result = runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    expect(result.data.applied).toBe(true);
+    expect(projectFile(repo)).toContain("current_action: after");
+  });
+});

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { projectNotFound, validationError } from "../cli/errors.js";
+import { decisionPreconditionFailed, projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
@@ -22,6 +22,7 @@ import {
 import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
 import { commitOnlyPaths, projectCheckoutFor, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
+import { decisionOptionsDigest } from "../decisions/optionsDigest.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DECISION_FILENAME = /^(\d{4})-(.+)\.md$/;
@@ -148,6 +149,18 @@ export interface DecisionApproveOptions {
   dryRun?: boolean;
   /** Idempotency key for the deferral's pointer transition; derived when omitted. */
   requestId?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless the Decision currently has this status. */
+  expectStatus?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless the Decision's `updated` field equals this. */
+  expectUpdated?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless sha256 of the question and options (src/decisions/optionsDigest.ts) equals this. */
+  expectOptions?: string;
+  /**
+   * Refuse (DECISION_PRECONDITION_FAILED, details.reason `defer_would_move_pointer`, nothing written) when a `defer`
+   * option's target is the CURRENT Action, because applying it would move the active pointer (Plan and PROJECT.md).
+   * Computed with the deferral's own dry-run pass before any write. Unset means the existing behaviour.
+   */
+  expectNoPointerMove?: boolean;
   /** The caller already holds a capture id for this answer; no new envelope is made. */
   captureId?: string | null;
 }
@@ -255,6 +268,10 @@ export function prepareDecisionAnswer(
     answer: string;
     status?: DecisionDocStatus;
     decided?: string;
+    /** Optional caller precondition on the Decision as it is now; unset means no check (existing behaviour). */
+    expectStatus?: string;
+    expectUpdated?: string;
+    expectOptions?: string;
   }
 ): PreparedDecisionAnswer {
   const recorded = input.answer.trim();
@@ -283,6 +300,33 @@ export function prepareDecisionAnswer(
   const relativePath = path.relative(repoRoot, absolutePath);
   const { doc: existingDoc } = parseDoc(relativePath, absolutePath, before);
   const decisionDoc = existingDoc && existingDoc.type === "decision" ? existingDoc : null;
+
+  // Precondition: what the caller was shown must still be what is on disk, or nothing is written.
+  if (input.expectStatus !== undefined && (decisionDoc === null || decisionDoc.status !== input.expectStatus)) {
+    throw decisionPreconditionFailed(
+      `The Decision is not ${input.expectStatus} (it is ${decisionDoc?.status ?? "unreadable"}); nothing was written.`,
+      { decision: input.decisionRef, expected: input.expectStatus, actual: decisionDoc?.status ?? null, field: "status" }
+    );
+  }
+  if (input.expectUpdated !== undefined && (decisionDoc === null || String(decisionDoc.updated) !== input.expectUpdated)) {
+    throw decisionPreconditionFailed(
+      "The Decision changed after it was shown (its updated field differs); nothing was written.",
+      { decision: input.decisionRef, expected: input.expectUpdated, actual: decisionDoc === null ? null : String(decisionDoc.updated), field: "updated" }
+    );
+  }
+
+  if (input.expectOptions !== undefined) {
+    const actual =
+      decisionDoc === null
+        ? null
+        : decisionOptionsDigest(decisionDoc.question, decisionDoc.options, { action: decisionDoc.action, project: decisionDoc.project });
+    if (actual === null || actual !== input.expectOptions) {
+      throw decisionPreconditionFailed(
+        "The Decision's question or options changed after they were shown; nothing was written.",
+        { decision: input.decisionRef, expected: input.expectOptions, actual, field: "options" }
+      );
+    }
+  }
 
   // A Decision that offered specific options records one of them, verbatim —
   // not a paraphrase that happens to mean the same thing. This is what makes
@@ -355,7 +399,10 @@ function applyDecisionApprove(
       decisionRef: options.id,
       answer: options.answer,
       status,
-      decided: options.decided
+      decided: options.decided,
+      expectStatus: options.expectStatus,
+      expectUpdated: options.expectUpdated,
+      expectOptions: options.expectOptions
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
     reply.entityId = prepared.decisionId ?? relativePath;
@@ -388,7 +435,7 @@ function applyDecisionApprove(
           remedy: "Add `action: <action-id>` to the Decision so its consequence can be applied."
         });
       }
-      const result = applyDecisionDeferral(db, {
+      const deferralInput = {
         repoRoot,
         projectSlug: decisionDoc.project,
         decisionId: decisionDoc.id,
@@ -397,9 +444,22 @@ function applyDecisionApprove(
         decisionAbsolutePath: absolutePath,
         decisionRelativePath: relativePath,
         decisionAfter: updatedContent,
-        decisionAnswer: prepared.answer,
-        dryRun: options.dryRun === true
-      });
+        decisionAnswer: prepared.answer
+      };
+      if (options.expectNoPointerMove === true && options.dryRun !== true) {
+        // The deferral's own dry-run pass, under a DISTINCT request id so no stored receipt (for example one left by an
+        // earlier apply and reverse of this Decision) can short-circuit it with a stale consequence: the consequence
+        // is computed fresh from current state, and the dry-run path returns before any document or receipt write.
+        // An already-applied deferral is safe: its Action is then deferred, so a fresh probe reports no pointer move.
+        const probe = applyDecisionDeferral(db, { ...deferralInput, requestId: `${deferralInput.requestId}~pointer-probe`, dryRun: true });
+        if (probe.consequence.kind === "defer" && probe.consequence.pointerMoved) {
+          throw decisionPreconditionFailed(
+            "Applying this option would move the active pointer, because it defers the current Action; nothing was written. Answer it from the CLI.",
+            { decision: options.id, reason: "defer_would_move_pointer", action: decisionDoc.action }
+          );
+        }
+      }
+      const result = applyDecisionDeferral(db, { ...deferralInput, dryRun: options.dryRun === true });
       return createSuccess({
         command: "decision.approve",
         workspace: workspacePath,
@@ -626,6 +686,10 @@ export interface DecisionListItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: DecisionOptionDoc[];
+  /** The Action a `defer` option would park, from the Decision's `action:`; null when it names none. */
+  action: string | null;
+  /** The Decision's own `project:` field (the deferral uses this one). */
+  project: string;
   relativePath: string;
   updated: string;
 }
@@ -668,6 +732,8 @@ export function runDecisionListCommand(options: DecisionListOptions): CommandSuc
           gateQuestion: decision.gateQuestion,
           recommendation: decision.recommendation,
           options: decision.options,
+          action: decision.action,
+          project: decision.project,
           relativePath: decision.relativePath,
           updated: decision.updated
         });
