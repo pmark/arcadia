@@ -108,7 +108,9 @@ attempted.
 - Dashboard import-edge check found no `commander` or
   `containerAuditTransport` import, exit 0.
 - CI/review: PR #1343 R1 was blocking at head `d5c6c0bd7`; this report records
-  the source repair before the required new exact-head review and CI rerun.
+  the source repair in product commit `7238496c1` and the current-main
+  integration in merge commit `21e2fcbf2` (`origin/main` `a4aea8999`) before
+  the required new exact-head review and CI rerun.
 - Phone visual/playback QA: not run because this candidate was not installed
   and installation/restart were explicitly outside scope.
 
