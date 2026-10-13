@@ -5,6 +5,7 @@ When the operator explicitly requests repository storage, `docs/articles/` holds
 ## Drafts
 
 - [Arcadia Studio gives agents room to create and puts the system to the test](2026-10-12-arcadia-studio-creative-work-integration-test.md) — the proposed creative studio, its minimal interface, and the first scout's proof boundary.
+- [Why autonomous production is not a coding-speed problem](2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md) — what the day's ~20 PRs showed was slow, and where Claude Code ultracode would and would not help.
 - [The single-Action path runs itself](2026-10-10-the-single-action-path-runs-itself.md) — evidence from the disposable nine-Action fixture.
 
 ## Where to put a new article
