@@ -145,6 +145,27 @@ describe("offline scout isolation preflight", () => {
     expect(facts.promptNoneMarker).toBe(false);
   });
 
+  it("requires the permitted trust table to be absent before the append", () => {
+    const before = `${configBefore}[projects."${trustPath}"]\ntrust_level = "untrusted"\n`;
+    const after = `${before}\n${trustSection}`;
+    const base = input();
+    const result = evaluateScoutPreflight({
+      ...base,
+      before: snapshot({ hashes: { ...base.before.hashes, codexConfig: hash(before) } }),
+      after: snapshot({ hashes: { ...base.before.hashes, codexConfig: hash(after) } }),
+      codexConfigDiff: { before, after }
+    });
+    expect(result.config?.exactFixtureTrustChange).toBe(false);
+  });
+
+  it("only reports HelloWorld missing when the retained validation names that file", () => {
+    const evidence = retainedEvidence();
+    evidence.report.builder.validation = [{ output: "ENOENT: unrelated.txt missing" }];
+    expect(deriveRetainedScoutObservations(evidence).validationMissingFile).toBe(false);
+    evidence.report.builder.validation = [{ output: "ENOENT: HelloWorld.txt missing" }];
+    expect(deriveRetainedScoutObservations(evidence).validationMissingFile).toBe(true);
+  });
+
   it("refuses missing typed replay evidence", () => {
     const evidence = retainedEvidence();
     evidence.builder.changedFiles = undefined as never;

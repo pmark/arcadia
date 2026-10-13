@@ -105,7 +105,7 @@ function exactTrustEntryDiff(beforeText: string, afterText: string, fixtureTrust
   const section = `[projects."${fixtureTrustPath}"]\ntrust_level = "trusted"\n`;
   if (!afterText.endsWith(section)) return false;
   return afterText.slice(0, -section.length) === beforeText
-    && !beforeText.includes(`[projects."${fixtureTrustPath}"]`);
+    && !beforeText.split(/\r?\n/).some((line) => line.trim() === `[projects."${fixtureTrustPath}"]`);
 }
 
 function snapshotObserved(value: unknown): value is LeakSnapshot {
@@ -377,7 +377,10 @@ export function deriveRetainedScoutObservations(input: {
     runStatus: input.report.run?.status ?? null,
     actionNone: input.report.run?.work_item_id == null && input.worker.work_item_id == null,
     changedFiles: input.builder.changedFiles.length,
-    validationMissingFile: input.report.builder.validation.some((item: any) => item.output?.includes("ENOENT")) === true,
+    validationMissingFile: input.report.builder.validation.some((item: any) => {
+      const output = typeof item?.output === "string" ? item.output : "";
+      return output.includes("ENOENT") && /(?:open\s+['"]?HelloWorld\.txt|ENOENT:\s*HelloWorld\.txt)/i.test(output);
+    }),
     todoSourceAvailable: !(typeof input.missingTodo?.data?.askUnavailable === "string"
       || (Array.isArray(input.missingTodo?.data?.unavailable) && input.missingTodo.data.unavailable.length > 0))
   };
