@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
 import { PullRequestLinkAudio } from "../../../components/pull-request-link-audio";
 import { PullRequestAudio } from "../../../components/pull-request-audio";
+import { PullRequestInventorySkeleton } from "../../../components/pull-request-inventory-skeleton";
 import { DashboardChrome } from "../../../components/chrome";
-import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
+import { EmptyState, ErrorState, Metric, Section } from "../../../components/dashboard-ui";
+import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import type {
   DashboardOutstandingPullRequest,
   DashboardOutstandingPullRequests,
@@ -14,50 +16,48 @@ import type {
 
 export default function AdminPullRequestsPage() {
   const [readerRevision, setReaderRevision] = useState(0);
-  const [data, setData] = useState<DashboardOutstandingPullRequests | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const response = await fetch("/api/pull-requests", { cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(errorMessage(body, "Outstanding pull requests are unavailable."));
-      setData(body as DashboardOutstandingPullRequests);
-      setError(null);
-      setLastLoadedAt(new Date());
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const { data, checkedAt, error, loading, refreshing, stale, incomplete, retainedProjectIds, refresh } = usePullRequestInventory();
 
   return (
     <DashboardChrome
       title="Outstanding PRs"
       subtitle={data ? `${data.counts.total} open across ${data.projectsScanned} Projects` : "Across every configured Project repository."}
       refreshing={refreshing}
-      lastLoadedAt={lastLoadedAt}
+      lastLoadedAt={checkedAt ? new Date(checkedAt) : null}
       onRefresh={() => { setReaderRevision(value => value + 1); void refresh(); }}
     >
-      {error ? <ErrorState title="Outstanding PRs unavailable" message={error} /> : null}
-      {loading && !data ? <LoadingState /> : null}
+      <InventoryStatus checkedAt={checkedAt} stale={stale} incomplete={incomplete} refreshing={refreshing} />
+      {error ? (
+        <div className="grid gap-3">
+          <ErrorState
+            title={data ? "Inventory refresh failed" : "Outstanding PRs unavailable"}
+            message={data ? `${error} Showing the last successful inventory.` : error}
+          />
+          <button type="button" onClick={() => { void refresh(); }} className="min-h-11 justify-self-start rounded-md border border-line bg-panel px-4 py-2 text-sm font-semibold">
+            Retry inventory refresh
+          </button>
+        </div>
+      ) : null}
+      {loading && !data ? <PullRequestInventorySkeleton /> : null}
       <PullRequestLinkAudio refreshToken={readerRevision} />
-      {data ? <PullRequestBody data={data} /> : null}
+      {data ? <PullRequestBody data={data} retainedProjectIds={retainedProjectIds} /> : null}
     </DashboardChrome>
   );
 }
 
-function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
+function InventoryStatus({ checkedAt, stale, incomplete, refreshing }: { checkedAt: string | null; stale: boolean; incomplete: boolean; refreshing: boolean }) {
+  if (!checkedAt) return null;
+  const label = refreshing
+    ? `Showing the ${incomplete ? "incomplete " : ""}inventory checked ${formatDate(checkedAt)} while a refresh runs.`
+    : incomplete
+      ? `Inventory checked ${formatDate(checkedAt)}; one or more Project scans were incomplete.`
+      : stale
+      ? `Showing stale inventory checked ${formatDate(checkedAt)}.`
+      : `Inventory checked ${formatDate(checkedAt)}.`;
+  return <p className={`text-xs ${stale ? "text-gold" : "text-muted"}`} role="status" aria-live="polite">{label}</p>;
+}
+
+function PullRequestBody({ data, retainedProjectIds }: { data: DashboardOutstandingPullRequests; retainedProjectIds: string[] }) {
   return (
     <div className="grid min-w-0 gap-6">
       <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-5" aria-label="Pull-request readiness">
@@ -78,6 +78,7 @@ function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
             {data.errors.map((entry) => (
               <li key={`${entry.projectId}:${entry.message}`}>
                 <span className="font-semibold">{entry.projectName}:</span> {entry.message}
+                {retainedProjectIds.includes(entry.projectId) ? " Showing the last successful cards for this Project." : null}
               </li>
             ))}
           </ul>
@@ -86,7 +87,9 @@ function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
 
       <Section title="Open pull requests">
         {data.pullRequests.length === 0 ? (
-          <EmptyState text="No open pull requests found across the configured Project repositories." />
+          <EmptyState text={data.errors.length > 0
+            ? `No open pull requests found in the repositories scanned successfully. ${data.errors.length} Project scan${data.errors.length === 1 ? " was" : "s were"} incomplete.`
+            : "No open pull requests found across the configured Project repositories."} />
         ) : (
           <div className="grid min-w-0 gap-3">
             {data.pullRequests.map((pullRequest) => (
@@ -204,9 +207,4 @@ function labelValue(value: string): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
-}
-
-function errorMessage(body: unknown, fallback: string): string {
-  if (!body || typeof body !== "object") return fallback;
-  return "error" in body && typeof body.error === "string" ? body.error : fallback;
 }
