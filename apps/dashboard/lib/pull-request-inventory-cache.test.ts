@@ -193,6 +193,78 @@ describe("pull-request inventory cache", () => {
     });
   });
 
+  it("retains last-known cards by the current configured path when repository identification fails", async () => {
+    const previous = snapshot(1);
+    previous.repositories = [{ projectId: "project-old", projectName: "Old Project", repository: "owner/repo", repositoryPath: "/Repos/Arcadia" }];
+    previous.pullRequests = [{
+      projectId: "project-old",
+      projectName: "Old Project",
+      repository: "owner/repo",
+      repositoryPath: "/Repos/Arcadia",
+      number: 42,
+      readiness: "ready"
+    } as DashboardOutstandingPullRequest];
+
+    const unidentified = snapshot(0);
+    unidentified.repositories = [];
+    unidentified.errors = [{
+      projectId: "project-new",
+      projectName: "New Project",
+      repositoryPath: "/Repos/Arcadia/",
+      message: "GitHub repository could not be identified."
+    }];
+
+    const load = vi.fn().mockResolvedValueOnce(previous).mockResolvedValueOnce(unidentified);
+    const cache = createPullRequestInventoryCache({ load });
+    await cache.read();
+    await cache.read({ refresh: true });
+    await vi.waitFor(async () => expect((await cache.read()).refreshing).toBe(false));
+
+    await expect(cache.read()).resolves.toMatchObject({
+      snapshot: {
+        pullRequests: [{
+          projectId: "project-new",
+          projectName: "New Project",
+          repository: "owner/repo",
+          repositoryPath: "/Repos/Arcadia/",
+          number: 42
+        }],
+        counts: { total: 1, ready: 1 }
+      },
+      incomplete: true,
+      retainedProjectIds: ["project-new"]
+    });
+  });
+
+  it("does not collapse case-distinct repository paths", async () => {
+    const previous = snapshot(1);
+    previous.pullRequests = [{
+      projectId: "project-old",
+      repository: "owner/repo",
+      repositoryPath: "/Repos/Arcadia",
+      number: 42,
+      readiness: "ready"
+    } as DashboardOutstandingPullRequest];
+
+    const differentPath = snapshot(0);
+    differentPath.errors = [{
+      projectId: "project-new",
+      projectName: "New Project",
+      repositoryPath: "/repos/arcadia",
+      message: "GitHub repository could not be identified."
+    }];
+
+    const load = vi.fn().mockResolvedValueOnce(previous).mockResolvedValueOnce(differentPath);
+    const cache = createPullRequestInventoryCache({ load });
+    await cache.read();
+    await cache.read({ refresh: true });
+    await vi.waitFor(async () => expect((await cache.read()).refreshing).toBe(false));
+    await expect(cache.read()).resolves.toMatchObject({
+      snapshot: { pullRequests: [], counts: { total: 0 } },
+      retainedProjectIds: []
+    });
+  });
+
   it("surfaces a cold scan failure", async () => {
     const cache = createPullRequestInventoryCache({ load: async () => { throw new Error("inventory unavailable"); } });
     await expect(cache.read()).rejects.toThrow("inventory unavailable");

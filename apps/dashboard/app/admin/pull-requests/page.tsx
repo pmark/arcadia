@@ -78,7 +78,9 @@ function PullRequestBody({ data, retainedProjectIds }: { data: DashboardOutstand
             {data.errors.map((entry) => (
               <li key={`${entry.projectId}:${entry.message}`}>
                 <span className="font-semibold">{entry.projectName}:</span> {entry.message}
-                {retainedProjectIds.includes(entry.projectId) ? " Showing the last successful cards for this Project." : null}
+                {retainedProjectIds.includes(entry.projectId)
+                  ? " Showing last-known cards for this Project. Repository details were not fully reverified; these cards are incomplete display data and not merge authority."
+                  : null}
               </li>
             ))}
           </ul>

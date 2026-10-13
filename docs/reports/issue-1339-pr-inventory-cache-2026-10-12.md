@@ -35,7 +35,7 @@ A candidate-local benchmark used the real `loadOutstandingPullRequests` loader w
 | Forced refresh response using cached cards | 2.776 ms |
 | Concurrent forced refresh response, coalesced onto the same scan | 0.036 ms |
 
-Both cold and final scans returned 13 PRs in this later sample. The final scan disclosed eight Project exceptions, so the cache response remained marked incomplete/stale. When a refresh has a per-Project error, prior cards are retained only when their normalized repository remains in the current inventory and that repository's scan failed. Retained cards are remapped to current Project metadata and counts are recomputed; a removed repository is not retained, and a recovered scan discards the retained copy. A transport-level failure preserves the entire prior snapshot. Neither cache state nor the inventory's existing readiness label is used to authorize a merge; this page remains read-only.
+Both cold and final scans returned 13 PRs in this later sample. The final scan disclosed eight Project exceptions, so the cache response remained marked incomplete/stale. When a refresh has a per-Project error, prior cards are retained when their normalized repository remains in the current inventory and that repository's scan failed. If repository identification itself fails, an exact case-sensitive configured-path match preserves last-known cards and remaps them to the error's current Project metadata. The UI labels those cards as incompletely reverified display data. A removed or different-path repository is not retained, and a recovered scan discards the retained copy. Counts are recomputed. A transport-level failure preserves the entire prior snapshot. Neither cache state nor the inventory's existing readiness label is used to authorize a merge; this page remains read-only.
 
 ## User-visible behavior
 
@@ -50,7 +50,7 @@ The same cache response contract can be reused by the shared To-Dos PR component
 ## Validation
 
 - Initial focused suite — exit 0; 3 files, 7 tests.
-- Post-review focused suite: `pnpm exec vitest run apps/dashboard/lib/pull-request-inventory-client.test.ts apps/dashboard/lib/pull-request-inventory-cache.test.ts apps/dashboard/app/api/pull-requests/route.test.ts apps/dashboard/app/admin/pull-requests/page.test.tsx` — exit 0; 4 files, 12 tests. It covers a never-settling request, unmount cancellation, out-of-order explicit refresh, both repository/Project identity inversions, and recovered-scan cleanup.
+- Post-review focused suite: `pnpm exec vitest run apps/dashboard/lib/pull-request-inventory-client.test.ts apps/dashboard/lib/pull-request-inventory-cache.test.ts apps/dashboard/app/api/pull-requests/route.test.ts apps/dashboard/app/admin/pull-requests/page.test.tsx` — exit 0; 4 files, 14 tests. It covers a never-settling request, unmount cancellation, out-of-order explicit refresh, both repository/Project identity inversions, repository-identification failure, case-sensitive path separation, and recovered-scan cleanup.
 - Touched-file `pnpm exec eslint ...` — exit 0.
 - `git diff --check` — exit 0.
 - `pnpm build` — exit 0.
@@ -65,6 +65,7 @@ The same cache response contract can be reused by the shared To-Dos PR component
 3. That retry found an invalid named helper export from a Next page module. Moving the skeleton to a focused component repaired the framework contract; the next Dashboard build passed.
 4. One cache test initially waited for a mocked loader call rather than for the cache's rejected refresh to settle. It now waits for the observable `refreshing: false` state.
 5. Independent review round 1 found that a never-settling client fetch could leave the cold skeleton indefinitely and that partial retention used Project ID instead of current repository identity. The bounded request coordinator and normalized current-repository merge close both blockers. The first repair lint run found render-time ref access and a recursive callback; a stable coordinator plus generation-aware polling loop repaired both, and the second lint run exited 0.
+6. Independent review round 2 found that `gh repo view` can fail before the scanner adds an entry to `repositories`. The cache now falls back to the current error's exact configured path, remaps the last-known card to current Project metadata, preserves case-sensitive Linux path identity, and discloses that repository details were not fully reverified.
 
 No failed command was repeated unchanged, and each named failure used one repair attempt.
 

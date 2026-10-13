@@ -106,6 +106,9 @@ function mergePartialSnapshot(
   const repositoriesByProjectId = new Map(repositories.map((repository) => [repository.projectId, repository]));
   const repositoriesByPath = new Map(repositories.map((repository) => [normalizePath(repository.repositoryPath), repository]));
   const repositoriesByName = new Map(repositories.map((repository) => [normalizeRepository(repository.repository), repository]));
+  const errorsByPath = new Map(next.errors.flatMap((error) =>
+    error.repositoryPath ? [[normalizePath(error.repositoryPath), error] as const] : []
+  ));
   const failedRepositories = new Set<string>();
   for (const error of next.errors) {
     const repository = repositoriesByProjectId.get(error.projectId)
@@ -117,13 +120,28 @@ function mergePartialSnapshot(
   const retained = previous.pullRequests.flatMap((pullRequest) => {
     const repositoryKey = normalizeRepository(pullRequest.repository);
     const currentRepository = repositoriesByName.get(repositoryKey);
-    if (!currentRepository || !failedRepositories.has(repositoryKey) || currentKeys.has(pullRequestKey(pullRequest))) return [];
+    if (currentRepository && failedRepositories.has(repositoryKey) && !currentKeys.has(pullRequestKey(pullRequest))) {
+      return [{
+        ...pullRequest,
+        projectId: currentRepository.projectId,
+        projectName: currentRepository.projectName,
+        repository: currentRepository.repository,
+        repositoryPath: currentRepository.repositoryPath
+      }];
+    }
+
+    // `gh repo view` can fail before the scanner knows the current repository
+    // name. In that case the configured real path in the error is the only
+    // current identity available. Preserve last-known cards only for that exact
+    // path, and remap their Project metadata to the current error.
+    const pathKey = normalizePath(pullRequest.repositoryPath);
+    const currentError = errorsByPath.get(pathKey);
+    if (!currentError || repositoriesByPath.has(pathKey) || currentKeys.has(pullRequestKey(pullRequest))) return [];
     return [{
       ...pullRequest,
-      projectId: currentRepository.projectId,
-      projectName: currentRepository.projectName,
-      repository: currentRepository.repository,
-      repositoryPath: currentRepository.repositoryPath
+      projectId: currentError.projectId,
+      projectName: currentError.projectName,
+      repositoryPath: currentError.repositoryPath ?? pullRequest.repositoryPath
     }];
   });
   if (retained.length === 0) return { snapshot: next, retainedProjectIds: [] };
@@ -140,7 +158,8 @@ function normalizeRepository(repository: string): string {
 }
 
 function normalizePath(repositoryPath: string): string {
-  return repositoryPath.trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const normalized = repositoryPath.trim().replace(/\\/g, "/");
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
 }
 
 function pullRequestKey(pullRequest: DashboardOutstandingPullRequests["pullRequests"][number]): string {
