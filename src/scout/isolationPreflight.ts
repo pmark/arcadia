@@ -45,8 +45,8 @@ interface SnapshotSummary {
     observed: true;
   };
   hashes: LeakSnapshot["hashes"];
-  goBroker: LeakSnapshot["goBroker"];
-  launchAgents: LeakSnapshot["launchAgents"];
+  goBroker: { entries: number; sha256: string };
+  launchAgents: { entries: number; sha256: string };
 }
 
 export interface ScoutPreflightReceipt {
@@ -94,7 +94,9 @@ function summarizeSnapshot(snapshot: LeakSnapshot): SnapshotSummary {
       productionPolicyReceipts: snapshot.liveWorkspace.productionPolicyReceipts!,
       productionAdmissions: snapshot.liveWorkspace.productionAdmissions!, observed: true
     },
-    hashes: { ...snapshot.hashes }, goBroker: { ...snapshot.goBroker }, launchAgents: { ...snapshot.launchAgents }
+    hashes: { ...snapshot.hashes },
+    goBroker: { entries: Object.keys(snapshot.goBroker).length, sha256: sha256(JSON.stringify(Object.entries(snapshot.goBroker).sort(([a], [b]) => a.localeCompare(b)))) },
+    launchAgents: { entries: Object.keys(snapshot.launchAgents).length, sha256: sha256(JSON.stringify(Object.entries(snapshot.launchAgents).sort(([a], [b]) => a.localeCompare(b)))) }
   };
 }
 
@@ -125,7 +127,7 @@ function snapshotObserved(value: unknown): value is LeakSnapshot {
     return hash !== null && (typeof hash !== "string" || !SHA.test(hash));
   })) return false;
   if (!isRecord(value.goBroker) || !isRecord(value.launchAgents)) return false;
-  return Object.values(value.goBroker).every((hash) => typeof hash === "string" && SHA.test(hash))
+  return Object.values(value.goBroker).every((entry) => typeof entry === "string" && entry.length > 0)
     && Object.values(value.launchAgents).every((hash) => typeof hash === "string" && SHA.test(hash));
 }
 
