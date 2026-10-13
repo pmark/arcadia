@@ -9,6 +9,7 @@ Supervisor: the assigning Lead. Actual runtime: `gpt-6.1-sol/high`; no delegatio
 Candidate: `/Users/pmark/.codex/worktrees/broker-role-registry-packaging/arcadia`.
 Branch: `codex/broker-role-registry-packaging-20261013`.
 Starting revision: `02f54757c9714845c130fa34475a70f729f13b96`.
+The Lead preserved the product snapshot at `23d72cdea85eb6b17e68912a293b7b06ac4e62aa`; subsequent author changes are evidence-report only.
 App-host custody operation: `6a9d4ff6-d466-46d0-94be-fce87cf94b8f`.
 Implementation budget: one pass, no more than 45 minutes; cutoff 22:55 UTC.
 The assignment grants no Arcadia Session, admission, claim, capacity slot or Go
@@ -73,14 +74,28 @@ sandbox, credentials or permission configuration was widened.
 | same focused run with host permission, first pass | 1; 75 passed, new fixture refused tsc-reserialized bytes | `native-packaging-focused-host.log` |
 | same focused run, second pass | 1; 81 passed; drift test chose the already-canonical light default | `native-packaging-focused-host-r2.log` |
 | same focused run, final product snapshot | 0; four files, 87 tests passed | `native-packaging-focused-host-r3.log` |
-| `node_modules/.bin/vitest run tests/go-broker-release-packaging.test.ts` after stronger source-denial assertion | Pending | `native-packaging-source-denied-final.log` |
-| `node_modules/.bin/eslint src/commands/goBrokerInstall.ts tests/go-broker-release-packaging.test.ts tests/go-broker-agent-setup.test.ts` | 0 before final source-denial assertion; final run pending | `native-packaging-lint-final.log` |
-| `pnpm build` | Preliminary 0; final run pending | `native-packaging-build.log`, `native-packaging-build-final.log` |
-| `node scripts/fast-rehearsal.mjs` | Pending; combined report must exist | `native-packaging-fast-rehearsal.log` |
+| `node_modules/.bin/vitest run tests/go-broker-release-packaging.test.ts` after stronger source-denial assertion | 0; ten tests passed | `native-packaging-source-denied-final.log` |
+| `node_modules/.bin/eslint src/commands/goBrokerInstall.ts tests/go-broker-release-packaging.test.ts tests/go-broker-agent-setup.test.ts` | 0, including the final source-denial assertion | `native-packaging-lint-final.log` |
+| `pnpm build` | 0, preliminary and final builds | `native-packaging-build.log`, `native-packaging-build-final.log` |
+| `node scripts/fast-rehearsal.mjs` | 0; 19 test files, 72 passed and 1 expected-fail; 34 scenarios; report verified | `native-packaging-fast-rehearsal.log` |
+| `node --import tsx /tmp/go-overlap-resume-20261013/collect-malformed-registry.ts` | 0; syntax and semantic cases return structured VALIDATION_ERROR | `native-packaging-malformed-receipts.log` |
 | `git diff --check` | 0 | Tool receipt |
 
 Paths in the last column without a directory prefix are under
 `/tmp/go-overlap-resume-20261013/`.
+
+The final fast-rehearsal report exists at
+`/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-eg7lKx/report.json`.
+Its wall time was 6m26s and it records 49 errors, 47 expected and two labeled
+unexpected. Both unexpected labels are the same deliberate `session-probe-wall`
+fixture injection: `tests/fast-rehearsal/session-probe-wall.test.ts:31` writes an
+EROFS probe failure, and lines 55–64 assert the resulting environment-wall
+blocker. The scenario passes, but its expected-error matchers do not cover these
+two lifecycle messages. This is a separate report-classification defect; the
+packaging change touches no rehearsal code. Revival trigger: the next rehearsal
+reporting maintenance or requirement for a zero-unexpected report. Existing [Issue #1322](https://github.com/pmark/arcadia/issues/1322)
+tracks this exact matcher/report gap; no duplicate Issue or source fix was made.
+No clean-error rehearsal result is claimed.
 
 ## Review and remaining gates
 
@@ -99,21 +114,93 @@ mutation, old-custody takeover, repaired #1280, installation, service restart,
 production activation or budget reset is claimed. START_HERE.md is unchanged
 because the operator flow has not changed.
 
+## Verified receipt excerpts
+
+These summaries retain observed fields from the raw receipts, so the published
+report can be reviewed without access to the author host's temporary directory.
+The positive receipt is from the actual compiled fixed launcher and supervised
+child; malformed receipts are from the production release validator.
+
+```json
+{
+  "canonical_asset": {
+    "sourceReadDenied": true,
+    "launcherExit": 0,
+    "receipt": {
+      "ok": true,
+      "command": "brief-broker.self-test",
+      "data": { "readOnly": true }
+    }
+  },
+  "missing_asset": {
+    "launcherExit": 1,
+    "stdoutEmpty": true,
+    "stderrCode": "ERR_MODULE_NOT_FOUND",
+    "requiredPath": "dist/config/defaults/agent-roles.json"
+  },
+  "malformed_syntax_and_semantics": {
+    "ok": false,
+    "command": "go-broker.release-validation",
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "message": "The protected broker role registry is missing or malformed."
+    }
+  }
+}
+```
+
+Additional verified prevention evidence: source-linked registry reuse refuses;
+staging refuses direct-file, dangling-file and parent symlinks, leaves external
+fixture bytes unchanged, and creates no file at the dangling target.
+
 ## Operator and end-user QA
 
-The proof is local-only, offline and fixture-based; no web endpoint or installed
-updated broker is available from this PR. The operator procedure is also the
-end-user procedure for this packaging change:
+The operator procedure is also the end-user procedure for this packaging change.
+The remote review surface is the candidate PR on GitHub. At this report update
+its URL is pending publication by the Lead; the PR handoff must include that
+exact link. No updated installed broker or runtime demo is claimed.
 
-1. From the candidate run `node_modules/.bin/vitest run tests/go-broker-release-packaging.test.ts`.
-2. Expect all ten packaging tests to pass. The canonical case must return a
-   structured read-only self-test; the source-read probe must refuse access.
-3. Expect missing/malformed/altered registry and linked staging paths to refuse,
-   with the external linked fixture bytes preserved.
+1. Open the linked PR's **Files changed** tab and this committed report.
+   Confirm the receipt excerpts show source read denied, canonical launcher
+   success, missing-asset load refusal and malformed-registry validation refusal.
+2. In **Files changed**, review `tests/go-broker-release-packaging.test.ts`.
+   Confirm it builds the actual broker, uses the fixed launcher and production
+   staging utilities, removes the disposable source, asserts checkout reads are
+   denied, and covers missing, malformed, byte/default drift and linked paths.
+3. Open the PR's **Checks** tab and the unit job running this test. Expect the
+   source-denied positive and negative cases to pass, and all seven required
+   CI jobs (`lint`, `unit-1`, `unit-2`, `unit-3`, `unit-4`, `dashboard`, `e2e`) to
+   be green on the same final head. Review the independent exact-head review
+   summary in the PR Conversation before the separate merge decision.
 
-Running a live fixed launcher against an updated installed broker requires the
-separate reviewed installation and verification gate. Do not use `go-broker
-install`, `ensure`, service restart or PPN dispatch as part of this QA procedure.
+This procedure requires no operator terminal or access to the author host.
+Installed verification awaits the separate reviewed installation gate. PPN
+protected Go, old custody, packet-model and historical repair-budget gates
+remain untested by this PR.
+
+## Developer reproduction
+
+From the candidate run
+`node_modules/.bin/vitest run tests/go-broker-release-packaging.test.ts`; expect
+all ten packaging tests to pass. The disposable launcher returns a read-only
+self-test; source reads and invalid registry/staging cases refuse. The command
+is developer reproduction, not an offsite operator requirement. Do not invoke
+`go-broker install`, `ensure`, service restart or PPN dispatch for this fixture QA.
+
+## Verified friction and prevention
+
+1. **Canonical bytes versus emit:** TypeScript's emitted JSON is reserialized,
+   so a compiled asset can contain the right data while differing from the
+   checked-in bytes. Prevention is the implemented source-byte copy, canonical
+   data validation and manifest fingerprint; the regression separately checks
+   byte equality and actual compiled import closure.
+2. **Linked staging destination:** copying first and validating afterward can
+   overwrite a symlink's external target. Prevention is validating staged
+   directories and any existing asset before copy. Direct, dangling and parent
+   link fixtures prove the external bytes are preserved.
+
+These are source fixes and test evidence for the Lead's Notes To Self update,
+not a second lesson store or a new operator preference.
 
 ## Retrieved instructions
 
