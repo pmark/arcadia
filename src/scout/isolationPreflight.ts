@@ -104,8 +104,18 @@ function exactTrustEntryDiff(beforeText: string, afterText: string, fixtureTrust
   if (/[\n\r\\"]/.test(fixtureTrustPath)) return false;
   const section = `[projects."${fixtureTrustPath}"]\ntrust_level = "trusted"\n`;
   if (!afterText.endsWith(section)) return false;
+  // Attribute only when every pre-existing project table uses this simple header form;
+  // unsupported TOML variants stop the trust-only claim instead of being normalized.
+  for (const sourceLine of beforeText.split(/\r?\n/)) {
+    const line = sourceLine.trim();
+    if (!line.startsWith("[")) continue;
+    const candidate = line.split("#", 1)[0].trim();
+    if (!candidate.includes("projects")) continue;
+    const projectHeader = candidate.match(/^\[\s*projects\s*\.\s*"([^"]+)"\s*\]$/);
+    if (!projectHeader || projectHeader[1] === fixtureTrustPath) return false;
+  }
   return afterText.slice(0, -section.length) === beforeText
-    && !beforeText.split(/\r?\n/).some((line) => line.trim() === `[projects."${fixtureTrustPath}"]`);
+    && !beforeText.includes(fixtureTrustPath);
 }
 
 function snapshotObserved(value: unknown): value is LeakSnapshot {
@@ -379,7 +389,7 @@ export function deriveRetainedScoutObservations(input: {
     changedFiles: input.builder.changedFiles.length,
     validationMissingFile: input.report.builder.validation.some((item: any) => {
       const output = typeof item?.output === "string" ? item.output : "";
-      return output.includes("ENOENT") && /(?:open\s+['"]?HelloWorld\.txt|ENOENT:\s*HelloWorld\.txt)/i.test(output);
+      return output.includes("ENOENT") && /(?:open\s+['"]HelloWorld\.txt['"]|ENOENT:\s*['"]?HelloWorld\.txt['"]?(?=$|[\s,;:]))/i.test(output);
     }),
     todoSourceAvailable: !(typeof input.missingTodo?.data?.askUnavailable === "string"
       || (Array.isArray(input.missingTodo?.data?.unavailable) && input.missingTodo.data.unavailable.length > 0))
