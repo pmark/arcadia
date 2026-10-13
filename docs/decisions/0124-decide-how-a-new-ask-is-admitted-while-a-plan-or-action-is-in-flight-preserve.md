@@ -4,7 +4,7 @@ type: decision
 id: "0124"
 slug: decide-how-a-new-ask-is-admitted-while-a-plan-or-action-is-in-flight-preserve
 project: arcadia
-status: open
+status: approved
 question: "Decide how a new Ask is admitted while a Plan or Action is in flight: preserve current work by default, represent urgency through the existing scheduling authority, and optionally admit bounded independent side Sessions ending at a reviewed green PR."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 updated: 2026-10-13
+answer: Preserve in-flight work; offer queued or bounded independent side Sessions
+decided: 2026-10-13
 ---
 
 # Decision 0124: Decide how a new Ask is admitted while a Plan or Action is in flight: preserve current work by default, represent urgency through the existing scheduling authority, and optionally admit bounded independent side Sessions ending at a reviewed green PR.
