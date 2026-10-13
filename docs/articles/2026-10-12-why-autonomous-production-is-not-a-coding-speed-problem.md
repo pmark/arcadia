@@ -3,7 +3,7 @@ title: "Why autonomous production is not a coding-speed problem"
 date: "2026-10-12"
 type: essay
 slug: "why-autonomous-production-is-not-a-coding-speed-problem"
-summary: "In one day a supervised team of Claude agents merged more than twenty governed pull requests toward unattended software production. The code was the fast part. Here is what was slow, why Claude Code's multi-agent 'ultracode' mode would speed up less than it seems, and where it would help."
+summary: "In one day a supervised team of Claude agents merged more than twenty pull requests toward unattended software production. The code was the fast part. Here is what was slow, why Claude Code's multi-agent 'ultracode' mode would speed up less than it seems, and where it would help."
 author: "Arcadia (drafted by Claudia Mason)"
 status: draft
 claims_receipt: "docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md"
@@ -26,12 +26,12 @@ says why, using what the day actually produced.
 
 ## What was built, and what it cost
 
-In about a day the team merged more than twenty governed pull requests: a platform
+In about a day the team merged more than twenty pull requests: a platform
 token ceiling, an in-Session environment probe, a validated per-session ledger,
 one-click clears for two blocker kinds, a per-sentence approval validator, a
 guard that refuses Plan changes inside an Active production scope, role and
 brief guidance, and the first decision-card contract. The first supervised run on
-the same repository, the day before, had taken about 3.5 hours to launch one
+the same repository, the day before, had taken about three hours to launch one
 Session and then spent about 11.1 million input tokens (98% cache re-reads) with
 no diff, because the Session's sandbox could not write the workspace database.
 
@@ -43,12 +43,13 @@ time went.
 
 **Defects, not typing.** Four of the eight guard or validator pull requests (the
 approval validator, the scope guard, the Session probe and the decision-card
-contract) were blocked by an independent adversarial Reviewer, and three of
-those were blocked more than once. The approval validator needed three rounds: the first
-draft let "Implementation requires no approval, but a separate approval is nice
-to have" through, and the second round found seven more bypass classes. The
-Session probe shipped a script the packaged build did not include, a parse an
-output line could spoof, and an allow rule that accepted any arguments. The
+contract) were blocked by an independent adversarial Reviewer, and two of
+those (the approval validator and the decision-card contract) were blocked in
+successive rounds. The approval validator needed three reviews: one of its
+regression tests is the string "Implementation requires no approval, but a
+separate approval is nice to have", which it must now flag, and later rounds
+added more bypass classes. The Session probe was repaired across several commits
+for packaging, nonce binding and an overly broad allow rule. The
 decision-card contract failed open on a garbage clock and accepted invisible
 characters as "non-empty" text. Each time the Driver's own tests passed. The
 reviewer ran an attack string and found the hole.
@@ -63,8 +64,8 @@ Plan in one stretch, and no amount of coding speed changes that.
 **Ceremony and state.** A single checkout, a single queue and a single pointer
 meant that completing an Action, splitting a remainder, activating the next Plan
 and repairing the queue order were each governed settlements that had to run in
-the right place in the right order. The day's friction table (about twenty-five
-rows) is mostly this: settle commits that carry the operator's name, a split
+the right place in the right order. Much of the day's friction table (about
+twenty-five rows) is this: settle commits that carry the operator's name, a split
 that cannot be recorded in a draft Plan, a local main that drifts after every
 merge. These are serial by design.
 
@@ -80,9 +81,9 @@ product problem (cards, batching, default-and-veto), not a code-volume problem.
 
 ## What "ultracode" would and would not change
 
-Claude Code's ultracode is an explicit opt-in to run a scripted, multi-agent
-workflow: many agents, fan-out and verification passes, long-running and
-expensive by design. We did a hand-rolled version of this all day. It would help
+As described in the Claude Code harness, ultracode is an explicit opt-in to run
+a scripted, multi-agent workflow: many agents, fan-out and verification passes,
+likely long-running and expensive. We did a hand-rolled version of this all day. It would help
 in three places:
 
 1. **Parallel build of independent Actions.** Several Actions in the draft

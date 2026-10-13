@@ -12,14 +12,14 @@
 
 | ID | Factual sentence or clause | Pinned public evidence | What it proves and its limits |
 | --- | --- | --- | --- |
-| C1 | The first supervised run took about 3.5 hours to launch one Session, then spent about 11.1M input tokens (98% cache re-reads) with no diff because the Session sandbox could not write the workspace database. | [first-supervised-production-run-learnings-2026-10-11.md](../reports/first-supervised-production-run-learnings-2026-10-11.md) | The report's own figures; not independently re-measured here. |
+| C1 | The first supervised run took about three hours to launch one Session, then spent about 11.1M input tokens (98% cache re-reads) with no diff because the Session sandbox could not write the workspace database. | [first-supervised-production-run-learnings-2026-10-11.md](../../reports/first-supervised-production-run-learnings-2026-10-11.md), [living notes](../../reports/production-simulation-living-notes.md) | Token and sandbox figures from the report; "about three hours" is living-notes friction #1. Not independently re-measured. |
 | C2 | A platform per-Session token ceiling is merged. | [PR #1303](https://github.com/pmark/arcadia/pull/1303) | Delivery to main; not live behaviour. |
-| C3 | An in-Session environment probe is merged and was blocked by independent review across multiple rounds (packaging, spoofable parse, widened allow rule, stale-failure re-wall). | [PR #1306](https://github.com/pmark/arcadia/pull/1306) and its review history | Review findings are those recorded in the PR; not a measure of all defects. |
-| C4 | The approval validator needed three rounds; a draft let "Implementation requires no approval, but a separate approval is nice to have" through. | [PR #1296](https://github.com/pmark/arcadia/pull/1296) review summary comment | The example string is from the reviewer's trace; disclosed bypass classes remain. |
+| C3 | An in-Session environment probe is merged and was repaired across several commits for packaging, nonce binding and an overly broad allow rule. | [PR #1306](https://github.com/pmark/arcadia/pull/1306) commit history | The PR carries no review summary; the specifics are inferred from commit subjects. |
+| C4 | The approval validator needed three reviews; "Implementation requires no approval, but a separate approval is nice to have" is a regression-test case it must flag. | [PR #1296](https://github.com/pmark/arcadia/pull/1296), `tests/planning-artifact-validator.test.ts` | Whether the first draft let it through is not confirmed by the PR text; disclosed bypass classes remain. |
 | C5 | The decision-card contract failed open on a bad clock and treated invisible characters as non-empty text before it was repaired; it merged with 70 tests. | [PR #1348](https://github.com/pmark/arcadia/pull/1348) review summary comment | A schema only; no rendering or execution engine. |
 | C6 | A guard that refuses Plan changes inside an Active production scope, a validated session ledger, role guidance and one-click clears for two blocker kinds are merged. | [#1297](https://github.com/pmark/arcadia/pull/1297), [#1301](https://github.com/pmark/arcadia/pull/1301), [#1304](https://github.com/pmark/arcadia/pull/1304), [#1309](https://github.com/pmark/arcadia/pull/1309) | Delivery; none ran as an unattended Session. |
-| C7 | More than twenty governed pull requests merged during the day, four of eight guard/validator PRs were blocked by independent review, and about twenty-five frictions were recorded. | [living notes](../reports/production-simulation-living-notes.md), PR history of pmark/arcadia on 2026-10-12 | Counts are approximate and by hand. |
-| C8 | Claude Code's ultracode is an explicit opt-in to a scripted multi-agent workflow that can spawn many agents and consume many tokens. | The Claude Code harness tool description available to the Lead session | Description of the harness; ultracode was not run on this problem. |
+| C7 | More than twenty pull requests merged during the day, four of eight guard/validator PRs were blocked by independent review (two in successive rounds), and about twenty-five frictions were recorded. | [living notes](../../reports/production-simulation-living-notes.md), PR history of pmark/arcadia on 2026-10-12 | The fact-check counted 37 PRs merged that UTC day, about 25 from the supervised team; the rest were other agents' work. Counts are approximate. |
+| C8 | As described in the Claude Code harness, ultracode is an explicit opt-in to a scripted multi-agent workflow that can spawn many agents and consume many tokens. | The Claude Code harness tool description available to the Lead session | Not in the repository; unverifiable from public evidence. Ultracode was not run on this problem. |
 
 ## Mechanical checks
 
@@ -27,7 +27,9 @@ Front matter, draft status, receipt link, intended destination, channels, the li
 
 ## Independent review
 
-Pending: a fresh read-only reviewer checks C1 to C8 against the pinned evidence; the result is added in a follow-up commit.
+- Independent fact-checker: fresh read-only Sonnet agent, separate lineage.
+- Reviewed candidate: ba6b867dd. Verdict: needs minor edits; nothing invented. Applied in the following commit: dropped "governed", softened the review-round and probe claims, cited the test file for the quoted string, attributed "about three hours" to the living notes and attributed the ultracode description to the harness.
+- This section records review of the preceding revision; the edited bytes were not re-reviewed.
 
 ## Delivery handoff
 
