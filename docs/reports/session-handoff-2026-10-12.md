@@ -76,3 +76,19 @@ Consider moving `batch-merge-decision-card` right behind
 - Split remainder ids are limited to about 64 characters.
 - Drivers: create the named branch first (`git branch -f <name> HEAD`), lint touched
   files, run the dashboard import-graph check, run fast-rehearsal from the worktree root.
+
+## Update (Lead session 2, 2026-10-12 late)
+- #1348 merged. #1349 files the `decision-card-contract` completion (pointer to
+  `cards-from-existing-sources`); it waits for the operator's merge.
+- #1353 holds a reviewed slice of `batch-merge-decision-card` (3 review rounds,
+  guard documented as not a trust root). Remaining for that Action: `/todo`
+  route and button (blocker-clear pattern, needs a `lib/arcadia-cli` helper),
+  published descriptor and launcher via the operator-script library, ping
+  queueing. Record it as a `split` after #1349 merges (the Action must be in the
+  active Plan queue); remainder text: route, descriptor, ping.
+- `one-click-clear-every-blocker-kind` completion is held: criterion 2 partly
+  met (scope stops link to /production; the clear route calls the CLI). Needs the
+  split fix for inactive Plans or an operator ruling.
+- Next Lead: after the two merges, sync main, file the batch-merge split, then
+  `cards-from-existing-sources`. Brief rule learned: put "operator-only is
+  host-side, the script is not a trust root" in every operator-script brief.
