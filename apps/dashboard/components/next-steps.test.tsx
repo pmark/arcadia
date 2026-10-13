@@ -103,8 +103,15 @@ describe("NextSteps", () => {
   it("a human changes-requested pull request is a wait with its note and no click", () => {
     const html = render(response({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("1"), author: "pmark" }] })] }));
     expect(html).toContain("Nothing for you to click");
-    expect(html).toContain("A human reviewer&#x27;s latest review at this head requests changes.");
+    expect(html).toContain("A reviewer&#x27;s standing review at this head requests changes.");
     expect(html).not.toContain("<a ");
+  });
+
+  it("warns on a Merge step when a reviewer's request for changes stands from an earlier head", () => {
+    const html = render(response({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("e"), author: "pmark" }] })] }));
+    expect(html).toContain("Merge #1 on GitHub");
+    expect(html).toContain("A reviewer requested changes on an earlier head: confirm on the PR before merging.");
+    expect(html).not.toMatch(/satisfied/i);
   });
 
   it("shows a stale inventory with its last-read time", () => {

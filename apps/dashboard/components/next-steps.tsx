@@ -34,16 +34,28 @@ function Click({ step }: { step: NextStep }) {
 const REVIEW_NOTE_LABEL: Record<NonNullable<NextStep["reviewNote"]>, string> = {
   independent_review_recorded: "An independent review is recorded in the PR body (not verified here).",
   not_recorded: "No independent review recorded in the PR body: check the PR before merging.",
-  changes_requested_by_human: "A human reviewer's latest review at this head requests changes."
+  changes_requested_by_human: "A reviewer's standing review at this head requests changes."
+};
+const REVIEW_WARNING_LABEL: Record<NonNullable<NextStep["reviewWarning"]>, string> = {
+  human_changes_requested_earlier_head: "A reviewer requested changes on an earlier head: confirm on the PR before merging."
 };
 
 function ReviewNote({ step }: { step: NextStep }) {
   if (step.reviewNote === null) return null;
+  const warning =
+    step.reviewWarning !== null ? (
+      <p role="alert" className="mt-1 break-words text-xs font-semibold text-red-700" data-testid="next-step-review-warning">
+        {REVIEW_WARNING_LABEL[step.reviewWarning]}
+      </p>
+    ) : null;
   return (
+    <>
+    {warning}
     <p className={`mt-1 break-words text-xs ${step.reviewNote === "independent_review_recorded" ? "text-muted" : "text-ink"}`} data-testid="next-step-review-note" data-review-note={step.reviewNote}>
       {REVIEW_NOTE_LABEL[step.reviewNote]}
       {step.advisoryBotFindings > 0 ? ` ${step.advisoryBotFindings} review bot${step.advisoryBotFindings === 1 ? "" : "s"} requested changes (advisory only, not a merge condition).` : ""}
     </p>
+    </>
   );
 }
 

@@ -28,7 +28,7 @@
  * sha equal to any earlier pinned sha, state OPEN (the reader's job), a complete file list (fetched count equals
  * the PR's own changed-file count, as batchMerge requires), every required check green (SKIPPED and NEUTRAL
  * count as green, as on GitHub), merge state CLEAN, HAS_HOOKS or UNSTABLE (only non-required checks failing; the
- * click carries that note), no human reviewer's latest review at the head requesting changes, and a parent that
+ * click carries that note), no reviewer's standing CHANGES_REQUESTED at the head, and a parent that
  * is not an open pull request. Its own blockers are named before "parent not merged".
  *
  * The REVIEW is not a gate. This repository records the independent review as a note in the PR body
@@ -146,12 +146,17 @@ export interface NextStepsInput {
 export type NextStepKind = "merge" | "answer" | "run" | "wait";
 
 export type ReviewNote = "independent_review_recorded" | "not_recorded" | "changes_requested_by_human";
+export type ReviewWarning = "human_changes_requested_earlier_head";
+
+export const REVIEW_WARNING_TEXT: Record<ReviewWarning, string> = {
+  human_changes_requested_earlier_head: "A reviewer requested changes on an earlier head: confirm on the PR before merging.",
+};
 
 /** The words shown for each review note. This page does not verify the review; it only says whether one is recorded. */
 export const REVIEW_NOTE_TEXT: Record<ReviewNote, string> = {
   independent_review_recorded: "An independent review is recorded in the PR body (not verified here).",
   not_recorded: "No independent review recorded in the PR body: check the PR before merging.",
-  changes_requested_by_human: "A human reviewer's latest review at this head requests changes.",
+  changes_requested_by_human: "A reviewer's standing review at this head requests changes.",
 };
 
 export type NextStepWaitCode =
@@ -193,6 +198,8 @@ export interface NextStep {
   reviewNote: ReviewNote | null;
   /** Bot reviewers (CodeRabbit and other `[bot]` logins) whose latest review requests changes: advisory, never a wait. */
   advisoryBotFindings: number;
+  /** A reviewer's CHANGES_REQUESTED still stands from an earlier head: the step stays takeable but warns. */
+  reviewWarning: ReviewWarning | null;
   authorityBoundaries: AuthorityBoundary[];
   reason: string;
   /** Own priority rank (0 advances governance, 1 unblocks a queued Action, 2 other). */
@@ -462,25 +469,33 @@ const isBotLogin = (login: string): boolean => {
 
 /**
  * Review facts for one pull request, from GitHub reviews (chronological, as `gh` returns them):
- *  - the LATEST review per reviewer login decides that reviewer's stance (a later APPROVED or COMMENTED
- *    supersedes an earlier CHANGES_REQUESTED, as on GitHub; there is no every()-over-all-reviews);
- *  - only a HUMAN reviewer's latest review AT THE PINNED HEAD that is CHANGES_REQUESTED blocks (`changesBy`);
+ *  - a reviewer's STANCE is their latest APPROVED, CHANGES_REQUESTED or DISMISSED review. A COMMENTED (or
+ *    PENDING) review never replaces a standing CHANGES_REQUESTED: on GitHub only an approval, a new
+ *    changes-requested review or a dismissal clears it. There is no every()-over-all-reviews;
+ *  - a non-bot reviewer whose standing stance is CHANGES_REQUESTED AT THE PINNED HEAD blocks (`changesBy`); one
+ *    standing on an EARLIER head does not block but is reported in `changesEarlier` (still standing on GitHub
+ *    until dismissed), so the card can warn instead of being silent;
  *  - bot reviewers (login ends with `[bot]`, or coderabbitai) are advisory: counted in `botFindings`, never a wait.
+ *    Any other login is treated as a person, even if it looks like an automation account.
  */
-function reviewFacts(pr: NextStepsPr): { changesBy: string[]; botFindings: number } {
-  const latest = new Map<string, { verdict: string; headSha: string }>();
+function reviewFacts(pr: NextStepsPr): { changesBy: string[]; changesEarlier: string[]; botFindings: number } {
+  const STANCE_VERDICTS = new Set(["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]);
+  const stance = new Map<string, { verdict: string; headSha: string }>();
   for (const r of pr.reviews) {
     const login = typeof r.author === "string" && r.author.trim() !== "" ? r.author.trim() : "(unknown reviewer)";
-    latest.set(login, { verdict: typeof r.verdict === "string" ? r.verdict.trim().toUpperCase() : "", headSha: r.headSha });
+    const verdict = typeof r.verdict === "string" ? r.verdict.trim().toUpperCase() : "";
+    if (STANCE_VERDICTS.has(verdict)) stance.set(login, { verdict, headSha: r.headSha });
   }
   const changesBy: string[] = [];
+  const changesEarlier: string[] = [];
   let botFindings = 0;
-  for (const [login, review] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [login, review] of [...stance].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (review.verdict !== "CHANGES_REQUESTED") continue;
     if (isBotLogin(login)) botFindings += 1;
     else if (review.headSha === pr.headSha) changesBy.push(safeText(login, 40));
+    else changesEarlier.push(safeText(login, 40));
   }
-  return { changesBy, botFindings };
+  return { changesBy, changesEarlier, botFindings };
 }
 
 /**
@@ -501,7 +516,7 @@ function recordedReview(body: unknown): boolean {
 const MERGE_STATE_TEXT: Record<string, { named: string; waitingFor: string }> = {
   BLOCKED: {
     named:
-      "GitHub blocks the merge although the review and required checks read here are satisfied; a branch-protection rule this list does not read (for example a code-owner review or an unresolved conversation) is unmet. Open the pull request: GitHub names it",
+      "GitHub reports this PR as blocked. Required checks are green here and the review is not read here; a required approving review, a code-owner review or an unresolved conversation is the usual cause. Open the PR: GitHub names it",
     waitingFor: "the branch-protection requirement GitHub names on the pull request page",
   },
   BEHIND: {
@@ -573,12 +588,13 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       node.inheritedFrom !== null
         ? `Merging #${pr.number} unlocks #${node.inheritedFrom}, which ${nodes.get(node.inheritedFrom)?.phrase ?? "ranks higher"}.`
         : node.unblocks;
-    let review: { changesBy: string[]; botFindings: number };
+    let review: { changesBy: string[]; changesEarlier: string[]; botFindings: number };
     try {
       review = reviewFacts(pr);
     } catch {
-      review = { changesBy: [], botFindings: 0 };
+      review = { changesBy: [], changesEarlier: [], botFindings: 0 };
     }
+    const reviewWarning: ReviewWarning | null = review.changesEarlier.length > 0 ? "human_changes_requested_earlier_head" : null;
     const reviewNote: ReviewNote =
       review.changesBy.length > 0 ? "changes_requested_by_human" : recordedReview(pr.body) ? "independent_review_recorded" : "not_recorded";
     const base = {
@@ -593,6 +609,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       rank: node.rank,
       reviewNote,
       advisoryBotFindings: review.botFindings,
+      reviewWarning,
     };
     const wait = (code: NextStepWaitCode, reason: string, waitingFor: string, waitingOn: string | null = null): Omit<NextStep, "order"> => ({
       ...base,
@@ -645,7 +662,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       if (review.changesBy.length > 0) {
         return wait(
           "changes_requested",
-          `A human reviewer's latest review at ${short(pr.headSha)} requests changes (${review.changesBy.join(", ")}).`,
+          `A reviewer's standing review at ${short(pr.headSha)} requests changes (${review.changesBy.join(", ")}).`,
           `${review.changesBy.join(", ")} to approve or the changes to be addressed`,
         );
       }
@@ -749,6 +766,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
         rank,
         reviewNote: null,
         advisoryBotFindings: 0,
+        reviewWarning: null,
       },
     });
   }

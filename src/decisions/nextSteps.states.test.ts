@@ -196,7 +196,7 @@ describe("UNSTABLE, SKIPPED and NEUTRAL", () => {
 
   it("BLOCKED, BEHIND and UNKNOWN name their true cause and what ends it", () => {
     const blocked = run({ prs: [pr(3, { mergeStateStatus: "BLOCKED" })] }).steps[0];
-    expect(blocked.reason).toContain("branch-protection");
+    expect(blocked.reason).toContain("GitHub reports this PR as blocked");
     expect(blocked.waitingFor).toContain("branch-protection requirement");
     const behind = run({ prs: [pr(4, { mergeStateStatus: "BEHIND" })] }).steps[0];
     expect(behind.reason).toContain("behind its base branch");
@@ -287,9 +287,50 @@ describe("the review is a note, not a gate", () => {
     expect(changesLast.steps[0].waitCode).toBe("changes_requested");
   });
 
-  it("a human's CHANGES_REQUESTED on an earlier head does not block the current head", () => {
+  it("a reviewer's CHANGES_REQUESTED on an earlier head keeps the step takeable but carries a visible warning", () => {
     const r = run({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("e"), author: "pmark" }] })] });
     expect(r.state).toBe("now");
+    expect(r.nowStep?.reviewWarning).toBe("human_changes_requested_earlier_head");
+    expect(run({ prs: [pr(1)] }).nowStep?.reviewWarning).toBeNull();
+  });
+
+  it("a later COMMENTED (or PENDING) review does not replace a standing CHANGES_REQUESTED", () => {
+    const head = sha("1");
+    for (const later of ["COMMENTED", "PENDING"]) {
+      const r = run({
+        prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: head, author: "alice" }, { verdict: later, headSha: head, author: "alice" }] })],
+      });
+      expect(r.steps[0], later).toMatchObject({ kind: "wait", waitCode: "changes_requested", click: null });
+    }
+  });
+
+  it("an APPROVED or DISMISSED review clears the reviewer's CHANGES_REQUESTED; COMMENTED then APPROVED is takeable", () => {
+    const head = sha("1");
+    const approved = run({
+      prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: head, author: "alice" }, { verdict: "APPROVED", headSha: head, author: "alice" }] })],
+    });
+    expect(approved.state).toBe("now");
+    const dismissed = run({
+      prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: head, author: "alice" }, { verdict: "DISMISSED", headSha: head, author: "alice" }] })],
+    });
+    expect(dismissed.state).toBe("now");
+    expect(dismissed.nowStep?.reviewWarning).toBeNull();
+    const commentedThenApproved = run({
+      prs: [pr(1, { reviews: [{ verdict: "COMMENTED", headSha: head, author: "alice" }, { verdict: "APPROVED", headSha: head, author: "alice" }] })],
+    });
+    expect(commentedThenApproved.state).toBe("now");
+  });
+
+  it("the wait text says reviewer, not human", () => {
+    const r = run({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("1"), author: "ops-automation" }] })] });
+    expect(r.steps[0].reason).toContain("A reviewer's standing review");
+    expect(r.steps[0].reason).not.toMatch(/human/i);
+  });
+
+  it("no module text claims a review is satisfied", () => {
+    const blocked = run({ prs: [pr(1, { mergeStateStatus: "BLOCKED" })] }).steps[0];
+    expect(blocked.reason).toContain("Required checks are green here and the review is not read here");
+    expect(blocked.reason).not.toMatch(/satisfied/i);
   });
 });
 
