@@ -15,4 +15,4 @@ Retain the template metadata: title, date, type, slug, summary, resolved agent a
 
 ## Publication
 
-[Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md) governs automatic Field Notes publication: independently checked claims, the stated cadence and milestone eligibility, the operator's site and RSS only, and observable publication and unpublish paths. A requested idea draft need not meet publication eligibility yet. Record a verified delivery receipt before claiming it was posted; drafting, committing, or merging an article does not publish it.
+[Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md) governs automatic Field Notes publication: a fact-check with no blocking issue and a PR or receipt link for every claim, the stated cadence and milestone eligibility, the operator's site and RSS only, and observable publication and unpublish paths. A requested idea draft need not meet publication eligibility yet. Record a verified delivery receipt before claiming it was posted; drafting, committing, or merging an article does not publish it.
