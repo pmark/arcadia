@@ -6,7 +6,7 @@ import { TodoListView } from "../../components/todo-views";
 import { DecisionCards, DecisionRecordsUnderCards } from "../../components/decision-cards";
 import { useApprovals } from "../../hooks/use-approvals";
 import { useDecisionCards } from "../../hooks/use-decision-cards";
-import { splitLegacyDecisions } from "../../lib/decision-cards";
+import { legacyBadges, splitLegacyDecisions } from "../../lib/decision-cards";
 
 /** Everything waiting on the operator, phone-first: one column, blocking first. */
 export default function TodoPage() {
@@ -18,7 +18,7 @@ export default function TodoPage() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   return (
     <MobileShell>
-      <DecisionCards views={cards.views} refused={cards.refused} pendingId={cards.pendingId} outcomes={cards.outcomes} onPress={(view, optionId) => void cards.press(view, optionId)} />
+      <DecisionCards views={cards.views} refused={cards.refused} badges={legacyBadges(underCards)} pendingId={cards.pendingId} outcomes={cards.outcomes} onPress={(view, optionId) => void cards.press(view, optionId)} />
       <DecisionRecordsUnderCards approvals={underCards} />
       <TodoListView
         approvals={remaining}

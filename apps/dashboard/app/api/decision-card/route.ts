@@ -165,7 +165,7 @@ export async function POST(request: Request) {
           // Closes same-day edits and the window between regeneration and the writer's own read.
           expectOptions: target.optionsDigest
         });
-        return NextResponse.json({ ok: true, cardId: card.id, verb: "answer", optionId, message: `Answered ${card.id}: ${answer}.`, receipt: response.data });
+        return NextResponse.json({ ok: true, cardId: card.id, verb: "answer", optionId, message: `Answered ${card.id}.`, applied: response.data.applied });
       } catch (error) {
         const precondition =
           error instanceof ArcadiaCliError &&
@@ -174,10 +174,13 @@ export async function POST(request: Request) {
         if (precondition) {
           return refuseWith(409, "decision_precondition_failed", "The Decision was answered or edited after you were shown it. Nothing was written; reload and read it again.");
         }
-        return NextResponse.json(
-          { error: error instanceof Error ? error.message : String(error), reason: "write_refused", details: error instanceof ArcadiaCliError ? error.details : null },
-          { status: error instanceof ArcadiaCliError ? error.statusCode : 500 }
-        );
+        // Fixed codes only: the CLI's message and details can carry absolute paths, git stderr and label lists.
+        const unparsable =
+          !(error instanceof ArcadiaCliError) ||
+          (typeof error.details === "object" && error.details !== null && (error.details as { commandFailed?: unknown }).commandFailed === true);
+        return unparsable
+          ? refuseWith(502, "cli_unparsable", "The writer's answer could not be understood; check whether the Decision was answered before pressing again.")
+          : refuseWith(409, "decision_write_refused", "The Decision writer refused the answer. Nothing was confirmed written; reload and read the Decision again.");
       }
     }
     if (card.verb === "run" && target?.kind === "script") {
@@ -187,9 +190,9 @@ export async function POST(request: Request) {
       }
       const result = await startOperatorScript(target.scriptId);
       if (result.status >= 200 && result.status < 300) {
-        return NextResponse.json({ ok: true, cardId: card.id, verb: "run", optionId, message: result.message });
+        return NextResponse.json({ ok: true, cardId: card.id, verb: "run", optionId, message: `Started ${target.scriptId}.` });
       }
-      return NextResponse.json({ error: result.message, reason: "write_refused" }, { status: result.status });
+      return refuseWith(409, "script_start_refused", "The operator-script entry refused to start it. Open the Actions page to read its state.");
     }
     return refuseWith(422, "option_not_executable_here", notExecutableMessage(card, target));
   } finally {

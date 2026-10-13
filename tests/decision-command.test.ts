@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -367,7 +367,7 @@ describe("decision approve", () => {
     it("--expect-options: applies when the shared digest of the listed question and options matches", () => {
       const { workspace, projectSlug, file, ...rest } = seeded();
       const listed = runDecisionListCommand({ workspace, project: projectSlug }).data.decisions[0];
-      const digest = decisionOptionsDigest(listed.question, listed.options);
+      const digest = decisionOptionsDigest(listed.question, listed.options, { action: listed.action, project: listed.project });
       runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Hold", expectOptions: digest });
       expect(readFileSync(file, "utf8")).toContain("status: approved");
       expect(rest.updated).toBeTruthy();
@@ -376,7 +376,7 @@ describe("decision approve", () => {
     it("--expect-options: refuses a same-day edit that adds a defer effect, writing nothing, even when status and updated still match", () => {
       const { workspace, projectSlug, file, updated } = seeded();
       const listed = runDecisionListCommand({ workspace, project: projectSlug }).data.decisions[0];
-      const digest = decisionOptionsDigest(listed.question, listed.options);
+      const digest = decisionOptionsDigest(listed.question, listed.options, { action: listed.action, project: listed.project });
       const edited = readFileSync(file, "utf8").replace("    recommended: false", "    recommended: false\n    effect: defer");
       expect(edited).not.toBe(readFileSync(file, "utf8"));
       writeFileSync(file, edited, "utf8");
@@ -395,6 +395,38 @@ describe("decision approve", () => {
       expect(readFileSync(file, "utf8")).toBe(edited);
     });
 
+    it("--expect-options: refuses an edit of only the action: target, leaving updated and options untouched, writing nothing", () => {
+      const world = workspaceWithProject();
+      runDecisionNewCommand({
+        workspace: world.workspace,
+        project: world.projectSlug,
+        slug: "park-it",
+        question: "Park it?",
+        action: "act-a",
+        options: [{ label: "Park", consequence: "Parks act-a.", recommended: true, effect: "defer" }, { label: "Keep", consequence: "Keeps it." }]
+      });
+      const file = path.join(world.repoRoot, "docs/decisions/0001-park-it.md");
+      const listed = runDecisionListCommand({ workspace: world.workspace, project: world.projectSlug }).data.decisions[0];
+      expect(listed.action).toBe("act-a");
+      const digest = decisionOptionsDigest(listed.question, listed.options, { action: listed.action, project: listed.project });
+      const edited = readFileSync(file, "utf8").replace("action: act-a", "action: act-b");
+      expect(edited).not.toBe(readFileSync(file, "utf8"));
+      writeFileSync(file, edited, "utf8");
+      const error = refusal(() =>
+        runDecisionApproveCommand({
+          workspace: world.workspace,
+          project: world.projectSlug,
+          id: "0001",
+          answer: "Keep",
+          expectStatus: "open",
+          expectUpdated: listed.updated,
+          expectOptions: digest
+        })
+      );
+      expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
+      expect(readFileSync(file, "utf8")).toBe(edited);
+    });
+
     it("refuses, writing nothing, when the Decision was edited after it was shown", () => {
       const { workspace, projectSlug, file, updated } = seeded();
       const edited = readFileSync(file, "utf8").replace(`updated: ${updated}`, "updated: 2020-01-01").replace("Merge now", "Merge later");
@@ -405,6 +437,22 @@ describe("decision approve", () => {
       expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
       expect(readFileSync(file, "utf8")).toBe(edited);
     });
+  });
+
+  it("the spawned CLI forwards --expect-options and refuses a wrong digest with DECISION_PRECONDITION_FAILED, writing nothing", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "spawned", question: "Q?", options: [{ label: "Yes", consequence: "Does it." }] });
+    const file = path.join(repoRoot, "docs/decisions/0001-spawned.md");
+    const before = readFileSync(file, "utf8");
+    const cli = path.resolve(import.meta.dirname, "../src/cli.ts");
+    const run = spawnSync(
+      process.execPath,
+      ["--import", "tsx", cli, "decision", "approve", "0001", "--project", projectSlug, "--answer", "Yes", "--expect-options", "0".repeat(64), "--workspace", workspace, "--json"],
+      { encoding: "utf8", timeout: 60_000 }
+    );
+    expect(run.status).not.toBe(0);
+    expect(`${run.stdout}${run.stderr}`).toContain("DECISION_PRECONDITION_FAILED");
+    expect(readFileSync(file, "utf8")).toBe(before);
   });
 
   it("accepts an option's label as the answer, case-insensitively, and records it verbatim", () => {

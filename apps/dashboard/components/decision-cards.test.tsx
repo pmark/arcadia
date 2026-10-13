@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Approval } from "../lib/approvals";
-import { decisionCardKey, hasDuplicateOptionLabels, splitLegacyDecisions, type DecisionCardView } from "../lib/decision-cards";
-import { DecisionRecordsUnderCards } from "./decision-cards";
+import { decisionCardKey, hasDuplicateOptionLabels, legacyBadges, splitLegacyDecisions, type DecisionCardView } from "../lib/decision-cards";
+import { DecisionCards, DecisionRecordsUnderCards } from "./decision-cards";
 
 function row(project: string, id: string, extra: Partial<Approval> = {}): Approval {
   return {
@@ -49,5 +49,25 @@ describe("card id and label safety", () => {
   it("matches the writer's trim and case-fold label comparison", () => {
     expect(hasDuplicateOptionLabels(["Use 8080", " use 8080"])).toBe(true);
     expect(hasDuplicateOptionLabels(["Use 8080", "Use 9090"])).toBe(false);
+  });
+});
+
+describe("card header keeps the to-do row's blocking and stale state", () => {
+  it("shows both badges on the card itself, not only inside the collapsed record", () => {
+    const view: DecisionCardView = {
+      card: {
+        schema: "arcadia-decision-card-v1", id: "decision-k.alpha.0001", kind: "decision", what: "Answer it",
+        options: [{ id: "option-1", label: "Go", consequence: "Ships it." }], evidence: [], verb: "answer",
+        pins: { stateHash: "a".repeat(64) }, expires: "2030-01-01T00:00:00Z", policy_match: null, receipt: null
+      },
+      pressable: { "option-1": "v1|option=option-1|state=" + "a".repeat(64) },
+      notExecutableReason: null,
+      actionsHref: null,
+      duplicates: { kind: "decision", project: "alpha", id: "0001" }
+    };
+    const badges = legacyBadges([row("alpha", "0001", { blocking: true, staleReason: "answered elsewhere" })]);
+    const html = renderToStaticMarkup(<DecisionCards views={[view]} pendingId={null} outcomes={{}} onPress={() => undefined} badges={badges} />);
+    expect(html).toContain("Blocking progress");
+    expect(html).toContain("Stale: answered elsewhere");
   });
 });

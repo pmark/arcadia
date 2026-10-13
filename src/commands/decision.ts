@@ -310,7 +310,10 @@ export function prepareDecisionAnswer(
   }
 
   if (input.expectOptions !== undefined) {
-    const actual = decisionDoc === null ? null : decisionOptionsDigest(decisionDoc.question, decisionDoc.options);
+    const actual =
+      decisionDoc === null
+        ? null
+        : decisionOptionsDigest(decisionDoc.question, decisionDoc.options, { action: decisionDoc.action, project: decisionDoc.project });
     if (actual === null || actual !== input.expectOptions) {
       throw decisionPreconditionFailed(
         "The Decision's question or options changed after they were shown; nothing was written.",
@@ -664,6 +667,10 @@ export interface DecisionListItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: DecisionOptionDoc[];
+  /** The Action a `defer` option would park, from the Decision's `action:`; null when it names none. */
+  action: string | null;
+  /** The Decision's own `project:` field (the deferral uses this one). */
+  project: string;
   relativePath: string;
   updated: string;
 }
@@ -706,6 +713,8 @@ export function runDecisionListCommand(options: DecisionListOptions): CommandSuc
           gateQuestion: decision.gateQuestion,
           recommendation: decision.recommendation,
           options: decision.options,
+          action: decision.action,
+          project: decision.project,
           relativePath: decision.relativePath,
           updated: decision.updated
         });

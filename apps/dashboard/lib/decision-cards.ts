@@ -37,7 +37,9 @@ export type CardPressRefusalReason =
   | "descriptor_changed"
   | "next_action_unknown"
   | "decision_precondition_failed"
-  | "write_refused";
+  | "decision_write_refused"
+  | "script_start_refused"
+  | "cli_unparsable";
 
 export interface CardPressRefusal {
   ok: false;
@@ -265,6 +267,22 @@ export function toCardViews(cards: ReadonlyArray<DecisionCard>, targets: Readonl
  * and gate information intact); every other row, including a Decision whose card is stale, refused or unavailable,
  * stays in the list exactly as before.
  */
+export interface LegacyBadges {
+  blocking: boolean;
+  staleReason: string | null;
+}
+
+/** Blocking and stale state of the to-do rows folded under cards, keyed `project:id`, for the card header. */
+export function legacyBadges(
+  approvals: ReadonlyArray<{ project: string; id: string; blocking?: boolean; staleReason?: string | null }>
+): Record<string, LegacyBadges> {
+  const out: Record<string, LegacyBadges> = {};
+  for (const approval of approvals) {
+    out[`${approval.project}:${approval.id}`] = { blocking: approval.blocking === true, staleReason: approval.staleReason ?? null };
+  }
+  return out;
+}
+
 export function splitLegacyDecisions<T extends { kind: string; project: string; id: string }>(
   approvals: ReadonlyArray<T>,
   views: ReadonlyArray<Pick<DecisionCardView, "duplicates" | "pressable">>

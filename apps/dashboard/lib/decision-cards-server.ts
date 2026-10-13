@@ -98,6 +98,18 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
       const key = decisionCardKey(decision.projectSlug, decision.id);
       const cardId = `decision-${key}`;
       const labels = decision.options.map((option) => option.label);
+      const hasDefer = decision.options.some((option) => option.effect === "defer");
+      const actionId = typeof decision.action === "string" && decision.action.trim() !== "" ? decision.action : null;
+      const deferProject = decision.project ?? decision.projectSlug;
+      if (hasDefer && actionId === null) {
+        // The writer would refuse this on press; never offer a defer option that has no Action to park.
+        refused.push({
+          id: cardId,
+          reason: "defer_without_action",
+          message: `Decision ${decision.projectSlug}/${decision.id} has a defer option but names no action, so no card button is offered.`
+        });
+        continue;
+      }
       if (hasDuplicateOptionLabels(labels)) {
         // The writer answers with the FIRST label equal after trim and case-fold; a repeat could record the wrong option.
         refused.push({
@@ -116,7 +128,9 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
           // The effect is passed through unchanged: the card renders and pins it, and the generator refuses unknown ones.
           options: decision.options.map((option) => ({
             label: option.label,
-            consequence: option.consequence,
+            // A defer option applies its effect to the Decision's own `action` in its own `project`; show that target
+            // in the consequence (which is pinned). The generator refuses over-long text rather than truncating.
+            consequence: option.effect === "defer" ? `${option.consequence} Parks ${deferProject}/${actionId}.` : option.consequence,
             recommended: option.recommended,
             effect: (option.effect ?? null) as DecisionOptionEffect | null
           })),
@@ -133,7 +147,8 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
         // The same function the writer uses, over the question and options exactly as they were read for this card.
         optionsDigest: decisionOptionsDigest(
           decision.question,
-          decision.options.map((option) => ({ label: option.label, consequence: option.consequence, effect: option.effect ?? null }))
+          decision.options.map((option) => ({ label: option.label, consequence: option.consequence, effect: option.effect ?? null })),
+          { action: decision.action ?? null, project: decision.project ?? null }
         )
       });
     }

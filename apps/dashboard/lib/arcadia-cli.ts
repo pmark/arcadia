@@ -380,6 +380,9 @@ export interface OpenDecisionItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: OpenDecisionOption[];
+  /** The Action a `defer` option parks, and the project field the deferral uses; both pinned by the options digest. */
+  action?: string | null;
+  project?: string | null;
   relativePath: string;
   updated: string;
 }

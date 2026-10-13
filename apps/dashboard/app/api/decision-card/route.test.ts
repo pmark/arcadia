@@ -14,6 +14,8 @@ interface MockDecision {
   options: Array<{ label: string; consequence: string; recommended: boolean; effect?: string | null }>;
   relativePath: string;
   updated: string;
+  action?: string | null;
+  project?: string | null;
 }
 interface MockScript {
   id: string;
@@ -413,6 +415,8 @@ describe("decision cards end to end", () => {
   it("N1a: an option's effect is passed through, rendered, pinned and handed to the writer's digest", async () => {
     const plain = (await views()).find((v) => v.card.verb === "answer")!;
     const withEffect = decision({
+      action: "act-1",
+      project: "alpha",
       options: [
         { label: "Use 8080", consequence: "The service binds 8080 on the next restart.", recommended: true, effect: "defer" },
         { label: "Use 9090", consequence: "The service binds 9090 on the next restart.", recommended: false }
@@ -421,6 +425,8 @@ describe("decision cards end to end", () => {
     world.decisions = [withEffect];
     const deferred = (await views()).find((v) => v.card.verb === "answer")!;
     expect(deferred.card.options[0].consequence).toContain("[effect: defer]");
+    expect(deferred.card.options[0].consequence).toContain("Parks alpha/act-1.");
+    expect(deferred.card.options[1].consequence).not.toContain("Parks");
     expect(plain.card.options[0].consequence).not.toContain("[effect:");
     expect(deferred.card.pins.stateHash).not.toBe(plain.card.pins.stateHash);
     const html = renderToStaticMarkup(createElement(DecisionCards, { views: [deferred], pendingId: null, outcomes: {}, onPress: () => undefined }));
@@ -432,7 +438,7 @@ describe("decision cards end to end", () => {
         expectOptions: decisionOptionsDigest(withEffect.question, [
           { label: "Use 8080", consequence: "The service binds 8080 on the next restart.", effect: "defer" },
           { label: "Use 9090", consequence: "The service binds 9090 on the next restart.", effect: null }
-        ])
+        ], { action: "act-1", project: "alpha" })
       })
     );
   });
@@ -484,6 +490,68 @@ describe("decision cards end to end", () => {
     expect(refusedUnknown.status).toBe(409);
     expect(await refusedUnknown.json()).toMatchObject({ reason: "next_action_unknown" });
     expect(world.launch).not.toHaveBeenCalled();
+  });
+
+  it("B1: a defer option on a Decision with no action is refused visibly, never offered", async () => {
+    world.decisions = [decision({ options: [{ label: "Park it", consequence: "Parks.", recommended: true, effect: "defer" }] })];
+    const response = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Host: "localhost:3000" } }));
+    const body = (await response.json()) as { cards: DecisionCardView[]; refused: Array<{ reason: string }> };
+    expect(body.cards.filter((v) => v.card.verb === "answer")).toHaveLength(0);
+    expect(body.refused).toContainEqual(expect.objectContaining({ reason: "defer_without_action" }));
+  });
+
+  it("B1: the action id is part of the card's pinned state and of the digest handed to the writer", async () => {
+    const options = [{ label: "Park it", consequence: "Parks.", recommended: true, effect: "defer" }];
+    world.decisions = [decision({ options, action: "act-a", project: "alpha" })];
+    const first = (await views()).find((v) => v.card.verb === "answer")!;
+    world.decisions = [decision({ options, action: "act-b", project: "alpha" })];
+    const second = (await views()).find((v) => v.card.verb === "answer")!;
+    expect(second.card.options[0].consequence).toContain("Parks alpha/act-b.");
+    expect(second.card.pins.stateHash).not.toBe(first.card.pins.stateHash);
+    const stale = await POST(post({ cardId: first.card.id, fingerprint: first.pressable["option-1"] }));
+    expect(stale.status).toBe(409);
+    expect(world.approve).not.toHaveBeenCalled();
+  });
+
+  it("N3: a grant that IS the derived next action has no button and its press is refused", async () => {
+    world.scripts = [prereq(), script({ id: "grant-next", title: "Grant next", kind: "grant", nextAfter: { id: "prereq-check", within_minutes: 60 } })];
+    const grant = (await views()).find((v) => v.card.id === "script-grant-next")!;
+    expect(Object.keys(grant.pressable)).toEqual([]);
+    const html = renderToStaticMarkup(createElement(DecisionCards, { views: [grant], pendingId: null, outcomes: {}, onPress: () => undefined, verbs: ["run"] }));
+    expect(html).not.toContain("<button");
+    const press = await POST(post({ cardId: grant.card.id, fingerprint: optionFingerprint(grant.card, "run") }));
+    expect(press.status).toBe(409);
+    expect(world.launch).not.toHaveBeenCalled();
+  });
+
+  it("N4: writer and launcher failures return fixed reason codes, never raw messages, paths or details", async () => {
+    const answer = (await views()).find((v) => v.card.verb === "answer")!;
+    const secret = "/Users/pmark/Dev/MR/Arcadia/arcadia/docs/decisions/0042.md fatal: git stderr";
+    world.approve.mockImplementation(async () => {
+      throw new ArcadiaCliError(`VALIDATION_ERROR: ${secret}`, 400, { labels: ["Use 8080"], path: secret });
+    });
+    const refused = await POST(post({ cardId: answer.card.id, fingerprint: answer.pressable["option-1"] }));
+    const refusedText = await refused.text();
+    expect(refused.status).toBe(409);
+    expect(refusedText).toContain("decision_write_refused");
+    expect(refusedText).not.toContain("/Users/pmark");
+    expect(refusedText).not.toContain("git stderr");
+    expect(refusedText).not.toContain("Use 8080\"]");
+
+    world.approve.mockImplementation(async () => {
+      throw new ArcadiaCliError(secret, 500, { commandFailed: true, exitCode: 1 });
+    });
+    const unparsable = await POST(post({ cardId: answer.card.id, fingerprint: answer.pressable["option-1"] }));
+    const unparsableText = await unparsable.text();
+    expect(unparsableText).toContain("cli_unparsable");
+    expect(unparsableText).not.toContain("/Users/pmark");
+
+    const run = (await views()).find((v) => v.card.id === "script-rotate-logs")!;
+    world.launch.mockImplementation(async () => Response.json({ error: `${secret} already running` }, { status: 409 }));
+    const launch = await POST(post({ cardId: run.card.id, fingerprint: run.pressable.run }));
+    const launchText = await launch.text();
+    expect(launchText).toContain("script_start_refused");
+    expect(launchText).not.toContain("/Users/pmark");
   });
 
   it("renders hostile card text as text, and a non-web evidence url as inert text", () => {
