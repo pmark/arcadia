@@ -30,6 +30,8 @@ describe("renderActionBrief", () => {
       baseRevision: head(repo)
     });
 
+    expect(brief).toContain("Role: lead");
+    expect(brief).toContain("grants no authority, claim, admission or second writer");
     expect(brief).toContain("Project: test-project");
     expect(brief).toContain("Plan: copy-proof — docs/plans/copy-proof.md");
     expect(brief).toContain("Action: define-contract");

@@ -151,6 +151,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
     expect(found.sort()).toEqual([
       "advance --repo",
       "assess-blast-radius --repo",
+      "brief --repo",
       "close --repo",
       "code-review --repo",
       "configure --repo-path",
