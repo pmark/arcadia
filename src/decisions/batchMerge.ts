@@ -142,25 +142,37 @@ const PRODUCTION_POLICY_RE = /production[-_]?polic/;
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060\ufeff]/;
 
 /**
+ * The path normaliser the classifier matches on, case preserved: NFKC, backslash
+ * to slash, empty and `.` segments dropped. Null when the path cannot be safely
+ * reduced (non-string, empty, control or non-ASCII characters, absolute, drive
+ * letter, `..`, padded or dot/space-terminated segments).
+ */
+export function normalizeAuthorityPath(input: unknown): string | null {
+  if (typeof input !== "string" || input === "") return null;
+  const raw = input.normalize("NFKC");
+  if (CONTROL_RE.test(raw) || /[^\x20-\x7e]/.test(raw)) return null;
+  if (raw.startsWith("/") || /^[a-zA-Z]:/.test(raw)) return null;
+  const segments: string[] = [];
+  for (const segment of raw.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") return null;
+    if (segment !== segment.trim() || /[. ]$/.test(segment)) return null;
+    segments.push(segment);
+  }
+  return segments.length === 0 ? null : segments.join("/");
+}
+
+/**
  * Classify one repository path. Fails closed: anything that cannot be reduced
  * to a plain, ASCII, traversal-free relative path is `unclassifiable_path`.
  * Matching is case-insensitive after NFKC, backslash and `./` normalisation.
  */
 export function classifyAuthorityPath(input: unknown): AuthorityBoundary[] {
-  if (typeof input !== "string" || input === "") return ["unclassifiable_path"];
+  const normalized = normalizeAuthorityPath(input);
+  if (normalized === null) return ["unclassifiable_path"];
   const found = new Set<AuthorityBoundary>();
-  const raw = input.normalize("NFKC");
-  if (CONTROL_RE.test(raw) || /[^\x20-\x7e]/.test(raw)) return ["unclassifiable_path"];
-  if (raw.startsWith("/") || /^[a-zA-Z]:/.test(raw)) return ["unclassifiable_path"];
-  const segments: string[] = [];
-  for (const segment of raw.replace(/\\/g, "/").split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") return ["unclassifiable_path"];
-    if (segment !== segment.trim() || /[. ]$/.test(segment)) return ["unclassifiable_path"];
-    segments.push(segment.toLowerCase());
-  }
-  if (segments.length === 0) return ["unclassifiable_path"];
-  const path = segments.join("/");
+  const path = normalized.toLowerCase();
+  const segments = path.split("/");
   const exact = EXACT[path];
   if (exact) found.add(exact);
   for (const [prefix, boundary] of PREFIXES) {

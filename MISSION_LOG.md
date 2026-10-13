@@ -2435,3 +2435,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Each listed pull request shows the authority boundary its diff touches from a path-based classifier, the independent review verdict, the required checks and a one-sentence consequence, and the card orders stacked pull requests base first.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/wire-the-batch-merge-card-route, arcadia/publish-the-batch-merge-descriptor-and immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-batch-merge-decision-card-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/cards-from-existing-sources
+
+- **Did:** Completed Action arcadia/cards-from-existing-sources from accepted evidence (Candidate 0422ed36f9e52565c10c8328e61f9acc197fc81c).
+- **Result:** Every declared acceptance criterion was accepted as met: "Each of the three sources yields a valid decision card and the generator never mutates a Decision, script or PR."; "A pull request card names which authority boundary the diff touches using a path-based classifier with a documented list."; "The pinned fingerprint on a card changes when its source state changes."; "Focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-cards-from-existing-sources-2026-10-13).

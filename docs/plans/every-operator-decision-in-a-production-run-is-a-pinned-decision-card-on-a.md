@@ -30,10 +30,10 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
   - id: cards-from-existing-sources
     title: Implement card generation from open Decisions, operator-script descriptors and pull requests that need the operator, as a read-only module with fixtures.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement card generation from open Decisions, operator-script descriptors and pull requests that need the operator, as a read-only module with fixtures.
+    next_action: Completed via Agent Ask complete-cards-from-existing-sources-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask cards-from-existing-sources
     clarification: clarified
     confidence: high
@@ -249,7 +249,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: cards-from-existing-sources
+current_action: todo-actions-render-cards
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
