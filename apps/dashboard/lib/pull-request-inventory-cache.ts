@@ -19,6 +19,8 @@ interface CachedInventory {
 
 interface PullRequestInventoryCacheOptions {
   load: () => Promise<DashboardOutstandingPullRequests>;
+  persistence?: { read: () => Promise<PullRequestInventoryState | null>; write: (inventory: PullRequestInventoryState) => Promise<void> };
+  refreshTimeoutMs?: number;
   now?: () => number;
   freshForMs?: number;
   retryAfterMs?: number;
@@ -29,6 +31,8 @@ const DEFAULT_RETRY_AFTER_MS = 30_000;
 
 export function createPullRequestInventoryCache({
   load,
+  persistence,
+  refreshTimeoutMs = 65_000,
   now = Date.now,
   freshForMs = DEFAULT_FRESH_FOR_MS,
   retryAfterMs = DEFAULT_RETRY_AFTER_MS
@@ -37,13 +41,28 @@ export function createPullRequestInventoryCache({
   let refreshPromise: Promise<void> | null = null;
   let refreshError: string | null = null;
   let lastRefreshStartedAt = 0;
+  let restored = false;
+  let initialization: Promise<void> | null = null;
+  function initialize(): Promise<void> {
+    initialization ??= (async () => {
+      try {
+        const saved = await persistence?.read();
+        if (saved) { cached = saved; restored = true; }
+      } catch { /* Cache IO never makes inventory unavailable. */ }
+    })();
+    return initialization;
+  }
 
   function startRefresh(): Promise<void> {
     if (refreshPromise) return refreshPromise;
 
     lastRefreshStartedAt = now();
-    refreshPromise = load()
-      .then((snapshot) => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error("The inventory refresh exceeded its deadline. Prior cards remain available.")), refreshTimeoutMs);
+    });
+    refreshPromise = Promise.race([(async () => load())(), deadline])
+      .then(async (snapshot) => {
         const merged = mergePartialSnapshot(cached?.snapshot ?? null, snapshot);
         cached = {
           snapshot: merged.snapshot,
@@ -52,12 +71,16 @@ export function createPullRequestInventoryCache({
           retainedProjectIds: merged.retainedProjectIds
         };
         refreshError = null;
+        restored = false;
+        const current = state();
+        if (current) { try { await persistence?.write(current); } catch { /* Live cards remain usable. */ } }
       })
       .catch((error: unknown) => {
         refreshError = error instanceof Error ? error.message : String(error);
         if (!cached) throw error;
       })
       .finally(() => {
+        clearTimeout(timeout);
         refreshPromise = null;
       });
 
@@ -72,13 +95,14 @@ export function createPullRequestInventoryCache({
     const ageMs = Math.max(0, now() - Date.parse(cached.checkedAt));
     return {
       ...cached,
-      stale: ageMs >= freshForMs || cached.incomplete || refreshError !== null,
+      stale: restored || ageMs >= freshForMs || cached.incomplete || refreshError !== null,
       refreshing: refreshPromise !== null,
       refreshError
     };
   }
 
   async function read({ refresh = false }: { refresh?: boolean } = {}): Promise<PullRequestInventoryState> {
+    if (persistence) await initialize();
     const current = state();
     if (!current) {
       await startRefresh();
@@ -89,11 +113,16 @@ export function createPullRequestInventoryCache({
 
     const ageMs = Math.max(0, now() - Date.parse(current.checkedAt));
     const retryReady = refreshError === null || now() - lastRefreshStartedAt >= retryAfterMs;
-    if (refresh || (ageMs >= freshForMs && retryReady)) void startRefresh();
+    if (refresh || ((restored || ageMs >= freshForMs) && retryReady)) void startRefresh();
     return state() ?? current;
   }
 
-  return { read };
+  async function warm(): Promise<PullRequestInventoryState | null> {
+    await initialize();
+    void startRefresh();
+    return state();
+  }
+  return { read, warm };
 }
 
 function mergePartialSnapshot(

@@ -482,18 +482,22 @@ export interface OutstandingPullRequestsResponse {
 
 type ConfiguredPullRequestRepository = { repository: string; repositoryPath: string };
 let pullRequestRepositories: { expiresAt: number; entries: ConfiguredPullRequestRepository[] } | null = null;
-let outstandingPullRequestsInFlight: Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> | null = null;
+const outstandingPullRequestsInFlight = new Map<string, Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>>>();
 
-export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
-  if (outstandingPullRequestsInFlight) return outstandingPullRequestsInFlight;
-  outstandingPullRequestsInFlight = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--lightweight"]).then(response => {
-    pullRequestRepositories = {
+export async function loadOutstandingPullRequests(options: { workspace?: string; scopeIdentity?: string } = {}): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
+  // A changed checkout/config/database identity must never join the prior scan.
+  const key = JSON.stringify([options.workspace ?? null, options.scopeIdentity ?? null]);
+  const pending = outstandingPullRequestsInFlight.get(key);
+  if (pending) return pending;
+  const request = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--lightweight", ...(options.workspace ? ["--workspace", options.workspace] : [])]).then(response => {
+    if (!options.workspace) pullRequestRepositories = {
       expiresAt: Date.now() + 5 * 60_000,
       entries: (response.data.snapshot.repositories ?? response.data.snapshot.pullRequests).map(entry => ({ repository: entry.repository, repositoryPath: entry.repositoryPath })),
     };
     return response;
-  }).finally(() => { outstandingPullRequestsInFlight = null; });
-  return outstandingPullRequestsInFlight;
+  }).finally(() => { outstandingPullRequestsInFlight.delete(key); });
+  outstandingPullRequestsInFlight.set(key, request);
+  return request;
 }
 
 export interface ProjectContinuationResponse {
@@ -1596,7 +1600,7 @@ async function runArcadiaCliJson<TData>(
   }
 }
 
-function findRepoRoot(start: string): string {
+export function findRepoRoot(start: string): string {
   let current = path.resolve(start);
 
   while (true) {

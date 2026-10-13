@@ -95,13 +95,16 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart dashboa
     chmodSync(curl, 0o755);
     const result = runRestart(impl, "1", { ARCADIA_DASHBOARD_WARM: "1", ARCADIA_DASHBOARD_URL: "http://dash.test" });
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain("PR routes warmed; inventory may still be refreshing");
     // The warm-up is detached; give it a moment to finish.
     let lines: string[] = [];
-    for (let i = 0; i < 50 && lines.length < 6; i += 1) {
+    for (let i = 0; i < 50 && lines.length < 8; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
       lines = existsSync(warmed) ? readFileSync(warmed, "utf8").trim().split("\n") : [];
     }
     expect(lines).toEqual([
+      "http://dash.test/admin/pull-requests",
+      "http://dash.test/api/pull-requests?warm=1",
       "http://dash.test/",
       "http://dash.test/production",
       "http://dash.test/api/production-console?part=core",
@@ -110,6 +113,15 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart dashboa
       "http://dash.test/api/plans"
     ]);
   });
+  it("reports incomplete PR warming without rolling back successful health checks", () => {
+    const { impl } = stubImpl(0);
+    const curl = path.join(path.dirname(impl), "curl");
+    writeFileSync(curl, '#!/usr/bin/env bash\nexit 22\n'); chmodSync(curl, 0o755);
+    const result = runRestart(impl, "1", { ARCADIA_DASHBOARD_WARM: "1", ARCADIA_READY_DEADLINE: "1", ARCADIA_DASHBOARD_URL: "http://dash.test" });
+    expect(result.status).toBe(0); expect(result.stdout).toContain("PR route warmup incomplete");
+    expect(result.stderr).toContain("warning: PR route warmup incomplete");
+  });
+
 });
 
 describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart implementation pin", () => {
