@@ -19,3 +19,9 @@ Implementer: six focused files, 29 tests passed; touched-file ESLint, core TypeS
 ## Retrieved guidance
 
 CONSTITUTION.md; PROJECT.md and exact todo-actions-render-cards Action; .arcadia/AGENT_CONTEXT_POLICY.md, repo-context.md, context-policy.json; docs/agent-guidance/index.json; continuation, operator-directed-work, learning, principles, native-app-sessions, session-roles-and-briefs, git-identity, pull-requests, operator-actions and rehearsal-freeze-window procedures; relevant Arcadia repository Orientation/Semantics/PR QA/Working-Copy sections; docs/AGENT_ORIENTATION.md Intelligence section; targeted notes-to-self cache/dashboard/timeout entries; arcadia-guardrail, arcadia-role and web-perf skills. Work monitor was rerun before edits. No other candidate was modified.
+
+## Independent review R1 and repair
+
+R1 on 99322225c976af5747edf5e6f1f0e8c1db89abf4 found one blocking P2: array-container checks admitted null cards and invalid dates from session storage, causing page crashes before network recovery. Lead reproduced the null-card failure. The implementer added field validation against the existing Dashboard type contract. Twenty-one adversarial cases failed before repair and pass afterward. Final focused replay: six files / 50 tests; delta ESLint, dashboard build and diff integrity passed. A real 13-card API fixture remains readable as stale display data. R2 exact-head review and CI follow. Primary reflog remained unchanged during R1.
+
+Loaded instruction sizes (UTF-8 bytes; current candidate): CONSTITUTION.md: 3320, PROJECT.md: 31542, docs/agent-guidance/index.json: 7623, docs/agent-guidance/pull-requests.md: 17585, docs/agent-guidance/native-app-sessions.md: 8101, docs/agent-guidance/session-roles-and-briefs.md: 5343, docs/agent-guidance/git-identity.md: 5248, docs/agent-guidance/operator-directed-work.md: 4494, .agents/skills/arcadia-role/SKILL.md: 7277, .agents/skills/arcadia-guardrail/SKILL.md: 5565.

@@ -64,11 +64,23 @@ describe("pull-request inventory request coordinator", () => {
 
 describe("remembered pull-request inventory", () => {
   const now = Date.parse("2026-10-13T12:00:00Z");
-  const inventory = {
-    snapshot: { counts: { total: 1 }, pullRequests: [], errors: [] },
+  const inventory: PullRequestInventoryState = {
+    snapshot: {
+      generatedAt: new Date(now - 1000).toISOString(), projectsScanned: 1,
+      counts: { total: 1, blocked: 0, checksFailing: 0, checksPending: 0, drafts: 0, ready: 1, mergeReady: 0, unknown: 0 },
+      pullRequests: [{
+        projectId: "project", projectName: "Project", repositoryPath: "/repo", repository: "owner/repo",
+        number: 1, title: "A PR", url: "https://github.com/owner/repo/pull/1", state: "OPEN", isDraft: false,
+        mergeStateStatus: null, headBranch: "candidate", baseBranch: "main", author: null, reviewDecision: null,
+        createdAt: null, updatedAt: new Date(now - 1000).toISOString(), checks: [], readiness: "ready",
+        readinessLabel: "Ready", summary: "Ready for review", briefing: {
+          changedFiles: [], unmentionedFiles: [], decisionFiles: [], materialFacts: [], basePullRequest: null
+        }
+      }], errors: []
+    },
     checkedAt: new Date(now - 1000).toISOString(), retainedProjectIds: [],
     incomplete: false, stale: false, refreshing: false, refreshError: null
-  } as unknown as PullRequestInventoryState;
+  };
 
   it("restores cards across a new page instance or reload as stale display evidence", () => {
     const values = new Map<string, string>();
@@ -89,4 +101,34 @@ describe("remembered pull-request inventory", () => {
     expect(readRememberedInventory({ getItem: () => { throw new Error("disabled"); } }, now)).toBeNull();
     expect(() => rememberInventory({ setItem: () => { throw new Error("full"); } }, inventory)).not.toThrow();
   });
+
+  const card = inventory.snapshot.pullRequests[0];
+  const withCard = (changes: Record<string, unknown>) => ({ pullRequests: [{ ...card, ...changes }] });
+  it.each([
+    ["null card", { pullRequests: [null] }],
+    ["incomplete card", { pullRequests: [{}] }],
+    ["null error", { errors: [null] }],
+    ["non-text error", { errors: [{ projectId: "project", projectName: {}, message: "error", repositoryPath: null }] }],
+    ["missing count", { counts: { total: 1 } }],
+    ["non-numeric count", { counts: { ...inventory.snapshot.counts, total: "1" } }],
+    ["negative count", { counts: { ...inventory.snapshot.counts, ready: -1 } }],
+    ["non-numeric project count", { projectsScanned: null }],
+    ["invalid generated date", { generatedAt: "not a date" }],
+    ["invalid update date", withCard({ updatedAt: "not a date" })],
+    ["non-text update date", withCard({ updatedAt: {} })],
+    ["invalid creation date", withCard({ createdAt: "not a date" })],
+    ["non-text review", withCard({ reviewDecision: {} })],
+    ["non-text title", withCard({ title: {} })],
+    ["null check", withCard({ checks: [null] })],
+    ["non-text conclusion", withCard({ checks: [{ name: "CI", status: null, conclusion: {}, url: null }] })],
+    ["incomplete briefing", withCard({ briefing: {} })],
+    ["null briefing fact", withCard({ briefing: { ...card.briefing, materialFacts: [null] } })],
+    ["non-text briefing path", withCard({ briefing: { ...card.briefing, changedFiles: [{}] } })],
+    ["invalid base PR", withCard({ briefing: { ...card.briefing, basePullRequest: { number: null, title: "Base", headBranch: "base" } } })],
+    ["null repository", { repositories: [null] }]
+  ])("rejects %s before remembered cards can reach the renderer", (_name, changes) => {
+    const value = { ...inventory, snapshot: { ...inventory.snapshot, ...changes } };
+    expect(readRememberedInventory({ getItem: () => JSON.stringify(value) }, now)).toBeNull();
+  });
+
 });

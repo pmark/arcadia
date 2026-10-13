@@ -17,10 +17,10 @@ describe("inventory return visits", () => {
   it("shows remembered cards before a delayed server check and does not force another scan", async () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-    const inventory = {
-      snapshot: { counts: { total: 1 }, pullRequests: [], errors: [] }, checkedAt: new Date().toISOString(),
+    const inventory: PullRequestInventoryState = {
+      snapshot: { generatedAt: new Date().toISOString(), projectsScanned: 1, counts: { total: 0, blocked: 0, checksFailing: 0, checksPending: 0, drafts: 0, ready: 0, mergeReady: 0, unknown: 0 }, pullRequests: [], errors: [] }, checkedAt: new Date().toISOString(),
       retainedProjectIds: [], incomplete: false, stale: false, refreshing: false, refreshError: null
-    } as unknown as PullRequestInventoryState;
+    };
     rememberInventory(storage, inventory);
     vi.stubGlobal("window", { sessionStorage: storage });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
