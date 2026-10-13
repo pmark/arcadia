@@ -49,10 +49,10 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
   - id: todo-actions-render-cards
     title: Implement /todo and /actions rendering of decision cards with the consequence and evidence visible and one verb button that posts only the pinned fingerprint.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement /todo and /actions rendering of decision cards with the consequence and evidence visible and one verb button that posts only the pinned fingerprint.
+    next_action: Completed via Agent Ask complete-todo-actions-render-cards-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask todo-actions-render-cards
     clarification: clarified
     confidence: high
@@ -267,7 +267,7 @@ actions:
     references: ["src/decisions/cardSources.ts", "src/decisions/batchMerge.ts", "src/commands/todo.ts", "docs/strategy/autonomous-production-strategy.md"]
 questions: []
 decisions: []
-current_action: todo-actions-render-cards
+current_action: todo-next-steps-route-to-forward
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---

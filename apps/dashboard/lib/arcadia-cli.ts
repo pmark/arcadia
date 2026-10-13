@@ -366,6 +366,8 @@ export interface OpenDecisionOption {
   label: string;
   consequence: string;
   recommended: boolean;
+  /** The machine effect the writer applies when this option is chosen (e.g. "defer"); null or absent when none. Unknown values are kept as-is. */
+  effect?: string | null;
 }
 
 export interface OpenDecisionItem {
@@ -378,6 +380,9 @@ export interface OpenDecisionItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: OpenDecisionOption[];
+  /** The Action a `defer` option parks, and the project field the deferral uses; both pinned by the options digest. */
+  action?: string | null;
+  project?: string | null;
   relativePath: string;
   updated: string;
 }
@@ -452,11 +457,22 @@ export async function approveDecision(input: {
   projectSlug: string;
   decisionId: string;
   answer: string;
+  /** Writer preconditions: refused with nothing written unless the Decision still has this status / updated value. */
+  expectStatus?: string;
+  expectUpdated?: string;
+  /** sha256 of the question and options as shown (src/decisions/optionsDigest.ts); the writer refuses on mismatch. */
+  expectOptions?: string;
+  /** The writer refuses (defer_would_move_pointer) when applying the answer would move the active pointer. */
+  expectNoPointerMove?: boolean;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
     "--project", input.projectSlug,
-    "--answer", input.answer
+    "--answer", input.answer,
+    ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
+    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : []),
+    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : []),
+    ...(input.expectNoPointerMove === true ? ["--expect-no-pointer-move"] : [])
   ], { timeoutMs: 60_000 });
 }
 

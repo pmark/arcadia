@@ -2442,3 +2442,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Each of the three sources yields a valid decision card and the generator never mutates a Decision, script or PR."; "A pull request card names which authority boundary the diff touches using a path-based classifier with a documented list."; "The pinned fingerprint on a card changes when its source state changes."; "Focused tests pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-cards-from-existing-sources-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/todo-actions-render-cards
+
+- **Did:** Completed Action arcadia/todo-actions-render-cards from accepted evidence (Candidate e871367ba2b518cc06e4e732c876a8d61e52d859).
+- **Result:** Every declared acceptance criterion was accepted as met: "A card shows its consequence and evidence links on /todo or /actions and one verb button."; "The button request carries only the card id and pinned fingerprint and a stale card shows a refusal with the reason."; "An end-to-end dashboard test covers a run card and an answer card and the dashboard build passes."; "Existing /todo and /actions behaviour is unchanged for items with no card.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-todo-actions-render-cards-2026-10-13).

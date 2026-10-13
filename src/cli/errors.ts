@@ -39,6 +39,7 @@ export type ArcadiaErrorCode =
   | "LEAK_CHECK_UNVERIFIABLE"
   | "PRODUCTION_ACTIVE_FREEZE"
   | "PRODUCTION_FREEZE_UNVERIFIED"
+  | "DECISION_PRECONDITION_FAILED"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -67,6 +68,11 @@ export function usageError(message: string, details: ArcadiaErrorDetails = {}): 
 
 export function validationError(message: string, details: ArcadiaErrorDetails = {}): ArcadiaError {
   return new ArcadiaError("VALIDATION_ERROR", message, 2, details);
+}
+
+/** A caller-supplied expectation about a Decision no longer holds; nothing was written. */
+export function decisionPreconditionFailed(message: string, details: ArcadiaErrorDetails = {}): ArcadiaError {
+  return new ArcadiaError("DECISION_PRECONDITION_FAILED", message, 2, { reason: "decision_precondition_failed", ...details });
 }
 
 export function workspaceNotFound(workspace: string): ArcadiaError {
