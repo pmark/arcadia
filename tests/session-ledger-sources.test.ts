@@ -1,11 +1,11 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkFrozenRecords } from "../src/reports/frozenRecords.js";
 import {
-  combineSessionLedger, readSessionLedger, validateFrictionFiles, validateHandoffFiles,
+  combineSessionLedger, readFrictionFiles, readSessionLedger, tailLedger, validateFrictionFiles, validateHandoffFiles,
 } from "../src/reports/sessionLedgerSource.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -100,9 +100,16 @@ describe("two branches adding records merge without conflict", () => {
   const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
   const commitAll = (cwd: string, msg: string) => { git(cwd, "add", "-A"); execFileSync("git", ["commit", "-qm", msg], { cwd, env }); };
   const put = (cwd: string, rel: string, content: string) => { mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true }); writeFileSync(path.join(cwd, rel), content); };
-  const merges = (cwd: string, a: string, b: string): boolean => {
-    try { git(cwd, "merge-tree", "--write-tree", a, b); return true; } catch { return false; }
+  const mergeTree = (cwd: string, a: string, b: string) => {
+    const r = spawnSync("git", ["merge-tree", "--write-tree", a, b], { cwd, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}` };
   };
+  it("precondition: git supports merge-tree --write-tree (2.38+)", () => {
+    const version = execFileSync("git", ["--version"], { encoding: "utf8" }).trim();
+    const m = /(\d+)\.(\d+)/.exec(version);
+    const ok = m !== null && (Number(m[1]) > 2 || (Number(m[1]) === 2 && Number(m[2]) >= 38));
+    expect(ok, `${version}: merge-tree --write-tree needs git >= 2.38; upgrade git so the merge proof can run`).toBe(true);
+  });
   function scratch() {
     const dir = mkdtempSync(path.join(tmpdir(), "merge-proof-"));
     git(dir, "init", "-q", "-b", "main");
@@ -127,8 +134,11 @@ describe("two branches adding records merge without conflict", () => {
     try {
       branch(dir, "one", "files");
       branch(dir, "two", "files");
-      expect(merges(dir, "one", "two")).toBe(true);
-      expect(merges(dir, "two", "one")).toBe(true);
+      for (const [a, b] of [["one", "two"], ["two", "one"]]) {
+        const r = mergeTree(dir, a, b);
+        expect(r.status, r.out).toBe(0);
+        expect(r.out).not.toMatch(/CONFLICT/);
+      }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("control: two appends to the legacy JSONL do conflict", () => {
@@ -136,7 +146,79 @@ describe("two branches adding records merge without conflict", () => {
     try {
       branch(dir, "one", "append");
       branch(dir, "two", "append");
-      expect(merges(dir, "one", "two")).toBe(false);
+      const r = mergeTree(dir, "one", "two");
+      expect(r.status, r.out).toBe(1);
+      expect(r.out).toMatch(/CONFLICT/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("directory hygiene and qa tolerance", () => {
+  const withDir = (fn: (root: string, dir: string) => void) => {
+    const root = mkdtempSync(path.join(tmpdir(), "ledger-dir-"));
+    const dir = path.join(root, "docs/reports/session-ledger");
+    mkdirSync(dir, { recursive: true });
+    try { fn(root, dir); } finally { rmSync(root, { recursive: true, force: true }); }
+  };
+  const goodName = "20261013T1100Z-ok.json";
+  it("N3: misnamed entries are named errors; README.md and .gitkeep are ignored", () => {
+    withDir((root, dir) => {
+      writeFileSync(path.join(dir, "README.md"), "x");
+      writeFileSync(path.join(dir, ".gitkeep"), "");
+      for (const n of ["x.JSON", "x.jsonl", "stray.txt"]) writeFileSync(path.join(dir, n), "{}");
+      const errors = readSessionLedger(root).errors.join("\n");
+      for (const n of ["x.JSON", "x.jsonl", "stray.txt"]) expect(errors).toContain(`docs/reports/session-ledger/${n}: `);
+      expect(errors).not.toContain("README.md");
+      expect(errors).not.toContain(".gitkeep");
+    });
+  });
+  it("N4: a directory or symlink named *.json is a named error, not a crash", () => {
+    withDir((root, dir) => {
+      mkdirSync(path.join(dir, "20261013T1100Z-dir.json"));
+      writeFileSync(path.join(root, "target.json"), JSON.stringify(baseRow("link")));
+      symlinkSync(path.join(root, "target.json"), path.join(dir, "20261013T1100Z-link.json"));
+      const out = readSessionLedger(root);
+      expect(out.errors).toHaveLength(2);
+      expect(out.errors.join("\n")).toContain("20261013T1100Z-dir.json: not a regular file");
+      expect(out.errors.join("\n")).toContain("20261013T1100Z-link.json: not a regular file");
+    });
+  });
+  it("N4: a non-regular entry in the frictions directory is a named error", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "fr-dir-"));
+    try {
+      mkdirSync(path.join(root, "docs/reports/frictions/20261013-x.md"), { recursive: true });
+      expect(validateFrictionFiles(readFrictionFiles(root))[0]).toContain("20261013-x.md: not a regular file");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  it("Q: one invalid file is excluded from rows but reported; valid rows are kept", () => {
+    withDir((root, dir) => {
+      writeFileSync(path.join(dir, goodName), JSON.stringify(baseRow("ok")));
+      writeFileSync(path.join(dir, "20261013T1200Z-bad.json"), "{nope");
+      const out = readSessionLedger(root);
+      expect(out.rows.map(r => r.session_id)).toEqual(["ok"]);
+      expect(out.errors).toEqual(["docs/reports/session-ledger/20261013T1200Z-bad.json: invalid JSON"]);
+    });
+  });
+  it("Q: the check script still fails on that file", () => {
+    withDir((root, dir) => {
+      writeFileSync(path.join(dir, "20261013T1200Z-bad.json"), "{nope");
+      const r = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts/check-session-ledger.ts"), root], { encoding: "utf8" });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("20261013T1200Z-bad.json: invalid JSON");
+    });
+  });
+  it("N1: tailLedger returns the last n rows, legacy first, compactly", () => {
+    const out = combineSessionLedger(`${legacyLine}\n`, [file("20261013T1100Z", "a"), file("20261013T1200Z", "b", baseRow("b", { notes: "n", pr: 7 }))]);
+    const lines = tailLedger(out.rows, 2).map(l => JSON.parse(l));
+    expect(lines).toEqual([
+      { session_id: "a", outcome: "complete", action_id: "a", pr: null, notes: null },
+      { session_id: "b", outcome: "complete", action_id: "a", pr: 7, notes: "n" },
+    ]);
+    expect(tailLedger(out.rows, 0)).toEqual([]);
+  });
+  it("N1: the ledger:tail script prints the last rows of the real repository", () => {
+    const r = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts/ledger-tail.ts"), "2"], { encoding: "utf8" });
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim().split("\n")).toHaveLength(2);
   });
 });

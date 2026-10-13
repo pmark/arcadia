@@ -57,7 +57,7 @@ independent Sessions under Decision 0114; native role dispatch refuses them.
 2. Resolve identity per `git-identity.md` for this app and tier.
 3. Bounded reads: `PROJECT.md` pointer, the active Plan's `current_action`,
    open blockers on /todo, the last three rows of the ledger
-   (`readSessionLedger`: `docs/reports/session-ledger.jsonl`, then `session-ledger/*.json`), and a targeted `rg` of
+   (`pnpm ledger:tail 3`; legacy `session-ledger.jsonl` first, then `session-ledger/*.json`), and a targeted `rg` of
    `docs/notes-to-self.md`.
 4. State the budget and each role's model and effort before launching anything.
 5. Classify the request: the governed current Action (`continuation.md`),

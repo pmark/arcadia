@@ -93,10 +93,8 @@ export function runQaEffectivenessCommand(options: { workspace: string }): Comma
       const repositoryPath = repositoryByProject.get(projectId);
       if (!repositoryPath) return ledgers.set(projectId, []).get(projectId)!;
       const combined = readSessionLedger(repositoryPath);
-      if (combined.errors.length > 0) {
-        sourceWarnings.push(`${repositoryPath}: ignored invalid session ledger (${combined.errors.length} validation error${combined.errors.length === 1 ? "" : "s"})`);
-        return ledgers.set(projectId, []).get(projectId)!;
-      }
+      // One invalid source is skipped with a named warning; the rest of the ledger is kept.
+      for (const error of combined.errors) sourceWarnings.push(`${repositoryPath}: skipped invalid session ledger source ${error}`);
       const rows = combined.rows;
       ledgers.set(projectId, rows);
       return rows;
