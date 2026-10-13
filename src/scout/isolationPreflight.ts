@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, openSync, closeSync, writeSync, fsyncSync, renameSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { compareLeakSnapshots, parseLeakSnapshot, unverifiableReason, type LeakSnapshot } from "../workspace/leakCheck.js";
 
 const SHA = /^[a-f0-9]{64}$/;
@@ -13,7 +14,7 @@ const CONSUMED_FILES = [
   "builder/metadata.json", "builder/prompt.md"
 ];
 
-interface ScoutPins {
+export interface ScoutPins {
   sourceRevision: string;
   nodeVersion: string;
   model: string;
@@ -51,15 +52,215 @@ interface SnapshotSummary {
 
 export interface ScoutPreflightReceipt {
   schema: "arcadia-scout-isolation-preflight-v1";
-  scope: "held-scout-observation-only";
-  verdict: "blocked";
-  resolutionImplemented: false;
+  scope: "held-scout-observation-only" | "bounded-decision-0128-isolation-only";
+  verdict: "blocked" | "isolated";
+  resolutionImplemented: boolean;
   pins: ScoutPins | null;
   before: SnapshotSummary | null;
   after: SnapshotSummary | null;
   config: { beforeSha256: string; afterSha256: string; exactFixtureTrustChange: boolean } | null;
   priorHold: { status: "unresolved" };
   reasons: string[];
+}
+
+const BOUNDED_DECISION_ID = "0128";
+const BOUNDED_DECISION_ANSWER = "Authorize the bounded Luna Hello World loop with three attempts and two repair cycles";
+const BOUNDED_DECISION_EXPIRY = "2026-10-18T00:00:00.000Z";
+const BOUNDED_GOAL = "bounded-luna-hello-world-0128";
+const BOUNDED_DECISION_SCOPE_SHA256 = "1cc165eed764c3f1736763bec8fe1e7cf0b161cf022aece4484d93961bcdb2bd";
+const BOUNDED_DECISION_FILE_SHA256 = "f4072b04d9500f2c2711aaa84b68db2a92449e1dd528dd9c4097c338e654a9ce";
+
+export interface ScoutBudgetLedger {
+  schema: "arcadia-scout-budget-v1";
+  decisionId: "0128";
+  goal: typeof BOUNDED_GOAL;
+  startedAt: string;
+  deadline: string;
+  lastObservedAt: string;
+  attempts: Array<{ number: number; sourceRevision: string; fixtureRoot: string; reservedAt: string }>;
+  repairs: Array<{ cycle: number; sourceRevision: string; reservedAt: string }>;
+}
+
+export interface ScoutReservation {
+  ok: boolean;
+  reason: string | null;
+  ledger: ScoutBudgetLedger | null;
+  attemptNumber: number | null;
+  repairCycle: number | null;
+}
+
+function decisionFrontmatter(text: string): Record<string, unknown> | null {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return null;
+  try {
+    const parsed: unknown = parseYaml(match[1]);
+    return isRecord(parsed) ? parsed : null;
+  } catch { return null; }
+}
+
+export function validateBoundedScoutDecision(input: { text: string; canonicalPath: string; now?: string }) {
+  const parsed = decisionFrontmatter(input.text);
+  const now = input.now ?? new Date().toISOString();
+  const expectedPath = "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md";
+  if (!parsed || path.posix.normalize(input.canonicalPath) !== expectedPath || sha256(input.text) !== BOUNDED_DECISION_FILE_SHA256 || parsed.id !== BOUNDED_DECISION_ID
+    || parsed.status !== "approved" || parsed.answer !== BOUNDED_DECISION_ANSWER
+    || parsed.decided !== "2026-10-13" || !Array.isArray(parsed.options)) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "canonical approved Decision 0128 and its exact answer are required" };
+  }
+  const option = parsed.options.find((entry) => isRecord(entry) && entry.label === BOUNDED_DECISION_ANSWER);
+  const consequence = isRecord(option) && typeof option.consequence === "string" ? option.consequence : "";
+  const required = ["at most3 total live builder attempts", "at most2 Supervisor-led repair cycles", "at most90seconds", "incremental paid spend ceiling$0", "2026-10-18T00:00:00Z"];
+  if (sha256(consequence) !== BOUNDED_DECISION_SCOPE_SHA256 || !required.every((part) => consequence.includes(part))) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "Decision 0128 bounded policy text does not match the required limits" };
+  }
+  const expiry = Date.parse(BOUNDED_DECISION_EXPIRY);
+  if (!Number.isFinite(Date.parse(now)) || Date.parse(now) >= expiry) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "Decision 0128 has expired" };
+  }
+  return { approved: true, decisionSha256: sha256(input.text), reason: null };
+}
+
+function validBudgetLedger(value: unknown): value is ScoutBudgetLedger {
+  if (!hasExactKeys(value, ["schema", "decisionId", "goal", "startedAt", "deadline", "lastObservedAt", "attempts", "repairs"])
+    || value.schema !== "arcadia-scout-budget-v1" || value.decisionId !== BOUNDED_DECISION_ID || value.goal !== BOUNDED_GOAL
+    || typeof value.startedAt !== "string" || typeof value.deadline !== "string" || typeof value.lastObservedAt !== "string"
+    || !Array.isArray(value.attempts) || !Array.isArray(value.repairs) || value.repairs.length > 2) return false;
+  const started = Date.parse(value.startedAt);
+  const deadline = Date.parse(value.deadline);
+  const observed = Date.parse(value.lastObservedAt);
+  const expectedDeadline = Math.min(started + 90 * 60_000, Date.parse(BOUNDED_DECISION_EXPIRY));
+  return value.attempts.length <= 3 && deadline === expectedDeadline && observed >= started
+    && value.repairs.every((repair, index) => hasExactKeys(repair, ["cycle", "sourceRevision", "reservedAt"])
+      && repair.cycle === index + 1 && typeof repair.sourceRevision === "string" && REVISION.test(repair.sourceRevision)
+      && typeof repair.reservedAt === "string" && Number.isFinite(Date.parse(repair.reservedAt))
+      && Date.parse(repair.reservedAt) >= started && Date.parse(repair.reservedAt) <= observed && Date.parse(repair.reservedAt) < deadline)
+    && value.attempts.every((attempt, index) => hasExactKeys(attempt, ["number", "sourceRevision", "fixtureRoot", "reservedAt"])
+    && attempt.number === index + 1 && typeof attempt.sourceRevision === "string" && REVISION.test(attempt.sourceRevision)
+    && typeof attempt.fixtureRoot === "string" && path.isAbsolute(attempt.fixtureRoot)
+    && typeof attempt.reservedAt === "string" && Number.isFinite(Date.parse(attempt.reservedAt))
+    && Date.parse(attempt.reservedAt) >= started && Date.parse(attempt.reservedAt) <= observed && Date.parse(attempt.reservedAt) < deadline)
+    && Number.isFinite(Date.parse(value.startedAt)) && Number.isFinite(Date.parse(value.deadline))
+    && Number.isFinite(Date.parse(value.lastObservedAt)) && Date.parse(value.deadline) <= Date.parse(BOUNDED_DECISION_EXPIRY);
+}
+
+/** Atomically reserves an attempt before launch. Source SHA is evidence per attempt, never the ledger key. */
+function reserveBoundedScoutBudget(input: { kind: "attempt" | "repair"; ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; initialize?: boolean; now?: string }): ScoutReservation {
+  const blocked = (reason: string): ScoutReservation => ({ ok: false, reason, ledger: null, attemptNumber: null, repairCycle: null });
+  if (!REVISION.test(input.sourceRevision) || !path.isAbsolute(input.fixtureRoot) || !path.isAbsolute(input.ledgerPath)
+    || !path.isAbsolute(input.trustedLedgerPath) || path.resolve(input.ledgerPath) !== path.resolve(input.trustedLedgerPath)) {
+    return blocked("immutable source SHA, explicit fixture root, and exact trusted ledger assignment pin are required");
+  }
+  let parent: string;
+  try { parent = realpathSync(path.dirname(input.ledgerPath)); } catch { return blocked("budget ledger parent is unavailable"); }
+  const ledgerPath = path.join(parent, path.basename(input.ledgerPath));
+  if (existsSync(ledgerPath) && (lstatSync(ledgerPath).isSymbolicLink() || !lstatSync(ledgerPath).isFile())) return blocked("budget ledger is not a regular file");
+  const lockPath = `${ledgerPath}.lock`;
+  let lockFd: number;
+  try { lockFd = openSync(lockPath, "wx", 0o600); }
+  catch { return blocked("budget ledger is locked or lock state is unavailable; fail closed"); }
+  try {
+    const now = input.now ?? new Date().toISOString();
+    const current = Date.parse(now);
+    if (!Number.isFinite(current) || current >= Date.parse(BOUNDED_DECISION_EXPIRY)) return blocked("bounded authorization is expired or the clock is invalid");
+    let ledger: ScoutBudgetLedger;
+    if (existsSync(ledgerPath)) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(readFileSync(ledgerPath, "utf8")); } catch { return blocked("budget ledger is corrupt"); }
+      if (!validBudgetLedger(parsed)) return blocked("budget ledger is malformed or outside approved bounds");
+      if (current < Date.parse(parsed.lastObservedAt)) return blocked("clock moved backwards since the previous budget receipt");
+      if (current >= Date.parse(parsed.deadline)) return blocked("90-minute loop wall limit is exhausted");
+      ledger = parsed;
+    } else {
+      if (input.initialize !== true) return blocked("trusted Supervisor initialization is required before this goal ledger can be used");
+      ledger = { schema: "arcadia-scout-budget-v1", decisionId: BOUNDED_DECISION_ID, goal: BOUNDED_GOAL,
+        startedAt: now, deadline: new Date(Math.min(current + 90 * 60_000, Date.parse(BOUNDED_DECISION_EXPIRY))).toISOString(),
+        lastObservedAt: now, attempts: [], repairs: [] };
+    }
+    const attemptNumber = input.kind === "attempt" ? ledger.attempts.length + 1 : null;
+    const repairCycle = input.kind === "repair" ? ledger.repairs.length + 1 : null;
+    if (attemptNumber !== null && attemptNumber > 3) return blocked("three-attempt budget is exhausted");
+    if (repairCycle !== null && repairCycle > 2) return blocked("two-repair-cycle budget is exhausted");
+    ledger = {
+      ...ledger,
+      lastObservedAt: now,
+      attempts: attemptNumber === null ? ledger.attempts : [...ledger.attempts, {
+        number: attemptNumber, sourceRevision: input.sourceRevision, fixtureRoot: path.resolve(input.fixtureRoot), reservedAt: now
+      }],
+      repairs: repairCycle === null ? ledger.repairs : [...ledger.repairs, { cycle: repairCycle, sourceRevision: input.sourceRevision, reservedAt: now }]
+    };
+    const temporary = `${ledgerPath}.${process.pid}.${current}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try { writeSync(fd, `${JSON.stringify(ledger, null, 2)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(temporary, ledgerPath);
+    return { ok: true, reason: null, ledger, attemptNumber, repairCycle };
+  } catch {
+    return blocked("budget reservation failed closed");
+  } finally {
+    closeSync(lockFd);
+    unlinkSync(lockPath);
+  }
+}
+
+/** Reserves one Supervisor-led repair cycle in the same Decision and goal ledger. */
+export function reserveBoundedScoutRepair(input: { ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; now?: string }): ScoutReservation {
+  return reserveBoundedScoutBudget({ ...input, kind: "repair" });
+}
+
+/** Reserves an attempt before launch; source SHA is evidence per attempt, never the ledger key. */
+export function reserveBoundedScoutAttempt(input: { ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; initialize?: boolean; now?: string }): ScoutReservation {
+  return reserveBoundedScoutBudget({ ...input, kind: "attempt" });
+}
+
+/** Current-attempt gate. Historical replay continues to use the held-only evaluator above. */
+export function evaluateBoundedScoutIsolation(input: {
+  pins: ScoutPins; before: LeakSnapshot | null; after: LeakSnapshot | null;
+  codexConfigDiff?: { before: string; after: string };
+  decision: { text: string; canonicalPath: string };
+  now?: string;
+}): ScoutPreflightReceipt & { decision: { id: string; sha256: string }; attemptLimitSeconds: 90; executionAuthorized: false } {
+  const decision = validateBoundedScoutDecision({ ...input.decision, now: input.now });
+  const base = evaluateScoutPreflight({ pins: input.pins, before: input.before, after: input.after,
+    ...(input.codexConfigDiff ? { codexConfigDiff: input.codexConfigDiff } : {}), priorHold: { status: "unresolved" } });
+  const reasons = base.reasons.filter((reason) => reason !== "historical isolation hold unresolved; this observation-only slice has no hold-resolution implementation");
+  if (!decision.approved && decision.reason) reasons.push(decision.reason);
+  const nowMs = Date.parse(input.now ?? new Date().toISOString());
+  if (input.before && input.after) {
+    const beforeMs = Date.parse(input.before.takenAt);
+    const afterMs = Date.parse(input.after.takenAt);
+    if (!Number.isFinite(beforeMs) || !Number.isFinite(afterMs) || beforeMs > afterMs || afterMs > nowMs || nowMs - beforeMs > 5 * 60_000) {
+      reasons.push("protected-state witnesses must be ordered, current, and no more than five minutes old");
+    }
+  }
+  const livePath = path.resolve(input.pins.liveWorkspacePath);
+  const fixtureRootPath = path.resolve(input.pins.fixtureRoot);
+  if (livePath === fixtureRootPath || livePath.startsWith(`${fixtureRootPath}${path.sep}`)
+    || fixtureRootPath.startsWith(`${livePath}${path.sep}`)) reasons.push("fixture scope overlaps the protected live workspace");
+  // Existing-path pins must name real directories directly; a symlink cannot disguise a live path.
+  try {
+    const realRoot = realpathSync(input.pins.fixtureRoot);
+    const realWorkspace = realpathSync(input.pins.workspace);
+    const realRepo = realpathSync(input.pins.fixtureRepo);
+    const realTrust = realpathSync(input.pins.fixtureTrustPath);
+    const paths = [input.pins.fixtureRoot, input.pins.workspace, input.pins.fixtureRepo, input.pins.fixtureTrustPath];
+    if (paths.some((raw) => lstatSync(raw).isSymbolicLink())) reasons.push("fixture scope contains a symlink at a pinned path");
+    if (realWorkspace === realRoot || !realWorkspace.startsWith(`${realRoot}${path.sep}`)
+      || (realRepo !== realWorkspace && !realRepo.startsWith(`${realWorkspace}${path.sep}`))
+      || (realTrust !== realRepo && !realTrust.startsWith(`${realRepo}${path.sep}`))) {
+      reasons.push("fixture scope real paths escape their pinned parent");
+    }
+  } catch { reasons.push("fixture scope path is missing or cannot be verified"); }
+  const uniqueReasons = [...new Set(reasons)];
+  return {
+    ...base,
+    scope: "bounded-decision-0128-isolation-only",
+    verdict: uniqueReasons.length === 0 ? "isolated" : "blocked",
+    resolutionImplemented: true,
+    priorHold: { status: "unresolved" },
+    reasons: uniqueReasons,
+    decision: { id: BOUNDED_DECISION_ID, sha256: decision.decisionSha256 },
+    attemptLimitSeconds: 90,
+    executionAuthorized: false
+  };
 }
 
 function sha256(value: string | Buffer): string {

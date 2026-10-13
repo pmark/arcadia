@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeakSnapshot } from "../src/workspace/leakCheck.js";
-import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateScoutPreflight, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
+import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateBoundedScoutIsolation, evaluateScoutPreflight, reserveBoundedScoutAttempt, reserveBoundedScoutRepair, validateBoundedScoutDecision, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
 
 const root = "/tmp/scout-fixture";
 const workspace = `${root}/workspace`;
@@ -96,6 +96,109 @@ function retainedEvidence() {
 }
 
 describe("offline scout isolation preflight", () => {
+  const decisionPath = "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md";
+  const decisionText = readFileSync(decisionPath, "utf8");
+
+  it("validates the canonical approved Decision 0128 and rejects obsolete or altered approval", () => {
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(true);
+    expect(validateBoundedScoutDecision({ text: decisionText.replace("status: approved", "status: rejected"), canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText.replace("at most3 total live builder attempts", "one live attempt"), canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: `${decisionText}\n# altered scope`, canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: "docs/decisions/0125-old.md", now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: decisionPath, now: "2026-10-18T00:00:00Z" }).approved).toBe(false);
+  });
+
+  it("admits a fresh, exactly pinned Decision 0128 fixture preflight while historical replay stays held", () => {
+    const actualRoot = mkdtempSync(path.join(os.tmpdir(), "scout-authorized-"));
+    tempRoots.push(actualRoot);
+    const actualWorkspace = path.join(actualRoot, "workspace");
+    const actualRepo = path.join(actualWorkspace, "repo");
+    const actualTrust = path.join(actualRepo, "project");
+    mkdirSync(actualTrust, { recursive: true });
+    const base = input();
+    const before = snapshot({ liveWorkspace: { ...base.before.liveWorkspace, path: liveWorkspacePath } });
+    const result = evaluateBoundedScoutIsolation({
+      pins: { ...base.pins, fixtureRoot: actualRoot, workspace: actualWorkspace, fixtureRepo: actualRepo, fixtureTrustPath: actualTrust },
+      before, after: before, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z"
+    });
+    expect(result.reasons).toEqual([]);
+    expect(result.verdict).toBe("isolated");
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.scope).toBe("bounded-decision-0128-isolation-only");
+    expect(result.attemptLimitSeconds).toBe(90);
+    expect(result.decision.sha256).toBe(hash(decisionText));
+    expect(evaluateScoutPreflight(input()).verdict).toBe("blocked");
+    expect(JSON.stringify(result)).not.toContain("trust_level");
+  });
+
+  it("blocks stale witnesses, a live-overlapping fixture, and symlinked fixture paths", () => {
+    const actualRoot = mkdtempSync(path.join(os.tmpdir(), "scout-authorized-refusal-"));
+    tempRoots.push(actualRoot);
+    const actualWorkspace = path.join(actualRoot, "workspace");
+    const actualRepo = path.join(actualWorkspace, "repo");
+    const actualTrust = path.join(actualRepo, "project");
+    mkdirSync(actualTrust, { recursive: true });
+    const base = input();
+    const pins = { ...base.pins, fixtureRoot: actualRoot, workspace: actualWorkspace, fixtureRepo: actualRepo, fixtureTrustPath: actualTrust };
+    const old = snapshot({ takenAt: "2026-10-13T11:00:00Z" });
+    expect(evaluateBoundedScoutIsolation({ pins, before: old, after: old, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).reasons)
+      .toContain("protected-state witnesses must be ordered, current, and no more than five minutes old");
+    const overlap = { ...pins, liveWorkspacePath: actualRoot };
+    expect(evaluateBoundedScoutIsolation({ pins: overlap, before: base.before, after: base.after, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).reasons)
+      .toContain("fixture scope overlaps the protected live workspace");
+    const changedProtected = snapshot({ hashes: { ...base.before.hashes, userConfig: hash("unexpected config change") } });
+    expect(evaluateBoundedScoutIsolation({ pins, before: base.before, after: changedProtected,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
+    const link = path.join(actualRoot, "linked-workspace");
+    writeFileSync(path.join(actualRoot, "marker"), "fixture");
+    symlinkSync(path.join(actualRoot, "marker"), link);
+    expect(evaluateBoundedScoutIsolation({ pins: { ...pins, fixtureTrustPath: link }, before: base.before, after: base.after,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
+  });
+
+  it("reserves attempts atomically and keeps one goal budget across changed source revisions", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "scout-budget-")); tempRoots.push(dir);
+    const ledgerPath = path.join(dir, "attempt-budget.json");
+    const fixtureRoot = path.join(dir, "fixture"); mkdirSync(fixtureRoot);
+    const reserve = (sha: string, now: string) => reserveBoundedScoutAttempt({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: sha, now });
+    expect(reserve("a".repeat(40), "2026-10-13T12:00:00Z").reason).toContain("initialization is required");
+    const first = reserveBoundedScoutAttempt({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "a".repeat(40), initialize: true, now: "2026-10-13T12:00:00Z" });
+    const second = reserve("b".repeat(40), "2026-10-13T12:10:00Z");
+    const third = reserve("c".repeat(40), "2026-10-13T12:20:00Z");
+    expect([first.attemptNumber, second.attemptNumber, third.attemptNumber]).toEqual([1, 2, 3]);
+    expect(reserve("d".repeat(40), "2026-10-13T12:30:00Z").reason).toContain("exhausted");
+    expect(first.ledger?.deadline).toBe("2026-10-13T13:30:00.000Z");
+    expect(reserve("e".repeat(40), "2026-10-13T11:59:00Z").reason).toContain("backwards");
+    const repair1 = reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "d".repeat(40), now: "2026-10-13T12:25:00Z" });
+    const repair2 = reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "e".repeat(40), now: "2026-10-13T12:26:00Z" });
+    expect([repair1.repairCycle, repair2.repairCycle]).toEqual([1, 2]);
+    expect(repair2.ledger?.attempts).toHaveLength(3);
+    expect(reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "f".repeat(40), now: "2026-10-13T12:27:00Z" }).reason)
+      .toContain("two-repair-cycle budget is exhausted");
+    expect(reserveBoundedScoutAttempt({ ledgerPath: path.join(dir, "attacker-choice.json"), trustedLedgerPath: ledgerPath,
+      fixtureRoot, sourceRevision: "f".repeat(40), initialize: true, now: "2026-10-13T12:30:00Z" }).reason).toContain("trusted ledger assignment pin");
+  });
+
+  it("fails closed on corrupt, duplicate-locked, expired, or malformed budget state", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "scout-budget-fail-")); tempRoots.push(dir);
+    const ledgerPath = path.join(dir, "attempt-budget.json");
+    writeFileSync(ledgerPath, "{broken");
+    const fixtureRoot = path.join(dir, "fixture"); mkdirSync(fixtureRoot);
+    const input = { ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "a".repeat(40), now: "2026-10-13T12:00:00Z" };
+    expect(reserveBoundedScoutAttempt(input).reason).toContain("corrupt");
+    rmSync(ledgerPath);
+    writeFileSync(`${ledgerPath}.lock`, "held");
+    expect(reserveBoundedScoutAttempt(input).reason).toContain("locked");
+    rmSync(`${ledgerPath}.lock`);
+    expect(reserveBoundedScoutAttempt({ ...input, now: "2026-10-18T00:00:00Z" }).reason).toContain("expired");
+    const goodPath = path.join(dir, "valid-budget.json");
+    expect(reserveBoundedScoutAttempt({ ...input, ledgerPath: goodPath, trustedLedgerPath: goodPath, initialize: true }).ok).toBe(true);
+    const malformed = JSON.parse(readFileSync(goodPath, "utf8")) as { deadline: string };
+    malformed.deadline = "2026-10-13T14:00:00.000Z";
+    writeFileSync(goodPath, JSON.stringify(malformed));
+    expect(reserveBoundedScoutAttempt({ ...input, ledgerPath: goodPath, trustedLedgerPath: goodPath, now: "2026-10-13T12:01:00Z" }).reason).toContain("malformed");
+  });
+
   it("requires a custody-pinned manifest covering every consumed replay file", () => {
     const full = makeEvidenceRoot();
     expect(verifyEvidenceManifest(full.root, full.expected)).toEqual({ checked: consumedFiles.length, mismatches: [], manifestSha256: full.expected });
