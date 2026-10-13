@@ -16,9 +16,9 @@ describe("PR audio endpoint", () => {
     expect((await POST(request({ repository: "outside/repo", number: 2 }))).status).toBe(404);
   });
   it("returns a durable job reference rather than waiting for audio bytes", async () => {
-    vi.mocked(preparePullRequestAudio).mockResolvedValue({ source: { title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", summary: "TLDR" }, job: { id: "audio-job", status: "queued" } } as never);
+    vi.mocked(preparePullRequestAudio).mockResolvedValue({ source: { title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2" }, summary: { text: "TLDR", sourceRevision: "rev", jobId: "summary-job" }, job: { id: "audio-job", status: "queued" } } as never);
     const response = await POST(request({ repository: "owner/repo", number: 2 }));
-    expect(await response.json()).toMatchObject({ job: { id: "audio-job", status: "queued" }, source: { summary: "TLDR" } });
+    expect(await response.json()).toMatchObject({ job: { id: "audio-job", status: "queued" }, summary: { text: "TLDR" } });
   });
   it("loads the original description without model calls", async () => {
     vi.mocked(loadPullRequestDescription).mockResolvedValue({ title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", repository: "owner/repo", number: 2, state: "MERGED" });
