@@ -3,7 +3,7 @@ vi.mock("../../../../lib/arcadia-cli", () => ({ loadPullRequestDescription: vi.f
 vi.mock("../../../../lib/pull-request-audio", () => ({
   preparePullRequestAudio: vi.fn(),
   StalePullRequestSummaryError: class extends Error {
-    constructor() { super("The displayed TLDR is stale. Reload TLDR before playing audio."); }
+    constructor() { super("The displayed TLDR is stale. Use Refresh TLDR before playing audio."); }
   },
 }));
 import { loadPullRequestDescription, ArcadiaCliError } from "../../../../lib/arcadia-cli";
@@ -33,11 +33,11 @@ describe("PR audio endpoint", () => {
     expect(text).toContain("SPEECH_UNAVAILABLE");
     expect(text).not.toContain("SECRET provider body");
   });
-  it("returns useful reload feedback for a stale displayed summary", async () => {
+  it("returns useful reload feedback when current source B has no summary for displayed A", async () => {
     vi.mocked(preparePullRequestAudio).mockRejectedValue(new StalePullRequestSummaryError());
     const response = await POST(request(validRequest));
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "The displayed TLDR is stale. Reload TLDR before playing audio." });
+    expect(await response.json()).toEqual({ error: "The displayed TLDR is stale. Use Refresh TLDR before playing audio." });
   });
   it("loads the original description without model calls", async () => {
     vi.mocked(loadPullRequestDescription).mockResolvedValue({ title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", repository: "owner/repo", number: 2, state: "MERGED" });

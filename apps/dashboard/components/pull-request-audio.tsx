@@ -12,10 +12,20 @@ type SummaryResponse = {
   job: IntelligenceJob | null;
   summary: PullRequestSummary | null;
 };
+type SummaryStage = "idle" | "loading_source" | "ready" | "queued" | "generating" | "observation_timeout" | "failed";
+const SUMMARY_OBSERVATION_TIMEOUT_MS = 15 * 60_000;
+const SUMMARY_FETCH_TIMEOUT_MS = 20_000;
+
+export class SummaryObservationTimeoutError extends Error {
+  public constructor(public readonly job: IntelligenceJob | null) {
+    super(job ? `Stopped observing job ${job.id}; it remains ${job.status}. Reconnect to check the same durable job.` : "Stopped waiting for the PR source. Try loading it again.");
+    this.name = "SummaryObservationTimeoutError";
+  }
+}
 
 export function PullRequestAudio({ repository, number, showDescription = false }: { repository: string; number: number; showDescription?: boolean }) {
   const [result, setResult] = useState<SummaryResponse | null>(null);
-  const [stage, setStage] = useState<"idle" | "loading_source" | "ready" | "queued" | "generating" | "failed">("idle");
+  const [stage, setStage] = useState<SummaryStage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef<number | null>(null);
@@ -23,7 +33,7 @@ export function PullRequestAudio({ repository, number, showDescription = false }
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
-    if (stage === "idle" || stage === "ready" || stage === "failed") return;
+    if (stage === "idle" || stage === "ready" || stage === "observation_timeout" || stage === "failed") return;
     const tick = () => setElapsed(startedAt.current === null ? 0 : Math.floor((Date.now() - startedAt.current) / 1000));
     tick();
     const timer = window.setInterval(tick, 1000);
@@ -31,23 +41,19 @@ export function PullRequestAudio({ repository, number, showDescription = false }
   }, [stage]);
 
   const poll = useCallback(async (initial: SummaryResponse, abort: AbortController) => {
-    let job = initial.job;
-    while (job && (job.status === "queued" || job.status === "running")) {
-      setStage(job.status === "queued" ? "queued" : "generating");
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const response = await fetch(`/api/admin-intelligence/jobs/${encodeURIComponent(job.id)}`, { cache: "no-store", signal: abort.signal });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Could not check TLDR generation.");
-      job = body.job;
-    }
+    const job = initial.job ? await observeSummaryJob(initial.job, {
+      fetchJob: async (jobId, timeoutMs) => {
+        const body = await fetchJsonBounded(`/api/admin-intelligence/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store", signal: abort.signal }, timeoutMs);
+        return body.job as IntelligenceJob;
+      },
+      onJob: current => setStage(current.status === "queued" ? "queued" : "generating"),
+    }) : null;
     if (!job) { setStage("ready"); return; }
     if (job.status !== "completed") {
       setResult({ ...initial, job });
       throw new Error(job.error?.message ?? "TLDR generation did not complete.");
     }
-    const refreshedResponse = await fetch(`/api/pull-requests/summary?repository=${encodeURIComponent(repository)}&number=${number}`, { cache: "no-store", signal: abort.signal });
-    const refreshedBody = await refreshedResponse.json();
-    if (!refreshedResponse.ok) throw new Error(refreshedBody.error ?? "Could not revalidate the PR source.");
+    const refreshedBody = await fetchJsonBounded(`/api/pull-requests/summary?repository=${encodeURIComponent(repository)}&number=${number}`, { cache: "no-store", signal: abort.signal }, SUMMARY_FETCH_TIMEOUT_MS);
     const refreshed = refreshedBody as SummaryResponse;
     setResult(refreshed);
     acceptRefreshedSummary(initial, refreshed);
@@ -60,17 +66,21 @@ export function PullRequestAudio({ repository, number, showDescription = false }
     startedAt.current = Date.now(); setElapsed(0); setError(null); setStage("loading_source");
     try {
       const endpoint = `/api/pull-requests/summary${method === "GET" ? `?repository=${encodeURIComponent(repository)}&number=${number}` : ""}`;
-      const response = await fetch(endpoint, method === "GET"
+      const fetchOptions: RequestInit = method === "GET"
         ? { cache: "no-store", signal: abort.signal }
-        : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repository, number }), signal: abort.signal });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Could not load the TLDR.");
+        : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repository, number }), signal: abort.signal };
+      const body = await fetchJsonBounded(endpoint, fetchOptions, SUMMARY_FETCH_TIMEOUT_MS);
       const next = body as SummaryResponse;
       setResult(next);
       if (next.summary) setStage("ready");
       else await poll(next, abort);
     } catch (failure) {
-      if (!abort.signal.aborted) { setStage("failed"); setError(failure instanceof Error ? failure.message : String(failure)); }
+      if (!abort.signal.aborted) {
+        if (failure instanceof SummaryObservationTimeoutError) {
+          if (failure.job) setResult(current => current ? { ...current, job: failure.job } : current);
+          setStage("observation_timeout"); setError(failure.message);
+        } else { setStage("failed"); setError(failure instanceof Error ? failure.message : String(failure)); }
+      }
     }
   }, [number, poll, repository]);
 
@@ -82,6 +92,7 @@ export function PullRequestAudio({ repository, number, showDescription = false }
     ready: result?.summary ? "TLDR ready" : "TLDR not generated",
     queued: "TLDR queued",
     generating: "Generating TLDR",
+    observation_timeout: result?.job ? "TLDR observation paused" : "Source observation paused",
     failed: "TLDR failed",
   }[stage];
   const busy = stage === "loading_source" || stage === "queued" || stage === "generating";
@@ -92,8 +103,10 @@ export function PullRequestAudio({ repository, number, showDescription = false }
   return (
     <div className="mt-3 min-w-0">
       {stage === "idle" ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Load TLDR</button> : null}
+      {stage === "ready" && result?.summary ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Refresh TLDR</button> : null}
       {stage === "failed" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
-      {result && !result.summary && !busy ? <button type="button" onClick={() => void request("POST")} disabled={retryExhausted} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">{retryExhausted ? "TLDR retry limit reached" : stage === "failed" || result.job ? "Retry TLDR" : "Generate TLDR"}</button> : null}
+      {stage === "observation_timeout" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
+      {result && !result.summary && !busy ? <button type="button" onClick={() => void request(summaryActionForStage(stage))} disabled={retryExhausted} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">{retryExhausted ? "TLDR retry limit reached" : stage === "observation_timeout" ? "Reconnect TLDR" : stage === "failed" || result.job ? "Retry TLDR" : "Generate TLDR"}</button> : null}
       {statusText ? <p role="status" className="mt-2 text-xs text-muted">{statusText} · {formatElapsed(elapsed)}{result?.job ? ` · Job ${result.job.id}` : ""}</p> : null}
       {error ? <p role="alert" className="mt-2 text-xs text-clay">{error}</p> : null}
       {result?.summary ? <>
@@ -125,4 +138,64 @@ export function acceptRefreshedSummary(initial: SummaryResponse, refreshed: Summ
   }
   if (!refreshed.summary) throw new Error("TLDR generation completed without a valid summary.");
   return refreshed;
+}
+
+export function summaryActionForStage(stage: SummaryStage): "GET" | "POST" {
+  return stage === "observation_timeout" ? "GET" : "POST";
+}
+
+export async function observeSummaryJob(job: IntelligenceJob, options: {
+  fetchJob: (jobId: string, timeoutMs: number) => Promise<IntelligenceJob>;
+  onJob?: (job: IntelligenceJob) => void;
+  now?: () => number;
+  sleep?: (milliseconds: number) => Promise<void>;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}): Promise<IntelligenceJob> {
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)));
+  const deadline = now() + (options.timeoutMs ?? SUMMARY_OBSERVATION_TIMEOUT_MS);
+  let current = job;
+  while (current.status === "queued" || current.status === "running") {
+    options.onJob?.(current);
+    const remaining = deadline - now();
+    if (remaining <= 0) throw new SummaryObservationTimeoutError(current);
+    await sleep(Math.min(options.pollIntervalMs ?? 1000, remaining));
+    const afterSleep = deadline - now();
+    if (afterSleep <= 0) throw new SummaryObservationTimeoutError(current);
+    try {
+      current = await promiseWithObservationDeadline(options.fetchJob(current.id, Math.min(SUMMARY_FETCH_TIMEOUT_MS, afterSleep)), afterSleep, current);
+    } catch (error) {
+      if (error instanceof SummaryObservationTimeoutError) throw new SummaryObservationTimeoutError(current);
+      throw error;
+    }
+  }
+  return current;
+}
+
+async function promiseWithObservationDeadline<T>(promise: Promise<T>, timeoutMs: number, job: IntelligenceJob): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<T>((_resolve, reject) => { timer = setTimeout(() => reject(new SummaryObservationTimeoutError(job)), timeoutMs); })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function fetchJsonBounded(url: string, init: RequestInit, timeoutMs: number): Promise<Record<string, unknown>> {
+  const parentSignal = init.signal;
+  const controller = new AbortController();
+  const relay = () => controller.abort();
+  parentSignal?.addEventListener("abort", relay, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const body = await response.json() as Record<string, unknown>;
+    if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "The TLDR request failed.");
+    return body;
+  } catch (error) {
+    if (!parentSignal?.aborted && controller.signal.aborted) throw new SummaryObservationTimeoutError(null);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    parentSignal?.removeEventListener("abort", relay);
+  }
 }

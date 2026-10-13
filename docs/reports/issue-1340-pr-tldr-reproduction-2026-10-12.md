@@ -85,6 +85,13 @@ attempted.
   The player is keyed by repository, PR, revision and summary job so an older
   artifact cannot survive an in-place TLDR or PR change. There is no body or
   comment fallback.
+- The server compares the freshly loaded source revision before requiring a
+  current completed summary, so displayed A/current B is a stale 409 with
+  reload guidance even when B has no summary; speech is never submitted.
+- Summary source reads and job polls are individually bounded, and queued or
+  running observation stops after 15 minutes with the durable job ID/status
+  intact. **Reconnect TLDR** performs GET-only rediscovery of that job; it does
+  not submit, retry or generate. Superseded and unmounted requests are aborted.
 - Source, summary, audio and browser playback remain separate stages. The UI
   shows elapsed time, safe failure text and job identity; it does not invent a
   percentage or an encoding stage.
@@ -102,6 +109,10 @@ attempted.
 - R2 identity-mismatch regression: 5 focused files / 19 tests pass, including
   stale displayed-A/current-B refusal with zero speech calls, matching-pin
   success and player reset on PR/revision/summary-job change.
+- R3 acceptance regression: 5 focused files / 22 tests pass, including stale
+  A/current B with no B summary and zero speech calls, a fake-clock
+  never-settling running-job deadline that retains its durable identity, and a
+  GET-only reconnect action.
 - Touched-file ESLint: exit 0 after R1 repair.
 - Root package TypeScript compile: exit 0.
 - Dashboard TypeScript currently exits 2 on the pre-existing
