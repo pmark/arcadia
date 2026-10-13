@@ -172,7 +172,7 @@ describe("duplicate paths and per-source availability", () => {
     const r = gen([decision(), pr({ number: 77, changedFiles: Number.NaN }), script()]);
     expect(r.cards.map((c) => c.card.id)).toEqual(["decision-0123", "script-restore-off-run"]);
     expect(r.refusals).toHaveLength(1);
-    expect(r.refusals[0]).toMatchObject({ index: 1, sourceId: "77", code: "unreadable_source" });
+    expect(r.refusals[0]).toMatchObject({ index: 1, sourceId: "pr-77", code: "unreadable_source" });
   });
 
   it("isolates cyclic and trapping sources", () => {
@@ -192,6 +192,63 @@ describe("duplicate paths and per-source availability", () => {
     const over = Array.from({ length: CARD_SOURCE_LIMITS.maxFiles + 5 }, (_, i) => `docs/f${i}.md`);
     const r2 = gen([pr({ number: 3, files: over }), decision()]);
     expect(r2.cards.map((c) => c.card.id)).toEqual(["decision-0123"]);
+  });
+});
+
+describe("canonical paths, unreadable claims and the cap", () => {
+  it("refuses entries that collapse under the classifier normaliser or are not canonical", () => {
+    for (const files of [["CLAUDE.md", "./CLAUDE.md"], ["a//b.ts", "a/b.ts"], ["a\\b.ts", "a/b.ts"], ["./x.md", "y.md"], ["a/b.ts.", "c.md"]]) {
+      const r = gen([pr({ files, changedFiles: 2 })]);
+      expect(r.cards, JSON.stringify(files)).toEqual([]);
+      expect(r.refusals[0].code).toBe("files_incomplete");
+    }
+    const prev = gen([pr({ files: [{ filename: "a.md", previous_filename: "./old.md" }, "b.md"], changedFiles: 2 })]);
+    expect(prev.refusals[0].code).toBe("files_incomplete");
+  });
+
+  it("still cards a case-only rename (filename and previous are different roles)", () => {
+    const r = gen([pr({ files: [{ filename: "a/b.ts", previous_filename: "a/B.ts" }], changedFiles: 1 })]);
+    expect(r.refusals).toEqual([]);
+    expect(r.cards).toHaveLength(1);
+  });
+
+  const bigText = "x".repeat(CARD_SOURCE_LIMITS.maxStringLength + 10);
+  const badFoo = () => ({ kind: "decision", decision: { id: "foo", status: "open", question: bigText, options: [] } });
+  const goodFoo = () => decision({ id: "foo" });
+
+  it("an unreadable source blocks the card id it claims, in either order", () => {
+    for (const order of [[badFoo(), goodFoo()], [goodFoo(), badFoo()]]) {
+      const r = gen(order);
+      expect(r.cards).toEqual([]);
+      expect(r.refusals.map((x) => x.sourceId)).toContain("decision-foo");
+    }
+    const manyFiles = Array.from({ length: CARD_SOURCE_LIMITS.maxFiles + 5 }, (_, i) => `d/f${i}.md`);
+    const bigPr = { kind: "pull-request", pr: { number: 5, files: manyFiles } };
+    for (const order of [[bigPr, pr({ number: 5 })], [pr({ number: 5 }), bigPr]]) {
+      const r = gen(order);
+      expect(r.cards).toEqual([]);
+      expect(r.refusals.map((x) => x.sourceId)).toContain("pr-5");
+    }
+  });
+
+  it("a literal inner id of decision-foo does not suppress decision-foo", () => {
+    const literal = { kind: "decision", decision: { id: "decision-foo", status: "open", question: bigText, options: [] } };
+    const r = gen([literal, goodFoo()]);
+    expect(r.cards.map((c) => c.card.id)).toEqual(["decision-foo"]);
+    expect(r.refusals.map((x) => x.sourceId)).toEqual(["decision-decision-foo"]);
+  });
+
+  it("lists omitted card ids when the cap is exceeded", () => {
+    const n = CARD_SOURCE_LIMITS.maxSources + 5;
+    const r = gen(Array.from({ length: n }, (_, i) => pr({ number: i + 1 })));
+    const lim = r.refusals.find((x) => x.code === "source_limit");
+    expect(lim?.omittedCount).toBe(5);
+    expect(lim?.omittedIds).toEqual(["pr-201", "pr-202", "pr-203", "pr-204", "pr-205"]);
+    expect(r.cards).toHaveLength(CARD_SOURCE_LIMITS.maxSources);
+    expect(r.truncated).toBe(true);
+    // An omitted claim on a built id blocks that card.
+    const dup = [...Array.from({ length: CARD_SOURCE_LIMITS.maxSources }, (_, i) => pr({ number: i + 1 })), pr({ number: 1, title: "Other" })];
+    expect(gen(dup).cards.map((c) => c.card.id)).not.toContain("pr-1");
   });
 });
 
@@ -331,7 +388,8 @@ describe("PR cards name the authority boundary (criterion 2)", () => {
 
   it("fails closed on an empty or traversal file list", () => {
     expect(gen([pr({ files: [] })]).refusals[0].code).toBe("files_incomplete");
-    expect(gen([pr({ files: ["../etc/passwd"] })]).cards[0].boundaries).toEqual(["unclassifiable_path"]);
+    expect(gen([pr({ files: ["../etc/passwd"] })]).refusals[0].code).toBe("files_incomplete");
+    expect(gen([pr({ files: ["docs/caf\u00e9.md"] })]).cards[0].boundaries).toEqual(["unclassifiable_path"]);
   });
 
   it("refuses a truncated file list, so PROJECT.md cannot go unnamed", () => {

@@ -29,6 +29,7 @@ import { DECISION_CARD_LIMITS, DECISION_CARD_SCHEMA, parseCardExpiry, validateDe
 import {
   AUTHORITY_BOUNDARIES,
   classifyAuthorityPaths,
+  normalizeAuthorityPath,
   isPinnedHeadSha,
   isRepoSlug,
   type AuthorityBoundary,
@@ -143,6 +144,9 @@ export interface CardRefusal {
   sourceId: string | null;
   code: CardRefusalCode;
   message: string;
+  /** source_limit only: card ids of omitted sources (at most 50) and the total omitted. */
+  omittedIds?: string[];
+  omittedCount?: number;
 }
 
 export type CardSkipReason = "decision_not_open" | "pr_draft" | "pr_closed" | "pr_merged";
@@ -223,6 +227,11 @@ function snapshot(value: unknown, depth: number, budget: { n: number }): unknown
  */
 const KNOWN_OPTION_EFFECTS: readonly string[] = ["defer"];
 
+/** The one card-id construction, shared by the builders and by refusal labelling. */
+function cardIdOf(kind: CardSourceInput["kind"], key: string | number): string {
+  return `${kind === "decision" ? "decision" : kind === "operator-script" ? "script" : "pr"}-${key}`;
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.replace(/[\s\p{Cf}\p{Cc}]/gu, "") !== "";
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -265,45 +274,45 @@ function buildDecision(raw: unknown, expires: string): Built {
   if (!isRecord(raw)) return refuse(null, "bad_source", "decision must be an object");
   const id = raw.id;
   if (typeof id !== "string" || !ID_RE.test(id)) return refuse(null, "bad_source", "decision id must be a simple slug");
-  if (raw.status !== "open") return { ok: "skip", id: `decision-${id}`, sourceKind: "decision", reason: "decision_not_open" };
-  if (!nonEmpty(raw.question)) return refuse(`decision-${id}`, "bad_source", "decision has no question");
+  if (raw.status !== "open") return { ok: "skip", id: cardIdOf("decision", id), sourceKind: "decision", reason: "decision_not_open" };
+  if (!nonEmpty(raw.question)) return refuse(cardIdOf("decision", id), "bad_source", "decision has no question");
   const what = `Answer Decision ${id}: ${raw.question}`;
   if (overLimit(what, DECISION_CARD_LIMITS.what)) {
-    return refuse(`decision-${id}`, "text_too_long", `The Decision question exceeds ${DECISION_CARD_LIMITS.what} characters; refused, not truncated.`);
+    return refuse(cardIdOf("decision", id), "text_too_long", `The Decision question exceeds ${DECISION_CARD_LIMITS.what} characters; refused, not truncated.`);
   }
   if (!Array.isArray(raw.options) || raw.options.length === 0) {
-    return refuse(`decision-${id}`, "no_options", "The Decision offers no options to answer between.");
+    return refuse(cardIdOf("decision", id), "no_options", "The Decision offers no options to answer between.");
   }
   if (raw.options.length > DECISION_CARD_LIMITS.maxOptions) {
-    return refuse(`decision-${id}`, "too_many_options", `The Decision has more than ${DECISION_CARD_LIMITS.maxOptions} options.`);
+    return refuse(cardIdOf("decision", id), "too_many_options", `The Decision has more than ${DECISION_CARD_LIMITS.maxOptions} options.`);
   }
   const options: Array<{ id: string; label: string; consequence: string }> = [];
   const stateOptions: unknown[] = [];
   for (let i = 0; i < raw.options.length; i++) {
     const o: unknown = raw.options[i];
-    if (!isRecord(o) || !nonEmpty(o.label)) return refuse(`decision-${id}`, "bad_source", `option ${i + 1} has no label`);
+    if (!isRecord(o) || !nonEmpty(o.label)) return refuse(cardIdOf("decision", id), "bad_source", `option ${i + 1} has no label`);
     if (!nonEmpty(o.consequence)) {
-      return refuse(`decision-${id}`, "missing_consequence", `option ${i + 1} states no consequence; a card must show what each choice does.`);
+      return refuse(cardIdOf("decision", id), "missing_consequence", `option ${i + 1} states no consequence; a card must show what each choice does.`);
     }
     if (overLimit(o.label, DECISION_CARD_LIMITS.label) || overLimit(o.consequence, DECISION_CARD_LIMITS.consequence)) {
-      return refuse(`decision-${id}`, "text_too_long", `option ${i + 1} text exceeds its limit; refused, not truncated.`);
+      return refuse(cardIdOf("decision", id), "text_too_long", `option ${i + 1} text exceeds its limit; refused, not truncated.`);
     }
     const effect = o.effect ?? null;
     if (effect !== null && (typeof effect !== "string" || !KNOWN_OPTION_EFFECTS.includes(effect))) {
-      return refuse(`decision-${id}`, "bad_source", `option ${i + 1} effect is not a known Decision option effect.`);
+      return refuse(cardIdOf("decision", id), "bad_source", `option ${i + 1} effect is not a known Decision option effect.`);
     }
     if (o.consequence.includes("[effect:")) {
-      return refuse(`decision-${id}`, "bad_source", `option ${i + 1} consequence contains the reserved text "[effect:", which the card renders itself.`);
+      return refuse(cardIdOf("decision", id), "bad_source", `option ${i + 1} consequence contains the reserved text "[effect:", which the card renders itself.`);
     }
     // What the operator reads is what the pin binds: the machine effect is rendered.
     const shown = effect === null ? o.consequence : `${o.consequence} [effect: ${effect}]`;
     if (overLimit(shown, DECISION_CARD_LIMITS.consequence)) {
-      return refuse(`decision-${id}`, "text_too_long", `option ${i + 1} consequence with its effect exceeds its limit; refused, not truncated.`);
+      return refuse(cardIdOf("decision", id), "text_too_long", `option ${i + 1} consequence with its effect exceeds its limit; refused, not truncated.`);
     }
     options.push({ id: `option-${i + 1}`, label: o.label, consequence: shown });
     stateOptions.push({ label: o.label, consequence: o.consequence, recommended: o.recommended === true, effect });
   }
-  const cardId = `decision-${id}`;
+  const cardId = cardIdOf("decision", id);
   const stateHash = fingerprint("decision", id, {
     id,
     status: raw.status,
@@ -340,7 +349,7 @@ function buildScript(raw: unknown, now: number, expires: string): Built {
   if (d.schema !== "arcadia-operator-script-v1" || typeof id !== "string" || !ID_RE.test(id)) {
     return refuse(null, "bad_source", "descriptor schema or id is not an arcadia-operator-script-v1 entry");
   }
-  const cardId = `script-${id}`;
+  const cardId = cardIdOf("operator-script", id);
   if (!nonEmpty(d.title) || typeof d.script !== "string" || d.script !== `${id}.sh`) {
     return refuse(cardId, "bad_source", "descriptor title or script name is incomplete");
   }
@@ -397,6 +406,22 @@ function buildScript(raw: unknown, now: number, expires: string): Built {
   };
 }
 
+/**
+ * Dedup key for one path: the classifier's normalised form of the folded path.
+ * Null when the path is not already in its own normalised form (leading ./, //,
+ * backslash, trailing dot or space), which GitHub never emits. A path the
+ * classifier cannot reduce only because it is non-ASCII keys on its folded text; it is
+ * reported unclassifiable downstream.
+ */
+function pathKey(path: string): string | null {
+  const folded = path.toLowerCase().normalize("NFKC");
+  const normalized = normalizeAuthorityPath(path);
+  if (normalized !== null && normalized !== path) return null;
+  // Printable-ASCII paths the classifier rejects (.., absolute, trailing dot or space) are not GitHub output.
+  if (normalized === null && /^[\x20-\x7e]*$/.test(path)) return null;
+  return normalizeAuthorityPath(folded) ?? folded;
+}
+
 function fileNames(entry: unknown): { filename: string; previous: string | null } | null {
   if (typeof entry === "string") return { filename: entry, previous: null };
   if (!isRecord(entry) || typeof entry.filename !== "string") return null;
@@ -409,7 +434,7 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
   if (!isRecord(raw)) return refuse(null, "bad_source", "pull request must be an object");
   const n = raw.number;
   if (typeof n !== "number" || !Number.isSafeInteger(n) || n <= 0) return refuse(null, "bad_source", "PR number must be a positive integer");
-  const cardId = `pr-${n}`;
+  const cardId = cardIdOf("pull-request", n);
   if (raw.state !== "open" && raw.state !== "closed" && raw.state !== "merged") return refuse(cardId, "bad_source", "PR state must be open, closed or merged");
   if (typeof raw.draft !== "boolean") return refuse(cardId, "bad_source", "PR draft must be a boolean");
   if (raw.state === "merged") return { ok: "skip", id: cardId, sourceKind: "pull-request", reason: "pr_merged" };
@@ -433,18 +458,19 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
     if (parsed.filename.length > CARD_SOURCE_LIMITS.maxPathLength || (parsed.previous?.length ?? 0) > CARD_SOURCE_LIMITS.maxPathLength) {
       return refuse(cardId, "text_too_long", "a PR file path exceeds the path limit.");
     }
-    // A real file list has unique paths; a repeat could pad the count to hide a truncation.
-    const folded = parsed.filename.toLowerCase().normalize("NFKC");
-    if (seenNames.has(folded)) {
-      return refuse(cardId, "files_incomplete", "the file list repeats a path, so changedFiles does not prove the list is complete.");
+    // GitHub emits plain, unique paths. A path that is not its own normalised form,
+    // or two entries that collapse to one classifier key, could pad the count.
+    const nameKey = pathKey(parsed.filename);
+    if (nameKey === null || seenNames.has(nameKey)) {
+      return refuse(cardId, "files_incomplete", "the file list has a non-canonical or repeated path, so changedFiles does not prove the list is complete.");
     }
-    seenNames.add(folded);
+    seenNames.add(nameKey);
     if (parsed.previous !== null) {
-      const prev = parsed.previous.toLowerCase().normalize("NFKC");
-      if (seenPrevious.has(prev)) {
-        return refuse(cardId, "files_incomplete", "the file list repeats a previous path, so changedFiles does not prove the list is complete.");
+      const prevKey = pathKey(parsed.previous);
+      if (prevKey === null || seenPrevious.has(prevKey)) {
+        return refuse(cardId, "files_incomplete", "the file list has a non-canonical or repeated previous path, so changedFiles does not prove the list is complete.");
       }
-      seenPrevious.add(prev);
+      seenPrevious.add(prevKey);
     }
     names.push(parsed);
   }
@@ -512,15 +538,27 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
   };
 }
 
-/** Label for a refusal only: never trusted, never used in a card. */
+/** Card id an unreadable source would have claimed; for refusal labelling and blocking only. */
 function bestEffortId(raw: unknown): string | null {
   try {
     if (!isRecord(raw)) return null;
-    const inner = raw.decision ?? raw.script ?? raw.pr;
-    if (!isRecord(inner)) return null;
-    const maybe = isRecord(inner.descriptor) ? inner.descriptor.id : (inner.id ?? inner.number);
-    if (typeof maybe === "string" && ID_RE.test(maybe)) return maybe;
-    if (typeof maybe === "number" && Number.isSafeInteger(maybe)) return String(maybe);
+    const kind = raw.kind;
+    if (kind === "decision") {
+      const inner = raw.decision;
+      const id = isRecord(inner) ? inner.id : undefined;
+      return typeof id === "string" && ID_RE.test(id) ? cardIdOf("decision", id) : null;
+    }
+    if (kind === "operator-script") {
+      const inner = raw.script;
+      const d = isRecord(inner) ? inner.descriptor : undefined;
+      const id = isRecord(d) ? d.id : undefined;
+      return typeof id === "string" && ID_RE.test(id) ? cardIdOf("operator-script", id) : null;
+    }
+    if (kind === "pull-request") {
+      const inner = raw.pr;
+      const n = isRecord(inner) ? inner.number : undefined;
+      return typeof n === "number" && Number.isSafeInteger(n) && n > 0 ? cardIdOf("pull-request", n) : null;
+    }
     return null;
   } catch {
     return null;
@@ -539,7 +577,7 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
     out.refusals.push({ index: -1, sourceKind: null, sourceId: null, code: "bad_input", message });
     return out;
   };
-  let snap: { sources: unknown[]; expires: unknown; repo: unknown; total: number };
+  let snap: { sources: unknown[]; expires: unknown; repo: unknown; total: number; omitted: unknown[] };
   let nowMs = Number.NaN;
   try {
     // One read of `now`, through the intrinsic: a Proxy or subclass trick refuses, never throws.
@@ -555,7 +593,10 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
     const length = list.length;
     const taken: unknown[] = [];
     for (let i = 0; i < Math.min(length, CARD_SOURCE_LIMITS.maxSources); i++) taken.push(list[i]);
-    snap = { sources: taken, expires: shot.expires, repo: shot.repo, total: length };
+    // Omitted sources are only labelled, never built; read a bounded number of them.
+    const omitted: unknown[] = [];
+    for (let i = CARD_SOURCE_LIMITS.maxSources; i < Math.min(length, CARD_SOURCE_LIMITS.maxSources + 1000); i++) omitted.push(list[i]);
+    snap = { sources: taken, expires: shot.expires, repo: shot.repo, total: length, omitted };
   } catch (error) {
     return bad(error instanceof Unreadable ? error.message : "input could not be read safely (is now a real Date?)");
   }
@@ -566,14 +607,19 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
   const now = new Date(nowMs);
 
   const sources = snap.sources;
+  const omittedClaims = new Set<string>();
   if (snap.total > CARD_SOURCE_LIMITS.maxSources) {
     out.truncated = true;
+    const omittedIds = snap.omitted.map(bestEffortId).filter((x): x is string => x !== null);
+    for (const id of omittedIds) omittedClaims.add(id);
     out.refusals.push({
       index: CARD_SOURCE_LIMITS.maxSources,
       sourceKind: null,
       sourceId: null,
       code: "source_limit",
-      message: `${snap.total - CARD_SOURCE_LIMITS.maxSources} sources beyond the ${CARD_SOURCE_LIMITS.maxSources} limit were not read.`,
+      message: `${snap.total - CARD_SOURCE_LIMITS.maxSources} sources beyond the ${CARD_SOURCE_LIMITS.maxSources} limit were not built; ids listed: ${omittedIds.slice(0, 50).join(", ") || "none readable"}.`,
+      omittedIds: omittedIds.slice(0, 50),
+      omittedCount: snap.total - CARD_SOURCE_LIMITS.maxSources,
     });
   }
 
@@ -645,6 +691,7 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
   const blocked = new Set<string>();
   for (const k of out.skipped) blocked.add(k.sourceId);
   for (const r of out.refusals) if (r.sourceId !== null) blocked.add(r.sourceId);
+  for (const id of omittedClaims) blocked.add(id);
   for (const c of out.cards.filter((x) => blocked.has(x.card.id))) {
     out.refusals.push({
       index: -1,
