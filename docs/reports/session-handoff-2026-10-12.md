@@ -106,3 +106,17 @@ Consider moving `batch-merge-decision-card` right behind
   read why before launching), then the two batch-merge remainders (route is
   authority-adjacent: it waits for the operator). Put "dedup and id keys use the
   classifier's own normaliser and `cardIdOf`" into every card-generator brief.
+
+## Update (Lead session 4, 2026-10-13)
+- Merged: #1359, #1362 (the `/todo` next-steps Action). Open for the operator: the
+  `todo-actions-render-cards` completion PR (new mutating route
+  `/api/decision-card`, writer preconditions `--expect-status/-updated/-options/
+  -no-pointer-move` in `decision approve`). Read the route header comment first.
+- Known limits shipped: run cards execute only when the script is the derived next
+  action; a defer whose target is the current Action is refused from a card and must
+  be answered from the CLI; PR cards render but merge/veto have no button (the batch
+  merge route is its own Action); the last fix was Lead-verified, not re-reviewed.
+- Next: `todo-next-steps-route-to-forward` (the operator's /todo route-to-done
+  directive). It consumes `cardSources.ts`, `orderStack`, and needs PR facts from
+  `gh` (inject, keep the module pure). The read-only list may merge on green; any
+  button waits for the operator.

@@ -2239,6 +2239,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--status <status>", "open, approved, rejected, or deferred", "approved")
       .option("--dry-run", "Report the consequence the answer would apply without writing anything")
       .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
+      .option("--expect-status <status>", "Refuse, writing nothing, unless the Decision currently has this status")
+      .option("--expect-updated <value>", "Refuse, writing nothing, unless the Decision's updated field equals this")
+      .option("--expect-no-pointer-move", "Refuse, writing nothing, if a defer option's target is the current Action (it would move the active pointer)")
+      .option("--expect-options <sha256>", "Refuse, writing nothing, unless sha256 of the Decision's question and options (label, consequence, effect, in order) equals this")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
@@ -2248,6 +2252,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     status?: string;
     dryRun?: boolean;
     requestId?: string;
+    expectStatus?: string;
+    expectUpdated?: string;
+    expectOptions?: string;
+    expectNoPointerMove?: boolean;
     json?: boolean;
   }) =>
     runCliAction(
@@ -2261,7 +2269,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         decided: options.decided,
         status: options.status as never,
         dryRun: options.dryRun,
-        requestId: options.requestId
+        requestId: options.requestId,
+        expectStatus: options.expectStatus,
+        expectUpdated: options.expectUpdated,
+        expectOptions: options.expectOptions,
+        expectNoPointerMove: options.expectNoPointerMove
       }),
       renderDecisionApproveSuccess
     )
@@ -3055,8 +3067,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     work
       .command("prs")
       .description("List outstanding GitHub pull requests across Project repositories")
+      .option("--lightweight", "List PRs and CI without per-PR bodies, files or briefing")
+      .option("--repositories-only", "Resolve configured GitHub origins locally without GitHub reads")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  ).action((options: { workspace: string; lightweight?: boolean; repositoriesOnly?: boolean; json?: boolean }) =>
     runCliAction(
       "work.pull-requests",
       options,

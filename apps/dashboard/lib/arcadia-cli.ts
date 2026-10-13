@@ -366,6 +366,8 @@ export interface OpenDecisionOption {
   label: string;
   consequence: string;
   recommended: boolean;
+  /** The machine effect the writer applies when this option is chosen (e.g. "defer"); null or absent when none. Unknown values are kept as-is. */
+  effect?: string | null;
 }
 
 export interface OpenDecisionItem {
@@ -378,6 +380,9 @@ export interface OpenDecisionItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: OpenDecisionOption[];
+  /** The Action a `defer` option parks, and the project field the deferral uses; both pinned by the options digest. */
+  action?: string | null;
+  project?: string | null;
   relativePath: string;
   updated: string;
 }
@@ -452,11 +457,22 @@ export async function approveDecision(input: {
   projectSlug: string;
   decisionId: string;
   answer: string;
+  /** Writer preconditions: refused with nothing written unless the Decision still has this status / updated value. */
+  expectStatus?: string;
+  expectUpdated?: string;
+  /** sha256 of the question and options as shown (src/decisions/optionsDigest.ts); the writer refuses on mismatch. */
+  expectOptions?: string;
+  /** The writer refuses (defer_would_move_pointer) when applying the answer would move the active pointer. */
+  expectNoPointerMove?: boolean;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
     "--project", input.projectSlug,
-    "--answer", input.answer
+    "--answer", input.answer,
+    ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
+    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : []),
+    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : []),
+    ...(input.expectNoPointerMove === true ? ["--expect-no-pointer-move"] : [])
   ], { timeoutMs: 60_000 });
 }
 
@@ -470,7 +486,7 @@ let outstandingPullRequestsInFlight: Promise<ArcadiaJsonSuccess<OutstandingPullR
 
 export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
   if (outstandingPullRequestsInFlight) return outstandingPullRequestsInFlight;
-  outstandingPullRequestsInFlight = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]).then(response => {
+  outstandingPullRequestsInFlight = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--lightweight"]).then(response => {
     pullRequestRepositories = {
       expiresAt: Date.now() + 5 * 60_000,
       entries: (response.data.snapshot.repositories ?? response.data.snapshot.pullRequests).map(entry => ({ repository: entry.repository, repositoryPath: entry.repositoryPath })),
@@ -1668,9 +1684,8 @@ function statusForArcadiaError(code: string, details: unknown): number {
 }
 
 export async function loadPullRequestDescription(repository: string, number: number) {
-  if (!pullRequestRepositories || pullRequestRepositories.expiresAt <= Date.now()) await loadOutstandingPullRequests();
-  const known = pullRequestRepositories?.entries.find(entry => entry.repository.toLowerCase() === repository.toLowerCase());
-  if (!known) throw new ArcadiaCliError("This repository is not configured in Arcadia.", 404);
+  const known = await configuredPullRequestRepository(repository);
+
   const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "title,body,url,state"], {
     cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,
   });
@@ -1682,5 +1697,36 @@ export async function loadPullRequestDescription(repository: string, number: num
     body: source.body,
     url: typeof source.url === "string" ? source.url : `https://github.com/${known.repository}/pull/${number}`,
     state: typeof source.state === "string" ? source.state : "UNKNOWN",
+  };
+}
+
+let configuredRepositoriesInFlight: Promise<void> | null = null;
+async function configuredPullRequestRepository(repository: string): Promise<ConfiguredPullRequestRepository> {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new ArcadiaCliError("Invalid repository.", 400);
+  if (!pullRequestRepositories || pullRequestRepositories.expiresAt <= Date.now()) {
+    configuredRepositoriesInFlight ??= runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--repositories-only"]).then(response => {
+      pullRequestRepositories = { expiresAt: Date.now() + 5 * 60_000, entries: response.data.snapshot.repositories ?? [] };
+    }).finally(() => { configuredRepositoriesInFlight = null; });
+    await configuredRepositoriesInFlight;
+  }
+  const known = pullRequestRepositories?.entries.find(entry => entry.repository.toLowerCase() === repository.toLowerCase());
+  if (!known) throw new ArcadiaCliError("This repository is not configured in Arcadia.", 404);
+  return known;
+}
+
+export async function loadPullRequestDetails(repository: string, number: number): Promise<import("./types").DashboardPullRequestDetails> {
+  const known = await configuredPullRequestRepository(repository);
+  const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "body,files,url,headRefName,baseRefName,reviewDecision,mergeStateStatus"], {
+    cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 8 * 1024 * 1024
+  });
+  const raw = JSON.parse(result.stdout) as Record<string, unknown>;
+  return {
+    body: typeof raw.body === "string" ? raw.body : "",
+    files: Array.isArray(raw.files) ? raw.files.flatMap(file => file && typeof file === "object" && "path" in file && typeof file.path === "string" ? [file.path] : []) : [],
+    url: typeof raw.url === "string" ? raw.url : `https://github.com/${known.repository}/pull/${number}`,
+    headBranch: typeof raw.headRefName === "string" ? raw.headRefName : "Unknown",
+    baseBranch: typeof raw.baseRefName === "string" ? raw.baseRefName : "Unknown",
+    reviewDecision: typeof raw.reviewDecision === "string" ? raw.reviewDecision : null,
+    mergeStateStatus: typeof raw.mergeStateStatus === "string" ? raw.mergeStateStatus : null
   };
 }

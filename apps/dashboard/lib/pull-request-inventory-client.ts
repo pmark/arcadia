@@ -77,7 +77,7 @@ function errorMessage(body: unknown, fallback: string): string {
   return "error" in body && typeof body.error === "string" ? body.error : fallback;
 }
 
-const REMEMBERED_INVENTORY_KEY = "arcadia.pr-inventory.v1";
+const REMEMBERED_INVENTORY_KEY = "arcadia.pr-inventory.lightweight.v2";
 const REMEMBERED_INVENTORY_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /** Browser-session cards are display evidence only; every revisit checks the server. */
@@ -131,6 +131,7 @@ function isPullRequest(value: unknown): boolean {
     && ["blocked", "checks_failing", "checks_pending", "draft", "ready", "merge_ready", "unknown"].includes(value.readiness)
     && Array.isArray(value.checks) && value.checks.every(check => isRecord(check)
       && typeof check.name === "string" && [check.status, check.conclusion, check.url].every(isNullableString))
+    && (value.detailsLoaded === undefined || typeof value.detailsLoaded === "boolean")
     && isBriefing(value.briefing);
 }
 
