@@ -87,11 +87,15 @@ export type DecisionCardErrorCode =
   | "duplicate_option_id"
   | "no_pins"
   | "empty_pin"
+  | "padded_pin"
   | "unknown_verb"
   | "bad_expires"
   | "expired"
   | "bad_policy_match"
   | "policy_match_on_excluded_kind"
+  | "policy_match_kind_not_eligible"
+  | "bad_clock"
+  | "expiry_too_far"
   | "default_action_not_allowed"
   | "default_action_unknown_option";
 
@@ -123,8 +127,41 @@ const OPTION_KEYS = new Set(["id", "label", "consequence"]);
 const EVIDENCE_KEYS = new Set(["label", "url", "fingerprint"]);
 const PIN_KEYS = ["stateHash", "headSha", "previewFingerprint"] as const;
 const KIND_RE = /^[a-z][a-z0-9_-]*$/;
+/** Strict slug for ids, option ids and policy ids: no whitespace or control chars. */
+const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const ISO_RE =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
+const INVISIBLE_RE = /[\p{White_Space}\p{Cf}\p{Cc}⠀ㅤﾠᅟᅠ]/gu;
+const CONTROL_RE = /\p{Cc}/u;
+const EDGE_SPACE_RE = /^[\p{White_Space}\p{Cf}]|[\p{White_Space}\p{Cf}]$/u;
+
+/** True when the string has no visible content (whitespace, format, invisible). */
+function isBlank(value: string): boolean {
+  return value.replace(INVISIBLE_RE, "") === "";
+}
+
+/**
+ * Kinds that MAY carry a policy_match or defaultAction. This is an allow-list:
+ * any kind not named here is operator-only. The policy evaluator extends it
+ * deliberately; the deny-list above remains a second guard.
+ */
+export const DECISION_CARD_POLICY_ELIGIBLE_KINDS: ReadonlySet<string> = new Set([
+  "pr-merge",
+  "docs-only",
+  "plan-handoff",
+  "split-remainder-placement",
+]);
+
+/** Maximum distance between now and a card's expiry (30 days). */
+export const DECISION_CARD_MAX_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
+
+function policyEligible(kind: string | null): boolean {
+  return (
+    kind !== null &&
+    DECISION_CARD_POLICY_ELIGIBLE_KINDS.has(kind) &&
+    !DECISION_CARD_EXCLUDED_KINDS.has(kind)
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -167,7 +204,26 @@ function str(
     errors.push({ code: "too_long", path, message: `${path} exceeds ${max} characters` });
     return null;
   }
+  if (CONTROL_RE.test(value)) {
+    errors.push({ code: "bad_field", path, message: `${path} must not contain control characters` });
+    return null;
+  }
   return value;
+}
+
+function slug(
+  errors: DecisionCardError[],
+  path: string,
+  value: unknown,
+  max: number,
+): string | null {
+  const v = str(errors, path, value, max);
+  if (v === null) return null;
+  if (!SLUG_RE.test(v)) {
+    errors.push({ code: "bad_field", path, message: `${path} must be a slug (letters, digits, . _ : -)` });
+    return null;
+  }
+  return v;
 }
 
 function unknownKeys(
@@ -195,6 +251,12 @@ export function validateDecisionCard(
 ): DecisionCardValidation {
   const errors: DecisionCardError[] = [];
   const now = (options.now ?? new Date()).getTime();
+  if (!Number.isFinite(now)) {
+    return {
+      ok: false,
+      errors: [{ code: "bad_clock", path: "now", message: "now must be a valid time" }],
+    };
+  }
   if (!isRecord(input)) {
     return {
       ok: false,
@@ -214,11 +276,7 @@ export function validateDecisionCard(
   if (!has(input, "id")) {
     errors.push({ code: "bad_field", path: "id", message: "id is required" });
   } else {
-    id = str(errors, "id", input.id, DECISION_CARD_LIMITS.id);
-    if (id !== null && id.trim() === "") {
-      errors.push({ code: "bad_field", path: "id", message: "id must not be empty" });
-      id = null;
-    }
+    id = slug(errors, "id", input.id, DECISION_CARD_LIMITS.id);
   }
 
   let kind: string | null = null;
@@ -237,20 +295,21 @@ export function validateDecisionCard(
   }
 
   let what: string | null = null;
-  if (input.what === undefined || (typeof input.what === "string" && input.what.trim() === "")) {
+  if (input.what === undefined || (typeof input.what === "string" && isBlank(input.what))) {
     errors.push({ code: "empty_what", path: "what", message: "what must be a non-empty sentence" });
   } else {
     what = str(errors, "what", input.what, DECISION_CARD_LIMITS.what);
   }
 
   const optionOut: DecisionCardOption[] = [];
-  if (!Array.isArray(input.options) || input.options.length === 0) {
+  const rawOptions: unknown = input.options;
+  if (!Array.isArray(rawOptions) || rawOptions.length === 0) {
     errors.push({
       code: "no_options",
       path: "options",
       message: "options must be a non-empty array",
     });
-  } else if (input.options.length > DECISION_CARD_LIMITS.maxOptions) {
+  } else if (rawOptions.length > DECISION_CARD_LIMITS.maxOptions) {
     errors.push({
       code: "too_many_options",
       path: "options",
@@ -258,17 +317,19 @@ export function validateDecisionCard(
     });
   } else {
     const seen = new Set<string>();
-    input.options.forEach((raw: unknown, i: number) => {
+    for (let i = 0; i < rawOptions.length; i++) {
       const p = `options[${i}]`;
+      // Index loop, not forEach: sparse holes must be rejected, not skipped.
+      const raw: unknown = i in rawOptions ? rawOptions[i] : undefined;
       if (!isRecord(raw)) {
         errors.push({ code: "bad_field", path: p, message: `${p} must be an object` });
-        return;
+        continue;
       }
       unknownKeys(errors, raw, OPTION_KEYS, `${p}.`);
-      const oid = str(errors, `${p}.id`, raw.id, DECISION_CARD_LIMITS.optionId);
+      const oid = slug(errors, `${p}.id`, raw.id, DECISION_CARD_LIMITS.optionId);
       const label = str(errors, `${p}.label`, raw.label, DECISION_CARD_LIMITS.label);
       let consequence: string | null = null;
-      if (typeof raw.consequence !== "string" || raw.consequence.trim() === "") {
+      if (typeof raw.consequence !== "string" || isBlank(raw.consequence)) {
         errors.push({
           code: "missing_consequence",
           path: `${p}.consequence`,
@@ -283,9 +344,7 @@ export function validateDecisionCard(
         );
       }
       if (oid !== null) {
-        if (oid.trim() === "") {
-          errors.push({ code: "bad_field", path: `${p}.id`, message: `${p}.id must not be empty` });
-        } else if (seen.has(oid)) {
+        if (seen.has(oid)) {
           errors.push({
             code: "duplicate_option_id",
             path: `${p}.id`,
@@ -294,7 +353,7 @@ export function validateDecisionCard(
         }
         seen.add(oid);
       }
-      if (label !== null && label.trim() === "") {
+      if (label !== null && isBlank(label)) {
         errors.push({
           code: "bad_field",
           path: `${p}.label`,
@@ -304,7 +363,10 @@ export function validateDecisionCard(
       if (oid !== null && label !== null && consequence !== null) {
         optionOut.push({ id: oid, label, consequence });
       }
-    });
+    }
+    if (optionOut.length === 0 && !errors.some((e) => e.path.startsWith("options"))) {
+      errors.push({ code: "no_options", path: "options", message: "no valid options" });
+    }
   }
 
   const evidenceOut: DecisionCardEvidence[] = [];
@@ -317,14 +379,19 @@ export function validateDecisionCard(
       message: `at most ${DECISION_CARD_LIMITS.maxEvidence} evidence items`,
     });
   } else {
-    input.evidence.forEach((raw: unknown, i: number) => {
+    const rawEvidence: unknown[] = input.evidence;
+    for (let i = 0; i < rawEvidence.length; i++) {
       const p = `evidence[${i}]`;
+      const raw: unknown = i in rawEvidence ? rawEvidence[i] : undefined;
       if (!isRecord(raw)) {
         errors.push({ code: "bad_field", path: p, message: `${p} must be an object` });
-        return;
+        continue;
       }
       unknownKeys(errors, raw, EVIDENCE_KEYS, `${p}.`);
       const label = str(errors, `${p}.label`, raw.label, DECISION_CARD_LIMITS.evidenceLabel);
+      if (label !== null && isBlank(label)) {
+        errors.push({ code: "bad_field", path: `${p}.label`, message: `${p}.label must not be empty` });
+      }
       const item: DecisionCardEvidence = { label: label ?? "" };
       if (has(raw, "url")) {
         const url = str(errors, `${p}.url`, raw.url, DECISION_CARD_LIMITS.url);
@@ -341,7 +408,7 @@ export function validateDecisionCard(
       if (has(raw, "fingerprint")) {
         const fp = str(errors, `${p}.fingerprint`, raw.fingerprint, DECISION_CARD_LIMITS.pin);
         if (fp !== null) {
-          if (fp.trim() === "") {
+          if (isBlank(fp) || EDGE_SPACE_RE.test(fp)) {
             errors.push({
               code: "bad_field",
               path: `${p}.fingerprint`,
@@ -351,7 +418,7 @@ export function validateDecisionCard(
         }
       }
       evidenceOut.push(item);
-    });
+    }
   }
 
   let verb: DecisionCardVerb | null = null;
@@ -383,12 +450,19 @@ export function validateDecisionCard(
       const v = str(errors, `pins.${key}`, input.pins[key], DECISION_CARD_LIMITS.pin);
       if (v === null) {
         pinProblem = true;
-      } else if (v.trim() === "") {
+      } else if (isBlank(v)) {
         pinProblem = true;
         errors.push({
           code: "empty_pin",
           path: `pins.${key}`,
           message: `pins.${key} must not be empty`,
+        });
+      } else if (EDGE_SPACE_RE.test(v)) {
+        pinProblem = true;
+        errors.push({
+          code: "padded_pin",
+          path: `pins.${key}`,
+          message: `pins.${key} must not have leading or trailing whitespace`,
         });
       } else pins[key] = v;
     }
@@ -407,19 +481,25 @@ export function validateDecisionCard(
     });
   } else if (expiresMs <= now) {
     errors.push({ code: "expired", path: "expires", message: "card is expired" });
+  } else if (expiresMs - now > DECISION_CARD_MAX_HORIZON_MS) {
+    errors.push({
+      code: "expiry_too_far",
+      path: "expires",
+      message: "expires is more than 30 days away",
+    });
   } else expires = input.expires as string;
 
   let policyMatch: string | null = null;
   if (input.policy_match !== null) {
     if (
       typeof input.policy_match !== "string" ||
-      input.policy_match.trim() === "" ||
-      input.policy_match.length > DECISION_CARD_LIMITS.policyMatch
+      input.policy_match.length > DECISION_CARD_LIMITS.policyMatch ||
+      !SLUG_RE.test(input.policy_match)
     ) {
       errors.push({
         code: "bad_policy_match",
         path: "policy_match",
-        message: "policy_match must be null or a non-empty policy id string",
+        message: "policy_match must be null or a policy id slug",
       });
     } else policyMatch = input.policy_match;
   }
@@ -427,30 +507,38 @@ export function validateDecisionCard(
   let receipt: string | null = null;
   if (input.receipt !== null) {
     receipt = str(errors, "receipt", input.receipt, DECISION_CARD_LIMITS.receipt);
-    if (receipt !== null && receipt.trim() === "") {
+    if (receipt !== null && isBlank(receipt)) {
       errors.push({ code: "bad_field", path: "receipt", message: "receipt must be a path or null" });
       receipt = null;
     }
   }
 
   const excluded = kind !== null && DECISION_CARD_EXCLUDED_KINDS.has(kind);
-  if (excluded && policyMatch !== null) {
-    errors.push({
-      code: "policy_match_on_excluded_kind",
-      path: "policy_match",
-      message: `kind ${kind} can never match a delegation policy`,
-    });
+  if (policyMatch !== null && kind !== null) {
+    if (excluded) {
+      errors.push({
+        code: "policy_match_on_excluded_kind",
+        path: "policy_match",
+        message: `kind ${kind} can never match a delegation policy`,
+      });
+    } else if (!policyEligible(kind)) {
+      errors.push({
+        code: "policy_match_kind_not_eligible",
+        path: "policy_match",
+        message: `kind ${kind} is not on the policy-eligible allow-list`,
+      });
+    }
   }
 
   let defaultAction: string | undefined;
   if (has(input, "defaultAction") && input.defaultAction !== undefined) {
-    const da = str(errors, "defaultAction", input.defaultAction, DECISION_CARD_LIMITS.optionId);
+    const da = slug(errors, "defaultAction", input.defaultAction, DECISION_CARD_LIMITS.optionId);
     if (da !== null) {
-      if (verb !== "veto" || excluded) {
+      if (verb !== "veto" || excluded || !policyEligible(kind)) {
         errors.push({
           code: "default_action_not_allowed",
           path: "defaultAction",
-          message: "defaultAction is only allowed for verb veto on a non-excluded kind",
+          message: "defaultAction is only allowed for verb veto on a policy-eligible kind",
         });
       } else if (!optionOut.some((o) => o.id === da)) {
         errors.push({
@@ -485,6 +573,8 @@ export type DecisionCardCurrentState = DecisionCardPins;
 export type DecisionCardPinReason =
   | "expired"
   | "no_pins"
+  | "bad_clock"
+  | "malformed_card"
   | "stale_state_hash"
   | "stale_head_sha"
   | "stale_preview_fingerprint"
@@ -510,28 +600,42 @@ const PIN_REASONS: Record<
 
 /**
  * Use-time gate: every pin the card carries must equal the current value
- * exactly, and the card must not be expired. A missing current value fails
- * closed. Call this immediately before acting, not at render time.
+ * exactly, and the card must not be expired. Fails closed and never throws:
+ * a malformed card, malformed pin, bad clock or missing current value returns
+ * a named refusal. Cards should be validated with validateDecisionCard first;
+ * this function re-checks only what it needs, it is not a validator.
  */
 export function checkPins(
-  card: Pick<DecisionCard, "pins" | "expires">,
+  card: unknown,
   current: DecisionCardCurrentState,
   now: Date = new Date(),
 ): DecisionCardPinCheck {
+  const nowMs = now instanceof Date ? now.getTime() : Number.NaN;
+  if (!Number.isFinite(nowMs)) return { ok: false, reason: "bad_clock" };
+  if (!isRecord(card) || !isRecord(card.pins)) {
+    return { ok: false, reason: "malformed_card" };
+  }
   const expiresMs = parseCardExpiry(card.expires);
-  if (expiresMs === null || expiresMs <= now.getTime()) {
+  if (expiresMs === null || expiresMs <= nowMs) {
     return { ok: false, reason: "expired" };
   }
-  const pinned = PIN_KEYS.filter((k) => typeof card.pins[k] === "string" && card.pins[k] !== "");
-  if (pinned.length === 0) return { ok: false, reason: "no_pins" };
-  for (const field of pinned) {
-    const live = current[field];
+  const liveState: Record<string, unknown> = isRecord(current) ? current : {};
+  let pinned = 0;
+  for (const field of PIN_KEYS) {
+    const want = card.pins[field];
+    if (want === undefined) continue;
+    if (typeof want !== "string" || isBlank(want) || EDGE_SPACE_RE.test(want)) {
+      return { ok: false, reason: "malformed_card", field };
+    }
+    pinned++;
+    const live = liveState[field];
     if (typeof live !== "string" || live === "") {
       return { ok: false, reason: PIN_REASONS[field].missing, field };
     }
-    if (live !== card.pins[field]) {
+    if (live !== want) {
       return { ok: false, reason: PIN_REASONS[field].stale, field };
     }
   }
+  if (pinned === 0) return { ok: false, reason: "no_pins" };
   return { ok: true };
 }

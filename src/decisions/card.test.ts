@@ -6,6 +6,7 @@ import {
   parseCardExpiry,
   validateDecisionCard,
   type DecisionCardErrorCode,
+  DECISION_CARD_POLICY_ELIGIBLE_KINDS,
 } from "./card.js";
 
 const NOW = new Date("2026-10-12T12:00:00Z");
@@ -56,7 +57,7 @@ describe("fixtures per verb", () => {
     }),
     veto: base({
       id: "card-veto",
-      kind: "docs-only-merge",
+      kind: "docs-only",
       verb: "veto",
       what: "Merge docs-only PR unless vetoed.",
       defaultAction: "go",
@@ -257,5 +258,108 @@ describe("checkPins", () => {
     expect(checkPins({ pins: { headSha: "h1" }, expires: FUTURE }, { headSha: "h1" }, NOW).ok).toBe(
       true,
     );
+  });
+});
+
+describe("review hardening", () => {
+  it("1: fails closed on a bad clock", () => {
+    const bad = new Date("garbage");
+    const r = validateDecisionCard(base(), { now: bad });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]?.code).toBe("bad_clock");
+    const card = { pins: { headSha: "h" }, expires: FUTURE };
+    expect(checkPins(card, { headSha: "h" }, bad)).toEqual({ ok: false, reason: "bad_clock" });
+    expect(checkPins(card, { headSha: "h" }, "x" as unknown as Date)).toEqual({
+      ok: false,
+      reason: "bad_clock",
+    });
+  });
+  it("2: rejects sparse, hole and non-object options", () => {
+    expect(codes(base({ options: new Array(3) }))).toContain("bad_field");
+    // eslint-disable-next-line no-sparse-arrays
+    expect(codes(base({ options: [,] }))).toContain("bad_field");
+    expect(codes(base({ options: [null] }))).toContain("bad_field");
+    expect(codes(base({ options: ["x"] }))).toContain("bad_field");
+    const holey: unknown[] = [{ id: "a", label: "A", consequence: "c" }];
+    holey[2] = { id: "b", label: "B", consequence: "c" };
+    expect(codes(base({ options: holey }))).toContain("bad_field");
+    expect(codes(base({ evidence: new Array(2) }))).toContain("bad_field");
+  });
+  it("3: policy_match and defaultAction need an allow-listed kind", () => {
+    expect(DECISION_CARD_POLICY_ELIGIBLE_KINDS.has("pr-merge")).toBe(true);
+    for (const kind of [
+      "payment",
+      "credential",
+      "decision_answer",
+      "approvals",
+      "token-grant",
+      "billing",
+      "permission",
+      "unknown-kind",
+    ]) {
+      expect(codes(base({ kind, policy_match: "policy-x" }))).toContain(
+        "policy_match_kind_not_eligible",
+      );
+      expect(codes(base({ kind, verb: "veto", defaultAction: "go" }))).toContain(
+        "default_action_not_allowed",
+      );
+      expect(codes(base({ kind }))).toEqual([]);
+    }
+    for (const kind of DECISION_CARD_POLICY_ELIGIBLE_KINDS) {
+      expect(codes(base({ kind, policy_match: "policy-x" }))).toEqual([]);
+    }
+  });
+  it("4: rejects invisible/blank content, control chars and padded pins", () => {
+    const blanks = ["\u200b", "\u2800", "\ufeff", "\u200d\u200c", " \u00a0 ", "\u3164"];
+    for (const b of blanks) {
+      expect(codes(base({ what: b }))).toContain("empty_what");
+      expect(codes(base({ options: [{ id: "a", label: "A", consequence: b }] }))).toContain(
+        "missing_consequence",
+      );
+      expect(codes(base({ options: [{ id: "a", label: b, consequence: "c" }] }))).toContain(
+        "bad_field",
+      );
+      expect(codes(base({ pins: { headSha: b } }))).toContain("empty_pin");
+    }
+    expect(codes(base({ id: "a\nb" }))).toContain("bad_field");
+    expect(codes(base({ id: "a b" }))).toContain("bad_field");
+    expect(codes(base({ kind: "pr\nmerge" }))).toContain("bad_field");
+    expect(codes(base({ options: [{ id: "a\u0000", label: "A", consequence: "c" }] }))).toContain(
+      "bad_field",
+    );
+    expect(codes(base({ what: "line1\nline2" }))).toContain("bad_field");
+    expect(codes(base({ pins: { headSha: " abc" } }))).toContain("padded_pin");
+    expect(codes(base({ pins: { headSha: "abc\u200b" } }))).toContain("padded_pin");
+  });
+  it("5: checkPins fails closed on unvalidated cards without throwing", () => {
+    const bad: unknown[] = [
+      null,
+      undefined,
+      {},
+      { expires: FUTURE },
+      { expires: FUTURE, pins: null },
+      { expires: FUTURE, pins: "x" },
+    ];
+    for (const c of bad) {
+      expect(checkPins(c, { headSha: "h" }, NOW)).toEqual({ ok: false, reason: "malformed_card" });
+    }
+    for (const v of [1, NaN, null, {}, [], "", "  "]) {
+      const r = checkPins({ expires: FUTURE, pins: { headSha: v } }, { headSha: "h" }, NOW);
+      expect(r.ok).toBe(false);
+    }
+    expect(
+      checkPins({ expires: FUTURE, pins: { headSha: " h " } }, { headSha: " h " }, NOW),
+    ).toMatchObject({ ok: false, reason: "malformed_card" });
+    expect(checkPins({ expires: FUTURE, pins: { headSha: "h" } }, null as never, NOW)).toMatchObject({
+      reason: "missing_current_head_sha",
+    });
+  });
+  it("6: expiry horizon and fractional digits", () => {
+    expect(codes(base({ expires: "2026-11-11T12:00:00Z" }))).toEqual([]);
+    expect(codes(base({ expires: "2026-11-11T12:00:01Z" }))).toContain("expiry_too_far");
+    expect(codes(base({ expires: "2099-01-01T00:00:00Z" }))).toContain("expiry_too_far");
+    expect(codes(base({ expires: "2026-10-13T12:00:00.1234Z" }))).toContain("bad_expires");
+    expect(codes(base({ expires: "2026-10-13T12:00:00.123Z" }))).toEqual([]);
+    expect(codes(base({ expires: "2026-10-13T12:00Z" }))).toContain("bad_expires");
   });
 });
