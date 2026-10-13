@@ -120,3 +120,20 @@ Consider moving `batch-merge-decision-card` right behind
   directive). It consumes `cardSources.ts`, `orderStack`, and needs PR facts from
   `gh` (inject, keep the module pure). The read-only list may merge on green; any
   button waits for the operator.
+
+## Update (Lead session 5, 2026-10-13)
+- Merged: #1369 (decision cards + writer preconditions). Open for the operator:
+  the `todo-next-steps-route-to-forward` completion PR (read-only Next steps list
+  on /todo; GET `/api/next-steps`). It carries the pointer advance to
+  `delegation-policy-records`: read that Action's title before merging the PR,
+  it is policy-adjacent and will need the operator's judgement.
+- Behaviour to know: takeability is machine-verifiable only (not draft, fresh head,
+  OPEN, complete files, required checks green, merge state CLEAN/HAS_HOOKS/UNSTABLE);
+  the independent review is a note ("recorded in the PR body, not verified"), never
+  a wait; a human CHANGES_REQUESTED at the head is a wait. States: now / waiting /
+  moving / unavailable. Not exercised against live gh or a browser: look at /todo
+  once after merging and report anything odd.
+- Idea in discussion (research done, no Action filed): one operator-effect registry
+  per /todo kind with a build-failing enumeration test; two gaps first: item-kind
+  coverage and pin parity for /api/approvals and /api/blocker-clear. Unread routes:
+  review-action, clarify-action, run-action, back-burner-action.
