@@ -31,6 +31,7 @@ import type { IntelligenceRequest } from "../types.js";
  *
  * Routes:
  * - POST /api/intelligence/jobs
+ * - GET  /api/intelligence/jobs?idempotencyKey=:key
  * - GET  /api/intelligence/jobs/:jobId
  * - POST /api/intelligence/jobs/:jobId/retry
  * - GET  /api/intelligence/health
@@ -76,6 +77,11 @@ async function handleRequest(
   const method = req.method ?? "GET";
 
   try {
+    if (method === "GET" && url.pathname === "/api/intelligence/jobs") {
+      await handleGetJobByIdempotencyKey(res, repository, url.searchParams.get("idempotencyKey"));
+      return;
+    }
+
     if (method === "POST" && url.pathname === "/api/intelligence/jobs") {
       await handleSubmitJob(req, res, repository, scheduler);
       return;
@@ -110,6 +116,19 @@ async function handleRequest(
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }
+}
+
+async function handleGetJobByIdempotencyKey(
+  res: ServerResponse,
+  repository: IntelligenceJobRepository,
+  idempotencyKey: string | null,
+): Promise<void> {
+  // eslint-disable-next-line no-control-regex -- control bytes are deliberately invalid in an external lookup key.
+  if (!idempotencyKey || idempotencyKey.length > 512 || /[\u0000-\u001f\u007f]/.test(idempotencyKey)) {
+    sendJson(res, 400, { error: "A valid idempotencyKey query parameter is required." });
+    return;
+  }
+  sendJson(res, 200, { job: await repository.findByIdempotencyKey(idempotencyKey) ?? null });
 }
 
 async function handleSubmitJob(

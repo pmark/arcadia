@@ -25,4 +25,12 @@ describe("PR summary endpoint", () => {
     const response = await POST(post({ repository: "owner/repo", number: 2 }));
     expect(await response.json()).toMatchObject({ job: { id: "summary-job", status: "queued" } });
   });
+
+  it("does not expose provider error bodies from a terminal job", async () => {
+    vi.mocked(loadPullRequestSummary).mockResolvedValue({ source: { title: "PR" }, sourceRevision: "rev", summary: null, job: { id: "ijob_2", status: "failed", error: { code: "LITELLM_UNAVAILABLE", message: "SECRET provider body" } } } as never);
+    const response = await GET(new Request("http://localhost/api/pull-requests/summary?repository=owner/repo&number=2"));
+    const text = await response.text();
+    expect(text).toContain("LITELLM_UNAVAILABLE");
+    expect(text).not.toContain("SECRET provider body");
+  });
 });

@@ -42,11 +42,14 @@ export function PullRequestAudio({ repository, number, showDescription = false }
     }
     if (!job) { setStage("ready"); return; }
     if (job.status !== "completed") throw new Error(job.error?.message ?? "TLDR generation did not complete.");
-    const text = (job.result as { summary?: unknown } | null)?.summary;
-    if (typeof text !== "string" || !text.trim() || text.length > 1200) throw new Error("TLDR generation returned an invalid summary.");
-    setResult({ ...initial, job, summary: { text: text.trim(), sourceRevision: initial.sourceRevision, jobId: job.id, generatedAt: job.completedAt ?? job.startedAt ?? job.createdAt } });
+    const refreshedResponse = await fetch(`/api/pull-requests/summary?repository=${encodeURIComponent(repository)}&number=${number}`, { cache: "no-store", signal: abort.signal });
+    const refreshedBody = await refreshedResponse.json();
+    if (!refreshedResponse.ok) throw new Error(refreshedBody.error ?? "Could not revalidate the PR source.");
+    const refreshed = refreshedBody as SummaryResponse;
+    setResult(refreshed);
+    acceptRefreshedSummary(initial, refreshed);
     setStage("ready");
-  }, []);
+  }, [number, repository]);
 
   const request = useCallback(async (method: "GET" | "POST") => {
     controller.current?.abort();
@@ -111,4 +114,12 @@ function formatElapsed(seconds: number): string {
 function formatFreshness(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? "generation time unknown" : `generated ${date.toLocaleString()}`;
+}
+
+export function acceptRefreshedSummary(initial: SummaryResponse, refreshed: SummaryResponse): SummaryResponse {
+  if (refreshed.sourceRevision !== initial.sourceRevision) {
+    throw new Error("The PR source changed while its TLDR was generating. Load the current source before generating again.");
+  }
+  if (!refreshed.summary) throw new Error("TLDR generation completed without a valid summary.");
+  return refreshed;
 }

@@ -20,6 +20,12 @@ describe("PR audio endpoint", () => {
     const response = await POST(request({ repository: "owner/repo", number: 2 }));
     expect(await response.json()).toMatchObject({ job: { id: "audio-job", status: "queued" }, summary: { text: "TLDR" } });
   });
+  it("does not expose provider error bodies from a terminal audio job", async () => {
+    vi.mocked(preparePullRequestAudio).mockResolvedValue({ source: { title: "PR" }, summary: { text: "TLDR" }, job: { id: "audio-job", status: "failed", error: { code: "SPEECH_UNAVAILABLE", message: "SECRET provider body" } } } as never);
+    const text = await (await POST(request({ repository: "owner/repo", number: 2 }))).text();
+    expect(text).toContain("SPEECH_UNAVAILABLE");
+    expect(text).not.toContain("SECRET provider body");
+  });
   it("loads the original description without model calls", async () => {
     vi.mocked(loadPullRequestDescription).mockResolvedValue({ title: "PR", body: "Description", url: "https://github.com/owner/repo/pull/2", repository: "owner/repo", number: 2, state: "MERGED" });
     const response = await GET(new Request("http://localhost/api/pull-requests/audio?repository=owner/repo&number=2"));

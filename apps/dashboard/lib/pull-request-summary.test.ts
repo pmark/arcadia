@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ description: vi.fn(), listJobs: vi.fn(), submit: vi.fn(), retry: vi.fn(), getJob: vi.fn() }));
-vi.mock("./arcadia-cli", () => ({ loadPullRequestDescription: mocks.description, listIntelligenceTestJobs: mocks.listJobs }));
-vi.mock("./intelligence", () => ({ getIntelligenceClient: () => ({ submit: mocks.submit, retry: mocks.retry, getJob: mocks.getJob }) }));
+const mocks = vi.hoisted(() => ({ description: vi.fn(), byKey: vi.fn(), submit: vi.fn(), retry: vi.fn(), getJob: vi.fn() }));
+vi.mock("./arcadia-cli", () => ({ loadPullRequestDescription: mocks.description }));
+vi.mock("./intelligence", () => ({ getIntelligenceClient: () => ({ submit: mocks.submit, retry: mocks.retry, getJob: mocks.getJob, getJobByIdempotencyKey: mocks.byKey }) }));
 import { buildPrSummaryRequest, clearPullRequestSummaryCacheForTests, generatePullRequestSummary, loadPullRequestSummary, pullRequestSourceRevision, summaryFromJob } from "./pull-request-summary";
 
 const source = { repository: "owner/repo", number: 2, title: "Draft plan", url: "https://github.com/owner/repo/pull/2", body: "An inactive draft.", state: "OPEN" };
 const job = { id: "summary-job", status: "completed", request: buildPrSummaryRequest(source), retryCount: 0, createdAt: "2026-10-12T00:00:00Z", completedAt: "2026-10-12T00:00:05Z", result: { summary: "Approval remains required." } } as const;
 
-beforeEach(() => { vi.resetAllMocks(); clearPullRequestSummaryCacheForTests(); mocks.description.mockResolvedValue(source); mocks.listJobs.mockResolvedValue({ data: { jobs: [] } }); });
+beforeEach(() => { vi.resetAllMocks(); clearPullRequestSummaryCacheForTests(); mocks.description.mockResolvedValue(source); mocks.byKey.mockResolvedValue(null); });
 
 describe("PR TLDR service", () => {
   it("loads source and reports no cache without starting inference", async () => {
@@ -17,7 +17,7 @@ describe("PR TLDR service", () => {
   });
 
   it("rediscovers a matching durable job after the process cache is empty", async () => {
-    mocks.listJobs.mockResolvedValue({ data: { jobs: [job] } });
+    mocks.byKey.mockResolvedValue(job);
     mocks.getJob.mockResolvedValue(job);
     const result = await loadPullRequestSummary("owner/repo", 2);
     expect(result.summary?.text).toBe("Approval remains required.");

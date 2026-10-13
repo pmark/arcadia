@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IntelligenceJob, IntelligenceRequest } from "@pmark/arcadia/intelligence/contracts";
-import { listIntelligenceTestJobs, loadPullRequestDescription } from "./arcadia-cli";
+import { loadPullRequestDescription } from "./arcadia-cli";
 import { getIntelligenceClient } from "./intelligence";
 
 export interface PullRequestSource {
@@ -55,9 +55,8 @@ export async function loadPullRequestSummary(repository: string, number: number)
   let cached = cache.get(sourceKey(source.repository, number));
   if (!cached || cached.sourceRevision !== sourceRevision) {
     const idempotencyKey = buildPrSummaryRequest(source).idempotencyKey;
-    const history = await listIntelligenceTestJobs("arcadia-dashboard", 200);
-    const durable = history.data.jobs.find(candidate => isIntelligenceJob(candidate) && candidate.request.idempotencyKey === idempotencyKey);
-    if (!isIntelligenceJob(durable)) return { source, sourceRevision, job: null, summary: null };
+    const durable = await getIntelligenceClient().getJobByIdempotencyKey(idempotencyKey);
+    if (!durable) return { source, sourceRevision, job: null, summary: null };
     cached = { sourceRevision, jobId: durable.id };
     cache.set(sourceKey(source.repository, number), cached);
   }
@@ -98,11 +97,4 @@ export function summaryFromJob(job: IntelligenceJob, sourceRevision: string): Pu
 
 export function clearPullRequestSummaryCacheForTests(): void {
   cache.clear();
-}
-
-function isIntelligenceJob(value: unknown): value is IntelligenceJob {
-  return !!value && typeof value === "object" && "id" in value && typeof value.id === "string"
-    && "status" in value && typeof value.status === "string"
-    && "request" in value && !!value.request && typeof value.request === "object"
-    && "idempotencyKey" in value.request && typeof value.request.idempotencyKey === "string";
 }

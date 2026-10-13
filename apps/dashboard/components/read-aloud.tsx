@@ -20,6 +20,7 @@ function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play"
   const [jobId, setJobId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [retryExhausted, setRetryExhausted] = useState(false);
   const playerRef = useRef<HTMLAudioElement>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); }, []);
@@ -32,7 +33,7 @@ function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play"
   }, [loading, startedAt]);
 
   async function play() {
-    setLoading(true); setError(null); setStage("Preparing audio"); setStartedAt(Date.now()); setElapsed(0);
+    setLoading(true); setError(null); setStage("Preparing audio"); setStartedAt(Date.now()); setElapsed(0); setRetryExhausted(false);
     const abort = new AbortController(); controller.current = abort;
     const player = playerRef.current;
     if (!player) { setLoading(false); return; }
@@ -57,7 +58,13 @@ function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play"
         job = body.job;
         setStage(job.status === "queued" ? "Audio queued" : job.status === "running" ? "Generating audio" : "Checking audio");
       }
-      if (job.status !== "completed") throw new Error(job.error?.message ?? "Audio generation did not complete.");
+      if (job.status !== "completed") {
+        const exhausted = isAudioRetryExhausted(job);
+        setRetryExhausted(exhausted);
+        throw new Error(exhausted
+          ? `Job ${job.id} ${job.status} (${job.error?.code ?? "INTELLIGENCE_ERROR"}). The audio retry limit is reached; keep the written TLDR and generate again only after its source changes.`
+          : `Job ${job.id} ${job.status} (${job.error?.code ?? "INTELLIGENCE_ERROR"}). Retry is available.`);
+      }
       const artifact = (job.result as { artifact?: IntelligenceArtifactRecord } | null)?.artifact;
       if (!artifact || artifact.kind !== "audio" || artifact.mimeType !== "audio/mpeg" || artifact.format !== "mp3") throw new Error("Intelligence did not return the requested MP3 artifact.");
       if (abort.signal.aborted) return;
@@ -77,7 +84,7 @@ function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play"
 
   return (
     <section className="mt-4 grid gap-2" aria-label="Read aloud">
-      {!url ? <button type="button" onClick={() => void play()} disabled={loading} className="inline-flex min-h-11 w-fit items-center gap-2 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60"><Play className="h-4 w-4" aria-hidden="true" />{loading ? `${stage ?? "Preparing audio"}…` : label}</button> : null}
+      {!url ? <button type="button" onClick={() => void play()} disabled={loading || retryExhausted} className="inline-flex min-h-11 w-fit items-center gap-2 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60"><Play className="h-4 w-4" aria-hidden="true" />{retryExhausted ? "Audio retry limit reached" : loading ? `${stage ?? "Preparing audio"}…` : label}</button> : null}
       <audio ref={playerRef} controls preload="none" className={url ? "w-full" : "hidden"} aria-label="Generated audio" />
       {url ? <a href={`${url}?download=1`} download={filename} className="w-fit text-xs font-semibold text-steel underline">Download MP3</a> : null}
       {stage ? <p role="status" className="text-xs text-muted">{stage} · {formatElapsed(elapsed)}{jobId ? ` · Job ${jobId}` : ""}</p> : null}
@@ -89,6 +96,11 @@ function ReadAloudPlayer({ endpoint = "/api/read-aloud", request, label = "Play"
 function formatElapsed(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   return minutes > 0 ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
+}
+
+export function isAudioRetryExhausted(job: IntelligenceJob): boolean {
+  return (job.status === "failed" || job.status === "blocked")
+    && job.retryCount >= job.request.executionPolicy.maxRetries;
 }
 
 /** A short silent PCM clip keeps the user-activated element playing while TTS runs. */

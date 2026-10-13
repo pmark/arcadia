@@ -67,11 +67,16 @@ attempted.
 ## Repair contract
 
 - Loading a TLDR reads source and a matching cached job without inference.
+- Restart recovery uses the Intelligence service's exact durable idempotency-key
+  lookup rather than a newest-N history window; the read-only GET cannot create,
+  queue or retry a job.
 - Generation starts only from the explicit Generate/Retry TLDR action, uses
   the existing `local-required` and `allowPaidUsage: false` route, returns the
   job immediately, and exposes queued/running/completed/blocked evidence.
 - Cache identity binds the PR title and body. A changed source cannot show or
-  narrate the older summary. The shipped v1 fingerprint order is retained so
+  narrate the older summary, including a source change while generation is in
+  flight because the source is reloaded before terminal display. The shipped
+  v1 fingerprint order is retained so
   existing Intelligence results remain addressable.
 - Play TLDR requires a completed matching summary and submits only the summary
   text to speech. There is no body or comment fallback.
@@ -85,8 +90,11 @@ attempted.
 
 ## Validation evidence
 
-- Focused Vitest command: 6 files, 18 tests passed, exit 0.
-- Touched-file ESLint: exit 0 after repair.
+- Initial focused Vitest command: 6 files, 18 tests passed, exit 0. PR review
+  exposed five blockers; the R1 regression suite now covers 9 files and 37
+  tests, including the existing description test and exact-key Intelligence
+  API, and exits 0.
+- Touched-file ESLint: exit 0 after R1 repair.
 - Root package TypeScript compile: exit 0.
 - Dashboard TypeScript currently exits 2 on the pre-existing
   `apps/dashboard/app/api/operator-script/route.test.ts:71` invalid
@@ -94,11 +102,13 @@ attempted.
   diagnostic.
 - Append-only session ledger: two requested snapshot rows; validator exit 0.
 - `git diff --check`: exit 0 before commit.
-- Dashboard production build: exit 0; the new
+- Dashboard production build uses the actual package name
+  `pnpm --filter arcadia-dashboard build`, exit 0; the new
   `/api/pull-requests/summary` route was compiled and emitted.
 - Dashboard import-edge check found no `commander` or
   `containerAuditTransport` import, exit 0.
-- CI: pending PR publication.
+- CI/review: PR #1343 R1 was blocking at head `d5c6c0bd7`; this report records
+  the source repair before the required new exact-head review and CI rerun.
 - Phone visual/playback QA: not run because this candidate was not installed
   and installation/restart were explicitly outside scope.
 
@@ -127,6 +137,9 @@ Fully read or retrieved before the applicable operation:
 - `docs/reports/pull-requests-page-ux-design-2026-10-12.md` 30,746 bytes,
   especially Optional TLDR and the original source; issue #1340 body and PR
   #1337 runtime source.
+- `docs/intelligence/V0_1_SCOPE.md` 4,946 bytes and
+  `docs/intelligence/ROUTING.md` 18,486 bytes before adding the bounded,
+  read-only exact idempotency-key lookup.
 
 Requested model alias was `gpt-5.6-sol` medium because the pinned Plan alias
 was unavailable to the collaboration runtime. Actual runtime model identity,

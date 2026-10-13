@@ -327,6 +327,15 @@ export class ArcadiaIntelligenceClient {
     );
   }
 
+  /** Looks up the one durable job for an exact companion-app idempotency key. */
+  public async getJobByIdempotencyKey(idempotencyKey: string): Promise<IntelligenceJob | null> {
+    const response = await this.request<{ job: IntelligenceJob | null }>(
+      "GET",
+      `/api/intelligence/jobs?idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
+    );
+    return response.job;
+  }
+
   public async retry(jobId: string): Promise<RetryIntelligenceJobResponse> {
     return this.request<RetryIntelligenceJobResponse>(
       "POST",
