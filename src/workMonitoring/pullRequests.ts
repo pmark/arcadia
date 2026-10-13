@@ -42,6 +42,7 @@ export interface OutstandingPullRequest {
   readinessLabel: string;
   summary: string;
   briefing: PullRequestBriefing | null;
+  detailsLoaded?: boolean;
 }
 
 export interface PullRequestBriefing {
@@ -142,6 +143,8 @@ interface RawPullRequestDetails {
 }
 
 interface PullRequestScanOptions {
+  lightweight?: boolean;
+  repositoriesOnly?: boolean;
   now?: Date;
   runCommand?: (cwd: string, command: string, args: string[]) => CommandResult;
 }
@@ -192,7 +195,19 @@ export function listOutstandingPullRequests(
     if (seenRepositories.has(repositoryPath)) continue;
     seenRepositories.add(repositoryPath);
 
-    const repositoryResult = runCommand(repositoryPath, "gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+    let localRepository: string | null = null;
+    if (options.repositoriesOnly || options.lightweight) {
+      const origin = runCommand(repositoryPath, "git", ["remote", "get-url", "origin"]);
+      const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(origin.stdout.trim());
+      localRepository = origin.ok && match ? `${match[1]}/${match[2]}` : null;
+      if (options.repositoriesOnly) {
+        if (localRepository) repositories.push({ projectId: project.id, projectName: project.name, repository: localRepository, repositoryPath });
+        else errors.push(projectError(project, repositoryPath, "No supported GitHub origin is configured."));
+        continue;
+      }
+    }
+
+    const repositoryResult = localRepository ? { ok: true, stdout: localRepository, stderr: "" } : runCommand(repositoryPath, "gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
     const repository = repositoryResult.ok ? repositoryResult.stdout.trim() : "";
     if (!repository) {
       errors.push(projectError(project, repositoryPath, repositoryResult.stderr.trim() || "GitHub repository could not be identified."));
@@ -226,8 +241,15 @@ export function listOutstandingPullRequests(
       const pullRequest = normalizePullRequest(project, repositoryPath, repository, item as RawPullRequest);
       if (pullRequest) {
         pullRequests.push(pullRequest);
-        const details = readPullRequestDetails(repositoryPath, repository, pullRequest.number, runCommand);
-        if (details) detailsByPullRequest.set(pullRequestKey(pullRequest), details);
+        if (options.lightweight) {
+          pullRequest.detailsLoaded = false;
+          pullRequest.readiness = derivePullRequestReadiness({ isDraft: pullRequest.isDraft, mergeStateStatus: null, reviewDecision: null, checks: pullRequest.checks });
+          pullRequest.readinessLabel = pullRequest.readiness === "unknown" ? "CI ONLY" : READINESS_LABELS[pullRequest.readiness];
+          pullRequest.summary = "CI inventory only; PR details and merge authority have not been verified.";
+        } else {
+          const details = readPullRequestDetails(repositoryPath, repository, pullRequest.number, runCommand);
+          if (details) detailsByPullRequest.set(pullRequestKey(pullRequest), details);
+        }
       }
     }
   }

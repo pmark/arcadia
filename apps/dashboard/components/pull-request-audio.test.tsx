@@ -13,13 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptRefreshedSummary, fetchJsonBounded, observeSummaryJob, PullRequestAudio, SummaryObservationTimeoutError, summaryActionForStage } from "./pull-request-audio";
 
 describe("PullRequestAudio", () => {
-  it("shows generation and playback controls before any speech action", () => {
+  it("offers an actionable summary/listen load without remote reads or disabled playback", () => {
     const html = renderToStaticMarkup(<PullRequestAudio repository="owner/repo" number={2} />);
-    expect(html).toContain("Generate TLDR");
-    expect(html).toContain("Play TLDR");
-    expect(html).toContain("A completed TLDR is required for playback");
-    expect(html).not.toContain("Play body");
-
+    expect(html).toContain("Load TLDR / Listen");
+    expect(html).not.toContain("Generate TLDR");
+    expect(html).not.toContain("Play TLDR");
   });
 
   it("shows matching cached TLDR text and enabled playback without a loading click", () => {
@@ -34,16 +32,26 @@ describe("PullRequestAudio", () => {
     expect(html).not.toContain("Generate TLDR");
   });
 
-  it("automatically discovers an existing summary with GET without starting generation or speech", async () => {
+  it("does not read any PR source automatically on ordinary card mount", async () => {
+    effects.length = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderToStaticMarkup(<PullRequestAudio repository="owner/repo" number={2} />);
+    for (const effect of effects) effect();
+    await Promise.resolve();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("loads only the explicitly selected link summary with GET and no synthesis", async () => {
     effects.length = 0;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true, json: async () => ({ source: {}, sourceRevision: "rev", job: null, summary: null })
     } as Response);
-    renderToStaticMarkup(<PullRequestAudio repository="owner/repo" number={2} />);
+    renderToStaticMarkup(<PullRequestAudio repository="owner/repo" number={2} showDescription />);
     for (const effect of effects) effect();
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    expect(fetchSpy).toHaveBeenCalledWith("/api/pull-requests/summary?repository=owner%2Frepo&number=2", expect.objectContaining({ cache: "no-store" }));
-    expect(fetchSpy.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+    expect(fetchSpy.mock.calls[0][0]).toBe("/api/pull-requests/summary?repository=owner%2Frepo&number=2");
+    expect(fetchSpy.mock.calls[0][1]?.method).toBeUndefined();
     fetchSpy.mockRestore();
   });
 

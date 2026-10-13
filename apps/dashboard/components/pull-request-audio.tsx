@@ -30,7 +30,7 @@ export function PullRequestAudio({ repository, number, showDescription = false }
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef<number | null>(null);
   const controller = useRef<AbortController | null>(null);
-  const container = useRef<HTMLDivElement | null>(null);
+
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -87,24 +87,10 @@ export function PullRequestAudio({ repository, number, showDescription = false }
     }
   }, [number, poll, repository]);
 
-  useEffect(() => {
-    if (showDescription || typeof IntersectionObserver === "undefined") {
-      void request("GET");
-      return;
-    }
-    // Discover existing summaries for visible cards without scanning every PR at once.
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        observer.disconnect();
-        void request("GET");
-      }
-    }, { rootMargin: "200px" });
-    if (container.current) observer.observe(container.current);
-    return () => observer.disconnect();
-  }, [request, showDescription]);
+  useEffect(() => { if (showDescription) void request("GET"); }, [request, showDescription]);
 
   const statusText = {
-    idle: "Checking for an existing TLDR",
+    idle: null,
     loading_source: "Loading PR source",
     ready: result?.summary ? "TLDR ready" : "TLDR not generated",
     queued: "TLDR queued",
@@ -118,9 +104,10 @@ export function PullRequestAudio({ repository, number, showDescription = false }
     && result.job.retryCount >= result.job.request.executionPolicy.maxRetries);
 
   return (
-    <div ref={container} className="mt-3 min-w-0">
-      {!result?.summary && (stage === "idle" || busy) ? <button type="button" disabled className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">Generate TLDR</button> : null}
-      {!result?.summary ? <button type="button" disabled title="A completed TLDR is required for playback" className="ml-2 min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">Play TLDR</button> : null}
+    <div className="mt-3 min-w-0">
+      {stage === "idle" ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Load TLDR / Listen</button> : null}
+      {!result?.summary && busy ? <button type="button" disabled className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel disabled:opacity-60">Generate TLDR</button> : null}
+
       {stage === "ready" && result?.summary ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Refresh TLDR</button> : null}
       {stage === "failed" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
       {stage === "observation_timeout" && !result ? <button type="button" onClick={() => void request("GET")} className="min-h-11 rounded-md border border-steel/30 px-3 py-2 text-sm font-semibold text-steel">Retry source</button> : null}
