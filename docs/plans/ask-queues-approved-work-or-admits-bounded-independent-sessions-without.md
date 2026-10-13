@@ -122,6 +122,25 @@ actions:
     depends_on: [implement-bounded-independent-admission]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320", "docs/agent-guidance/ask-todo-scout.md", "docs/agent-guidance/operator-directed-work.md", "docs/decisions/0124-decide-how-a-new-ask-is-admitted-while-a-plan-or-action-is-in-flight-preserve.md"]
+  - id: bounded-luna-hello-world-loop
+    title: Run the bounded Luna Hello World scout through Ask and To-do, collect evidence and deduplicated bugs, supervise up to two verified repair/retry cycles, and stop on success or a named limit.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Run the bounded Luna Hello World scout through Ask and To-do, collect evidence and deduplicated bugs, supervise up to two verified repair/retry cycles, and stop on success or a named limit.
+    expected_artifact: Evidence satisfying Agent Ask bounded-luna-hello-world-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-bounded-luna-scout-loop-20261013
+    why: "Operator2026-10-13 asked to close the attempt,findings,repair and retry loop rather than repeatedly drive rehearsals by hand."
+    acceptance_criteria:
+      - A checked-in procedure uses the unchanged standard coding harness and existing commands; Scout canonical Researcher interactions are only Ask/Ask show/To-do, with deterministic validator and canonical Supervisor/Implementer/separate code-reviewer/QA outside that persona.
+      - A durable goal-scope ledger bounds all invocations/restarts/source revisions to three live Luna-low builder attempts at most90seconds each, two repair cycles and90minutes from first launch; expiry, corruption, clock rollback, unchanged failure, missing authority/evidence or isolation violations stop. Incremental paid spend is zero, with no purchased credits, API-billing/provider fallback or new infrastructure; unavailable usage/cost is unknown, never invented.
+      - A real Luna attempt produces independently checked exact13byte HelloWorld.txt, correlated completed Run and ready/published Artifact for Yes, or truthful No with retained private evidence and a deduplicated bug/repair handoff; passing harness/CI or queued receipts alone cannot pass the oracle.
+      - A retry follows a named bug, verified changed source and independent code-review/QA; no retry resets the same goal budget or changes live Project/pointer/queue/production, and no fixture remote/GitHub operation occurs. Source delivery and permitted host-side bug logging preserve all work.
+    depends_on: [scout-isolation-preflight, repair-scout-approved-handoff, expose-scout-run-evidence]
+    decisions: []
+    references: ["docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md", "docs/agent-guidance/standard-harness.md", "docs/agent-guidance/ask-todo-scout.md", "https://github.com/pmark/arcadia/issues/1365", "https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320"]
 questions: []
 decisions: []
 ---
