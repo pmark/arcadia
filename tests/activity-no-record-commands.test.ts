@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildProgram } from "../src/cli.js";
 import { withDatabase } from "../src/db/connection.js";
+import { runQaEffectivenessCommand } from "../src/commands/qa.js";
 import { COMMAND_CLASSIFICATION, listActionCommands, recordsActivity } from "../src/workspace/experimentGuard.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
@@ -144,6 +145,15 @@ async function observe(args: string[]): Promise<{ liveOpens: Array<{ readonly: b
 }
 
 describe("commands that read no workspace state record no activity", () => {
+  it("opens qa effectiveness through the read-only database path", () => {
+    tracking.opened.length = 0;
+    const result = runQaEffectivenessCommand({ workspace: live });
+    const liveOpens = tracking.opened.filter((open) => path.resolve(open.file) === liveDatabase);
+    expect(result.data.report.groups).toEqual([]);
+    expect(liveOpens.length).toBeGreaterThan(0);
+    expect(liveOpens.every((open) => open.readonly)).toBe(true);
+  });
+
   it("draws the no-record set from the classification table the CLI uses, and covers every no-record command", () => {
     const commands = listActionCommands(buildProgram());
     const noRecord = commands.filter((key) => !recordsActivity(key)).sort();

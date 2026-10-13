@@ -18,6 +18,10 @@ export interface SessionLedgerRow {
   role: (typeof SESSION_ROLES)[number];
   model: string;
   effort: string | null;
+  /** Configured and runtime-observed effort stay separate; legacy `effort` remains accepted. */
+  configured_effort?: string | null;
+  effective_effort?: string | null;
+  effort_source?: string | null;
   action_id: string;
   pr: number | null;
   tokens_in_uncached: number | null;
@@ -34,6 +38,13 @@ export interface SessionLedgerRow {
   outcome: (typeof SESSION_OUTCOMES)[number];
   stop_reason?: string;
   notes?: string;
+  /** Exact review lineage; omitted for legacy rows and never inferred from Action text. */
+  review_attempt_request_id?: string | null;
+  resource_scope?: "reviewer-invocation" | "lineage-additional" | null;
+  candidate_head?: string | null;
+  evidence_source?: string | null;
+  task_class?: string | null;
+  difficulty?: string | null;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -46,7 +57,9 @@ const REQUIRED = [
   "session_id", "role", "model", "effort", "action_id", "pr", "tokens_in_uncached", "tokens_in_cached", "tokens_out",
   "wall_min", "attempts", "review_rounds", "blocking_findings", "operator_touches", "host_touches", "frictions", "outcome",
 ] as const;
-const ALLOWED = new Set<string>([...REQUIRED, "subagent_tokens_total", "stop_reason", "notes"]);
+const ALLOWED = new Set<string>([...REQUIRED, "subagent_tokens_total", "stop_reason", "notes",
+  "configured_effort", "effective_effort", "effort_source", "review_attempt_request_id", "candidate_head",
+  "resource_scope", "evidence_source", "task_class", "difficulty"]);
 
 /** Returns every problem with one parsed row; an empty array means valid. */
 export function validateSessionLedgerRow(row: unknown): string[] {
@@ -61,6 +74,12 @@ export function validateSessionLedgerRow(row: unknown): string[] {
   check("role", (SESSION_ROLES as readonly unknown[]).includes(row.role), `one of ${SESSION_ROLES.join("|")}`);
   check("model", isString(row.model), "a non-empty string");
   check("effort", row.effort === null || isString(row.effort), "a string or null");
+  for (const key of ["configured_effort", "effective_effort", "effort_source", "review_attempt_request_id", "evidence_source", "task_class", "difficulty"]) {
+    if (key in row) check(key, row[key] === null || isString(row[key]), "a non-empty string or null");
+  }
+  if ("candidate_head" in row) check("candidate_head", row.candidate_head === null || (typeof row.candidate_head === "string" && /^[a-f0-9]{40}$/i.test(row.candidate_head)), "a 40-character Git SHA or null");
+  if ("resource_scope" in row) check("resource_scope", row.resource_scope === null || row.resource_scope === "reviewer-invocation" || row.resource_scope === "lineage-additional", "reviewer-invocation, lineage-additional, or null");
+  if (isString(row.review_attempt_request_id) && row.resource_scope == null) errors.push("review_attempt_request_id requires resource_scope to prevent double counting");
   check("action_id", isString(row.action_id), "a non-empty string");
   check("pr", row.pr === null || (isCount(row.pr) && Number.isInteger(row.pr)), "an integer or null");
   for (const key of ["tokens_in_uncached", "tokens_in_cached", "tokens_out", "wall_min"]) {

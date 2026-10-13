@@ -281,9 +281,11 @@ import {
 } from "./commands/review.js";
 import {
   renderQaListSuccess,
+  renderQaEffectivenessSuccess,
   renderQaPrReviewSuccess,
   renderQaRecordSuccess,
   runQaListCommand,
+  runQaEffectivenessCommand,
   runQaPrReviewCommand,
   runQaRecordCommand,
   runQaRefreshCommand,
@@ -3581,6 +3583,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
 
   const qa = program.command("qa").description("Configured Candidate QA queue");
+  addJsonOption(
+    qa
+      .command("effectiveness")
+      .description("Read-only model and effort effectiveness from persisted review receipts; invokes no model")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("qa.effectiveness", options, () => runQaEffectivenessCommand(options), renderQaEffectivenessSuccess)
+  );
   addJsonOption(
     qa
       .command("list")
