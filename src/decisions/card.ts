@@ -95,6 +95,7 @@ export type DecisionCardErrorCode =
   | "policy_match_on_excluded_kind"
   | "policy_match_kind_not_eligible"
   | "bad_clock"
+  | "invalid_input"
   | "expiry_too_far"
   | "default_action_not_allowed"
   | "default_action_unknown_option";
@@ -132,8 +133,25 @@ const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const ISO_RE =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 const INVISIBLE_RE = /[\p{White_Space}\p{Cf}\p{Cc}⠀ㅤﾠᅟᅠ]/gu;
-const CONTROL_RE = /\p{Cc}/u;
-const EDGE_SPACE_RE = /^[\p{White_Space}\p{Cf}]|[\p{White_Space}\p{Cf}]$/u;
+/**
+ * The one text rule. Free text may contain only visible characters and plain
+ * ASCII spaces: no control (Cc), format (Cf, incl. zero-width and BOM), line or
+ * paragraph separators, non-ASCII space separators, braille blank or Hangul
+ * fillers. Nothing is normalised; offending input is rejected.
+ */
+const BAD_TEXT_RE =
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}⠀ㅤﾠᅟᅠ]|(?! )\p{Zs}/u;
+/** Value fields (pins, urls, receipts, fingerprints): no whitespace at all. */
+const BAD_VALUE_RE =
+  /[\p{White_Space}\p{Cc}\p{Cf}\p{Zl}\p{Zp}⠀ㅤﾠᅟᅠ]/u;
+const RESERVED_WORDS = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "tostring",
+  "hasownproperty",
+  "valueof",
+]);
 
 /** True when the string has no visible content (whitespace, format, invisible). */
 function isBlank(value: string): boolean {
@@ -195,6 +213,7 @@ function str(
   path: string,
   value: unknown,
   max: number,
+  strict = false,
 ): string | null {
   if (typeof value !== "string") {
     errors.push({ code: "bad_field", path, message: `${path} must be a string` });
@@ -204,8 +223,12 @@ function str(
     errors.push({ code: "too_long", path, message: `${path} exceeds ${max} characters` });
     return null;
   }
-  if (CONTROL_RE.test(value)) {
-    errors.push({ code: "bad_field", path, message: `${path} must not contain control characters` });
+  if ((strict ? BAD_VALUE_RE : BAD_TEXT_RE).test(value)) {
+    errors.push({
+      code: "bad_field",
+      path,
+      message: `${path} must not contain control, invisible or non-ASCII space characters${strict ? " or any whitespace" : ""}`,
+    });
     return null;
   }
   return value;
@@ -217,8 +240,12 @@ function slug(
   value: unknown,
   max: number,
 ): string | null {
-  const v = str(errors, path, value, max);
+  const v = str(errors, path, value, max, true);
   if (v === null) return null;
+  if (RESERVED_WORDS.has(v.toLowerCase())) {
+    errors.push({ code: "bad_field", path, message: `${path} must not be a reserved word` });
+    return null;
+  }
   if (!SLUG_RE.test(v)) {
     errors.push({ code: "bad_field", path, message: `${path} must be a slug (letters, digits, . _ : -)` });
     return null;
@@ -245,12 +272,117 @@ function unknownKeys(
   }
 }
 
+const MAX_SNAPSHOT_DEPTH = 6;
+const MAX_SNAPSHOT_NODES = 2000;
+
+class SnapshotRefusal extends Error {
+  constructor(
+    readonly code: DecisionCardErrorCode,
+    readonly path: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Read every value exactly once into plain null-prototype data. Accessors,
+ * non-enumerable and symbol-keyed properties, and non-plain objects are
+ * refused, so a getter can never show the validator a different value than
+ * the one later returned (TOCTOU). Holes in arrays are preserved as holes.
+ */
+function snapshotValue(value: unknown, path: string, depth: number, budget: { n: number }): unknown {
+  if (typeof value !== "object" || value === null) {
+    if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+      throw new SnapshotRefusal("bad_field", path, `${path || "card"} has an unsupported type`);
+    }
+    return value;
+  }
+  if (depth > MAX_SNAPSHOT_DEPTH || ++budget.n > MAX_SNAPSHOT_NODES) {
+    throw new SnapshotRefusal("too_long", path, `${path || "card"} is too deeply or widely nested`);
+  }
+  const isArr = Array.isArray(value);
+  if (!isArr) {
+    const proto = Object.getPrototypeOf(value) as unknown;
+    if (proto !== Object.prototype && proto !== null) {
+      throw new SnapshotRefusal("bad_field", path, `${path || "card"} must be a plain object`);
+    }
+  }
+  const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const arr: unknown[] = [];
+  const keys = Reflect.ownKeys(value);
+  for (const key of keys) {
+    if (typeof key === "symbol") {
+      throw new SnapshotRefusal("unknown_key", path, "symbol keys are not allowed");
+    }
+    if (isArr && key === "length") continue;
+    const desc = Object.getOwnPropertyDescriptor(value, key);
+    const here = isArr ? `${path}[${key}]` : path === "" ? key : `${path}.${key}`;
+    if (desc === undefined || !("value" in desc)) {
+      throw new SnapshotRefusal("bad_field", here, `${here} must be a data property, not an accessor`);
+    }
+    if (desc.enumerable !== true) {
+      throw new SnapshotRefusal("unknown_key", here, `${here} must be enumerable`);
+    }
+    const child = snapshotValue(desc.value, here, depth + 1, budget);
+    if (isArr) {
+      const idx = Number(key);
+      if (!Number.isInteger(idx) || idx < 0 || String(idx) !== key) {
+        throw new SnapshotRefusal("unknown_key", here, `${here} is not an array index`);
+      }
+      arr[idx] = child;
+    } else {
+      Object.defineProperty(out, key, {
+        value: child,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+  }
+  if (isArr) {
+    arr.length = (value as unknown[]).length;
+    return arr;
+  }
+  return out;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const v of Object.values(value as Record<string, unknown>)) deepFreeze(v);
+  }
+  return value;
+}
+
+/**
+ * Validate an untrusted card. Never throws: hostile input (getters, proxies,
+ * deep nesting) fails closed with a named error. The returned card is a
+ * deep-frozen copy built from a single snapshot of the input.
+ */
 export function validateDecisionCard(
   input: unknown,
   options: { now?: Date } = {},
 ): DecisionCardValidation {
+  try {
+    const nowOpt: unknown = options?.now;
+    const snap = snapshotValue(input, "", 0, { n: 0 });
+    const result = validateSnapshot(snap, nowOpt === undefined ? new Date() : nowOpt);
+    return result.ok ? { ok: true, card: deepFreeze(result.card) } : result;
+  } catch (err) {
+    if (err instanceof SnapshotRefusal) {
+      return { ok: false, errors: [{ code: err.code, path: err.path, message: err.message }] };
+    }
+    return {
+      ok: false,
+      errors: [{ code: "invalid_input", path: "", message: "input could not be read safely" }],
+    };
+  }
+}
+
+function validateSnapshot(input: unknown, nowDate: unknown): DecisionCardValidation {
   const errors: DecisionCardError[] = [];
-  const now = (options.now ?? new Date()).getTime();
+  const now = nowDate instanceof Date ? nowDate.getTime() : Number.NaN;
   if (!Number.isFinite(now)) {
     return {
       ok: false,
@@ -283,8 +415,8 @@ export function validateDecisionCard(
   if (!has(input, "kind")) {
     errors.push({ code: "bad_field", path: "kind", message: "kind is required" });
   } else {
-    kind = str(errors, "kind", input.kind, DECISION_CARD_LIMITS.kind);
-    if (kind !== null && !KIND_RE.test(kind)) {
+    kind = str(errors, "kind", input.kind, DECISION_CARD_LIMITS.kind, true);
+    if (kind !== null && (!KIND_RE.test(kind) || RESERVED_WORDS.has(kind))) {
       errors.push({
         code: "bad_field",
         path: "kind",
@@ -394,7 +526,7 @@ export function validateDecisionCard(
       }
       const item: DecisionCardEvidence = { label: label ?? "" };
       if (has(raw, "url")) {
-        const url = str(errors, `${p}.url`, raw.url, DECISION_CARD_LIMITS.url);
+        const url = str(errors, `${p}.url`, raw.url, DECISION_CARD_LIMITS.url, true);
         if (url !== null) {
           if (!/^https?:\/\/\S+$/.test(url)) {
             errors.push({
@@ -406,9 +538,9 @@ export function validateDecisionCard(
         }
       }
       if (has(raw, "fingerprint")) {
-        const fp = str(errors, `${p}.fingerprint`, raw.fingerprint, DECISION_CARD_LIMITS.pin);
+        const fp = str(errors, `${p}.fingerprint`, raw.fingerprint, DECISION_CARD_LIMITS.pin, true);
         if (fp !== null) {
-          if (isBlank(fp) || EDGE_SPACE_RE.test(fp)) {
+          if (isBlank(fp)) {
             errors.push({
               code: "bad_field",
               path: `${p}.fingerprint`,
@@ -447,7 +579,12 @@ export function validateDecisionCard(
     let pinProblem = false;
     for (const key of PIN_KEYS) {
       if (!has(input.pins, key) || input.pins[key] === undefined) continue;
-      const v = str(errors, `pins.${key}`, input.pins[key], DECISION_CARD_LIMITS.pin);
+      const rawPin = input.pins[key];
+      // Blank/padded pins get their own named codes rather than bad_field.
+      const v =
+        typeof rawPin === "string" && rawPin.length <= DECISION_CARD_LIMITS.pin
+          ? rawPin
+          : str(errors, `pins.${key}`, rawPin, DECISION_CARD_LIMITS.pin, true);
       if (v === null) {
         pinProblem = true;
       } else if (isBlank(v)) {
@@ -457,7 +594,7 @@ export function validateDecisionCard(
           path: `pins.${key}`,
           message: `pins.${key} must not be empty`,
         });
-      } else if (EDGE_SPACE_RE.test(v)) {
+      } else if (BAD_VALUE_RE.test(v)) {
         pinProblem = true;
         errors.push({
           code: "padded_pin",
@@ -494,7 +631,8 @@ export function validateDecisionCard(
     if (
       typeof input.policy_match !== "string" ||
       input.policy_match.length > DECISION_CARD_LIMITS.policyMatch ||
-      !SLUG_RE.test(input.policy_match)
+      !SLUG_RE.test(input.policy_match) ||
+      RESERVED_WORDS.has(input.policy_match.toLowerCase())
     ) {
       errors.push({
         code: "bad_policy_match",
@@ -506,9 +644,19 @@ export function validateDecisionCard(
 
   let receipt: string | null = null;
   if (input.receipt !== null) {
-    receipt = str(errors, "receipt", input.receipt, DECISION_CARD_LIMITS.receipt);
-    if (receipt !== null && isBlank(receipt)) {
-      errors.push({ code: "bad_field", path: "receipt", message: "receipt must be a path or null" });
+    receipt = str(errors, "receipt", input.receipt, DECISION_CARD_LIMITS.receipt, true);
+    if (
+      receipt !== null &&
+      (isBlank(receipt) ||
+        receipt.startsWith("/") ||
+        receipt.startsWith("\\") ||
+        receipt.split(/[\\/]/).includes(".."))
+    ) {
+      errors.push({
+        code: "bad_field",
+        path: "receipt",
+        message: "receipt must be a relative path without .. segments, or null",
+      });
       receipt = null;
     }
   }
@@ -574,6 +722,7 @@ export type DecisionCardPinReason =
   | "expired"
   | "no_pins"
   | "bad_clock"
+  | "invalid_input"
   | "malformed_card"
   | "stale_state_hash"
   | "stale_head_sha"
@@ -610,6 +759,22 @@ export function checkPins(
   current: DecisionCardCurrentState,
   now: Date = new Date(),
 ): DecisionCardPinCheck {
+  try {
+    return checkPinsUnsafe(card, current, now);
+  } catch {
+    return { ok: false, reason: "invalid_input" };
+  }
+}
+
+function checkPinsUnsafe(
+  rawCard: unknown,
+  rawCurrent: DecisionCardCurrentState,
+  now: Date,
+): DecisionCardPinCheck {
+  // One read of every value: getters on either argument cannot flip between
+  // the check and the comparison. Hostile shapes throw and fail closed above.
+  const card = snapshotValue(rawCard, "", 0, { n: 0 });
+  const current = snapshotValue(rawCurrent, "", 0, { n: 0 }) as DecisionCardCurrentState;
   const nowMs = now instanceof Date ? now.getTime() : Number.NaN;
   if (!Number.isFinite(nowMs)) return { ok: false, reason: "bad_clock" };
   if (!isRecord(card) || !isRecord(card.pins)) {
@@ -624,7 +789,7 @@ export function checkPins(
   for (const field of PIN_KEYS) {
     const want = card.pins[field];
     if (want === undefined) continue;
-    if (typeof want !== "string" || isBlank(want) || EDGE_SPACE_RE.test(want)) {
+    if (typeof want !== "string" || isBlank(want) || BAD_VALUE_RE.test(want)) {
       return { ok: false, reason: "malformed_card", field };
     }
     pinned++;

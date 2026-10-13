@@ -363,3 +363,121 @@ describe("review hardening", () => {
     expect(codes(base({ expires: "2026-10-13T12:00Z" }))).toContain("bad_expires");
   });
 });
+
+describe("round-2 hardening (table driven)", () => {
+  const ZW = "​";
+  const opt = (over: Record<string, unknown>) => ({
+    options: [{ id: "a", label: "A", consequence: "c", ...over }],
+  });
+  const rows: Array<[string, Record<string, unknown>, string, string]> = [
+    ["zero-width space in what", { what: `Merge ${ZW}it` }, "bad_field", "what"],
+    ["braille blank mid what", { what: "Merge ⠀it" }, "bad_field", "what"],
+    ["BOM mid what", { what: "Merge ﻿it" }, "bad_field", "what"],
+    ["ZWJ mid what", { what: "Merge ‍it" }, "bad_field", "what"],
+    ["nbsp mid what", { what: "Merge it" }, "bad_field", "what"],
+    ["line separator in what", { what: "a b" }, "bad_field", "what"],
+    ["ZWSP in consequence", opt({ consequence: `x${ZW}y` }), "bad_field", "options[0].consequence"],
+    ["nbsp in consequence", opt({ consequence: "x y" }), "bad_field", "options[0].consequence"],
+    ["BOM in consequence", opt({ consequence: "x﻿y" }), "bad_field", "options[0].consequence"],
+    ["braille in consequence", opt({ consequence: "x⠀y" }), "bad_field", "options[0].consequence"],
+    ["ZWSP in label", opt({ label: `A${ZW}B` }), "bad_field", "options[0].label"],
+    ["ZWJ in label", opt({ label: "A‍B" }), "bad_field", "options[0].label"],
+    ["braille-prefixed pin", { pins: { headSha: "⠀abc" } }, "padded_pin", "pins.headSha"],
+    ["inner-space pin", { pins: { headSha: "ab c" } }, "padded_pin", "pins.headSha"],
+    ["ZWSP fingerprint", { evidence: [{ label: "e", fingerprint: `a${ZW}b` }] }, "bad_field", "evidence[0].fingerprint"],
+    ["ZWSP url", { evidence: [{ label: "e", url: `http://x${ZW}.com` }] }, "bad_field", "evidence[0].url"],
+    ["space in url", { evidence: [{ label: "e", url: "http://x .com" }] }, "bad_field", "evidence[0].url"],
+    ["ftp url", { evidence: [{ label: "e", url: "ftp://x.com" }] }, "bad_field", "evidence[0].url"],
+    ["ZWSP receipt", { receipt: `a${ZW}b` }, "bad_field", "receipt"],
+    ["dotdot receipt", { receipt: "runs/../etc/passwd" }, "bad_field", "receipt"],
+    ["absolute receipt", { receipt: "/etc/passwd" }, "bad_field", "receipt"],
+    ["reserved option id constructor", opt({ id: "constructor" }), "bad_field", "options[0].id"],
+    ["reserved option id prototype", opt({ id: "prototype" }), "bad_field", "options[0].id"],
+    ["reserved card id", { id: "__proto__" }, "bad_field", "id"],
+    ["reserved kind", { kind: "constructor" }, "bad_field", "kind"],
+    // round-1 inputs
+    ["round1 sparse options", { options: new Array(3) }, "bad_field", "options[0]"],
+    ["round1 empty options", { options: [] }, "no_options", "options"],
+    ["round1 payment policy_match", { kind: "payment", policy_match: "p" }, "policy_match_kind_not_eligible", "policy_match"],
+    ["round1 grant policy_match", { kind: "grant", policy_match: "p" }, "policy_match_on_excluded_kind", "policy_match"],
+    ["round1 far expiry", { expires: "2099-01-01T00:00:00Z" }, "expiry_too_far", "expires"],
+    ["round1 4 fractional digits", { expires: "2026-10-13T12:00:00.1234Z" }, "bad_expires", "expires"],
+    ["round1 ZWSP-only what", { what: ZW }, "empty_what", "what"],
+    ["round1 ZWSP-only consequence", opt({ consequence: ZW }), "missing_consequence", "options[0].consequence"],
+  ];
+  it.each(rows)("%s", (_name, over, code, path) => {
+    const r = validateDecisionCard(base(over), { now: NOW });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toContainEqual(expect.objectContaining({ code, path }));
+  });
+
+  it("accepts a plain ASCII space inside free text", () => {
+    expect(codes(base({ what: "Merge PR 1 into main." }))).toEqual([]);
+  });
+
+  it("TOCTOU: a flipping getter is refused and never reaches the returned card", () => {
+    let reads = 0;
+    const pins = {};
+    Object.defineProperty(pins, "headSha", {
+      enumerable: true,
+      get() {
+        return reads++ === 0 ? "abc" : "zzz";
+      },
+    });
+    const r = validateDecisionCard(base({ pins }), { now: NOW });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]).toMatchObject({ code: "bad_field", path: "pins.headSha" });
+    expect(reads).toBeLessThanOrEqual(1);
+    const g = checkPins({ expires: FUTURE, pins }, { headSha: "abc" }, NOW);
+    expect(g).toEqual({ ok: false, reason: "invalid_input" });
+  });
+
+  it("returns a deep-frozen copy detached from the input", () => {
+    const input = base();
+    const r = validateDecisionCard(input, { now: NOW });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(Object.isFrozen(r.card)).toBe(true);
+      expect(Object.isFrozen(r.card.options[0])).toBe(true);
+      expect(Object.isFrozen(r.card.pins)).toBe(true);
+      (input.pins as Record<string, string>).headSha = "changed";
+      expect(r.card.pins.headSha).toBe("abc123");
+    }
+  });
+
+  it("never throws on a Proxy with throwing traps", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error("boom");
+        },
+        getPrototypeOf() {
+          throw new Error("boom");
+        },
+      },
+    );
+    const r = validateDecisionCard(hostile, { now: NOW });
+    expect(r).toMatchObject({ ok: false, errors: [{ code: "invalid_input" }] });
+    const nested = validateDecisionCard(base({ pins: hostile }), { now: NOW });
+    expect(nested).toMatchObject({ ok: false, errors: [{ code: "invalid_input" }] });
+    expect(checkPins(hostile, {}, NOW)).toEqual({ ok: false, reason: "invalid_input" });
+    expect(checkPins({ expires: FUTURE, pins: { headSha: "h" } }, hostile as never, NOW)).toEqual({
+      ok: false,
+      reason: "invalid_input",
+    });
+    expect(
+      validateDecisionCard(base(), { get now(): Date {
+        throw new Error("boom");
+      } }),
+    ).toMatchObject({ ok: false, errors: [{ code: "invalid_input" }] });
+  });
+
+  it("rejects non-plain objects and deep nesting", () => {
+    expect(codes(base({ pins: new Map() }))).toContain("bad_field");
+    expect(codes(base({ pins: new Date() }))).toContain("bad_field");
+    let deep: Record<string, unknown> = {};
+    for (let i = 0; i < 20; i++) deep = { x: deep };
+    expect(codes(base({ evidence: [deep] }))).toContain("too_long");
+  });
+});
