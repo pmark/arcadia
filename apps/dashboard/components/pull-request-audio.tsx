@@ -47,7 +47,9 @@ export function PullRequestAudio({ repository, number, showDescription = false }
         return body.job as IntelligenceJob;
       },
       onJob: current => setStage(current.status === "queued" ? "queued" : "generating"),
+      signal: abort.signal,
     }) : null;
+    abort.signal.throwIfAborted();
     if (!job) { setStage("ready"); return; }
     if (job.status !== "completed") {
       setResult({ ...initial, job });
@@ -151,26 +153,43 @@ export async function observeSummaryJob(job: IntelligenceJob, options: {
   sleep?: (milliseconds: number) => Promise<void>;
   timeoutMs?: number;
   pollIntervalMs?: number;
+  signal?: AbortSignal;
 }): Promise<IntelligenceJob> {
   const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)));
+  const sleep = options.sleep ?? (milliseconds => abortableSleep(milliseconds, options.signal));
   const deadline = now() + (options.timeoutMs ?? SUMMARY_OBSERVATION_TIMEOUT_MS);
   let current = job;
   while (current.status === "queued" || current.status === "running") {
+    options.signal?.throwIfAborted();
     options.onJob?.(current);
     const remaining = deadline - now();
     if (remaining <= 0) throw new SummaryObservationTimeoutError(current);
     await sleep(Math.min(options.pollIntervalMs ?? 1000, remaining));
+    options.signal?.throwIfAborted();
     const afterSleep = deadline - now();
     if (afterSleep <= 0) throw new SummaryObservationTimeoutError(current);
     try {
       current = await promiseWithObservationDeadline(options.fetchJob(current.id, Math.min(SUMMARY_FETCH_TIMEOUT_MS, afterSleep)), afterSleep, current);
+      options.signal?.throwIfAborted();
     } catch (error) {
       if (error instanceof SummaryObservationTimeoutError) throw new SummaryObservationTimeoutError(current);
       throw error;
     }
   }
   return current;
+}
+
+function abortableSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(finish, milliseconds);
+    function finish() { signal?.removeEventListener("abort", abort); resolve(); }
+    function abort() {
+      clearTimeout(timer); signal?.removeEventListener("abort", abort);
+      reject(signal?.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError"));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 async function promiseWithObservationDeadline<T>(promise: Promise<T>, timeoutMs: number, job: IntelligenceJob): Promise<T> {
@@ -180,8 +199,9 @@ async function promiseWithObservationDeadline<T>(promise: Promise<T>, timeoutMs:
   } finally { if (timer) clearTimeout(timer); }
 }
 
-async function fetchJsonBounded(url: string, init: RequestInit, timeoutMs: number): Promise<Record<string, unknown>> {
+export async function fetchJsonBounded(url: string, init: RequestInit, timeoutMs: number): Promise<Record<string, unknown>> {
   const parentSignal = init.signal;
+  parentSignal?.throwIfAborted();
   const controller = new AbortController();
   const relay = () => controller.abort();
   parentSignal?.addEventListener("abort", relay, { once: true });

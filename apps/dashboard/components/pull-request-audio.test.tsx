@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptRefreshedSummary, observeSummaryJob, PullRequestAudio, SummaryObservationTimeoutError, summaryActionForStage } from "./pull-request-audio";
+import { acceptRefreshedSummary, fetchJsonBounded, observeSummaryJob, PullRequestAudio, SummaryObservationTimeoutError, summaryActionForStage } from "./pull-request-audio";
 
 describe("PullRequestAudio", () => {
   it("offers independent TLDR loading before any speech action", () => {
@@ -28,6 +28,30 @@ describe("PullRequestAudio", () => {
   it("reconnects timed-out observation with GET and never starts inference", () => {
     expect(summaryActionForStage("observation_timeout")).toBe("GET");
     expect(summaryActionForStage("failed")).toBe("POST");
+  });
+
+  it("cancels observation during poll sleep before another fetch or state update", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchJob = vi.fn();
+    const onJob = vi.fn();
+    const observed = observeSummaryJob({ id: "summary-running", status: "running" } as never, { fetchJob, onJob, signal: controller.signal });
+    const assertion = expect(observed).rejects.toMatchObject({ name: "AbortError" });
+    expect(onJob).toHaveBeenCalledTimes(1);
+    controller.abort();
+    await assertion;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchJob).not.toHaveBeenCalled();
+    expect(onJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a pre-aborted parent before starting a child fetch", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(fetchJsonBounded("/never", { signal: controller.signal }, 20_000)).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });
 

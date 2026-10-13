@@ -113,6 +113,9 @@ attempted.
   A/current B with no B summary and zero speech calls, a fake-clock
   never-settling running-job deadline that retains its durable identity, and a
   GET-only reconnect action.
+- R4 cancellation regression covers unmount/supersede during poll sleep and a
+  pre-aborted parent before child fetch creation; neither performs another
+  fetch or state transition. The final focused suite covers 5 files / 24 tests.
 - Touched-file ESLint: exit 0 after R1 repair.
 - Root package TypeScript compile: exit 0.
 - Dashboard TypeScript currently exits 2 on the pre-existing
