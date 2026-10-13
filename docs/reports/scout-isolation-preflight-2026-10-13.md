@@ -15,7 +15,7 @@ records are retained separately, with no false role or lineage claim.
 
 ## What ran and what it proves
 
-At committed code revision `0dbe1b823070ba9f9eac12dbb97d1eb93779ddc5`, Node
+At committed code revision `6bb991da0c0b0d74b1416fcb34dcd7e69beab16a`, Node
 22.23.1 replayed a copy of the original evidence and verified all 48 manifest
 entries. The replay made zero model/provider calls. This excludes development
 inference by the Lead/delegates; their total tokens are unavailable.
@@ -49,7 +49,7 @@ It invokes the held-scout observation evaluator with the actual saved before sna
 invocations. It cannot admit a Session. The retained evidence is copied for the
 replay, and original files are not overwritten.
 
-The Implementer's and Supervisor's focused tests passed 29 cases; touched-file
+The Implementer's and Supervisor's focused tests passed 36 cases; touched-file
 ESLint and TypeScript checks passed. Negative cases include scope traversal,
 malformed snapshots, added trust fields, stale/missing hold evidence, arbitrary
 approval text, changed protected state and altered saved packet facts. Required
@@ -88,5 +88,11 @@ observation evaluator now has only a blocked outcome, clearly states that hold
 resolution is unimplemented, and is invoked by the CLI. Missing after-state
 proof is explicit. A receipt path mismatch was removed. Fresh source tests,
 lint, build and the 48-file replay pass after correction; the PR records the
-second independent verdicts and exact-head CI. Overall Action acceptance stays
+final independent verdicts and exact-head CI. Overall Action acceptance stays
 blocked, irrespective of whether the partial code slice is acceptable.
+
+The second QA pass found two evidence-attribution defects. Trust proof now
+rejects pre-existing or ambiguous project tables, including comment and quote
+variants; missing-file proof requires the exact requested artifact name.
+Negative fixtures cover these cases. Supervisor follow-up caught and repaired
+the commented-table and near-name cases before the third independent round.

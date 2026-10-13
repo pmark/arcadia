@@ -1,7 +1,7 @@
 {
   "description": "Sanitized supporting evidence summary, not execution authority or a completion receipt",
   "date": "2026-10-13",
-  "sourceRevision": "0dbe1b823070ba9f9eac12dbb97d1eb93779ddc5",
+  "sourceRevision": "6bb991da0c0b0d74b1416fcb34dcd7e69beab16a",
   "nodeVersion": "v22.23.1",
   "requestedBuilderModel": "gpt-6-luna",
   "requestedBuilderEffort": "low",
@@ -38,12 +38,12 @@
     "supervisingSession": "lead",
     "scoutInvestigation": "researcher",
     "soleCodeWriter": "implementer",
-    "independentCodeReview": "round1 found blockers; repaired, round2 pending",
-    "independentAcceptanceQA": "Action blocked; code fixes ready for round2"
+    "independentCodeReview": "prior findings repaired; final exact-head verdict linked on PR",
+    "independentAcceptanceQA": "full Action remains blocked; partial-code final verdict linked on PR"
   },
   "guardScope": "held-scout-observation-only",
   "guardResolutionImplemented": false,
   "historicalAfterObserved": false,
   "manifestPinned": true,
-  "focusedTestsPassed": 29
+  "focusedTestsPassed": 36
 }
