@@ -1,0 +1,103 @@
+{
+  "originalCases": 47,
+  "finalCases": 47,
+  "byteIdenticalTestBlocks": 10,
+  "helperStatementsUnchangedExceptRepoRoot": 46,
+  "blocks": [
+    {
+      "name": "rehearsal-chain set: static safety",
+      "file": "tests/rehearsal-chain-operator-scripts.test.ts",
+      "sha256": "0f308b2f89be64b4447b387065aad85278c4532dc74bec29146bc15555d4e7d2"
+    },
+    {
+      "name": "rehearsal-chain set: launchers",
+      "file": "tests/rehearsal-chain-operator-scripts.test.ts",
+      "sha256": "6f3dcd6fd90153765ad1f1e8e9e4041395996f80ba0a2999ca69905d59404080"
+    },
+    {
+      "name": "leaves the run-5 set unchanged",
+      "file": "tests/rehearsal-chain-operator-scripts.test.ts",
+      "sha256": "c0c8dfc82334bda2b09d27130a43e85936a2ce6c0e7e50fe89c70e7e971da79a"
+    },
+    {
+      "name": "rehearsal-chain reset",
+      "file": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
+      "sha256": "8e8c4ac7f98f13cd538337412a880eda5228e6cc88ead8c1bf9599cd81e75e31"
+    },
+    {
+      "name": "rehearsal-chain reset: stacked candidates and the operational queue (Issues #987, #1015)",
+      "file": "tests/rehearsal-chain-reset-queue.test.ts",
+      "sha256": "6e5a8f2f15f05e2f769249ff13baa6adb9a8275eb7d4bca78821a5f1dd87e8ba"
+    },
+    {
+      "name": "rehearsal-chain G6, G7 and G8",
+      "file": "tests/rehearsal-chain-g6-g7-g8.test.ts",
+      "sha256": "73ce10ba863954f2c7eb60526e97adb98819da260bd5e18c1c84757842c8b7f2"
+    },
+    {
+      "name": "rehearsal-chain G8 is the emergency stop: drift never blocks this run's Off",
+      "file": "tests/rehearsal-chain-emergency-stop.test.ts",
+      "sha256": "79f3993c05a86be5e68af2be9b743b64ed7fa89cbd30389a3b5dfea07905806f"
+    },
+    {
+      "name": "rehearsal-chain G6: the operational queue and a live Codex capacity read (Issues #1015, #1016)",
+      "file": "tests/rehearsal-chain-g6-capacity.test.ts",
+      "sha256": "6c57ec6da2b9e4e86f3f7c6bb7e6553e369b284f1b41ac0a5af7bab9a2f8d695"
+    },
+    {
+      "name": "rehearsal-chain G6 coherence guard",
+      "file": "tests/rehearsal-chain-preflight-coherence.test.ts",
+      "sha256": "286df80844c5be231397eab465b039e43b1e035e94ea7039dea1a2b3786dd79a"
+    },
+    {
+      "name": "rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its receipt",
+      "file": "tests/rehearsal-chain-end-to-end.test.ts",
+      "sha256": "f42ad4e73c14df718e19028f2569a06690c9c5bb4151f8718d3092d13c2907b6"
+    }
+  ],
+  "actualSequencer": "Vitest 4.1.8 BaseSequencer.shard",
+  "shards": {
+    "1": [
+      "tests/rehearsal-chain-reset-queue.test.ts",
+      "tests/rehearsal-chain-end-to-end.test.ts",
+      "tests/rehearsal-chain-g6-capacity.test.ts"
+    ],
+    "2": [],
+    "3": [
+      "tests/rehearsal-chain-g6-g7-g8.test.ts",
+      "tests/rehearsal-chain-emergency-stop.test.ts",
+      "tests/rehearsal-chain-preflight-coherence.test.ts"
+    ],
+    "4": [
+      "tests/rehearsal-chain-fixture-reset-safety.test.ts",
+      "tests/rehearsal-chain-operator-scripts.test.ts"
+    ]
+  },
+  "weightedRefinement": {
+    "priorHead": "b5313e21f",
+    "beforeShards": {
+      "1": [
+        "tests/rehearsal-chain-reset-queue.test.ts",
+        "tests/rehearsal-chain-end-to-end.test.ts"
+      ],
+      "2": [
+        "tests/rehearsal-chain-fixture-reset.test.ts",
+        "tests/rehearsal-chain-preflight-capacity.test.ts"
+      ],
+      "3": [
+        "tests/rehearsal-chain-g6-g7-g8.test.ts",
+        "tests/rehearsal-chain-emergency-stop.test.ts",
+        "tests/rehearsal-chain-preflight-coherence.test.ts"
+      ],
+      "4": [
+        "tests/rehearsal-chain-operator-scripts.test.ts"
+      ]
+    },
+    "renameBytesIdentical": true,
+    "caseNamesUnchanged": 47,
+    "changes": {
+      "tests/rehearsal-chain-fixture-reset.test.ts": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
+      "tests/rehearsal-chain-preflight-capacity.test.ts": "tests/rehearsal-chain-g6-capacity.test.ts"
+    }
+  }
+}
