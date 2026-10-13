@@ -24,12 +24,19 @@
  *       rank 2  everything else.
  *  3. Ties by stack order (which is by PR number), then card id.
  *
- * A pull request is a takeable `merge` step only when it is not a draft, its head sha is a full hex sha equal to
- * any earlier pinned sha, its file list is complete (fetched count equals the PR's own changed-file count, as
- * batchMerge requires), it has an approving independent review at that head, every required check is green
- * (SKIPPED and NEUTRAL count as green, as on GitHub), its merge state is CLEAN, HAS_HOOKS or UNSTABLE (only
- * non-required checks failing; the click carries that note), and its parent is not an open pull request. Its own
- * blockers are named before "parent not merged". Otherwise it is a `wait` step
+ * A pull request is a takeable `merge` step only on machine-verifiable conditions: not a draft, a full hex head
+ * sha equal to any earlier pinned sha, state OPEN (the reader's job), a complete file list (fetched count equals
+ * the PR's own changed-file count, as batchMerge requires), every required check green (SKIPPED and NEUTRAL
+ * count as green, as on GitHub), merge state CLEAN, HAS_HOOKS or UNSTABLE (only non-required checks failing; the
+ * click carries that note), no human reviewer's latest review at the head requesting changes, and a parent that
+ * is not an open pull request. Its own blockers are named before "parent not merged".
+ *
+ * The REVIEW is not a gate. This repository records the independent review as a note in the PR body
+ * (`arcadia-work-metadata`: review_rounds >= 1 and a code-reviewer agents entry), never as a GitHub approval,
+ * and review bots (CodeRabbit, `[bot]` logins) are advisory. The page does NOT verify the agent review; it only
+ * surfaces whether one is recorded as `reviewNote`, so the operator can check the PR before merging. "Merge on
+ * green" (an agent's auto-merge condition, Decision 0080) is a different rule from what the operator may merge
+ * by hand; nothing here grants either authority. Otherwise it is a `wait` step
  * that names what it waits on and has NO click and NO link.
  *
  * Result `state` is a closed union and the only thing a UI may say production's status from:
@@ -88,6 +95,8 @@ export interface NextStepsPr {
    * never classified from the partial data.
    */
   unreadable?: string | null;
+  /** The pull request body: its `arcadia-work-metadata` block says whether an independent review was recorded. */
+  body?: string | null;
 }
 
 export interface NextStepsQueuedAction {
@@ -136,6 +145,15 @@ export interface NextStepsInput {
 
 export type NextStepKind = "merge" | "answer" | "run" | "wait";
 
+export type ReviewNote = "independent_review_recorded" | "not_recorded" | "changes_requested_by_human";
+
+/** The words shown for each review note. This page does not verify the review; it only says whether one is recorded. */
+export const REVIEW_NOTE_TEXT: Record<ReviewNote, string> = {
+  independent_review_recorded: "An independent review is recorded in the PR body (not verified here).",
+  not_recorded: "No independent review recorded in the PR body: check the PR before merging.",
+  changes_requested_by_human: "A human reviewer's latest review at this head requests changes.",
+};
+
 export type NextStepWaitCode =
   | "duplicate_pr"
   | "bad_head_sha"
@@ -146,9 +164,7 @@ export type NextStepWaitCode =
   | "parent_unmerged"
   | "draft"
   | "files_incomplete"
-  | "review_missing"
-  | "review_stale_head"
-  | "review_not_approved"
+  | "changes_requested"
   | "no_required_checks"
   | "check_failing"
   | "check_pending"
@@ -173,6 +189,10 @@ export interface NextStep {
   /** What a wait step waits on in words (a step, or a named check). Null unless kind is wait. */
   waitingFor: string | null;
   waitCode: NextStepWaitCode | null;
+  /** Whether an independent review is recorded in the PR body. Informational only: never a wait. Null for a card. */
+  reviewNote: ReviewNote | null;
+  /** Bot reviewers (CodeRabbit and other `[bot]` logins) whose latest review requests changes: advisory, never a wait. */
+  advisoryBotFindings: number;
   authorityBoundaries: AuthorityBoundary[];
   reason: string;
   /** Own priority rank (0 advances governance, 1 unblocks a queued Action, 2 other). */
@@ -426,6 +446,8 @@ function checkState(pr: NextStepsPr, name: string): "green" | "pending" | "faili
   const rows = pr.checks.filter((c) => c.name === name);
   if (rows.length === 0) return "pending";
   const concl = rows.map((r) => (typeof r.conclusion === "string" ? r.conclusion.trim().toLowerCase() : ""));
+  // Several rows can share one check name (re-runs, matrix jobs). ANY failing row makes the check failing and any
+  // unfinished row makes it pending: a deliberate fail-safe, so one stale green row can never hide a red one.
   // GitHub counts a SKIPPED or NEUTRAL required check as passing, so this module does too. batchMerge's isGreen
   // accepts only SUCCESS and is deliberately left unchanged; the divergence is confined to this readiness view.
   if (concl.every((c) => c === "success" || c === "skipped" || c === "neutral")) return "green";
@@ -433,12 +455,46 @@ function checkState(pr: NextStepsPr, name: string): "green" | "pending" | "faili
   return settledBad ? "failing" : "pending";
 }
 
-/** Review states at the pinned head, named, so a COMMENTED review beside an APPROVED one is visible. */
-function reviewStatesAtHead(pr: NextStepsPr): string {
-  const rows = pr.reviews
-    .filter((r) => r.headSha === pr.headSha)
-    .map((r) => `${safeText(r.verdict, 30).toUpperCase() || "UNKNOWN"} by ${safeText(r.author ?? "an unknown reviewer", 40)}`);
-  return rows.length === 0 ? "none at this head" : rows.join(", ");
+const isBotLogin = (login: string): boolean => {
+  const l = login.trim().toLowerCase();
+  return l.endsWith("[bot]") || l === "coderabbitai";
+};
+
+/**
+ * Review facts for one pull request, from GitHub reviews (chronological, as `gh` returns them):
+ *  - the LATEST review per reviewer login decides that reviewer's stance (a later APPROVED or COMMENTED
+ *    supersedes an earlier CHANGES_REQUESTED, as on GitHub; there is no every()-over-all-reviews);
+ *  - only a HUMAN reviewer's latest review AT THE PINNED HEAD that is CHANGES_REQUESTED blocks (`changesBy`);
+ *  - bot reviewers (login ends with `[bot]`, or coderabbitai) are advisory: counted in `botFindings`, never a wait.
+ */
+function reviewFacts(pr: NextStepsPr): { changesBy: string[]; botFindings: number } {
+  const latest = new Map<string, { verdict: string; headSha: string }>();
+  for (const r of pr.reviews) {
+    const login = typeof r.author === "string" && r.author.trim() !== "" ? r.author.trim() : "(unknown reviewer)";
+    latest.set(login, { verdict: typeof r.verdict === "string" ? r.verdict.trim().toUpperCase() : "", headSha: r.headSha });
+  }
+  const changesBy: string[] = [];
+  let botFindings = 0;
+  for (const [login, review] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (review.verdict !== "CHANGES_REQUESTED") continue;
+    if (isBotLogin(login)) botFindings += 1;
+    else if (review.headSha === pr.headSha) changesBy.push(safeText(login, 40));
+  }
+  return { changesBy, botFindings };
+}
+
+/**
+ * Is an independent review recorded? This repository records it in the PR body's fenced `arcadia-work-metadata`
+ * block (review_rounds >= 1 and an agents entry with role code-reviewer), never as a GitHub approval. This only
+ * reports what the body says; it does not verify the review.
+ */
+function recordedReview(body: unknown): boolean {
+  if (typeof body !== "string") return false;
+  const block = /```arcadia-work-metadata[^\n]*\n([\s\S]*?)```/.exec(body)?.[1];
+  if (block === undefined) return false;
+  const rounds = /^review_rounds:\s*(\d+)/m.exec(block)?.[1];
+  if (rounds === undefined || Number(rounds) < 1) return false;
+  return /^\s*-\s*role:\s*code-reviewer\b/m.test(block) || /^\s+role:\s*code-reviewer\b/m.test(block);
 }
 
 /** Each non-clean merge state names its real cause and what ends it; none says merely "waiting on GitHub". */
@@ -517,6 +573,14 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       node.inheritedFrom !== null
         ? `Merging #${pr.number} unlocks #${node.inheritedFrom}, which ${nodes.get(node.inheritedFrom)?.phrase ?? "ranks higher"}.`
         : node.unblocks;
+    let review: { changesBy: string[]; botFindings: number };
+    try {
+      review = reviewFacts(pr);
+    } catch {
+      review = { changesBy: [], botFindings: 0 };
+    }
+    const reviewNote: ReviewNote =
+      review.changesBy.length > 0 ? "changes_requested_by_human" : recordedReview(pr.body) ? "independent_review_recorded" : "not_recorded";
     const base = {
       id,
       kind: "wait" as const,
@@ -527,6 +591,8 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       unblocks,
       authorityBoundaries: boundaries,
       rank: node.rank,
+      reviewNote,
+      advisoryBotFindings: review.botFindings,
     };
     const wait = (code: NextStepWaitCode, reason: string, waitingFor: string, waitingOn: string | null = null): Omit<NextStep, "order"> => ({
       ...base,
@@ -572,13 +638,15 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
           "a complete file list",
         );
       }
-      if (codes.has("review_missing")) return wait("review_missing", "It has no independent review.", "an independent review");
-      if (codes.has("review_stale_head")) return wait("review_stale_head", "Its only reviews are of an earlier head.", "an independent review of this head");
-      if (codes.has("review_not_approved")) {
+      // The review is NOT a gate here: this repository records the independent review as a PR-body note by an
+      // agent reviewer, never as a GitHub approval (which cannot be given to one's own PR), and review bots are
+      // advisory. Only a human's standing CHANGES_REQUESTED at this head is a blocker. `assessPr`'s review
+      // refusals are deliberately ignored.
+      if (review.changesBy.length > 0) {
         return wait(
-          "review_not_approved",
-          `Its reviews at this head are not all approvals (${reviewStatesAtHead(pr)}).`,
-          "an approving independent review",
+          "changes_requested",
+          `A human reviewer's latest review at ${short(pr.headSha)} requests changes (${review.changesBy.join(", ")}).`,
+          `${review.changesBy.join(", ")} to approve or the changes to be addressed`,
         );
       }
       // A stacked child's base is not the trunk, so no required checks are configured for it: its checks
@@ -624,7 +692,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       waitingOn: null,
       waitingFor: null,
       waitCode: null,
-      reason: `Approved at ${short(pr.headSha)} with every required check green${
+      reason: `Every required check is green at ${short(pr.headSha)}${
         boundaries.length > 0 ? `; touches ${boundaries.join(", ")}` : ""
       }${
         mergeState === "UNSTABLE"
@@ -679,6 +747,8 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
         authorityBoundaries: [],
         reason: `${card.verb === "answer" ? "Open Decision" : "Operator script"} card (${safeText(card.kind, 40)}).`,
         rank,
+        reviewNote: null,
+        advisoryBotFindings: 0,
       },
     });
   }

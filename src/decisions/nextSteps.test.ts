@@ -117,13 +117,13 @@ describe("what makes a step wait", () => {
     expect(r.nowStep?.id).toBe("pr-43");
   });
 
-  it("refuses a missing review and a review of an earlier head", () => {
+  it("the review is never a gate: no review, an old-head review or an author review is still a Merge click with a note", () => {
     const r = run({
-      prs: [pr(53), pr(50, { reviews: [] }), pr(51, { reviews: [{ verdict: "APPROVED", headSha: sha("e"), author: "r" }] }), pr(52, { reviews: [{ verdict: "APPROVED", headSha: sha("2"), author: "author" }] })],
+      prs: [pr(50, { reviews: [] }), pr(51, { reviews: [{ verdict: "APPROVED", headSha: sha("e"), author: "r" }] }), pr(52, { reviews: [{ verdict: "APPROVED", headSha: sha("2"), author: "author" }] })],
     });
-    const by = Object.fromEntries(r.steps.map((s) => [s.id, s.waitCode]));
-    expect(by).toMatchObject({ "pr-50": "review_missing", "pr-51": "review_stale_head", "pr-52": "review_not_approved" });
-    expect(run({ prs: [pr(50, { reviews: [] })] }).state).toBe("waiting");
+    expect(r.steps.every((s) => s.kind === "merge" && s.click !== null)).toBe(true);
+    expect(r.steps.every((s) => s.reviewNote === "not_recorded")).toBe(true);
+    expect(r.state).toBe("now");
   });
 
   it("refuses a stale head visibly against the earlier pinned sha", () => {

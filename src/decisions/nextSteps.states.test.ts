@@ -50,15 +50,13 @@ describe("result states", () => {
     expect(r.steps[0].waitCode).toBe("base_pr_missing");
   });
 
-  it("a COMMENTED review beside an APPROVED one at the same head is a shown wait naming the review states", () => {
+  it("a COMMENTED review beside an APPROVED one is not a blocker: the PR stays takeable", () => {
     const head = sha("3");
     const r = run({
       prs: [pr(3, { reviews: [{ verdict: "APPROVED", headSha: head, author: "rev1" }, { verdict: "COMMENTED", headSha: head, author: "rev2" }] })],
     });
-    expect(r.state).toBe("waiting");
-    expect(r.steps[0]).toMatchObject({ waitCode: "review_not_approved", click: null });
-    expect(r.steps[0].reason).toContain("APPROVED by rev1");
-    expect(r.steps[0].reason).toContain("COMMENTED by rev2");
+    expect(r.state).toBe("now");
+    expect(r.nowStep?.click).toBe("Merge #3 on GitHub");
   });
 
   it("unavailable: a named unread source with no takeable step is never moving or waiting", () => {
@@ -139,7 +137,7 @@ describe("inheritance only from children that can become takeable", () => {
     ["draft", { isDraft: true }, "draft"],
     ["DIRTY (conflicted)", { mergeStateStatus: "DIRTY" }, "merge_conflict"],
     ["failing required check", { checks: [{ name: "ci", conclusion: "FAILURE" }] }, "check_failing"],
-    ["missing review", { reviews: [] }, "review_missing"],
+    ["human changes-requested", { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("0"), author: "human" }] }, "changes_requested"],
     ["unreadable", { unreadable: "gh read failed" }, "unreadable"],
   ];
   for (const [label, over, code] of cases) {
@@ -224,6 +222,74 @@ describe("invalid and absent inputs", () => {
     expect(buildNextSteps({ prs: [], queue: null, cards: [] })).toMatchObject({ state: "unavailable", unavailable: ["queue"] });
     expect(buildNextSteps({ prs: [], queue: empty })).toMatchObject({ state: "unavailable", unavailable: ["cards"] });
     expect(buildNextSteps({ prs: [] })).toMatchObject({ state: "unavailable", unavailable: ["cards", "queue"] });
+  });
+});
+
+describe("the review is a note, not a gate", () => {
+  const META = (rounds: number, role: string) =>
+    "Body text\n\n```arcadia-work-metadata\nversion: 1\naction: plan#a\nsize: S\noperator_gate: none\nagents:\n  - role: implementer\n    provider: claude-code\n  - role: " +
+    role +
+    "\n    provider: claude-code\nreview_rounds: " +
+    rounds +
+    "\nci_pushes: 1\n```\n";
+
+  it("a green CLEAN PR with no reviews at all is a Merge click with reviewNote not_recorded", () => {
+    const r = run({ prs: [pr(1, { reviews: [], body: "no metadata here" })] });
+    expect(r.state).toBe("now");
+    expect(r.nowStep).toMatchObject({ kind: "merge", click: "Merge #1 on GitHub", reviewNote: "not_recorded", waitCode: null });
+  });
+
+  it("an arcadia-work-metadata block with review_rounds >= 1 and a code-reviewer is independent_review_recorded", () => {
+    expect(run({ prs: [pr(1, { reviews: [], body: META(1, "code-reviewer") })] }).nowStep?.reviewNote).toBe("independent_review_recorded");
+    expect(run({ prs: [pr(1, { reviews: [], body: META(0, "code-reviewer") })] }).nowStep?.reviewNote).toBe("not_recorded");
+    expect(run({ prs: [pr(1, { reviews: [], body: META(2, "qa") })] }).nowStep?.reviewNote).toBe("not_recorded");
+    expect(run({ prs: [pr(1, { reviews: [], body: null })] }).nowStep?.reviewNote).toBe("not_recorded");
+  });
+
+  it("a CodeRabbit CHANGES_REQUESTED is advisory: still takeable, counted in advisoryBotFindings", () => {
+    const head = sha("1");
+    const r = run({
+      prs: [
+        pr(1, {
+          reviews: [
+            { verdict: "CHANGES_REQUESTED", headSha: head, author: "coderabbitai" },
+            { verdict: "CHANGES_REQUESTED", headSha: head, author: "some-app[bot]" },
+          ],
+        }),
+      ],
+    });
+    expect(r.state).toBe("now");
+    expect(r.nowStep?.advisoryBotFindings).toBe(2);
+    expect(r.nowStep?.reviewNote).toBe("not_recorded");
+  });
+
+  it("a human CHANGES_REQUESTED at the head is a changes_requested wait with no click", () => {
+    const head = sha("1");
+    const r = run({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: head, author: "pmark" }], body: META(1, "code-reviewer") })] });
+    expect(r.state).toBe("waiting");
+    expect(r.steps[0]).toMatchObject({ kind: "wait", waitCode: "changes_requested", click: null, reviewNote: "changes_requested_by_human" });
+    expect(r.steps[0].waitingFor).toContain("pmark");
+  });
+
+  it("the latest review per reviewer wins: COMMENTED then APPROVED, or CHANGES_REQUESTED then APPROVED, is takeable", () => {
+    const head = sha("1");
+    const approvedLast = run({
+      prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: head, author: "pmark" }, { verdict: "APPROVED", headSha: head, author: "pmark" }] })],
+    });
+    expect(approvedLast.state).toBe("now");
+    const commentedAfter = run({
+      prs: [pr(1, { reviews: [{ verdict: "APPROVED", headSha: head, author: "pmark" }, { verdict: "COMMENTED", headSha: head, author: "pmark" }] })],
+    });
+    expect(commentedAfter.state).toBe("now");
+    const changesLast = run({
+      prs: [pr(1, { reviews: [{ verdict: "APPROVED", headSha: head, author: "pmark" }, { verdict: "CHANGES_REQUESTED", headSha: head, author: "pmark" }] })],
+    });
+    expect(changesLast.steps[0].waitCode).toBe("changes_requested");
+  });
+
+  it("a human's CHANGES_REQUESTED on an earlier head does not block the current head", () => {
+    const r = run({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("e"), author: "pmark" }] })] });
+    expect(r.state).toBe("now");
   });
 });
 

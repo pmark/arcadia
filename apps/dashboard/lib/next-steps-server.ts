@@ -90,6 +90,7 @@ interface GhFileRow {
 
 interface GhPrView {
   state?: string;
+  body?: string | null;
   headRefOid?: string;
   baseRefName?: string;
   headRefName?: string;
@@ -130,7 +131,7 @@ async function readFacts(
     const view = JSON.parse(
       await runGh([
         "pr", "view", String(pr.number), "--repo", repo, "--json",
-        "state,headRefOid,baseRefName,headRefName,isDraft,mergeStateStatus,headRepository,headRepositoryOwner,reviews,statusCheckRollup"
+        "state,body,headRefOid,baseRefName,headRefName,isDraft,mergeStateStatus,headRepository,headRepositoryOwner,reviews,statusCheckRollup"
       ])
     ) as GhPrView;
     // The cached inventory may still list a pull request merged or closed since it was read: never offer it.
@@ -158,6 +159,7 @@ async function readFacts(
       headRef: typeof view.headRefName === "string" ? view.headRefName : pr.headBranch,
       isDraft: view.isDraft === true,
       mergeStateStatus: typeof view.mergeStateStatus === "string" ? view.mergeStateStatus : null,
+      body: typeof view.body === "string" ? view.body : null,
       headRepo: typeof owner === "string" && typeof name === "string" ? `${owner}/${name}` : null,
       files: pages.flat().map((row) => ({ filename: row.filename, previous_filename: row.previous_filename ?? null })),
       changedFiles: typeof meta.changed_files === "number" ? meta.changed_files : null,
@@ -315,13 +317,62 @@ export function applyInventoryAge(response: NextStepsResponse, now: Date): NextS
   if (response.state !== "moving") return response;
   const readAt = response.inventoryCheckedAt === null ? Number.NaN : Date.parse(response.inventoryCheckedAt);
   const ageSeconds = (now.getTime() - readAt) / 1000;
-  const lagging = response.inventoryStale || !Number.isFinite(ageSeconds) || ageSeconds > INVENTORY_MAX_AGE_SECONDS;
+  // A checkedAt in the future (clock skew, bad data) is not a fresh read: it is rejected, never clamped to zero.
+  const lagging = response.inventoryStale || !Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > INVENTORY_MAX_AGE_SECONDS;
   if (!lagging) return response;
   return {
     ...response,
     state: "unavailable",
     unavailable: [...new Set([...response.unavailable, "prs" as const])].sort(),
     outOfDate: true
+  };
+}
+
+/** The body /api/pull-requests serves (the inventory cache state, JSON). */
+export interface InventoryBody {
+  snapshot: { pullRequests: DashboardOutstandingPullRequest[]; errors?: unknown[] };
+  stale?: boolean;
+  refreshing?: boolean;
+  checkedAt?: string;
+  refreshError?: string | null;
+  incomplete?: boolean;
+}
+
+export const INVENTORY_REFRESH_TIMEOUT_MS = 10_000;
+const INVENTORY_REFRESH_POLL_MS = 250;
+
+/**
+ * Await a BOUNDED refresh of a stale inventory. The inventory cache serves a stale snapshot immediately and
+ * refreshes in the background (fresh window 30s), so a quiet repository would flap between "moving" and "PR
+ * list may be out of date". When the first read is stale this asks for a refresh and polls until it finishes or
+ * INVENTORY_REFRESH_TIMEOUT_MS passes; on timeout the still-stale body is returned and the stale-and-empty rule
+ * (applyInventoryAge) withholds "moving". Poll interval, cache freshness (30s), the route's 30s response cache
+ * and the 60s age ceiling are independent: a fresh body is reused as read, a stale one is refreshed here.
+ */
+export async function readInventoryFresh(
+  read: (refresh: boolean) => Promise<InventoryBody>,
+  options: { timeoutMs?: number; pollMs?: number } = {}
+): Promise<InventoryBody> {
+  const timeoutMs = options.timeoutMs ?? INVENTORY_REFRESH_TIMEOUT_MS;
+  const pollMs = options.pollMs ?? INVENTORY_REFRESH_POLL_MS;
+  let body = await read(false);
+  if (body.stale !== true) return body;
+  const deadline = Date.now() + timeoutMs;
+  body = await read(true);
+  while (body.stale === true && body.refreshing === true && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, pollMs));
+    body = await read(false);
+  }
+  return body;
+}
+
+export function toInventoryRead(body: InventoryBody): InventoryRead {
+  return {
+    pullRequests: body.snapshot.pullRequests,
+    stale: body.stale === true,
+    checkedAt: typeof body.checkedAt === "string" ? body.checkedAt : null,
+    refreshError: typeof body.refreshError === "string" ? body.refreshError : null,
+    incomplete: body.incomplete === true || (body.snapshot.errors?.length ?? 0) > 0
   };
 }
 

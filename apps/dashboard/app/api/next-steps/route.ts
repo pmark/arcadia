@@ -2,8 +2,16 @@ import { NextResponse } from "next/server";
 import { DEFAULT_CARD_REPO } from "../../../../../src/decisions/cardSources";
 import { loadWorkQueue } from "../../../lib/arcadia-cli";
 import { loadCurrentCards } from "../../../lib/decision-cards-server";
-import { applyInventoryAge, ghRunner, headKey, loadNextSteps, type NextStepsResponse } from "../../../lib/next-steps-server";
-import type { DashboardOutstandingPullRequests } from "../../../lib/types";
+import {
+  applyInventoryAge,
+  ghRunner,
+  headKey,
+  loadNextSteps,
+  readInventoryFresh,
+  toInventoryRead,
+  type InventoryBody,
+  type NextStepsResponse
+} from "../../../lib/next-steps-server";
 import { GET as readPullRequests } from "../pull-requests/route";
 
 export const dynamic = "force-dynamic";
@@ -45,22 +53,14 @@ function load(): Promise<NextStepsResponse> {
   return loadNextSteps(
     {
       async readInventory() {
-        const response = await readPullRequests(new Request("http://localhost/api/pull-requests"));
-        if (!response.ok) throw new Error("pull-request inventory unavailable");
-        const body = (await response.json()) as {
-          snapshot: DashboardOutstandingPullRequests;
-          stale?: boolean;
-          checkedAt?: string;
-          refreshError?: string | null;
-          incomplete?: boolean;
-        };
-        return {
-          pullRequests: body.snapshot.pullRequests,
-          stale: body.stale === true,
-          checkedAt: typeof body.checkedAt === "string" ? body.checkedAt : null,
-          refreshError: typeof body.refreshError === "string" ? body.refreshError : null,
-          incomplete: body.incomplete === true || (body.snapshot.errors?.length ?? 0) > 0
-        };
+        // A stale inventory is refreshed (bounded, 10s) before the list is computed, so a quiet repository can
+        // reach "moving"; on timeout the stale body is returned and "moving" is withheld.
+        const body = await readInventoryFresh(async (refresh) => {
+          const response = await readPullRequests(new Request(`http://localhost/api/pull-requests${refresh ? "?refresh=1" : ""}`));
+          if (!response.ok) throw new Error("pull-request inventory unavailable");
+          return (await response.json()) as InventoryBody;
+        });
+        return toInventoryRead(body);
       },
       async readQueue() {
         return (await loadWorkQueue()).data;

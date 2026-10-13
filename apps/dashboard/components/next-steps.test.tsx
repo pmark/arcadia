@@ -91,6 +91,22 @@ describe("NextSteps", () => {
     expect(html).toContain("a non-required check is failing: extra");
   });
 
+  it("renders the review note and the advisory bot count on a Merge step, with no review gate", () => {
+    const html = render(response({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("1"), author: "coderabbitai" }] })] }));
+    expect(html).toContain("Merge #1 on GitHub");
+    expect(html).toContain("No independent review recorded in the PR body: check the PR before merging.");
+    expect(html).toContain("1 review bot requested changes (advisory only");
+    const recorded = render(response({ prs: [pr(2, { body: "```arcadia-work-metadata\nagents:\n  - role: code-reviewer\nreview_rounds: 1\n```" })] }));
+    expect(recorded).toContain("An independent review is recorded in the PR body (not verified here).");
+  });
+
+  it("a human changes-requested pull request is a wait with its note and no click", () => {
+    const html = render(response({ prs: [pr(1, { reviews: [{ verdict: "CHANGES_REQUESTED", headSha: sha("1"), author: "pmark" }] })] }));
+    expect(html).toContain("Nothing for you to click");
+    expect(html).toContain("A human reviewer&#x27;s latest review at this head requests changes.");
+    expect(html).not.toContain("<a ");
+  });
+
   it("shows a stale inventory with its last-read time", () => {
     const html = render(response({ prs: [pr(1)] }, { inventoryStale: true, inventoryCheckedAt: "2026-10-13T12:00:00.000Z" }));
     expect(html).toContain("PR list may be out of date: last read 2026-10-13T12:00:00.000Z");

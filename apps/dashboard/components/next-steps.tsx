@@ -30,6 +30,23 @@ function Click({ step }: { step: NextStep }) {
   );
 }
 
+// Kept here (the pure module's REVIEW_NOTE_TEXT mirrors it) so the client bundle never imports node:crypto.
+const REVIEW_NOTE_LABEL: Record<NonNullable<NextStep["reviewNote"]>, string> = {
+  independent_review_recorded: "An independent review is recorded in the PR body (not verified here).",
+  not_recorded: "No independent review recorded in the PR body: check the PR before merging.",
+  changes_requested_by_human: "A human reviewer's latest review at this head requests changes."
+};
+
+function ReviewNote({ step }: { step: NextStep }) {
+  if (step.reviewNote === null) return null;
+  return (
+    <p className={`mt-1 break-words text-xs ${step.reviewNote === "independent_review_recorded" ? "text-muted" : "text-ink"}`} data-testid="next-step-review-note" data-review-note={step.reviewNote}>
+      {REVIEW_NOTE_LABEL[step.reviewNote]}
+      {step.advisoryBotFindings > 0 ? ` ${step.advisoryBotFindings} review bot${step.advisoryBotFindings === 1 ? "" : "s"} requested changes (advisory only, not a merge condition).` : ""}
+    </p>
+  );
+}
+
 function Head({ step }: { step: NextStep }) {
   if (step.pinnedHeadSha === null || !SHA_RE.test(step.pinnedHeadSha)) return null;
   return (
@@ -83,6 +100,7 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
           <Head step={now} />
           <p className="mt-2 break-words text-sm"><strong>Unblocks:</strong> {now.unblocks}</p>
           <p className="mt-1 break-words text-xs text-muted">{now.reason}</p>
+          <ReviewNote step={now} />
           {data.waitingAhead.length > 0 ? (
             <ul className="mt-2 grid gap-1 text-sm" aria-label="Higher priority, waiting" data-testid="next-step-waiting-ahead">
               {data.waitingAhead.map((line) => (
@@ -116,6 +134,7 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
                 <Click step={step} />
               )}
               <Head step={step} />
+              <ReviewNote step={step} />
               <p className="mt-1 break-words text-xs text-muted">Unblocks: {step.unblocks}</p>
               {step.kind === "wait" ? <p className="mt-1 break-words text-xs text-muted">{step.reason}</p> : null}
             </li>

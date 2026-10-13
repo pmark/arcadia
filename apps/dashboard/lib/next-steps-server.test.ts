@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DecisionCard } from "../../../src/decisions/card";
 import type { CardTarget } from "./decision-cards";
-import { GH_NO_OUTPUT, applyInventoryAge, headKey, interpretChecksFailure, loadNextSteps, queueFacts, type InventoryRead, type NextStepsReaders } from "./next-steps-server";
+import { createPullRequestInventoryCache } from "./pull-request-inventory-cache";
+import { GH_NO_OUTPUT, applyInventoryAge, headKey, interpretChecksFailure, loadNextSteps, queueFacts, readInventoryFresh, toInventoryRead, type InventoryRead, type NextStepsReaders } from "./next-steps-server";
 import type { DashboardOutstandingPullRequest } from "./types";
 import type { WorkQueue, WorkQueueEntry } from "./work-queue-types";
 
@@ -312,6 +313,110 @@ describe("loadNextSteps", () => {
     const r = await load(readers({ prs: [inv(70)], readQueue: async () => q, readCards: async () => ({ cards: [card], targets: new Map([[card.id, target]]) }) }));
     expect(r.steps.map((s) => s.id)).toEqual(["card-decision-arcadia-0007", "pr-70"]);
     expect(r.nowStep?.unblocks).toContain("a2");
+  });
+});
+
+describe("review note and body from the fresh read", () => {
+  it("fetches the body in the same pr view and surfaces the recorded review as a note, never a wait", async () => {
+    const body = "```arcadia-work-metadata\nagents:\n  - role: code-reviewer\nreview_rounds: 1\n```";
+    const runGh = gh({ view: { 31: { body, reviews: [] }, 32: { body: "", reviews: [] } } });
+    const r = await load(readers({ prs: [inv(31), inv(32)], runGh }));
+    expect(r.steps.find((s) => s.id === "pr-31")).toMatchObject({ kind: "merge", reviewNote: "independent_review_recorded" });
+    expect(r.steps.find((s) => s.id === "pr-32")).toMatchObject({ kind: "merge", reviewNote: "not_recorded" });
+    const viewCall = vi.mocked(runGh).mock.calls.find((call) => call[0][0] === "pr" && call[0][1] === "view");
+    expect(viewCall?.[0].join(" ")).toContain("body");
+  });
+
+  it("a human CHANGES_REQUESTED at the head from gh is a changes_requested wait; a bot's is an advisory count", async () => {
+    const head = sha("3");
+    const runGh = gh({
+      view: {
+        33: { reviews: [{ state: "CHANGES_REQUESTED", author: { login: "pmark" }, commit: { oid: head } }] },
+        34: { reviews: [{ state: "CHANGES_REQUESTED", author: { login: "coderabbitai" }, commit: { oid: sha("4") } }] }
+      }
+    });
+    const r = await load(readers({ prs: [inv(33), inv(34)], runGh }));
+    expect(r.steps.find((s) => s.id === "pr-33")?.waitCode).toBe("changes_requested");
+    expect(r.steps.find((s) => s.id === "pr-34")).toMatchObject({ kind: "merge", advisoryBotFindings: 1 });
+  });
+});
+
+describe("inventory age", () => {
+  it("a checkedAt in the future is not fresh: moving is withheld", async () => {
+    const r = await load(readers({ prs: [], inventory: { checkedAt: "2026-10-13T12:05:00.000Z" } }));
+    expect(r).toMatchObject({ state: "unavailable", outOfDate: true, unavailable: ["prs"] });
+  });
+});
+
+describe("readInventoryFresh with the real inventory cache", () => {
+  const snapshot = (n: number) => ({
+    generatedAt: "2026-10-13T00:00:00.000Z", projectsScanned: 1, repositories: [], pullRequests: [] as DashboardOutstandingPullRequest[], errors: [],
+    counts: { total: n, blocked: 0, checksFailing: 0, checksPending: 0, drafts: 0, ready: 0, mergeReady: 0, unknown: 0 }
+  });
+
+  function setup() {
+    const holder: { release: (() => void) | null } = { release: null };
+    let calls = 0;
+    const loadSnapshot = vi.fn(async () => {
+      calls += 1;
+      if (calls > 1) await new Promise<void>((resolve) => { holder.release = resolve; });
+      return snapshot(calls);
+    });
+    const cache = createPullRequestInventoryCache({ load: loadSnapshot, now: () => Date.now() });
+    const read = async (refresh: boolean) => {
+      const state = await cache.read({ refresh });
+      return { snapshot: state.snapshot, stale: state.stale, refreshing: state.refreshing, checkedAt: state.checkedAt, refreshError: state.refreshError, incomplete: state.incomplete };
+    };
+    return { read, release: () => holder.release?.() };
+  }
+
+  it("awaits a bounded refresh of a stale inventory so a quiet repository reaches fresh", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+      const { read, release } = setup();
+      await read(false); // cold read populates the cache
+      vi.setSystemTime(new Date("2026-10-13T12:01:00Z")); // 60s later: stale
+      const pending = readInventoryFresh(read);
+      await vi.advanceTimersByTimeAsync(600);
+      release();
+      await vi.advanceTimersByTimeAsync(600);
+      const body = await pending;
+      expect(body.stale).toBe(false);
+      expect(toInventoryRead(body).stale).toBe(false);
+      expect(body.checkedAt).toBe("2026-10-13T12:01:00.600Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the stale body after the timeout so moving stays withheld", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+      const { read } = setup();
+      await read(false);
+      vi.setSystemTime(new Date("2026-10-13T12:01:00Z"));
+      const pending = readInventoryFresh(read, { timeoutMs: 2000, pollMs: 250 });
+      await vi.advanceTimersByTimeAsync(3000);
+      const body = await pending;
+      expect(body.stale).toBe(true);
+      expect(body.refreshing).toBe(true);
+      const response = await loadNextSteps(
+        { ...readers({ prs: [] }), readInventory: async () => toInventoryRead(body) },
+        { now: new Date("2026-10-13T12:01:03Z") }
+      );
+      expect(response.state).toBe("unavailable");
+      expect(response.outOfDate).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not wait when the first read is already fresh", async () => {
+    const read = vi.fn(async () => ({ snapshot: { pullRequests: [] as DashboardOutstandingPullRequest[] }, stale: false }));
+    await readInventoryFresh(read);
+    expect(read).toHaveBeenCalledTimes(1);
   });
 });
 
