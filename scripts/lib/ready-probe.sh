@@ -39,3 +39,17 @@ probe_until_ready() {
     sleep 1
   done
 }
+
+
+# Compile only the PR page and cache API. A warm=1 API request never waits for
+# GitHub when no snapshot exists; it returns 202 while the bounded scan runs.
+warm_pull_request_routes() {
+  local base="${1%/}" deadline="$2" path failed=0
+  for path in /admin/pull-requests "/api/pull-requests?warm=1"; do
+    if ! probe_until_ready "$base$path" "$deadline"; then
+      echo "warning: PR route warmup incomplete: $path" >&2
+      failed=1
+    fi
+  done
+  return "$failed"
+}

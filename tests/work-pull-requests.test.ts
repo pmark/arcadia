@@ -151,6 +151,8 @@ describe("lightweight PR reads", () => {
       expect(snapshot.pullRequests.every(pr => pr.briefing === null && pr.detailsLoaded === false && pr.readiness !== "merge_ready")).toBe(true);
       expect(calls.filter(call => call[0] === "gh")).toHaveLength(1);
       expect(calls.find(call => call[0] === "gh")?.slice(1, 3)).toEqual(["pr", "list"]);
+      const list = calls.find(call => call[0] === "gh")!;
+      expect(list[list.indexOf("--json") + 1]).toBe("number,title,url,state,isDraft,createdAt,updatedAt,statusCheckRollup");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
