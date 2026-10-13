@@ -31,7 +31,9 @@ test('record the current information-architecture request baseline', async ({ pa
       requests: records
     }, null, 2) + '\n');
     expect(records['/runs']).toEqual(['/api/approvals']);
-    expect(records['/actions']).toEqual(['/api/operator-script']);
+    // The decision-card list (GET) joined the focused Operator actions page with the cards Action (#1284); still read-only.
+    expect(records['/actions']).toEqual(expect.arrayContaining(['/api/decision-card', '/api/operator-script']));
+    expect(records['/actions']).toHaveLength(2);
     expect(records['/review']).toEqual(['/api/snapshot']);
     expect(records['/work-queue']).toEqual(['/api/work-queue']);
     expect(records['/flight-deck']).toEqual(expect.arrayContaining(['/api/work-queue', '/api/snapshot']));
