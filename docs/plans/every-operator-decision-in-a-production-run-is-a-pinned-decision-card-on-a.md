@@ -247,6 +247,24 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: todo-next-steps-route-to-forward
+    title: Add a /todo Next steps list ordering every operator touch, PR merges in stack order included, by what unblocks the queue.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a /todo Next steps list ordering every operator touch, PR merges in stack order included, by what unblocks the queue.
+    expected_artifact: Evidence satisfying Agent Ask todo-next-steps-route-to-forward
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-todo-route-to-production-forward-2026-10-13
+    acceptance_criteria:
+      - /todo lists every open pull request awaiting the operator as one step, ordered so a pull request's stack parents come first and a pull request that advances the active-Plan pointer or unblocks a queued Action comes before an unrelated one.
+      - Each step names its one click, the pinned head sha and what it unblocks; a step the operator cannot take yet shows the step it waits on instead of a button.
+      - The top of /todo shows exactly one step to do now, and when nothing needs the operator it says production is moving and lists nothing else.
+      - Focused tests with fixtures cover stacked pull request order, a pointer-advancing pull request ahead of an unrelated one, a stale head, a waiting step and the empty state, and the dashboard build passes.
+    depends_on: [cards-from-existing-sources, batch-merge-decision-card]
+    decisions: []
+    references: ["src/decisions/cardSources.ts", "src/decisions/batchMerge.ts", "src/commands/todo.ts", "docs/strategy/autonomous-production-strategy.md"]
 questions: []
 decisions: []
 current_action: cards-from-existing-sources
