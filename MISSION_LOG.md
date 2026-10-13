@@ -2414,3 +2414,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Other Projects relative queue order is unchanged by an activation."; "Focused settlement and queue tests pass.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/stage-pointer-with-queue-reorder-and-reproduce-live-lock immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12).
+
+## 2026-10-12 — Agent Ask activate-decision-cards-plan-2026-10-12
+
+- **Did:** Activated every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a at decision-card-contract.
+- **Result:** Operator-settled Plan transition. Previous Plan every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in remains draft with completion state preserved. Operator answered in chat on 2026-10-12 to run the decision-cards Plan after the hardening Plan, and confirmed the program order. Accepted consequence: the autonomous-production hardening Plan returns to draft with its completion state preserved; its open Actions (one-click clears awaiting PR 1309, the probe-receipt remainder, the pointer/lock remainder) carry forward as drafts.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

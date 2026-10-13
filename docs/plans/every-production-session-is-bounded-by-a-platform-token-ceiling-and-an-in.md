@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in
 project: arcadia
-status: active
+status: draft
 milestone: Every production Session is bounded by a platform token ceiling and an in-Session environment probe, and every stop it raises clears from /todo in at most two clicks, proven by replays of recorded sessions and one validated ledger row per session.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -174,7 +174,6 @@ actions:
     references: ["docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
-current_action: attach-the-session-probe-result-to-the-reconcile-receipt
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---

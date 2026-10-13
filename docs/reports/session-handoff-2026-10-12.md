@@ -33,6 +33,15 @@ becomes a pinned decision card.
 - The operator is merging Codex-authored PRs himself (planning rules among them,
   e.g. checkable acceptance criteria) and will say when done.
 
+## Update (end of session)
+Codex PRs, #1309 and #1318 are merged. The decision-cards Plan activation is
+settled and queued (first Action `decision-card-contract`, queue `orderValid`
+true); it ships in the activation PR and needs one operator merge. Steps 1 to 3
+below are done; start at step 4 after that PR merges and local main is synced
+(merge origin/main; if a replayed settle conflicts, take origin/main's file).
+Consider moving `batch-merge-decision-card` right behind
+`cards-from-existing-sources` with a canonical queue arrange.
+
 ## Next steps, in order
 1. Wait for the operator's "Codex PRs merged" message. Then `git fetch`, merge
    origin/main into the main checkout, and re-run `arcadia docs sync --project arcadia`

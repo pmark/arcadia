@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 project: arcadia
-status: draft
+status: active
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -220,6 +220,9 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
 questions: []
 decisions: []
+current_action: decision-card-contract
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: medium
 ---
 
 # Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
