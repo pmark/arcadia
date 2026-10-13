@@ -92,3 +92,17 @@ Consider moving `batch-merge-decision-card` right behind
 - Next Lead: after the two merges, sync main, file the batch-merge split, then
   `cards-from-existing-sources`. Brief rule learned: put "operator-only is
   host-side, the script is not a trust root" in every operator-script brief.
+
+## Update (Lead session 3, 2026-10-13, overnight)
+- Merged: #1349, #1353, #1358 (split of batch-merge; remainders
+  `wire-the-batch-merge-card-route`, `publish-the-batch-merge-descriptor-and`).
+- Open for the operator: the `cards-from-existing-sources` completion PR (advances
+  the pointer to `todo-actions-render-cards`; `src/decisions/cardSources.ts`, 4
+  review rounds, READY). Merge it first.
+- Residuals shipped (low, in the PR): a malformed string PR number does not block a
+  clean numeric card for the same PR; sources beyond the 1000-source read window are
+  counted only (`truncated`), so consumers must honour `truncated`.
+- Next Lead after that merge: `todo-actions-render-cards` (queue shows `attention`;
+  read why before launching), then the two batch-merge remainders (route is
+  authority-adjacent: it waits for the operator). Put "dedup and id keys use the
+  classifier's own normaliser and `cardIdOf`" into every card-generator brief.
