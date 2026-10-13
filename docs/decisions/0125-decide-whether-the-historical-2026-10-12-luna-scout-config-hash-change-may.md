@@ -4,7 +4,7 @@ type: decision
 id: "0125"
 slug: decide-whether-the-historical-2026-10-12-luna-scout-config-hash-change-may
 project: arcadia
-status: open
+status: approved
 question: Decide whether the historical 2026-10-12 Luna scout config-hash change may remain unattributed while a new narrowly bounded fixture-only experiment is prepared after offline guards and approval-handoff repairs pass; production stays Off.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 updated: 2026-10-13
+answer: Permit one fresh bounded fixture attempt after the guarded preflight and handoff repairs pass
+decided: 2026-10-13
 ---
 
 # Decision 0125: Decide whether the historical 2026-10-12 Luna scout config-hash change may remain unattributed while a new narrowly bounded fixture-only experiment is prepared after offline guards and approval-handoff repairs pass; production stays Off.
