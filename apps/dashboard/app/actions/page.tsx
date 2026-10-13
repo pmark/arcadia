@@ -4,6 +4,8 @@ import { AlertTriangle, ArrowDown, CheckCircle2, Clock3, Loader2, Play, Search, 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
+import { DecisionCards } from "../../components/decision-cards";
+import { useDecisionCards } from "../../hooks/use-decision-cards";
 import {
   deriveNextOperatorAction,
   formatCountdown,
@@ -47,6 +49,7 @@ export default function OperatorActionsPage() {
   const [production, setProduction] = useState<ProductionObservation | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
   const refreshSequence = useRef(0);
+  const cards = useDecisionCards();
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
@@ -146,6 +149,7 @@ export default function OperatorActionsPage() {
       lastLoadedAt={loadedAt}
       onRefresh={() => void refresh()}
     >
+      <DecisionCards views={cards.views} pendingId={cards.pendingId} outcomes={cards.outcomes} onPress={(view, optionId) => void cards.press(view, optionId)} verbs={["run"]} heading="Run cards" />
       <NextActionPanel unavailable={!loading && loadedAt === null} next={nextAction} script={nextScript} now={now} launching={launching === nextScript?.id} onLaunch={() => nextScript && void launch(nextScript)} />
       <section aria-label="Other operator actions" className={nextAction?.status === "next" ? "border-t-2 border-dashed border-line pt-5" : ""}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">{nextAction?.status === "next" ? "Other actions (not next)" : "All actions"}</h2>
