@@ -4,7 +4,7 @@ type: decision
 id: "0126"
 slug: record-the-operator-choice-to-permit-paid-fast-text-cloud-generation-only-for
 project: arcadia
-status: open
+status: approved
 question: Record the operator choice to permit paid Fast Text Cloud generation only for explicitly requested PR TLDRs through Arcadia Intelligence.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 updated: 2026-10-13
+answer: Use Fast Text Cloud for explicit PR TLDR generation
+decided: 2026-10-13
 ---
 
 # Decision 0126: Record the operator choice to permit paid Fast Text Cloud generation only for explicitly requested PR TLDRs through Arcadia Intelligence.
