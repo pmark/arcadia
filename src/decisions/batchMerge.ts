@@ -36,6 +36,7 @@ export type AuthorityBoundary =
   | "arcadia_control_state"
   | "ci_and_gates"
   | "operator_authority"
+  | "dependency_manifest"
   | "unclassifiable_path";
 
 export const AUTHORITY_BOUNDARIES: readonly AuthorityBoundary[] = [
@@ -48,6 +49,7 @@ export const AUTHORITY_BOUNDARIES: readonly AuthorityBoundary[] = [
   "arcadia_control_state",
   "ci_and_gates",
   "operator_authority",
+  "dependency_manifest",
   "unclassifiable_path",
 ];
 
@@ -61,6 +63,7 @@ const BOUNDARY_MEANING: Record<AuthorityBoundary, string> = {
   arcadia_control_state: "Arcadia control state (.arcadia/)",
   ci_and_gates: "CI workflows and merge gates",
   operator_authority: "operator scripts and the decision-card contract",
+  dependency_manifest: "dependency manifests and lockfiles",
   unclassifiable_path: "a path that could not be safely classified",
 };
 
@@ -71,6 +74,17 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "claude.md": "project_governance",
   "docs/agents-context.md": "project_governance",
   "docs/managed-production-readiness.md": "production_policy",
+  "apps/dashboard/app/actions.ts": "dashboard_api_route",
+  "apps/dashboard/middleware.ts": "dashboard_api_route",
+};
+/** Matched on the last path segment wherever the file sits. */
+const BASENAMES: Record<string, AuthorityBoundary> = {
+  "claude.md": "project_governance",
+  "agents.md": "project_governance",
+  codeowners: "ci_and_gates",
+  ".gitmodules": "ci_and_gates",
+  "package.json": "dependency_manifest",
+  "pnpm-lock.yaml": "dependency_manifest",
 };
 const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["docs/decisions/", "decisions"],
@@ -80,6 +94,8 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["docs/agent-guidance/", "agent_guidance"],
   ["src/production/", "production_policy"],
   ["apps/dashboard/app/api/", "dashboard_api_route"],
+  ["apps/dashboard/pages/api/", "dashboard_api_route"],
+  ["scripts/", "operator_authority"],
   [".arcadia/", "arcadia_control_state"],
   [".github/", "ci_and_gates"],
   ["artifacts/generated/operator-scripts/", "operator_authority"],
@@ -114,18 +130,34 @@ export function classifyAuthorityPath(input: unknown): AuthorityBoundary[] {
   const exact = EXACT[path];
   if (exact) found.add(exact);
   for (const [prefix, boundary] of PREFIXES) {
-    if (path.startsWith(prefix)) found.add(boundary);
+    // A bare file or symlink named like the directory is the same boundary.
+    if (path === prefix.slice(0, -1) || path.startsWith(prefix)) found.add(boundary);
   }
+  const base = BASENAMES[segments[segments.length - 1]];
+  if (base) found.add(base);
   if (PERMISSION_NAME_RE.test(segments[segments.length - 1])) found.add("agent_permissions");
   if (PRODUCTION_POLICY_RE.test(path)) found.add("production_policy");
   return AUTHORITY_BOUNDARIES.filter((b) => found.has(b));
+}
+
+/** A fetched file entry: a bare path, or a GitHub file row whose old path counts as touched too. */
+export type BatchFileEntry = string | { filename: string; previous_filename?: string | null };
+
+function pathNames(entry: unknown): unknown[] {
+  if (typeof entry === "string") return [entry];
+  if (!isPlainRecord(entry)) return [entry];
+  const names: unknown[] = [entry.filename];
+  if (entry.previous_filename !== undefined && entry.previous_filename !== null) names.push(entry.previous_filename);
+  return names;
 }
 
 /** The union of boundaries a file list touches, in contract order. An empty list is unclassifiable. */
 export function classifyAuthorityPaths(paths: unknown): AuthorityBoundary[] {
   if (!Array.isArray(paths) || paths.length === 0) return ["unclassifiable_path"];
   const found = new Set<AuthorityBoundary>();
-  for (const p of paths) for (const b of classifyAuthorityPath(p)) found.add(b);
+  for (const p of paths) {
+    for (const name of pathNames(p)) for (const b of classifyAuthorityPath(name)) found.add(b);
+  }
   return AUTHORITY_BOUNDARIES.filter((b) => found.has(b));
 }
 
@@ -146,7 +178,9 @@ export interface BatchPrFacts {
   headSha: string;
   baseRef: string;
   headRef: string;
-  files: string[];
+  files: BatchFileEntry[];
+  /** The PR's own changed_files count; the fetched list must match it exactly. */
+  changedFiles?: number | null;
   /** Why the operator is asked. */
   why: string;
   /** Decisions already made that this PR carries or depends on. */
@@ -169,6 +203,8 @@ export interface BatchPrSpec {
 export interface BatchMergeSpec {
   cardId: string;
   trunk: string;
+  /** owner/name; every gh call carries it as --repo. */
+  repo: string;
   prs: BatchPrSpec[];
 }
 export interface BatchMergeRequest {
@@ -197,7 +233,10 @@ export type BatchRefusalCode =
   | "review_missing"
   | "review_stale_head"
   | "review_not_approved"
-  | "authority_boundary_not_acknowledged";
+  | "authority_boundary_not_acknowledged"
+  | "files_incomplete"
+  | "receipt_unreadable"
+  | "bad_repo";
 
 export interface BatchRefusal {
   code: BatchRefusalCode;
@@ -232,7 +271,11 @@ const isPrNumber = (n: unknown): n is number => typeof n === "number" && Number.
 export const isPinnedHeadSha = (s: unknown): s is string => typeof s === "string" && HEAD_SHA_RE.test(s);
 const sha12 = (s: string) => s.slice(0, 12);
 
-function canonicalManifest(trunk: string, prs: readonly BatchPrSpec[]): string {
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9._-]{1,100}$/;
+export const isRepoSlug = (s: unknown): s is string =>
+  typeof s === "string" && REPO_RE.test(s) && !s.split("/").some((part) => part === "." || part === "..");
+
+function canonicalManifest(trunk: string, repo: string, prs: readonly BatchPrSpec[]): string {
   const rows = [...prs]
     .sort((a, b) => a.number - b.number)
     .map((p) => ({
@@ -241,16 +284,16 @@ function canonicalManifest(trunk: string, prs: readonly BatchPrSpec[]): string {
       parent: p.parent,
       acknowledgedBoundaries: [...p.acknowledgedBoundaries].sort(),
     }));
-  return JSON.stringify({ trunk, prs: rows });
+  return JSON.stringify({ trunk, repo, prs: rows });
 }
 
-export function batchCardId(trunk: string, prs: readonly BatchPrSpec[]): string {
-  const digest = createHash("sha256").update(canonicalManifest(trunk, prs)).digest("hex");
+export function batchCardId(trunk: string, repo: string, prs: readonly BatchPrSpec[]): string {
+  const digest = createHash("sha256").update(canonicalManifest(trunk, repo, prs)).digest("hex");
   return `batch-merge-${digest.slice(0, 24)}`;
 }
 
-function manifestStateHash(trunk: string, prs: readonly BatchPrSpec[]): string {
-  return `sha256:${createHash("sha256").update(canonicalManifest(trunk, prs)).digest("hex")}`;
+function manifestStateHash(trunk: string, repo: string, prs: readonly BatchPrSpec[]): string {
+  return `sha256:${createHash("sha256").update(canonicalManifest(trunk, repo, prs)).digest("hex")}`;
 }
 
 /** Stack order, base first, ties by PR number. Parents are taken from the spec. */
@@ -325,6 +368,17 @@ export function assessPr(
   const n = pinned.number;
   const refuse = (code: BatchRefusalCode, message: string) => refusals.push({ code, number: n, message });
   const boundaries = classifyAuthorityPaths(facts.files);
+  // Fail closed on truncation: GitHub pages and caps the file list, so the fetched
+  // entry count must equal the PR's own changed_files count exactly.
+  const fetched = Array.isArray(facts.files) ? facts.files.length : -1;
+  if (
+    typeof facts.changedFiles !== "number" ||
+    !Number.isSafeInteger(facts.changedFiles) ||
+    facts.changedFiles < 1 ||
+    facts.changedFiles !== fetched
+  ) {
+    refuse("files_incomplete", `#${n} file list is incomplete (fetched ${fetched}, PR reports ${String(facts.changedFiles)}).`);
+  }
 
   const unacknowledged = boundaries.filter((b) => !pinned.acknowledgedBoundaries.includes(b));
   if (unacknowledged.length > 0) {
@@ -395,13 +449,20 @@ export function buildBatchMergeCard(input: {
   repo?: string;
   now: Date;
   expires: string;
+  /**
+   * Boundaries the operator pins per PR number. Anything a PR touches that is not
+   * listed here refuses the build; nothing is acknowledged by default.
+   */
+  acknowledgedBoundaries?: Readonly<Record<number, readonly AuthorityBoundary[]>>;
 }): BatchMergeBuild {
   const trunk = input.trunk ?? "main";
+  const repo = input.repo ?? "pmark/arcadia";
   const fail = (code: BatchRefusalCode, number: number | null, message: string): BatchMergeBuild => ({
     ok: false,
     refusal: { code, number, message },
   });
   try {
+    if (!isRepoSlug(repo)) return fail("bad_repo", null, "The repository must be owner/name.");
     if (!Array.isArray(input.prs) || input.prs.length === 0) return fail("empty_batch", null, "The batch lists no PRs.");
     if (input.prs.length > BATCH_MERGE_MAX_PRS) return fail("invalid_spec", null, "The batch is larger than the card limit.");
     const seen = new Set<number>();
@@ -417,7 +478,9 @@ export function buildBatchMergeCard(input: {
       number: p.number,
       headSha: p.headSha,
       parent: derived.parents.get(p.number) ?? null,
-      acknowledgedBoundaries: classifyAuthorityPaths(p.files),
+      acknowledgedBoundaries: [...new Set(input.acknowledgedBoundaries?.[p.number] ?? [])].filter((b) =>
+        (AUTHORITY_BOUNDARIES as readonly string[]).includes(b),
+      ),
     }));
     const stack = orderStack(specPrs);
     if (!stack.ok) return fail(stack.code, stack.number, `#${stack.number}: the stack has a cycle or a missing base.`);
@@ -428,8 +491,7 @@ export function buildBatchMergeCard(input: {
       if (r.refusals.length > 0) return { ok: false, refusal: r.refusals[0] };
       readiness.set(p.number, r);
     }
-    const spec: BatchMergeSpec = { cardId: batchCardId(trunk, specPrs), trunk, prs: specPrs };
-    const repo = input.repo ?? "pmark/arcadia";
+    const spec: BatchMergeSpec = { cardId: batchCardId(trunk, repo, specPrs), trunk, repo, prs: specPrs };
     const items: BatchMergeItem[] = stack.order.map((number, index) => {
       const f = input.prs.find((p) => p.number === number)!;
       const s = specPrs.find((p) => p.number === number)!;
@@ -482,7 +544,7 @@ export function buildBatchMergeCard(input: {
         url: `https://github.com/${repo}/pull/${i.number}`,
       })),
       verb: "merge",
-      pins: { stateHash: manifestStateHash(trunk, specPrs) },
+      pins: { stateHash: manifestStateHash(trunk, repo, specPrs) },
       expires: input.expires,
       policy_match: null,
       receipt: null,
@@ -549,9 +611,12 @@ export function validateBatchMergeSpec(
     refusal: { code, number, message },
   });
   try {
-    const top = readOwnData(raw, ["cardId", "trunk", "prs"]);
+    const top = readOwnData(raw, ["cardId", "trunk", "repo", "prs"]);
     if (!top || typeof top.cardId !== "string" || typeof top.trunk !== "string" || !KEY_RE.test(top.trunk) || !Array.isArray(top.prs)) {
-      return bad("invalid_spec", null, "The batch spec must be exactly {cardId, trunk, prs}.");
+      return bad("invalid_spec", null, "The batch spec must be exactly {cardId, trunk, repo, prs}.");
+    }
+    if (!isRepoSlug(top.repo)) {
+      return bad("bad_repo", null, "The batch spec's repo must be owner/name.");
     }
     if (top.prs.length === 0) return bad("empty_batch", null, "The batch lists no PRs.");
     if (top.prs.length > BATCH_MERGE_MAX_PRS) return bad("invalid_spec", null, "The batch is larger than the card limit.");
@@ -569,10 +634,10 @@ export function validateBatchMergeSpec(
     }
     const stack = orderStack(prs);
     if (!stack.ok) return bad(stack.code, stack.number, `#${stack.number}: the stack is invalid (${stack.code}).`);
-    if (top.cardId !== batchCardId(top.trunk, prs)) {
+    if (top.cardId !== batchCardId(top.trunk, top.repo, prs)) {
       return bad("card_id_mismatch", null, "The card id does not match the pinned PR list.");
     }
-    return { ok: true, spec: { cardId: top.cardId, trunk: top.trunk, prs } };
+    return { ok: true, spec: { cardId: top.cardId, trunk: top.trunk, repo: top.repo, prs } };
   } catch {
     return bad("invalid_spec", null, "The batch spec could not be read.");
   }
@@ -647,6 +712,7 @@ export function evaluateBatchMerge(
         baseRef: f.baseRef,
         headRef: f.headRef,
         files: Array.isArray(f.files) ? [...f.files] : [],
+        changedFiles: f.changedFiles ?? null,
         why: "",
         decisions: [],
         reviews: Array.isArray(f.reviews) ? f.reviews.map((r) => ({ verdict: r.verdict, headSha: r.headSha })) : [],
@@ -725,83 +791,184 @@ export interface BatchMergeGateway {
 }
 
 export interface BatchMergeRunResult {
-  outcome: "merged" | "nothing_to_merge" | "refused" | "failed";
+  outcome: "merged" | "nothing_to_merge" | "refused" | "failed" | "stopped" | "dry_run";
   merged: number[];
+  /** Dry run only: the PRs a real run would merge now, in order. Nothing was merged. */
+  wouldMerge: number[];
   alreadyMerged: number[];
   refusals: BatchRefusal[];
   receipts: BatchReceipt[];
+  /** Receipt reads/writes that threw; a write error after a merge never hides the merge. */
+  receiptErrors: string[];
 }
+
+export interface BatchRunOptions {
+  dryRun?: boolean;
+}
+
+const errorText = (error: unknown): string => (error instanceof Error ? error.message : "unreadable error");
 
 /**
  * Execute the batch. Reads every PR once, refuses the whole batch on any
  * problem (writing a refusal receipt per PR and merging none), otherwise
- * merges in stack order. A merge failure stops the run; PRs not reached get a
- * not_attempted receipt. A PR with a merged receipt is never merged again.
+ * merges in stack order. Immediately before each merge the PR is read again
+ * and must still be open at its pinned head, based on the trunk (never on
+ * another PR's branch) and ready; otherwise the run stops with a refused
+ * receipt for it and not_attempted receipts for the rest. A merge failure
+ * stops the run the same way. A PR with a merged receipt is never rewritten
+ * and never merged again. A dry run reads and decides but writes and merges
+ * nothing and never reports "merged".
  */
 export function runBatchMerge(
   specInput: unknown,
   requestInput: unknown,
   gateway: BatchMergeGateway,
   now: Date,
+  options: BatchRunOptions = {},
 ): BatchMergeRunResult {
   const at = now.toISOString();
   const receipts: BatchReceipt[] = [];
+  const receiptErrors: string[] = [];
+  const base = { merged: [] as number[], wouldMerge: [] as number[], alreadyMerged: [] as number[], receipts, receiptErrors };
   const specResult = validateBatchMergeSpec(specInput);
-  if (!specResult.ok) return { outcome: "refused", merged: [], alreadyMerged: [], refusals: [specResult.refusal], receipts };
+  if (!specResult.ok) return { outcome: "refused", ...base, refusals: [specResult.refusal] };
   const spec = specResult.spec;
   const order = (orderStack(spec.prs) as { ok: true; order: number[] }).order;
   const byNumber = new Map(spec.prs.map((p) => [p.number, p]));
+  const prior = new Map<number, BatchReceipt | null>();
   const write = (number: number, outcome: BatchReceipt["outcome"], reason: string | null) => {
-    const r: BatchReceipt = { schema: BATCH_MERGE_RECEIPT_SCHEMA, cardId: spec.cardId, number, headSha: byNumber.get(number)!.headSha, outcome, reason, at };
-    gateway.writeReceipt(r);
+    if (options.dryRun) return;
+    // A merged receipt is final: nothing is written over it.
+    if (prior.get(number)?.outcome === "merged") return;
+    const r: BatchReceipt = {
+      schema: BATCH_MERGE_RECEIPT_SCHEMA,
+      cardId: spec.cardId,
+      number,
+      headSha: byNumber.get(number)!.headSha,
+      outcome,
+      reason,
+      at,
+    };
     receipts.push(r);
+    try {
+      gateway.writeReceipt(r);
+    } catch (error) {
+      receiptErrors.push(`#${number} ${outcome}: ${errorText(error)}`);
+    }
   };
 
   const live = new Map<number, BatchPrFacts | null>();
-  const prior = new Map<number, BatchReceipt | null>();
   for (const n of order) {
     try {
       live.set(n, gateway.readPr(n));
     } catch {
       live.set(n, null);
     }
-    prior.set(n, gateway.readReceipt(spec.cardId, n));
+    try {
+      prior.set(n, gateway.readReceipt(spec.cardId, n));
+    } catch (error) {
+      // An unreadable receipt could hide a merge already done; refuse before touching anything.
+      return {
+        outcome: "refused",
+        ...base,
+        refusals: [{ code: "receipt_unreadable", number: n, message: `#${n} receipt could not be read: ${errorText(error)}` }],
+      };
+    }
   }
   const evaluation = evaluateBatchMerge(spec, requestInput, live, prior);
   if (!evaluation.ok) {
     const reason = evaluation.refusals[0] ? `${evaluation.refusals[0].code}: ${evaluation.refusals[0].message}` : "refused";
     for (const n of order) write(n, "refused", reason);
-    return { outcome: "refused", merged: [], alreadyMerged: [], refusals: evaluation.refusals, receipts };
+    return { outcome: "refused", ...base, refusals: evaluation.refusals };
   }
-  for (const n of evaluation.alreadyMerged) {
-    if (prior.get(n)?.outcome !== "merged") write(n, "already_merged", null);
+  if (options.dryRun) {
+    return { outcome: "dry_run", ...base, wouldMerge: [...evaluation.toMerge], alreadyMerged: evaluation.alreadyMerged, refusals: [] };
   }
+  for (const n of evaluation.alreadyMerged) write(n, "already_merged", null);
+
   const merged: number[] = [];
+  const result = (
+    outcome: BatchMergeRunResult["outcome"],
+    refusals: BatchRefusal[],
+  ): BatchMergeRunResult => ({ ...base, outcome, merged, alreadyMerged: evaluation.alreadyMerged, refusals });
+  const stopAt = (i: number, refusal: BatchRefusal, status: "refused" | "failed"): BatchMergeRunResult => {
+    const n = evaluation.toMerge[i];
+    write(n, status, `${refusal.code}: ${refusal.message}`);
+    for (const rest of evaluation.toMerge.slice(i + 1)) write(rest, "not_attempted", `stopped at #${n}`);
+    return result(status === "failed" ? "failed" : "stopped", [refusal]);
+  };
+
   for (let i = 0; i < evaluation.toMerge.length; i++) {
     const n = evaluation.toMerge[i];
+    const pinned = byNumber.get(n)!;
+    // Re-read right before the merge: head, state and base can move after the batch read,
+    // and a parent's merge may or may not have retargeted this child to the trunk.
+    let fresh: BatchPrFacts | null = null;
     try {
-      gateway.merge(n, byNumber.get(n)!.headSha);
-    } catch (error) {
-      write(n, "failed", error instanceof Error ? error.message : "merge failed");
-      for (const rest of evaluation.toMerge.slice(i + 1)) write(rest, "not_attempted", `stopped after #${n} failed`);
-      return {
-        outcome: "failed",
-        merged,
-        alreadyMerged: evaluation.alreadyMerged,
-        refusals: [{ code: "pr_unreadable", number: n, message: `#${n} merge failed.` }],
-        receipts,
-      };
+      fresh = gateway.readPr(n);
+    } catch {
+      fresh = null;
     }
-    write(n, "merged", null);
+    const refusal = ((): BatchRefusal | null => {
+      if (!fresh || fresh.number !== n) return { code: "pr_unreadable", number: n, message: `#${n} could not be re-read before merging.` };
+      if (fresh.state !== "open") return { code: "pr_closed_unmerged", number: n, message: `#${n} is no longer open.` };
+      if (fresh.headSha !== pinned.headSha) return { code: "head_moved", number: n, message: `#${n} head moved before its merge.` };
+      if (fresh.baseRef !== spec.trunk) {
+        return {
+          code: "stack_changed",
+          number: n,
+          message: `#${n} is based on ${String(fresh.baseRef)}, not ${spec.trunk}; it is never merged into another PR's branch.`,
+        };
+      }
+      return assessPr(fresh, pinned).refusals[0] ?? null;
+    })();
+    if (refusal) return stopAt(i, refusal, "refused");
+    try {
+      gateway.merge(n, pinned.headSha);
+    } catch (error) {
+      return stopAt(i, { code: "pr_unreadable", number: n, message: `#${n} merge failed: ${errorText(error)}` }, "failed");
+    }
     merged.push(n);
+    write(n, "merged", null);
   }
-  return {
-    outcome: merged.length === 0 ? "nothing_to_merge" : "merged",
-    merged,
-    alreadyMerged: evaluation.alreadyMerged,
-    refusals: [],
-    receipts,
-  };
+  return result(merged.length === 0 ? "nothing_to_merge" : "merged", []);
+}
+
+/** The operator-execution inputs the script gathers from the environment and git. */
+export interface BatchExecutionContextInput {
+  scriptId: string;
+  /** Absolute path of the descriptor being run. */
+  descriptorPath: string;
+  env: Readonly<Record<string, string | undefined>>;
+  /** Every file in the script's tracked set is known to git. */
+  allTracked: boolean;
+  /** Any file in the tracked set differs from HEAD. */
+  modifiedLocally: boolean;
+  /** Any file in the tracked set differs from origin/main. Only checked for a real run. */
+  differsFromOriginMain: boolean;
+  dryRun: boolean;
+}
+
+/**
+ * The guard copied from apply-todo-bulk-disposition: the run must be launched
+ * under this action's own operator context, from reviewed, tracked, unmodified
+ * files; a real run also needs them identical to origin/main. A descriptor an
+ * agent hand-made fails here because it is not published (tracked and merged).
+ */
+export function assertBatchExecutionContext(
+  input: BatchExecutionContextInput,
+): { code: "operator_context" | "untracked" | "modified" | "not_on_main"; message: string } | null {
+  const id = input.env.ARCADIA_OPERATOR_SCRIPT_ID;
+  const descriptor = input.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR;
+  if (id !== input.scriptId || !descriptor || descriptor !== input.descriptorPath) {
+    return { code: "operator_context", message: "The operator execution context must name this action's own descriptor." };
+  }
+  if (!input.allTracked) return { code: "untracked", message: "A file this action runs is not tracked by git." };
+  if (input.modifiedLocally) return { code: "modified", message: "This action's files have local modifications." };
+  if (!input.dryRun && input.differsFromOriginMain) {
+    return { code: "not_on_main", message: "This action's files differ from origin/main: only the reviewed, merged version may run." };
+  }
+  return null;
 }
 
 /* --------------------------- ping and descriptor ------------------------- */
@@ -840,7 +1007,7 @@ export function buildBatchMergeDescriptor(spec: BatchMergeSpec, items: readonly 
     repeatable: true,
     problem: `These PRs await the operator: ${list}. Each was read with a green required-check set and an independent review at the pinned head.`,
     desired_effect:
-      `Merges each listed PR into ${spec.trunk}, base first, only at its pinned head sha, writing one receipt per PR. ` +
+      `Merges each listed PR of ${spec.repo} into ${spec.trunk}, base first, only at its pinned head sha, writing one receipt per PR. ` +
       `Any moved head, non-green required check, missing review or unacknowledged authority boundary refuses the whole batch and merges none. A rerun skips PRs already merged.`,
     authority: {
       does: spec.prs.map((p) => `Merge PR #${p.number} at head ${p.headSha}`),
@@ -857,5 +1024,8 @@ export function buildBatchMergeDescriptor(spec: BatchMergeSpec, items: readonly 
       next: "Read the receipts, correct the named cause, and press the button again.",
     },
     batchMerge: spec,
+    // The exact request the button posts, published for review. The script uses this, not a
+    // value recomputed from the spec, so a changed spec cannot also change what was approved.
+    batchMergeRequest: requestFromSpec(spec),
   };
 }
