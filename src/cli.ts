@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
 import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
 import * as dotenv from "dotenv";
 
@@ -4206,6 +4207,23 @@ Origin: every item has "origin" (a string from a field its source records, else 
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
   );
+
+  const roles = program.command("roles").description("Read the governed role registry; grants no authority");
+  addJsonOption(roles.option("--workspace <path>", "Read-only workspace config override")).action((options: { workspace?: string; json?: boolean }) =>
+    runCliAction("roles", options, () => runRolesCommand(options), renderRolesSuccess));
+  addJsonOption(roles.command("show <id>").option("--workspace <path>", "Read-only workspace config override")).action((id: string, options: { workspace?: string; json?: boolean }) =>
+    runCliAction("roles show", options, () => runRolesCommand({ ...options, id }), renderRolesSuccess));
+  const role = program.command("role").description("Read a governed specialist brief");
+  addJsonOption(role.command("brief")
+    .requiredOption("--role <id>", "Registered role ID")
+    .requiredOption("--agent <agent>", "codex, claude or opencode")
+    .requiredOption("--tier <tier>", "light, standard or heavy")
+    .option("--action <ref>", "Exact plan-slug#action-id")
+    .option("--specialization <label>", "Domain label only; cannot grant permissions")
+    .option("--repo <path>", "Repository to read the Action from", resolveInvocationPath, invocationRoot())
+    .option("--workspace <path>", "Read-only workspace config override"))
+    .action((options: { role: string; agent: string; tier: string; action?: string; specialization?: string; repo: string; workspace?: string; json?: boolean }) =>
+      runCliAction("role brief", options, () => runRoleBriefCommand({ ...options, repoRoot: options.repo }), renderRoleBriefSuccess));
 
   const identityCommand = program
     .command("identity")
