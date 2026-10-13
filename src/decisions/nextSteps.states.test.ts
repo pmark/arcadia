@@ -30,7 +30,8 @@ const QUEUE: NextStepsQueue = {
   queued: [{ actionId: "later-action", expectedArtifact: "src/later/feature.ts", dependencies: ["src/needed/dep.ts"] }],
 };
 
-const run = (input: NextStepsInput) => buildNextSteps(input);
+const READ_EMPTY_QUEUE: NextStepsQueue = { currentActionId: null, planPath: null, queued: [] };
+const run = (input: NextStepsInput) => buildNextSteps({ queue: READ_EMPTY_QUEUE, cards: [], ...input });
 const ids = (r: ReturnType<typeof buildNextSteps>) => r.steps.map((s) => s.id);
 
 describe("result states", () => {
@@ -116,7 +117,7 @@ describe("higher-priority waiting is said next to the now step", () => {
 
 describe("merge readiness", () => {
   it("only CLEAN and HAS_HOOKS are takeable; every other merge state is a named wait", () => {
-    for (const state of ["BLOCKED", "BEHIND", "UNKNOWN", "DIRTY", "UNSTABLE", null]) {
+    for (const state of ["BLOCKED", "BEHIND", "UNKNOWN", "DIRTY", null]) {
       const r = run({ prs: [pr(7, { mergeStateStatus: state })] });
       expect(r.state, String(state)).toBe("waiting");
       expect(r.steps[0].click).toBeNull();
@@ -130,6 +131,99 @@ describe("merge readiness", () => {
   it("a head that moved since the previous poll is head_moved", () => {
     const r = run({ prs: [pr(8)], pinnedHeads: { 8: sha("f") } });
     expect(r.steps[0].waitCode).toBe("head_moved");
+  });
+});
+
+describe("inheritance only from children that can become takeable", () => {
+  const cases: Array<[string, Partial<NextStepsPr>, string]> = [
+    ["draft", { isDraft: true }, "draft"],
+    ["DIRTY (conflicted)", { mergeStateStatus: "DIRTY" }, "merge_conflict"],
+    ["failing required check", { checks: [{ name: "ci", conclusion: "FAILURE" }] }, "check_failing"],
+    ["missing review", { reviews: [] }, "review_missing"],
+    ["unreadable", { unreadable: "gh read failed" }, "unreadable"],
+  ];
+  for (const [label, over, code] of cases) {
+    it(`a ${label} child of a parent does not promote the parent, and shows its true blocker`, () => {
+      const parent = pr(10);
+      const child = pr(20, { baseRef: "branch-10", files: ["PROJECT.md"], ...over });
+      const rank1 = pr(30, { files: ["src/needed/dep.ts"] });
+      const r = run({ prs: [child, rank1, parent], queue: QUEUE });
+      expect(r.nowStep?.id).toBe("pr-30");
+      expect(ids(r).indexOf("pr-30")).toBeLessThan(ids(r).indexOf("pr-10"));
+      const shown = r.steps.find((s) => s.id === "pr-20")!;
+      expect(shown.waitCode).toBe(code);
+      expect(shown.waitCode).not.toBe("parent_unmerged");
+      expect(r.steps.find((s) => s.id === "pr-10")?.unblocks).not.toContain("unlocks");
+    });
+  }
+
+  it("a child waiting only on its parent still promotes it, and does not name a stacked child's missing required checks", () => {
+    const r = run({
+      prs: [pr(10), pr(20, { baseRef: "branch-10", files: ["PROJECT.md"], requiredChecks: [] }), pr(30, { files: ["src/needed/dep.ts"] })],
+      queue: QUEUE,
+    });
+    expect(r.nowStep?.id).toBe("pr-10");
+    expect(r.steps.find((s) => s.id === "pr-20")?.waitCode).toBe("parent_unmerged");
+  });
+
+  it("names a child's real blocker in the now step's waiting-ahead text", () => {
+    const r = run({ prs: [pr(10), pr(20, { baseRef: "branch-10", files: ["PROJECT.md"], isDraft: true })], queue: QUEUE });
+    expect(r.nowStep?.id).toBe("pr-10");
+    expect(r.waitingAhead[0]).toContain("#20 advances the active-Plan pointer but is waiting on the author marking it ready for review");
+  });
+});
+
+describe("UNSTABLE, SKIPPED and NEUTRAL", () => {
+  it("UNSTABLE with required checks green is takeable and the note names the failing non-required checks", () => {
+    const r = run({
+      prs: [pr(1, { mergeStateStatus: "UNSTABLE", checks: [{ name: "ci", conclusion: "SUCCESS" }, { name: "lint-extra", conclusion: "FAILURE" }] })],
+    });
+    expect(r.state).toBe("now");
+    expect(r.nowStep?.click).toBe("Merge #1 on GitHub");
+    expect(r.nowStep?.reason).toContain("a non-required check is failing: lint-extra");
+  });
+
+  it("UNSTABLE with a failing REQUIRED check stays a wait", () => {
+    const r = run({ prs: [pr(1, { mergeStateStatus: "UNSTABLE", checks: [{ name: "ci", conclusion: "FAILURE" }] })] });
+    expect(r.steps[0]).toMatchObject({ kind: "wait", waitCode: "check_failing" });
+  });
+
+  it("a SKIPPED or NEUTRAL required check counts as passing", () => {
+    for (const conclusion of ["SKIPPED", "NEUTRAL"]) {
+      const r = run({ prs: [pr(2, { checks: [{ name: "ci", conclusion }] })] });
+      expect(r.state, conclusion).toBe("now");
+    }
+    expect(run({ prs: [pr(2, { checks: [{ name: "ci", conclusion: "CANCELLED" }] })] }).state).toBe("waiting");
+  });
+
+  it("BLOCKED, BEHIND and UNKNOWN name their true cause and what ends it", () => {
+    const blocked = run({ prs: [pr(3, { mergeStateStatus: "BLOCKED" })] }).steps[0];
+    expect(blocked.reason).toContain("branch-protection");
+    expect(blocked.waitingFor).toContain("branch-protection requirement");
+    const behind = run({ prs: [pr(4, { mergeStateStatus: "BEHIND" })] }).steps[0];
+    expect(behind.reason).toContain("behind its base branch");
+    expect(behind.waitingFor).toContain("updated with its base");
+    const unknown = run({ prs: [pr(5, { mergeStateStatus: "UNKNOWN" })] }).steps[0];
+    expect(unknown.waitingFor).toContain("resolves by itself");
+    for (const s of [blocked, behind, unknown]) expect(s.waitingFor).not.toMatch(/^waiting on GitHub$/i);
+  });
+});
+
+describe("invalid and absent inputs", () => {
+  it("an invalid pull-request entry makes prs unavailable and carries the count, never moving", () => {
+    const r = buildNextSteps({ prs: [{ number: "x" } as unknown as NextStepsPr], queue: { currentActionId: null, planPath: null, queued: [] }, cards: [] });
+    expect(r.state).toBe("unavailable");
+    expect(r.unavailable).toEqual(["prs"]);
+    expect(r.invalidPrs).toBe(1);
+  });
+
+  it("an absent queue or cards input is an unread source, distinct from read-empty", () => {
+    const empty = { currentActionId: null, planPath: null, queued: [] };
+    expect(buildNextSteps({ prs: [], queue: empty, cards: [] }).state).toBe("moving");
+    expect(buildNextSteps({ prs: [], cards: [] })).toMatchObject({ state: "unavailable", unavailable: ["queue"] });
+    expect(buildNextSteps({ prs: [], queue: null, cards: [] })).toMatchObject({ state: "unavailable", unavailable: ["queue"] });
+    expect(buildNextSteps({ prs: [], queue: empty })).toMatchObject({ state: "unavailable", unavailable: ["cards"] });
+    expect(buildNextSteps({ prs: [] })).toMatchObject({ state: "unavailable", unavailable: ["cards", "queue"] });
   });
 });
 

@@ -14,7 +14,7 @@ function pr(number: number, over: Partial<NextStepsPr> = {}): NextStepsPr {
   };
 }
 const response = (input: NextStepsInput, extra: Partial<NextStepsResponse> = {}): NextStepsResponse => ({
-  ...buildNextSteps(input), otherRepositories: 0, inventoryStale: false, inventoryCheckedAt: null, repo: "pmark/arcadia", heads: {}, ...extra
+  ...buildNextSteps({ queue: { currentActionId: null, planPath: null, queued: [] }, cards: [], ...input }), outOfDate: false, closedSinceInventory: 0, otherRepositories: 0, inventoryStale: false, inventoryCheckedAt: null, repo: "pmark/arcadia", heads: {}, ...extra
 });
 const render = (data: NextStepsResponse) => renderToStaticMarkup(<NextSteps data={data} />);
 
@@ -72,6 +72,23 @@ describe("NextSteps", () => {
     expect(html).toContain("Could not read: pull-request reviews and checks, the pull-request list");
     expect(html).not.toContain("Production is moving");
     expect(html).toContain('data-state="unavailable"');
+  });
+
+  it("says the PR list may be out of date and never claims moving when moving was withheld", () => {
+    const html = render(response({ prs: [], unavailable: ["prs"] }, { outOfDate: true, inventoryStale: true, inventoryCheckedAt: "2026-10-13T12:00:00.000Z" }));
+    expect(html).toContain("PR list may be out of date; refreshing");
+    expect(html).not.toContain("Production is moving");
+  });
+
+  it("counts pull requests merged or closed since the list was read", () => {
+    const html = render(response({ prs: [pr(1)] }, { closedSinceInventory: 2 }));
+    expect(html).toContain("2 pull requests were merged or closed since the list was read");
+  });
+
+  it("shows UNSTABLE as a Merge click with the non-required-check note", () => {
+    const html = render(response({ prs: [pr(1, { mergeStateStatus: "UNSTABLE", checks: [{ name: "ci", conclusion: "SUCCESS" }, { name: "extra", conclusion: "FAILURE" }] })] }));
+    expect(html).toContain("Merge #1 on GitHub");
+    expect(html).toContain("a non-required check is failing: extra");
   });
 
   it("shows a stale inventory with its last-read time", () => {

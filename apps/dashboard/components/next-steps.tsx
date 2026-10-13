@@ -65,6 +65,11 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
           PR list may be out of date: last read {data.inventoryCheckedAt ?? "at an unknown time"}.
         </p>
       ) : null}
+      {data.outOfDate ? (
+        <p role="alert" className="mb-2 text-sm text-red-700" data-testid="next-steps-out-of-date">
+          PR list may be out of date; refreshing. Production is not reported as moving until it has been read again.
+        </p>
+      ) : null}
       {data.unavailable.length > 0 ? (
         <p role="alert" className="mb-2 text-sm text-red-700" data-testid="next-steps-unavailable">
           Could not read: {data.unavailable.map((source) => SOURCE_LABEL[source] ?? source).join(", ")}. Steps may be missing, so nothing can be said about what is next beyond what is listed.
@@ -118,7 +123,8 @@ export function NextSteps({ data, failed = false }: NextStepsProps) {
         </ol>
       ) : null}
       {data.hidden > 0 ? <p className="mt-2 text-sm text-muted" data-testid="next-steps-hidden">{data.hidden} more not shown.</p> : null}
-      {data.ignored > 0 ? <p className="mt-1 text-xs text-muted">{data.ignored} unreadable item{data.ignored === 1 ? "" : "s"} ignored.</p> : null}
+      {data.ignored > 0 ? <p className="mt-1 text-xs text-muted">{data.ignored} unreadable item{data.ignored === 1 ? "" : "s"} ignored{data.invalidPrs > 0 ? ` (${data.invalidPrs} pull request${data.invalidPrs === 1 ? "" : "s"})` : ""}.</p> : null}
+      {data.closedSinceInventory > 0 ? <p className="mt-1 text-xs text-muted" data-testid="next-steps-closed">{data.closedSinceInventory} pull request{data.closedSinceInventory === 1 ? " was" : "s were"} merged or closed since the list was read and {data.closedSinceInventory === 1 ? "is" : "are"} not offered.</p> : null}
       {data.otherRepositories > 0 ? <p className="mt-1 text-xs text-muted">{data.otherRepositories} pull request{data.otherRepositories === 1 ? "" : "s"} in other repositories are not listed here.</p> : null}
     </section>
   );

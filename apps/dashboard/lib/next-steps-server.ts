@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import type { DecisionCard } from "../../../src/decisions/card";
 import { DEFAULT_CARD_REPO } from "../../../src/decisions/cardSources";
 import {
+  INVENTORY_MAX_AGE_SECONDS,
   buildNextSteps,
   type NextStepsCard,
   type NextStepsPr,
@@ -41,8 +42,12 @@ export interface NextStepsResponse extends NextStepsResult {
   inventoryStale: boolean;
   inventoryCheckedAt: string | null;
   repo: string;
-  /** Head shas read this time, by PR number; the next poll passes them back as `pinnedHeads`. */
+  /** Head shas read this time, by PR number (for `repo`); the next poll passes them back as `pinnedHeads`. */
   heads: Record<number, string>;
+  /** The PR list may have lagged (stale or too old) and there are no steps, so "moving" was withheld. */
+  outOfDate: boolean;
+  /** Pull requests in the cached inventory that are no longer OPEN on GitHub; dropped, never offered. */
+  closedSinceInventory: number;
 }
 
 const CONCURRENCY = 4;
@@ -50,18 +55,28 @@ const GH_TIMEOUT_MS = 20_000;
 /** `gh pr checks` exited non-zero and printed nothing: no required checks configured, or a failure. */
 export const GH_NO_OUTPUT = "__gh_no_output__";
 
+/**
+ * What a non-zero `gh pr checks --required` means. It exits non-zero while checks are pending or failing but
+ * still prints its JSON (output). Printing nothing is "no required checks configured" ONLY when gh says so on
+ * stderr; auth, TLS, timeout and any other failure is a failure, never mistaken for "none configured".
+ */
+export function interpretChecksFailure(stdout: string, stderr: string): "output" | "none_required" | "failed" {
+  if (stdout.trim() !== "") return "output";
+  return /no required checks/i.test(stderr) ? "none_required" : "failed";
+}
+
 export function ghRunner(): NextStepsReaders["runGh"] {
   return (args) =>
     new Promise((resolve, reject) => {
-      execFile("gh", args, { encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+      execFile("gh", args, { encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
         if (!error) {
           resolve(stdout);
           return;
         }
-        // `gh pr checks` exits non-zero while checks are pending or failing but still prints its JSON.
         if (args[0] === "pr" && args[1] === "checks") {
-          resolve(stdout.trim() !== "" ? stdout : GH_NO_OUTPUT);
-          return;
+          const kind = interpretChecksFailure(stdout, stderr);
+          if (kind === "output") return resolve(stdout);
+          if (kind === "none_required") return resolve(GH_NO_OUTPUT);
         }
         reject(new Error("gh failed", { cause: error }));
       });
@@ -74,6 +89,7 @@ interface GhFileRow {
 }
 
 interface GhPrView {
+  state?: string;
   headRefOid?: string;
   baseRefName?: string;
   headRefName?: string;
@@ -92,10 +108,9 @@ interface GhPrView {
  */
 async function readFacts(
   repo: string,
-  trunk: string,
   pr: DashboardOutstandingPullRequest,
   runGh: NextStepsReaders["runGh"]
-): Promise<NextStepsPr> {
+): Promise<NextStepsPr | "closed"> {
   const unread: NextStepsPr = {
     number: pr.number,
     title: pr.title,
@@ -115,18 +130,21 @@ async function readFacts(
     const view = JSON.parse(
       await runGh([
         "pr", "view", String(pr.number), "--repo", repo, "--json",
-        "headRefOid,baseRefName,headRefName,isDraft,mergeStateStatus,headRepository,headRepositoryOwner,reviews,statusCheckRollup"
+        "state,headRefOid,baseRefName,headRefName,isDraft,mergeStateStatus,headRepository,headRepositoryOwner,reviews,statusCheckRollup"
       ])
     ) as GhPrView;
+    // The cached inventory may still list a pull request merged or closed since it was read: never offer it.
+    if (typeof view.state !== "string") throw new Error("gh pr view did not report the pull request state");
+    if (view.state.toUpperCase() !== "OPEN") return "closed";
     const meta = JSON.parse(await runGh(["api", `repos/${repo}/pulls/${pr.number}`])) as { changed_files?: number };
     const pages = JSON.parse(await runGh(["api", "--paginate", "--slurp", `repos/${repo}/pulls/${pr.number}/files`])) as GhFileRow[][];
     const baseRef = typeof view.baseRefName === "string" ? view.baseRefName : pr.baseBranch;
     const rawRequired = await runGh(["pr", "checks", String(pr.number), "--repo", repo, "--required", "--json", "name"]);
     let requiredChecks: string[];
     if (rawRequired === GH_NO_OUTPUT) {
-      // No output is "no required checks configured" ONLY for a stacked child (its base is not the trunk, so
-      // branch protection does not apply to it). On the trunk it cannot be told from a failure: refuse.
-      if (baseRef === trunk) throw new Error("gh pr checks printed nothing for a trunk-based pull request");
+      // gh itself said "no required checks": genuinely none configured. For a stacked child (base is not the
+      // trunk) that is expected and it stays parent_unmerged; for a trunk-based PR the list shows it as
+      // no_required_checks. Any other gh failure threw above and makes the pull request unreadable instead.
       requiredChecks = [];
     } else {
       requiredChecks = (JSON.parse(rawRequired) as Array<{ name: string }>).map((check) => check.name);
@@ -217,18 +235,19 @@ export function queueFacts(queue: WorkQueue): { facts: NextStepsQueue; decisionT
  */
 export async function loadNextSteps(
   readers: NextStepsReaders,
-  options: { repo?: string; cap?: number; pinnedHeads?: Readonly<Record<number, string>> | null } = {}
+  options: { repo?: string; cap?: number; pinnedHeads?: Readonly<Record<number, string>> | null; now?: Date } = {}
 ): Promise<NextStepsResponse> {
   const repo = options.repo ?? DEFAULT_CARD_REPO;
   const unavailable = new Set<NextStepsSource>();
-  let prs: NextStepsPr[] = [];
+  const prs: NextStepsPr[] = [];
   let trunk = "main";
   let otherRepositories = 0;
   let inventoryStale = false;
   let inventoryCheckedAt: string | null = null;
   let queue: NextStepsQueue | null = null;
   let decisionToAction = new Map<string, string>();
-  let cards: NextStepsCard[] = [];
+  let cards: NextStepsCard[] | null = null;
+  let closedSinceInventory = 0;
 
   try {
     const inventory = await readers.readInventory();
@@ -239,7 +258,11 @@ export async function loadNextSteps(
     const mine = inventory.pullRequests.filter((pr) => pr.repository.trim().toLowerCase() === repo.toLowerCase());
     otherRepositories = inventory.pullRequests.length - mine.length;
     trunk = await readTrunk(repo, readers.runGh);
-    prs = await mapLimited(mine, CONCURRENCY, (pr) => readFacts(repo, trunk, pr, readers.runGh));
+    const read = await mapLimited(mine, CONCURRENCY, (pr) => readFacts(repo, pr, readers.runGh));
+    for (const item of read) {
+      if (item === "closed") closedSinceInventory += 1;
+      else prs.push(item);
+    }
     if (prs.some((pr) => typeof pr.unreadable === "string")) unavailable.add("checks");
   } catch {
     unavailable.add("prs");
@@ -276,5 +299,31 @@ export async function loadNextSteps(
   });
   const heads: Record<number, string> = {};
   for (const pr of prs) if (pr.headSha !== "") heads[pr.number] = pr.headSha;
-  return { ...result, otherRepositories, inventoryStale, inventoryCheckedAt, repo, heads };
+  return applyInventoryAge(
+    { ...result, otherRepositories, inventoryStale, inventoryCheckedAt, repo, heads, outOfDate: false, closedSinceInventory },
+    options.now ?? new Date()
+  );
 }
+
+/**
+ * Production is never "moving" on a PR list that may have lagged. When the inventory is stale or was read more
+ * than INVENTORY_MAX_AGE_SECONDS ago and there are zero steps, the state is `unavailable` naming `prs`. Applied
+ * to a fresh computation and again to a response served from the route's own cache, where the inventory's age
+ * is the age at read plus the time spent in that cache.
+ */
+export function applyInventoryAge(response: NextStepsResponse, now: Date): NextStepsResponse {
+  if (response.state !== "moving") return response;
+  const readAt = response.inventoryCheckedAt === null ? Number.NaN : Date.parse(response.inventoryCheckedAt);
+  const ageSeconds = (now.getTime() - readAt) / 1000;
+  const lagging = response.inventoryStale || !Number.isFinite(ageSeconds) || ageSeconds > INVENTORY_MAX_AGE_SECONDS;
+  if (!lagging) return response;
+  return {
+    ...response,
+    state: "unavailable",
+    unavailable: [...new Set([...response.unavailable, "prs" as const])].sort(),
+    outOfDate: true
+  };
+}
+
+/** Heads are remembered per repository and pull request number; `head_moved` is a one-poll signal. */
+export const headKey = (repo: string, number: number): string => `${repo.toLowerCase()}#${number}`;

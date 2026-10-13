@@ -31,7 +31,8 @@ const QUEUE: NextStepsQueue = {
 };
 
 const ids = (r: ReturnType<typeof buildNextSteps>) => r.steps.map((s) => s.id);
-const run = (input: NextStepsInput) => buildNextSteps(input);
+const READ_EMPTY_QUEUE: NextStepsQueue = { currentActionId: null, planPath: null, queued: [] };
+const run = (input: NextStepsInput) => buildNextSteps({ queue: READ_EMPTY_QUEUE, cards: [], ...input });
 
 describe("stacked pull request order", () => {
   it("puts a stack's parents first and makes only the root takeable, whatever the input order", () => {

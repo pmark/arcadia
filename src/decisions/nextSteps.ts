@@ -11,8 +11,10 @@
  *  1. A pull request's stack parents come before it (parents derived from baseRef/headRef, matched on head
  *     repository + ref so a fork branch never becomes a parent; the stack order comes from batchMerge.orderStack).
  *  2. Among steps whose parents are placed, lower EFFECTIVE rank first. A node's effective rank is the minimum of
- *     its own rank and the ranks of all its descendants (priority inheritance), so a parent that unlocks a
- *     pointer-advancing child is ordered ahead of unrelated pull requests, and its step says so. Own ranks:
+ *     its own rank and the ranks of descendants that would be takeable once their parent merges (priority
+ *     inheritance; a draft, conflicted, failing-check, unreviewed or unreadable child keeps its own blocker
+ *     visible and promotes nothing), so a parent that unlocks a pointer-advancing child is ordered ahead of
+ *     unrelated pull requests, and its step says so. Own ranks:
  *       rank 0  advances governance: touches PROJECT.md, the active Plan document, or the current Action's
  *               expected artifact path (a rename OUT of such a path counts); an answer/run card that unblocks
  *               the current Action.
@@ -24,8 +26,10 @@
  *
  * A pull request is a takeable `merge` step only when it is not a draft, its head sha is a full hex sha equal to
  * any earlier pinned sha, its file list is complete (fetched count equals the PR's own changed-file count, as
- * batchMerge requires), it has an approving independent review at that head, every required check is green, its
- * merge state is CLEAN (or HAS_HOOKS), and its parent is not an open pull request. Otherwise it is a `wait` step
+ * batchMerge requires), it has an approving independent review at that head, every required check is green
+ * (SKIPPED and NEUTRAL count as green, as on GitHub), its merge state is CLEAN, HAS_HOOKS or UNSTABLE (only
+ * non-required checks failing; the click carries that note), and its parent is not an open pull request. Its own
+ * blockers are named before "parent not merged". Otherwise it is a `wait` step
  * that names what it waits on and has NO click and NO link.
  *
  * Result `state` is a closed union and the only thing a UI may say production's status from:
@@ -116,7 +120,8 @@ export type NextStepsSource = "prs" | "queue" | "cards" | "checks";
 export interface NextStepsInput {
   prs: ReadonlyArray<NextStepsPr>;
   queue?: NextStepsQueue | null;
-  cards?: ReadonlyArray<NextStepsCard>;
+  /** Absent (undefined or null) is an unread source; an empty array is a successful read of no cards. */
+  cards?: ReadonlyArray<NextStepsCard> | null;
   /** Head shas pinned in an earlier snapshot, by PR number; a different current head is refused visibly. */
   pinnedHeads?: Readonly<Record<number, string>> | null;
   trunk?: string;
@@ -186,6 +191,8 @@ export interface NextStepsResult {
   total: number;
   /** Unreadable pull-request or card inputs and cards of a verb this list does not carry. */
   ignored: number;
+  /** Invalid pull-request entries among `ignored`; any makes `prs` unavailable. */
+  invalidPrs: number;
   /** Sources that could not be read (including pull requests whose facts were unreadable). */
   unavailable: NextStepsSource[];
   /** Higher-priority pull requests that are waiting, said in words next to the now step. */
@@ -381,12 +388,16 @@ function buildNodes(prs: NextStepsPr[], trunk: string, repo: string, queue: Next
     }
     for (const n of path) state.set(n, 2);
   }
-  inheritRanks(nodes);
   return nodes;
 }
 
-/** Effective rank = min(own, all descendants). `orderParent` links are acyclic, so a memoised walk terminates. */
-function inheritRanks(nodes: Map<number, Node>): void {
+/**
+ * Effective rank = min(own, ranks of descendants that can actually become takeable once their parent merges).
+ * A child contributes only when `eligible` has it (its own blocker, ignoring the stack parent, is none); a
+ * draft, conflicted, failing, unreviewed or unreadable child keeps its own blocker and promotes nothing.
+ * `orderParent` links are acyclic, so a memoised walk terminates.
+ */
+function inheritRanks(nodes: Map<number, Node>, eligible: ReadonlySet<number>): void {
   const children = new Map<number, number[]>();
   for (const node of nodes.values()) {
     if (node.orderParent === null) continue;
@@ -402,7 +413,7 @@ function inheritRanks(nodes: Map<number, Node>): void {
     for (const c of [...(children.get(n) ?? [])].sort((a, b) => a - b)) {
       visit(c);
       const child = nodes.get(c)!;
-      if (child.effRank < node.effRank) {
+      if (eligible.has(c) && child.effRank < node.effRank) {
         node.effRank = child.effRank;
         node.inheritedFrom = child.inheritedFrom ?? c;
       }
@@ -415,7 +426,9 @@ function checkState(pr: NextStepsPr, name: string): "green" | "pending" | "faili
   const rows = pr.checks.filter((c) => c.name === name);
   if (rows.length === 0) return "pending";
   const concl = rows.map((r) => (typeof r.conclusion === "string" ? r.conclusion.trim().toLowerCase() : ""));
-  if (concl.every((c) => c === "success")) return "green";
+  // GitHub counts a SKIPPED or NEUTRAL required check as passing, so this module does too. batchMerge's isGreen
+  // accepts only SUCCESS and is deliberately left unchanged; the divergence is confined to this readiness view.
+  if (concl.every((c) => c === "success" || c === "skipped" || c === "neutral")) return "green";
   const settledBad = concl.some((c) => c !== "" && c !== "success" && c !== "pending" && c !== "queued" && c !== "in_progress" && c !== "expected");
   return settledBad ? "failing" : "pending";
 }
@@ -428,12 +441,39 @@ function reviewStatesAtHead(pr: NextStepsPr): string {
   return rows.length === 0 ? "none at this head" : rows.join(", ");
 }
 
-const MERGE_STATE_TEXT: Record<string, string> = {
-  BLOCKED: "GitHub reports the merge as blocked (a required review or check is not satisfied)",
-  BEHIND: "it is behind its base branch and must be updated",
-  UNKNOWN: "GitHub has not computed the merge state yet",
-  UNSTABLE: "non-required checks are failing",
+/** Each non-clean merge state names its real cause and what ends it; none says merely "waiting on GitHub". */
+const MERGE_STATE_TEXT: Record<string, { named: string; waitingFor: string }> = {
+  BLOCKED: {
+    named:
+      "GitHub blocks the merge although the review and required checks read here are satisfied; a branch-protection rule this list does not read (for example a code-owner review or an unresolved conversation) is unmet. Open the pull request: GitHub names it",
+    waitingFor: "the branch-protection requirement GitHub names on the pull request page",
+  },
+  BEHIND: {
+    named: "its branch is behind its base branch and must be updated (merge or rebase the base in) before it can merge",
+    waitingFor: "the branch being updated with its base branch",
+  },
+  UNKNOWN: {
+    named: "GitHub has not finished computing the merge state; it resolves on its own, reload in a moment",
+    waitingFor: "GitHub finishing its merge-state computation (it resolves by itself)",
+  },
 };
+
+/** Names of checks that completed badly and are not required (what makes GitHub report UNSTABLE). */
+function nonRequiredFailures(pr: NextStepsPr): string[] {
+  const required = new Set(pr.requiredChecks);
+  const names = new Set<string>();
+  for (const check of pr.checks) {
+    if (required.has(check.name)) continue;
+    const c = typeof check.conclusion === "string" ? check.conclusion.trim().toLowerCase() : "";
+    if (c !== "" && !["success", "skipped", "neutral", "pending", "queued", "in_progress", "expected"].includes(c)) {
+      names.add(safeText(check.name, CHECK_MAX) || "an unnamed check");
+    }
+  }
+  return [...names].sort();
+}
+
+/** Inventory older than this is never read as "moving" (applied by the loader and the route's cache). */
+export const INVENTORY_MAX_AGE_SECONDS = 60;
 
 /* --------------------------------- build -------------------------------- */
 
@@ -445,11 +485,16 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
   const pinnedHeads = input.pinnedHeads ?? null;
 
   let ignored = 0;
+  let invalidPrs = 0;
   const prs: NextStepsPr[] = [];
   for (const candidate of Array.isArray(input.prs) ? input.prs : []) {
     if (isValidPr(candidate)) prs.push(candidate);
-    else ignored += 1;
+    else {
+      ignored += 1;
+      invalidPrs += 1;
+    }
   }
+  if (!Array.isArray(input.prs)) invalidPrs += 1;
   const nodes = buildNodes(prs, trunk, repo, queue);
 
   // Stack order from batchMerge: the deterministic tie-break among equal ranks.
@@ -498,10 +543,8 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       const was = isPinnedHeadSha(pinned) ? short(pinned) : "an invalid sha";
       return wait("head_moved", `Stale: head moved from ${was} to ${short(pr.headSha)} since it was pinned; reload to pin the new head.`, "a fresh read of the new head");
     }
-    if (parentStepId !== null) {
-      const parent = node.parent as number;
-      return wait("parent_unmerged", `Its stack parent #${parent} is not merged yet.`, `step ${parentStepId} (merge #${parent})`, parentStepId);
-    }
+    // The pull request's own blockers come first and are never masked by "parent not merged": the parent check
+    // is last (below). A call with parentStepId null is the intrinsic read used to decide rank inheritance.
     if (pr.isDraft === true) return wait("draft", "It is a draft; mark it ready for review.", "the author marking it ready for review");
     try {
       const facts: BatchPrFacts = {
@@ -538,7 +581,9 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
           "an approving independent review",
         );
       }
-      if (codes.has("no_required_checks")) return wait("no_required_checks", "It names no required checks, so green cannot be established.", "required checks being reported");
+      // A stacked child's base is not the trunk, so no required checks are configured for it: its checks
+      // are judged after it retargets, so this is not a blocker of its own (it stays parent_unmerged).
+      if (codes.has("no_required_checks") && node.parent === null) return wait("no_required_checks", "It names no required checks, so green cannot be established.", "required checks being reported");
       for (const name of pr.requiredChecks) {
         const state = checkState(pr, name);
         if (state === "green") continue;
@@ -547,7 +592,6 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
           ? wait("check_failing", `Required check ${label} is failing at ${short(pr.headSha)}.`, `required check ${label} to pass on #${pr.number}`)
           : wait("check_pending", `Required check ${label} has not finished at ${short(pr.headSha)}.`, `required check ${label} to finish on #${pr.number}`);
       }
-      if (codes.has("check_not_green")) return wait("check_pending", "A required check is not green.", "required checks to pass");
     } catch {
       return wait("unreadable", "Its review or check facts could not be read.", "readable review and check facts");
     }
@@ -555,10 +599,23 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
     if (mergeState === "DIRTY") {
       return wait("merge_conflict", "It conflicts with its base branch; the author must resolve the conflict.", "the author resolving the merge conflict");
     }
-    if (mergeState !== "CLEAN" && mergeState !== "HAS_HOOKS") {
-      const named = mergeState === "" ? "the merge state was not reported" : (MERGE_STATE_TEXT[mergeState] ?? `GitHub reports merge state ${safeText(mergeState, 30)}`);
-      return wait("merge_state_not_clean", `Merge state is ${mergeState || "not reported"}: ${named}.`, `GitHub to report a clean merge state on #${pr.number}`);
+    // UNSTABLE means only non-required checks fail (the required ones were checked above): GitHub allows the merge.
+    if (mergeState !== "CLEAN" && mergeState !== "HAS_HOOKS" && mergeState !== "UNSTABLE") {
+      if (mergeState === "") {
+        return wait("merge_state_not_clean", "GitHub did not report a merge state for this pull request, so it cannot be offered.", "a readable merge state");
+      }
+      const known = MERGE_STATE_TEXT[mergeState];
+      return wait(
+        "merge_state_not_clean",
+        `Merge state is ${mergeState}: ${known?.named ?? `GitHub reports a merge state this list does not know (${safeText(mergeState, 30)})`}.`,
+        known?.waitingFor ?? `the merge state ${safeText(mergeState, 30)} to be explained on the pull request page`,
+      );
     }
+    if (parentStepId !== null) {
+      const parent = node.parent as number;
+      return wait("parent_unmerged", `Its stack parent #${parent} is not merged yet.`, `step ${parentStepId} (merge #${parent})`, parentStepId);
+    }
+    const failing = mergeState === "UNSTABLE" ? nonRequiredFailures(pr) : [];
     return {
       ...base,
       kind: "merge",
@@ -569,9 +626,20 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       waitCode: null,
       reason: `Approved at ${short(pr.headSha)} with every required check green${
         boundaries.length > 0 ? `; touches ${boundaries.join(", ")}` : ""
+      }${
+        mergeState === "UNSTABLE"
+          ? `; a non-required check is failing: ${failing.length > 0 ? failing.join(", ") : "name not reported"}`
+          : ""
       }.`,
     };
   };
+
+  // Rank inheritance only from children that would be takeable once their parent merges.
+  const eligible = new Set<number>();
+  for (const node of nodes.values()) {
+    if (buildPrStep(node, null).kind === "merge") eligible.add(node.pr.number);
+  }
+  inheritRanks(nodes, eligible);
 
   // Cards: answer/run steps.
   const cardSteps: Placed[] = [];
@@ -660,10 +728,18 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
   const nowStep = numbered.find((s) => s.kind !== "wait") ?? null;
 
   const unavailable: NextStepsSource[] = [...new Set(input.unavailable ?? [])].sort();
-  if (prs.some((p) => typeof p.unreadable === "string") && !unavailable.includes("checks")) {
-    unavailable.push("checks");
-    unavailable.sort();
-  }
+  const markUnread = (source: NextStepsSource): void => {
+    if (!unavailable.includes(source)) {
+      unavailable.push(source);
+      unavailable.sort();
+    }
+  };
+  if (prs.some((p) => typeof p.unreadable === "string")) markUnread("checks");
+  // An invalid pull-request entry may be a real one the reader could not shape: never "moving" past it.
+  if (invalidPrs > 0) markUnread("prs");
+  // An absent queue or card input is an unread source, distinct from a read-empty one.
+  if (input.queue === undefined || input.queue === null) markUnread("queue");
+  if (!Array.isArray(input.cards)) markUnread("cards");
 
   // Higher-priority pull requests that are waiting (and are not just the now step's own descendants).
   const waitingAhead: string[] = [];
@@ -684,7 +760,9 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
       const m = /^pr-(\d+)$/.exec(step.id);
       if (step.kind !== "wait" || m === null || step.rank >= nowStep.rank) continue;
       const n = Number(m[1]);
-      if (descendsFromNow(n)) continue;
+      // The now step's own children that merely wait on it are covered by its "unlocks" text; a child with a
+      // real blocker of its own is named here.
+      if (step.waitCode === "parent_unmerged" && descendsFromNow(n)) continue;
       const phrase = nodes.get(n)?.phrase ?? "";
       waitingAhead.push(`#${n} ${phrase !== "" ? `${phrase} ` : "ranks higher "}but is waiting on ${step.waitingFor ?? "something"}.`);
     }
@@ -706,6 +784,7 @@ export function buildNextSteps(input: NextStepsInput): NextStepsResult {
     hidden: numbered.length - shown.length - (nowShown ? 0 : 1),
     total: numbered.length,
     ignored,
+    invalidPrs,
     unavailable,
     waitingAhead,
     waitingSummary,

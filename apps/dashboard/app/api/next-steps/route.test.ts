@@ -19,7 +19,7 @@ import * as route from "./route";
 describe("/api/next-steps", () => {
   it("exports GET only and reads without writing", async () => {
     expect(Object.keys(route).filter((key) => /^(POST|PUT|PATCH|DELETE)$/.test(key))).toEqual([]);
-    mocks.prs.mockResolvedValue(new Response(JSON.stringify({ snapshot: { pullRequests: [] }, stale: false })));
+    mocks.prs.mockResolvedValue(new Response(JSON.stringify({ snapshot: { pullRequests: [], errors: [] }, stale: false, checkedAt: new Date().toISOString() })));
     mocks.queue.mockResolvedValue({ data: { ordered: [], nextActionKey: null } });
     mocks.cards.mockResolvedValue({ cards: [], targets: new Map() });
     const response = await route.GET();
