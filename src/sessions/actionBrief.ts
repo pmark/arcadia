@@ -1,3 +1,5 @@
+import { renderRoleBlock } from "../agentRoles/brief.js";
+import { getRole, loadRoleRegistry } from "../agentRoles/registry.js";
 import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
@@ -218,6 +220,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
       : renderSessionIdentityBlock({ agent: input.agent, partners: input.partners ?? null })),
     "",
     ...renderProbeStep(input),
+    "",
+    ...renderRoleBlock(getRole(loadRoleRegistry(), "lead")),
     "",
     "Next action:",
     action.nextAction ?? "(none declared)",
