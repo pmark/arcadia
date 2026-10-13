@@ -199,7 +199,8 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     const effectiveEffort = context.reviewer.effectiveEffort ?? null;
     const configuredEffort = context.reviewer.configuredEffort ?? null;
     const rubricVersion = telemetry?.rubricVersion ?? null;
-    const key = JSON.stringify([taskClass, difficulty, role, rubricVersion, context.reviewer.provider, context.reviewer.model, effectiveEffort]);
+    const comparisonIdentity = taskClass === null || difficulty === null ? deduplicationKey(record) : null;
+    const key = JSON.stringify([taskClass, difficulty, role, rubricVersion, context.reviewer.provider, context.reviewer.model, effectiveEffort, comparisonIdentity]);
     let group = groups.get(key);
     if (!group) {
       group = {
@@ -269,17 +270,21 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
     // the references, but leave outcome, disposition, repair and escape scores
     // unknown until a separate trusted outcome receipt exists.
 
-    const reviewerUsage = context.reviewer.usage ?? null;
-    if (context.reviewer.actualBilledCostUsd !== null && context.reviewer.actualBilledCostUsd !== undefined) {
+    // New receipts bind the provider event stream into their canonical file
+    // list. Older receipts remain reportable, but their unbound usage, timing,
+    // and accounting values are not evidence and therefore stay unknown.
+    const providerEvidenceBound = telemetry !== null && context.receiptFiles.some(file => file.path === telemetry.evidenceSource);
+    const reviewerUsage = providerEvidenceBound ? context.reviewer.usage ?? null : null;
+    if (providerEvidenceBound && context.reviewer.actualBilledCostUsd !== null && context.reviewer.actualBilledCostUsd !== undefined) {
       group.actualBilledCostUsd = (group.actualBilledCostUsd ?? 0) + context.reviewer.actualBilledCostUsd;
       group.billedCostKnown += 1;
     }
-    if (context.reviewer.estimatedCostUsd !== null && context.reviewer.estimatedCostUsd !== undefined && context.reviewer.pricingAsOf) {
+    if (providerEvidenceBound && context.reviewer.estimatedCostUsd !== null && context.reviewer.estimatedCostUsd !== undefined && context.reviewer.pricingAsOf) {
       group.estimatedCostUsd = (group.estimatedCostUsd ?? 0) + context.reviewer.estimatedCostUsd;
       group.estimatedCostKnown += 1;
       pricingDateValues.get(key)!.add(context.reviewer.pricingAsOf);
     }
-    if (context.reviewer.includedCapacityConsumption !== null && context.reviewer.includedCapacityConsumption !== undefined) {
+    if (providerEvidenceBound && context.reviewer.includedCapacityConsumption !== null && context.reviewer.includedCapacityConsumption !== undefined) {
       group.includedCapacityKnown += 1;
       group.includedCapacityConsumption = (group.includedCapacityConsumption ?? 0) + context.reviewer.includedCapacityConsumption;
     }
@@ -287,13 +292,13 @@ export function buildModelEffectivenessReport(records: EffectivenessReviewRecord
       inputTokens: reviewerUsage?.inputTokens ?? null,
       cachedInputTokens: reviewerUsage?.cachedInputTokens ?? null,
       outputTokens: reviewerUsage?.outputTokens ?? null,
-      elapsedMs: context.reviewer.modelCallElapsedMs ?? null
+      elapsedMs: providerEvidenceBound ? context.reviewer.modelCallElapsedMs ?? null : null
     });
     addResources(group.observedResourcesThroughOutcome, {
       inputTokens: reviewerUsage?.inputTokens ?? null,
       cachedInputTokens: reviewerUsage?.cachedInputTokens ?? null,
       outputTokens: reviewerUsage?.outputTokens ?? null,
-      elapsedMs: context.reviewer.modelCallElapsedMs ?? null
+      elapsedMs: providerEvidenceBound ? context.reviewer.modelCallElapsedMs ?? null : null
     });
     const linkedResources = new Map((record.linkedResources ?? []).map(linked => [linked.id, linked]));
     const seenLinked = linkedResourceIds.get(key)!;

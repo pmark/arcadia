@@ -551,7 +551,8 @@ pnpm arcadia qa effectiveness
 The report groups only receipts with the same explicitly observed task class,
 difficulty, review role, rubric version, provider, model, and effective effort.
 Configured effort and pricing date are coverage, not cohort keys; conflicts are
-shown. Unknown class or difficulty stays visible as unknown rather than being inferred from the rubric. It separates
+shown. Unknown class or difficulty stays visible as an unranked singleton rather
+than being inferred from the rubric or combined with another unknown receipt. It separates
 configured from runtime-effective effort, reviewer-only usage from additional
 resource observations explicitly linked to the exact review attempt and head,
 and reviewer environment failures from model verdicts. A model `fail` means the

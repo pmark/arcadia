@@ -137,6 +137,7 @@ describe("minimal independent pull-request QA", () => {
 
     const canonicalReceiptPath = path.resolve(path.dirname(reportPath), "..", "..", "result.json");
     const forgedReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
+    expect(forgedReceipt.requiredFiles.some((file: { path: string }) => file.path.endsWith("/reviewer-events.jsonl"))).toBe(true);
     const evidencePath = path.join(fixture.workspace, second.data.evidencePath);
     writeFileSync(evidencePath, "forged evidence\n", "utf8");
     const forgedEvidenceHash = createHash("sha256").update(readFileSync(evidencePath)).digest("hex");

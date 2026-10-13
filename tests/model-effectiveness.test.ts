@@ -39,13 +39,14 @@ function context(options: {
   unavailable?: string | null;
 } = {}): PersistedQaContext {
   const role = options.role ?? "code-review";
+  const effectiveness = options.effectiveness ?? telemetry({ role });
   return {
     schemaVersion: 2,
     candidate: { projectId: "project", projectName: "Arcadia", repository: "pmark/arcadia", number: 1, title: "change", url: "https://github.com/pmark/arcadia/pull/1", headSha: HEAD, headBranch: "codex/change", baseSha: "c".repeat(40), baseBranch: "main", isDraft: false, mergeStateStatus: "CLEAN" },
     verdict: options.verdict ?? "pass", summary: "reviewed", findings: [], checks: [], residualRisks: [],
     reviewer: provenance(options.reviewer), reportPath: "report.md", evidencePath: "evidence.json", metadataPath: "metadata.json",
-    evidenceFingerprint: HASH, receiptFiles: [{ path: "report.md", sha256: HASH }, { path: "evidence.json", sha256: HASH }, { path: "metadata.json", sha256: HASH }], role,
-    effectiveness: options.effectiveness ?? telemetry({ role }), reviewerUnavailable: options.unavailable ?? null
+    evidenceFingerprint: HASH, receiptFiles: [{ path: "report.md", sha256: HASH }, { path: "evidence.json", sha256: HASH }, { path: "metadata.json", sha256: HASH }, { path: effectiveness.evidenceSource, sha256: HASH }], role,
+    effectiveness, reviewerUnavailable: options.unavailable ?? null
   };
 }
 
@@ -68,6 +69,25 @@ describe("model effectiveness report", () => {
     }) }]);
     expect(report.groups[0]).toMatchObject({ configuredEffortKnown: 1, effectiveEffortKnown: 0, taskClassKnown: 0, difficultyKnown: 0 });
     expect(report.groups[0].reviewerResources).toMatchObject({ samplesWithCompleteUsage: 0, samplesWithUnknownUsage: 1 });
+  });
+
+  it("does not compare distinct receipts whose task classification is incomplete", () => {
+    const first = context({ effectiveness: telemetry({ taskClass: null, difficulty: null, attemptId: "attempt-1", attemptRequestId: "request-1" }) });
+    const second = context({ effectiveness: telemetry({ taskClass: null, difficulty: null, attemptId: "attempt-2", attemptRequestId: "request-2" }) });
+    const report = buildModelEffectivenessReport([
+      { id: "decision-1", role: "code-review", context: first },
+      { id: "decision-2", role: "code-review", context: second }
+    ]);
+    expect(report.groups).toHaveLength(2);
+    expect(report.groups.map(group => group.sampleSize)).toEqual([1, 1]);
+  });
+
+  it("treats provider usage from a legacy unbound event stream as unknown", () => {
+    const legacy = context({ reviewer: { actualBilledCostUsd: 1, estimatedCostUsd: 2, pricingAsOf: "2026-01-01", includedCapacityConsumption: 3 } });
+    legacy.receiptFiles = legacy.receiptFiles.filter(file => file.path !== legacy.effectiveness!.evidenceSource);
+    const report = buildModelEffectivenessReport([{ id: "legacy", role: "code-review", context: legacy }]);
+    expect(report.groups[0].reviewerResources).toMatchObject({ inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, elapsedMs: 0, inputTokensKnown: 0, cachedInputTokensKnown: 0, outputTokensKnown: 0, elapsedMsKnown: 0, samplesWithUnknownUsage: 1 });
+    expect(report.groups[0]).toMatchObject({ actualBilledCostUsd: null, estimatedCostUsd: null, billedCostKnown: 0, estimatedCostKnown: 0, includedCapacityKnown: 0, includedCapacityConsumption: null });
   });
 
   it("keeps legacy combined verdicts explicit unknown instead of attributing them to a model or gate", () => {
@@ -203,14 +223,21 @@ describe("model effectiveness report", () => {
       receipt.reportPath = "report.md";
       receipt.evidencePath = "evidence.json";
       receipt.metadataPath = "metadata.json";
+      receipt.effectiveness!.evidenceSource = "reviewer-events.jsonl";
       writeFileSync(path.join(workspace, receipt.reportPath), "report\n");
       writeFileSync(path.join(workspace, receipt.evidencePath), "evidence\n");
+      writeFileSync(path.join(workspace, receipt.effectiveness!.evidenceSource), "provider events\n", { flag: "w" });
       writeFileSync(path.join(workspace, receipt.metadataPath), JSON.stringify({ candidate: receipt.candidate, verdict: receipt.verdict, effectiveness: receipt.effectiveness }));
       const sha = (name: string) => createHash("sha256").update(readFileSync(path.join(workspace, name))).digest("hex");
-      receipt.receiptFiles = [receipt.reportPath, receipt.evidencePath, receipt.metadataPath].map(file => ({ path: file, sha256: sha(file) }));
+      receipt.receiptFiles = [receipt.reportPath, receipt.evidencePath, receipt.metadataPath, receipt.effectiveness!.evidenceSource].map(file => ({ path: file, sha256: sha(file) }));
       const canonical = { version: 6, evidenceFingerprint: receipt.evidenceFingerprint, artifactId: "artifact-1", decisionId: "decision-1", requiredFiles: receipt.receiptFiles };
       writeFileSync(path.join(workspace, "result.json"), JSON.stringify(canonical));
       expect(verifyPersistedQaContextEvidence(workspace, receipt, { decisionId: "decision-1", artifactId: "artifact-1" })).toBe(true);
+      writeFileSync(path.join(workspace, receipt.effectiveness!.evidenceSource), "tampered provider events\n");
+      expect(verifyPersistedQaContextEvidence(workspace, receipt, { decisionId: "decision-1", artifactId: "artifact-1" })).toBe(false);
+      rmSync(path.join(workspace, receipt.effectiveness!.evidenceSource));
+      expect(verifyPersistedQaContextEvidence(workspace, receipt, { decisionId: "decision-1", artifactId: "artifact-1" })).toBe(false);
+      writeFileSync(path.join(workspace, receipt.effectiveness!.evidenceSource), "provider events\n");
       writeFileSync(path.join(workspace, "result.json"), JSON.stringify({ ...canonical, requiredFiles: canonical.requiredFiles.slice(1) }));
       expect(verifyPersistedQaContextEvidence(workspace, receipt, { decisionId: "decision-1", artifactId: "artifact-1" })).toBe(false);
     } finally {

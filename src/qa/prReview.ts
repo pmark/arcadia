@@ -633,7 +633,7 @@ export function runQaPrReviewCommand(
     artifacts: [evidencePath, patchPath, schemaPath, promptPath, modelOutputPath, executorOutputPath, sandboxProofPath, reportPath]
       .map((value) => toWorkspaceRelativePath(workspacePath, value))
   }, null, 2)}\n`, "utf8");
-  const requiredFiles = [evidencePath, patchPath, sandboxProofPath, reportPath, metadataPath].map((filePath) => ({
+  const requiredFiles = [evidencePath, patchPath, executorOutputPath, sandboxProofPath, reportPath, metadataPath].map((filePath) => ({
     path: toWorkspaceRelativePath(workspacePath, filePath),
     sha256: sha256File(filePath)
   }));
