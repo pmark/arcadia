@@ -27,6 +27,8 @@ try {
   if (existsSync(output)) throw new Error("refusing to overwrite an existing retained evidence file");
   const report = replayRetainedScout(fixtureRoot);
   const candidateRoot = fileURLToPath(new URL("../", import.meta.url));
+  const dirtySource = execFileSync("git", ["-C", candidateRoot, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8" });
+  if (dirtySource.trim()) throw new Error("source checkout must be clean before recording an immutable revision");
   const sourceRevision = execFileSync("git", ["-C", candidateRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sourceRevision)) throw new Error("could not pin immutable source revision");
   const receipt = {
