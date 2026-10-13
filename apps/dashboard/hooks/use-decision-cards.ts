@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { DecisionCardView } from "../lib/decision-cards";
+import type { DecisionCardRefusalView, DecisionCardView } from "../lib/decision-cards";
 import type { CardOutcome } from "../components/decision-cards";
 
 const POLL_MS = 15_000;
@@ -9,6 +9,7 @@ const POLL_MS = 15_000;
 /** Reads current cards and presses one: the press body is exactly {cardId, fingerprint}. */
 export function useDecisionCards() {
   const [views, setViews] = useState<DecisionCardView[]>([]);
+  const [refused, setRefused] = useState<DecisionCardRefusalView[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
   // A card that was just answered or run leaves the list on the next read; keep it, un-pressable, so its receipt shows.
   const [kept, setKept] = useState<DecisionCardView[]>([]);
@@ -18,8 +19,9 @@ export function useDecisionCards() {
     try {
       const response = await fetch("/api/decision-card", { cache: "no-store" });
       if (!response.ok) return;
-      const body = (await response.json()) as { cards?: DecisionCardView[] };
+      const body = (await response.json()) as { cards?: DecisionCardView[]; refused?: DecisionCardRefusalView[] };
       setViews(body.cards ?? []);
+      setRefused(body.refused ?? []);
     } catch {
       // Cards are additive; a failed read leaves the existing to-do list untouched.
     }
@@ -64,5 +66,5 @@ export function useDecisionCards() {
   );
 
   const merged = [...views, ...kept.filter((item) => !views.some((view) => view.card.id === item.card.id))];
-  return { views: merged, pendingId, outcomes, press };
+  return { views: merged, refused, pendingId, outcomes, press };
 }

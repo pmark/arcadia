@@ -17,16 +17,22 @@ interface MockDecision {
 }
 interface MockScript {
   id: string;
+  kind?: string;
   title: string;
   success: { effect: string };
   repeatable: boolean;
-  state: { status: string };
+  state: { status: string; runId?: string; finishedAt?: string };
+  nextAfter?: { id: string; within_minutes: number } | null;
+  lastRunReceipt?: { outcome: string; startedAt: string; finishedAt: string } | null;
 }
 
 const world = vi.hoisted(() => ({
   decisions: [] as unknown[],
   scripts: [] as unknown[],
   bytes: "descriptor-v1",
+  reads: 0,
+  flipAfterReads: Number.POSITIVE_INFINITY,
+  openError: null as Error | null,
   approve: vi.fn(),
   launch: vi.fn()
 }));
@@ -41,11 +47,22 @@ vi.mock("../../../lib/arcadia-cli", () => ({
       this.details = details;
     }
   },
-  loadOpenDecisions: vi.fn(async () => ({ data: { decisions: world.decisions } })),
+  loadOpenDecisions: vi.fn(async () => {
+    if (world.openError) throw world.openError;
+    return { data: { decisions: world.decisions } };
+  }),
   approveDecision: world.approve
 }));
 vi.mock("../../../lib/approvals-feed", () => ({ invalidateApprovalsCache: vi.fn() }));
-vi.mock("node:fs/promises", () => ({ readFile: vi.fn(async () => Buffer.from(world.bytes)) }));
+vi.mock("node:fs/promises", () => ({
+  readFile: vi.fn(async () => {
+    world.reads += 1;
+    return Buffer.from(world.reads > world.flipAfterReads ? `${world.bytes}-flipped` : world.bytes);
+  })
+}));
+vi.mock("../production-control/route", () => ({
+  GET: vi.fn(async () => Response.json({ production: { read: { status: "ok", policy: { desiredState: "inactive" } } } }))
+}));
 vi.mock("../operator-script/route", () => ({
   LIBRARY_PATH: "/library",
   SAFE_ID: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
@@ -54,6 +71,8 @@ vi.mock("../operator-script/route", () => ({
 }));
 
 import { GET, POST } from "./route";
+import { ArcadiaCliError } from "../../../lib/arcadia-cli";
+import { optionFingerprint } from "../../../lib/decision-cards";
 import { DecisionCards } from "../../../components/decision-cards";
 import type { DecisionCardView } from "../../../lib/decision-cards";
 
@@ -93,7 +112,7 @@ function post(body: unknown, init: { origin?: string; contentType?: string; raw?
 }
 
 async function views(): Promise<DecisionCardView[]> {
-  const response = await GET();
+  const response = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Host: "localhost:3000" } }));
   return ((await response.json()) as { cards: DecisionCardView[] }).cards;
 }
 
@@ -101,6 +120,9 @@ beforeEach(() => {
   world.decisions = [decision()];
   world.scripts = [script()];
   world.bytes = "descriptor-v1";
+  world.reads = 0;
+  world.flipAfterReads = Number.POSITIVE_INFINITY;
+  world.openError = null;
   world.approve.mockReset();
   world.launch.mockReset();
   world.approve.mockImplementation(async () => {
@@ -121,13 +143,19 @@ describe("decision cards end to end", () => {
     const html = renderToStaticMarkup(createElement(DecisionCards, { views: list, pendingId: null, outcomes: {}, onPress: () => undefined }));
     expect(html).toContain("The service binds 8080 on the next restart.");
     expect(html).toContain("The service binds 9090 on the next restart.");
-    expect(html).toContain("Decision alpha-0042");
-    expect(html.match(/data-card-id="decision-alpha-0042"/g)).toHaveLength(2);
+    expect(html).toContain("Decision k.alpha.0042");
+    expect(html.match(/data-card-id="decision-k.alpha.0042"/g)).toHaveLength(2);
     const [optionId, fingerprint] = Object.entries(answer!.pressable)[1];
     const response = await POST(post({ cardId: answer!.card.id, fingerprint }));
     expect(response.status).toBe(200);
     expect(world.approve).toHaveBeenCalledTimes(1);
-    expect(world.approve).toHaveBeenCalledWith({ projectSlug: "alpha", decisionId: "0042", answer: "Use 9090" });
+    expect(world.approve).toHaveBeenCalledWith({
+      projectSlug: "alpha",
+      decisionId: "0042",
+      answer: "Use 9090",
+      expectStatus: "open",
+      expectUpdated: "2026-10-13T10:00:00Z"
+    });
     expect(optionId).toBe("option-2");
     // Replay of the same press: the Decision is closed, so it is refused and nothing more is written.
     const replay = await POST(post({ cardId: answer!.card.id, fingerprint }));
@@ -186,7 +214,7 @@ describe("decision cards end to end", () => {
     const crossed = await POST(post({ cardId: a.card.id, fingerprint: b.pressable["option-1"] }));
     expect(crossed.status).toBe(409);
     expect(await crossed.json()).toMatchObject({ reason: "stale_state_hash" });
-    const closed = await POST(post({ cardId: "decision-alpha-0999", fingerprint: a.pressable["option-1"] }));
+    const closed = await POST(post({ cardId: "decision-alpha.0999", fingerprint: a.pressable["option-1"] }));
     expect(closed.status).toBe(404);
     expect(world.approve).not.toHaveBeenCalled();
   });
@@ -240,6 +268,130 @@ describe("decision cards end to end", () => {
     expect(world.approve).toHaveBeenCalledTimes(1);
   });
 
+  it("B1: a Decision with labels that match after case-folding gets no button, a visible refusal, and a refused press", async () => {
+    world.decisions = [
+      decision({
+        options: [
+          { label: "Use 8080", consequence: "Binds 8080.", recommended: true },
+          { label: "use 8080 ", consequence: "Binds 8080 too.", recommended: false }
+        ]
+      })
+    ];
+    const response = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Host: "localhost:3000" } }));
+    const body = (await response.json()) as { cards: DecisionCardView[]; refused: Array<{ id: string; reason: string; message: string }> };
+    expect(body.cards.filter((v) => v.card.verb === "answer")).toHaveLength(0);
+    expect(body.refused).toContainEqual(expect.objectContaining({ id: "decision-k.alpha.0042", reason: "duplicate_option_labels" }));
+    const html = renderToStaticMarkup(createElement(DecisionCards, { views: body.cards, refused: body.refused, pendingId: null, outcomes: {}, onPress: () => undefined }));
+    expect(html).toContain("duplicate_option_labels");
+    expect(html).not.toContain("data-card-id=\"decision-k.alpha.0042\"");
+    const press = await POST(post({ cardId: "decision-k.alpha.0042", fingerprint: `v1|option=option-2|state=${"a".repeat(64)}` }));
+    expect(press.status).toBe(409);
+    expect(await press.json()).toMatchObject({ reason: "duplicate_option_labels" });
+    expect(world.approve).not.toHaveBeenCalled();
+  });
+
+  it("B2: the writer is called with the status and updated preconditions and its refusal is surfaced, nothing else written", async () => {
+    const answer = (await views()).find((v) => v.card.verb === "answer")!;
+    world.approve.mockImplementation(async () => {
+      throw new ArcadiaCliError("DECISION_PRECONDITION_FAILED: changed", 400, { reason: "decision_precondition_failed" });
+    });
+    const response = await POST(post({ cardId: answer.card.id, fingerprint: answer.pressable["option-1"] }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ reason: "decision_precondition_failed" });
+    expect(world.approve).toHaveBeenCalledWith(expect.objectContaining({ expectStatus: "open", expectUpdated: "2026-10-13T10:00:00Z" }));
+    expect(world.launch).not.toHaveBeenCalled();
+  });
+
+  it("B3: a script that is not the derived next action (or is a grant) renders with an Actions link and is refused", async () => {
+    const now = new Date().toISOString();
+    world.scripts = [
+      script({ id: "prereq-check", title: "Prereq check", repeatable: true, lastRunReceipt: { outcome: "succeeded", startedAt: now, finishedAt: now } }),
+      script({ id: "dependent-step", title: "Dependent step", nextAfter: { id: "prereq-check", within_minutes: 60 } }),
+      script({ id: "grant-spend", title: "Grant it", kind: "grant" })
+    ];
+    const list = await views();
+    const byId = (id: string) => list.find((v) => v.card.id === `script-${id}`)!;
+    expect(Object.keys(byId("dependent-step").pressable)).toEqual(["run"]);
+    for (const id of ["prereq-check", "grant-spend"]) {
+      expect(Object.keys(byId(id).pressable)).toEqual([]);
+      expect(byId(id).actionsHref).toBe(`/actions?q=${id}`);
+      const html = renderToStaticMarkup(createElement(DecisionCards, { views: [byId(id)], pendingId: null, outcomes: {}, onPress: () => undefined, verbs: ["run"] }));
+      expect(html).toContain(`href="/actions?q=${id}"`);
+      expect(html).toContain(byId(id).card.options[0].consequence);
+      expect(html).not.toContain("<button");
+      const press = await POST(post({ cardId: byId(id).card.id, fingerprint: optionFingerprint(byId(id).card, "run") }));
+      expect(press.status).toBe(409);
+      expect(await press.json()).toMatchObject({ reason: "off_path_requires_confirmation" });
+    }
+    expect(world.launch).not.toHaveBeenCalled();
+    const ok = await POST(post({ cardId: "script-dependent-step", fingerprint: byId("dependent-step").pressable.run }));
+    expect(ok.status).toBe(200);
+    expect(world.launch).toHaveBeenCalledTimes(1);
+  });
+
+  it("(a) cards for the same decision id in two projects keep distinct ids; hostile slugs cannot collide", async () => {
+    world.decisions = [decision(), decision({ projectSlug: "beta" }), decision({ projectSlug: "a.b", id: "c" }), decision({ projectSlug: "a", id: "b.c" })];
+    const ids = (await views()).filter((v) => v.card.verb === "answer").map((v) => v.card.id);
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  it("(b) a fingerprint captured before a repeatable script ran is stale after it", async () => {
+    world.scripts = [script({ repeatable: true })];
+    const before = (await views()).find((v) => v.card.verb === "run")!;
+    world.scripts = [script({ repeatable: true, state: { status: "succeeded", runId: "run-1", finishedAt: "2026-10-13T11:00:00Z" } })];
+    const after = (await views()).find((v) => v.card.verb === "run")!;
+    expect(after.pressable.run).not.toBe(before.pressable.run);
+    const stale = await POST(post({ cardId: before.card.id, fingerprint: before.pressable.run }));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ reason: "stale_state_hash" });
+    expect(world.launch).not.toHaveBeenCalled();
+  });
+
+  it("(c) the descriptor bytes are re-hashed immediately before launch and a change refuses", async () => {
+    const run = (await views()).find((v) => v.card.verb === "run")!;
+    // The press reads once to regenerate (2 reads per script); the re-check read after that sees changed bytes.
+    world.reads = 0;
+    world.flipAfterReads = 2;
+    const response = await POST(post({ cardId: run.card.id, fingerprint: run.pressable.run }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ reason: "descriptor_changed" });
+    expect(world.launch).not.toHaveBeenCalled();
+  });
+
+  it("(d) an oversized body without a content-length is cut off while streaming", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(1000).fill(97));
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+    const request = new Request("http://localhost:3000/api/decision-card", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Host: "localhost:3000" },
+      body: stream,
+      duplex: "half"
+    } as RequestInit);
+    const response = await POST(request);
+    expect(response.status).toBe(413);
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(20);
+  });
+
+  it("(e) GET refuses cross-origin and never returns raw error text", async () => {
+    const cross = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Origin: "https://evil.example", Host: "localhost:3000" } }));
+    expect(cross.status).toBe(403);
+    world.openError = new Error("ENOENT /Users/secret/path");
+    const response = await GET(new Request("http://localhost:3000/api/decision-card", { headers: { Host: "localhost:3000" } }));
+    const text = await response.text();
+    expect(text).toContain("decisions_unreadable");
+    expect(text).not.toContain("secret");
+  });
+
   it("renders hostile card text as text, and a non-web evidence url as inert text", () => {
     const hostile = "<img src=x onerror=alert(1)>";
     const view: DecisionCardView = {
@@ -258,6 +410,7 @@ describe("decision cards end to end", () => {
       },
       pressable: {},
       notExecutableReason: "none",
+      actionsHref: null,
       duplicates: null
     };
     const html = renderToStaticMarkup(createElement(DecisionCards, { views: [view], pendingId: null, outcomes: {}, onPress: () => undefined }));

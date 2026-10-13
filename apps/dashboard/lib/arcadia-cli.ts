@@ -452,11 +452,16 @@ export async function approveDecision(input: {
   projectSlug: string;
   decisionId: string;
   answer: string;
+  /** Writer preconditions: refused with nothing written unless the Decision still has this status / updated value. */
+  expectStatus?: string;
+  expectUpdated?: string;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
     "--project", input.projectSlug,
-    "--answer", input.answer
+    "--answer", input.answer,
+    ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
+    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : [])
   ], { timeoutMs: 60_000 });
 }
 

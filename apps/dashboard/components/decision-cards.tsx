@@ -1,4 +1,6 @@
-import type { DecisionCardView } from "../lib/decision-cards";
+import type { Approval } from "../lib/approvals";
+import type { DecisionCardRefusalView, DecisionCardView } from "../lib/decision-cards";
+import { TodoCard } from "./todo-card";
 
 export interface CardOutcome {
   ok: boolean;
@@ -14,6 +16,8 @@ export interface DecisionCardsProps {
   /** Keep only cards whose verb is in this list (the /actions page shows run cards). */
   verbs?: ReadonlyArray<string>;
   heading?: string;
+  /** Sources that produced no pressable card; each is shown with its reason. */
+  refused?: ReadonlyArray<DecisionCardRefusalView>;
 }
 
 const VERB_LABEL: Record<string, string> = { answer: "Answer", run: "Run", merge: "Merge", veto: "Veto" };
@@ -29,12 +33,23 @@ function safeHref(url: string | undefined): string | null {
  * pressable option. The button posts only the card id and the option's pinned fingerprint. All card text is rendered
  * as text; nothing here is HTML.
  */
-export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, heading = "Decision cards" }: DecisionCardsProps) {
+export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, heading = "Decision cards", refused = [] }: DecisionCardsProps) {
   const shown = views.filter((view) => verbs === undefined || verbs.includes(view.card.verb));
-  if (shown.length === 0) return null;
+  // Refusals concern Decision cards; the run-card view lists only its own verbs.
+  const refusals = verbs === undefined ? refused : [];
+  if (shown.length === 0 && refusals.length === 0) return null;
   return (
     <section aria-label={heading} className="mb-6" data-testid="decision-cards">
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{heading} ({shown.length})</h2>
+      {refusals.length > 0 ? (
+        <ul className="mb-3 grid gap-2" aria-label="Cards not offered">
+          {refusals.map((entry) => (
+            <li key={`${entry.id}-${entry.reason}`} role="alert" className="rounded-md border border-line bg-panel p-3 text-sm text-red-700" data-testid="card-refusal">
+              Card not offered ({entry.reason}): <span className="break-words">{entry.message}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="grid gap-3">
         {shown.map((view) => {
           const { card } = view;
@@ -88,7 +103,10 @@ export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, head
                   })}
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-muted">{view.notExecutableReason}</p>
+                <p className="mt-3 text-sm text-muted">
+                  {view.notExecutableReason}
+                  {view.actionsHref !== null ? <> <a className="underline" href={view.actionsHref}>Open it on the Actions page</a></> : null}
+                </p>
               )}
               {outcome ? (
                 <p role={outcome.ok ? "status" : "alert"} className={`mt-2 text-sm ${outcome.ok ? "text-moss" : "text-red-700"}`}>
@@ -100,5 +118,26 @@ export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, head
         })}
       </div>
     </section>
+  );
+}
+
+/**
+ * The to-do rows of Decisions that have a pressable card, kept (collapsed, read-only) under the cards so their
+ * stale and gate information is never lost and nothing here can answer the Decision a second way.
+ */
+export function DecisionRecordsUnderCards({ approvals }: { approvals: ReadonlyArray<Approval> }) {
+  if (approvals.length === 0) return null;
+  return (
+    <details className="mb-6" data-testid="decision-records">
+      <summary className="cursor-pointer text-sm font-semibold text-muted">Decision records for the cards above ({approvals.length})</summary>
+      <div className="mt-2 grid gap-3">
+        {approvals.map((approval) => (
+          <div key={`${approval.project}:${approval.id}`}>
+            <TodoCard approval={{ ...approval, readOnly: true }} expanded={false} pendingId={null} onAct={() => undefined} />
+            {approval.gateQuestion ? <p className="mt-1 break-words text-xs text-muted">Gate: {approval.gateQuestion}</p> : null}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

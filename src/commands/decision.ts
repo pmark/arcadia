@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
-import { projectNotFound, validationError } from "../cli/errors.js";
+import { decisionPreconditionFailed, projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
@@ -148,6 +148,10 @@ export interface DecisionApproveOptions {
   dryRun?: boolean;
   /** Idempotency key for the deferral's pointer transition; derived when omitted. */
   requestId?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless the Decision currently has this status. */
+  expectStatus?: string;
+  /** Refuse (decision_precondition_failed, nothing written) unless the Decision's `updated` field equals this. */
+  expectUpdated?: string;
   /** The caller already holds a capture id for this answer; no new envelope is made. */
   captureId?: string | null;
 }
@@ -255,6 +259,9 @@ export function prepareDecisionAnswer(
     answer: string;
     status?: DecisionDocStatus;
     decided?: string;
+    /** Optional caller precondition on the Decision as it is now; unset means no check (existing behaviour). */
+    expectStatus?: string;
+    expectUpdated?: string;
   }
 ): PreparedDecisionAnswer {
   const recorded = input.answer.trim();
@@ -283,6 +290,20 @@ export function prepareDecisionAnswer(
   const relativePath = path.relative(repoRoot, absolutePath);
   const { doc: existingDoc } = parseDoc(relativePath, absolutePath, before);
   const decisionDoc = existingDoc && existingDoc.type === "decision" ? existingDoc : null;
+
+  // Precondition: what the caller was shown must still be what is on disk, or nothing is written.
+  if (input.expectStatus !== undefined && (decisionDoc === null || decisionDoc.status !== input.expectStatus)) {
+    throw decisionPreconditionFailed(
+      `The Decision is not ${input.expectStatus} (it is ${decisionDoc?.status ?? "unreadable"}); nothing was written.`,
+      { decision: input.decisionRef, expected: input.expectStatus, actual: decisionDoc?.status ?? null, field: "status" }
+    );
+  }
+  if (input.expectUpdated !== undefined && (decisionDoc === null || String(decisionDoc.updated) !== input.expectUpdated)) {
+    throw decisionPreconditionFailed(
+      "The Decision changed after it was shown (its updated field differs); nothing was written.",
+      { decision: input.decisionRef, expected: input.expectUpdated, actual: decisionDoc === null ? null : String(decisionDoc.updated), field: "updated" }
+    );
+  }
 
   // A Decision that offered specific options records one of them, verbatim —
   // not a paraphrase that happens to mean the same thing. This is what makes
@@ -355,7 +376,9 @@ function applyDecisionApprove(
       decisionRef: options.id,
       answer: options.answer,
       status,
-      decided: options.decided
+      decided: options.decided,
+      expectStatus: options.expectStatus,
+      expectUpdated: options.expectUpdated
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
     reply.entityId = prepared.decisionId ?? relativePath;

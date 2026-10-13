@@ -32,6 +32,10 @@ export type CardPressRefusalReason =
   | "option_not_executable_here"
   | "already_in_progress"
   | "source_unavailable"
+  | "duplicate_option_labels"
+  | "off_path_requires_confirmation"
+  | "descriptor_changed"
+  | "decision_precondition_failed"
   | "write_refused";
 
 export interface CardPressRefusal {
@@ -157,12 +161,49 @@ export interface DecisionCardView {
   notExecutableReason: string | null;
   /** Non-authoritative display metadata used to hide the same item's older to-do row. */
   duplicates: { kind: "decision"; project: string; id: string } | null;
+  /** Where the existing confirmation flow for a script that is not next lives; null otherwise. */
+  actionsHref: string | null;
+}
+
+/** A source that produced no pressable card, shown so the operator sees why (never silently dropped). */
+export interface DecisionCardRefusalView {
+  id: string;
+  reason: string;
+  message: string;
+}
+
+/** The writer matches an answer to the FIRST option whose label is equal after trim and case-fold. */
+export const normalizeOptionLabel = (label: string): string => label.trim().toLowerCase();
+
+export function hasDuplicateOptionLabels(labels: ReadonlyArray<string>): boolean {
+  return new Set(labels.map(normalizeOptionLabel)).size !== labels.length;
+}
+
+/**
+ * Injective, grammar-safe card-id component: ASCII letters and digits stay, "-" stays except first, everything else
+ * (including "_" and ".") becomes "_" plus the byte's two hex digits. Components are joined with ".", which is
+ * always escaped inside a component, so two distinct (project, decision) pairs can never share an id.
+ */
+export function encodeIdPart(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let out = "";
+  bytes.forEach((byte, index) => {
+    const ch = String.fromCharCode(byte);
+    const plain = byte < 128 && (/[A-Za-z0-9]/.test(ch) || (ch === "-" && index > 0));
+    out += plain ? ch : `_${byte.toString(16).padStart(2, "0")}`;
+  });
+  return out;
+}
+
+export function decisionCardKey(projectSlug: string, decisionId: string): string {
+  // The literal "k" component keeps the key starting with a letter (the card-id grammar) without breaking injectivity.
+  return `k.${encodeIdPart(projectSlug)}.${encodeIdPart(decisionId)}`;
 }
 
 /** Server-side only: what a card's source is, so the route can act on it. Never sent to the browser. */
 export type CardTarget =
-  | { kind: "decision"; projectSlug: string; decisionId: string; labels: string[] }
-  | { kind: "script"; scriptId: string }
+  | { kind: "decision"; projectSlug: string; decisionId: string; labels: string[]; status: string; updated: string }
+  | { kind: "script"; scriptId: string; eligible: boolean; confirmation: string | null }
   | { kind: "pull-request" };
 
 /**
@@ -172,12 +213,24 @@ export type CardTarget =
  */
 export function executableOptions(card: Pick<DecisionCard, "verb" | "options">, target: CardTarget | undefined): string[] {
   if (target === undefined) return [];
-  if (card.verb === "answer" && target.kind === "decision") return card.options.map((option) => option.id);
-  if (card.verb === "run" && target.kind === "script") return card.options.some((option) => option.id === "run") ? ["run"] : [];
+  if (card.verb === "answer" && target.kind === "decision") {
+    // The writer takes the first label match, so a repeated label could answer a different option than the one shown.
+    return hasDuplicateOptionLabels(target.labels) ? [] : card.options.map((option) => option.id);
+  }
+  if (card.verb === "run" && target.kind === "script") {
+    if (!target.eligible) return [];
+    return card.options.some((option) => option.id === "run") ? ["run"] : [];
+  }
   return [];
 }
 
-export function notExecutableMessage(card: Pick<DecisionCard, "verb">): string {
+export function notExecutableMessage(card: Pick<DecisionCard, "verb">, target?: CardTarget): string {
+  if (target?.kind === "decision" && hasDuplicateOptionLabels(target.labels)) {
+    return "Two options share a label (duplicate_option_labels), so an answer could land on the wrong one; answer it from the to-do row below.";
+  }
+  if (target?.kind === "script" && !target.eligible) {
+    return target.confirmation ?? "This script is not the next operator action; confirm and run it from the Actions page.";
+  }
   if (card.verb === "merge") return "Merging is done by the batch-merge operator script, not from this page; read the card there.";
   if (card.verb === "veto") return "A veto has no writer on this page; nothing here can press it.";
   return "This card cannot be executed from this page.";
@@ -192,8 +245,29 @@ export function toCardViews(cards: ReadonlyArray<DecisionCard>, targets: Readonl
     return {
       card,
       pressable,
-      notExecutableReason: ids.length > 0 ? null : notExecutableMessage(card),
-      duplicates: target?.kind === "decision" ? { kind: "decision", project: target.projectSlug, id: target.decisionId } : null
+      notExecutableReason: ids.length > 0 ? null : notExecutableMessage(card, target),
+      duplicates: target?.kind === "decision" ? { kind: "decision", project: target.projectSlug, id: target.decisionId } : null,
+      actionsHref: target?.kind === "script" && !target.eligible ? `/actions?q=${encodeURIComponent(target.scriptId)}` : null
     };
   });
+}
+
+/**
+ * Split the to-do rows: a Decision with a pressable card is shown under its card (collapsed, read-only, with its stale
+ * and gate information intact); every other row, including a Decision whose card is stale, refused or unavailable,
+ * stays in the list exactly as before.
+ */
+export function splitLegacyDecisions<T extends { kind: string; project: string; id: string }>(
+  approvals: ReadonlyArray<T>,
+  views: ReadonlyArray<Pick<DecisionCardView, "duplicates" | "pressable">>
+): { remaining: T[]; underCards: T[] } {
+  const covered = new Set(
+    views.flatMap((view) => (view.duplicates !== null && Object.keys(view.pressable).length > 0 ? [`${view.duplicates.project}:${view.duplicates.id}`] : []))
+  );
+  const remaining: T[] = [];
+  const underCards: T[] = [];
+  for (const approval of approvals) {
+    (approval.kind === "decision" && covered.has(`${approval.project}:${approval.id}`) ? underCards : remaining).push(approval);
+  }
+  return { remaining, underCards };
 }

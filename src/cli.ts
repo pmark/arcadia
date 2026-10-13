@@ -2237,6 +2237,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--status <status>", "open, approved, rejected, or deferred", "approved")
       .option("--dry-run", "Report the consequence the answer would apply without writing anything")
       .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
+      .option("--expect-status <status>", "Refuse, writing nothing, unless the Decision currently has this status")
+      .option("--expect-updated <value>", "Refuse, writing nothing, unless the Decision's updated field equals this")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
@@ -2246,6 +2248,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     status?: string;
     dryRun?: boolean;
     requestId?: string;
+    expectStatus?: string;
+    expectUpdated?: string;
     json?: boolean;
   }) =>
     runCliAction(
@@ -2259,7 +2263,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         decided: options.decided,
         status: options.status as never,
         dryRun: options.dryRun,
-        requestId: options.requestId
+        requestId: options.requestId,
+        expectStatus: options.expectStatus,
+        expectUpdated: options.expectUpdated
       }),
       renderDecisionApproveSuccess
     )

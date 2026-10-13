@@ -319,6 +319,62 @@ describe("decision approve", () => {
     ).toThrow(/No decision file matches/);
   });
 
+  describe("preconditions (--expect-status / --expect-updated)", () => {
+    function seeded() {
+      const world = workspaceWithProject();
+      runDecisionNewCommand({
+        workspace: world.workspace,
+        project: world.projectSlug,
+        slug: "pick-one",
+        question: "Merge now or hold?",
+        options: [
+          { label: "Merge now", consequence: "Ships immediately.", recommended: true },
+          { label: "Hold", consequence: "Delays the fix by a day." }
+        ]
+      });
+      const file = path.join(world.repoRoot, "docs/decisions/0001-pick-one.md");
+      const listed = runDecisionListCommand({ workspace: world.workspace, project: world.projectSlug });
+      return { ...world, file, updated: listed.data.decisions[0].updated };
+    }
+    const refusal = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (error) {
+        return error as { code?: string; details?: { reason?: string } };
+      }
+      throw new Error("expected a refusal");
+    };
+
+    it("applies when the Decision is still open and its updated field matches", () => {
+      const { workspace, projectSlug, file, updated } = seeded();
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Hold", expectStatus: "open", expectUpdated: updated });
+      expect(readFileSync(file, "utf8")).toContain("status: approved");
+    });
+
+    it("refuses, writing nothing, when the Decision was answered meanwhile", () => {
+      const { workspace, projectSlug, file, updated } = seeded();
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Hold" });
+      const before = readFileSync(file, "utf8");
+      const error = refusal(() =>
+        runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Merge now", expectStatus: "open", expectUpdated: updated })
+      );
+      expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
+      expect(error.details?.reason).toBe("decision_precondition_failed");
+      expect(readFileSync(file, "utf8")).toBe(before);
+    });
+
+    it("refuses, writing nothing, when the Decision was edited after it was shown", () => {
+      const { workspace, projectSlug, file, updated } = seeded();
+      const edited = readFileSync(file, "utf8").replace(`updated: ${updated}`, "updated: 2020-01-01").replace("Merge now", "Merge later");
+      writeFileSync(file, edited, "utf8");
+      const error = refusal(() =>
+        runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Hold", expectStatus: "open", expectUpdated: updated })
+      );
+      expect(error.code).toBe("DECISION_PRECONDITION_FAILED");
+      expect(readFileSync(file, "utf8")).toBe(edited);
+    });
+  });
+
   it("accepts an option's label as the answer, case-insensitively, and records it verbatim", () => {
     const { workspace, repoRoot, projectSlug } = workspaceWithProject();
     runDecisionNewCommand({
