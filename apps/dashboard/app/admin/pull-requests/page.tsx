@@ -126,8 +126,8 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
             <ReadinessBadge readiness={pullRequest.readiness} label={pullRequest.readinessLabel} />
           </div>
           <p className="mt-3 text-sm">CI: {checkCounts}</p>
-          <PullRequestDetailsPanel key={`${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
-          <PullRequestAudio key={`${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
+          <PullRequestDetailsPanel key={`details:${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
+          <PullRequestAudio key={`audio:${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             {pullRequest.isDraft ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> Draft</span> : null}
 
