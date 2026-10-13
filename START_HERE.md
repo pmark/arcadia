@@ -1,5 +1,37 @@
 # Arcadia: Start Here
 
+## Governed specialist roles
+
+Read the seven canonical roles and render a bounded brief from the repository:
+
+```sh
+node --import tsx src/cli.ts roles --json
+node --import tsx src/cli.ts roles show researcher
+node --import tsx src/cli.ts role brief --role researcher --agent codex --tier light --specialization 'database migration research'
+```
+
+For an existing Action add `--action '<plan-slug>#<action-id>'` and optionally
+`--repo <repository>`. `--json` returns a structured brief. These commands make
+no model calls, write no workspace state and do not claim or admit a Session.
+The tier selects the displayed model/identity; it does not change the running
+agent. Unknown roles and unsafe specialization labels fail.
+
+The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
+`config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
+`roles` object keyed by registered ID, with only `default_tier` and
+`default_effort` patches; authority fields cannot be overridden. For example:
+`{"schema":"arcadia-agent-roles-v1","roles":{"researcher":{"default_tier":"standard"}}}`.
+Pass `--workspace` or let Arcadia resolve its configured workspace; never infer
+one from a Project slug. Model bindings use the existing coding-agent-models
+registry. Action launch briefs include the canonical Lead charter, preserving
+existing launcher ownership and native-app Lead/Driver constraints.
+
+Use the repository's [shared role skill](.agents/skills/arcadia-role/SKILL.md) and
+[supervisor skill](.agents/skills/arcadia-supervisor/SKILL.md) for the common protocol and assigned
+supervision. Supervisor event automation, enforced caps and `arcadia bug` remain
+unavailable; the installed release-manager skill remains usable.
+
+
 Local browser measurements currently fail closed under `arcadia-unattended`.
 The [inactive Docker audit preparation](docs/reports/issue-847-container-route-2026-10-02.md)
 has real synthetic Lighthouse and containment evidence. Installation does not
