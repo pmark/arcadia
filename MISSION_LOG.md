@@ -2428,3 +2428,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The validator rejects a card with a missing consequence, missing pins or an unknown verb, and rejects a stale pin (state hash, head sha or preview fingerprint) at use time."; "Fixtures exist for the merge, run and answer verbs and each validates."; "A card carries a policy_match field that is null or a policy id and an expiry that the validator enforces."; "Focused tests pass and the dashboard import graph has no containerAuditTransport or commander edge.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-decision-card-contract-2026-10-12).
+
+## 2026-10-13 — Completed arcadia/batch-merge-decision-card
+
+- **Did:** Completed Action arcadia/batch-merge-decision-card from accepted evidence (Candidate a6d11b59f367da8b6f32dd5c9f997b67072a589b).
+- **Result:** Every declared acceptance criterion was accepted as met: "Each listed pull request shows the authority boundary its diff touches from a path-based classifier, the independent review verdict, the required checks and a one-sentence consequence, and the card orders stacked pull requests base first.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/wire-the-batch-merge-card-route, arcadia/publish-the-batch-merge-descriptor-and immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-batch-merge-decision-card-2026-10-13).
