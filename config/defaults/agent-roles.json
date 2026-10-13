@@ -1,0 +1,119 @@
+{
+  "schema": "arcadia-agent-roles-v1",
+  "session_start_role": "lead",
+  "roles": [
+    {
+      "id": "lead",
+      "purpose": "Hold the development attempt, do routine work, request bounded help, integrate and settle.",
+      "attempt_role": "development",
+      "identity_role": "builder",
+      "mutates": true,
+      "may_delegate": true,
+      "allowed_delegate_roles": [
+        "planner",
+        "plan-critic",
+        "implementer",
+        "researcher"
+      ],
+      "max_delegation_depth": 1,
+      "supervisor": "project-supervisor",
+      "default_tier": "light",
+      "default_effort": "e1_brief",
+      "independent_session": false,
+      "allowed_independent_request_roles": [
+        "code-reviewer",
+        "qa"
+      ]
+    },
+    {
+      "id": "planner",
+      "purpose": "Design a proposed Plan and return planning evidence.",
+      "attempt_role": "planner",
+      "identity_role": "builder",
+      "mutates": false,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "lead",
+      "default_tier": "heavy",
+      "default_effort": "e3_deep",
+      "independent_session": false,
+      "allowed_independent_request_roles": []
+    },
+    {
+      "id": "plan-critic",
+      "purpose": "Independently critique a proposed Plan.",
+      "attempt_role": "critique",
+      "identity_role": "critic",
+      "mutates": false,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "lead",
+      "default_tier": "standard",
+      "default_effort": "e3_deep",
+      "independent_session": false,
+      "allowed_independent_request_roles": []
+    },
+    {
+      "id": "implementer",
+      "purpose": "Implement the assigned bounded change as the sole development writer.",
+      "attempt_role": "development",
+      "identity_role": "builder",
+      "mutates": true,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "lead",
+      "default_tier": "standard",
+      "default_effort": "e2_standard",
+      "independent_session": false,
+      "allowed_independent_request_roles": []
+    },
+    {
+      "id": "code-reviewer",
+      "purpose": "Independently review the current candidate revision.",
+      "attempt_role": "code-review",
+      "identity_role": "critic",
+      "mutates": false,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "project-supervisor",
+      "default_tier": "standard",
+      "default_effort": "e3_deep",
+      "independent_session": true,
+      "allowed_independent_request_roles": []
+    },
+    {
+      "id": "qa",
+      "purpose": "Independently verify acceptance evidence.",
+      "attempt_role": "qa",
+      "identity_role": "critic",
+      "mutates": false,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "project-supervisor",
+      "default_tier": "standard",
+      "default_effort": "e3_deep",
+      "independent_session": true,
+      "allowed_independent_request_roles": []
+    },
+    {
+      "id": "researcher",
+      "purpose": "Investigate read-only and return sources, findings and uncertainty.",
+      "attempt_role": null,
+      "identity_role": "builder",
+      "mutates": false,
+      "may_delegate": false,
+      "allowed_delegate_roles": [],
+      "max_delegation_depth": 0,
+      "supervisor": "lead",
+      "default_tier": "light",
+      "default_effort": "e1_brief",
+      "independent_session": false,
+      "allowed_independent_request_roles": []
+    }
+  ]
+}

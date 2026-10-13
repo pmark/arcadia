@@ -17,8 +17,8 @@ export function PullRequestLinkAudio({ refreshToken = 0 }: { refreshToken?: numb
 
   return (
     <section className="rounded-md border border-line bg-panel p-4" aria-label="Listen to a PR by link">
-      <h2 className="text-base font-semibold">Listen to a PR by link</h2>
-      <p className="mt-1 text-xs text-muted">Includes merged PRs in configured repositories. Only the description is read.</p>
+      <h2 className="text-base font-semibold">Read or listen to a PR TLDR</h2>
+      <p className="mt-1 text-xs text-muted">Includes merged PRs in configured repositories. TLDR generation is explicit; playback and MP3 downloads contain only that TLDR.</p>
       <form className="mt-3 flex flex-wrap gap-2" onSubmit={event => {
         event.preventDefault();
         const target = parsePullRequestUrl(input);
