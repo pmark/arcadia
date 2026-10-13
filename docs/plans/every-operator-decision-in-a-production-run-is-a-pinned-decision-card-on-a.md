@@ -265,6 +265,24 @@ actions:
     depends_on: [cards-from-existing-sources, batch-merge-decision-card]
     decisions: []
     references: ["src/decisions/cardSources.ts", "src/decisions/batchMerge.ts", "src/commands/todo.ts", "docs/strategy/autonomous-production-strategy.md"]
+  - id: ledger-rows-without-merge-conflicts
+    title: Make ledger rows, friction rows and hand-off updates one file per entry so parallel pull requests never conflict.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make ledger rows, friction rows and hand-off updates one file per entry so parallel pull requests never conflict.
+    expected_artifact: Evidence satisfying Agent Ask ledger-rows-without-merge-conflicts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-ledger-rows-without-merge-conflicts-2026-10-13
+    acceptance_criteria:
+      - A reader returns the legacy session-ledger.jsonl rows first and then the files under docs/reports/session-ledger/ sorted by name, and the validator, check script and qa command use it, with session_id uniqueness enforced across both sources and errors that name the file.
+      - Two branches from one base that each add a session row, a friction entry and a hand-off update merge in either order with no conflict, proven by a scripted git merge-tree test.
+      - The duplicated friction row numbers are renamed in the frozen table, new frictions and hand-offs are created as one file each with a slug or session id, and a CI check fails any diff that appends to a frozen file.
+      - The guidance that tells sessions where to record a ledger row, friction and hand-off names the new locations, qa returns the same linked rows for every existing session before and after, and focused tests pass.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/session-ledger.jsonl", "scripts/check-session-ledger.ts", "src/reports/sessionLedger.ts", "src/commands/qa.ts", "docs/reports/production-simulation-living-notes.md", "docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/native-app-sessions.md"]
 questions: []
 decisions: []
 current_action: delegation-policy-records
