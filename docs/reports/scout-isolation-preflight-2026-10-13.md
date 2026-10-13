@@ -15,7 +15,7 @@ records are retained separately, with no false role or lineage claim.
 
 ## What ran and what it proves
 
-At committed code revision `9e4f9d3c47dac751368bd58ba9fc1a81a6f3fb00`, Node
+At committed code revision `0dbe1b823070ba9f9eac12dbb97d1eb93779ddc5`, Node
 22.23.1 replayed a copy of the original evidence and verified all 48 manifest
 entries. The replay made zero model/provider calls. This excludes development
 inference by the Lead/delegates; their total tokens are unavailable.
@@ -43,13 +43,13 @@ hashes qualifies as a content-proven exception; output contains hashes, never
 config text. Arbitrary approval strings and a fresh baseline cannot clear the
 known historical hold. This first slice does not consume or approve Decisions.
 
-The CLI requires explicit evidence, workspace and output paths, Node 22 and a
+The CLI requires a trusted manifest SHA pin, coverage for every consumed file, explicit evidence/workspace/output paths, Node 22 and a
 clean source checkout; it reads no host config and launches no worker/provider.
-It reports the future requested builder pin separately from zero actual replay
+It invokes the held-scout observation evaluator with the actual saved before snapshot and an explicitly missing after snapshot; it neither invents an after state nor implements Decision consumption. It reports the future requested builder pin separately from zero actual replay
 invocations. It cannot admit a Session. The retained evidence is copied for the
 replay, and original files are not overwritten.
 
-The Implementer's and Supervisor's focused tests passed 23 cases; touched-file
+The Implementer's and Supervisor's focused tests passed 29 cases; touched-file
 ESLint and TypeScript checks passed. Negative cases include scope traversal,
 malformed snapshots, added trust fields, stale/missing hold evidence, arbitrary
 approval text, changed protected state and altered saved packet facts. Required
@@ -76,3 +76,17 @@ summary, confirm **No/blocked** and zero replay calls, inspect the hold negative
 cases, and verify the exact-head independent review and all seven CI checks.
 Do not start production or a new scout as QA for this change. The full replay
 is private agent evidence; operator progress does not require a host command.
+
+
+## Independent review corrections
+
+The first separate code-reviewer and QA Sessions found manifest coverage,
+malformed-input and unconditional source-history problems. The corrective pass
+adds a trusted whole-manifest digest pin and required-file coverage, typed
+sanitized blocked receipts, and derived source-history assertions. The
+observation evaluator now has only a blocked outcome, clearly states that hold
+resolution is unimplemented, and is invoked by the CLI. Missing after-state
+proof is explicit. A receipt path mismatch was removed. Fresh source tests,
+lint, build and the 48-file replay pass after correction; the PR records the
+second independent verdicts and exact-head CI. Overall Action acceptance stays
+blocked, irrespective of whether the partial code slice is acceptable.
