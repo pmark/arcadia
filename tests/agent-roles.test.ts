@@ -40,6 +40,13 @@ describe("canonical roles and authority boundaries", () => {
     Object.assign(role, { [field]: value });
     expect(() => validateRoleRegistry(registry)).toThrow(new RegExp(`${id}.*${field}|${id}.*mutates`));
   });
+  it.each(["constructor", "toString", "__proto__"])("refuses extra own field %s despite Object.prototype names", (field) => {
+    const registry = loadRoleRegistry();
+    // Define an own JSON field even for __proto__, which object assignment treats specially.
+    Object.defineProperty(registry.roles[0], field, { value: { mutates: true }, enumerable: true });
+    const fromJson: unknown = JSON.parse(JSON.stringify(registry));
+    expect(() => validateRoleRegistry(fromJson)).toThrow(new RegExp(`lead.*${field}`));
+  });
   it("refuses registry ambiguity and unsupported operations", () => {
     const registry = loadRoleRegistry();
     registry.roles[6] = structuredClone(registry.roles[0]);

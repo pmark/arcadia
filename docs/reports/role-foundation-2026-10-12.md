@@ -171,3 +171,36 @@ now distinguishes configured/installed `arcadia` for adopters from the shown
 `node --import tsx src/cli.ts` source-checkout examples. Both exact system skill
 validators again report “Skill is valid!” using the parent's temporary PyYAML
 path. No installation/adoption change was made.
+
+Final public-base four-file verification: **4 files, 69 tests passed**, exit 0;
+35.02 seconds, raw output `/private/tmp/role-foundation-public-base-final.txt`.
+The focused command is the same four-file command recorded above. Diff whitespace
+check remains clean. Engineer is terminal after this bounded repair; delivery and
+independent review remain parent-owned.
+
+## Independent review and delivery
+
+Round 1 independently reviewed `55f4a73ecb1ed7afac31fa2098a52b6ca971e658`
+from a frozen archive: no blocking findings, 69 focused tests passed. Its three
+forward scenarios preserved researcher permissions despite a production label,
+refused to infer release or resume a paused timer from idle status, and kept
+missing mandatory browser proof unproved despite merged PRs. The reviewer
+found no new authority grant in this implementation.
+
+One nonblocking finding was repaired: strict field validation now uses
+`Object.hasOwn` and refuses extra own `constructor`, `toString` and `__proto__`
+keys. JSON round-trip regression tests preserve otherwise valid rows and prove
+each refusal. The repaired role suite passed 25 tests; touched-file lint, core
+TypeScript and diff whitespace checks exited 0. A fresh round-2 reviewer was
+started for the final delta; its pinned-head verdict and remote CI are delivery
+gates recorded in PR #1342, not asserted here as passed in advance. The session
+ledger counts the two initiated independent review rounds, with unmeasured
+model/token/time fields left unknown or null. Its complete outcome denotes
+implementation handoff to that PR, not governed Action or Milestone acceptance.
+
+PR: https://github.com/pmark/arcadia/pull/1342. CodeRabbit is rate limited and
+was not awaited. No external review comment or Discord lifecycle notification
+was sent: host automatic approval review rejected those messaging operations.
+The explicit approved ping Decision 0084 was checked before one retry, which
+was also rejected because repository Decisions were not accepted as trusted
+messaging authorization. No alternate messaging route was used.

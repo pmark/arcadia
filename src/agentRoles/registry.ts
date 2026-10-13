@@ -61,7 +61,7 @@ export function validateRoleRegistry(value: unknown): RoleRegistry {
     if (row.supervisor !== (id === "lead" || independent ? "project-supervisor" : "lead")) fail(id, "supervisor");
     if (JSON.stringify(row.allowed_independent_request_roles) !== JSON.stringify(id === "lead" ? ["code-reviewer", "qa"] : [])) fail(id, "allowed_independent_request_roles");
     if (JSON.stringify(row.allowed_delegate_roles) !== JSON.stringify(id === "lead" ? ["planner", "plan-critic", "implementer", "researcher"] : [])) fail(id, "allowed_delegate_roles");
-    for (const key of Object.keys(row)) if (!(key in canonical)) fail(id, key);
+    for (const key of Object.keys(row)) if (!Object.hasOwn(canonical, key)) fail(id, key);
     if (row.attempt_role !== null && !(SESSION_ATTEMPT_ROLES as readonly unknown[]).includes(row.attempt_role)) fail(id, "attempt_role");
     if (row.mutates && row.attempt_role !== "development") fail(id, "mutates");
     if (row.mutates && row.identity_role === "critic") fail(id, "identity_role");
