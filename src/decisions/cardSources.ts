@@ -217,6 +217,12 @@ function snapshot(value: unknown, depth: number, budget: { n: number }): unknown
   throw new Unreadable("an unsupported value type is present");
 }
 
+/**
+ * The machine effects a Decision option may carry. Copied, not imported, to keep
+ * this module's import graph minimal; a test fails if docs/types.ts drifts.
+ */
+const KNOWN_OPTION_EFFECTS: readonly string[] = ["defer"];
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.replace(/[\s\p{Cf}\p{Cc}]/gu, "") !== "";
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -283,7 +289,12 @@ function buildDecision(raw: unknown, expires: string): Built {
       return refuse(`decision-${id}`, "text_too_long", `option ${i + 1} text exceeds its limit; refused, not truncated.`);
     }
     const effect = o.effect ?? null;
-    if (effect !== null && !nonEmpty(effect)) return refuse(`decision-${id}`, "bad_source", `option ${i + 1} effect must be a non-empty string or absent`);
+    if (effect !== null && (typeof effect !== "string" || !KNOWN_OPTION_EFFECTS.includes(effect))) {
+      return refuse(`decision-${id}`, "bad_source", `option ${i + 1} effect is not a known Decision option effect.`);
+    }
+    if (o.consequence.includes("[effect:")) {
+      return refuse(`decision-${id}`, "bad_source", `option ${i + 1} consequence contains the reserved text "[effect:", which the card renders itself.`);
+    }
     // What the operator reads is what the pin binds: the machine effect is rendered.
     const shown = effect === null ? o.consequence : `${o.consequence} [effect: ${effect}]`;
     if (overLimit(shown, DECISION_CARD_LIMITS.consequence)) {
@@ -414,11 +425,26 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
     return refuse(cardId, "files_incomplete", "changedFiles must be a safe integer equal to the listed files; the diff may be truncated, so its boundaries cannot be named.");
   }
   const names: Array<{ filename: string; previous: string | null }> = [];
+  const seenNames = new Set<string>();
+  const seenPrevious = new Set<string>();
   for (const f of raw.files) {
     const parsed = fileNames(f);
     if (parsed === null) return refuse(cardId, "bad_source", "a PR file entry is not a path or {filename, previous_filename}");
     if (parsed.filename.length > CARD_SOURCE_LIMITS.maxPathLength || (parsed.previous?.length ?? 0) > CARD_SOURCE_LIMITS.maxPathLength) {
       return refuse(cardId, "text_too_long", "a PR file path exceeds the path limit.");
+    }
+    // A real file list has unique paths; a repeat could pad the count to hide a truncation.
+    const folded = parsed.filename.toLowerCase().normalize("NFKC");
+    if (seenNames.has(folded)) {
+      return refuse(cardId, "files_incomplete", "the file list repeats a path, so changedFiles does not prove the list is complete.");
+    }
+    seenNames.add(folded);
+    if (parsed.previous !== null) {
+      const prev = parsed.previous.toLowerCase().normalize("NFKC");
+      if (seenPrevious.has(prev)) {
+        return refuse(cardId, "files_incomplete", "the file list repeats a previous path, so changedFiles does not prove the list is complete.");
+      }
+      seenPrevious.add(prev);
     }
     names.push(parsed);
   }
@@ -486,6 +512,21 @@ function buildPr(raw: unknown, repo: string, expires: string): Built {
   };
 }
 
+/** Label for a refusal only: never trusted, never used in a card. */
+function bestEffortId(raw: unknown): string | null {
+  try {
+    if (!isRecord(raw)) return null;
+    const inner = raw.decision ?? raw.script ?? raw.pr;
+    if (!isRecord(inner)) return null;
+    const maybe = isRecord(inner.descriptor) ? inner.descriptor.id : (inner.id ?? inner.number);
+    if (typeof maybe === "string" && ID_RE.test(maybe)) return maybe;
+    if (typeof maybe === "number" && Number.isSafeInteger(maybe)) return String(maybe);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------- generation ------------------------------ */
 
 /**
@@ -498,18 +539,23 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
     out.refusals.push({ index: -1, sourceKind: null, sourceId: null, code: "bad_input", message });
     return out;
   };
-  let snap: { sources: unknown[]; expires: unknown; repo: unknown };
+  let snap: { sources: unknown[]; expires: unknown; repo: unknown; total: number };
   let nowMs = Number.NaN;
   try {
     // One read of `now`, through the intrinsic: a Proxy or subclass trick refuses, never throws.
     nowMs = Date.prototype.getTime.call(input?.now);
-    const shot = snapshot(
-      { sources: input?.sources, expires: input?.expires, repo: input?.repo },
-      0,
-      { n: 0 },
-    ) as { sources: unknown; expires: unknown; repo: unknown };
-    if (!Array.isArray(shot.sources)) return bad("sources must be a list");
-    snap = { sources: shot.sources, expires: shot.expires, repo: shot.repo };
+    const shot = snapshot({ expires: input?.expires, repo: input?.repo }, 0, { n: 0 }) as {
+      expires: unknown;
+      repo: unknown;
+    };
+    // The list itself is read once; each element is snapshotted on its own below,
+    // so one hostile source refuses only itself.
+    const list: unknown = input?.sources;
+    if (!Array.isArray(list)) return bad("sources must be a list");
+    const length = list.length;
+    const taken: unknown[] = [];
+    for (let i = 0; i < Math.min(length, CARD_SOURCE_LIMITS.maxSources); i++) taken.push(list[i]);
+    snap = { sources: taken, expires: shot.expires, repo: shot.repo, total: length };
   } catch (error) {
     return bad(error instanceof Unreadable ? error.message : "input could not be read safely (is now a real Date?)");
   }
@@ -519,22 +565,34 @@ export function generateCardsFromSources(input: GenerateCardsInput): CardGenerat
   if (!isRepoSlug(repo)) return bad("repo must be owner/name");
   const now = new Date(nowMs);
 
-  let sources = snap.sources;
-  if (sources.length > CARD_SOURCE_LIMITS.maxSources) {
+  const sources = snap.sources;
+  if (snap.total > CARD_SOURCE_LIMITS.maxSources) {
     out.truncated = true;
     out.refusals.push({
       index: CARD_SOURCE_LIMITS.maxSources,
       sourceKind: null,
       sourceId: null,
       code: "source_limit",
-      message: `${sources.length - CARD_SOURCE_LIMITS.maxSources} sources beyond the ${CARD_SOURCE_LIMITS.maxSources} limit were not read.`,
+      message: `${snap.total - CARD_SOURCE_LIMITS.maxSources} sources beyond the ${CARD_SOURCE_LIMITS.maxSources} limit were not read.`,
     });
-    sources = sources.slice(0, CARD_SOURCE_LIMITS.maxSources);
   }
 
   const seen = new Map<string, { stateKey: string }>();
   const conflicted = new Set<string>();
-  sources.forEach((src, index) => {
+  sources.forEach((rawSrc, index) => {
+    let src: unknown;
+    try {
+      src = snapshot(rawSrc, 0, { n: 0 });
+    } catch (error) {
+      out.refusals.push({
+        index,
+        sourceKind: null,
+        sourceId: bestEffortId(rawSrc),
+        code: "unreadable_source",
+        message: `source ${index} could not be read safely: ${error instanceof Unreadable ? error.message : "hostile or unreadable input"}.`,
+      });
+      return;
+    }
     const kind = isRecord(src) && typeof src.kind === "string" ? src.kind : null;
     let built: Built;
     if (kind === "decision") built = buildDecision((src as Record<string, unknown>).decision, snap.expires as string);

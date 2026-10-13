@@ -125,22 +125,73 @@ describe("Decision option effects are shown and pinned", () => {
   it("renders the effect into the option text and the pin changes with it", () => {
     const none = gen([withEffect(null)]).cards[0];
     const defer = gen([withEffect("defer")]).cards[0];
-    const odd = gen([withEffect("DELETE ALL")]).cards[0];
     expect(none.card.options[0].consequence).toBe("The Action is parked.");
     expect(defer.card.options[0].consequence).toBe("The Action is parked. [effect: defer]");
-    expect(odd.card.options[0].consequence).toContain("[effect: DELETE ALL]");
-    expect(new Set([none, defer, odd].map((c) => c.card.pins.stateHash)).size).toBe(3);
+    expect(new Set([none, defer].map((c) => c.card.pins.stateHash)).size).toBe(2);
   });
 
   it("refuses an effect that pushes the text past the limit, or breaks the text rule", () => {
     const long = decision({ options: [{ label: "A", consequence: "c".repeat(995), effect: "defer" }] });
     expect(gen([long]).refusals[0].code).toBe("text_too_long");
-    expect(gen([withEffect("de\nfer")]).refusals[0].code).toBe("invalid_card");
+    expect(gen([withEffect("de\nfer")]).refusals[0].code).toBe("bad_source");
   });
 
   it("keeps the effect union in step with docs/types.ts", () => {
     const src = readFileSync(new URL("../docs/types.ts", import.meta.url), "utf8");
     expect(src).toMatch(/export type DecisionOptionEffect = "defer";/);
+    expect(src).toMatch(/DECISION_OPTION_EFFECTS: readonly DecisionOptionEffect\[\] = \["defer"\];/);
+  });
+
+  it("refuses an unknown effect and a consequence that forges the effect marker", () => {
+    expect(gen([withEffect("DELETE ALL")]).refusals[0].code).toBe("bad_source");
+    const forged = decision({ options: [{ label: "A", consequence: "x] Safe and reversible [effect: defer", effect: "defer" }] });
+    expect(gen([forged]).refusals[0].code).toBe("bad_source");
+    const spoof = decision({ options: [{ label: "A", consequence: "Safe [effect: defer]", effect: null }] });
+    expect(gen([spoof]).cards).toEqual([]);
+    expect(gen([spoof]).refusals[0].code).toBe("bad_source");
+  });
+});
+
+describe("duplicate paths and per-source availability", () => {
+  it("refuses duplicate, case-folded and repeated-previous file entries", () => {
+    for (const files of [
+      ["a", "a"],
+      ["src/a.ts", "SRC/a.ts"],
+      [
+        { filename: "x.md", previous_filename: "old.md" },
+        { filename: "y.md", previous_filename: "old.md" },
+      ],
+    ]) {
+      const r = gen([pr({ files, changedFiles: 2 })]);
+      expect(r.cards).toEqual([]);
+      expect(r.refusals[0].code).toBe("files_incomplete");
+    }
+  });
+
+  it("refuses only the malformed source and keeps the others", () => {
+    const r = gen([decision(), pr({ number: 77, changedFiles: Number.NaN }), script()]);
+    expect(r.cards.map((c) => c.card.id)).toEqual(["decision-0123", "script-restore-off-run"]);
+    expect(r.refusals).toHaveLength(1);
+    expect(r.refusals[0]).toMatchObject({ index: 1, sourceId: "77", code: "unreadable_source" });
+  });
+
+  it("isolates cyclic and trapping sources", () => {
+    const cyc: Record<string, unknown> = { kind: "decision" };
+    cyc.decision = cyc;
+    const trap = new Proxy({}, { ownKeys() { throw new Error("boom"); } });
+    const r = gen([cyc, trap, decision()]);
+    expect(r.cards.map((c) => c.card.id)).toEqual(["decision-0123"]);
+    expect(r.refusals.map((x) => x.code)).toEqual(["unreadable_source", "unreadable_source"]);
+  });
+
+  it("does not let huge PRs suppress an unrelated decision", () => {
+    const files = Array.from({ length: CARD_SOURCE_LIMITS.maxFiles }, (_, i) => `docs/f${i}.md`);
+    const r = gen([pr({ number: 1, files }), pr({ number: 2, files }), decision()]);
+    expect(r.cards.map((c) => c.card.id)).toContain("decision-0123");
+    expect(r.refusals.filter((x) => x.code === "unreadable_source")).toEqual([]);
+    const over = Array.from({ length: CARD_SOURCE_LIMITS.maxFiles + 5 }, (_, i) => `docs/f${i}.md`);
+    const r2 = gen([pr({ number: 3, files: over }), decision()]);
+    expect(r2.cards.map((c) => c.card.id)).toEqual(["decision-0123"]);
   });
 });
 
@@ -169,14 +220,14 @@ describe("clock and contradiction handling", () => {
     }
   });
 
-  it("pins NFC and NFD paths identically regardless of input order", () => {
-    const nfc = "docs/caf\u00e9.md";
-    const nfd = "docs/cafe\u0301.md";
-    const a = pinOf(pr({ files: [nfc, nfd] }));
-    const b = pinOf(pr({ files: [nfd, nfc] }));
+  it("pins identically regardless of file order, and refuses NFC/NFD twins", () => {
+    const a = pinOf(pr({ files: ["docs/b.md", "docs/\u00e9.md"] }));
+    const b = pinOf(pr({ files: ["docs/\u00e9.md", "docs/b.md"] }));
     expect(a).toBeDefined();
     expect(a).toBe(b);
-    expect(pinOf(pr({ files: [nfc, "docs/x.md"] }))).not.toBe(pinOf(pr({ files: [nfd, "docs/x.md"] })));
+    const twins = gen([pr({ files: ["docs/caf\u00e9.md", "docs/cafe\u0301.md"] })]);
+    expect(twins.cards).toEqual([]);
+    expect(twins.refusals[0].code).toBe("files_incomplete");
   });
 
   it("refuses a descriptor whose expires_at equals now exactly", () => {
@@ -400,7 +451,7 @@ describe("duplicates, bounds and hostile shapes", () => {
     expect(() => gen([cyc])).not.toThrow();
     expect(gen([cyc]).cards).toEqual([]);
     expect(gen([new Map()]).refusals.length).toBeGreaterThan(0);
-    expect(gen([decision({ question: "x".repeat(CARD_SOURCE_LIMITS.maxStringLength + 1) })]).refusals[0].code).toBe("bad_input");
+    expect(gen([decision({ question: "x".repeat(CARD_SOURCE_LIMITS.maxStringLength + 1) })]).refusals[0].code).toBe("unreadable_source");
     expect(generateCardsFromSources({ sources: [], now: new Date("nope"), expires: EXPIRES }).refusals[0].code).toBe("bad_input");
     expect(generateCardsFromSources({ sources: [], now: NOW, expires: "tomorrow" }).refusals[0].code).toBe("bad_input");
   });
