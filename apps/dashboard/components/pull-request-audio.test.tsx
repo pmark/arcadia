@@ -32,6 +32,14 @@ describe("PullRequestAudio", () => {
     expect(html).not.toContain("Generate TLDR");
   });
 
+  it("names paid Fast Text Cloud before an explicit generation action", () => {
+    initialResults.push({ source: {}, sourceRevision: "revision", job: null, summary: null }, "ready");
+    const html = renderToStaticMarkup(<PullRequestAudio repository="owner/repo" number={2} />);
+    expect(html).toContain("Generate TLDR · Fast Text Cloud");
+    expect(html).toContain("may incur charges");
+    expect(html).not.toContain("Play TLDR");
+  });
+
   it("does not read any PR source automatically on ordinary card mount", async () => {
     effects.length = 0;
     const fetchSpy = vi.spyOn(globalThis, "fetch");
