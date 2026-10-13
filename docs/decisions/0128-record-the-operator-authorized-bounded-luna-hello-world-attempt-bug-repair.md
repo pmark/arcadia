@@ -4,7 +4,7 @@ type: decision
 id: "0128"
 slug: record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair
 project: arcadia
-status: open
+status: approved
 question: Record the operator-authorized bounded Luna Hello World attempt, bug, repair, independent validation and retry loop, retaining production Off and unrelated work in flight.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 updated: 2026-10-13
+answer: Authorize the bounded Luna Hello World loop with three attempts and two repair cycles
+decided: 2026-10-13
 ---
 
 # Decision 0128: Record the operator-authorized bounded Luna Hello World attempt, bug, repair, independent validation and retry loop, retaining production Off and unrelated work in flight.
