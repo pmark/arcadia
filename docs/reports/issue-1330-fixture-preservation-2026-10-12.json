@@ -21,7 +21,7 @@
     },
     {
       "name": "rehearsal-chain reset",
-      "file": "tests/rehearsal-chain-fixture-reset.test.ts",
+      "file": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
       "sha256": "8e8c4ac7f98f13cd538337412a880eda5228e6cc88ead8c1bf9599cd81e75e31"
     },
     {
@@ -41,7 +41,7 @@
     },
     {
       "name": "rehearsal-chain G6: the operational queue and a live Codex capacity read (Issues #1015, #1016)",
-      "file": "tests/rehearsal-chain-preflight-capacity.test.ts",
+      "file": "tests/rehearsal-chain-g6-capacity.test.ts",
       "sha256": "6c57ec6da2b9e4e86f3f7c6bb7e6553e369b284f1b41ac0a5af7bab9a2f8d695"
     },
     {
@@ -59,19 +59,45 @@
   "shards": {
     "1": [
       "tests/rehearsal-chain-reset-queue.test.ts",
-      "tests/rehearsal-chain-end-to-end.test.ts"
+      "tests/rehearsal-chain-end-to-end.test.ts",
+      "tests/rehearsal-chain-g6-capacity.test.ts"
     ],
-    "2": [
-      "tests/rehearsal-chain-fixture-reset.test.ts",
-      "tests/rehearsal-chain-preflight-capacity.test.ts"
-    ],
+    "2": [],
     "3": [
       "tests/rehearsal-chain-g6-g7-g8.test.ts",
       "tests/rehearsal-chain-emergency-stop.test.ts",
       "tests/rehearsal-chain-preflight-coherence.test.ts"
     ],
     "4": [
+      "tests/rehearsal-chain-fixture-reset-safety.test.ts",
       "tests/rehearsal-chain-operator-scripts.test.ts"
     ]
+  },
+  "weightedRefinement": {
+    "priorHead": "b5313e21f",
+    "beforeShards": {
+      "1": [
+        "tests/rehearsal-chain-reset-queue.test.ts",
+        "tests/rehearsal-chain-end-to-end.test.ts"
+      ],
+      "2": [
+        "tests/rehearsal-chain-fixture-reset.test.ts",
+        "tests/rehearsal-chain-preflight-capacity.test.ts"
+      ],
+      "3": [
+        "tests/rehearsal-chain-g6-g7-g8.test.ts",
+        "tests/rehearsal-chain-emergency-stop.test.ts",
+        "tests/rehearsal-chain-preflight-coherence.test.ts"
+      ],
+      "4": [
+        "tests/rehearsal-chain-operator-scripts.test.ts"
+      ]
+    },
+    "renameBytesIdentical": true,
+    "caseNamesUnchanged": 47,
+    "changes": {
+      "tests/rehearsal-chain-fixture-reset.test.ts": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
+      "tests/rehearsal-chain-preflight-capacity.test.ts": "tests/rehearsal-chain-g6-capacity.test.ts"
+    }
   }
 }

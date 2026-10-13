@@ -43,15 +43,16 @@ inventories match exactly: 47 before, 47 after, no lost or added case.
 version. Use the installed Vitest4.1.8 `BaseSequencer.shard`, the same sequencer
 called by the runtime test pool, against its discovered full-file inventory.
 This preserves actual source-backed placement rather than an assumed order.
-Descriptive names were selected to distribute the heavy groups across all four
-existing shards; no shard count/config or timeout change was used.
+Descriptive names were first selected to distribute the heavy groups across
+all four existing shards. Measured first CI timing then required weighted
+placement below; no shard count/config or timeout change was used.
 
 | Existing CI shard | Moved cases/files |
 |---|---|
-| 1 | reset-queue 11 + end-to-end 1 |
-| 2 | fixture-reset 9 + preflight-capacity 2 |
+| 1 | reset-queue 11 + end-to-end 1 + g6-capacity 2 |
+| 2 | no moved fixture group; existing unrelated suites remain |
 | 3 | g6-g7-g8 gates 3 + emergency-stop 7 + preflight-coherence 1 |
-| 4 | original static/launcher/run 5 guard 13 |
+| 4 | fixture-reset-safety 9 + original static/launcher/run 5 guard 13 |
 
 ## Validation and timing
 
@@ -65,14 +66,14 @@ environments; no direct speed ratio or final CI acceptance is claimed.
 
 | Final test file | Cases | Local suite seconds |
 |---|---:|---:|
-| `tests/rehearsal-chain-preflight-capacity.test.ts` | 2 | 187.539 |
+| `tests/rehearsal-chain-g6-capacity.test.ts` | 2 | 187.539 |
 | `tests/rehearsal-chain-emergency-stop.test.ts` | 7 | 60.403 |
 | `tests/rehearsal-chain-end-to-end.test.ts` | 1 | 135.257 |
 | `tests/rehearsal-chain-g6-g7-g8.test.ts` | 3 | 36.181 |
 | `tests/rehearsal-chain-operator-scripts.test.ts` | 13 | 16.872 |
 | `tests/rehearsal-chain-preflight-coherence.test.ts` | 1 | 93.707 |
 | `tests/rehearsal-chain-reset-queue.test.ts` | 11 | 268.586 |
-| `tests/rehearsal-chain-fixture-reset.test.ts` | 9 | 218.495 |
+| `tests/rehearsal-chain-fixture-reset-safety.test.ts` | 9 | 218.495 |
 
 Final checks: touched fixture/test ESLint exit 0; `pnpm exec tsc --noEmit` exit 0;
 final Vitest case/file collection exit 0; AST/case/shard receipt generator exit 0;
@@ -120,3 +121,28 @@ retrieved on this follow-up):
 
 Prior loaded instruction paths/byte evidence is retained in
 `docs/reports/lead-role-dispatch-2026-10-12.md`, Instruction retrieval.
+
+## Weighted refinement after the first required CI pass
+
+PR 1360 head `b5313e21f` passed independent review and all seven required CI
+checks. Unit job durations were shard 1 5m06s, shard 2 9m45s, shard 3 8m12s and
+shard 4 4m09s, under the unchanged 10-minute limit. Shard2's test step took
+468.42s and its job had only 15s spare. This remained an unresolved performance
+concern: repeated CI acceptance was not established by one narrow-margin pass.
+
+The measured fixture-reset group cost 120.031s and preflight-capacity cost 84.863s
+on that runner, both in shard 2. Leave shard 3 alone: its moved groups contributed
+only about 36s, so its larger base cost should not absorb more fixture work.
+Rename fixture-reset to fixture-reset-safety (actual shard 4), and
+preflight-capacity to g6-capacity (actual shard 1). These descriptive filenames
+put the measured heavy groups on the faster jobs and remove them from shard 2.
+No projected duration is claimed: concurrency, unrelated suites and runner
+variance require new-head CI and repeat critical-shard proof.
+
+The two files are byte-for-byte equal to their pre-rename HEAD content. Exact 47
+case names and all 10 original block hashes match after final collection;
+`BaseSequencer.shard` confirms the table's final mapping. The helper and every
+assertion remain unchanged. Final collection, hash/byte checks and diff check
+all exited 0. No behavioral tests were rerun for these filename-only changes;
+the parent owns independent delta review and new-head CI. Updated machine
+receipts preserve the first mapping, first CI timings and weighted renames.

@@ -7,7 +7,7 @@
   "note": "Measured before final descriptive file renames/private-export pruning. Test bodies and fixture statements remain identical; final imports/collection/type/lint checks pass. Durations are local, not comparable to prior GitHub CI for a speed ratio.",
   "files": [
     {
-      "file": "tests/rehearsal-chain-preflight-capacity.test.ts",
+      "file": "tests/rehearsal-chain-g6-capacity.test.ts",
       "cases": 2,
       "durationSeconds": 187.539,
       "passed": true
@@ -49,10 +49,41 @@
       "passed": true
     },
     {
-      "file": "tests/rehearsal-chain-fixture-reset.test.ts",
+      "file": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
       "cases": 9,
       "durationSeconds": 218.495,
       "passed": true
     }
-  ]
+  ],
+  "firstRequiredCi": {
+    "pullRequest": "https://github.com/pmark/arcadia/pull/1360",
+    "head": "b5313e21ff6815bba4bb373fc782aea7a290cf28",
+    "requiredChecksPassed": 7,
+    "unitJobSeconds": {
+      "1": 306,
+      "2": 585,
+      "3": 492,
+      "4": 249
+    },
+    "unitTestSeconds": {
+      "1": null,
+      "2": 468.42,
+      "3": 373.76,
+      "4": null
+    },
+    "heavyShard2FilesSeconds": {
+      "tests/rehearsal-chain-fixture-reset.test.ts": 120.031,
+      "tests/rehearsal-chain-preflight-capacity.test.ts": 84.863
+    },
+    "criticalJobHeadroomSeconds": 15,
+    "acceptance": "Unresolved: one green run with 15 seconds headroom does not prove repeated under-limit CI. Byte-identical weighted renames distribute those files to shards4 and1; new-head CI and repeat proof remain pending.",
+    "source": "Parent Lead exact-head CI observation; unknown per-shard test-step durations are null."
+  },
+  "weightedRefinement": {
+    "changes": {
+      "tests/rehearsal-chain-fixture-reset.test.ts": "tests/rehearsal-chain-fixture-reset-safety.test.ts",
+      "tests/rehearsal-chain-preflight-capacity.test.ts": "tests/rehearsal-chain-g6-capacity.test.ts"
+    },
+    "validation": "Final Vitest collection exit0, exact47 case names and test block hashes unchanged, renamed full file bytes equal priorHEAD; actual BaseSequencer mapping recorded in preservation receipt; diffcheck0. No unchanged behavioral rerun."
+  }
 }
