@@ -56,8 +56,8 @@ independent Sessions under Decision 0114; native role dispatch refuses them.
 1. Name the app and surface (iOS thin client, Mac with host) in the first reply.
 2. Resolve identity per `git-identity.md` for this app and tier.
 3. Bounded reads: `PROJECT.md` pointer, the active Plan's `current_action`,
-   open blockers on /todo, the last three rows of
-   `docs/reports/session-ledger.jsonl`, and a targeted `rg` of
+   open blockers on /todo, the last three rows of the ledger
+   (`readSessionLedger`: `docs/reports/session-ledger.jsonl`, then `session-ledger/*.json`), and a targeted `rg` of
    `docs/notes-to-self.md`.
 4. State the budget and each role's model and effort before launching anything.
 5. Classify the request: the governed current Action (`continuation.md`),
@@ -104,8 +104,8 @@ re-authored with the resolved identity before the PR.
 
 ## 7. Close-out
 
-- Add one ledger row (`src/reports/sessionLedger.ts` header); `null` for anything unmeasured.
-- Record each friction in `docs/reports/production-simulation-living-notes.md`.
+- Add one ledger row as a new file `docs/reports/session-ledger/<YYYYMMDDTHHMMZ>-<session_id>.json`; `null` for anything unmeasured.
+- Record each friction as `docs/reports/frictions/<YYYYMMDD>-<slug>.md`; hand-off updates go in `docs/reports/handoffs/`.
   A friction is not closed until it names a test or rule id.
 - Retitle on every state change; verify the claim first.
 - Hand off: the next session starts with `arcadia go`, not a named task.
