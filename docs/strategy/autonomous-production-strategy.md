@@ -80,7 +80,7 @@ through the same settle writer.
 
 ## Learnings become optimisation
 
-Every session already adds a ledger row (`docs/reports/session-ledger.jsonl`).
+Every session already adds a ledger row (`docs/reports/session-ledger/`).
 Add operator touches by card kind, deterministic Lead turns, review rounds,
 blocking defects by class, time to green and tokens; each Plan gets a close-out
 aggregate. A friction row is not closed until it cites a test or rule id, and

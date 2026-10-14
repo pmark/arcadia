@@ -267,10 +267,10 @@ actions:
     references: ["src/decisions/cardSources.ts", "src/decisions/batchMerge.ts", "src/commands/todo.ts", "docs/strategy/autonomous-production-strategy.md"]
   - id: ledger-rows-without-merge-conflicts
     title: Make ledger rows, friction rows and hand-off updates one file per entry so parallel pull requests never conflict.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Make ledger rows, friction rows and hand-off updates one file per entry so parallel pull requests never conflict.
+    next_action: Completed via Agent Ask complete-ledger-rows-without-merge-conflicts-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask ledger-rows-without-merge-conflicts
     clarification: clarified
     confidence: high

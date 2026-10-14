@@ -86,8 +86,9 @@ Keep the brief under one screen. Fields:
 
 ## Per-session ledger
 
-Every session ends by adding exactly one row to
-`docs/reports/session-ledger.jsonl`, validated by `pnpm check:session-ledger`.
+Every session ends by adding exactly one row as its own file,
+`docs/reports/session-ledger/<YYYYMMDDTHHMMZ>-<session_id>.json` (never append to
+the frozen `session-ledger.jsonl`), validated by `pnpm check:session-ledger`.
 Never guess a number; use `null` for anything unmeasured.
 
 ## Cost rules
