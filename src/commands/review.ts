@@ -1249,13 +1249,20 @@ export function runReviewApproveCommand(
   const earlierAskId = reviewItem.resulting_ask_request_id;
   const earlierAsk = earlierAskId
     ? withDatabase(workspacePath, (db) => {
-        const found = db.prepare("SELECT id, work_item_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
-          | { id: string; work_item_id: string | null }
+        const found = db.prepare("SELECT id, work_item_id, plan_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
+          | { id: string; work_item_id: string | null; plan_id: string | null }
           | undefined;
         if (found?.work_item_id) assertReusableApprovalAction(db, found.work_item_id, found.id);
         return found;
       })
     : undefined;
+  if (reviewItem.work_item_id && !earlierAsk?.work_item_id) {
+    throw validationError("This Review already references an Action without its originating Ask; approval cannot create a second Action.", {
+      reviewId: reviewItem.id,
+      workItemId: reviewItem.work_item_id,
+      resultingAskRequestId: earlierAskId
+    });
+  }
   const reusedAskId = earlierAsk?.work_item_id ? earlierAsk.id : null;
   const approvalClaimOwner = randomUUID();
   let approval: ReturnType<typeof runAskCommand> | null = null;
@@ -1281,6 +1288,11 @@ export function runReviewApproveCommand(
     throw validationError("Approved Requires Review Decision did not produce an ask request.", { id: reviewItem.id });
   }
   const approvalAskId = reusedAskId ?? (approval?.data.ask?.id as string);
+  const approvedWorkItemId = approval?.data.workItem?.id ?? earlierAsk?.work_item_id ?? null;
+  const approvedPlanId = approval?.data.plan?.id ?? earlierAsk?.plan_id ?? null;
+  if (!approvedWorkItemId) {
+    throw validationError("Approved Ask did not produce its governed Action.", { reviewId: reviewItem.id, approvalAskId });
+  }
 
   // The approval, the memo of an answered Ask question and the pending-execution marker commit together. The status is
   // re-read under the write lock, as for a build packet above.
@@ -1289,6 +1301,17 @@ export function runReviewApproveCommand(
     if (!current || (current.status !== "open" && current.status !== "deferred")) {
       throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: current?.status ?? null });
     }
+    if ((current.work_item_id && current.work_item_id !== approvedWorkItemId) || (current.plan_id && current.plan_id !== approvedPlanId)) {
+      throw validationError("Approved Ask Action or Plan does not match the Review Decision scope.", {
+        reviewId: current.id,
+        reviewWorkItemId: current.work_item_id,
+        approvedWorkItemId,
+        reviewPlanId: current.plan_id,
+        approvedPlanId
+      });
+    }
+    db.prepare("UPDATE review_items SET work_item_id = ?, plan_id = ?, updated_at = ? WHERE id = ?")
+      .run(approvedWorkItemId, approvedPlanId, new Date().toISOString(), current.id);
     const item = updateReviewItemStatus(db, reviewItem.id, {
       status: "approved",
       decisionNote: "Approved from Requires Review. Execution pending.",

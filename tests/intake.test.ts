@@ -25,12 +25,15 @@ const context: IntakeWorkspaceContext = {
 describe("Arcadia Intake", () => {
   it("narrows only an unambiguous single-file create request", () => {
     expect(explicitSingleFileRequest("create HelloWorld.txt")).toBe("HelloWorld.txt");
+    expect(explicitSingleFileRequest('implement HelloWorld.txt, containing exactly the bytes "Hello World!\\n"')).toBe("HelloWorld.txt");
     for (const request of [
       "create HelloWorld.txt and README.md",
       "create ../HelloWorld.txt",
       "create /tmp/HelloWorld.txt",
       "create C:\\work\\HelloWorld.txt",
-      "implement HelloWorld.txt",
+      "update HelloWorld.txt",
+      "implement HelloWorld.txt and README.md",
+      'implement HelloWorld.txt, containing exactly the bytes "Hello World!\\n" and README.md',
       "create HelloWorld.txt with tests"
     ]) {
       expect(explicitSingleFileRequest(request), request).toBeNull();

@@ -85,7 +85,7 @@ export const defaultProjects: SeedProject[] = [
 export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
   {
     name: "keeps an explicit single-file request and builder scope exact",
-    input: "Create HelloWorld.txt for Arcadia.",
+    input: 'Implement HelloWorld.txt in Arcadia, containing exactly the bytes "Hello World!\\n".',
     seed: { projects: [{ ...defaultProjects[0], repoPath: process.cwd() }] },
     expect: {
       intentType: "Project Work",
@@ -95,7 +95,7 @@ export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
       requestedWorkArtifactIncludes: ["HelloWorld.txt"],
       requestedWorkArtifactExcludes: ["implementation with tests"],
       goalIncludes: ["Create only HelloWorld.txt", "Tests and validation are harness-owned", "outside the builder's file scope"],
-      askRawInputIncludes: ["Create HelloWorld.txt for Arcadia."]
+      askRawInputIncludes: ['Implement HelloWorld.txt in Arcadia, containing exactly the bytes "Hello World!\\n".']
     }
   },
   {

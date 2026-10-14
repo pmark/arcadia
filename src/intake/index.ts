@@ -1223,7 +1223,7 @@ function requestedArtifactForWork(input: {
 
 /** Narrow only a plainly named, single basename; paths and extra request text keep normal review scope. */
 export function explicitSingleFileRequest(requestedAction: string): string | null {
-  const match = /^(?:create|write|add|generate)\s+([A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12})$/i.exec(requestedAction.trim());
+  const match = /^(?:create|write|add|generate|implement)\s+([A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12})(?:,\s*containing exactly the bytes\s+["'][^"']+["'])?(?:\s+change no other project files\.?)?$/i.exec(requestedAction.trim());
   return match?.[1] ?? null;
 }
 
