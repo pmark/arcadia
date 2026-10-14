@@ -34,7 +34,7 @@
       "trigger": "scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue",
       "path": "docs/agent-guidance/principles.md",
       "read_before": "Before choosing scope, deferring work, or capturing a new defect.",
-      "sha256": "799a20c84463dce7e6bf1ac66b5b830f6d396370091952d518525e10faecbc9c"
+      "sha256": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894"
     },
     {
       "id": "pull-requests",
@@ -48,7 +48,7 @@
       "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
       "path": "docs/agent-guidance/learning.md",
       "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
-      "sha256": "a417f0a3fad627ddb8fadd1e8a6ce001a2a4c8a34d617237e97f608ad0d2ef5a"
+      "sha256": "2334b0d679ad80288b1d2c98e564f1e8b4db23a24989385fe8781dcca92757a9"
     },
     {
       "id": "git-identity",
@@ -118,21 +118,35 @@
       "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
       "path": "docs/agent-guidance/ask-todo-scout.md",
       "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
-      "sha256": "8a6847fbf5c77a49e6c5b1eb1ab4a6b2b4b263b8e1453209224a092ed78bbb0e"
+      "sha256": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8"
     },
     {
       "id": "session-roles-and-briefs",
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "ab7bd4385dab770e840f05865b3ac5bed9fe9577745627e3213a1ca5e4c98f89"
+      "sha256": "730e1dfa0c20f968e0be2e02456a0e6e8d53763d62268e4fd1bb3176a0a178b3"
     },
     {
       "id": "native-app-sessions",
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "b737deb3861d9833e915b69f0f04c432b7072ad399209f3ecf8d2f6f1b4f1c74"
+      "sha256": "628087e9f5720ea8829b01ee533904cd4d7a93b8f2c52bbb91c25d118c4eddfe"
+    },
+    {
+      "id": "hacker-recovery",
+      "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
+      "path": "docs/agent-guidance/hacker-recovery.md",
+      "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
+      "sha256": "2dc006fc3c4bdbf895db75f4bfb48d2acc69cb4a37a79558b7c5f7eaf53b79cd"
+    },
+    {
+      "id": "code-simplification",
+      "trigger": "code simplification, simplify code, refactoring, maintainability, complexity finding",
+      "path": "docs/agent-guidance/code-simplification.md",
+      "read_before": "Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage.",
+      "sha256": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4"
     },
     {
       "id": "scout-continuation",

@@ -21,6 +21,11 @@ checks precede model review. Use the least costly sufficient configured model
 and effort; escalate for a named unmet requirement or observed failure while
 preserving packet bindings.
 
+Two unchanged workflow refusals without new evidence require
+[Hacker recovery](hacker-recovery.md) before another attempt. Explicit
+stop-the-line requests activate it immediately. This changes diagnostic strategy,
+not authority, admission or budget. Supervisors must recognize the pattern.
+
 This retrieval obligation implements existing learning guidance. Decision 0050
 and `build-agent-agnostic-learning-loop` retain ownership of automatic lesson
 intake and reflection; this change adds no lesson store, worker, or model call.
