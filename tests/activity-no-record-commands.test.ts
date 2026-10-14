@@ -104,6 +104,7 @@ function invocations(): Record<string, string[][]> {
     triggers: [["triggers", "--repo", repo]],
     docket: [["docket", "--repo", repo]],
     plans: [["plans", "--repo", repo]],
+    "plan close-out": [["plan", "close-out", "no-such-plan", "--repo", repo], ["plan", "close-out", "../x", "--repo", repo]],
     "operator-task list": [["operator-task", "list", "--repo", repo]],
     "operator-task show": [["operator-task", "show", "no-such-task", "--repo", repo]],
     "operator-task raise": [["operator-task", "raise", "Approve the fixture", "--because", "Only the operator can", "--repo", repo]],

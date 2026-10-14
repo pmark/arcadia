@@ -349,3 +349,33 @@ function splitAsk(requestId: string, candidateRevision: string): string {
     '      - "The second slice proof exists."'
   ].join("\n");
 }
+
+
+it.each(["$&", "$`", "$'"])("split request id preserves literal %s through all Plan writers", token => {
+  const { workspace, repo } = fixture({ withDependentOnFirst: true });
+  const planPath = path.join(repo, "docs/plans/demo-plan.md");
+  const before = readFileSync(planPath, "utf8").replace("Finish the third Action.", () => `Finish the third Action ${token} literally.`);
+  writeFileSync(planPath, before);
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Synthetic literal dependent instruction"], { cwd: repo });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  const second = before.slice(before.indexOf("  - id: second"), before.indexOf("  - id: third"));
+  const proposal = runAgentAskPreviewCommand({ workspace, request: splitAsk(`literal-split-${token}`, head) });
+  const options = { workspace, proposal: proposal.data.proposal.id, requestId: `settle-literal-split-${token}`, disposition: "accepted" as const };
+  const preview = runAgentAskSettleCommand(options);
+  const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+  expect(after).toContain(second);
+  expect(readFileSync(planPath, "utf8")).toBe(before);
+  const applied = runAgentAskSettleCommand({ ...options, apply: true, operator: true, preview: preview.data.receipt.previewFingerprint });
+  const docs = discoverDocs(repo);
+  expect(docs.errors).toEqual([]);
+  const plan = docs.docs.find(doc => doc.type === "plan") as PlanDoc;
+  expect(plan.actions).toHaveLength(4);
+  expect(plan.actions[0]).toMatchObject({ id: "first", status: "done", source: `Agent Ask literal-split-${token}`,
+    nextAction: `Completed via Agent Ask literal-split-${token}; no further action.`, splitInto: ["first-remainder"] });
+  expect(plan.actions.find(action => action.id === "third")).toMatchObject({
+    dependsOn: ["first", "first-remainder"], nextAction: `Finish the third Action ${token} literally.`
+  });
+  expect(readFileSync(planPath, "utf8")).toBe(after);
+  expect(runAgentAskSettleCommand({ ...options, apply: true, operator: true, preview: preview.data.receipt.previewFingerprint }).data.receipt).toEqual(applied.data.receipt);
+});

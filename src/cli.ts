@@ -428,6 +428,8 @@ import {
 } from "./commands/next.js";
 import { renderTodoSuccess, runTodoCommand } from "./commands/todo.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderPlanCloseOutSuccess, runPlanCloseOutCommand } from "./commands/planCloseOut.js";
+import { renderPlanSelectNextSuccess, runPlanSelectNextCommand } from "./commands/planSelectNext.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlanProgressSuccess, renderPlansSuccess, runPlanProgressCommand, runPlansCommand } from "./commands/plans.js";
 import {
@@ -3901,6 +3903,39 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           (response) => renderPlanProgressSuccess(response, options.all)
         )
       : runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
+  );
+
+  const planGroup = program.command("plan").description("Plan records derived from checked-in documents");
+  addJsonOption(
+    planGroup
+      .command("close-out")
+      .description("Derive a Plan's deterministic close-out record from its document, the session ledger and frictions. The record is a snapshot: if a Plan Action is later renamed or removed, delete the record and re-run with --write")
+      .argument("<plan-slug>", "Plan slug (docs/plans/<slug>.md)")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--write", "Write docs/plans/<slug>.close-out.json (never replaces a record with a different hash)")
+  ).action((planSlug: string, options: { repo: string; write?: boolean; json?: boolean }) =>
+    runCliAction(
+      "plan.close-out",
+      options,
+      () => runPlanCloseOutCommand({ repo: options.repo, planSlug, write: options.write }),
+      renderPlanCloseOutSuccess
+    )
+  );
+  addJsonOption(
+    planGroup
+      .command("select-next")
+      .description("Preview the next Plan under Decisions 0116 and 0122 with its preflight and decision card; read-only, never activates")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--project <slug>", "Only consider this Project")
+      .option("--preferences <file>", "JSON Project preference record: { projects: [{ project, included, chosenPlan }] }", resolveInvocationPath)
+      .option("--workspace <path>", "Workspace for the live read-only queue and red-alert readers", defaultWorkspace())
+      .option("--queue <file>", "Override the live queue: selector-shape { queues } or `advance queue --json` output", resolveInvocationPath)
+      .option("--red-alerts <file>", "Override live red alerts: { alerts: [{ id, project, trigger? }] }", resolveInvocationPath)
+      .option("--run-id <id>", "Current run id")
+      .option("--session-id <id>", "Current session id")
+      .option("--run-ask <ids>", "Comma-separated Agent Ask ids submitted by this run")
+  ).action((options: { repo: string; workspace?: string; project?: string; preferences?: string; queue?: string; redAlerts?: string; runId?: string; sessionId?: string; runAsk?: string; json?: boolean }) =>
+    runCliAction("plan.select-next", options, () => runPlanSelectNextCommand(options), renderPlanSelectNextSuccess)
   );
 
   const operatorTask = program

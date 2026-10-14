@@ -160,6 +160,7 @@ describe("approving an Ask question creates exactly one Action (#1115 items 1-2)
     const questionId = openQuestion(workspace);
     const actionsBefore = count(workspace, "work_items");
     const asksBefore = count(workspace, "ask_requests");
+    const runsBefore = count(workspace, "execution_runs");
     const restore = failBetweenCreationAndLink(workspace);
 
     expect(() => approve(workspace, questionId)).toThrow(/ask row refused/);
@@ -186,6 +187,10 @@ describe("approving an Ask question creates exactly one Action (#1115 items 1-2)
     expect(count(workspace, "work_items")).toBe(actionsBefore + 1);
     expect(count(workspace, "ask_requests", `work_item_id = '${claim.work_item_id}'`)).toBe(1);
     expect(count(workspace, "execution_plans", `work_item_id = '${claim.work_item_id}'`)).toBe(1);
+    expect(row<{ id: string }>(workspace, "SELECT id FROM execution_plans WHERE work_item_id = ?", claim.work_item_id).id)
+      .toBe(claim.plan_id);
+    expect(count(workspace, "execution_runs")).toBe(runsBefore);
+    expect(count(workspace, "work_items")).toBe(actionsBefore + 1);
     expect(row<{ resulting_ask_request_id: string | null }>(
       workspace,
       "SELECT resulting_ask_request_id FROM review_items WHERE id = ?",

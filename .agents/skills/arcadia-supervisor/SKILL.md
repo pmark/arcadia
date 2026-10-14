@@ -49,6 +49,24 @@ by this skill.
    through a governed Ask or Decision. Use numbered chat choices with
    consequences when operator judgment is required.
 
+## Mandatory recovery trigger
+
+On the first persistent refusal diagnose request classification and route.
+After two unchanged refusals without evidence gain, or an explicit stop-the-line
+request, enter [Hacker mode](../arcadia-hacker/SKILL.md) before further retries.
+Repeated discussion also counts. Require one bounded recovery pass and a verified
+existing route or precise unblocker; do not replace the agent to reset the budget.
+Keep actual model/effort, custody and sole writer explicit. This is diagnostic
+behavior within the supervision assignment, not permission to spawn, message,
+steal a claim, increase spend or bypass a refusal.
+
+## Complexity signals
+
+Route a concrete maintainability finding through the Project's indexed
+`docs/agent-guidance/code-simplification.md` and existing planner/critic/implementer
+responsibilities. Keep one writer and the remaining allowance. Do not commission
+routine cleanup after every Session or delay an urgent repair for cosmetic work.
+
 ## At session completion
 
 Under explicit messaging authority ask the Lead for ideas, opportunities, key

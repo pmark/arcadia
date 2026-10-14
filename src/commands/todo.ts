@@ -31,6 +31,7 @@ import { findCommittedSettlement, listUnsettledAgentAskProposals } from "../ask/
 import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
 import { askQuestionOrigin, type AskOrigin } from "../ask/askQuestion.js";
+import { listProjectRunEvidence, type RunEvidence } from "./runEvidence.js";
 
 type UnsettledAsk = ReturnType<typeof listUnsettledAgentAskProposals>[number];
 
@@ -176,6 +177,8 @@ export interface TodoData {
   items: TodoItem[];
   /** In-flight agent work: listed only with `--agents`; the default view counts it in `counts.agentsDoing`. */
   agentWork: AgentWorkItem[];
+  /** Same Run evidence projection used by Ask show, scoped to selected Projects. */
+  runs: RunEvidence[];
   /** Non-null when no workspace was readable: Ask questions and Ask-origin tasks are then unavailable, not zero. */
   askUnavailable: string | null;
   /** One line per source this run could not read. Empty means every source was read. */
@@ -924,6 +927,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   let noRepoPath: TodoCounts["noRepoPath"] = { projects: 0, items: 0 };
   let agentFlaggedHidden = 0;
   let agentWork: AgentWorkItem[] | null = null;
+  let runs: RunEvidence[] = [];
   let backBurner: TodoBackBurnerCounts | null = null;
   let workspacePath: string | null = null;
 
@@ -944,6 +948,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       noRepoPath = read.noRepoPath;
       agentFlaggedHidden = read.agentFlaggedHidden;
       agentWork = read.agentWork;
+      runs = read.runs;
       backBurner = read.backBurner;
       workspacePath = resolved;
     } catch (error) {
@@ -952,6 +957,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       // Decisions in the checkout in hand are still read below.
       unavailable.push(`workspace sources unavailable: ${workspaceRemedy(error)}`);
       items = [];
+      runs = [];
       agentFlaggedHidden = 0;
     }
   }
@@ -1012,6 +1018,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       },
       items: shown,
       agentWork: view === "agents" ? (agentWork ?? []) : [],
+      runs,
       askUnavailable: workspacePath ? null : "Ask questions and Ask-origin tasks are unavailable: no workspace could be read.",
       unavailable
     }
@@ -1028,6 +1035,7 @@ function readWithWorkspace(
   noRepoPath: TodoCounts["noRepoPath"];
   agentFlaggedHidden: number;
   agentWork: AgentWorkItem[] | null;
+  runs: RunEvidence[];
   backBurner: TodoBackBurnerCounts | null;
 } {
   const roots = options.fixtureRoots ?? defaultFixtureRoots();
@@ -1217,6 +1225,7 @@ function readWithWorkspace(
       noRepoPath: { projects: noRepoProjects.size, items: noRepoItems },
       agentFlaggedHidden,
       agentWork: readAgentWork(db, options.project ? projects.map((project) => project.slug) : null, unavailable),
+      runs: listProjectRunEvidence(db, projects.map((project) => project.slug)),
       backBurner: readBackBurnerCounts(db, options.now ?? new Date(), unavailable)
     };
   });
@@ -1369,13 +1378,18 @@ function describeAgentWork(work: AgentWorkItem): string {
   return `${work.kind} ${work.id} — ${work.project}${work.action ? `/${work.action}` : ""} · ${work.status} · ${work.agent} · since ${work.since}`;
 }
 
+function describeRunEvidence(run: RunEvidence): string {
+  return `${run.id} · ${run.status}${run.waitingReason ? ` · ${run.waitingReason}` : ""}${run.artifacts.length ? ` · artifacts ${run.artifacts.map((artifact) => `${artifact.status}:${artifact.evidenceReference}`).join(", ")}` : ""}`;
+}
+
 export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] {
-  const { counts, items, unavailable, asOf, view, agentWork, askUnavailable } = response.data;
+  const { counts, items, unavailable, asOf, view, agentWork, runs, askUnavailable } = response.data;
   if (view === "agents") {
     const lines = [
       `Agents are doing: ${counts.agentsDoing ?? "unavailable"} in flight (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
     ];
     if (agentWork.length > 0) lines.push("", ...agentWork.map((work) => `  ${describeAgentWork(work)}`));
+    if (runs.length > 0) lines.push("", "Run evidence:", ...runs.map((run) => `  ${describeRunEvidence(run)}`));
     else if (counts.agentsDoing === 0) lines.push("", "No Session is prepared or running and no managed Run is pending or running.");
     if (unavailable.length > 0) lines.push("", ...unavailable);
     return lines;
@@ -1388,6 +1402,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
       (counts.agentFlaggedHidden > 0 ? ` · agent-flagged hidden: ${counts.agentFlaggedHidden}` : "") +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
+  if (runs.length > 0) lines.push("", "Project Runs:", ...runs.map((run) => `  ${describeRunEvidence(run)}`));
 
   const stale = items.filter((item) => item.staleReason);
   const blocking = items.filter((item) => item.blocking && !item.staleReason);

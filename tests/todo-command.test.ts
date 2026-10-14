@@ -164,7 +164,7 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
@@ -548,7 +548,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
   it("golden: the stale view as JSON", () => {
     const workspace = fixtureWorkspace(staleRepo(), [asks[0]]);
     expect(run({ workspace, now: NOW, stale: true }).data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null,
       view: "stale",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
@@ -717,7 +717,7 @@ describe("arcadia todo: review_items", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 1, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
@@ -1498,7 +1498,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null,
       view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {

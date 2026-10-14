@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-13
+updated: 2026-10-14
 ---
 
 # Mission Log: Arcadia
@@ -2470,3 +2470,24 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A reader returns the legacy session-ledger.jsonl rows first and then the files under docs/reports/session-ledger/ sorted by name, and the validator, check script and qa command use it, with session_id uniqueness enforced across both sources and errors that name the file."; "Two branches from one base that each add a session row, a friction entry and a hand-off update merge in either order with no conflict, proven by a scripted git merge-tree test."; "The duplicated friction row numbers are renamed in the frozen table, new frictions and hand-offs are created as one file each with a slug or session id, and a CI check fails any diff that appends to a frozen file."; "The guidance that tells sessions where to record a ledger row, friction and hand-off names the new locations, qa returns the same linked rows for every existing session before and after, and focused tests pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-ledger-rows-without-merge-conflicts-2026-10-13).
+
+## 2026-10-14 — Completed arcadia/plan-close-out-record
+
+- **Did:** Completed Action arcadia/plan-close-out-record from accepted evidence (Candidate 5b30843dc38e4619a96d927bda19c6a69ab7e143).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema validates and the same inputs produce the same hash."; "The record lists Actions with outcome and PRs, open remainders, open blockers, ledger aggregates, frictions with test ids and a successor recommendation."; "A backfilled record exists for the autonomous-production hardening Plan and a validator rejects a malformed record in CI."; "Focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-plan-close-out-record-2026-10-13).
+
+## 2026-10-14 — Completed arcadia/next-plan-selector
+
+- **Did:** Completed Action arcadia/next-plan-selector from accepted evidence (Candidate 8bcae20b8fa1f497b0cb863e51292ea969d91e72).
+- **Result:** Every declared acceptance criterion was accepted as met: "The selector follows Decisions 0116 and 0122 and returns the chosen Plan with the reasons."; "It refuses a Plan authored in the same run and a Plan the operator has not approved."; "A preflight failure names the blocker and the one-click remedy; no state is mutated."; "Focused tests pass and the preview matches the card contract.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-next-plan-selector-2026-10-14).
+
+## 2026-10-14 — Agent Ask activate-autonomous-production-plan-20261014-01a13b99
+
+- **Did:** Activated arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider at launch-failure-keeps-cause.
+- **Result:** Operator-settled Plan transition. Previous Plan every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a remains draft with completion state preserved. Operator explicitly directed: Find that plan and activate it. All I want is progress towards that single objective.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
+import { captureAskEnvelope, claimAskCaptureProcessing, finishAskCaptureProcessing, markAskCaptureEffectsStarted } from "../src/ask/captureEnvelope.js";
 import { withDatabase } from "../src/db/connection.js";
+import { createAskRequest } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -74,6 +75,85 @@ describe("Ask capture envelope", () => {
       originalText: "Changed",
       ingressSource: "dashboard.ask"
     }))).toThrow("already submitted with different content");
+  });
+
+  it("rejects a changed explicit routing pin before it can rotate a processing owner", () => {
+    const workspace = initializedWorkspace();
+    const firstIdentity = { explicitProjectId: "project-a", executeReview: false, correctionRoute: null };
+    const envelope = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "route-owner-race",
+      originalText: "Implement the requested file.",
+      ingressSource: "ask",
+      routingIdentity: firstIdentity
+    }));
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "project-a-owner"))).toBe("claimed");
+    expect(() => withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "route-owner-race",
+      originalText: "Implement the requested file.",
+      ingressSource: "ask",
+      routingIdentity: { ...firstIdentity, explicitProjectId: "project-b" }
+    }))).toThrow(/different routing choices/);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT processing_owner FROM ask_capture_envelopes WHERE id = ?")
+      .get(envelope.id) as { processing_owner: string | null }).processing_owner).toBe("project-a-owner");
+    expect(withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "route-owner-race",
+      originalText: "Implement the requested file.",
+      ingressSource: "ask",
+      routingIdentity: firstIdentity
+    })).id).toBe(envelope.id);
+  });
+
+  it("allows a completed legacy capture replay only when its canonical Ask proves the route", () => {
+    const workspace = initializedWorkspace();
+    const envelope = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "legacy-route-pin",
+      originalText: "Record this completed Ask.",
+      ingressSource: "ask"
+    }));
+    withDatabase(workspace, (db) => {
+      createAskRequest(db, {
+        rawRequest: envelope.originalText,
+        resolvedIntent: "CaptureThought",
+        registryVersion: 1,
+        outputKind: "captured",
+        status: "planned",
+        captureId: envelope.id
+      });
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'completed' WHERE id = ?").run(envelope.id);
+    });
+    expect(withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "legacy-route-pin",
+      originalText: envelope.originalText,
+      ingressSource: "ask",
+      routingIdentity: { explicitProjectId: null, executeReview: false, correctionRoute: null }
+    })).id).toBe(envelope.id);
+    withDatabase(workspace, (db) => db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ?").run(envelope.id));
+    expect(() => withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "legacy-route-pin",
+      originalText: envelope.originalText,
+      ingressSource: "ask",
+      routingIdentity: { explicitProjectId: null, executeReview: false, correctionRoute: null }
+    }))).toThrow(/no pinned routing identity/);
+  });
+
+  it("fences a superseded pre-effect processor and lets a retry recover a killed owner", () => {
+    const workspace = initializedWorkspace();
+    const envelope = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "killed-before-ask",
+      originalText: "Why is the sidebar slow?",
+      ingressSource: "ask"
+    }));
+
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "dead-child"))).toBe("claimed");
+    // A separate process may safely take over only before the old owner crosses
+    // the side-effect fence. A late old owner cannot commit its route.
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "retry-owner"))).toBe("claimed");
+    expect(() => withDatabase(workspace, (db) => markAskCaptureEffectsStarted(db, envelope.id, "dead-child")))
+      .toThrow("ownership was superseded");
+    withDatabase(workspace, (db) => markAskCaptureEffectsStarted(db, envelope.id, "retry-owner"));
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "third-owner"))).toBe("partial");
+    expect(withDatabase(workspace, (db) => finishAskCaptureProcessing(db, envelope.id, "retry-owner"))).toBe(true);
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "replay"))).toBe("complete");
   });
 });
 

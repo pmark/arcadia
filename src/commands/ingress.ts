@@ -23,7 +23,7 @@ import { withDatabase } from "../db/connection.js";
 import { createArtifactRecord, createMissionLog, getMilestone, getProject } from "../db/repositories.js";
 import type { AskCommandData, AskOptions } from "./ask.js";
 import { runAskCommand } from "./ask.js";
-import { captureAskEnvelope, findCaptureRequestIdByStorageReferences, type AskCaptureEnvelope } from "../ask/captureEnvelope.js";
+import { assertAskCaptureEnvelopeMatches, captureAskEnvelope, findCaptureRequestIdByStorageReferences, type AskCaptureEnvelope } from "../ask/captureEnvelope.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -851,7 +851,7 @@ export function runIngressCaptureCommand(options: IngressCaptureOptions): Comman
   const requestId = options.requestId?.trim() || ingressCaptureRequestId(source, path.basename(requestFile));
   const captureEnvelope = withDatabase(workspacePath, (db) => captureAskEnvelope(db, {
     requestId,
-    originalText: options.description?.trim() || "",
+    originalText: requestText.trim(),
     ingressSource: `ingress:${source}`,
     attachments: attachmentFiles.map((attachmentPath, index) => ({
       path: attachmentPath,
@@ -1025,6 +1025,18 @@ function processCandidate(input: {
     const capturedRequestId = withDatabase(workspacePath, (db) =>
       findCaptureRequestIdByStorageReferences(db, candidate.sharedArtifactPaths)
     );
+    if (capturedRequestId) {
+      withDatabase(workspacePath, (db) => assertAskCaptureEnvelopeMatches(db, {
+        requestId: capturedRequestId,
+        originalText: request,
+        ingressSource: `ingress:${source}`,
+        attachments: candidate.sharedArtifactPaths.map((attachmentPath) => ({
+          path: attachmentPath,
+          originalFilename: path.basename(attachmentPath).replace(/^\d{3}-/, ""),
+          storageReference: attachmentPath
+        }))
+      }));
+    }
     const response = askRunner({
       workspace: workspacePath,
       request,

@@ -15,7 +15,8 @@ import {
 } from "../src/commands/agentAsk.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { agentAskFingerprint, normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
+import { replaceTopLevelField, type AgentAskSettlementReceipt } from "../src/ask/settlement.js";
+import { parseDoc, parsePlanForAcceptanceRepair } from "../src/docs/parse.js";import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
@@ -3058,3 +3059,180 @@ function isolatedAskFixture(workspace: string, main: string): string {
   });
   return candidate;
 }
+
+
+// Synthetic fixtures for Issue #1031; no adopting Project's private text.
+describe("settlement scalar preservation", () => {
+  const styles = ["|", "|-", "|+", ">", ">-", ">+"];
+  const criterion = "The scalar fixture records exactly one amended instruction.";
+  const scalar = (style: string) => `    next_action: ${style}\n      Run the original fixture.\n\n      Preserve the second paragraph.\n\n`;
+  const sibling = ["  - id: sibling", "    title: Sibling fixture", "    status: open", "    responsibility: agent",
+    "    clarification: clarified", "    next_action: Run the sibling fixture.", "    acceptance_criteria:",
+    "      - The sibling fixture exits zero.", "    depends_on: []", "    references: []", ""].join("\n");
+  function setup(style: string, source = true) {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8")
+      .replace("    next_action: Keep existing work moving.\n", scalar(style))
+      .replace("    confidence: high\n", `    confidence: high\n${source ? "    source: Original source\n" : ""}`)
+      .replace("questions: []", `${sibling}questions: []`);
+    writeFileSync(planPath, before);
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Synthetic scalar fixture"], { cwd: repo });
+    return { workspace, repo, planPath, before };
+  }
+  function previewAsk(workspace: string, id: string, intent: "action" | "plan", desired: string, criteriaOnly = false) {
+    const child = { target_ref: "action/existing", desired_result: desired, acceptance: [criterion],
+      ...(criteriaOnly ? {} : { dependencies: [], references: [] }) };
+    const request = JSON.stringify({ agent_ask: "v1", request_id: id, project: "demo", intent,
+      ...(intent === "action" ? child : { target_ref: "plan/demo-plan", desired_result: "Amend the scalar fixture", actions: [child] }) });
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    return { workspace, proposal: proposal.data.proposal.id, requestId: `settle-${id}`, disposition: "accepted" as const };
+  }
+  for (const intent of ["action", "plan"] as const) {
+    it.each(styles)(`${intent} amendment consumes a %s scalar and preserves other fields and Actions`, style => {
+      const { workspace, repo, planPath, before } = setup(style);
+      const desired = "Run the replacement: retain $&, $` and $' literally.\nThen record the fixture result.";
+      const options = previewAsk(workspace, `scalar-${intent}-${styles.indexOf(style)}`, intent, desired);
+      const preview = runAgentAskSettleCommand(options);
+      const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+      const parsed = parseDoc("docs/plans/demo-plan.md", planPath, after);
+      expect(parsed.errors).toEqual([]);
+      const action = (parsed.doc as PlanDoc).actions[0];
+      expect(action.nextAction).toBe(desired);
+      expect(action.title).toBe("Keep existing work");
+      expect(action.expectedArtifact).toBe("Existing proof");
+      expect(after).toContain(sibling);
+      expect(after.slice(after.indexOf("questions: []"))).toBe(before.slice(before.indexOf("questions: []")));
+      expect(after).not.toContain("Preserve the second paragraph.");
+      expect(readFileSync(planPath, "utf8")).toBe(before);
+      const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+      expect(readFileSync(planPath, "utf8")).toBe(after);
+      expect(discoverDocs(repo).errors).toEqual([]);
+      expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt).toEqual(applied.data.receipt);
+    });
+  }
+  it.each(styles)("criteria-only repair preserves a %s instruction byte for byte", style => {
+    const { workspace, planPath, before } = setup(style);
+    const broken = before.replace("      - Existing proof exists.\n", "      - Works correctly.\n");
+    writeFileSync(planPath, broken);
+    execFileSync("git", ["add", "."], { cwd: path.dirname(path.dirname(path.dirname(planPath))) });
+    execFileSync("git", ["commit", "-qm", "Legacy criteria fixture"], { cwd: path.dirname(path.dirname(path.dirname(planPath))) });
+    const parsed = parsePlanForAcceptanceRepair("docs/plans/demo-plan.md", planPath, broken);
+    const options = previewAsk(workspace, `criteria-scalar-${styles.indexOf(style)}`, "plan", (parsed.doc as PlanDoc).actions[0].nextAction!, true);
+    const preview = runAgentAskSettleCommand(options);
+    const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+    expect(after).toContain(scalar(style));
+    expect(after.split("Run the original fixture.")).toHaveLength(2);
+    expect(after).toContain(sibling);
+    expect(parseDoc("docs/plans/demo-plan.md", planPath, after).errors).toEqual([]);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(readFileSync(planPath, "utf8")).toBe(after);
+  });
+  it.each(["$&", "$`", "$'"])("writes request-id replacement token %s literally with and without an existing source", token => {
+    for (const source of [true, false]) {
+      const { workspace, planPath } = setup("|-", source);
+      const id = `literal-${source}-${token}`;
+      const options = previewAsk(workspace, id, "action", `Run the literal ${token} fixture.`);
+      const preview = runAgentAskSettleCommand(options);
+      const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+      const parsed = parseDoc("docs/plans/demo-plan.md", planPath, after);
+      expect(parsed.errors).toEqual([]);
+      expect((parsed.doc as PlanDoc).actions[0]).toMatchObject({ source: `Agent Ask ${id}`, nextAction: `Run the literal ${token} fixture.` });
+      runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    }
+  });
+  it("allows a partial criteria repair while preserving only the untouched Action's old errors", () => {
+    const { workspace, repo, planPath, before } = setup("|-", false);
+    const broken = before.replace("Existing proof exists.", "Works correctly.").replace("The sibling fixture exits zero.", "Looks good.");
+    writeFileSync(planPath, broken);
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Two legacy criteria defects"], { cwd: repo });
+    const parsed = parsePlanForAcceptanceRepair("docs/plans/demo-plan.md", planPath, broken);
+    const options = previewAsk(workspace, "partial-criteria", "plan", (parsed.doc as PlanDoc).actions[0].nextAction!, true);
+    const preview = runAgentAskSettleCommand(options);
+    const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+    expect(after).toContain(sibling.replace("The sibling fixture exits zero.", "Looks good."));
+    const errors = parseDoc("docs/plans/demo-plan.md", planPath, after).errors;
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.every(error => error.field.startsWith("actions[1].acceptance_criteria"))).toBe(true);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.recovery).toBeUndefined();
+    expect(readFileSync(planPath, "utf8")).toBe(after);
+    expect(runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint }).data.receipt).toEqual(applied.data.receipt);
+  });
+  it("refuses a malformed resulting Plan before exposing a preview or applying it", () => {
+    const { workspace, repo, planPath, before } = setup("|-");
+    const options = previewAsk(workspace, "malformed-result", "action", "true");
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+    expect(() => runAgentAskSettleCommand(options)).toThrow("resulting Plan failed validation");
+    expect(() => runAgentAskSettleCommand({ ...options, apply: true, preview: "unoffered" })).toThrow("resulting Plan failed validation");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+    expect(withDatabase(workspace, db => [...loadActionOrder(db).positions.keys()])).toEqual(["demo/existing"]);
+  });
+  it.each(["$&", "$`", "$'"])("replaces a top-level block scalar containing %s literally", token => {
+    const before = projectDoc().replace("goal: Settle work safely.", "goal: |+\n  Old goal.\n\n  Old second paragraph.\n");
+    const value = `Record ${token}: one line.\nThen record the second line.`;
+    const after = replaceTopLevelField(before, "goal", value);
+    expect(after).toBe(before.replace("goal: |+\n  Old goal.\n\n  Old second paragraph.", () => `goal: ${JSON.stringify(value)}`));
+    const parsed = parseDoc("PROJECT.md", "/tmp/PROJECT.md", after);
+    expect(parsed.errors).toEqual([]);
+    expect((parsed.doc as { goal: string }).goal).toBe(value);
+  });
+});
+
+
+it("keeps supported whitespace before a top-level colon and leaves CRLF scalar bytes unchanged", () => {
+  const before = projectDoc().replace("goal: Settle work safely.", "goal : |\n  Old goal.\n\n  Second paragraph.").replaceAll("\n", "\r\n");
+  const after = replaceTopLevelField(before, "goal", "Record $& literally.");
+  expect(after).toBe(before.replace("goal : |\r\n  Old goal.\r\n\r\n  Second paragraph.\r", () => "goal: Record $& literally.\r"));
+  const parsed = parseDoc("PROJECT.md", "/tmp/PROJECT.md", after);
+  expect(parsed.errors).toEqual([]);
+  expect((parsed.doc as { goal: string }).goal).toBe("Record $& literally.");
+});
+
+it.each(["block", "missing"])("replaces %s acceptance and preserves an omitted folded why", style => {
+  const { workspace, repo } = fixture();
+  const planPath = path.join(repo, "docs/plans/demo-plan.md");
+  const oldCriterion = "The first fixture exists.\n\nIts result is recorded.";
+  const why = "    why: >-\n      Keep this unchanged explanation.\n\n      Preserve its second paragraph.\n";
+  const before = readFileSync(planPath, "utf8").replace("    acceptance_criteria:\n      - Existing proof exists.\n", style === "block" ? "    acceptance_criteria:\n      - |+\n        The first fixture exists.\n\n        Its result is recorded.\n\n" : "")
+    .replace("    confidence: high\n", `    confidence: high\n${why}`)
+    .replace("    title: Keep existing work\n", style === "missing" ? "    title: |-\n      Keep existing work\n\n      Preserve the title paragraph.\n" : "    title: Keep existing work\n");
+  writeFileSync(planPath, before);
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Synthetic acceptance scalar fixture"], { cwd: repo });
+  if (style === "block") expect((parseDoc("docs/plans/demo-plan.md", planPath, before).doc as PlanDoc).actions[0].acceptanceCriteria).toEqual([oldCriterion]);
+  const request = JSON.stringify({ agent_ask: "v1", request_id: "acceptance-scalar", project: "demo", intent: "plan",
+    target_ref: "plan/demo-plan", desired_result: "Amend acceptance only", actions: [{ target_ref: "action/existing", desired_result: "Keep existing work moving.",
+      acceptance: ["The replacement fixture records $& literally.\nIts result exists."] }] });
+  const proposal = runAgentAskPreviewCommand({ workspace, request });
+  const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-acceptance-scalar", disposition: "accepted" as const };
+  const preview = runAgentAskSettleCommand(options);
+  const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+  expect(after).toContain(why);
+  if (style === "missing") expect(after).toContain("    title: |-\n      Keep existing work\n\n      Preserve the title paragraph.\n");
+  expect(after).not.toContain("Its result is recorded.");
+  const parsed = parseDoc("docs/plans/demo-plan.md", planPath, after);
+  expect(parsed.errors).toEqual([]);
+  expect((parsed.doc as PlanDoc).actions[0].acceptanceCriteria).toEqual(["The replacement fixture records $& literally.\nIts result exists."]);
+  runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+  expect(readFileSync(planPath, "utf8")).toBe(after);
+});
+
+
+it("refuses a criteria-repair instruction change while other old criteria remain invalid", () => {
+  const { workspace, repo } = fixture();
+  const planPath = path.join(repo, "docs/plans/demo-plan.md");
+  const before = readFileSync(planPath, "utf8").replace("Existing proof exists.", "Works correctly.");
+  writeFileSync(planPath, before);
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Synthetic old acceptance error"], { cwd: repo });
+  const proposal = runAgentAskPreviewCommand({ workspace, request: JSON.stringify({ agent_ask: "v1", request_id: "repair-instruction-refused", project: "demo",
+    intent: "plan", target_ref: "plan/demo-plan", desired_result: "Amend evaluation only", actions: [{ target_ref: "action/existing",
+      desired_result: "Run a changed instruction.", acceptance: ["The replacement fixture exits zero."] }] }) });
+  expect(() => runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id, requestId: "settle-repair-instruction-refused", disposition: "accepted" }))
+    .toThrow("Criteria repair must preserve each Action's next_action and title.");
+  expect(readFileSync(planPath, "utf8")).toBe(before);
+});
