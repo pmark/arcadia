@@ -328,6 +328,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   docket: exempt("Reads the named repository's managed documents only; no workspace, no portfolio."),
   plans: exempt("Reads the named repository's managed documents only."),
   "plan close-out": exempt("Reads checked-in repository files only; --write creates one repository file, no workspace."),
+  "plan select-next": exempt("Reads checked-in repository files and operator-supplied JSON only; writes nothing and reads no workspace."),
   "operator-task list": exempt("Reads the named repository's operator-task records only; reads no workspace."),
   "operator-task show": exempt("Reads the named repository's operator-task records only; reads no workspace."),
   "operator-task raise": exempt("Writes the named repository's operator-task records only; reads no workspace."),

@@ -429,6 +429,7 @@ import {
 import { renderTodoSuccess, runTodoCommand } from "./commands/todo.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderPlanCloseOutSuccess, runPlanCloseOutCommand } from "./commands/planCloseOut.js";
+import { renderPlanSelectNextSuccess, runPlanSelectNextCommand } from "./commands/planSelectNext.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlanProgressSuccess, renderPlansSuccess, runPlanProgressCommand, runPlansCommand } from "./commands/plans.js";
 import {
@@ -3919,6 +3920,21 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       () => runPlanCloseOutCommand({ repo: options.repo, planSlug, write: options.write }),
       renderPlanCloseOutSuccess
     )
+  );
+  addJsonOption(
+    planGroup
+      .command("select-next")
+      .description("Preview the next Plan under Decisions 0116 and 0122 with its preflight and decision card; read-only, never activates")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--project <slug>", "Only consider this Project")
+      .option("--preferences <file>", "JSON Project preference record: { projects: [{ project, included, chosenPlan }] }", resolveInvocationPath)
+      .option("--queue <file>", "JSON queue summary: { queues: [{ project, orderValid, unpositionedCount, runningActions, activePlan, activePlanWaitsOnOperator }] }", resolveInvocationPath)
+      .option("--red-alerts <file>", "JSON open red alerts: { alerts: [{ id, project }] }", resolveInvocationPath)
+      .option("--run-id <id>", "Current run id")
+      .option("--session-id <id>", "Current session id")
+      .option("--run-ask <ids>", "Comma-separated Agent Ask ids submitted by this run")
+  ).action((options: { repo: string; project?: string; preferences?: string; queue?: string; redAlerts?: string; runId?: string; sessionId?: string; runAsk?: string; json?: boolean }) =>
+    runCliAction("plan.select-next", options, () => runPlanSelectNextCommand(options), renderPlanSelectNextSuccess)
   );
 
   const operatorTask = program
