@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatRequest } from "../apps/discord-bot/src/formatters/requestFormatter.js";
-import { runAskCommand, type AskCommandData } from "../src/commands/ask.js";
+import { runAskCommand, safeSingleFileScope, type AskCommandData } from "../src/commands/ask.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -24,6 +24,17 @@ afterEach(() => {
 });
 
 describe("stewardship quality integration fixtures", () => {
+  it("refuses exact-file narrowing when the named output is a symlink", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-scope-root-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "arcadia-scope-outside-"));
+    workspaces.push(root, outside);
+    writeFileSync(path.join(outside, "HelloWorld.txt"), "outside", "utf8");
+    symlinkSync(path.join(outside, "HelloWorld.txt"), path.join(root, "HelloWorld.txt"));
+    expect(safeSingleFileScope(root, "HelloWorld.txt")).toBe(false);
+    expect(safeSingleFileScope(root, "Other.txt")).toBe(true);
+    expect(safeSingleFileScope(outside, "../HelloWorld.txt")).toBe(false);
+  });
+
   for (const fixture of stewardshipQualityFixtures) {
     it(fixture.name, () => {
       const workspace = initializedWorkspace(fixture);
@@ -38,6 +49,9 @@ describe("stewardship quality integration fixtures", () => {
       expect(initial.data.stewardship.recommendedExecutionPath).toBe(fixture.expect.executionPath);
       expect(initial.data.intake.confidenceLabel).toBe(fixture.expect.confidenceLabel);
       expect(initial.data.stewardship.relatedProject?.name ?? null).toBe(fixture.expect.project);
+      for (const phrase of fixture.expect.goalIncludes ?? []) {
+        expect(initial.data.stewardship.generatedCodexGoalText ?? "", `${fixture.name}: goal includes ${phrase}`).toContain(phrase);
+      }
 
       for (const [slot, expected] of Object.entries(fixture.expect.slots ?? {})) {
         expect(initial.data.intake.extractedFields[slot], `${fixture.name}: ${slot}`).toBe(expected);

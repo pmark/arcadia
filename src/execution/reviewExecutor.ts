@@ -6,6 +6,7 @@ import { validationError } from "../cli/errors.js";
 import {
   createArtifactRecord,
   createReviewItem,
+  getExecutionRun,
   getExecutionPlan,
   getProject,
   getProjectMetadata,
@@ -128,11 +129,20 @@ export function executeApprovedReview(
     throw validationError("Requires Review Decision was not found.", { id: options.reviewId });
   }
   const review = executionReviewForTrigger(db, triggerReview);
-  if (!canExecuteReview(triggerReview, review)) {
-    throw validationError("Requires Review Decision is already decided.", { id: triggerReview.id, status: triggerReview.status });
+  const approvalRun = options.runId ? getExecutionRun(db, options.runId) : null;
+  if (!canExecuteReview(triggerReview, review, approvalRun)) {
+    throw validationError("Execution requires a current approved Run receipt for this Review and Action.", {
+      id: triggerReview.id,
+      status: triggerReview.status,
+      runId: options.runId ?? null
+    });
   }
 
   const workItem = review.work_item_id ? getWorkItem(db, review.work_item_id) : null;
+  const isProjectProposal = review.resolved_intent === "ProjectProposalApproval";
+  if (!isProjectProposal && !workItem) {
+    throw validationError("Approved execution requires its governed Action; a missing Action is not permission.", { reviewId: review.id });
+  }
   const projectId = review.project_id ?? workItem?.project_id ?? null;
   if (!projectId) {
     throw validationError("Review execution requires a project with a repository path.", { reviewId: review.id });
@@ -140,7 +150,6 @@ export function executeApprovedReview(
   const project = getProject(db, projectId);
   const metadata = getProjectMetadata(db, projectId);
   const repoPath = resolveValidRepoPath(metadata, review.id);
-  const isProjectProposal = review.resolved_intent === "ProjectProposalApproval";
   if (isProjectProposal) {
     prepareProjectProposalRepository(repoPath, metadata, review.id);
   }
@@ -164,6 +173,7 @@ export function executeApprovedReview(
     planSummary: plan?.summary ?? review.plan_summary,
     validationCommands,
     contextGuidance: readRepoContextGuidance(repoPath),
+    approvalRunId: approvalRun?.id ?? "",
     projectProposal: isProjectProposal ? {
       generatorSkill: metadata?.generator_skill ?? "create-astro-site",
       projectTemplate: metadata?.project_template ?? "astro_field_notes_cloudflare",
@@ -323,18 +333,18 @@ function executionReviewForTrigger(db: Database.Database, triggerReview: ReviewI
   return triggerReview;
 }
 
-function canExecuteReview(triggerReview: ReviewItemSummary, executionReview: ReviewItemSummary): boolean {
-  if (triggerReview.status === "open" || triggerReview.status === "deferred") {
-    return true;
+function canExecuteReview(
+  triggerReview: ReviewItemSummary,
+  executionReview: ReviewItemSummary,
+  run: ReturnType<typeof getExecutionRun>
+): boolean {
+  if (!run || !run.review_item_id || !["pending_execution", "running"].includes(run.status)) return false;
+  if (run.review_item_id !== triggerReview.id || run.work_item_id !== executionReview.work_item_id || run.plan_id !== executionReview.plan_id) return false;
+  if (triggerReview.status !== "open" && triggerReview.status !== "deferred") return false;
+  if (triggerReview.id === executionReview.id) {
+    return executionReview.status === "open" || executionReview.status === "deferred";
   }
-  if (triggerReview.resolved_intent === "ReviewExecutionPending" && triggerReview.status === "approved") {
-    return false;
-  }
-  return executionReview.status === "approved" && isExecutionPending(executionReview);
-}
-
-function isExecutionPending(review: ReviewItemSummary): boolean {
-  return /execution pending/i.test(review.decision_note ?? "");
+  return executionReview.status === "approved" && /execution pending/i.test(executionReview.decision_note ?? "");
 }
 
 function resolveValidRepoPath(metadata: ProjectMetadata | null, reviewId: string): string {
@@ -494,6 +504,7 @@ function buildImplementationPacket(input: {
   planSummary: string | null;
   validationCommands: string[];
   contextGuidance: string[];
+  approvalRunId: string;
   projectProposal: {
     generatorSkill: string;
     projectTemplate: string;
@@ -511,12 +522,13 @@ function buildImplementationPacket(input: {
     `Review slug: ${input.review.slug ?? input.review.id}`,
     `Project: ${input.projectName ?? input.review.project_name ?? "None"}`,
     `Repository path: ${input.repoPath}`,
-    `Decision needed: ${input.review.decision_needed}`,
-    `Recommendation: ${input.review.recommendation ?? "None"}`,
+    `Approval receipt: ${input.approvalRunId}`,
+    "Bounded authority: execute the approved Action and its recorded artifact scope only.",
     "",
     "## Original Action Context",
     `Action ID: ${input.workItem?.id ?? input.review.work_item_id ?? "None"}`,
     `Action title: ${input.workItem?.title ?? input.review.work_item_title ?? "None"}`,
+    `Approved artifact scope: ${input.workItem?.expected_artifact ?? "None"}`,
     `Original request: ${input.review.source_input}`,
     `Proposed action: ${input.review.proposed_action}`,
     `Plan summary: ${input.planSummary ?? "None"}`,

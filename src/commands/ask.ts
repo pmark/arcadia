@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -252,7 +253,14 @@ function runAskCommandWithRouting(
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
   const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
-    return { intake: resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 }), workspaceContext };
+    const parsed = resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 });
+    const requestedFile = parsed.extractedFields.requestedArtifact;
+    const project = parsed.project?.id ? getProjectMetadata(db, parsed.project.id) : null;
+    if (requestedFile && /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}$/.test(requestedFile) && !safeSingleFileScope(project?.repo_path, requestedFile)) {
+      const { requestedArtifact: _discarded, ...extractedFields } = parsed.extractedFields;
+      return { intake: { ...parsed, extractedFields }, workspaceContext };
+    }
+    return { intake: parsed, workspaceContext };
   });
   const selectProject = (reference: string | undefined) =>
     withDatabase(workspacePath, (db) => {
@@ -333,7 +341,7 @@ function runAskCommandWithRouting(
   const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
   const selectedProject = selectProject(projectRef);
   const { resolved, computedStewardship } = deriveStewardship(approvedFromReview, selectedProject);
-  const stewardship: GoalStewardshipResult = options.captureAsIdea || route === "idea"
+  let stewardship: GoalStewardshipResult = options.captureAsIdea || route === "idea"
     ? {
         ...computedStewardship,
         intentType: "Back Burner Idea",
@@ -345,6 +353,13 @@ function runAskCommandWithRouting(
         classificationReason: "Explicit idea capture is deterministically routed to Back Burner."
       }
     : computedStewardship;
+  const exactRequestedFile = intake.extractedFields.requestedArtifact;
+  if (exactRequestedFile && /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}$/.test(exactRequestedFile)) {
+    stewardship = {
+        ...stewardship,
+        generatedCodexGoalText: `Create only ${exactRequestedFile} in the selected repository. Preserve the user's exact request. Tests and validation are harness-owned and are outside the builder's file scope.`
+    };
+  }
   // Every Ask row records the deterministic intake flags, so a report can count them without re-reading prose.
   const askRoutingFlags = {
     recurrenceFlag: intake.extractedFields.recurrence === "true",
@@ -2064,6 +2079,22 @@ function expectedArtifactForCreateWork(intake: IntakeResult): string {
       (intake.action.kind === "create_work" ? intake.action.title : null)
   ].filter((value): value is string => Boolean(value)).join(" ");
   return `${subject || "Requested work"} for ${project} implementation with tests.`;
+}
+
+export function safeSingleFileScope(repoPath: string | null | undefined, fileName: string): boolean {
+  try {
+    if (!repoPath || path.basename(fileName) !== fileName || fileName === "." || fileName === "..") return false;
+    const root = realpathSync(path.resolve(repoPath));
+    if (!statSync(root).isDirectory()) return false;
+    const target = path.join(root, fileName);
+    if (!existsSync(target)) return true;
+    const targetStat = lstatSync(target);
+    if (targetStat.isSymbolicLink()) return false;
+    const physicalTarget = realpathSync(target);
+    return physicalTarget.startsWith(`${root}${path.sep}`);
+  } catch {
+    return false;
+  }
 }
 
 function expectedPlanningArtifactForIntake(intake: IntakeResult): string {

@@ -34,6 +34,7 @@ export interface StewardshipQualityFixture {
     requestedWorkArtifactExcludes?: string[];
     packetArtifactIncludes?: string[];
     packetArtifactExcludes?: string[];
+    goalIncludes?: string[];
     packetIncludes?: string[];
     packetCritiqueStatus?: string;
     packetPurpose?: "planning" | "build";
@@ -82,6 +83,21 @@ export const defaultProjects: SeedProject[] = [
 ];
 
 export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
+  {
+    name: "keeps an explicit single-file request and builder scope exact",
+    input: "Create HelloWorld.txt for Arcadia.",
+    seed: { projects: [{ ...defaultProjects[0], repoPath: process.cwd() }] },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      requestedWorkArtifactIncludes: ["HelloWorld.txt"],
+      requestedWorkArtifactExcludes: ["implementation with tests"],
+      goalIncludes: ["Create only HelloWorld.txt", "Tests and validation are harness-owned", "outside the builder's file scope"],
+      askRawInputIncludes: ["Create HelloWorld.txt for Arcadia."]
+    }
+  },
   {
     name: "normalizes pnpm arcadia ask wrapper before planning stewardship",
     input: "pnpm arcadia ask \"Plan and implement Publishing support for Pinterest for Rebuster project\"",
