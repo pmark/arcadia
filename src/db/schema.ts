@@ -409,7 +409,8 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
       status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
       envelope_json TEXT NOT NULL,
       processing_owner TEXT,
-      related_review_id TEXT
+      related_review_id TEXT,
+      routing_identity TEXT
     );
     CREATE TABLE IF NOT EXISTS ask_capture_attachments (
       id TEXT PRIMARY KEY, capture_id TEXT NOT NULL, original_filename TEXT NOT NULL,
@@ -428,6 +429,9 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
   }
   if (!columns.has("related_review_id")) {
     db.prepare("ALTER TABLE ask_capture_envelopes ADD COLUMN related_review_id TEXT").run();
+  }
+  if (!columns.has("routing_identity")) {
+    db.prepare("ALTER TABLE ask_capture_envelopes ADD COLUMN routing_identity TEXT").run();
   }
 }
 

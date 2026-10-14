@@ -144,16 +144,27 @@ export function captureAskEnvelope(db: Database.Database, input: {
   /** Provenance metadata kept out of the fingerprint; see AskCaptureEnvelope. */
   actor?: CaptureActor | null;
   project?: string | null;
+  /** Routing choices are idempotency identity, never evidence of approval or authority. */
+  routingIdentity?: Record<string, unknown> | null;
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
   return writeTransaction(db, () => {
-    const existing = db.prepare("SELECT envelope_json, fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
-      .get(requestId) as { envelope_json: string; fingerprint: string } | undefined;
+    const existing = db.prepare("SELECT id, status, envelope_json, fingerprint, routing_identity FROM ask_capture_envelopes WHERE request_id = ?")
+      .get(requestId) as { id: string; status: string; envelope_json: string; fingerprint: string; routing_identity: string | null } | undefined;
     if (existing && input.reuseExisting) return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
     const prepared = prepareInput(input);
     if (existing) {
       if (existing.fingerprint !== prepared.fingerprint) {
         throw new Error(`Capture request ${requestId} was already submitted with different content.`);
+      }
+      const routingIdentity = input.routingIdentity === undefined || input.routingIdentity === null
+        ? null
+        : JSON.stringify(input.routingIdentity);
+      if (existing.routing_identity !== null && existing.routing_identity !== routingIdentity) {
+        throw new Error(`Capture request ${requestId} was already submitted with different routing choices.`);
+      }
+      if (existing.routing_identity === null && routingIdentity !== null && !legacyRoutingReplayIsProven(db, existing.id, existing.status, input.routingIdentity ?? {})) {
+        throw new Error(`Capture request ${requestId} has no pinned routing identity; use a new request id to avoid changing its route.`);
       }
       return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
     }
@@ -181,9 +192,10 @@ export function captureAskEnvelope(db: Database.Database, input: {
       ...(input.project !== undefined ? { project: input.project } : {})
     };
     db.prepare(`INSERT INTO ask_capture_envelopes
-      (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(envelope.id, requestId, prepared.fingerprint, input.originalText, input.ingressSource, capturedAt, envelope.status, JSON.stringify(envelope));
+      (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json, routing_identity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(envelope.id, requestId, prepared.fingerprint, input.originalText, input.ingressSource, capturedAt, envelope.status, JSON.stringify(envelope),
+        input.routingIdentity === undefined || input.routingIdentity === null ? null : JSON.stringify(input.routingIdentity));
     const insertAttachment = db.prepare(`INSERT INTO ask_capture_attachments
       (id, capture_id, original_filename, media_type, byte_size, sha256, storage_reference, proposed_role, derivation_status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -193,6 +205,32 @@ export function captureAskEnvelope(db: Database.Database, input: {
     }
     return envelope;
   });
+}
+
+function legacyRoutingReplayIsProven(
+  db: Database.Database,
+  captureId: string,
+  status: string,
+  identity: Record<string, unknown>
+): boolean {
+  // A prior capture with no route pin is replayable only after completion and
+  // only when its canonical Ask proves the selected Project and all other
+  // consequential routing controls are at their legacy defaults.
+  if (status !== "completed" || identity.executeReview === true || identity.correctionRoute != null ||
+      identity.approvedReviewItemId != null || identity.captureAsIdea === true || identity.milestone != null ||
+      identity.reviewReference != null || identity.runSafe === true || identity.agentProfile != null ||
+      identity.reviewExecutor != null || identity.sourceRef != null || identity.facetTags != null) return false;
+  const ask = db.prepare(`
+    SELECT COALESCE(work.project_id, review.project_id) AS project_id
+    FROM ask_requests ask
+    LEFT JOIN execution_plans plan ON plan.id = ask.plan_id
+    LEFT JOIN work_items work ON work.id = COALESCE(ask.work_item_id, plan.work_item_id)
+    LEFT JOIN review_items review ON review.capture_id = ask.capture_id
+    WHERE ask.capture_id = ? ORDER BY ask.created_at LIMIT 1
+  `)
+    .get(captureId) as { project_id: string | null } | undefined;
+  if (!ask) return false;
+  return identity.explicitProjectId == null || identity.explicitProjectId === ask.project_id;
 }
 
 export function findCaptureRequestIdByStorageReferences(

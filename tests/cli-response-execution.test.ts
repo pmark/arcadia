@@ -3,17 +3,79 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createAskRequest, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
+import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
+import { createAskRequest, createProjectWithInitialWork, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
 import { renderAskTrailSuccess, runAskShowCommand } from "../src/commands/askTrail.js";
-import { runReviewApproveCommand } from "../src/commands/review.js";
+import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { createExecutableReview, createNeutralCwd, createProject, createTempRepo, createTempWorkspacePath, fakeExecutorBin, importWorkItem, initializedGitRepo, initializedWorkspace, parseJson, runCli, cleanupTrackedPaths } from "./cli-response-fixture.js";
 
 afterEach(cleanupTrackedPaths);
 
 describe("CLI response contract — execution and review", () => {
+  it("does not recommend approval recovery for partial rejection or deferral", () => {
+    for (const disposition of ["reject", "defer"] as const) {
+      const workspace = initializedWorkspace();
+      const repo = initializedGitRepo();
+      const { reviewId } = createExecutableReview(workspace, repo);
+      const capture = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+        requestId: `partial-${disposition}`,
+        originalText: `${disposition} ${reviewId}`,
+        ingressSource: "ask"
+      }));
+      withDatabase(workspace, (db) => db.prepare(
+        "UPDATE ask_capture_envelopes SET status = 'partial', related_review_id = ? WHERE id = ?"
+      ).run(reviewId, capture.id));
+      if (disposition === "reject") runReviewRejectCommand({ workspace, id: reviewId });
+      else runReviewDeferCommand({ workspace, id: reviewId });
+      const shown = runAskShowCommand({ workspace, id: capture.requestId });
+      const text = renderAskTrailSuccess(shown).join("\n");
+      expect(text).not.toContain(`arcadia review approve ${reviewId} --execute`);
+      expect(text).toContain("original reply");
+    }
+  });
+
+  it("pins explicit Project routing to the request id and shows the original Project on replay", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const projects = withDatabase(workspace, (db) => ["Route Project A", "Route Project B"].map((name) =>
+      createProjectWithInitialWork(db, {
+        name,
+        mission: "Exercise capture routing identity.",
+        status: "active",
+        currentMilestone: "Routing milestone",
+        nextAction: "Check routed request",
+        expectedArtifact: "Routing evidence",
+        workClassification: "agent"
+      }).project
+    ));
+    for (const project of projects) withDatabase(workspace, (db) => upsertProjectMetadata(db, {
+      projectId: project.id,
+      aliases: [project.name],
+      repoPath: repo,
+      statusSummary: `${project.name} fixture repo.`,
+      validationCommands: ["test -f HelloWorld.txt"]
+    }));
+    const request = 'Implement HelloWorld.txt, containing exactly the bytes "Hello World!\\n".';
+    const first = runAskCommand({ workspace, project: projects[0].name, request, requestId: "explicit-route-pin" });
+    const originalReview = withDatabase(workspace, (db) => getReviewItem(db, first.data.reviewItemId as string));
+    expect(originalReview?.project_id).toBe(projects[0].id);
+    const shown = runAskShowCommand({ workspace, id: "explicit-route-pin" });
+    expect(renderAskTrailSuccess(shown).join("\n")).toContain(projects[0].name);
+
+    const sameProjectReplay = runAskCommand({ workspace, project: projects[0].name, request, requestId: "explicit-route-pin" });
+    expect(sameProjectReplay.data.captureEnvelope.id).toBe(first.data.captureEnvelope.id);
+    expect(() => runAskCommand({ workspace, project: projects[1].name, request, requestId: "explicit-route-pin" }))
+      .toThrow(/different routing choices/);
+    expect(withDatabase(workspace, (db) => getReviewItem(db, first.data.reviewItemId as string)?.project_id)).toBe(projects[0].id);
+    const freshRequest = 'Implement Greeting.txt, containing exactly the bytes "Hello!\\n".';
+    const freshSameProject = runAskCommand({ workspace, project: projects[0].name, request: freshRequest, requestId: "explicit-route-fresh" });
+    expect(freshSameProject.data.captureEnvelope.id).not.toBe(first.data.captureEnvelope.id);
+    expect(withDatabase(workspace, (db) => getReviewItem(db, freshSameProject.data.reviewItemId as string)?.project_id)).toBe(projects[0].id);
+  });
+
   it("emits a usage error for project create when no workspace is configured", () => {
     const projectPath = createTempWorkspacePath();
 

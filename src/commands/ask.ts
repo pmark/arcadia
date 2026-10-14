@@ -212,11 +212,29 @@ function runAskCommandWithRouting(
   flagEnabled: boolean,
   trace: { memo?: AskMemo }
 ): CommandSuccess<AskCommandData> {
+  const routingIdentity = withDatabase(workspacePath, (db) => {
+    const explicitProject = resolveProjectReference(db, options.project);
+    return {
+      explicitProjectId: explicitProject?.id ?? (options.project?.trim() ? `unresolved:${options.project.trim().toLowerCase()}` : null),
+      milestone: options.milestone?.trim() || null,
+      reviewReference: metadataString(options.adapterMetadata, "reviewId") ?? metadataString(options.adapterMetadata, "reviewSlug"),
+      executeReview: options.executeReview === true,
+      approvedReviewItemId: options.approvedReviewItemId ?? null,
+      correctionRoute: options.correctionRoute ?? null,
+      captureAsIdea: options.captureAsIdea === true,
+      runSafe: options.runSafe === true,
+      agentProfile: options.agentProfile ?? null,
+      reviewExecutor: options.reviewExecutor ?? null,
+      sourceRef: options.sourceRef ?? null,
+      facetTags: options.facetTags ?? null
+    };
+  });
   const captureEnvelope = withDatabase(workspacePath, (db) => captureAskEnvelope(db, {
     requestId: options.requestId,
     originalText: options.request,
     ingressSource: options.sourceIngress?.trim() || "ask",
     attachments: options.attachments,
+    routingIdentity,
     reuseExisting: options.reuseCaptureEnvelope
   }));
   // Approval follow-up intentionally reuses a completed capture to attach the

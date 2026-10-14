@@ -24,7 +24,7 @@ export interface AskTrailCapture {
 }
 
 export interface AskTrailOutcome {
-  kind: "action" | "plan" | "decision" | "back_burner_item" | "run";
+  kind: "action" | "plan" | "decision" | "back_burner_item" | "run" | "approval_claim";
   id: string;
   status: string | null;
   summary: string | null;
@@ -227,18 +227,22 @@ function captureOutcomes(db: Database.Database, captureId: string): AskTrailOutc
   const linkedReview = db.prepare(`
     SELECT review.id, review.status, review.decision_needed, project.name AS project_name,
       COALESCE(claim.work_item_id, resulting.work_item_id, review.work_item_id) AS work_item_id,
-      COALESCE(claim.plan_id, resulting.plan_id, review.plan_id) AS plan_id
+      COALESCE(claim.plan_id, resulting.plan_id, review.plan_id) AS plan_id,
+      claim.review_item_id AS claimed_review_id
     FROM ask_capture_envelopes capture
     JOIN review_items review ON review.id = capture.related_review_id
     LEFT JOIN projects project ON project.id = review.project_id
     LEFT JOIN review_approval_claims claim ON claim.review_item_id = review.id
     LEFT JOIN ask_requests resulting ON resulting.id = review.resulting_ask_request_id
     WHERE capture.id = ?
-  `).get(captureId) as { id: string; status: string; decision_needed: string; project_name: string | null; work_item_id: string | null; plan_id: string | null } | undefined;
+  `).get(captureId) as { id: string; status: string; decision_needed: string; project_name: string | null; work_item_id: string | null; plan_id: string | null; claimed_review_id: string | null } | undefined;
   if (linkedReview) {
     outcomes.push({ kind: "decision", id: linkedReview.id, status: linkedReview.status, summary: linkedReview.decision_needed, projectName: linkedReview.project_name });
     if (linkedReview.work_item_id) outcomes.push(...actionOutcome(db, linkedReview.work_item_id));
     if (linkedReview.plan_id) outcomes.push(...planOutcome(db, linkedReview.plan_id));
+    if (linkedReview.claimed_review_id && linkedReview.work_item_id && linkedReview.plan_id) {
+      outcomes.push({ kind: "approval_claim", id: linkedReview.id, status: "durable", summary: `Action ${linkedReview.work_item_id}; Plan ${linkedReview.plan_id}`, projectName: linkedReview.project_name });
+    }
     for (const row of db.prepare("SELECT id, status, summary FROM execution_runs WHERE review_item_id = ? ORDER BY created_at, id").all(linkedReview.id) as Array<{ id: string; status: string; summary: string }>) {
       outcomes.push({ kind: "run", id: row.id, status: row.status, summary: row.summary, projectName: linkedReview.project_name });
     }
@@ -286,11 +290,12 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
     if (capture.status === "partial") {
       const linkedDecision = capture.outcomes.find((outcome) => outcome.kind === "decision" && outcome.id === capture.relatedReviewId);
       const linkedRun = capture.outcomes.find((outcome) => outcome.kind === "run");
+      const linkedApprovalClaim = capture.outcomes.find((outcome) => outcome.kind === "approval_claim" && outcome.id === capture.relatedReviewId);
       const recovery = linkedRun
         ? `Recovery: Review ${capture.relatedReviewId} already has Run ${linkedRun.id} [${linkedRun.status}]; do not submit another approval.`
-        : capture.relatedReviewId && linkedDecision && ["open", "deferred"].includes(linkedDecision.status ?? "")
+        : capture.relatedReviewId && linkedDecision && linkedApprovalClaim && ["open", "deferred"].includes(linkedDecision.status ?? "")
           ? `Recovery: inspect this Review's Action/Plan. Resume only with arcadia review approve ${capture.relatedReviewId} --execute; its approval claim reuses that exact Action/Plan. Do not replay this Ask as a new approval.`
-          : "Recovery: do not retry automatically; inspect the listed durable effects, then submit a new request only after confirming the intended outcome.";
+          : "Recovery: do not retry automatically; inspect the listed durable effects and original reply. Continue the original approval, rejection, deferral, or answer intent only after confirming its outcome.";
       lines.push(recovery);
       for (const outcome of capture.outcomes) {
         lines.push(`  → ${outcome.kind} ${outcome.id}${outcome.status ? ` (${outcome.status})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
