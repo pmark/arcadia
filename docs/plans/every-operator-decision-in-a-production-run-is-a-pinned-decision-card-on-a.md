@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 project: arcadia
-status: active
+status: draft
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -305,7 +305,6 @@ actions:
     references: ["config/defaults/agent-roles.json", "docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/native-app-sessions.md", "docs/reports/session-ledger/README.md"]
 questions: []
 decisions: []
-current_action: delegation-policy-records
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---

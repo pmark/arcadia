@@ -2484,3 +2484,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The selector follows Decisions 0116 and 0122 and returns the chosen Plan with the reasons."; "It refuses a Plan authored in the same run and a Plan the operator has not approved."; "A preflight failure names the blocker and the one-click remedy; no state is mutated."; "Focused tests pass and the preview matches the card contract.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-next-plan-selector-2026-10-14).
+
+## 2026-10-14 — Agent Ask activate-autonomous-production-plan-20261014-01a13b99
+
+- **Did:** Activated arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider at launch-failure-keeps-cause.
+- **Result:** Operator-settled Plan transition. Previous Plan every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a remains draft with completion state preserved. Operator explicitly directed: Find that plan and activate it. All I want is progress towards that single objective.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
