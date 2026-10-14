@@ -2,7 +2,7 @@
 
 The operator requested a bounded attempt → findings → repair → independently verified retry loop, keeping production Off and preserving current work. Decision 0128 records the limits; the inactive Scout Plan adds `bounded-luna-hello-world-loop` without activation or queue/pointer movement.
 
-This checkpoint delivers isolation validation and budget reservation primitives, not live execution admission. No current Scout Action is marked complete. The three prerequisites remain open until their full acceptance evidence exists.
+This checkpoint delivers isolation validation and records the budget policy; durable budget enforcement and live execution admission are not delivered. No current Scout Action is marked complete. The three prerequisites remain open until their full acceptance evidence exists.
 
 ## Recorded limits
 
@@ -12,10 +12,10 @@ A retry needs a named failure, changed source and independent review/QA. Unchang
 
 ## Current evidence
 
-- Product commit `a8f752002d96bc59b6d84ddb375f9e4017ca23af`: focused preflight tests 41/41, touched-file ESLint, TypeScript and diff checks passed.
+- Product commit `15ea1fc59982e77dee41550cf7b3a39c92924fb2`: focused preflight tests 39/39, touched-file ESLint, TypeScript and diff checks passed. Independent review prompted physical live/fixture overlap checks, unreadable-path refusal and exact canonical Decision path equality.
 - Original manifest digest `76ef8c3763a4d9b5b04761a510cf43e2896545b227f70f5506df9c1db48ed8b9`: all 48 files verified on a temporary copy; zero replay provider calls; recorded product result **No**. Verified observations and hypotheses remain separate. The original config uncertainty stays unresolved.
 - The Decision-aware receipt is `bounded-decision-0128-isolation-only`, with `executionAuthorized: false`. A successful isolation check alone cannot launch Luna.
-- Reservation uses a fixed Supervisor evidence location outside disposable fixtures. A missing ledger refuses; this checkpoint neither initializes it nor consumes any live attempt. Exact approved assignment and launch-consumer integration remain required.
+- R2 review could not clear earlier-valid-ledger rollback detection. The incomplete budget reservation API and CLI write path were removed. This checkpoint cannot initialize, reserve or enforce attempts/repairs; exact approved assignment, durable freshness evidence and launch-consumer integration remain required before any live attempt. No second state store was added.
 - Root independently checked that the primary checkout was clean after an Implementer diagnostic mix-up; the three edits were in the assigned candidate. No recovery/reset was performed. Fetched main was already an ancestor of the candidate.
 
 Private receipts contain the complete canonical role briefs, Implementer/Planner handbacks, replay, failed validation diagnostics and governing-command receipts. No config contents or provider logs belong in this public report. Native dispatch is not governed Session admission. Canonical specialist ledger serialization remains tracked in #1366; no legacy role is substituted for a canonical specialist.
