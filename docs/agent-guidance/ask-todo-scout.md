@@ -1,5 +1,7 @@
 # Ask/To-do Hello World scout
 
+For project continuation, read [the maintained Scout guide](../scout/CONTINUE.md). This page describes the deterministic public measurement.
+
 Use the bounded scenario `pnpm fast-rehearsal -t 'Ask/To-do scout'` to measure one repeatable, zero-model Ask journey. It creates a disposable workspace and Project, asks Arcadia to create `HelloWorld.txt` with exact bytes `Hello World!\n`, and transports one explicitly labelled fixture operator approval through Ask. The scout interacts only through public Ask (including `Ask show`) and To-do command paths; it does not start a worker or rescue the journey through another command.
 
 Read the scenario's `scout` object in the harness `report.json`. `outcome` is `yes` only when the exact file exists and a correlated completed Run plus a ready or published Artifact at that path prove completion. A file alone, a queued Run, an approval receipt, or a passing Vitest test cannot produce `yes`. The expected current product result is `no`: the Run queues as `pending_execution`, the fixture has no worker, and completion evidence is absent. Ask approval returns the queued Run identifier; Ask show and To-do expose its evidence consistently.

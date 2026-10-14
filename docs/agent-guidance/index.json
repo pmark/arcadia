@@ -118,7 +118,7 @@
       "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
       "path": "docs/agent-guidance/ask-todo-scout.md",
       "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
-      "sha256": "b24b3318a247b7cbb5c081f6ff20592bd551d51bfc1cce2b5bb7834f9ec58681"
+      "sha256": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8"
     },
     {
       "id": "session-roles-and-briefs",
@@ -147,6 +147,13 @@
       "path": "docs/agent-guidance/code-simplification.md",
       "read_before": "Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage.",
       "sha256": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4"
+    },
+    {
+      "id": "scout-continuation",
+      "trigger": "continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff",
+      "path": "docs/scout/CONTINUE.md",
+      "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
+      "sha256": "d51c7bbd8256ceb9f9e6862e82d8a71f7ba27ec9ab505b3f8f4611e18b3273ef"
     }
   ]
 }
