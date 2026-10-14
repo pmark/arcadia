@@ -1,0 +1,27 @@
+{
+  "session_id": "01a13b2c-hacker-recovery-role-20261014",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "operator-directed:#1407",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "repeated-workflow-refusal-without-classification",
+      "cost_min": null,
+      "fix_ref": "docs/agent-guidance/hacker-recovery.md"
+    }
+  ],
+  "outcome": "split",
+  "notes": "Recovery instructions and proposed official contract. Taxonomy registration/Decision, installed skill adoption and any automatic invocation remain pending; PR records final head review/CI."
+}

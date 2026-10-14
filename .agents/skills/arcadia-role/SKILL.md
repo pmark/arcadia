@@ -64,6 +64,15 @@ researcher at depth 1. Delegates return help requests to the Lead and never spaw
 children. Code-reviewer and QA need separate independent Sessions, never native
 children. Decisions 0112/0114 govern these limits.
 
+## Recovery behavior across roles
+
+For repeated unchanged workflow refusals or a stop-the-line request load
+[arcadia-hacker](../arcadia-hacker/SKILL.md) before another attempt. Supervisors
+must trigger its bounded diagnosis instead of sending the same failure to a new
+agent. Hacker mode uses existing role permissions; the proposed Hacker specialist
+is not registered until its taxonomy Decision and implementation are accepted.
+No role name or prepared brief proves the actual runtime model/effort binding.
+
 ## Prepare and dispatch authorized native help
 
 Use the standard harness unmodified. Native dispatch requires explicit operator

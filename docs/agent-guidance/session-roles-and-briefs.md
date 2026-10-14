@@ -27,6 +27,13 @@ to request planner, plan-critic, implementer or researcher at depth 1. Delegates
 never delegate. Code-reviewer and qa are separate independent Sessions, never
 in-process children. A plan-critic is independent of the planner it judges.
 
+## Recovery specialization
+
+Read [Hacker recovery](hacker-recovery.md) for repeated refusals and red alerts.
+Hacker is a proposed specialist, not currently a valid registered role ID.
+An assigned Lead diagnoses; the authorized implementer remains the sole writer.
+A taxonomy proposal does not change dispatch eligibility or admission.
+
 ## Native dispatch and model selection
 
 Read role defaults from the registry and resolve the authorized model/identity

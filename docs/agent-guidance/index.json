@@ -48,7 +48,7 @@
       "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
       "path": "docs/agent-guidance/learning.md",
       "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
-      "sha256": "a417f0a3fad627ddb8fadd1e8a6ce001a2a4c8a34d617237e97f608ad0d2ef5a"
+      "sha256": "2334b0d679ad80288b1d2c98e564f1e8b4db23a24989385fe8781dcca92757a9"
     },
     {
       "id": "git-identity",
@@ -125,14 +125,21 @@
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "ab7bd4385dab770e840f05865b3ac5bed9fe9577745627e3213a1ca5e4c98f89"
+      "sha256": "730e1dfa0c20f968e0be2e02456a0e6e8d53763d62268e4fd1bb3176a0a178b3"
     },
     {
       "id": "native-app-sessions",
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "b737deb3861d9833e915b69f0f04c432b7072ad399209f3ecf8d2f6f1b4f1c74"
+      "sha256": "628087e9f5720ea8829b01ee533904cd4d7a93b8f2c52bbb91c25d118c4eddfe"
+    },
+    {
+      "id": "hacker-recovery",
+      "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
+      "path": "docs/agent-guidance/hacker-recovery.md",
+      "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
+      "sha256": "8233f47874b91d7806ed6c8999b53d42c3f96a89813c1f63db0fe55646f99e01"
     }
   ]
 }
