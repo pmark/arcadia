@@ -172,6 +172,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "push-unpushed --repo",
       "raise --repo",
       "reconcile --repo",
+      "select-next --repo",
       "setup-context --repo",
       "show --repo",
       "tidy --repo",

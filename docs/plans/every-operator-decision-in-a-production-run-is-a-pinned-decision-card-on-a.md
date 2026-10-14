@@ -106,10 +106,10 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
   - id: next-plan-selector
     title: Implement a deterministic next-Plan selector and preflight that emits a decision card and is preview-only.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a deterministic next-Plan selector and preflight that emits a decision card and is preview-only.
+    next_action: Completed via Agent Ask complete-next-plan-selector-2026-10-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask next-plan-selector
     clarification: clarified
     confidence: high
