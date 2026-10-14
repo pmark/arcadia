@@ -77,8 +77,9 @@ and behavior-preserving cleanup distinguishable; hand back evidence and benefit.
 For repeated unchanged workflow refusals or a stop-the-line request load
 [arcadia-hacker](../arcadia-hacker/SKILL.md) before another attempt. Supervisors
 must trigger its bounded diagnosis instead of sending the same failure to a new
-agent. Hacker mode uses existing role permissions; the proposed Hacker specialist
-is not registered until its taxonomy Decision and implementation are accepted.
+agent. Hacker is a bounded mode of existing Lead and implementer roles, not a
+registered role or a pending registration prerequisite. Keep the assigned role's
+lineage, permissions, ownership and remaining allowance.
 No role name or prepared brief proves the actual runtime model/effort binding.
 
 ## Prepare and dispatch authorized native help

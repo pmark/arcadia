@@ -30,9 +30,11 @@ in-process children. A plan-critic is independent of the planner it judges.
 ## Recovery specialization
 
 Read [Hacker recovery](hacker-recovery.md) for repeated refusals and red alerts.
-Hacker is a proposed specialist, not currently a valid registered role ID.
+Hacker is a bounded mode of existing roles, not a registered role ID.
 An assigned Lead diagnoses; the authorized implementer remains the sole writer.
-A taxonomy proposal does not change dispatch eligibility or admission.
+The mode changes neither dispatch eligibility nor admission, and supplies no
+new permissions, model default or allowance. Supervision remains an assigned
+relationship and duty; requiring recovery does not create a new role.
 
 ## Native dispatch and model selection
 
