@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -9,7 +7,8 @@ import type { ReviewItemSummary } from "../domain/types.js";
 import { buildModelEffectivenessReport, type ModelEffectivenessReport } from "../reports/modelEffectiveness.js";
 import { parsePersistedQaContext, verifyPersistedQaContextEvidence, type PrReviewRole } from "../qa/prReview.js";
 import { listMonitoredProjects } from "./workMonitor.js";
-import { validateSessionLedger, type SessionLedgerRow } from "../reports/sessionLedger.js";
+import type { SessionLedgerRow } from "../reports/sessionLedger.js";
+import { readSessionLedger } from "../reports/sessionLedgerSource.js";
 import {
   freshnessSummary,
   loadQaTargetsFile,
@@ -92,15 +91,11 @@ export function runQaEffectivenessCommand(options: { workspace: string }): Comma
     const ledgerFor = (projectId: string): SessionLedgerRow[] => {
       if (ledgers.has(projectId)) return ledgers.get(projectId)!;
       const repositoryPath = repositoryByProject.get(projectId);
-      const ledgerPath = repositoryPath ? path.join(repositoryPath, "docs", "reports", "session-ledger.jsonl") : null;
-      if (!ledgerPath || !existsSync(ledgerPath)) return ledgers.set(projectId, []).get(projectId)!;
-      const text = readFileSync(ledgerPath, "utf8");
-      const ledgerErrors = validateSessionLedger(text);
-      if (ledgerErrors.length > 0) {
-        sourceWarnings.push(`${ledgerPath}: ignored invalid session ledger (${ledgerErrors.length} validation error${ledgerErrors.length === 1 ? "" : "s"})`);
-        return ledgers.set(projectId, []).get(projectId)!;
-      }
-      const rows = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line) as SessionLedgerRow);
+      if (!repositoryPath) return ledgers.set(projectId, []).get(projectId)!;
+      const combined = readSessionLedger(repositoryPath);
+      // One invalid source is skipped with a named warning; the rest of the ledger is kept.
+      for (const error of combined.errors) sourceWarnings.push(`${repositoryPath}: skipped invalid session ledger source ${error}`);
+      const rows = combined.rows;
       ledgers.set(projectId, rows);
       return rows;
     };

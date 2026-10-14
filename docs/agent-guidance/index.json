@@ -125,14 +125,14 @@
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "b7e3e0a776101070b4c6fdec4170d7d3e6db719e4384edceecd30e6fc031ddb4"
+      "sha256": "ab7bd4385dab770e840f05865b3ac5bed9fe9577745627e3213a1ca5e4c98f89"
     },
     {
       "id": "native-app-sessions",
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "240df94338fb310f8e3b87101d22363a756886097a49c7ff635562fb5074bd88"
+      "sha256": "b737deb3861d9833e915b69f0f04c432b7072ad399209f3ecf8d2f6f1b4f1c74"
     }
   ]
 }

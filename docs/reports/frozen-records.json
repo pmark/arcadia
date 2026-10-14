@@ -1,0 +1,19 @@
+{
+  "frozen": [
+    {
+      "path": "docs/reports/session-ledger.jsonl",
+      "sha256": "d48a85bf0825c9ff9e98942bf98a20cfa734a6c2c2b12414c444df53e96d37d0",
+      "record_new_entries_in": "docs/reports/session-ledger/"
+    },
+    {
+      "path": "docs/reports/production-simulation-living-notes.md",
+      "sha256": "d3bc06e8e01470098e37d7588a0850ca1ea847b8724919b7fb5e4fd3622b931d",
+      "record_new_entries_in": "docs/reports/frictions/"
+    },
+    {
+      "path": "docs/reports/session-handoff-2026-10-12.md",
+      "sha256": "3cc222b7c9cd6de52d6bea7bdaf629767867608b3ff83cd154a1f9fcf4673258",
+      "record_new_entries_in": "docs/reports/handoffs/"
+    }
+  ]
+}

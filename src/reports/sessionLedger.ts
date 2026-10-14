@@ -1,8 +1,10 @@
 /**
  * Session ledger: one JSON object per line in docs/reports/session-ledger.jsonl.
  *
- * How a session adds a row: at hand-off, append exactly one line for the
- * session (not one per attempt) with the fields below. Use null for any token
+ * How a session adds a row: at hand-off, add exactly one file
+ * docs/reports/session-ledger/<YYYYMMDDTHHMMZ>-<session_id>.json (this legacy
+ * JSONL is frozen; see sessionLedgerSource.ts) for the session (not one per
+ * attempt) with the fields below. Use null for any token
  * or time number you do not have; never estimate. When only a harness
  * subagent total exists, put it in `subagent_tokens_total` and leave the
  * uncached/cached split null. A `stopped` outcome needs a `stop_reason`.
