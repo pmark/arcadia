@@ -1,5 +1,7 @@
 # Arcadia: Start Here
 
+For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
+
 ## Governed specialist roles
 
 Read the seven canonical roles and render a bounded brief from the repository:

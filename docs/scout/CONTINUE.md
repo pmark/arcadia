@@ -4,6 +4,8 @@ Say **“Continue the Scout project for Arcadia Studio.”** The entrypoint skil
 
 ## Purpose and scope
 
+The Scout initiative is the first bounded probe in Arcadia’s [operator-persona behavioral testing approach](../behavioral-testing.md). Personas simulate people using Arcadia; model/effort settings are separate from their knowledge and attention. This guide owns Scout continuation state; the broader document owns that testing concept. The approved live Luna customer and its bounds remain unchanged.
+
 Prove that a customer can ask Arcadia for `HelloWorld.txt` through **Ask / Ask show / To-do**, and receive an actual completed Run and accepted product Artifact. This is the bounded no-remote Hello World integration probe supporting Arcadia Studio, not permission to launch a Studio pilot or create a remote delivery repository.
 
 The exact builder-owned output is one file, `HelloWorld.txt`, containing **13 bytes**: `Hello World!` followed by one LF newline (`Hello World!\n`). Setup, approval transport, bounded Run consumption, validation and the independent oracle belong to the Lead/Supervisor or harness, outside the customer persona.
