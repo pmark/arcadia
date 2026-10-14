@@ -14,7 +14,7 @@ import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDi
 import { yamlScalar } from "../docs/frontmatter.js";
 import { parseDoc, parsePlanForAcceptanceRepair } from "../docs/parse.js";
 import { syncProjectDocs } from "../docs/sync.js";
-import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { ArcadiaDoc, DecisionDoc, DocValidationError, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
 import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
@@ -341,6 +341,22 @@ export function settleAgentAsk(db: Database.Database, input: {
   let queueActionKeys: string[] = [];
   let queueAfter = queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
   const actionIdsToValidate: string[] = [];
+  // A criteria-only repair may leave identical old errors on untouched Actions.
+  // It never permits a new error, or an error on an amended Action.
+  const retainedAcceptanceErrors = new Map<string, Set<string>>();
+  const retainsAcceptanceError = (error: DocValidationError): boolean =>
+    retainedAcceptanceErrors.get(error.relativePath)?.has(JSON.stringify(error)) === true;
+  const validateResultingPlan = (mutation: FileMutation): void => {
+    const relativePath = path.relative(repoRoot, mutation.path);
+    if (!relativePath.startsWith("docs/plans/") || !relativePath.endsWith(".md") || mutation.after === null) return;
+    const parsed = retainedAcceptanceErrors.has(relativePath)
+      ? parsePlanForAcceptanceRepair(relativePath, mutation.path, mutation.after)
+      : parseDoc(relativePath, mutation.path, mutation.after);
+    const errors = parsed.errors.filter((error) => !retainsAcceptanceError(error));
+    if (!parsed.doc || parsed.doc.type !== "plan" || errors.length > 0) {
+      throw validationError("Agent Ask resulting Plan failed validation.", { relativePath, errors: errors.length > 0 ? errors : parsed.errors });
+    }
+  };
   let arrangeQueue = false;
   let artifactInput: { title: string; path?: string } | null = null;
   let completionActionId: string | null = null;
@@ -774,6 +790,14 @@ export function settleAgentAsk(db: Database.Database, input: {
               effects.push(`Created Action ${project.slug}/${action.id} in Plan ${target.slug} with Responsibility ${input.responsibility}.`);
               actionIdsToValidate.push(action.id);
             }
+          }
+          if (criteriaRepair) {
+            const touchedIndices = new Set(normalizedActions.map((action) => target.actions.findIndex((existing) => existing.id === action.id)));
+            const original = parseDoc(target.relativePath, targetPath, before);
+            retainedAcceptanceErrors.set(target.relativePath, new Set(original.errors.filter((error) => {
+              const field = /^actions\[(\d+)\]\.acceptance_criteria(?:\[\d+\])?$/.exec(error.field);
+              return field !== null && !touchedIndices.has(Number(field[1]));
+            }).map((error) => JSON.stringify(error))));
           }
           fileMutations.push({ path: targetPath, before, after: withPlanUpdated(after) });
 
@@ -1489,6 +1513,8 @@ export function settleAgentAsk(db: Database.Database, input: {
     archiveCanonicalDraftAskFile(fileMutations, effects, settlementWarnings, repoRoot, proposal, boundCandidateRevision);
   }
 
+  for (const mutation of fileMutations) validateResultingPlan(mutation);
+
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
     operation,
@@ -1634,6 +1660,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           mutation.before = current;
           mutation.after = mutation.retransform(current);
         }
+        validateResultingPlan(mutation);
         if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
         else writeAtomically(mutation.path, mutation.after);
         applied.push(mutation);
@@ -1685,7 +1712,7 @@ export function settleAgentAsk(db: Database.Database, input: {
       const written = new Set(
         fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
       );
-      const blocking = validation.errors.filter((error) => written.has(error.relativePath));
+      const blocking = validation.errors.filter((error) => written.has(error.relativePath) && !retainsAcceptanceError(error));
       if (blocking.length > 0) {
         throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
           errors: blocking,
@@ -1740,7 +1767,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         const written = new Set(
           fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
         );
-        const blocking = sync.errors.filter((error) => written.has(error.relativePath));
+        const blocking = sync.errors.filter((error) => written.has(error.relativePath) && !retainsAcceptanceError(error));
         if (blocking.length > 0) {
           throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
             errors: blocking,
@@ -2431,14 +2458,28 @@ function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility;
   }
 }
 
+/** Replace a whole YAML field value, including deeper-indented continuations.
+ * Blank lines belong to the value only when another continuation follows them.
+ * Callback replacements keep all dollar replacement patterns literal.
+ */
+function replaceYamlField(content: string, indent: number, field: string, value: string): string {
+  const pattern = new RegExp(`^ {${indent}}${escapeRegex(field)}[ \t]*:.*(?:(?:\\r?\\n[ \\t]*(?=\\r?\\n))*\\r?\\n {${indent + 1},}\\S.*)*`, "m");
+  return content.replace(pattern, () => `${" ".repeat(indent)}${field}:${value.startsWith("\n") ? "" : " "}${value}`);
+}
+
+/** Keep multiline prose on one YAML line without altering its parsed text. */
+function amendmentScalar(value: string): string {
+  return /[\r\n]/.test(value) ? JSON.stringify(value) : yamlScalar(value);
+}
+
 export function replaceTopLevelField(content: string, field: string, value: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw validationError("Managed document has no YAML frontmatter block to update.");
-  const lines = match[1].split(/\r?\n/);
-  const index = lines.findIndex((line) => new RegExp(`^${escapeRegex(field)}\\s*:`).test(line));
-  if (index < 0) throw validationError(`Managed document has no ${field} field to update.`);
-  lines[index] = `${field}: ${yamlScalar(value)}`;
-  return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
+  if (!new RegExp(`^${escapeRegex(field)}\\s*:`, "m").test(match[1])) {
+    throw validationError(`Managed document has no ${field} field to update.`);
+  }
+  const updated = replaceYamlField(match[0], 0, field, amendmentScalar(value));
+  return content.replace(match[0], () => updated);
 }
 
 /** Update only the frontmatter's top level, preserving Action state and narrative. */
@@ -2734,24 +2775,26 @@ function amendAction(
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^ {4}next_action:/m.test(block)) {
-    if (!criteriaOnly) {
+  if (!criteriaOnly) {
+    if (!/^ {4}next_action:/m.test(block)) {
       throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
     }
-    // Criteria for resolving an open question do not answer it or make it executable.
-  } else {
-    block = block.replace(/^ {4}next_action:.*$/m, () => `    next_action: ${yamlScalar(nextAction)}`);
+    block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
   }
+  // Criteria-only changes preserve the original scalar bytes, including an
+  // absent instruction on an unresolved question; they do not answer it.
   if (responsibility) {
     if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
     block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
   if (acceptance.length > 0) {
-    const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
+    const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${amendmentScalar(criterion)}`)].join("\n");
     if (/^ {4}acceptance_criteria:/m.test(block)) {
-      block = block.replace(/^ {4}acceptance_criteria:.*\r?\n(?: {6}- .*\r?\n?)*/m, () => `${replacement}\n`);
+      block = replaceYamlField(block, 4, "acceptance_criteria", `\n${acceptance.map((criterion) => `      - ${amendmentScalar(criterion)}`).join("\n")}`);
     } else {
-      block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n${replacement}`);
+      // Insert before the title so an unchanged block scalar (and its blank
+      // lines/chomping) remains contiguous and byte-for-byte intact.
+      block = block.replace(/^ {4}title:.*$/m, (line) => `${replacement}\n${line}`);
     }
   }
   // depends_on/references may already be written as a multi-line block list
@@ -2760,24 +2803,22 @@ function amendAction(
   // sequence the YAML parser rejects. A `null` list was omitted by the Ask and
   // leaves the existing value alone; only an explicit `[]` clears (Issue #1079).
   if (dependencies !== null) {
-    block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
-      dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
+    block = replaceYamlField(block, 4, "depends_on", `[${dependencies.join(", ")}]`);
   }
   if (references !== null) {
-    block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
-      references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
+    block = replaceYamlField(block, 4, "references", `[${references.map((reference) => JSON.stringify(reference)).join(", ")}]`);
   }
   // An amendment that declares a `why` sets it; one that omits it leaves the
   // checked-in value alone. Function replacers keep `$` in prose literal.
   if (why) {
     const whyLine = `    why: ${quotedWhy(why)}`;
     block = /^ {4}why:/m.test(block)
-      ? block.replace(/^ {4}why:.*$/m, () => whyLine)
+      ? replaceYamlField(block, 4, "why", quotedWhy(why))
       : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n${whyLine}`);
   }
   block = /^ {4}source:/m.test(block)
-    ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
-    : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
+    ? replaceYamlField(block, 4, "source", amendmentScalar(`Agent Ask ${requestId}`))
+    : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n    source: ${amendmentScalar(`Agent Ask ${requestId}`)}`);
   return content.replace(pattern, () => block);
 }
 
@@ -2840,7 +2881,7 @@ function setActionDependsOn(content: string, actionId: string, dependencies: str
   if (!/^ {4}depends_on:/m.test(block)) throw validationError("Managed Plan Action has no depends_on field to amend.", { actionId });
   block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  return content.replace(pattern, block);
+  return content.replace(pattern, () => block);
 }
 
 /**
@@ -2858,7 +2899,7 @@ function recordSplitInto(content: string, actionId: string, remainderIds: string
   if (!dependsOnField) throw validationError("Managed Plan Action has no depends_on field to anchor split_into after.", { actionId });
   const insertAt = dependsOnField.index + dependsOnField[0].length;
   const updatedBlock = `${block.slice(0, insertAt)}\n    split_into: [${remainderIds.join(", ")}]${block.slice(insertAt)}`;
-  return content.replace(pattern, updatedBlock);
+  return content.replace(pattern, () => updatedBlock);
 }
 
 /**
