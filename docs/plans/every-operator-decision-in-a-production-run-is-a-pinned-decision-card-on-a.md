@@ -7,7 +7,7 @@ status: active
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-13
+updated: 2026-10-14
 actions:
   - id: decision-card-contract
     title: Implement the arcadia-decision-card-v1 schema and validator in src/decisions/card.ts so every operator touch is one pinned card with a verb, consequence, evidence and receipt.
@@ -283,6 +283,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/reports/session-ledger.jsonl", "scripts/check-session-ledger.ts", "src/reports/sessionLedger.ts", "src/commands/qa.ts", "docs/reports/production-simulation-living-notes.md", "docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/native-app-sessions.md"]
+  - id: pair-loop-protocol
+    title: Write the Lead and implementer pair loop as a short protocol so a new Lead session runs it from its first turn.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Write the Lead and implementer pair loop as a short protocol so a new Lead session runs it from its first turn.
+    expected_artifact: Evidence satisfying Agent Ask pair-loop-protocol
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-pair-loop-protocol-2026-10-13
+    acceptance_criteria:
+      - A researcher finding recorded in the Action's evidence states, from the native dispatch code, whether a registered implementer may be resumed across review rounds or must be relaunched, and the protocol says which.
+      - "A protocol of at most one page states: a failing test first for each reviewer finding class; implementer continuity or relaunch with the prior diff and findings; a fresh reviewer each round with runnable inputs, mutation testing and read-only archive reads; the Lead re-running failing inputs itself; the PR procedure's round limits; and stating a residual when a defect class recurs."
+      - The session ledger README and validator documentation name caught_by values independent-reviewer and lead-verification, and a test shows a row with caught_by lead-verification validates.
+      - The protocol is reachable from the session roles guidance, the always-loaded bootstrap and AGENTS.md sizes are unchanged, and the agent-guidance check passes.
+    depends_on: []
+    decisions: []
+    references: ["config/defaults/agent-roles.json", "docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/native-app-sessions.md", "docs/reports/session-ledger/README.md"]
 questions: []
 decisions: []
 current_action: delegation-policy-records
