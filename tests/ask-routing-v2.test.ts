@@ -136,7 +136,21 @@ describe("ask.routing.v2: an operator Ask is never shelved unseen", () => {
     withDatabase(workspace, (db) => captureAskEnvelope(db, {
       requestId: "killed-before-ask",
       originalText: request,
-      ingressSource: "ask"
+      ingressSource: "ask",
+      routingIdentity: {
+        explicitProjectId: null,
+        milestone: null,
+        reviewReference: null,
+        executeReview: false,
+        approvedReviewItemId: null,
+        correctionRoute: null,
+        captureAsIdea: false,
+        runSafe: false,
+        agentProfile: null,
+        reviewExecutor: null,
+        sourceRef: null,
+        facetTags: null
+      }
     }));
     const captureModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/ask/captureEnvelope.ts")).href;
     const databaseModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/db/connection.ts")).href;

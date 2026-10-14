@@ -134,7 +134,7 @@ describe("Arcadia Ask traceability", () => {
     expect(renderAskTrailSuccess(trail).join("\n")).toContain("predates Ask tracing");
   });
 
-  it("shows a partial pre-Ask checkpoint with an explicit reconciliation path", () => {
+  it("shows a partial pre-Ask checkpoint with original-intent recovery guidance", () => {
     const { workspace } = workspaceWithArcadia();
     const asked = runAskCommand({ workspace, request: "Maybe a partial capture could matter someday." });
     withDatabase(workspace, (db) => db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ?").run(asked.data.captureEnvelope.id));
@@ -142,7 +142,8 @@ describe("Arcadia Ask traceability", () => {
     const rendered = renderAskTrailSuccess(trail).join("\n");
     expect(trail.data.capture).toMatchObject({ status: "partial", outcomes: [expect.objectContaining({ kind: "back_burner_item" })] });
     expect(rendered).toContain("do not retry automatically");
-    expect(rendered).toContain("submit a new request only after confirming the intended outcome");
+    expect(rendered).toContain("inspect the listed durable effects and original reply");
+    expect(rendered).toContain("Continue the original approval, rejection, deferral, or answer intent");
   });
 
   it("shows capture-linked Action and Plan effects even when the process died before the Ask receipt", () => {
