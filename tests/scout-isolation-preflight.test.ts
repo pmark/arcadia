@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeakSnapshot } from "../src/workspace/leakCheck.js";
-import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateBoundedScoutIsolation, evaluateScoutPreflight, reserveBoundedScoutAttempt, reserveBoundedScoutRepair, validateBoundedScoutDecision, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
+import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateBoundedScoutIsolation, evaluateScoutPreflight, validateBoundedScoutDecision, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
 
 const root = "/tmp/scout-fixture";
 const workspace = `${root}/workspace`;
@@ -169,49 +169,6 @@ describe("offline scout isolation preflight", () => {
     symlinkSync(path.join(actualRoot, "marker"), link);
     expect(evaluateBoundedScoutIsolation({ pins: { ...pins, fixtureTrustPath: link }, before: base.before, after: base.after,
       decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
-  });
-
-  it("reserves attempts atomically and keeps one goal budget across changed source revisions", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "scout-budget-")); tempRoots.push(dir);
-    const ledgerPath = path.join(dir, "attempt-budget.json");
-    const fixtureRoot = path.join(dir, "fixture"); mkdirSync(fixtureRoot);
-    const reserve = (sha: string, now: string) => reserveBoundedScoutAttempt({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: sha, now });
-    expect(reserve("a".repeat(40), "2026-10-13T12:00:00Z").reason).toContain("initialization is required");
-    const first = reserveBoundedScoutAttempt({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "a".repeat(40), initialize: true, now: "2026-10-13T12:00:00Z" });
-    const second = reserve("b".repeat(40), "2026-10-13T12:10:00Z");
-    const third = reserve("c".repeat(40), "2026-10-13T12:20:00Z");
-    expect([first.attemptNumber, second.attemptNumber, third.attemptNumber]).toEqual([1, 2, 3]);
-    expect(reserve("d".repeat(40), "2026-10-13T12:30:00Z").reason).toContain("exhausted");
-    expect(first.ledger?.deadline).toBe("2026-10-13T13:30:00.000Z");
-    expect(reserve("e".repeat(40), "2026-10-13T11:59:00Z").reason).toContain("backwards");
-    const repair1 = reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "d".repeat(40), now: "2026-10-13T12:25:00Z" });
-    const repair2 = reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "e".repeat(40), now: "2026-10-13T12:26:00Z" });
-    expect([repair1.repairCycle, repair2.repairCycle]).toEqual([1, 2]);
-    expect(repair2.ledger?.attempts).toHaveLength(3);
-    expect(reserveBoundedScoutRepair({ ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "f".repeat(40), now: "2026-10-13T12:27:00Z" }).reason)
-      .toContain("two-repair-cycle budget is exhausted");
-    expect(reserveBoundedScoutAttempt({ ledgerPath: path.join(dir, "attacker-choice.json"), trustedLedgerPath: ledgerPath,
-      fixtureRoot, sourceRevision: "f".repeat(40), initialize: true, now: "2026-10-13T12:30:00Z" }).reason).toContain("trusted ledger assignment pin");
-  });
-
-  it("fails closed on corrupt, duplicate-locked, expired, or malformed budget state", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "scout-budget-fail-")); tempRoots.push(dir);
-    const ledgerPath = path.join(dir, "attempt-budget.json");
-    writeFileSync(ledgerPath, "{broken");
-    const fixtureRoot = path.join(dir, "fixture"); mkdirSync(fixtureRoot);
-    const input = { ledgerPath, trustedLedgerPath: ledgerPath, fixtureRoot, sourceRevision: "a".repeat(40), now: "2026-10-13T12:00:00Z" };
-    expect(reserveBoundedScoutAttempt(input).reason).toContain("corrupt");
-    rmSync(ledgerPath);
-    writeFileSync(`${ledgerPath}.lock`, "held");
-    expect(reserveBoundedScoutAttempt(input).reason).toContain("locked");
-    rmSync(`${ledgerPath}.lock`);
-    expect(reserveBoundedScoutAttempt({ ...input, now: "2026-10-18T00:00:00Z" }).reason).toContain("expired");
-    const goodPath = path.join(dir, "valid-budget.json");
-    expect(reserveBoundedScoutAttempt({ ...input, ledgerPath: goodPath, trustedLedgerPath: goodPath, initialize: true }).ok).toBe(true);
-    const malformed = JSON.parse(readFileSync(goodPath, "utf8")) as { deadline: string };
-    malformed.deadline = "2026-10-13T14:00:00.000Z";
-    writeFileSync(goodPath, JSON.stringify(malformed));
-    expect(reserveBoundedScoutAttempt({ ...input, ledgerPath: goodPath, trustedLedgerPath: goodPath, now: "2026-10-13T12:01:00Z" }).reason).toContain("malformed");
   });
 
   it("requires a custody-pinned manifest covering every consumed replay file", () => {

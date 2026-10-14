@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync, openSync, closeSync, writeSync, fsyncSync, renameSync, unlinkSync, existsSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { compareLeakSnapshots, parseLeakSnapshot, unverifiableReason, type LeakSnapshot } from "../workspace/leakCheck.js";
@@ -66,28 +66,8 @@ export interface ScoutPreflightReceipt {
 const BOUNDED_DECISION_ID = "0128";
 const BOUNDED_DECISION_ANSWER = "Authorize the bounded Luna Hello World loop with three attempts and two repair cycles";
 const BOUNDED_DECISION_EXPIRY = "2026-10-18T00:00:00.000Z";
-const BOUNDED_GOAL = "bounded-luna-hello-world-0128";
 const BOUNDED_DECISION_SCOPE_SHA256 = "1cc165eed764c3f1736763bec8fe1e7cf0b161cf022aece4484d93961bcdb2bd";
 const BOUNDED_DECISION_FILE_SHA256 = "f4072b04d9500f2c2711aaa84b68db2a92449e1dd528dd9c4097c338e654a9ce";
-
-export interface ScoutBudgetLedger {
-  schema: "arcadia-scout-budget-v1";
-  decisionId: "0128";
-  goal: typeof BOUNDED_GOAL;
-  startedAt: string;
-  deadline: string;
-  lastObservedAt: string;
-  attempts: Array<{ number: number; sourceRevision: string; fixtureRoot: string; reservedAt: string }>;
-  repairs: Array<{ cycle: number; sourceRevision: string; reservedAt: string }>;
-}
-
-export interface ScoutReservation {
-  ok: boolean;
-  reason: string | null;
-  ledger: ScoutBudgetLedger | null;
-  attemptNumber: number | null;
-  repairCycle: number | null;
-}
 
 function decisionFrontmatter(text: string): Record<string, unknown> | null {
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
@@ -118,99 +98,6 @@ export function validateBoundedScoutDecision(input: { text: string; canonicalPat
     return { approved: false, decisionSha256: sha256(input.text), reason: "Decision 0128 has expired" };
   }
   return { approved: true, decisionSha256: sha256(input.text), reason: null };
-}
-
-function validBudgetLedger(value: unknown): value is ScoutBudgetLedger {
-  if (!hasExactKeys(value, ["schema", "decisionId", "goal", "startedAt", "deadline", "lastObservedAt", "attempts", "repairs"])
-    || value.schema !== "arcadia-scout-budget-v1" || value.decisionId !== BOUNDED_DECISION_ID || value.goal !== BOUNDED_GOAL
-    || typeof value.startedAt !== "string" || typeof value.deadline !== "string" || typeof value.lastObservedAt !== "string"
-    || !Array.isArray(value.attempts) || !Array.isArray(value.repairs) || value.repairs.length > 2) return false;
-  const started = Date.parse(value.startedAt);
-  const deadline = Date.parse(value.deadline);
-  const observed = Date.parse(value.lastObservedAt);
-  const expectedDeadline = Math.min(started + 90 * 60_000, Date.parse(BOUNDED_DECISION_EXPIRY));
-  return value.attempts.length <= 3 && deadline === expectedDeadline && observed >= started
-    && value.repairs.every((repair, index) => hasExactKeys(repair, ["cycle", "sourceRevision", "reservedAt"])
-      && repair.cycle === index + 1 && typeof repair.sourceRevision === "string" && REVISION.test(repair.sourceRevision)
-      && typeof repair.reservedAt === "string" && Number.isFinite(Date.parse(repair.reservedAt))
-      && Date.parse(repair.reservedAt) >= started && Date.parse(repair.reservedAt) <= observed && Date.parse(repair.reservedAt) < deadline)
-    && value.attempts.every((attempt, index) => hasExactKeys(attempt, ["number", "sourceRevision", "fixtureRoot", "reservedAt"])
-    && attempt.number === index + 1 && typeof attempt.sourceRevision === "string" && REVISION.test(attempt.sourceRevision)
-    && typeof attempt.fixtureRoot === "string" && path.isAbsolute(attempt.fixtureRoot)
-    && typeof attempt.reservedAt === "string" && Number.isFinite(Date.parse(attempt.reservedAt))
-    && Date.parse(attempt.reservedAt) >= started && Date.parse(attempt.reservedAt) <= observed && Date.parse(attempt.reservedAt) < deadline)
-    && Number.isFinite(Date.parse(value.startedAt)) && Number.isFinite(Date.parse(value.deadline))
-    && Number.isFinite(Date.parse(value.lastObservedAt)) && Date.parse(value.deadline) <= Date.parse(BOUNDED_DECISION_EXPIRY);
-}
-
-/** Atomically reserves an attempt before launch. Source SHA is evidence per attempt, never the ledger key. */
-function reserveBoundedScoutBudget(input: { kind: "attempt" | "repair"; ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; initialize?: boolean; now?: string }): ScoutReservation {
-  const blocked = (reason: string): ScoutReservation => ({ ok: false, reason, ledger: null, attemptNumber: null, repairCycle: null });
-  if (!REVISION.test(input.sourceRevision) || !path.isAbsolute(input.fixtureRoot) || !path.isAbsolute(input.ledgerPath)
-    || !path.isAbsolute(input.trustedLedgerPath) || path.resolve(input.ledgerPath) !== path.resolve(input.trustedLedgerPath)) {
-    return blocked("immutable source SHA, explicit fixture root, and exact trusted ledger assignment pin are required");
-  }
-  let parent: string;
-  try { parent = realpathSync(path.dirname(input.ledgerPath)); } catch { return blocked("budget ledger parent is unavailable"); }
-  const ledgerPath = path.join(parent, path.basename(input.ledgerPath));
-  if (existsSync(ledgerPath) && (lstatSync(ledgerPath).isSymbolicLink() || !lstatSync(ledgerPath).isFile())) return blocked("budget ledger is not a regular file");
-  const lockPath = `${ledgerPath}.lock`;
-  let lockFd: number;
-  try { lockFd = openSync(lockPath, "wx", 0o600); }
-  catch { return blocked("budget ledger is locked or lock state is unavailable; fail closed"); }
-  try {
-    const now = input.now ?? new Date().toISOString();
-    const current = Date.parse(now);
-    if (!Number.isFinite(current) || current >= Date.parse(BOUNDED_DECISION_EXPIRY)) return blocked("bounded authorization is expired or the clock is invalid");
-    let ledger: ScoutBudgetLedger;
-    if (existsSync(ledgerPath)) {
-      let parsed: unknown;
-      try { parsed = JSON.parse(readFileSync(ledgerPath, "utf8")); } catch { return blocked("budget ledger is corrupt"); }
-      if (!validBudgetLedger(parsed)) return blocked("budget ledger is malformed or outside approved bounds");
-      if (current < Date.parse(parsed.lastObservedAt)) return blocked("clock moved backwards since the previous budget receipt");
-      if (current >= Date.parse(parsed.deadline)) return blocked("90-minute loop wall limit is exhausted");
-      ledger = parsed;
-    } else {
-      if (input.initialize !== true) return blocked("trusted Supervisor initialization is required before this goal ledger can be used");
-      ledger = { schema: "arcadia-scout-budget-v1", decisionId: BOUNDED_DECISION_ID, goal: BOUNDED_GOAL,
-        startedAt: now, deadline: new Date(Math.min(current + 90 * 60_000, Date.parse(BOUNDED_DECISION_EXPIRY))).toISOString(),
-        lastObservedAt: now, attempts: [], repairs: [] };
-    }
-    const attemptNumber = input.kind === "attempt" ? ledger.attempts.length + 1 : null;
-    const repairCycle = input.kind === "repair" ? ledger.repairs.length + 1 : null;
-    if (attemptNumber !== null && attemptNumber > 3) return blocked("three-attempt budget is exhausted");
-    if (repairCycle !== null && repairCycle > 2) return blocked("two-repair-cycle budget is exhausted");
-    ledger = {
-      ...ledger,
-      lastObservedAt: now,
-      attempts: attemptNumber === null ? ledger.attempts : [...ledger.attempts, {
-        number: attemptNumber, sourceRevision: input.sourceRevision, fixtureRoot: path.resolve(input.fixtureRoot), reservedAt: now
-      }],
-      repairs: repairCycle === null ? ledger.repairs : [...ledger.repairs, { cycle: repairCycle, sourceRevision: input.sourceRevision, reservedAt: now }]
-    };
-    const temporary = `${ledgerPath}.${process.pid}.${current}.tmp`;
-    const fd = openSync(temporary, "wx", 0o600);
-    try { writeSync(fd, `${JSON.stringify(ledger, null, 2)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
-    renameSync(temporary, ledgerPath);
-    const directoryFd = openSync(parent, "r");
-    try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
-    return { ok: true, reason: null, ledger, attemptNumber, repairCycle };
-  } catch {
-    return blocked("budget reservation failed closed");
-  } finally {
-    closeSync(lockFd);
-    unlinkSync(lockPath);
-  }
-}
-
-/** Reserves one Supervisor-led repair cycle in the same Decision and goal ledger. */
-export function reserveBoundedScoutRepair(input: { ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; now?: string }): ScoutReservation {
-  return reserveBoundedScoutBudget({ ...input, kind: "repair" });
-}
-
-/** Reserves an attempt before launch; source SHA is evidence per attempt, never the ledger key. */
-export function reserveBoundedScoutAttempt(input: { ledgerPath: string; trustedLedgerPath: string; sourceRevision: string; fixtureRoot: string; initialize?: boolean; now?: string }): ScoutReservation {
-  return reserveBoundedScoutBudget({ ...input, kind: "attempt" });
 }
 
 /** Current-attempt gate. Historical replay continues to use the held-only evaluator above. */
