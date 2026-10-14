@@ -407,7 +407,8 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
       id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, fingerprint TEXT NOT NULL,
       original_text TEXT NOT NULL, ingress_source TEXT NOT NULL, captured_at TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
-      envelope_json TEXT NOT NULL
+      envelope_json TEXT NOT NULL,
+      processing_owner TEXT
     );
     CREATE TABLE IF NOT EXISTS ask_capture_attachments (
       id TEXT PRIMARY KEY, capture_id TEXT NOT NULL, original_filename TEXT NOT NULL,
@@ -417,6 +418,13 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_ask_capture_attachments_capture ON ask_capture_attachments(capture_id);
   `);
+  const columns = new Set((db.prepare("PRAGMA table_info(ask_capture_envelopes)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!columns.has("processing_owner")) {
+    db.prepare("ALTER TABLE ask_capture_envelopes ADD COLUMN processing_owner TEXT").run();
+    // A legacy processing row has no fence token, so it may belong to an older
+    // live attempt. Preserve it for inspection rather than assuming it is dead.
+    db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE status = 'processing'").run();
+  }
 }
 
 /** Thin operational linkage for one bounded coding-agent dispatch. */

@@ -58,6 +58,64 @@ export interface CaptureActor {
   id: string;
 }
 
+export type AskCaptureProcessingClaim = "claimed" | "complete" | "partial" | "failed";
+
+/**
+ * Own the safe, read-only preparation phase. A replacement token fences an
+ * older process that was still preparing; durable effects require the owner
+ * to transition the capture to `partial` first.
+ */
+export function claimAskCaptureProcessing(db: Database.Database, captureId: string, owner: string): AskCaptureProcessingClaim {
+  return writeTransaction(db, () => {
+    const row = db.prepare("SELECT status, processing_owner FROM ask_capture_envelopes WHERE id = ?").get(captureId) as
+      | { status: string; processing_owner: string | null } | undefined;
+    if (!row) throw new Error(`Ask capture ${captureId} disappeared before processing.`);
+    const priorAsk = db.prepare("SELECT id FROM ask_requests WHERE capture_id = ? ORDER BY created_at LIMIT 1")
+      .get(captureId) as { id: string } | undefined;
+    if (row.status === "completed" && priorAsk) return "complete";
+    if (row.status === "captured") {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'processing', processing_owner = ? WHERE id = ? AND status = 'captured'")
+        .run(owner, captureId);
+      return "claimed";
+    }
+    if (row.status === "processing" && row.processing_owner) {
+      // Rotating the fence is safe only in this pre-effect phase. A previous
+      // owner must prove the token again before its first durable write.
+      db.prepare("UPDATE ask_capture_envelopes SET processing_owner = ? WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+        .run(owner, captureId, row.processing_owner);
+      return "claimed";
+    }
+    if (row.status === "processing") {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ? AND status = 'processing'").run(captureId);
+      return "partial";
+    }
+    return row.status === "partial" ? "partial" : row.status === "failed" ? "failed" : "complete";
+  });
+}
+
+/** Mark that the fenced owner is about to commit a route effect. */
+export function markAskCaptureEffectsStarted(db: Database.Database, captureId: string, owner: string): void {
+  const row = db.prepare("SELECT status, processing_owner FROM ask_capture_envelopes WHERE id = ?").get(captureId) as
+    | { status: string; processing_owner: string | null } | undefined;
+  if (row?.status === "partial" && row.processing_owner === owner) return;
+  const changed = db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ? AND status = 'processing' AND processing_owner = ?"
+  ).run(captureId, owner);
+  if (changed.changes !== 1) throw new Error(`Ask capture ${captureId} processing ownership was superseded before route effects.`);
+}
+
+export function finishAskCaptureProcessing(db: Database.Database, captureId: string, owner: string): boolean {
+  return writeTransaction(db, () => db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'completed', processing_owner = NULL WHERE id = ? AND processing_owner = ? AND status IN ('processing', 'partial')"
+  ).run(captureId, owner).changes === 1);
+}
+
+export function resetAskCaptureBeforeEffects(db: Database.Database, captureId: string, owner: string): boolean {
+  return writeTransaction(db, () => db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'captured', processing_owner = NULL WHERE id = ? AND processing_owner = ? AND status = 'processing'"
+  ).run(captureId, owner).changes === 1);
+}
+
 export function captureAskEnvelope(db: Database.Database, input: {
   requestId?: string;
   originalText: string;

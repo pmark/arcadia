@@ -12,6 +12,7 @@ import { runReviewApproveCommand, runReviewResolveReplyCommand } from "../src/co
 import { runAskCoverageCommand } from "../src/commands/askCoverage.js";
 import { renderTodoSuccess, runTodoCommand, TODO_ASK_CAP, TODO_OTHER_CAP, type TodoCommandOptions } from "../src/commands/todo.js";
 import { withDatabase } from "../src/db/connection.js";
+import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
 import { createProjectWithInitialWork, createReviewItem, upsertProjectMetadata } from "../src/db/repositories.js";
 import { intakeRoutingFlags, isImperativeRequest, resolveIntake, type IntakeWorkspaceContext } from "../src/intake/index.js";
 import { ACKNOWLEDGEMENTS, isTrivialAcknowledgement } from "../src/ask/suppression.js";
@@ -127,6 +128,54 @@ describe("ask.routing.v2: an operator Ask is never shelved unseen", () => {
     expect(() => runAskCommand({ workspace, request: "Changed payload", requestId: "cross-process-scout" }))
       .toThrow("already submitted with different content");
     expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests").get())).toEqual({ n: 1 });
+  });
+
+  it("recovers an exact retry after a child dies after claim but before creating an Ask", async () => {
+    const workspace = workspaceWithArcadia();
+    const request = "Why is the sidebar slow?";
+    withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "killed-before-ask",
+      originalText: request,
+      ingressSource: "ask"
+    }));
+    const captureModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/ask/captureEnvelope.ts")).href;
+    const databaseModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/db/connection.ts")).href;
+    const script = `import { claimAskCaptureProcessing } from ${JSON.stringify(captureModule)};\n` +
+      `import { withDatabase } from ${JSON.stringify(databaseModule)};\n` +
+      `const workspace = process.argv[1]; const id = process.argv[2];\n` +
+      `withDatabase(workspace, db => claimAskCaptureProcessing(db, id, "killed-child-owner"));\n` +
+      `process.stdout.write("CLAIMED\\n"); setInterval(() => {}, 1000);`;
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, workspace,
+      withDatabase(workspace, (db) => (db.prepare("SELECT id FROM ask_capture_envelopes WHERE request_id = ?").get("killed-before-ask") as { id: string }).id)], {
+      cwd: path.resolve(import.meta.dirname, ".."), stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`child did not claim capture: ${stdout}`)), 5000);
+      const poll = setInterval(() => {
+        if (stdout.includes("CLAIMED\n")) {
+          clearTimeout(timeout);
+          clearInterval(poll);
+          resolve();
+        }
+      }, 10);
+      child.once("error", reject);
+    });
+    const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    child.kill("SIGKILL");
+    await exited;
+
+    const retried = runAskCommand({ workspace, request, requestId: "killed-before-ask" });
+    expect(retried.data.ask?.id).toMatch(/^ask_/);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT status FROM ask_capture_envelopes WHERE request_id = ?").get("killed-before-ask")))
+      .toEqual({ status: "completed" });
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests WHERE capture_id = (SELECT id FROM ask_capture_envelopes WHERE request_id = ?)").get("killed-before-ask")))
+      .toEqual({ n: 1 });
+    const replay = runAskCommand({ workspace, request, requestId: "killed-before-ask" });
+    expect(replay.data.ask).toBeNull();
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests WHERE capture_id = (SELECT id FROM ask_capture_envelopes WHERE request_id = ?)").get("killed-before-ask")))
+      .toEqual({ n: 1 });
   });
 
   it.each(NOT_AN_IDEA)("sends a $classification Ask to Clarify First, a review_item that arcadia todo lists with an ask-origin answer", ({ classification, text }) => {

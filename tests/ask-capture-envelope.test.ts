@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
+import { captureAskEnvelope, claimAskCaptureProcessing, finishAskCaptureProcessing, markAskCaptureEffectsStarted } from "../src/ask/captureEnvelope.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -74,6 +74,26 @@ describe("Ask capture envelope", () => {
       originalText: "Changed",
       ingressSource: "dashboard.ask"
     }))).toThrow("already submitted with different content");
+  });
+
+  it("fences a superseded pre-effect processor and lets a retry recover a killed owner", () => {
+    const workspace = initializedWorkspace();
+    const envelope = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "killed-before-ask",
+      originalText: "Why is the sidebar slow?",
+      ingressSource: "ask"
+    }));
+
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "dead-child"))).toBe("claimed");
+    // A separate process may safely take over only before the old owner crosses
+    // the side-effect fence. A late old owner cannot commit its route.
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "retry-owner"))).toBe("claimed");
+    expect(() => withDatabase(workspace, (db) => markAskCaptureEffectsStarted(db, envelope.id, "dead-child")))
+      .toThrow("ownership was superseded");
+    withDatabase(workspace, (db) => markAskCaptureEffectsStarted(db, envelope.id, "retry-owner"));
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "third-owner"))).toBe("partial");
+    expect(withDatabase(workspace, (db) => finishAskCaptureProcessing(db, envelope.id, "retry-owner"))).toBe(true);
+    expect(withDatabase(workspace, (db) => claimAskCaptureProcessing(db, envelope.id, "replay"))).toBe("complete");
   });
 });
 

@@ -12,7 +12,15 @@ import {
   validateAskRuleRegistry,
   type AskProcessingReceipt
 } from "../ask/rules.js";
-import { captureAskEnvelope, type AskCaptureEnvelope, type CaptureAttachmentInput } from "../ask/captureEnvelope.js";
+import {
+  captureAskEnvelope,
+  claimAskCaptureProcessing,
+  finishAskCaptureProcessing,
+  markAskCaptureEffectsStarted,
+  resetAskCaptureBeforeEffects,
+  type AskCaptureEnvelope,
+  type CaptureAttachmentInput
+} from "../ask/captureEnvelope.js";
 import { ingressSourceKind } from "../ask/replyCapture.js";
 import {
   DUPLICATE_ASK_WINDOW_MS,
@@ -216,46 +224,42 @@ function runAskCommandWithRouting(
   if (options.reuseCaptureEnvelope) {
     return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
   }
-  const claim = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-    const row = db.prepare("SELECT status FROM ask_capture_envelopes WHERE id = ?").get(captureEnvelope.id) as
-      | { status: string } | undefined;
-    if (!row) throw new Error(`Ask capture ${captureEnvelope.id} disappeared before processing.`);
-    const priorAsk = db.prepare("SELECT id FROM ask_requests WHERE capture_id = ? ORDER BY created_at LIMIT 1")
-      .get(captureEnvelope.id) as { id: string } | undefined;
-    if (priorAsk) return { kind: "complete" as const };
-    if (row.status === "captured") {
-      db.prepare("UPDATE ask_capture_envelopes SET status = 'processing' WHERE id = ? AND status = 'captured'")
-        .run(captureEnvelope.id);
-      return { kind: "claimed" as const };
-    }
-    return { kind: row.status === "processing" ? "processing" as const : "failed" as const };
-  }));
-  if (claim.kind === "complete") {
+  const processingOwner = randomUUID();
+  const claim = withDatabase(workspacePath, (db) => claimAskCaptureProcessing(db, captureEnvelope.id, processingOwner));
+  if (claim === "complete") {
     return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
   }
-  if (claim.kind !== "claimed") {
+  if (claim !== "claimed") {
     const existing = ignoredAskData(options.request);
-    const summary = claim.kind === "processing"
-        ? `Request ${captureEnvelope.requestId} is already being processed; inspect it with ask show ${captureEnvelope.requestId}.`
-        : `Request ${captureEnvelope.requestId} did not finish processing; inspect it with ask show ${captureEnvelope.requestId} before retrying.`;
+    const summary = claim === "partial"
+      ? `Request ${captureEnvelope.requestId} reached a partial processing checkpoint; inspect it with ask show ${captureEnvelope.requestId} before deciding how to recover.`
+      : `Request ${captureEnvelope.requestId} did not finish processing; inspect it with ask show ${captureEnvelope.requestId} before retrying.`;
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
-      data: { ...existing, captureEnvelope, result: { status: claim.kind === "processing" ? "captured" : "ignored", summary } }
+      data: { ...existing, captureEnvelope, result: { status: "ignored", summary } }
     });
   }
   try {
-    const response = runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
-    withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-      db.prepare("UPDATE ask_capture_envelopes SET status = 'completed' WHERE id = ? AND status = 'processing'")
-        .run(captureEnvelope.id);
-    }));
+    const response = runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope, processingOwner);
+    const completed = withDatabase(workspacePath, (db) => finishAskCaptureProcessing(db, captureEnvelope.id, processingOwner));
+    if (!completed) throw new Error(`Ask capture ${captureEnvelope.requestId} lost processing ownership before completion.`);
     return response;
   } catch (error) {
-    withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-      db.prepare("UPDATE ask_capture_envelopes SET status = 'failed' WHERE id = ? AND status = 'processing'")
-        .run(captureEnvelope.id);
-    }));
+    const reset = withDatabase(workspacePath, (db) => resetAskCaptureBeforeEffects(db, captureEnvelope.id, processingOwner));
+    if (!reset) {
+      const current = withDatabase(workspacePath, (db) => db.prepare(
+        "SELECT status, processing_owner FROM ask_capture_envelopes WHERE id = ?"
+      ).get(captureEnvelope.id) as { status: string; processing_owner: string | null } | undefined);
+      if (current?.processing_owner !== processingOwner) {
+        const existing = ignoredAskData(options.request);
+        return createSuccess({
+          command: "ask",
+          workspace: workspacePath,
+          data: { ...existing, captureEnvelope, result: { status: "captured", summary: `Request ${captureEnvelope.requestId} was superseded by another processor before route effects; inspect it with ask show ${captureEnvelope.requestId}.` } }
+        });
+      }
+    }
     throw error;
   }
 }
@@ -265,8 +269,18 @@ function runAskCommandAfterCapture(
   workspacePath: string,
   flagEnabled: boolean,
   trace: { memo?: AskMemo },
-  captureEnvelope: AskCaptureEnvelope
+  captureEnvelope: AskCaptureEnvelope,
+  captureProcessingOwner?: string
 ): CommandSuccess<AskCommandData> {
+  const markRouteEffects = (db?: Database.Database) => {
+    if (captureProcessingOwner) {
+      if (db) {
+        markAskCaptureEffectsStarted(db, captureEnvelope.id, captureProcessingOwner);
+        return;
+      }
+      withDatabase(workspacePath, (db) => markAskCaptureEffectsStarted(db, captureEnvelope.id, captureProcessingOwner));
+    }
+  };
   const normalizedInput = normalizeAskInput(options.request);
   const submittedRequest = normalizedInput.askText;
   const askRules = withDatabase(workspacePath, (db) =>
@@ -529,6 +543,7 @@ function runAskCommandAfterCapture(
       classificationReason: suppression.summary
     };
     const ask = withDatabase(workspacePath, (db) => {
+      markRouteEffects(db);
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
         captureId: captureEnvelope.id,
@@ -575,6 +590,7 @@ function runAskCommandAfterCapture(
   // it is free-form prose. Clarification answers are intentionally not one of
   // the short approve/reject/defer tokens recognized by the parser.
   if (!correcting && parsedReviewResponse.hasReviewReference && !options.project && !ruleMatch) {
+    markRouteEffects();
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,
@@ -648,6 +664,7 @@ function runAskCommandAfterCapture(
     proposalSpec &&
     /^create\s+(?:an?\s+)?\S.+\s+blog\s+site[.!]?$/i.test(request.trim())
   ) {
+    markRouteEffects();
     const proposal = runProjectProposeCommand({
       workspace: workspacePath,
       name: intake.action.projectName,
@@ -706,6 +723,7 @@ function runAskCommandAfterCapture(
   // A status memo is the operator saying these words mean "show status", whatever the patterns would have said.
   if (route === "status" || (!skipDirectRoutes && intake.action.kind === "show_status" && intake.confidenceLabel === "high")) {
     const status = runStatusCommand({ workspace: workspacePath });
+    markRouteEffects();
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
         ...askRoutingFlags,
@@ -753,6 +771,7 @@ function runAskCommandAfterCapture(
 
   if (!skipDirectRoutes && intake.action.kind === "show_review" && intake.confidenceLabel === "high") {
     const review = runReviewRequiredCommand({ workspace: workspacePath });
+    markRouteEffects();
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
         ...askRoutingFlags,
@@ -802,6 +821,7 @@ function runAskCommandAfterCapture(
     intake.action.kind === "create_project" &&
     intake.action.projectName
   ) {
+    markRouteEffects();
     const created = createProjectWithDefaults({
       workspace: workspacePath,
       name: intake.action.projectName
@@ -875,6 +895,7 @@ function runAskCommandAfterCapture(
       ? { ...intake.action, entityId: routedProjectId }
       : intake.action;
     const { ask, project } = withDatabase(workspacePath, (db) => {
+      markRouteEffects(db);
       const project = applyProjectAttributeUpdate(db, action);
 
       const ask = createAskRequest(db, {
@@ -916,6 +937,7 @@ function runAskCommandAfterCapture(
         throw projectNotFound(projectId);
       }
 
+      markRouteEffects(db);
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
         captureId: captureEnvelope.id,
@@ -959,6 +981,7 @@ function runAskCommandAfterCapture(
 
   if (!skipDirectRoutes && (intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
     const { ask, projects } = withDatabase(workspacePath, (db) => {
+      markRouteEffects(db);
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
         captureId: captureEnvelope.id,
@@ -1006,6 +1029,7 @@ function runAskCommandAfterCapture(
       if (projectId && !getProject(db, projectId)) {
         throw projectNotFound(projectId);
       }
+      markRouteEffects(db);
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
         captureId: captureEnvelope.id,
@@ -1072,6 +1096,7 @@ function runAskCommandAfterCapture(
     !approvedFromReview
   ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
+      markRouteEffects(db);
       const ask = createAskRequest(db, {
         ...askRoutingFlags,
         captureId: captureEnvelope.id,
@@ -1143,18 +1168,21 @@ function runAskCommandAfterCapture(
   // Approving a Decision claims it in the transaction that makes the Action (see `ask/approvalClaim.ts`).
   const approvalClaimOwner = options.approvalClaimOwner ?? randomUUID();
   const initial = withDatabase(workspacePath, (db) => {
+    // These fixed built-ins are an idempotent workspace bootstrap, not a
+    // request-routed effect. Keep it outside the guarded Action transaction.
     ensureBuiltInSkills(db);
-    // One immediate transaction: the Action, its plan, its gates and the approval claim commit together, and the
-    // Decision's status is re-read under the write lock, so a concurrent approval that lost the race creates nothing.
     return writeTransaction(db, () => {
-    const claim = options.approvedReviewItemId
-      ? claimApprovalForAction(db, { reviewItemId: options.approvedReviewItemId, owner: approvalClaimOwner })
-      : ({ kind: "create" } as const);
     const context = resolveAskContext(db, {
       ...options,
       project: routedProjectId ?? undefined,
       request
     });
+    markRouteEffects(db);
+    // One immediate transaction: the Action, its plan, its gates and the approval claim commit together, and the
+    // Decision's status is re-read under the write lock, so a concurrent approval that lost the race creates nothing.
+    const claim = options.approvedReviewItemId
+      ? claimApprovalForAction(db, { reviewItemId: options.approvedReviewItemId, owner: approvalClaimOwner })
+      : ({ kind: "create" } as const);
     if (claim.kind === "resume") {
       // An earlier attempt made the Action and failed before the approval committed: reuse it, never make a second.
       const workItem = getWorkItem(db, claim.workItemId);
@@ -1169,6 +1197,7 @@ function runAskCommandAfterCapture(
       return { workItem, plan, projectContext: context.projectContext };
     }
     const created = createWorkItemWithOptionalArtifact(db, {
+      captureId: captureEnvelope.id,
       projectId: context.projectId,
       milestoneId: context.milestoneId,
       title: resolved.title,
@@ -1188,6 +1217,7 @@ function runAskCommandAfterCapture(
 
     const plan = createExecutionPlan(db, {
       workItemId: workItem.id,
+      captureId: captureEnvelope.id,
       summary: `Intent plan for "${workItem.title}" (${resolved.intentId}).`,
       steps: resolved.skillSequence
     });

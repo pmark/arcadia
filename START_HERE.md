@@ -2427,6 +2427,10 @@ evidence. `todo --project <slug> --json` exposes the same Run evidence for that
 Project. Approval receipts report a queued Run id and status; neither approval
 nor queueing proves completion. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
+If a capture is marked `partial`, `ask show <request-id>` lists any capture-linked
+Actions, Plans, Decisions, or Back Burner items and explains that automatic retry
+is unsafe. Inspect those durable effects before deciding whether to submit a new
+request; never treat the partial receipt as proof that nothing happened.
 
 To see how much of your input actually reaches Arcadia through Ask or Ingress,
 run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is

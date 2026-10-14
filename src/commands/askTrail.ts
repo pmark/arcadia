@@ -18,6 +18,8 @@ export interface AskTrailCapture {
   originalText: string;
   ingressSource: string;
   capturedAt: string;
+  status: string;
+  outcomes: AskTrailOutcome[];
 }
 
 export interface AskTrailOutcome {
@@ -71,6 +73,7 @@ interface CaptureRow {
   original_text: string;
   ingress_source: string;
   captured_at: string;
+  status: string;
 }
 
 interface AskRow {
@@ -127,7 +130,9 @@ function buildAskTrail(db: Database.Database, id: string): AskTrailData {
           requestId: capture.request_id,
           originalText: capture.original_text,
           ingressSource: capture.ingress_source,
-          capturedAt: capture.captured_at
+          capturedAt: capture.captured_at,
+          status: capture.status,
+          outcomes: captureOutcomes(db, capture.id)
         }
       : null,
     asks: asks.map((ask) => traceAsk(db, ask))
@@ -253,13 +258,22 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
     lines.push(
       `Capture: ${capture.id} (${capture.ingressSource}, ${capture.capturedAt})`,
       `Request: ${capture.requestId}`,
+      `Status: ${capture.status}`,
       `Text: ${capture.originalText.split("\n")[0]}`
     );
+    if (capture.status === "partial") {
+      lines.push("Recovery: do not retry automatically; reconcile the listed durable effects, then submit a new request only after confirming the intended outcome.");
+      for (const outcome of capture.outcomes) {
+        lines.push(`  → ${outcome.kind} ${outcome.id}${outcome.status ? ` (${outcome.status})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
+      }
+    }
   } else {
     lines.push("Capture: not linked (recorded before Ask tracing)");
   }
   if (asks.length === 0) {
-    lines.push("Outcome: no linked Ask — none was processed, or it predates Ask tracing and could not be matched unambiguously.");
+    lines.push(capture?.status === "partial"
+      ? "Outcome: processing stopped before a linked Ask; inspect the recovery effects above before proceeding."
+      : "Outcome: no linked Ask — none was processed, or it predates Ask tracing and could not be matched unambiguously.");
   }
   for (const ask of asks) {
     lines.push(
