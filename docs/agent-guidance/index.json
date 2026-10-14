@@ -139,7 +139,7 @@
       "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
       "path": "docs/agent-guidance/hacker-recovery.md",
       "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
-      "sha256": "83ad21f81c2c838ab2c2efbf9c792c330d457e7892ff23f81d7db8a5ee22fb78"
+      "sha256": "2dc006fc3c4bdbf895db75f4bfb48d2acc69cb4a37a79558b7c5f7eaf53b79cd"
     },
     {
       "id": "code-simplification",

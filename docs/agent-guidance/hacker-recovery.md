@@ -67,8 +67,12 @@ the clock by replacing the agent.
    latter's commits, dirty files and ignored data. Do not reconstruct Go
    operations, fabricate enrollment, edit SQLite or build substitute brokers.
    A permission refusal is never resolved by switching tools to evade it.
+   An initial sandbox denial may use the host's ordinary permission-request
+   mechanism for the same supported operation; proceed only if granted.
 4. Verify the chosen route's actual receipt, base revision, candidate and sole
-   writer before edits. If custody cannot be proven, stop mutation. A supported
+   writer before edits. If custody of the chosen candidate cannot be proven,
+   do not mutate it; continue read-only diagnosis or assess a separately
+   authorized candidate with verified sole-writer custody. A supported
    alternative must satisfy the same task and boundaries, not quietly weaken
    acceptance, tests, review or branch protection.
 5. Hand one implementer a finite repair scope with failing regressions first.

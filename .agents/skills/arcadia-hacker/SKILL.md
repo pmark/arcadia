@@ -6,8 +6,10 @@ description: Recover from repeated workflow refusals, procedural fixation or an 
 # Arcadia Hacker
 
 Hacker is a proposed recovery specialist; it is not yet an eighth registered
-role. Read [the recovery procedure](../../../docs/agent-guidance/hacker-recovery.md)
-and [arcadia-role](../arcadia-role/SKILL.md). Do not invent registry admission.
+role. Read the assigned Project's indexed
+`docs/agent-guidance/hacker-recovery.md` and the installed `arcadia-role` skill.
+If either is unavailable, preserve the assignment and report the missing
+adoption. Do not invent registry admission.
 Until the taxonomy Decision is ratified and implemented, diagnosis uses an
 assigned Lead and code changes use one authorized implementer.
 

@@ -67,3 +67,15 @@ Hacker recovery route to it conditionally; no extra registry role or automatic
 cleanup stage. Semantic examples require caller-contract proof, and repair
 behavior changes remain distinct. The earlier independent PASS applies only
 to head2b1e0bb; the pushed delta requires fresh review and CI before handoff.
+
+## Explicit Astra language review
+
+Operator requested an extra Astra review beyond the initial three rounds.
+Fresh read-only reviewer spawned with `model: gpt-6-astra`; runtime model/effort
+attestation remains unavailable. PASS on e301ebd37, full diff SHA256
+7ed642241f0a2f925fa7ae70cab45685c2679cac29e607226efd4132d0cc2df5.
+Three non-blocking suggestions applied: Project-relative indexed skill retrieval,
+ordinary host permission recovery for the same supported operation only if
+granted, and candidate-specific custody stop with useful read-only diagnosis or
+separately authorized isolated work. Round5 final delta review and refreshed CI
+are recorded on PR1408; the earlier green head never substitutes for new proof.
