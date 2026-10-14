@@ -51,6 +51,16 @@ function readJson(file: string, label: string): Record<string, unknown> {
 
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
+/** True when `docs/plans/<slug>.md` exists on the local main ref (no network); false when unknown. */
+function planOnMain(repo: string, slug: string): boolean {
+  try {
+    execFileSync("git", ["-C", repo, "cat-file", "-e", `main:docs/plans/${slug}.md`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Read-only: gathers inputs from checked-in documents and operator-supplied files; writes nothing. */
 export function runPlanSelectNextCommand(options: PlanSelectNextOptions): CommandSuccess<PlanSelectNextData> {
   const repo = path.resolve(options.repo);
@@ -72,9 +82,7 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
       }
       plans.push({
         project: doc.project, slug: doc.slug, status: doc.status,
-        // The only approval the repository records is activation: an `active` Plan was activated by a
-        // governed settlement. A draft Plan therefore carries no receipt here (stated gap below).
-        approvalReceipt: doc.status === "active" ? "plan-status:active" : null,
+        onMain: planOnMain(repo, doc.slug),
         sourceAsks: [...asks], authoringSession: null
       });
       const recordPath = path.join(plansDir, `${doc.slug}.close-out.json`);
@@ -96,7 +104,7 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
   }
   if (!options.preferences) gaps.push("no Project preference record exists yet (Decision 0122; Action record-production-project-preferences); supply --preferences to preview a choice.");
   gaps.push("Plan authoring session is not recorded by the repository; same-run authorship uses Plan/Action source Agent Asks plus --run-ask, --run-id, --session-id.");
-  gaps.push("Operator approval of a draft Plan has no repository field; only an active Plan carries a receipt.");
+  gaps.push("Operator approval is the receipt in the operator preference record (Decision 0122), which does not exist yet; a Plan's own status is not approval.");
 
   let preferences: ProjectPreference[] = [];
   if (options.preferences) {
@@ -104,7 +112,10 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
     if (!Array.isArray(raw)) throw validationError("--preferences must hold a `projects` array");
     preferences = raw.map(item => {
       const record = (item ?? {}) as Record<string, unknown>;
-      return { project: String(record.project ?? ""), included: record.included === true, chosenPlan: asString(record.chosenPlan) };
+      return {
+        project: String(record.project ?? ""), included: record.included === true, chosenPlan: asString(record.chosenPlan),
+        receipt: asString(record.receipt)
+      };
     });
   }
   const activePlans: Record<string, string | null> = {};
@@ -167,11 +178,19 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
     currentSessionId: options.sessionId ?? process.env.ARCADIA_SESSION_ID ?? null,
     currentRunAsks: (options.runAsk ?? "").split(",").map(value => value.trim()).filter(value => value !== ""),
     onlyProject: options.project ?? null,
+    inputSources: {
+      preferences: "caller", // no operator preference store exists, so a preference file is always caller-supplied
+      queue: options.queue ? "caller" : "live",
+      redAlerts: options.redAlerts ? "caller" : "live",
+      runId: options.runId ? "caller" : "live",
+      sessionId: options.sessionId ? "caller" : "live",
+      runAsks: options.runAsk ? "caller" : "live"
+    },
     headSha,
     now: now.toISOString(),
     expires: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
   });
-  return createSuccess({ command: "plan.select-next", data: { ...selection, gaps }, artifacts: [] });
+  return createSuccess({ command: "plan.select-next", data: { ...selection, gaps: [...selection.gaps, ...gaps] }, artifacts: [] });
 }
 
 export function renderPlanSelectNextSuccess(response: CommandSuccess<PlanSelectNextData>): string[] {

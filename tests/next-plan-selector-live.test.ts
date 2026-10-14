@@ -23,10 +23,10 @@ const liveQueue: LiveQueue = {
 function input(overrides: Partial<SelectorInput> = {}): SelectorInput {
   const adapted = adaptQueue(liveQueue, { arcadia: "active-plan" });
   return {
-    preferences: [{ project: "arcadia", included: true, chosenPlan: "next-plan" }],
+    preferences: [{ project: "arcadia", included: true, chosenPlan: "next-plan", receipt: "pref-1" }],
     plans: [
-      { project: "arcadia", slug: "active-plan", status: "active", approvalReceipt: "plan-status:active", sourceAsks: [], authoringSession: "s-old" },
-      { project: "arcadia", slug: "next-plan", status: "draft", approvalReceipt: "settle-1", sourceAsks: ["ask-old"], authoringSession: "s-old" }
+      { project: "arcadia", slug: "active-plan", status: "active", onMain: true, sourceAsks: [], authoringSession: "s-old" },
+      { project: "arcadia", slug: "next-plan", status: "draft", onMain: true, sourceAsks: ["ask-old"], authoringSession: "s-old" }
     ],
     queues: adapted.queues,
     queueGlobal: adapted.global,

@@ -35,7 +35,8 @@ export const REFUSAL_CODES = [
   "plan_not_approved",
   "plan_not_in_project_preference",
   "project_not_included",
-  "no_candidate_plan"
+  "no_candidate_plan",
+  "project_has_active_plan"
 ] as const;
 export type RefusalCode = (typeof REFUSAL_CODES)[number];
 
@@ -53,6 +54,12 @@ export interface ProjectPreference {
   included: boolean;
   /** The Project's chosen Plan slug under Decision 0122, or null when none is chosen. */
   chosenPlan: string | null;
+  /**
+   * The operator's approval receipt (record id or hash) for this choice. A Plan is approved under
+   * Decision 0122 only when the operator-owned record names it WITH a non-empty receipt; a Plan's own
+   * `active` status proves a settlement landed, not operator approval.
+   */
+  receipt: string | null;
 }
 
 export interface PlanSummary {
@@ -60,11 +67,8 @@ export interface PlanSummary {
   slug: string;
   /** draft | active | complete | superseded (parsed Plan status). */
   status: string;
-  /**
-   * Operator approval receipt for this Plan (an activation settlement id, or the Plan's own `active`
-   * status). null means the operator has not approved it. Only an explicit non-empty string counts.
-   */
-  approvalReceipt: string | null;
+  /** True when the Plan file exists on main (injected), so a repository URL would not 404. */
+  onMain: boolean;
   /** Agent Ask request ids the Plan records as its source (Plan and Action `source:` fields). */
   sourceAsks: string[];
   /** Session that authored the Plan, when a ledger row or log entry records it. */
@@ -192,7 +196,9 @@ export interface SelectorInput {
   onlyProject: string | null;
   /** Repository head sha, a card pin. */
   headSha: string | null;
-  /** Clock values are injected; they never enter the state hash. */
+  /** Where each caller-relevant input came from. Anything not marked "live" is treated as caller-supplied. */
+  inputSources?: Partial<Record<InputName, "live" | "caller">>;
+  /** Clock values are injected; they never enter the state hash. `expires` is derived from `now`. */
   now: string;
   expires: string;
 }
@@ -212,7 +218,14 @@ export interface PreflightResult {
   remedy: string | null;
 }
 
+export const INPUT_NAMES = ["preferences", "queue", "redAlerts", "runId", "sessionId", "runAsks"] as const;
+export type InputName = (typeof INPUT_NAMES)[number];
+
 export interface Selection {
+  /** Provenance of every caller-relevant input; caller-supplied inputs are pinned into stateHash. */
+  inputs: { name: InputName; source: "live" | "caller" }[];
+  /** Honest gaps, including every caller-supplied (unverified) input. */
+  gaps: string[];
   chosen: { project: string; plan: string } | null;
   reasons: string[];
   refusals: Refusal[];
@@ -247,11 +260,12 @@ function normalise(input: SelectorInput): SelectorInput {
   const str = (value: unknown): string | null => (typeof value === "string" ? value : null);
   return {
     preferences: arr<Record<string, unknown>>(input.preferences).map(p => ({
-      project: String(p.project ?? ""), included: p.included === true, chosenPlan: str(p.chosenPlan)
+      project: String(p.project ?? ""), included: p.included === true, chosenPlan: str(p.chosenPlan),
+      receipt: nonEmpty(p.receipt) ? p.receipt : null
     })),
     plans: arr<Record<string, unknown>>(input.plans).map(p => ({
       project: String(p.project ?? ""), slug: String(p.slug ?? ""), status: String(p.status ?? ""),
-      approvalReceipt: nonEmpty(p.approvalReceipt) ? p.approvalReceipt : null,
+      onMain: p.onMain === true,
       sourceAsks: arr<string>(p.sourceAsks).map(String).sort(cmp), authoringSession: str(p.authoringSession)
     })),
     queues: input.queues === null ? null : arr<Record<string, unknown>>(input.queues).map(q => ({
@@ -276,6 +290,7 @@ function normalise(input: SelectorInput): SelectorInput {
     currentRunId: str(input.currentRunId),
     currentSessionId: str(input.currentSessionId),
     currentRunAsks: arr<string>(input.currentRunAsks).map(String),
+    inputSources: Object.fromEntries(INPUT_NAMES.map(name => [name, input.inputSources?.[name] === "live" ? "live" : "caller"])),
     onlyProject: str(input.onlyProject),
     headSha: str(input.headSha),
     now: input.now,
@@ -415,7 +430,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
   const input = normalise(rawInput);
   const reasons: string[] = [];
   const refusals: Refusal[] = [];
-  const eligible: { project: string; plan: PlanSummary; order: number }[] = [];
+  const eligible: { project: string; plan: PlanSummary; order: number; receipt: string }[] = [];
 
   if (input.preferences.length === 0) {
     refusals.push({
@@ -465,8 +480,20 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
       refusals.push({ project: pref.project, plan: plan.slug, code: "plan_authored_in_this_run", message: `Plan ${plan.slug} was authored in this run: ${here}.` });
       return;
     }
-    if (plan.approvalReceipt === null) {
-      refusals.push({ project: pref.project, plan: plan.slug, code: "plan_not_approved", message: `Plan ${plan.slug} has no operator approval receipt.` });
+    if (pref.receipt === null) {
+      refusals.push({ project: pref.project, plan: plan.slug, code: "plan_not_approved", message: `Plan ${plan.slug} is named in the preference record without an operator approval receipt (Decision 0122).` });
+      return;
+    }
+    // Decision 0116 allows the Project's NEXT Plan only while its active Plan waits on the operator.
+    const queueOf = input.queues?.find(q => q.project === pref.project) ?? null;
+    const activeSlug = queueOf?.activePlan ?? projectPlans.find(p => p.status === "active")?.slug ?? null;
+    const activeDoc = activeSlug === null ? null : projectPlans.find(p => p.slug === activeSlug) ?? null;
+    const activeIsLive = activeSlug !== null && (activeDoc === null || (activeDoc.status !== "complete" && activeDoc.status !== "superseded"));
+    if (activeIsLive && activeSlug !== plan.slug && !(queueOf?.activePlanWaitsOnOperator === true)) {
+      refusals.push({
+        project: pref.project, plan: plan.slug, code: "project_has_active_plan",
+        message: `Project ${pref.project} already has active Plan ${activeSlug} that is not waiting on the operator; Decision 0116 allows the next Plan only while the active one waits.`
+      });
       return;
     }
     // Cycle: a previous Plan listed as its own successor is not a next Plan.
@@ -475,7 +502,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
       refusals.push({ project: pref.project, plan: plan.slug, code: "no_candidate_plan", message: `Plan ${plan.slug} is already closed out; it cannot be its own successor.` });
       return;
     }
-    eligible.push({ project: pref.project, plan, order });
+    eligible.push({ project: pref.project, plan, order, receipt: pref.receipt });
   });
 
   eligible.sort((a, b) => a.order - b.order || cmp(a.project, b.project) || cmp(a.plan.slug, b.plan.slug));
@@ -484,7 +511,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
 
   if (winner !== null) {
     reasons.push(`Plan ${winner.plan.slug} is ${winner.project}'s chosen Plan in the operator preference record (Decision 0122).`);
-    reasons.push(`It carries operator approval receipt ${winner.plan.approvalReceipt}.`);
+    reasons.push(`The record carries approval receipt ${winner.receipt}.`);
     const queue = input.queues?.find(q => q.project === winner.project) ?? null;
     if (queue !== null && queue.activePlan !== null && queue.activePlan !== winner.plan.slug && queue.activePlanWaitsOnOperator) {
       reasons.push(`${winner.project}'s active Plan ${queue.activePlan} waits on the operator; Decision 0116 answered "Run the same Project's next Plan", so the Project is not skipped.`);
@@ -502,39 +529,81 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     : preflightFor(chosen.project, chosen.plan, input, winner.plan);
   const ready = chosen !== null && preflight.every(check => check.ok);
 
+  const inputs = INPUT_NAMES.map(name => ({ name, source: input.inputSources?.[name] ?? "caller" }));
+  const callerInputs = inputs.filter(item => item.source === "caller").map(item => item.name);
+  const gaps: string[] = [];
+  if (callerInputs.includes("preferences")) {
+    gaps.push("preferences are caller-supplied and unverified: no operator preference store exists yet (Decision 0122; Action record-production-project-preferences).");
+  }
+  const otherCaller = callerInputs.filter(name => name !== "preferences");
+  if (otherCaller.length > 0) gaps.push(`caller-supplied and unverified inputs: ${otherCaller.join(", ")}.`);
+
   const { now: _now, expires: _expires, ...stateInputs } = input;
-  const stateHash = sha(stateInputs);
-  const outcome = { chosen, reasons, refusals, preflight, ready };
+  // The pinned state includes ready, the blocker codes and every preflight status, so a card cannot be
+  // separated from the preflight it was issued with. `expires` is derived from the injected `now` and
+  // is deliberately outside the hash.
+  const stateHash = sha({
+    inputs: stateInputs,
+    ready,
+    preflight: preflight.map(check => `${check.check}:${check.status}`)
+  });
+  const outcome = { chosen, reasons, refusals, preflight, ready, inputs };
   const previewFingerprint = sha(outcome);
 
-  const cardId = chosen === null ? `next-plan-none-${stateHash.slice(0, 12)}` : `next-plan-${chosen.project}-${chosen.plan}`.slice(0, 120);
   const blockers = preflight.filter(check => !check.ok);
+  const blockerCodes = blockers.map(check => `${check.check}:${check.status}`);
+  const cardId = chosen === null ? `next-plan-none-${stateHash.slice(0, 12)}` : `next-plan-${chosen.project}-${chosen.plan}`.slice(0, 120);
+  const planPath = chosen === null ? null : `docs/plans/${chosen.plan}.md`;
+  const BLOCKED_LABEL = "Resolve the named blockers first";
+  const provenance = callerInputs.length > 0 ? ` Caller-supplied, unverified inputs: ${callerInputs.join(", ")}.` : "";
+  let options;
+  let what: string;
+  let verb: "run" | "answer";
+  if (chosen === null) {
+    verb = "answer";
+    what = "Advisory only: no next Plan can be chosen under the operator's Project preferences.";
+    options = [{
+      id: "resolve-blockers", label: BLOCKED_LABEL,
+      consequence: `No change: ${refusals.map(r => r.code).sort(cmp).filter((c, i, all) => all.indexOf(c) === i).join(", ") || "no_candidate_plan"}; remedy: record the Project's chosen Plan and its approval receipt in the operator preference record (no one-click control exists yet; Action record-production-project-preferences).${provenance}`.slice(0, 1000)
+    }];
+  } else if (!ready) {
+    verb = "answer";
+    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is selected but not ready; ${blockers.length} preflight check(s) are not passing.`;
+    const first = blockers[0];
+    options = [{
+      id: "resolve-blockers", label: BLOCKED_LABEL,
+      consequence: `No change: ${blockerCodes.join(", ")}; remedy: ${first.remedy ?? "none named"}${blockers.length > 1 ? ` (further remedies are in the preflight output)` : ""}.${provenance}`.slice(0, 1000)
+    }];
+  } else {
+    verb = "run";
+    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is ready to be activated.`;
+    options = [{
+      id: "run-plan", label: `Run ${chosen.plan}`,
+      consequence: `Preview only: pressing grants nothing and starts nothing; activating Plan ${chosen.plan} is the governed Agent Ask settlement \`arcadia agent-ask settle --activate\` (src/ask/settlement.ts), which changes PROJECT.md active_plan and which the operator merges.${provenance}`.slice(0, 1000)
+    }];
+  }
+  const evidence: { label: string; url?: string; fingerprint?: string }[] = [
+    { label: "Decision 0116: run the same Project's next Plan", url: BLOB + DECISION_0116_PATH },
+    { label: "Decision 0122: admission follows the Project preference record", url: BLOB + DECISION_0122_PATH }
+  ];
+  if (chosen !== null && winner !== null && planPath !== null) {
+    // A URL only when the Plan file exists on main; an unmerged Plan would 404.
+    evidence.push(winner.plan.onMain
+      ? { label: `Plan ${planPath}`, url: `${BLOB}${planPath}` }
+      : { label: `Plan ${planPath} (not on main; no link)` });
+  }
+  evidence.push({ label: `Ready: ${ready}`, fingerprint: stateHash });
+  for (const check of preflight) evidence.push({ label: `Preflight ${check.check}: ${check.status}` });
+  if (callerInputs.length > 0) evidence.push({ label: `Caller-supplied inputs (unverified): ${callerInputs.join(", ")}` });
+
   const candidate = {
     schema: DECISION_CARD_SCHEMA,
     id: cardId,
-    kind: "next-plan-selection",
-    what: chosen === null
-      ? "No next Plan can be chosen under the operator's Project preferences."
-      : `Run ${chosen.project}'s next Plan ${chosen.plan}${blockers.length > 0 ? `; ${blockers.length} preflight check(s) are not passing` : ""}.`,
-    options: chosen === null
-      ? [
-          { id: "record-preference", label: "Record a Project preference", consequence: "Nothing runs. The operator chooses a Project's Plan and inclusion in the preference record, then the selector is re-run." },
-          { id: "hold", label: "Leave production without a next Plan", consequence: "Nothing changes. No Plan is activated and no Session starts for lack of a chosen Plan." }
-        ]
-      : [
-          {
-            id: "run-plan",
-            label: `Run ${chosen.plan}`,
-            consequence: `Would make ${chosen.plan} ${chosen.project}'s Plan for the next Session start and let production take its first eligible Action; changes no Action status or queue position. This preview changed nothing.`
-          },
-          { id: "hold", label: "Hold this Plan", consequence: `Nothing changes; ${chosen.plan} stays unstarted and ${chosen.project} keeps its current Plan.` }
-        ],
-    evidence: [
-      { label: "Decision 0116: run the same Project's next Plan", url: BLOB + DECISION_0116_PATH },
-      { label: "Decision 0122: admission follows the Project preference record", url: BLOB + DECISION_0122_PATH },
-      ...(chosen === null ? [] : [{ label: `Plan ${chosen.plan}`, url: `${BLOB}docs/plans/${chosen.plan}.md` }])
-    ],
-    verb: chosen === null ? "answer" : "run",
+    kind: "advisory-next-plan-selection",
+    what,
+    options,
+    evidence,
+    verb,
     pins: {
       stateHash,
       ...(input.headSha !== null && /^[0-9a-f]{7,64}$/.test(input.headSha) ? { headSha: input.headSha } : {}),
@@ -546,7 +615,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
   };
   const validated = validateDecisionCard(candidate, { now: new Date(input.now) });
   return {
-    chosen, reasons, refusals, preflight, ready,
+    inputs, gaps, chosen, reasons, refusals, preflight, ready,
     card: validated.ok ? validated.card : null,
     cardErrors: validated.ok ? [] : validated.errors.map(error => `${error.code} ${error.path}: ${error.message}`),
     stateHash
