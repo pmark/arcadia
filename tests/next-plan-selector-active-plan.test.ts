@@ -130,3 +130,37 @@ describe("S3: authorship unknown never offers run", () => {
     expect(result.card!.options.map(o => o.id)).toEqual(["resolve-blockers"]);
   });
 });
+
+describe("fail closed: a Project absent from activePlans has an UNKNOWN active Plan", () => {
+  it("a queue entry alone is not a pointer: unknown, not ready, no run option", () => {
+    const adapted = adaptQueue(queueWith([]), {});
+    const result = selectNextPlan(input({
+      queues: [{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: null, activePlanWaitsOnOperator: null }],
+      queueGlobal: adapted.global,
+      activePlans: {}
+    }));
+    expect(result.preflight.find(c => c.check === "active_plan_known")!.status).toBe("unknown");
+    expect(result.ready).toBe(false);
+    expect(result.card!.options.map(o => o.id)).toEqual(["resolve-blockers"]);
+  });
+
+  it("another Project's pointer does not make this Project known", () => {
+    const result = selectNextPlan(input({ activePlans: { "someone-else": "x" } }));
+    expect(result.preflight.find(c => c.check === "active_plan_known")!.status).toBe("unknown");
+    expect(result.ready).toBe(false);
+  });
+
+  it("an explicit null pointer means the Project has no active Plan and is allowed", () => {
+    const adapted = adaptQueue(queueWith([]), { arcadia: null });
+    const result = selectNextPlan(input({ queues: adapted.queues, queueGlobal: adapted.global, activePlans: { arcadia: null } }));
+    expect(result.refusals.map(r => r.code)).not.toContain("project_has_active_plan");
+    expect(result.preflight.find(c => c.check === "active_plan_known")!.status).toBe("pass");
+    expect(result.chosen).toEqual({ project: "arcadia", plan: "next-plan" });
+  });
+
+  it("an explicit slug is unchanged", () => {
+    const result = selectNextPlan(input({ activePlans: { arcadia: "active-plan" } }));
+    expect(result.chosen).toEqual({ project: "arcadia", plan: "next-plan" });
+    expect(result.preflight.find(c => c.check === "active_plan_known")!.status).toBe("pass");
+  });
+});

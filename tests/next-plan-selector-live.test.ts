@@ -30,6 +30,7 @@ function input(overrides: Partial<SelectorInput> = {}): SelectorInput {
     ],
     queues: adapted.queues,
     queueGlobal: adapted.global,
+    activePlans: { arcadia: "active-plan" },
     closeOuts: [],
     redAlerts: [],
     currentRunId: "run-now",

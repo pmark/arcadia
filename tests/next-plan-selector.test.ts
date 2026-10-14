@@ -21,6 +21,7 @@ function base(overrides: Partial<SelectorInput> = {}): SelectorInput {
     preferences: [{ project: "arcadia", included: true, chosenPlan: "next-plan", receipt: "pref-receipt-1" }],
     plans: [plan("arcadia", "active-plan", "active", { sourceAsks: [] }), plan("arcadia", "next-plan", "draft")],
     queues: [{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: "active-plan", activePlanWaitsOnOperator: true }],
+    activePlans: { arcadia: "active-plan" },
     closeOuts: [],
     redAlerts: [],
     currentRunId: "run-now",
@@ -212,13 +213,13 @@ describe("selectNextPlan", () => {
   it("reports close-out absent as a failure and evidence none as unknown", () => {
     const queues = [{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: "closing-plan", activePlanWaitsOnOperator: false }];
     const plans = [...base().plans, plan("arcadia", "closing-plan", "complete")];
-    const absent = selectNextPlan(base({ queues, plans }));
+    const absent = selectNextPlan(base({ queues, activePlans: { arcadia: "closing-plan" }, plans }));
     const check = absent.preflight.find(c => c.check === "previous_plan_closed_out")!;
     expect(check.status).toBe("fail");
     expect(check.remedy).toMatch(/^No one-click control exists yet: plan close-out/);
-    const open = selectNextPlan(base({ queues, plans, closeOuts: [{ project: "arcadia", plan: "closing-plan", closed: false, openRemainders: [{ id: "r1", status: "todo" }], evidence: "partial" }] }));
+    const open = selectNextPlan(base({ queues, activePlans: { arcadia: "closing-plan" }, plans, closeOuts: [{ project: "arcadia", plan: "closing-plan", closed: false, openRemainders: [{ id: "r1", status: "todo" }], evidence: "partial" }] }));
     expect(open.preflight.find(c => c.check === "previous_plan_closed_out")!.blocker).toContain("r1");
-    const unknown = selectNextPlan(base({ queues, plans, closeOuts: [{ project: "arcadia", plan: "closing-plan", closed: true, openRemainders: [], evidence: "none" }] }));
+    const unknown = selectNextPlan(base({ queues, activePlans: { arcadia: "closing-plan" }, plans, closeOuts: [{ project: "arcadia", plan: "closing-plan", closed: true, openRemainders: [], evidence: "none" }] }));
     const unk = unknown.preflight.find(c => c.check === "previous_plan_closed_out")!;
     expect(unk.status).toBe("unknown");
     expect(unk.ok).toBe(false);

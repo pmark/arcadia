@@ -330,13 +330,14 @@ function authoredHere(plan: PlanSummary, input: SelectorInput): string | null {
   return null;
 }
 
-/** The Project's active Plan: queue first, then the PROJECT.md pointer. undefined = unknown, null = none. */
+/**
+ * The Project's active Plan, from the checked-in pointer only (`activePlans`, PROJECT.md `active_plan`).
+ * undefined = UNKNOWN (the Project is absent from the record, whatever the queue shows: a queue entry's
+ * `activePlan` is derived from the same record and is not a pointer); null = the pointer says none.
+ */
 function activeSlugOf(project: string, input: SelectorInput): string | null | undefined {
-  const queue = input.queues?.find(q => q.project === project) ?? null;
-  if (queue !== null && queue.activePlan !== null) return queue.activePlan;
   const pointers = input.activePlans ?? {};
   if (Object.prototype.hasOwnProperty.call(pointers, project)) return pointers[project];
-  if (queue !== null) return null;
   return undefined;
 }
 
@@ -403,7 +404,7 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
   }
 
   // Previous Plan: the Project's active Plan, when it is a different Plan from the chosen one.
-  const previous = queue?.activePlan ?? null;
+  const previous = activeSlugOf(project, input) ?? null;
   if (previous === null || previous === plan) {
     out.push({ check: "previous_plan_closed_out", ok: true, status: "pass", blocker: null, remedy: null });
   } else if (queue !== null && queue.activePlanWaitsOnOperator) {
@@ -559,8 +560,9 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     reasons.push(`Plan ${winner.plan.slug} is ${winner.project}'s chosen Plan in the operator preference record (Decision 0122).`);
     reasons.push(`receipt claimed (caller-supplied, unverified): ${displayReceipt(winner.receipt)}`);
     const queue = input.queues?.find(q => q.project === winner.project) ?? null;
-    if (queue !== null && queue.activePlan !== null && queue.activePlan !== winner.plan.slug && queue.activePlanWaitsOnOperator === true) {
-      reasons.push(`${winner.project}'s active Plan ${queue.activePlan} waits on the operator; Decision 0116 answered "Run the same Project's next Plan", so the Project is not skipped.`);
+    const activeNow = activeSlugOf(winner.project, input) ?? null;
+    if (queue !== null && activeNow !== null && activeNow !== winner.plan.slug && queue.activePlanWaitsOnOperator === true) {
+      reasons.push(`${winner.project}'s active Plan ${activeNow} waits on the operator; Decision 0116 answered "Run the same Project's next Plan", so the Project is not skipped.`);
     }
     if (eligible.length > 1) {
       reasons.push(`${eligible.length} Projects were eligible; ties break by the preference record order, then Project slug, then Plan slug (code-unit order).`);
