@@ -1,0 +1,28 @@
+{
+  "agent_ask": "v1",
+  "request_id": "hacker-recovery-role-taxonomy-20261014",
+  "project": "arcadia",
+  "intent": "decision",
+  "requested_authority": "propose",
+  "desired_result": "Decide whether to amend Decision 0100 with a registered Hacker recovery role and direct supervisors to trigger bounded recovery instead of repeating unchanged workflow refusals.",
+  "rationale": "PPN Issue292 was delayed by misclassifying direct operator offline work as governed Action enrollment; the existing isolated Issue repair route succeeded without host-source repair. Hacker is a recovery specialization: challenge route assumptions, preserve custody and prove the smallest existing authorized path. Its name does not grant bypass, new spend, credentials or production authority. Existing Lead/implementer permissions already support bounded recovery; a distinct registered role needs a justified planned Action under Decision 0100.",
+  "gate_question": "reasonable_disagreement",
+  "options": [
+    {
+      "label": "Register Hacker as a bounded recovery role through a planned Action",
+      "consequence": "Amend the seven-role taxonomy, justify the distinct responsibility, then implement and independently review registry/lineage/brief defaults and dispatch eligibility. Supervisor recovery triggers apply within existing authority; no automatic launch, spend or custody takeover.",
+      "recommended": true
+    },
+    {
+      "label": "Keep Hacker mode as a specialization of Lead and implementer",
+      "consequence": "Keep seven registered roles; adopt the same bounded recovery and supervisor triggers without a new role ID or dispatch permissions.",
+      "recommended": false
+    }
+  ],
+  "references": [
+    "docs/decisions/0100-decide-which-governed-roles-the-arcadia-role-registry-defines.md",
+    "https://github.com/pmark/arcadia/issues/1407",
+    "https://github.com/pmark/private-practice-now/pull/293",
+    "docs/agent-guidance/hacker-recovery.md"
+  ]
+}
