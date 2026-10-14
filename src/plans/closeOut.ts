@@ -5,6 +5,7 @@
  * same hash; the fs wrapper at the bottom is thin. Record location: `docs/plans/<plan-slug>.close-out.json`
  * (plans are single files, so a sibling keeps it discoverable next to the Plan and out of the `.md` scan).
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -23,31 +24,44 @@ export interface FrictionEntry { id: string; status: string; testIds: string[] }
 export interface CompletionEntry { actionId: string; date: string; candidate: string | null; blockers: string[] }
 export interface CloseOutInput {
   plan: CloseOutPlan;
+  /** ALL ledger rows of the repository; the builder scopes them and reports how much evidence matched. */
   ledgerRows: SessionLedgerRow[];
   frictions: FrictionEntry[];
   completions: CompletionEntry[];
   successor: { recommendation: string | null; reason: string };
+  /** Injected merge-commit resolver: completion candidate sha to the PR number that merged it, or null. */
+  shaToPr?: (sha: string) => number | null;
 }
+
+export const MAX_UNMATCHED_ROWS = 20;
+export const EVIDENCE_LEVELS = ["none", "partial", "complete"] as const;
+export const SNAPSHOT_REMEDY = "a close-out record is a snapshot: delete the record and re-run `arcadia plan close-out <slug> --write`";
 
 export interface CloseOutRecord {
   schema: typeof CLOSE_OUT_SCHEMA;
-  plan: { slug: string; status: string; milestone: string | null };
+  plan: { slug: string; status: string; milestone: string | null; closed: boolean };
   actions: { id: string; title: string; status: string; outcome: string; prs: number[]; ledgerSessions: string[];
     completion: { date: string; candidate: string | null } | null }[];
   openRemainders: { id: string; status: string; source: "plan-action" | "split-target-not-in-plan" }[];
   openBlockers: { actionId: string; text: string }[];
-  ledger: { sessions: number; reviewRounds: number; subagentTokens: number; attempts: number; operatorTouches: number;
-    outcomes: Record<string, number> };
+  /** Aggregates are null (never 0) when `evidence` is "none": no ledger row matched this Plan's Actions. */
+  ledger: { rowsConsidered: number; rowsMatched: number; rowsExcluded: number; evidence: (typeof EVIDENCE_LEVELS)[number];
+    sessions: number | null; reviewRounds: number | null; subagentTokens: number | null; attempts: number | null;
+    operatorTouches: number | null; outcomes: Record<string, number> | null };
   frictions: { id: string; status: string; testIds: string[]; uncited: boolean }[];
   unresolvedFrictionIds: string[];
+  /** First MAX_UNMATCHED_ROWS excluded rows by session_id; `unmatchedTruncated` says whether more exist. */
   unmatchedLedgerRows: { session_id: string; action_id: string }[];
+  unmatchedTruncated: boolean;
   duplicateLedgerSessions: string[];
   successor: { recommendation: string | null; reason: string };
   hash: string;
 }
 
 const RECORD_KEYS = ["schema", "plan", "actions", "openRemainders", "openBlockers", "ledger", "frictions",
-  "unresolvedFrictionIds", "unmatchedLedgerRows", "duplicateLedgerSessions", "successor", "hash"] as const;
+  "unresolvedFrictionIds", "unmatchedLedgerRows", "unmatchedTruncated", "duplicateLedgerSessions", "successor", "hash"] as const;
+const LEDGER_KEYS = ["rowsConsidered", "rowsMatched", "rowsExcluded", "evidence", "sessions", "reviewRounds", "subagentTokens",
+  "attempts", "operatorTouches", "outcomes"] as const;
 
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const uniqSorted = (values: string[]): string[] => [...new Set(values)].sort(cmp);
@@ -90,17 +104,20 @@ export function buildCloseOut(input: CloseOutInput): CloseOutRecord {
   const unmatched = rows.filter(row => !planIds.has(row.action_id))
     .map(row => ({ session_id: row.session_id, action_id: row.action_id }));
   const completionOf = new Map<string, CompletionEntry>();
+  const candidatesOf = new Map<string, Set<string>>();
   for (const entry of [...input.completions].sort((a, b) => cmp(a.date, b.date) || cmp(a.actionId, b.actionId))) {
     completionOf.set(entry.actionId, entry); // latest entry per Action wins
+    if (entry.candidate) candidatesOf.set(entry.actionId, (candidatesOf.get(entry.actionId) ?? new Set()).add(entry.candidate));
   }
 
   const actions = [...input.plan.actions].sort((a, b) => cmp(a.id, b.id)).map(action => {
     const own = matched.filter(row => row.action_id === action.id);
     const completion = completionOf.get(action.id);
     const outcome = action.status === "done" && action.splitInto.length > 0 ? "split" : action.status;
+    const resolved = [...(candidatesOf.get(action.id) ?? [])].map(sha => input.shaToPr?.(sha) ?? null);
     return {
       id: action.id, title: action.title, status: action.status, outcome,
-      prs: [...new Set(own.map(row => row.pr).filter((pr): pr is number => pr !== null))].sort((a, b) => a - b),
+      prs: [...new Set([...own.map(row => row.pr), ...resolved].filter((pr): pr is number => pr !== null))].sort((a, b) => a - b),
       ledgerSessions: own.map(row => row.session_id),
       completion: completion ? { date: completion.date, candidate: completion.candidate } : null
     };
@@ -122,8 +139,12 @@ export function buildCloseOut(input: CloseOutInput): CloseOutRecord {
     .sort((a, b) => cmp(a.actionId, b.actionId) || cmp(a.text, b.text))
     .filter((item, index, all) => index === 0 || item.actionId !== all[index - 1].actionId || item.text !== all[index - 1].text);
 
-  const sum = (pick: (row: SessionLedgerRow) => number | null | undefined): number =>
-    matched.reduce((total, row) => total + (pick(row) ?? 0), 0);
+  const doneWithoutRow = input.plan.actions.some(action => action.status === "done" && !matched.some(row => row.action_id === action.id));
+  const evidence: (typeof EVIDENCE_LEVELS)[number] = matched.length === 0 && rows.length > 0 ? "none"
+    : doneWithoutRow ? "partial" : "complete";
+  const sum = (pick: (row: SessionLedgerRow) => number | null | undefined): number | null =>
+    evidence === "none" ? null : matched.reduce((total, row) => total + (pick(row) ?? 0), 0);
+  const closed = input.plan.actions.length > 0 && openRemainders.length === 0;
   const outcomes: Record<string, number> = {};
   for (const row of matched) outcomes[row.outcome] = (outcomes[row.outcome] ?? 0) + 1;
 
@@ -140,15 +161,18 @@ export function buildCloseOut(input: CloseOutInput): CloseOutRecord {
 
   const record: Omit<CloseOutRecord, "hash"> = {
     schema: CLOSE_OUT_SCHEMA,
-    plan: { slug: input.plan.slug, status: input.plan.status, milestone: input.plan.milestone },
+    plan: { slug: input.plan.slug, status: input.plan.status, milestone: input.plan.milestone, closed },
     actions, openRemainders, openBlockers,
     ledger: {
-      sessions: matched.length, reviewRounds: sum(row => row.review_rounds), subagentTokens: sum(row => row.subagent_tokens_total),
-      attempts: sum(row => row.attempts), operatorTouches: sum(row => row.operator_touches), outcomes: sortKeys(outcomes)
+      rowsConsidered: rows.length, rowsMatched: matched.length, rowsExcluded: unmatched.length, evidence,
+      sessions: evidence === "none" ? null : matched.length, reviewRounds: sum(row => row.review_rounds),
+      subagentTokens: sum(row => row.subagent_tokens_total), attempts: sum(row => row.attempts),
+      operatorTouches: sum(row => row.operator_touches), outcomes: evidence === "none" ? null : sortKeys(outcomes)
     },
     frictions,
     unresolvedFrictionIds: cited.filter(id => !known.has(id)),
-    unmatchedLedgerRows: unmatched,
+    unmatchedLedgerRows: unmatched.slice(0, MAX_UNMATCHED_ROWS),
+    unmatchedTruncated: unmatched.length > MAX_UNMATCHED_ROWS,
     duplicateLedgerSessions: [...duplicates].sort(cmp),
     successor: { recommendation: input.successor.recommendation, reason: input.successor.reason }
   };
@@ -170,9 +194,9 @@ export function validateCloseOut(record: unknown, planActionIds?: ReadonlySet<st
   if (missing.length > 0) return [...errors, `missing keys: ${missing.join(", ")}`];
   if (record.schema !== CLOSE_OUT_SCHEMA) errors.push(`schema must be ${CLOSE_OUT_SCHEMA}`);
   const plan = record.plan;
-  if (!isObject(plan) || !hasExactKeys(plan, ["slug", "status", "milestone"]) || typeof plan.slug !== "string" ||
+  if (!isObject(plan) || !hasExactKeys(plan, ["slug", "status", "milestone", "closed"]) || typeof plan.closed !== "boolean" || typeof plan.slug !== "string" ||
     !PLAN_SLUG.test(plan.slug) || typeof plan.status !== "string" || !(plan.milestone === null || typeof plan.milestone === "string")) {
-    errors.push("plan must be exactly {slug, status, milestone}");
+    errors.push("plan must be exactly {slug, status, milestone, closed}");
   }
   const ids: string[] = [];
   if (!Array.isArray(record.actions)) errors.push("actions must be an array");
@@ -188,7 +212,7 @@ export function validateCloseOut(record: unknown, planActionIds?: ReadonlySet<st
       else ids.push((action as { id: string }).id);
     });
     for (const id of new Set(ids.filter((id, i) => ids.indexOf(id) !== i))) errors.push(`duplicate Action ${id}`);
-    if (planActionIds) for (const id of ids) if (!planActionIds.has(id)) errors.push(`Action ${id} is not in the Plan document`);
+    if (planActionIds) for (const id of ids) if (!planActionIds.has(id)) errors.push(`Action ${id} is not in the Plan document; ${SNAPSHOT_REMEDY}`);
   }
   if (!Array.isArray(record.openRemainders) || !record.openRemainders.every(item => isObject(item) &&
     hasExactKeys(item, ["id", "status", "source"]) && typeof item.id === "string" && typeof item.status === "string" &&
@@ -196,9 +220,33 @@ export function validateCloseOut(record: unknown, planActionIds?: ReadonlySet<st
   if (!Array.isArray(record.openBlockers) || !record.openBlockers.every(item => isObject(item) &&
     hasExactKeys(item, ["actionId", "text"]) && typeof item.actionId === "string" && typeof item.text === "string")) errors.push("openBlockers is malformed");
   const ledger = record.ledger;
-  if (!isObject(ledger) || !hasExactKeys(ledger, ["sessions", "reviewRounds", "subagentTokens", "attempts", "operatorTouches", "outcomes"]) ||
-    !["sessions", "reviewRounds", "subagentTokens", "attempts", "operatorTouches"].every(key => Number.isInteger(ledger[key]) && (ledger[key] as number) >= 0) ||
-    !isObject(ledger.outcomes) || !Object.values(ledger.outcomes).every(n => Number.isInteger(n))) errors.push("ledger is malformed");
+  if (!isObject(ledger) || !hasExactKeys(ledger, LEDGER_KEYS)) errors.push("ledger is malformed");
+  else {
+    const counts = ["rowsConsidered", "rowsMatched", "rowsExcluded"];
+    const aggregates = ["sessions", "reviewRounds", "subagentTokens", "attempts", "operatorTouches"];
+    const isCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
+    if (!counts.every(key => isCount(ledger[key])) || !(EVIDENCE_LEVELS as readonly unknown[]).includes(ledger.evidence)) {
+      errors.push("ledger counts or evidence are malformed");
+    } else {
+      if ((ledger.rowsMatched as number) + (ledger.rowsExcluded as number) !== ledger.rowsConsidered) errors.push("ledger.rowsMatched + rowsExcluded must equal rowsConsidered");
+      const none = ledger.evidence === "none";
+      if (none !== (ledger.rowsMatched === 0 && (ledger.rowsConsidered as number) > 0)) errors.push("ledger.evidence none must hold exactly when 0 of >0 considered rows matched");
+      if (none) {
+        if (!aggregates.every(key => ledger[key] === null) || ledger.outcomes !== null) errors.push("ledger aggregates must be null when evidence is none");
+      } else if (!aggregates.every(key => isCount(ledger[key])) || !isObject(ledger.outcomes) ||
+        !Object.values(ledger.outcomes).every(n => Number.isInteger(n))) errors.push("ledger aggregates must be non-null counts unless evidence is none");
+      else if (ledger.sessions !== ledger.rowsMatched) errors.push("ledger.sessions must equal rowsMatched");
+    }
+  }
+  if (typeof record.unmatchedTruncated !== "boolean") errors.push("unmatchedTruncated must be a boolean");
+  else if (isObject(ledger) && Array.isArray(record.unmatchedLedgerRows) && isObject(plan) && typeof ledger.rowsExcluded === "number") {
+    const listed = record.unmatchedLedgerRows.length;
+    if (listed > MAX_UNMATCHED_ROWS || record.unmatchedTruncated !== ledger.rowsExcluded > MAX_UNMATCHED_ROWS ||
+      listed !== Math.min(ledger.rowsExcluded, MAX_UNMATCHED_ROWS)) errors.push("unmatchedLedgerRows is inconsistent with ledger.rowsExcluded");
+  }
+  if (isObject(plan) && plan.closed === true && Array.isArray(record.actions) &&
+    (record.actions.length === 0 || !record.actions.every(a => isObject(a) && a.status === "done") ||
+      !Array.isArray(record.openRemainders) || record.openRemainders.length > 0)) errors.push("plan.closed is true but Actions remain open");
   if (!Array.isArray(record.frictions) || !record.frictions.every(item => isObject(item) &&
     hasExactKeys(item, ["id", "status", "testIds", "uncited"]) && typeof item.id === "string" && typeof item.status === "string" &&
     isStringArray(item.testIds) && typeof item.uncited === "boolean")) errors.push("frictions is malformed");
@@ -213,7 +261,7 @@ export function validateCloseOut(record: unknown, planActionIds?: ReadonlySet<st
   }
   if (typeof record.hash !== "string" || !/^[0-9a-f]{64}$/.test(record.hash)) errors.push("hash must be a sha256 hex string");
   else if (errors.length === 0 && hashCloseOut(record as unknown as CloseOutRecord) !== record.hash) {
-    errors.push("hash does not match the record content (recompute with `arcadia plan close-out <slug> --write`)");
+    errors.push(`hash does not match the record content; ${SNAPSHOT_REMEDY}`);
   }
   return errors;
 }
@@ -272,6 +320,30 @@ export function parseSuccessor(body: string): { recommendation: string | null; r
     : { recommendation: null, reason: "the Plan document names no successor" };
 }
 
+/**
+ * Resolves a commit sha to the PR whose merge commit first brought it into the default branch:
+ * `git log --merges --first-parent --ancestry-path --format=%s <sha>..<branch>`, oldest merge, `Merge pull request #N`.
+ * Returns null when the sha is unknown, not merged, or the merge subject names no PR.
+ */
+export function gitShaToPr(repoRoot: string): (sha: string) => number | null {
+  const run = (args: string[]): string | null => {
+    try { return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; }
+  };
+  const remoteHead = run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?.trim();
+  const branch = [remoteHead, "main", "master", "HEAD"].find((name): name is string => !!name && run(["rev-parse", "--verify", "--quiet", `${name}^{commit}`]) !== null);
+  return (sha: string): number | null => {
+    if (!branch || !/^[0-9a-f]{7,40}$/.test(sha)) return null;
+    const out = run(["log", "--merges", "--first-parent", "--ancestry-path", "--format=%s", `${sha}..${branch}`]);
+    if (out === null) return null;
+    const subjects = out.split("\n").filter(line => line !== "");
+    for (let index = subjects.length - 1; index >= 0; index -= 1) {
+      const match = /^Merge pull request #(\d+)\b/.exec(subjects[index]);
+      if (match) return Number(match[1]);
+    }
+    return null;
+  };
+}
+
 export interface LoadedCloseOutInputs { input: CloseOutInput; errors: string[]; excludedLedgerRows: number }
 
 /** Thin fs wrapper: resolves the Plan, ledger, frictions and MISSION_LOG for one repository root. */
@@ -291,19 +363,19 @@ export function loadCloseOutInputs(repoRoot: string, slug: string): LoadedCloseO
     ...readFrictionFiles(repoRoot).map(parseFrictionFile).filter((entry): entry is FrictionEntry => entry !== null),
     ...parseLegacyFrictions(read(LIVING_NOTES))
   ];
-  const scoped = ledger.rows.filter(row => planIds.has(row.action_id));
   return {
     errors: ledger.errors,
-    excludedLedgerRows: ledger.rows.length - scoped.length,
+    excludedLedgerRows: ledger.rows.filter(row => !planIds.has(row.action_id)).length,
     input: {
       plan: {
         slug: plan.slug, status: plan.status, milestone: plan.milestone,
         actions: plan.actions.map(action => ({ id: action.id, title: action.title, status: action.status, splitInto: action.splitInto }))
       },
-      ledgerRows: scoped,
+      ledgerRows: ledger.rows,
       frictions,
       completions: parseCompletionEntries(read("MISSION_LOG.md")),
-      successor: parseSuccessor(plan.body)
+      successor: parseSuccessor(plan.body),
+      shaToPr: gitShaToPr(repoRoot)
     }
   };
 }

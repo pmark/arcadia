@@ -3908,7 +3908,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     planGroup
       .command("close-out")
-      .description("Derive a Plan's deterministic close-out record from its document, the session ledger and frictions")
+      .description("Derive a Plan's deterministic close-out record from its document, the session ledger and frictions. The record is a snapshot: if a Plan Action is later renamed or removed, delete the record and re-run with --write")
       .argument("<plan-slug>", "Plan slug (docs/plans/<slug>.md)")
       .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
       .option("--write", "Write docs/plans/<slug>.close-out.json (never replaces a record with a different hash)")

@@ -6,6 +6,8 @@ import {
   buildCloseOut, closeOutPath, decideWrite, hashCloseOut, parseCompletionEntries, parseFrictionFile, parseLegacyFrictions,
   parseSuccessor, renderCloseOut, validateCloseOut, type CloseOutInput
 } from "../src/plans/closeOut.js";
+import { execFileSync } from "node:child_process";
+import { gitShaToPr, loadCloseOutInputs } from "../src/plans/closeOut.js";
 import { runPlanCloseOutCommand } from "../src/commands/planCloseOut.js";
 import type { SessionLedgerRow } from "../src/reports/sessionLedger.js";
 
@@ -81,7 +83,9 @@ describe("buildCloseOut", () => {
     expect(record.actions[0].completion).toEqual({ date: "2026-10-12", candidate: "abc1234" });
     expect(record.openRemainders).toEqual([{ id: "a2", status: "open", source: "plan-action" }]);
     expect(record.openBlockers).toEqual([{ actionId: "a1", text: "waiting on operator" }]);
-    expect(record.ledger).toEqual({ sessions: 3, reviewRounds: 6, subagentTokens: 200, attempts: 3, operatorTouches: 2, outcomes: { complete: 2, split: 1 } });
+    expect(record.ledger).toEqual({ rowsConsidered: 3, rowsMatched: 3, rowsExcluded: 0, evidence: "partial", sessions: 3, reviewRounds: 6,
+      subagentTokens: 200, attempts: 3, operatorTouches: 2, outcomes: { complete: 2, split: 1 } });
+    expect(record.plan.closed).toBe(false);
     expect(record.frictions).toEqual([
       { id: "f-cited", status: "fixed", testIds: ["tests/x.test.ts"], uncited: false },
       { id: "f-fixed", status: "fixed", testIds: [], uncited: true }
@@ -135,7 +139,7 @@ describe("validateCloseOut", () => {
     expect(validateCloseOut({ ...good(), extra: 1 }).join()).toContain("unknown keys: extra");
     const missing = good(); delete missing.successor;
     expect(validateCloseOut(missing).join()).toContain("missing keys: successor");
-    const tampered = good(); (tampered.ledger as Record<string, number>).sessions = 99;
+    const tampered = good(); (tampered.successor as Record<string, string>).reason = "edited";
     expect(validateCloseOut(tampered).join()).toContain("hash does not match");
     expect(validateCloseOut(good(), new Set(["a1"])).join()).toContain("Action a2 is not in the Plan document");
     const duplicate = good();
@@ -207,5 +211,87 @@ describe("decideWrite and the command", () => {
     expect(() => runPlanCloseOutCommand({ repo: root, planSlug: "demo-plan", write: true })).toThrow(/different hash|not regenerated/);
     expect(() => runPlanCloseOutCommand({ repo: root, planSlug: "../x", write: true })).toThrow(/Plan slug/);
     expect(() => runPlanCloseOutCommand({ repo: root, planSlug: "missing-plan" })).toThrow(/not found/);
+  });
+});
+
+describe("evidence, closed flag, PR resolution and the load path", () => {
+  it("marks evidence none with null aggregates when no row matches, and cannot read as clean", () => {
+    const input = base();
+    input.ledgerRows = input.ledgerRows.map(r => ({ ...r, action_id: "other-plan-action" }));
+    const record = buildCloseOut(input);
+    expect(record.ledger).toEqual({ rowsConsidered: 3, rowsMatched: 0, rowsExcluded: 3, evidence: "none", sessions: null,
+      reviewRounds: null, subagentTokens: null, attempts: null, operatorTouches: null, outcomes: null });
+    expect(validateCloseOut(record)).toEqual([]);
+    const forged = JSON.parse(renderCloseOut(record)) as { ledger: Record<string, unknown> };
+    forged.ledger.sessions = 0;
+    expect(validateCloseOut(forged).join()).toContain("aggregates must be null when evidence is none");
+    const inconsistent = JSON.parse(renderCloseOut(buildCloseOut(base()))) as { ledger: Record<string, unknown> };
+    inconsistent.ledger.rowsExcluded = 5;
+    expect(validateCloseOut(inconsistent).join()).toContain("rowsMatched + rowsExcluded must equal rowsConsidered");
+  });
+
+  it("bounds the unmatched list with a truncated flag", () => {
+    const input = base();
+    for (let i = 0; i < 25; i += 1) input.ledgerRows.push(row({ session_id: `x${String(i).padStart(2, "0")}`, action_id: "elsewhere" }));
+    const record = buildCloseOut(input);
+    expect(record.ledger.rowsExcluded).toBe(25);
+    expect(record.unmatchedLedgerRows).toHaveLength(20);
+    expect(record.unmatchedTruncated).toBe(true);
+    expect(validateCloseOut(record)).toEqual([]);
+  });
+
+  it("sets closed only when every Action is done and no remainder is open", () => {
+    const input = base();
+    expect(buildCloseOut(input).plan.closed).toBe(false);
+    input.plan.actions[1].status = "done";
+    expect(buildCloseOut(input).plan.closed).toBe(true);
+    input.plan.actions[0].splitInto = ["ghost"];
+    expect(buildCloseOut(input).plan.closed).toBe(false);
+  });
+
+  it("unions ledger PRs with PRs resolved from completion candidates", () => {
+    const input = base();
+    input.shaToPr = sha => (sha === "abc1234" ? 777 : null);
+    expect(buildCloseOut(input).actions[0].prs).toEqual([11, 12, 777]);
+  });
+
+  describe("through loadCloseOutInputs and a scratch repository", () => {
+    const dirs: string[] = [];
+    afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+    const sh = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+
+    it("resolves a candidate sha to its merge PR and reports evidence none for a ledger of other Plans", () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "close-out-git-"));
+      dirs.push(root);
+      sh(root, "init", "-q", "-b", "main");
+      mkdirSync(path.join(root, "docs", "plans"), { recursive: true });
+      mkdirSync(path.join(root, "docs", "reports", "session-ledger"), { recursive: true });
+      writeFileSync(path.join(root, "docs", "plans", "demo-plan.md"), [
+        "---", "arcadia: v1", "type: plan", "slug: demo-plan", "project: demo", "status: draft", "milestone: M",
+        "token_impact: small", "token_budget: none", "updated: 2026-10-12", "actions:",
+        "  - id: only-action", "    title: Only", "    status: open", "    responsibility: agent",
+        "    next_action: do it", "    acceptance_criteria:", "      - It is done and tested.", "---", "", "Body", ""
+      ].join("\n"));
+      writeFileSync(path.join(root, "docs", "reports", "session-ledger.jsonl"), `${JSON.stringify(row({ session_id: "legacy-1", action_id: "someone-elses-action" }))}\n`);
+      sh(root, "add", "-A");
+      sh(root, "commit", "-q", "-m", "base");
+      sh(root, "checkout", "-q", "-b", "feature");
+      writeFileSync(path.join(root, "work.txt"), "x");
+      sh(root, "add", "-A");
+      sh(root, "commit", "-q", "-m", "feature work");
+      const sha = sh(root, "rev-parse", "HEAD");
+      sh(root, "checkout", "-q", "main");
+      sh(root, "merge", "--no-ff", "-q", "-m", "Merge pull request #42 from someone/feature", "feature");
+      expect(gitShaToPr(root)(sha)).toBe(42);
+      expect(gitShaToPr(root)("0".repeat(40))).toBeNull();
+      writeFileSync(path.join(root, "MISSION_LOG.md"), `## 2026-10-12 — Completed arcadia/only-action\n\n- **Did:** Completed (Candidate ${sha}).\n- **Blockers:** None recorded.\n`);
+      const loaded = loadCloseOutInputs(root, "demo-plan");
+      const record = buildCloseOut(loaded.input);
+      expect(record.actions[0].prs).toEqual([42]);
+      expect(record.ledger).toMatchObject({ rowsConsidered: 1, rowsMatched: 0, rowsExcluded: 1, evidence: "none", sessions: null });
+      expect(record.unmatchedLedgerRows).toEqual([{ session_id: "legacy-1", action_id: "someone-elses-action" }]);
+      expect(record.plan.closed).toBe(false);
+      expect(validateCloseOut(record, new Set(["only-action"]))).toEqual([]);
+    });
   });
 });

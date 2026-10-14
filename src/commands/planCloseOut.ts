@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -42,7 +42,9 @@ export function runPlanCloseOutCommand(options: PlanCloseOutOptions): CommandSuc
     if (decision.action === "refuse") throw validationError(`${relative}: ${decision.reason}`);
     if (decision.action === "write") {
       mkdirSync(path.dirname(absolute), { recursive: true });
-      writeFileSync(absolute, renderCloseOut(record));
+      const temporary = `${absolute}.${process.pid}.tmp`;
+      writeFileSync(temporary, renderCloseOut(record));
+      renameSync(temporary, absolute);
       written = true;
     } else unchanged = true;
   }
@@ -58,11 +60,13 @@ export function renderPlanCloseOutSuccess(response: CommandSuccess<PlanCloseOutD
   const done = record.actions.filter(action => action.status === "done").length;
   return [
     `Plan ${record.plan.slug}: ${done}/${record.actions.length} Actions done, ${record.openRemainders.length} open remainder(s), ${record.openBlockers.length} open blocker(s)`,
-    `Ledger: ${record.ledger.sessions} session(s), ${record.ledger.reviewRounds} review round(s), ${record.ledger.subagentTokens} subagent tokens, ${record.ledger.operatorTouches} operator touch(es)`,
+    `Ledger evidence: ${record.ledger.evidence} (${record.ledger.rowsMatched} of ${record.ledger.rowsConsidered} rows match this Plan)` +
+      (record.ledger.evidence === "none" ? "; aggregates are null" : `: ${record.ledger.reviewRounds} review round(s), ${record.ledger.subagentTokens} subagent tokens, ${record.ledger.operatorTouches} operator touch(es)`),
+    `Closed: ${record.plan.closed ? "yes" : "no"} (status ${record.plan.status})`,
     `Frictions: ${record.frictions.length} (${record.frictions.filter(item => item.uncited).length} fixed without a cited test), ${record.unresolvedFrictionIds.length} unresolved id(s)`,
     `Successor: ${record.successor.recommendation ?? `none (${record.successor.reason})`}`,
     `Hash: ${record.hash}`,
-    `${excludedLedgerRows} ledger row(s) cite Actions of other Plans and are excluded`,
+    `${excludedLedgerRows} ledger row(s) cite Actions of other Plans and are excluded (listed up to 20 in the record)`,
     written ? `Wrote ${file}` : unchanged ? `${file} already holds this record; nothing written` : `Not written; use --write to create ${file}`
   ];
 }
