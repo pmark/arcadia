@@ -287,6 +287,12 @@ A stub `codex`/`opencode` must exit quietly unless `args[0]` is `exec`/`run` (an
 A direct Claude Code resume must pass its positional query before the variadic `--allowedTools` list; a trailing query may be consumed as another tool value and fail before inference. Query an existing long-running task with native `TaskOutput` before rerunning validation; task `bfuefcl1z` returned `[killed]` with no rehearsal report.
 For the Luna scout, a config hash delta alone is not trust-only proof: retain exact content-equivalence evidence, or keep the historical hold blocked. `scripts/scout-isolation-preflight.ts` and `tests/scout-isolation-preflight.test.ts` replay saved receipts offline; zero replay inference excludes development agents. Expires when #1365 closes.
 
+## Retrieve a failed CI job while its workflow is running
+
+keys: GitHub Actions, gh run view, --log-failed, job logs, checks still running
+
+`gh run view <run> --job <job> --log-failed` may say logs are unavailable until the whole workflow finishes, even after that job has failed. The read-only endpoint `gh api --allow-escape-sequences repos/<owner>/<repo>/actions/jobs/<job>/logs` returned the finished job log immediately while other shards were still running; filter it to the failure step and preserve its check URL.
+
 ## Re-run a passed Action on a reused fixture
 
 keys: rehearsal run 2, rehearsal run 3, rehearsal run 4, rehearsal run 5, rehearsal run 6, chain set, parameter file, UNFILLED, reset, amend Action, requirement input revision, attempt_retry_not_authorized, docs sync skipped, older than the record, superseded candidate, Action claim, Transition: decision, pending Agent Ask, operator_gate_pending, Issue 968, Issue 997
