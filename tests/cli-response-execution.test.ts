@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
+import { claimNextPendingRun, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
@@ -532,6 +532,24 @@ describe("CLI response contract — execution and review", () => {
     const { reviewId } = createExecutableReview(workspace, repo);
     expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, { workspace, reviewId, executorName: "codex" })))
       .toThrow(/current approved Run receipt/);
+  });
+
+  it("claims only the explicitly selected pending Run and never claims it twice", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const first = createExecutableReview(workspace, repo);
+    const second = createExecutableReview(workspace, repo);
+    const firstRunId = parseJson(runCli(["review", "approve", first.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+    const secondRunId = parseJson(runCli(["review", "approve", second.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+    withDatabase(workspace, (db) => {
+      const selected = claimNextPendingRun(db, 11001, secondRunId);
+      expect(selected?.id).toBe(secondRunId);
+      expect(getExecutionRun(db, secondRunId)?.status).toBe("running");
+      expect(getExecutionRun(db, firstRunId)?.status).toBe("pending_execution");
+      expect(claimNextPendingRun(db, 11002, secondRunId)).toBeNull();
+      expect(getExecutionRun(db, firstRunId)?.status).toBe("pending_execution");
+    });
   });
 
   it("refuses a queued receipt after its Review approval is revoked", () => {
