@@ -1,0 +1,144 @@
+{
+  "schema": "arcadia-plan-close-out-v1",
+  "plan": {
+    "slug": "every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in",
+    "status": "draft",
+    "milestone": "Every production Session is bounded by a platform token ceiling and an in-Session environment probe, and every stop it raises clears from /todo in at most two clicks, proven by replays of recorded sessions and one validated ledger row per session."
+  },
+  "actions": [
+    {
+      "id": "attach-the-session-probe-result-to-the-reconcile-receipt",
+      "title": "Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    },
+    {
+      "id": "enforce-session-token-ceiling",
+      "title": "Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "df6799f372bf93250398397dfa463a08d1cfd152"
+      }
+    },
+    {
+      "id": "fix-docs-sync-lock-and-activation-order",
+      "title": "Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.",
+      "status": "done",
+      "outcome": "split",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "f14fc522b3302b87068a06fcdf0e2547a2177dda"
+      }
+    },
+    {
+      "id": "one-click-clear-every-blocker-kind",
+      "title": "Implement a blocker-kind remedy registry and /todo controls so every platform-raised stop clears in at most two clicks with no typing.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    },
+    {
+      "id": "probe-environment-inside-session",
+      "title": "Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.",
+      "status": "done",
+      "outcome": "split",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "2c84a20d7d09356ed7220f497623d1c335298af3"
+      }
+    },
+    {
+      "id": "record-session-ledger",
+      "title": "Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "917b38e1f352c2186f0d6d5d3aadd40edb55fccd"
+      }
+    },
+    {
+      "id": "replay-environment-wall-session",
+      "title": "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "2c668b00c08eac8089802d1e65efd938ef17231c"
+      }
+    },
+    {
+      "id": "revise-agent-roles-and-session-briefs",
+      "title": "Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "c84eed3b4c8b5b2b6a7c59aee3510b6fcda34c11"
+      }
+    },
+    {
+      "id": "stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+      "title": "Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    }
+  ],
+  "openRemainders": [
+    {
+      "id": "attach-the-session-probe-result-to-the-reconcile-receipt",
+      "status": "open",
+      "source": "plan-action"
+    },
+    {
+      "id": "one-click-clear-every-blocker-kind",
+      "status": "open",
+      "source": "plan-action"
+    },
+    {
+      "id": "stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+      "status": "open",
+      "source": "plan-action"
+    }
+  ],
+  "openBlockers": [],
+  "ledger": {
+    "sessions": 0,
+    "reviewRounds": 0,
+    "subagentTokens": 0,
+    "attempts": 0,
+    "operatorTouches": 0,
+    "outcomes": {}
+  },
+  "frictions": [],
+  "unresolvedFrictionIds": [],
+  "unmatchedLedgerRows": [],
+  "duplicateLedgerSessions": [],
+  "successor": {
+    "recommendation": null,
+    "reason": "the Plan document names no successor"
+  },
+  "hash": "d2d661b5a9b554ed18594ef6494ee659794898513055dace60ecc8131c2c64f4"
+}
