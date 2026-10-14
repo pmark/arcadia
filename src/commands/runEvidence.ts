@@ -21,7 +21,7 @@ interface RunRow {
 }
 
 export function listProjectRunEvidence(db: Database.Database, projectSlugs?: string[] | null): RunEvidence[] {
-  const wanted = projectSlugs?.length ? new Set(projectSlugs.map((slug) => slug.toLowerCase())) : null;
+  const wanted = projectSlugs == null ? null : new Set(projectSlugs.map((slug) => slug.toLowerCase()));
   const rows = db.prepare(`
     SELECT er.id, er.status, er.summary, er.created_at, er.updated_at, er.work_item_id, er.review_item_id,
       COALESCE(wi.project_id, ri.project_id) AS project_id, p.slug AS project_slug
@@ -31,7 +31,7 @@ export function listProjectRunEvidence(db: Database.Database, projectSlugs?: str
     LEFT JOIN projects p ON p.id = COALESCE(wi.project_id, ri.project_id)
     ORDER BY er.created_at, er.id
   `).all() as RunRow[];
-  return rows.filter((row) => !wanted || (row.project_slug !== null && wanted.has(row.project_slug.toLowerCase())))
+  return rows.filter((row) => wanted === null || (row.project_slug !== null && wanted.has(row.project_slug.toLowerCase())))
     .map((row) => projectRunEvidence(db, row));
 }
 

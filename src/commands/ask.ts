@@ -215,6 +215,26 @@ function runAskCommandWithRouting(
     attachments: options.attachments,
     reuseExisting: options.reuseCaptureEnvelope
   }));
+  // A request id is an idempotency key for the whole Ask journey, not just its
+  // capture envelope. Return the existing receipt instead of routing the same
+  // captured input into a second Ask when a caller retries after a lost reply.
+  const priorAsk = withDatabase(workspacePath, (db) => {
+    const row = db.prepare("SELECT id FROM ask_requests WHERE capture_id = ? ORDER BY created_at LIMIT 1")
+      .get(captureEnvelope.id) as { id: string } | undefined;
+    return row ?? null;
+  });
+  if (priorAsk && !options.reuseCaptureEnvelope) {
+    const existing = ignoredAskData(options.request);
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: {
+        ...existing,
+        captureEnvelope,
+        result: { status: "ignored", summary: `Request ${captureEnvelope.requestId} was already processed; inspect it with ask show ${captureEnvelope.requestId}.` }
+      }
+    });
+  }
   const ruleMatch = matchAskRule(submittedRequest, askRules);
   const request = ruleMatch?.payload ?? submittedRequest;
   let processingReceipt: AskProcessingReceipt | null = null;
@@ -252,7 +272,7 @@ function runAskCommandWithRouting(
   // ask.routing.v2: an agent-written Ask (agent.ask, codex.*) keeps the earlier routing, as does a workspace that turned the flag off.
   const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && flagEnabled;
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
-  const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
+  const parsedIntake = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
     const parsed = resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 });
     const requestedFile = parsed.extractedFields.requestedArtifact;
@@ -263,6 +283,8 @@ function runAskCommandWithRouting(
     }
     return { intake: parsed, workspaceContext };
   });
+  let intake = parsedIntake.intake;
+  const { workspaceContext } = parsedIntake;
   const selectProject = (reference: string | undefined) =>
     withDatabase(workspacePath, (db) => {
       const selected = resolveProjectReference(db, reference) ?? ruleMatch?.rule.destination ?? null;
@@ -340,7 +362,19 @@ function runAskCommandWithRouting(
   // Work, idea and status corrections (and memos) never take a direct answer route (project create/update, listings).
   const skipDirectRoutes = route === "work" || route === "idea" || route === "status";
   const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
-  const selectedProject = selectProject(projectRef);
+  const selectedProject = selectProject(projectRef) ?? (intake.project ? { id: intake.project.id, name: intake.project.name } : null);
+  // The final route may differ from intake's fuzzy Project guess (for example
+  // an explicit --project option). Validate the exact-file claim against the
+  // repository that will actually receive the Action.
+  const finalRepoPath = selectedProject
+    ? withDatabase(workspacePath, (db) => getProjectMetadata(db, selectedProject.id)?.repo_path)
+    : null;
+  const requestedFileAtDestination = intake.extractedFields.requestedArtifact;
+  if (requestedFileAtDestination && /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}$/.test(requestedFileAtDestination) &&
+      !safeSingleFileScope(finalRepoPath, requestedFileAtDestination)) {
+    const { requestedArtifact: _discarded, ...extractedFields } = intake.extractedFields;
+    intake = { ...intake, extractedFields };
+  }
   const { resolved, computedStewardship } = deriveStewardship(approvedFromReview, selectedProject);
   let stewardship: GoalStewardshipResult = options.captureAsIdea || route === "idea"
     ? {
@@ -355,7 +389,8 @@ function runAskCommandWithRouting(
       }
     : computedStewardship;
   const exactRequestedFile = explicitSingleFileRequest(intake.extractedFields.requestedAction ?? "");
-  if (exactRequestedFile && exactRequestedFile === intake.extractedFields.requestedArtifact) {
+  if (exactRequestedFile && exactRequestedFile === intake.extractedFields.requestedArtifact &&
+      safeSingleFileScope(finalRepoPath, exactRequestedFile)) {
     stewardship = {
         ...stewardship,
         generatedCodexGoalText: `Create only ${exactRequestedFile} in the selected repository. Preserve the user's exact request. Tests and validation are harness-owned and are outside the builder's file scope.`

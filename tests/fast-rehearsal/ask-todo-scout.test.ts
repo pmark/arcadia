@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../../src/commands/ask.js";
 import { runAskShowCommand } from "../../src/commands/askTrail.js";
 import { runTodoCommand } from "../../src/commands/todo.js";
+import { listProjectRunEvidence } from "../../src/commands/runEvidence.js";
 import { withReadOnlyDatabase, withDatabase } from "../../src/db/connection.js";
-import { attachArtifactToExecutionRun, createArtifactRecord, createMilestoneForProject, createProjectWithInitialWork, upsertProjectMetadata } from "../../src/db/repositories.js";
+import { attachArtifactToExecutionRun, createArtifactRecord, createMilestoneForProject, createProjectWithInitialWork, createReviewExecutionRun, createReviewItem, upsertProjectMetadata } from "../../src/db/repositories.js";
 import { initWorkspace } from "../../src/workspace/initWorkspace.js";
 import { PhaseRecorder, sanitizer, writeScenarioReport } from "./helpers/report.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
@@ -95,11 +96,21 @@ describe("Ask/To-do scout", () => {
       }));
       withDatabase(workspace, (db) => {
         createMilestoneForProject(db, created.project.id, "Hello World scout");
-        upsertProjectMetadata(db, { projectId: created.project.id, repoPath: repo, aliases: [PROJECT], validationCommands: [] });
+        upsertProjectMetadata(db, { projectId: created.project.id, repoPath: repo, aliases: [PROJECT], validationCommands: ["node scripts/check-fixture.mjs"] });
       });
 
       const request = `Implement ${OUTPUT_PATH} in ${PROJECT}, containing exactly the bytes "Hello World!\\n".`;
       const first = runAskCommand({ workspace, project: PROJECT, request, requestId: REQUEST_ID });
+      const countsAfterFirstSubmit = withDatabase(workspace, (db) => db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get());
+      const replay = runAskCommand({ workspace, project: PROJECT, request, requestId: REQUEST_ID });
+      expect(replay.data.captureEnvelope.id).toBe(first.data.captureEnvelope.id);
+      expect(withDatabase(workspace, (db) => db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get())).toEqual(countsAfterFirstSubmit);
       const reviewId = first.data.reviewItemId ?? null;
       scout.identifiers.captureId = first.data.captureEnvelope.id;
       scout.identifiers.askId = first.data.ask?.id ?? null;
@@ -116,9 +127,44 @@ describe("Ask/To-do scout", () => {
       expect(approval.data.result.status).toBe("queued");
       expect(approval.data.result.summary).not.toMatch(/resum|execution is running/i);
       expect(approval.data.run?.status).toBe("pending_execution");
+      expect(approval.data.run?.work_item_id).toBeTruthy();
+      const approvedAction = withReadOnlyDatabase(workspace, (db) => db.prepare("SELECT id, expected_artifact FROM work_items WHERE id = ?")
+        .get(approval.data.run?.work_item_id) as { id: string; expected_artifact: string } | undefined);
+      expect(approvedAction?.id).toBe(approval.data.run?.work_item_id);
+      expect(approvedAction?.expected_artifact).toContain(OUTPUT_PATH);
+      const countsAfterApproval = withReadOnlyDatabase(workspace, (db) => db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get());
+      const approvalReplay = runAskCommand({ workspace, request: approvalText, requestId: APPROVAL_REQUEST_ID, adapterMetadata: { reviewId } });
+      expect(approvalReplay.data.result.status).toBe("ignored");
+      expect(withReadOnlyDatabase(workspace, (db) => db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get())).toEqual(countsAfterApproval);
       scout.identifiers.approvalCaptureId = approval.data.captureEnvelope.id;
       scout.identifiers.approvalAskId = approval.data.ask?.id ?? null;
       scout.transcript.push({ command: "ask", input: `${approvalText} (fixture operator approval transported with reviewId=${reviewId})`, result: { status: approval.data.result.status, summary: approval.data.result.summary, captureId: approval.data.captureEnvelope.id, askId: approval.data.ask?.id ?? null, run: approval.data.run ?? null } });
+
+      const other = withDatabase(workspace, (db) => createProjectWithInitialWork(db, {
+        name: "Ask To-do Scout Other Project", mission: "Second disposable Project for Run isolation coverage.",
+        goal: "Keep its Run evidence out of the first Project's To-do view.", status: "active",
+        currentMilestone: "Scout fixture", nextAction: "Keep the second fixture ready.", workClassification: "agent"
+      }));
+      const otherRunId = withDatabase(workspace, (db) => {
+        const otherReview = createReviewItem(db, {
+          projectId: other.project.id, decisionNeeded: "Fixture second-Project Run evidence.",
+          recommendation: "Keep this evidence scoped to its Project.", sourceInput: "deterministic read-model fixture",
+          proposedAction: "No execution is requested by this test.", resolvedIntent: "FixtureRunEvidence",
+          confidenceLabel: "high", confidence: 1
+        });
+        return createReviewExecutionRun(db, {
+          reviewItemId: otherReview.id, executorName: "codex", summary: "Second Project fixture Run."
+        }).id;
+      });
+      expect(runTodoCommand({ workspace, project: created.project.slug, fixtureRoots: [] }).data.runs.map((run) => run.id)).not.toContain(otherRunId);
+      expect(runTodoCommand({ workspace, project: other.project.slug, fixtureRoots: [] }).data.runs.map((run) => run.id)).toContain(otherRunId);
+      expect(withReadOnlyDatabase(workspace, (db) => listProjectRunEvidence(db, []).map((run) => run.id))).toEqual([]);
 
       const trail = runAskShowCommand({ workspace, id: REQUEST_ID });
       scout.transcript.push({ command: "ask", input: `show ${REQUEST_ID}`, result: trail.data });

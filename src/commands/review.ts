@@ -1366,13 +1366,62 @@ export function runReviewApproveCommand(
 function runReviewApproveExecuteCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
-  const { run, review } = withDatabase(options.workspace, (db) => writeTransaction(db, () => {
+  // An Ask-originated Review initially has no Action. Create its governed
+  // Action through the same approval-claim path used by the non-executing
+  // approval route, then bind that exact Action to this approval and Run.
+  // This keeps the user's one approval round trip and never invents an Action.
+  const beforeApproval = withDatabase(options.workspace, (db) => getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id));
+  let actionApproval: ReturnType<typeof runAskCommand> | null = null;
+  let approvalClaimOwner: string | null = null;
+  if (beforeApproval?.ask_request_id && !beforeApproval.work_item_id) {
+    if (beforeApproval.status !== "open" && beforeApproval.status !== "deferred") {
+      throw validationError("Requires Review Decision is already decided.", { id: beforeApproval.id, status: beforeApproval.status });
+    }
+    if (parseObject(beforeApproval.context_json)[APPROVED_SCOPE_CONTEXT_KEY] !== undefined) {
+      throw validationError("This Ask approval already has a recorded scope but no linked Action; refusing to refresh its approval.", {
+        reviewId: beforeApproval.id
+      });
+    }
+    const claimOwner = randomUUID();
+    approvalClaimOwner = claimOwner;
+    try {
+      actionApproval = runAskCommand({
+        workspace: options.workspace,
+        request: beforeApproval.source_input,
+        approvedReviewItemId: beforeApproval.id,
+        approvalClaimOwner: claimOwner
+      });
+    } catch (error) {
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+      throw error;
+    }
+    if (!actionApproval.data.ask || !actionApproval.data.workItem) {
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+      throw validationError("Approved Ask did not produce its governed Action.", { reviewId: beforeApproval.id });
+    }
+  }
+
+  let queued: { run: ReturnType<typeof createReviewExecutionRun>; review: ReviewItemSummary };
+  try {
+    queued = withDatabase(options.workspace, (db) => writeTransaction(db, () => {
     const reviewItem = getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id);
     if (!reviewItem) {
       throw validationError("Requires Review Decision was not found.", { id: options.id });
     }
     if (reviewItem.status !== "open" && reviewItem.status !== "deferred") {
       throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: reviewItem.status });
+    }
+    if (actionApproval?.data.workItem) {
+      if ((reviewItem.work_item_id && reviewItem.work_item_id !== actionApproval.data.workItem.id) ||
+          (reviewItem.plan_id && reviewItem.plan_id !== actionApproval.data.plan?.id)) {
+        throw validationError("Approved Ask Action or Plan does not match the Review Decision scope.", {
+          reviewId: reviewItem.id, reviewWorkItemId: reviewItem.work_item_id,
+          approvedWorkItemId: actionApproval.data.workItem.id, reviewPlanId: reviewItem.plan_id,
+          approvedPlanId: actionApproval.data.plan?.id ?? null
+        });
+      }
+      db.prepare("UPDATE review_items SET work_item_id = ?, plan_id = ?, updated_at = ? WHERE id = ?")
+        .run(actionApproval.data.workItem.id, actionApproval.data.plan?.id ?? null, new Date().toISOString(), reviewItem.id);
     }
 
     // Validate repo path upfront so the user gets an error immediately, not when the worker runs.
@@ -1403,7 +1452,15 @@ function runReviewApproveExecuteCommand(
     if (!scopeReview) {
       throw validationError("Original approved Review was not found.", { reviewId: reviewItem.id, originalReviewId });
     }
-    const currentScope = approvedReviewScopeSha256(db, scopeReview);
+    const approvalReview = reviewItem.ask_request_id && actionApproval?.data.ask
+      ? updateReviewItemStatus(db, reviewItem.id, {
+          status: "approved",
+          decisionNote: "Approved from Ask. Execution queued.",
+          resultingAskRequestId: actionApproval.data.ask.id
+        })
+      : reviewItem;
+    const linkedReview = getReviewItem(db, scopeReview.id) as ReviewItemSummary;
+    const currentScope = approvedReviewScopeSha256(db, linkedReview);
     if (originalReviewId) {
       const originalContext = parseObject(scopeReview.context_json);
       if (originalContext[APPROVED_SCOPE_CONTEXT_KEY] !== currentScope) {
@@ -1416,22 +1473,32 @@ function runReviewApproveExecuteCommand(
       mergeReviewItemContext(db, scopeReview.id, { [APPROVED_SCOPE_CONTEXT_KEY]: currentScope });
     }
     const executorName = options.executor ?? "codex";
+    const runReview = approvalReview ?? linkedReview;
     const pendingRun = createReviewExecutionRun(db, {
       reviewItemId: reviewItem.id,
       executorName,
-      workItemId: reviewItem.work_item_id,
-      planId: reviewItem.plan_id,
+      workItemId: runReview.work_item_id,
+      planId: runReview.plan_id,
       summary: `Execution queued for ${reviewItem.slug ?? reviewItem.id} with ${executorName}.`
     });
+    const refreshedScopeReview = getReviewItem(db, scopeReview.id) as ReviewItemSummary;
     mergeReviewItemContext(db, scopeReview.id, {
       [APPROVED_RUN_SCOPE_CONTEXT_KEY]: {
         runId: pendingRun.id,
-        scopeSha256: approvedReviewScopeSha256(db, scopeReview, pendingRun.id)
+        scopeSha256: approvedReviewScopeSha256(db, refreshedScopeReview, pendingRun.id)
       }
     });
-
-    return { run: pendingRun, review: reviewItem };
-  }));
+    if (approvalClaimOwner) deleteApprovalClaim(db, reviewItem.id);
+    return { run: pendingRun, review: runReview };
+    }));
+  } catch (error) {
+    if (approvalClaimOwner && beforeApproval) {
+      const claimOwner = approvalClaimOwner;
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+    }
+    throw error;
+  }
+  const { run, review } = queued;
 
   return createSuccess({
     command: "review.approve",
@@ -1442,11 +1509,11 @@ function runReviewApproveExecuteCommand(
         status: "pending_execution",
         summary: `Execution queued as run ${run.id}. Start the worker to execute: arcadia worker start`
       },
-      approval: null,
+      approval: actionApproval?.data ?? null,
       execution: null,
       run: { id: run.id }
     },
-    artifacts: []
+    artifacts: actionApproval?.artifacts ?? []
   });
 }
 
