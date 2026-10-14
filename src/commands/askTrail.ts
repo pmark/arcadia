@@ -5,6 +5,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { supersessionsReplacing, supersessionThatCreated, type AskSupersession } from "../ask/supersession.js";
+import { listAskRunEvidence, type RunEvidence } from "./runEvidence.js";
 
 export interface AskTrailOptions {
   workspace: string;
@@ -51,6 +52,8 @@ export interface AskTrailAsk {
   reason: string | null;
   projectName: string | null;
   outcomes: AskTrailOutcome[];
+  /** Every Run correlated through this Ask's captured Action or Review, including terminal evidence. */
+  runs: RunEvidence[];
   /** Corrections that replaced this Ask, oldest first. Empty for an Ask nobody corrected. */
   supersededBy: AskTrailSupersession[];
   /** The correction that created this Ask, when it is itself a replacement. */
@@ -189,6 +192,7 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
     reason: stewardship.classificationReason ?? null,
     projectName: stewardship.relatedProject?.name ?? null,
     outcomes: outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index),
+    runs: listAskRunEvidence(db, ask.id, ask.capture_id, ask.work_item_id),
     supersededBy: replacedBy.map((link) => trailSupersession(link, link.newAskRequestId)),
     supersedes: replaces ? trailSupersession(replaces, replaces.oldAskRequestId) : null
   };
@@ -271,6 +275,10 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
         ? ` [superseded by ${outcome.supersededBy.recordId ?? "Ask"} via ${outcome.supersededBy.askId}]`
         : "";
       lines.push(`  → ${outcome.kind} ${outcome.id}${detail ? ` (${detail})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}${replaced}`);
+    }
+    for (const run of ask.runs) {
+      lines.push(`  Run ${run.id}: ${run.status}${run.waitingReason ? ` — ${run.waitingReason}` : ""}`);
+      for (const artifact of run.artifacts) lines.push(`    Artifact ${artifact.id}: ${artifact.status} (${artifact.evidenceReference})`);
     }
     for (const link of ask.supersededBy) {
       lines.push(`  Superseded by ${link.askId}: corrected to ${link.targetType} (${link.source}, ${link.at}); ${describeOld(link)} -> ${describeNew(link)}`);

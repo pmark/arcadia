@@ -43,6 +43,7 @@ import {
   createWorkItemWithOptionalArtifact,
   getActiveMilestoneForProject,
   getExecutionPlan,
+  getExecutionRun,
   getProjectMetadata,
   getMilestone,
   getProject,
@@ -508,6 +509,9 @@ function runAskCommandWithRouting(
       })
     );
 
+    const queuedRun = reviewResolution.data.run?.id
+      ? withDatabase(workspacePath, (db) => getExecutionRun(db, reviewResolution.data.run?.id as string))
+      : null;
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -524,14 +528,14 @@ function runAskCommandWithRouting(
           matched: true
         },
         result: {
-          status: "acted",
+          status: queuedRun?.status === "pending_execution" ? "queued" : "acted",
           summary: reviewResolution.data.confirmation
         },
         workItem: null,
         plan: null,
         approvalGates: [],
         codexInvocations: [],
-        run: null,
+        run: queuedRun,
         project: null,
         projectSummary: null,
         projects: null,
@@ -1561,6 +1565,7 @@ export function renderAskSuccess(response: CommandSuccess<AskCommandData>, optio
     lines.push(`Outcome: ${response.data.project?.goal ?? "None"}`, `Action: ${response.data.intake.proposedAction}`);
   }
   lines.push(`Result: ${response.data.result.summary}`);
+  if (response.data.run) lines.push(`Run: ${response.data.run.id} [${response.data.run.status}]`);
 
   if (response.data.workItem) {
     lines.push(`Action: ${response.data.workItem.id}`);

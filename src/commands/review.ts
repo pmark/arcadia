@@ -1978,7 +1978,7 @@ function decisionForOption(option: string | undefined): "approve" | "reject" | "
 
 function confirmationForDecision(item: RequiresReviewPacket, decision: "approve" | "reject" | "defer", summary: string): string {
   if (decision === "approve") {
-    return `${item.slug} approved. Resuming execution.`;
+    return `${item.slug} approved. ${summary}`;
   }
   if (decision === "reject") {
     return `${item.slug} rejected.`;

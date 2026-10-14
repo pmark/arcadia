@@ -8,7 +8,7 @@ import { runAskCommand } from "../../src/commands/ask.js";
 import { runAskShowCommand } from "../../src/commands/askTrail.js";
 import { runTodoCommand } from "../../src/commands/todo.js";
 import { withReadOnlyDatabase, withDatabase } from "../../src/db/connection.js";
-import { createMilestoneForProject, createProjectWithInitialWork, upsertProjectMetadata } from "../../src/db/repositories.js";
+import { attachArtifactToExecutionRun, createArtifactRecord, createMilestoneForProject, createProjectWithInitialWork, upsertProjectMetadata } from "../../src/db/repositories.js";
 import { initWorkspace } from "../../src/workspace/initWorkspace.js";
 import { PhaseRecorder, sanitizer, writeScenarioReport } from "./helpers/report.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
@@ -113,6 +113,9 @@ describe("Ask/To-do scout", () => {
       if (!reviewId) throw new Error("Initial Ask created no Requires Review item.");
       const approvalText = `approve ${reviewId}`;
       const approval = runAskCommand({ workspace, request: approvalText, requestId: APPROVAL_REQUEST_ID, adapterMetadata: { reviewId } });
+      expect(approval.data.result.status).toBe("queued");
+      expect(approval.data.result.summary).not.toMatch(/resum|execution is running/i);
+      expect(approval.data.run?.status).toBe("pending_execution");
       scout.identifiers.approvalCaptureId = approval.data.captureEnvelope.id;
       scout.identifiers.approvalAskId = approval.data.ask?.id ?? null;
       scout.transcript.push({ command: "ask", input: `${approvalText} (fixture operator approval transported with reviewId=${reviewId})`, result: { status: approval.data.result.status, summary: approval.data.result.summary, captureId: approval.data.captureEnvelope.id, askId: approval.data.ask?.id ?? null, run: approval.data.run ?? null } });
@@ -121,7 +124,37 @@ describe("Ask/To-do scout", () => {
       scout.transcript.push({ command: "ask", input: `show ${REQUEST_ID}`, result: trail.data });
       const todoAfter = runTodoCommand({ workspace, project: created.project.slug, fixtureRoots: [], now: new Date("2026-10-12T19:23:00.000Z") });
       const visibleAfter = todoAfter.data.items.filter((item) => item.sourceRef === `review_items:${reviewId}`);
-      scout.transcript.push({ command: "todo", input: `project=${created.project.slug} after fixture approval`, result: { schema: todoAfter.data.schema, matchingReviewItems: visibleAfter, agentWork: todoAfter.data.agentWork } });
+      scout.transcript.push({ command: "todo", input: `project=${created.project.slug} after fixture approval`, result: { schema: todoAfter.data.schema, matchingReviewItems: visibleAfter, agentWork: todoAfter.data.agentWork, runs: todoAfter.data.runs } });
+
+      // Both public read paths must preserve every existing Run state and linked Artifact evidence.
+      const queuedRunId = approval.data.run?.id;
+      if (!queuedRunId) throw new Error("Default Ask approval returned no queued Run id.");
+      const artifactId = withDatabase(workspace, (db) => {
+        const artifact = createArtifactRecord(db, { projectId: created.project.id, title: "HelloWorld.txt", artifactType: "text", status: "planned", path: OUTPUT_PATH });
+        attachArtifactToExecutionRun(db, queuedRunId, artifact.id);
+        return artifact.id;
+      });
+      for (const status of ["pending_execution", "running", "failed", "requires_review", "completed"]) {
+        withDatabase(workspace, (db) => db.prepare("UPDATE execution_runs SET status = ?, summary = ? WHERE id = ?").run(status, status === "failed" ? "fixture failure" : "fixture summary", queuedRunId));
+        const askEvidence = runAskShowCommand({ workspace, id: REQUEST_ID }).data.asks[0]?.runs[0];
+        const todoEvidence = runTodoCommand({ workspace, project: created.project.slug, fixtureRoots: [] }).data.runs.find((run) => run.id === queuedRunId);
+        expect(askEvidence).toEqual(todoEvidence);
+        expect(askEvidence).toMatchObject({ id: queuedRunId, status, artifacts: [{ id: artifactId, status: "planned", evidenceReference: OUTPUT_PATH }] });
+        expect(Boolean(askEvidence?.waitingReason)).toBe(["pending_execution", "failed", "requires_review"].includes(status));
+      }
+      const beforePollCounts = withDatabase(workspace, (db) => (db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get() as { asks: number; actions: number; runs: number }));
+      runAskShowCommand({ workspace, id: REQUEST_ID });
+      runAskShowCommand({ workspace, id: REQUEST_ID });
+      runTodoCommand({ workspace, project: created.project.slug, fixtureRoots: [] });
+      runTodoCommand({ workspace, project: created.project.slug, fixtureRoots: [] });
+      expect(withDatabase(workspace, (db) => db.prepare(`SELECT
+        (SELECT COUNT(*) FROM ask_requests) AS asks,
+        (SELECT COUNT(*) FROM work_items) AS actions,
+        (SELECT COUNT(*) FROM execution_runs) AS runs`).get())).toEqual(beforePollCounts);
+      withDatabase(workspace, (db) => db.prepare("UPDATE execution_runs SET status = 'pending_execution' WHERE id = ?").run(queuedRunId));
 
       const dbEvidence = withReadOnlyDatabase(workspace, (db) => {
         const run = db.prepare("SELECT id, status, review_item_id, work_item_id FROM execution_runs WHERE review_item_id = ? ORDER BY created_at DESC LIMIT 1").get(reviewId) as { id: string; status: string; review_item_id: string; work_item_id: string | null } | undefined;
@@ -155,7 +188,7 @@ describe("Ask/To-do scout", () => {
       const success = scoutPasses(scout.artifactCheck.exists, scout.artifactCheck.exactBytes, dbEvidence.run ? { ...dbEvidence.run, linkedArtifactIds: dbEvidence.linkedArtifactIds } : undefined, dbEvidence.artifacts);
       scout.outcome = success ? "yes" : "no";
       scout.firstBlocker = success ? null : dbEvidence.run?.status === "pending_execution"
-        ? "The approved Ask queued a review-execution Run, but no worker executed it; To-do still exposes the review item and Ask hides the queued Run id."
+        ? "The approved Ask queued a review-execution Run, but no worker executed it; completion Artifact evidence is still absent."
         : "No exact HelloWorld.txt with matching completed-run and ready/published Artifact evidence exists.";
       if (!success) {
         const details = [scout.firstBlocker, `run=${dbEvidence.run?.status ?? "missing"}`, `fileExact=${scout.artifactCheck.exactBytes}`, `acceptedEvidence=${scout.artifactCheck.acceptedCompletionEvidence}`].join("\n");
@@ -192,7 +225,11 @@ describe("Ask/To-do scout", () => {
     expect(scout.launched.runStatus).toBe("pending_execution");
     expect(scout.launched.queued).toBe(true);
     expect(scout.launched.launched).toBe(false);
-    expect(scout.launched.publicRunId).toBeNull();
+    expect(scout.launched.publicRunId).toBe(scout.launched.runId);
+    const askRun = runAskShowCommand({ workspace, id: REQUEST_ID }).data.asks[0]?.runs[0];
+    const todoRun = runTodoCommand({ workspace, fixtureRoots: [] }).data.runs[0];
+    expect(askRun).toMatchObject({ id: scout.launched.runId, status: "pending_execution" });
+    expect(todoRun).toEqual(askRun);
     expect(scout.launched.executionObserved).toBe(false);
     expect(scout.artifactCheck.exactBytes).toBe(false);
     expect(scout.artifactCheck.acceptedCompletionEvidence).toBe(false);

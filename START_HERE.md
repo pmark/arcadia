@@ -2421,7 +2421,11 @@ To find out what any Ask became, pass the `capture_…` id from its receipt (or
 its request id, or an `ask_…` id) to `pnpm arcadia ask-trail <id>`. It prints
 the capture, how the Ask was classified and why, the Project it routed to, and
 every Action, Decision, or Back Burner item it produced, including the Action a
-shelved item was later promoted to. It only reads. Asks recorded before this
+shelved item was later promoted to. It also shows Runs correlated through the
+Ask's Action or Review, with current status, waiting reason and linked Artifact
+evidence. `todo --project <slug> --json` exposes the same Run evidence for that
+Project. Approval receipts report a queued Run id and status; neither approval
+nor queueing proves completion. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
 
 To see how much of your input actually reaches Arcadia through Ask or Ingress,
