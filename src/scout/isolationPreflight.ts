@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { compareLeakSnapshots, parseLeakSnapshot, unverifiableReason, type LeakSnapshot } from "../workspace/leakCheck.js";
 
 const SHA = /^[a-f0-9]{64}$/;
@@ -13,7 +14,7 @@ const CONSUMED_FILES = [
   "builder/metadata.json", "builder/prompt.md"
 ];
 
-interface ScoutPins {
+export interface ScoutPins {
   sourceRevision: string;
   nodeVersion: string;
   model: string;
@@ -51,15 +52,106 @@ interface SnapshotSummary {
 
 export interface ScoutPreflightReceipt {
   schema: "arcadia-scout-isolation-preflight-v1";
-  scope: "held-scout-observation-only";
-  verdict: "blocked";
-  resolutionImplemented: false;
+  scope: "held-scout-observation-only" | "bounded-decision-0128-isolation-only";
+  verdict: "blocked" | "isolated";
+  resolutionImplemented: boolean;
   pins: ScoutPins | null;
   before: SnapshotSummary | null;
   after: SnapshotSummary | null;
   config: { beforeSha256: string; afterSha256: string; exactFixtureTrustChange: boolean } | null;
   priorHold: { status: "unresolved" };
   reasons: string[];
+}
+
+const BOUNDED_DECISION_ID = "0128";
+const BOUNDED_DECISION_ANSWER = "Authorize the bounded Luna Hello World loop with three attempts and two repair cycles";
+const BOUNDED_DECISION_EXPIRY = "2026-10-18T00:00:00.000Z";
+const BOUNDED_DECISION_SCOPE_SHA256 = "1cc165eed764c3f1736763bec8fe1e7cf0b161cf022aece4484d93961bcdb2bd";
+const BOUNDED_DECISION_FILE_SHA256 = "f4072b04d9500f2c2711aaa84b68db2a92449e1dd528dd9c4097c338e654a9ce";
+
+function decisionFrontmatter(text: string): Record<string, unknown> | null {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return null;
+  try {
+    const parsed: unknown = parseYaml(match[1]);
+    return isRecord(parsed) ? parsed : null;
+  } catch { return null; }
+}
+
+export function validateBoundedScoutDecision(input: { text: string; canonicalPath: string; now?: string }) {
+  const parsed = decisionFrontmatter(input.text);
+  const now = input.now ?? new Date().toISOString();
+  const expectedPath = "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md";
+  if (!parsed || input.canonicalPath !== expectedPath || sha256(input.text) !== BOUNDED_DECISION_FILE_SHA256 || parsed.id !== BOUNDED_DECISION_ID
+    || parsed.status !== "approved" || parsed.answer !== BOUNDED_DECISION_ANSWER
+    || parsed.decided !== "2026-10-13" || !Array.isArray(parsed.options)) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "canonical approved Decision 0128 and its exact answer are required" };
+  }
+  const option = parsed.options.find((entry) => isRecord(entry) && entry.label === BOUNDED_DECISION_ANSWER);
+  const consequence = isRecord(option) && typeof option.consequence === "string" ? option.consequence : "";
+  const required = ["at most3 total live builder attempts", "at most2 Supervisor-led repair cycles", "at most90seconds", "incremental paid spend ceiling$0", "2026-10-18T00:00:00Z"];
+  if (sha256(consequence) !== BOUNDED_DECISION_SCOPE_SHA256 || !required.every((part) => consequence.includes(part))) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "Decision 0128 bounded policy text does not match the required limits" };
+  }
+  const expiry = Date.parse(BOUNDED_DECISION_EXPIRY);
+  if (!Number.isFinite(Date.parse(now)) || Date.parse(now) >= expiry) {
+    return { approved: false, decisionSha256: sha256(input.text), reason: "Decision 0128 has expired" };
+  }
+  return { approved: true, decisionSha256: sha256(input.text), reason: null };
+}
+
+/** Current-attempt gate. Historical replay continues to use the held-only evaluator above. */
+export function evaluateBoundedScoutIsolation(input: {
+  pins: ScoutPins; before: LeakSnapshot | null; after: LeakSnapshot | null;
+  codexConfigDiff?: { before: string; after: string };
+  decision: { text: string; canonicalPath: string };
+  now?: string;
+}): ScoutPreflightReceipt & { decision: { id: string; sha256: string }; attemptLimitSeconds: 90; executionAuthorized: false } {
+  const decision = validateBoundedScoutDecision({ ...input.decision, now: input.now });
+  const base = evaluateScoutPreflight({ pins: input.pins, before: input.before, after: input.after,
+    ...(input.codexConfigDiff ? { codexConfigDiff: input.codexConfigDiff } : {}), priorHold: { status: "unresolved" } });
+  const reasons = base.reasons.filter((reason) => reason !== "historical isolation hold unresolved; this observation-only slice has no hold-resolution implementation");
+  if (!decision.approved && decision.reason) reasons.push(decision.reason);
+  const nowMs = Date.parse(input.now ?? new Date().toISOString());
+  if (input.before && input.after) {
+    const beforeMs = Date.parse(input.before.takenAt);
+    const afterMs = Date.parse(input.after.takenAt);
+    if (!Number.isFinite(beforeMs) || !Number.isFinite(afterMs) || beforeMs > afterMs || afterMs > nowMs || nowMs - beforeMs > 5 * 60_000) {
+      reasons.push("protected-state witnesses must be ordered, current, and no more than five minutes old");
+    }
+  }
+  try {
+    const livePath = realpathSync(input.pins.liveWorkspacePath);
+    const fixtureRootPath = realpathSync(input.pins.fixtureRoot);
+    if (livePath === fixtureRootPath || livePath.startsWith(`${fixtureRootPath}${path.sep}`)
+      || fixtureRootPath.startsWith(`${livePath}${path.sep}`)) reasons.push("fixture scope overlaps the protected live workspace");
+  } catch { reasons.push("protected live workspace or fixture root is missing or cannot be verified"); }
+  // Existing-path pins must name real directories directly; a symlink cannot disguise a live path.
+  try {
+    const realRoot = realpathSync(input.pins.fixtureRoot);
+    const realWorkspace = realpathSync(input.pins.workspace);
+    const realRepo = realpathSync(input.pins.fixtureRepo);
+    const realTrust = realpathSync(input.pins.fixtureTrustPath);
+    const paths = [input.pins.fixtureRoot, input.pins.workspace, input.pins.fixtureRepo, input.pins.fixtureTrustPath];
+    if (paths.some((raw) => lstatSync(raw).isSymbolicLink())) reasons.push("fixture scope contains a symlink at a pinned path");
+    if (realWorkspace === realRoot || !realWorkspace.startsWith(`${realRoot}${path.sep}`)
+      || (realRepo !== realWorkspace && !realRepo.startsWith(`${realWorkspace}${path.sep}`))
+      || (realTrust !== realRepo && !realTrust.startsWith(`${realRepo}${path.sep}`))) {
+      reasons.push("fixture scope real paths escape their pinned parent");
+    }
+  } catch { reasons.push("fixture scope path is missing or cannot be verified"); }
+  const uniqueReasons = [...new Set(reasons)];
+  return {
+    ...base,
+    scope: "bounded-decision-0128-isolation-only",
+    verdict: uniqueReasons.length === 0 ? "isolated" : "blocked",
+    resolutionImplemented: true,
+    priorHold: { status: "unresolved" },
+    reasons: uniqueReasons,
+    decision: { id: BOUNDED_DECISION_ID, sha256: decision.decisionSha256 },
+    attemptLimitSeconds: 90,
+    executionAuthorized: false
+  };
 }
 
 function sha256(value: string | Buffer): string {
