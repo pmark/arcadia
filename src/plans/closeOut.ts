@@ -140,7 +140,7 @@ export function buildCloseOut(input: CloseOutInput): CloseOutRecord {
     .filter((item, index, all) => index === 0 || item.actionId !== all[index - 1].actionId || item.text !== all[index - 1].text);
 
   const doneWithoutRow = input.plan.actions.some(action => action.status === "done" && !matched.some(row => row.action_id === action.id));
-  const evidence: (typeof EVIDENCE_LEVELS)[number] = matched.length === 0 && rows.length > 0 ? "none"
+  const evidence: (typeof EVIDENCE_LEVELS)[number] = matched.length === 0 ? "none"
     : doneWithoutRow ? "partial" : "complete";
   const sum = (pick: (row: SessionLedgerRow) => number | null | undefined): number | null =>
     evidence === "none" ? null : matched.reduce((total, row) => total + (pick(row) ?? 0), 0);
@@ -230,7 +230,7 @@ export function validateCloseOut(record: unknown, planActionIds?: ReadonlySet<st
     } else {
       if ((ledger.rowsMatched as number) + (ledger.rowsExcluded as number) !== ledger.rowsConsidered) errors.push("ledger.rowsMatched + rowsExcluded must equal rowsConsidered");
       const none = ledger.evidence === "none";
-      if (none !== (ledger.rowsMatched === 0 && (ledger.rowsConsidered as number) > 0)) errors.push("ledger.evidence none must hold exactly when 0 of >0 considered rows matched");
+      if (none !== (ledger.rowsMatched === 0)) errors.push("ledger.evidence none must hold exactly when rowsMatched is 0 (an empty ledger is never a clean record)");
       if (none) {
         if (!aggregates.every(key => ledger[key] === null) || ledger.outcomes !== null) errors.push("ledger aggregates must be null when evidence is none");
       } else if (!aggregates.every(key => isCount(ledger[key])) || !isObject(ledger.outcomes) ||

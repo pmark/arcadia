@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -15,6 +15,32 @@ export interface PlanCloseOutData {
   written: boolean;
   unchanged: boolean;
   excludedLedgerRows: number;
+}
+
+/**
+ * Publishes `text` at `target` without ever replacing an existing file: write a temporary sibling, then `linkSync`
+ * (fails EEXIST when the target exists). The temporary file is removed on every path.
+ */
+export function publishNoOverwrite(
+  target: string,
+  text: string,
+  hooks: { write?: (file: string, text: string) => void; beforePublish?: () => void } = {}
+): void {
+  const temporary = `${target}.${process.pid}.tmp`;
+  try {
+    (hooks.write ?? writeFileSync)(temporary, text);
+    hooks.beforePublish?.();
+    try {
+      linkSync(temporary, target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw validationError(`${path.basename(target)} appeared while it was being written and was left untouched; review it, delete it deliberately to re-record, then re-run \`arcadia plan close-out <slug> --write\``);
+      }
+      throw error;
+    }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }
 
 /** Read-only by default; `--write` creates `docs/plans/<slug>.close-out.json` and never replaces a differing record. */
@@ -42,9 +68,7 @@ export function runPlanCloseOutCommand(options: PlanCloseOutOptions): CommandSuc
     if (decision.action === "refuse") throw validationError(`${relative}: ${decision.reason}`);
     if (decision.action === "write") {
       mkdirSync(path.dirname(absolute), { recursive: true });
-      const temporary = `${absolute}.${process.pid}.tmp`;
-      writeFileSync(temporary, renderCloseOut(record));
-      renameSync(temporary, absolute);
+      publishNoOverwrite(absolute, renderCloseOut(record));
       written = true;
     } else unchanged = true;
   }

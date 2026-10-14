@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import {
 } from "../src/plans/closeOut.js";
 import { execFileSync } from "node:child_process";
 import { gitShaToPr, loadCloseOutInputs } from "../src/plans/closeOut.js";
-import { runPlanCloseOutCommand } from "../src/commands/planCloseOut.js";
+import { publishNoOverwrite, runPlanCloseOutCommand } from "../src/commands/planCloseOut.js";
 import type { SessionLedgerRow } from "../src/reports/sessionLedger.js";
 
 const row = (over: Partial<SessionLedgerRow>): SessionLedgerRow => ({
@@ -352,5 +352,58 @@ describe("gitShaToPr attribution", () => {
     merge(root, "f2", 2);
     expect(gitShaToPr(root)(second)).toBe(2);
     expect(gitShaToPr(root)(first)).toBe(1);
+  });
+});
+
+describe("empty-ledger evidence", () => {
+  const empty = (status: string) => ({ ...base(), ledgerRows: [], plan: { ...base().plan, actions: [{ id: "a1", title: "A", status, splitInto: [] }] } });
+
+  it("is none with null aggregates for an empty ledger and open Actions", () => {
+    const record = buildCloseOut(empty("open"));
+    expect(record.ledger).toMatchObject({ rowsConsidered: 0, rowsMatched: 0, evidence: "none", sessions: null, reviewRounds: null, outcomes: null });
+    expect(validateCloseOut(record)).toEqual([]);
+  });
+
+  it("is none with null aggregates for an empty ledger and a done Action", () => {
+    const record = buildCloseOut(empty("done"));
+    expect(record.ledger).toMatchObject({ rowsMatched: 0, evidence: "none", sessions: null, attempts: null });
+  });
+
+  it("rejects evidence complete or partial with rowsMatched 0", () => {
+    const record = JSON.parse(renderCloseOut(buildCloseOut(empty("open")))) as { ledger: Record<string, unknown> };
+    for (const level of ["complete", "partial"]) {
+      const forged = { ...record, ledger: { ...record.ledger, evidence: level, sessions: 0, reviewRounds: 0, subagentTokens: 0, attempts: 0, operatorTouches: 0, outcomes: {} } };
+      expect(validateCloseOut(forged).join()).toContain("evidence none must hold exactly when rowsMatched is 0");
+    }
+  });
+});
+
+describe("publishNoOverwrite", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  const scratchDir = (): string => { const dir = mkdtempSync(path.join(os.tmpdir(), "close-out-pub-")); dirs.push(dir); return dir; };
+
+  it("publishes a new file and leaves no temporary file", () => {
+    const dir = scratchDir();
+    const target = path.join(dir, "r.json");
+    publishNoOverwrite(target, "new");
+    expect(readFileSync(target, "utf8")).toBe("new");
+    expect(readdirSync(dir)).toEqual(["r.json"]);
+  });
+
+  it("reports a conflict when the target appears before publishing, leaves it untouched and removes the temporary file", () => {
+    const dir = scratchDir();
+    const target = path.join(dir, "r.json");
+    expect(() => publishNoOverwrite(target, "mine", { beforePublish: () => writeFileSync(target, "theirs") })).toThrow(/appeared|delete/);
+    expect(readFileSync(target, "utf8")).toBe("theirs");
+    expect(readdirSync(dir)).toEqual(["r.json"]);
+  });
+
+  it("removes the temporary file when the write fails", () => {
+    const dir = scratchDir();
+    const target = path.join(dir, "r.json");
+    expect(() => publishNoOverwrite(target, "x", { write: (file) => { writeFileSync(file, "partial"); throw new Error("disk full"); } })).toThrow(/disk full/);
+    expect(existsSync(target)).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
   });
 });

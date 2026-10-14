@@ -126,9 +126,9 @@
   ],
   "openBlockers": [],
   "ledger": {
-    "rowsConsidered": 32,
+    "rowsConsidered": 35,
     "rowsMatched": 0,
-    "rowsExcluded": 32,
+    "rowsExcluded": 35,
     "evidence": "none",
     "sessions": null,
     "reviewRounds": null,
@@ -145,8 +145,16 @@
       "action_id": "package-protected-broker-role-registry"
     },
     {
+      "session_id": "01a12d10-scalar-writer-repair-20261013",
+      "action_id": "amend-action-consumes-block-scalar-and-literal-ids"
+    },
+    {
       "session_id": "01a130f8-9330-77f0-9cd8-12622f7ee808-pr-page-design",
       "action_id": "operator-directed:#1333"
+    },
+    {
+      "session_id": "01a13178-supervisor-bounded-scout-20261013",
+      "action_id": "operator-directed:#1388"
     },
     {
       "session_id": "01a1328a-0bc5-7c71-a155-398daeff8097",
@@ -211,14 +219,6 @@
     {
       "session_id": "2026-10-12-driver2-model-effectiveness",
       "action_id": "operator-directed:review-model-effectiveness"
-    },
-    {
-      "session_id": "2026-10-12-issue-1340-driver",
-      "action_id": "operator-directed:#1340"
-    },
-    {
-      "session_id": "2026-10-12-lead-decision-cards-01",
-      "action_id": "batch-merge-decision-card"
     }
   ],
   "unmatchedTruncated": true,
@@ -227,5 +227,5 @@
     "recommendation": null,
     "reason": "the Plan document names no successor"
   },
-  "hash": "64e7f9104cdaf08e7acc182af58faf9580ea98250b5dbdafbfcb36a6ebdfb61a"
+  "hash": "041ad98326939a797883b11ac59b1337cdee35f7142485b678f507a7540fd179"
 }
