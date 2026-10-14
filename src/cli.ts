@@ -3928,12 +3928,13 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
       .option("--project <slug>", "Only consider this Project")
       .option("--preferences <file>", "JSON Project preference record: { projects: [{ project, included, chosenPlan }] }", resolveInvocationPath)
-      .option("--queue <file>", "JSON queue summary: { queues: [{ project, orderValid, unpositionedCount, runningActions, activePlan, activePlanWaitsOnOperator }] }", resolveInvocationPath)
-      .option("--red-alerts <file>", "JSON open red alerts: { alerts: [{ id, project }] }", resolveInvocationPath)
+      .option("--workspace <path>", "Workspace for the live read-only queue and red-alert readers", defaultWorkspace())
+      .option("--queue <file>", "Override the live queue: selector-shape { queues } or `advance queue --json` output", resolveInvocationPath)
+      .option("--red-alerts <file>", "Override live red alerts: { alerts: [{ id, project, trigger? }] }", resolveInvocationPath)
       .option("--run-id <id>", "Current run id")
       .option("--session-id <id>", "Current session id")
       .option("--run-ask <ids>", "Comma-separated Agent Ask ids submitted by this run")
-  ).action((options: { repo: string; project?: string; preferences?: string; queue?: string; redAlerts?: string; runId?: string; sessionId?: string; runAsk?: string; json?: boolean }) =>
+  ).action((options: { repo: string; workspace?: string; project?: string; preferences?: string; queue?: string; redAlerts?: string; runId?: string; sessionId?: string; runAsk?: string; json?: boolean }) =>
     runCliAction("plan.select-next", options, () => runPlanSelectNextCommand(options), renderPlanSelectNextSuccess)
   );
 

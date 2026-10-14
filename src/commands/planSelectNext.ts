@@ -4,9 +4,13 @@ import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { usageError, validationError } from "../cli/errors.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
+import { buildAgentQueue } from "../dispatch/queue.js";
 import { parseDoc } from "../docs/parse.js";
+import { listOpenRedAlerts } from "../production/redAlerts.js";
 import {
-  selectNextPlan, type CloseOutSummary, type PlanSummary, type ProjectPreference, type QueueSummary,
+  adaptQueue, adaptRedAlerts, selectNextPlan, type CloseOutSummary, type LiveQueue, type QueueGlobal, type PlanSummary, type ProjectPreference, type QueueSummary,
   type RedAlertSummary, type Selection
 } from "../plans/nextPlanSelector.js";
 
@@ -15,10 +19,12 @@ export interface PlanSelectNextOptions {
   project?: string;
   /** JSON `{ projects: [{ project, included, chosenPlan }] }` (the operator preference record shape). */
   preferences?: string;
-  /** JSON `{ queues: QueueSummary[] }`. Absent means the queue is unknown, never a pass. */
+  /** Override: JSON in the selector shape `{ queues }` or the `advance queue --json` shape. Absent reads the live queue. */
   queue?: string;
-  /** JSON `{ alerts: [{ id, project }] }`. */
+  /** Override: JSON `{ alerts: [{ id, project, trigger? }] }`. Absent reads open red alerts live. */
   redAlerts?: string;
+  /** Workspace for the live read-only readers (default workspace when omitted). */
+  workspace?: string;
   runId?: string;
   sessionId?: string;
   /** Comma-separated Agent Ask ids this run submitted. */
@@ -88,7 +94,7 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
       }
     }
   }
-  gaps.push("No Project preference store exists yet (Action record-production-project-preferences); preferences are injected via --preferences.");
+  if (!options.preferences) gaps.push("no Project preference record exists yet (Decision 0122; Action record-production-project-preferences); supply --preferences to preview a choice.");
   gaps.push("Plan authoring session is not recorded by the repository; same-run authorship uses Plan/Action source Agent Asks plus --run-ask, --run-id, --session-id.");
   gaps.push("Operator approval of a draft Plan has no repository field; only an active Plan carries a receipt.");
 
@@ -101,18 +107,50 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
       return { project: String(record.project ?? ""), included: record.included === true, chosenPlan: asString(record.chosenPlan) };
     });
   }
+  const activePlans: Record<string, string | null> = {};
+  const projectPath = path.join(repo, "PROJECT.md");
+  if (existsSync(projectPath)) {
+    const parsedProject = parseDoc("PROJECT.md", projectPath, readFileSync(projectPath, "utf8"));
+    if (parsedProject.doc && parsedProject.doc.type === "project") activePlans[parsedProject.doc.slug] = parsedProject.doc.activePlan;
+  }
+  const liveErrors: { queue: string | null; redAlerts: string | null } = { queue: null, redAlerts: null };
   let queues: QueueSummary[] | null = null;
+  let queueGlobal: QueueGlobal | null = null;
   if (options.queue) {
-    const raw = readJson(options.queue, "--queue").queues;
-    if (!Array.isArray(raw)) throw validationError("--queue must hold a `queues` array");
-    queues = raw as QueueSummary[];
-  } else gaps.push("No --queue file: queue order and running Actions are reported as unknown.");
-  let redAlerts: RedAlertSummary[] = [];
+    const raw = readJson(options.queue, "--queue");
+    if (Array.isArray(raw.ordered)) {
+      const adapted = adaptQueue(raw as unknown as LiveQueue, activePlans);
+      queues = adapted.queues;
+      queueGlobal = adapted.global;
+    } else if (Array.isArray(raw.queues)) {
+      queues = raw.queues as QueueSummary[];
+    } else throw validationError("--queue must hold a `queues` array or an `advance queue --json` object");
+  } else {
+    try {
+      const { workspacePath } = resolveReadyWorkspace(options.workspace);
+      const live = withReadOnlyDatabase(workspacePath, db => buildAgentQueue(db));
+      const adapted = adaptQueue(live, activePlans);
+      queues = adapted.queues;
+      queueGlobal = adapted.global;
+    } catch (error) {
+      liveErrors.queue = error instanceof Error ? error.constructor.name : "UnknownError";
+      gaps.push(`Live queue read failed (${liveErrors.queue}); queue order is reported as unknown.`);
+    }
+  }
+  let redAlerts: RedAlertSummary[] | null = null;
   if (options.redAlerts) {
     const raw = readJson(options.redAlerts, "--red-alerts").alerts;
     if (!Array.isArray(raw)) throw validationError("--red-alerts must hold an `alerts` array");
     redAlerts = raw as RedAlertSummary[];
-  } else gaps.push("No --red-alerts file: open red alerts were not checked.");
+  } else {
+    try {
+      const { workspacePath } = resolveReadyWorkspace(options.workspace);
+      redAlerts = adaptRedAlerts(withReadOnlyDatabase(workspacePath, db => listOpenRedAlerts(db)));
+    } catch (error) {
+      liveErrors.redAlerts = error instanceof Error ? error.constructor.name : "UnknownError";
+      gaps.push(`Live red-alert read failed (${liveErrors.redAlerts}); open alerts are reported as unknown.`);
+    }
+  }
 
   let headSha: string | null = null;
   try {
@@ -124,7 +162,7 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
   }
   const now = options.now ?? new Date();
   const selection = selectNextPlan({
-    preferences, plans, queues, closeOuts, redAlerts,
+    preferences, plans, queues, queueGlobal, liveErrors, closeOuts, redAlerts,
     currentRunId: options.runId ?? null,
     currentSessionId: options.sessionId ?? process.env.ARCADIA_SESSION_ID ?? null,
     currentRunAsks: (options.runAsk ?? "").split(",").map(value => value.trim()).filter(value => value !== ""),

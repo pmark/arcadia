@@ -94,6 +94,81 @@ export interface CloseOutSummary {
 export interface RedAlertSummary {
   id: string;
   project: string;
+  /** Red Alert trigger (src/production/redAlerts.ts), when known; picks the honest remedy. */
+  trigger?: string | null;
+}
+
+/** The global queue verdict `arcadia advance queue` reports; the global flag blocks dispatch for every Project. */
+export interface QueueGlobal {
+  orderValid: boolean;
+  unpositionedCount: number;
+  /** Project slugs owning at least one unpositioned Action (sorted). */
+  unpositionedProjects: string[];
+}
+
+/** The subset of AgentQueueEntry the adapter reads (same field names as `advance queue --json`). */
+export interface LiveQueueEntry {
+  projectSlug: string | null;
+  actionId: string | null;
+  state: string;
+  attentionKind?: string | null;
+  orderStatus?: string;
+  position?: number | null;
+  selected?: boolean;
+}
+/** The subset of AgentQueue the adapter reads. */
+export interface LiveQueue {
+  orderValid: boolean;
+  unpositionedCount: number;
+  nextActionKey: string | null;
+  ordered: LiveQueueEntry[];
+  ready?: LiveQueueEntry[];
+  running?: LiveQueueEntry[];
+  flagged?: LiveQueueEntry[];
+  attention?: LiveQueueEntry[];
+}
+
+/**
+ * Pure adapter from the live Agent Queue to the selector's queue input.
+ * Rule chosen: a Project's `orderValid` is false when ANY of its entries is unpositioned OR the global
+ * flag is false (an invalid global order blocks dispatch for every Project). The global verdict is also
+ * returned so the preflight can name the unpositioned count and Projects. `activePlans` supplies each
+ * Project's active Plan slug (the queue does not carry it). A Project's active Plan "waits on the
+ * operator" when it has an attention entry of kind decision, packet or responsibility.
+ */
+export function adaptQueue(
+  queue: LiveQueue,
+  activePlans: Readonly<Record<string, string | null>> = {}
+): { queues: QueueSummary[]; global: QueueGlobal } {
+  const all = [
+    ...queue.ordered, ...(queue.ready ?? []), ...(queue.running ?? []), ...(queue.flagged ?? []), ...(queue.attention ?? [])
+  ];
+  const projects = new Set<string>();
+  for (const entry of all) if (typeof entry.projectSlug === "string" && entry.projectSlug !== "") projects.add(entry.projectSlug);
+  for (const slug of Object.keys(activePlans)) projects.add(slug);
+  const unpositioned = queue.ordered.filter(entry => entry.orderStatus === "unpositioned");
+  const unpositionedProjects = [...new Set(unpositioned.map(e => e.projectSlug).filter((s): s is string => typeof s === "string"))].sort(cmp);
+  const waitingKinds = new Set(["decision", "packet", "responsibility"]);
+  const queues = [...projects].sort(cmp).map(project => {
+    const mine = unpositioned.filter(entry => entry.projectSlug === project).length;
+    const running = (queue.running ?? []).filter(e => e.projectSlug === project && e.state === "running")
+      .map(e => `${project}/${e.actionId ?? "unknown"}`);
+    const waits = (queue.attention ?? []).some(e => e.projectSlug === project && e.attentionKind != null && waitingKinds.has(e.attentionKind));
+    return {
+      project,
+      orderValid: queue.orderValid === true && mine === 0,
+      unpositionedCount: mine,
+      runningActions: running,
+      activePlan: activePlans[project] ?? null,
+      activePlanWaitsOnOperator: waits
+    };
+  });
+  return { queues, global: { orderValid: queue.orderValid === true, unpositionedCount: queue.unpositionedCount, unpositionedProjects } };
+}
+
+/** Pure adapter from `listOpenRedAlerts` rows to the selector's alert input. */
+export function adaptRedAlerts(rows: ReadonlyArray<{ id: string; projectSlug: string; trigger?: string }>): RedAlertSummary[] {
+  return rows.map(row => ({ id: row.id, project: row.projectSlug, trigger: row.trigger ?? null }));
 }
 
 export interface SelectorInput {
@@ -103,7 +178,12 @@ export interface SelectorInput {
   /** null when the queue could not be read: the queue check is then unknown, never a pass. */
   queues: QueueSummary[] | null;
   closeOuts: CloseOutSummary[];
-  redAlerts: RedAlertSummary[];
+  /** null when the alerts could not be read: the alert check is then unknown, never a pass. */
+  redAlerts: RedAlertSummary[] | null;
+  /** The global queue verdict, or null when unknown. */
+  queueGlobal?: QueueGlobal | null;
+  /** Error class names of live readers that failed (named in unknown blockers). */
+  liveErrors?: { queue?: string | null; redAlerts?: string | null };
   currentRunId: string | null;
   currentSessionId: string | null;
   /** Agent Ask ids submitted by the current run or session. */
@@ -185,7 +265,14 @@ function normalise(input: SelectorInput): SelectorInput {
       openRemainders: arr<Record<string, unknown>>(c.openRemainders).map(r => ({ id: String(r.id ?? ""), status: String(r.status ?? "") })),
       evidence: c.evidence === "partial" || c.evidence === "complete" ? c.evidence : "none"
     })),
-    redAlerts: arr<Record<string, unknown>>(input.redAlerts).map(a => ({ id: String(a.id ?? ""), project: String(a.project ?? "") })),
+    redAlerts: input.redAlerts === null ? null : arr<Record<string, unknown>>(input.redAlerts)
+      .map(a => ({ id: String(a.id ?? ""), project: String(a.project ?? ""), trigger: str(a.trigger) })),
+    queueGlobal: input.queueGlobal == null ? null : {
+      orderValid: input.queueGlobal.orderValid === true,
+      unpositionedCount: Number(input.queueGlobal.unpositionedCount),
+      unpositionedProjects: arr<string>(input.queueGlobal.unpositionedProjects).map(String).sort(cmp)
+    },
+    liveErrors: { queue: str(input.liveErrors?.queue), redAlerts: str(input.liveErrors?.redAlerts) },
     currentRunId: str(input.currentRunId),
     currentSessionId: str(input.currentSessionId),
     currentRunAsks: arr<string>(input.currentRunAsks).map(String),
@@ -212,28 +299,57 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
   const out: PreflightResult[] = [];
   const queue = input.queues === null ? null : input.queues.find(q => q.project === project) ?? null;
 
-  if (queue === null) {
+  const global = input.queueGlobal ?? null;
+  const placeRemedy = "Open /work-queue and place each unpositioned Action (one previewed move per Action).";
+  if (queue === null && global === null) {
+    const why = input.liveErrors?.queue ? ` (live reader failed: ${input.liveErrors.queue})` : "";
     out.push({
       check: "queue_order_valid", ok: false, status: "unknown",
-      blocker: `The queue for ${project} could not be read, so its order is unknown.`,
-      remedy: "Open /actions and load the queue-order card for this Project, then re-run the preview."
+      blocker: `The queue could not be read, so its order is unknown${why}.`,
+      remedy: "No one-click control exists yet: the queue reader failed; open /work-queue to see the queue, then re-run the preview."
+    });
+  } else if (global !== null && (!global.orderValid || global.unpositionedCount !== 0)) {
+    out.push({
+      check: "queue_order_valid", ok: false, status: "fail",
+      blocker: `The global queue order is invalid with ${global.unpositionedCount} unpositioned Action(s) in Project(s): ${global.unpositionedProjects.join(", ") || "none named"}; dispatch is blocked for every Project.`,
+      remedy: placeRemedy
+    });
+  } else if (queue === null) {
+    out.push({
+      check: "queue_order_valid", ok: false, status: "unknown",
+      blocker: `The queue holds no entry for ${project}, so its order is unknown.`,
+      remedy: "No one-click control exists yet: a Project with no queue entry has nothing to place; open /work-queue to confirm."
     });
   } else if (!queue.orderValid || queue.unpositionedCount !== 0) {
     out.push({
       check: "queue_order_valid", ok: false, status: "fail",
       blocker: `Queue order for ${project} is ${queue.orderValid ? "valid" : "invalid"} with ${queue.unpositionedCount} unpositioned Action(s).`,
-      remedy: "Open /actions and press the Place Action button on the queue-order card for this Project."
+      remedy: placeRemedy
     });
   } else out.push({ check: "queue_order_valid", ok: true, status: "pass", blocker: null, remedy: null });
 
-  const alerts = input.redAlerts.filter(a => a.project === project).map(a => a.id).sort(cmp);
-  out.push(alerts.length === 0
-    ? { check: "no_open_red_alert", ok: true, status: "pass", blocker: null, remedy: null }
-    : {
+  if (input.redAlerts === null) {
+    const why = input.liveErrors?.redAlerts ? ` (live reader failed: ${input.liveErrors.redAlerts})` : "";
+    out.push({
+      check: "no_open_red_alert", ok: false, status: "unknown",
+      blocker: `Open red alerts could not be read${why}.`,
+      remedy: "No one-click control exists yet: the alert reader failed; open /production to see the alerts, then re-run the preview."
+    });
+  } else {
+    const mine = input.redAlerts.filter(a => a.project === project).sort((a, b) => cmp(a.id, b.id));
+    if (mine.length === 0) out.push({ check: "no_open_red_alert", ok: true, status: "pass", blocker: null, remedy: null });
+    else {
+      // scope_* alerts have a pinned turn-production-off control on /production; the rest clear on the worker tick.
+      const scoped = mine.some(a => a.trigger === "scope_pointer_mismatch" || a.trigger === "scope_successor_held");
+      out.push({
         check: "no_open_red_alert", ok: false, status: "fail",
-        blocker: `Open red alert(s) on ${project}: ${alerts.join(", ")}.`,
-        remedy: "Open /todo and clear the red-alert card for this Project."
+        blocker: `Open red alert(s) on ${project}: ${mine.map(a => a.id).join(", ")}.`,
+        remedy: scoped
+          ? "Open /production and use the turn-production-off control."
+          : "No one-click control exists yet: the worker tick re-evaluates and clears this alert itself; nothing to press."
       });
+    }
+  }
 
   // Previous Plan: the Project's active Plan, when it is a different Plan from the chosen one.
   const previous = queue?.activePlan ?? null;
@@ -248,20 +364,20 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
       out.push({
         check: "previous_plan_closed_out", ok: false, status: "fail",
         blocker: `Plan ${previous} has no close-out record.`,
-        remedy: "Run plan close-out"
+        remedy: "No one-click control exists yet: plan close-out has no button; it is `arcadia plan close-out <slug> --write` (gap: no /todo close-out card)."
       });
     } else if (!record.closed) {
       const ids = record.openRemainders.map(r => r.id).sort(cmp);
       out.push({
         check: "previous_plan_closed_out", ok: false, status: "fail",
         blocker: `Plan ${previous} has ${ids.length} open remainder(s): ${ids.join(", ") || "none listed"}.`,
-        remedy: "Open /todo and place each open remainder of the previous Plan on its card."
+        remedy: "No one-click control exists yet: open remainders have no placement card (gap: split-remainder-placement is a card kind with no control)."
       });
     } else if (record.evidence === "none") {
       out.push({
         check: "previous_plan_closed_out", ok: false, status: "unknown",
         blocker: `Plan ${previous} is closed but its ledger evidence is none, so its completeness is unknown.`,
-        remedy: "Open /todo and answer the close-out evidence card for the previous Plan."
+        remedy: "No one-click control exists yet: no card records close-out evidence for a Plan."
       });
     } else out.push({ check: "previous_plan_closed_out", ok: true, status: "pass", blocker: null, remedy: null });
   }
@@ -271,13 +387,13 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
     out.push({
       check: "pointer_free", ok: false, status: "unknown",
       blocker: `Running Actions of ${project} are unknown because the queue could not be read.`,
-      remedy: "Open /actions and load the queue-order card for this Project, then re-run the preview."
+      remedy: "No one-click control exists yet: the queue reader failed; open /actions to see running Actions, then re-run the preview."
     });
   } else if (running.length > 0) {
     out.push({
       check: "pointer_free", ok: false, status: "fail",
       blocker: `Action(s) of ${project} are running now: ${running.join(", ")}.`,
-      remedy: "Open /actions and wait for, or stop, the running Action card."
+      remedy: "Open /actions; the running Action ends on its own or is stopped from its Session card."
     });
   } else out.push({ check: "pointer_free", ok: true, status: "pass", blocker: null, remedy: null });
 
@@ -290,7 +406,7 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
         blocker: !known
           ? `Plan ${plan} records no source Agent Ask or authoring session, so "authored in this run" cannot be ruled out.`
           : "The current run and session ids were not supplied, so same-run authorship cannot be ruled out.",
-        remedy: "Open /todo and confirm who authored the Plan on its handoff card."
+        remedy: "No one-click control exists yet: pass --session-id, --run-ask or --run-id (or set ARCADIA_SESSION_ID); no card records Plan authorship."
       });
   return out;
 }
@@ -380,7 +496,10 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     reasons.push("No Plan is eligible; see the refusals.");
   }
 
-  const preflight = chosen === null || winner === null ? [] : preflightFor(chosen.project, chosen.plan, input, winner.plan);
+  // With no chosen Plan only the global queue verdict is reportable, so the invalid live queue is still surfaced.
+  const preflight = chosen === null || winner === null
+    ? preflightFor("", "", input, null).filter(check => check.check === "queue_order_valid")
+    : preflightFor(chosen.project, chosen.plan, input, winner.plan);
   const ready = chosen !== null && preflight.every(check => check.ok);
 
   const { now: _now, expires: _expires, ...stateInputs } = input;

@@ -153,8 +153,7 @@ describe("selectNextPlan", () => {
     expect(failed.map(c => c.check)).toEqual(expect.arrayContaining(["queue_order_valid", "no_open_red_alert", "pointer_free"]));
     for (const check of failed) {
       expect(check.blocker).toBeTruthy();
-      expect(check.remedy).toMatch(/^Open \/(actions|todo)|^Run plan close-out/);
-      expect(check.remedy).not.toMatch(/arcadia |pnpm |npm |node /);
+      expect(check.remedy).toMatch(/^Open \/(actions|work-queue|production)|^No one-click control exists yet/);
     }
   });
 
@@ -163,7 +162,7 @@ describe("selectNextPlan", () => {
     const absent = selectNextPlan(base({ queues }));
     const check = absent.preflight.find(c => c.check === "previous_plan_closed_out")!;
     expect(check.status).toBe("fail");
-    expect(check.remedy).toBe("Run plan close-out");
+    expect(check.remedy).toMatch(/^No one-click control exists yet: plan close-out/);
     const open = selectNextPlan(base({ queues, closeOuts: [{ project: "arcadia", plan: "active-plan", closed: false, openRemainders: [{ id: "r1", status: "todo" }], evidence: "partial" }] }));
     expect(open.preflight.find(c => c.check === "previous_plan_closed_out")!.blocker).toContain("r1");
     const unknown = selectNextPlan(base({ queues, closeOuts: [{ project: "arcadia", plan: "active-plan", closed: true, openRemainders: [], evidence: "none" }] }));
