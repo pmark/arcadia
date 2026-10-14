@@ -212,6 +212,12 @@ function runAskCommandWithRouting(
   flagEnabled: boolean,
   trace: { memo?: AskMemo }
 ): CommandSuccess<AskCommandData> {
+  const verifiedIngressReuse = options.reuseCaptureEnvelope &&
+    /^ingress:[a-z0-9_-]+$/i.test(options.sourceIngress?.trim() ?? "") &&
+    (options.attachments?.length ?? 0) > 0;
+  if (options.reuseCaptureEnvelope && ((!options.correctionRoute && !verifiedIngressReuse) || options.executeReview || options.approvedReviewItemId)) {
+    throw validationError("Reusing an Ask capture is reserved for a verified ingress receipt or a no-execution correction with an explicit correction route.");
+  }
   const routingIdentity = withDatabase(workspacePath, (db) => {
     const explicitProject = resolveProjectReference(db, options.project);
     return {
@@ -222,6 +228,7 @@ function runAskCommandWithRouting(
       approvedReviewItemId: options.approvedReviewItemId ?? null,
       correctionRoute: options.correctionRoute ?? null,
       captureAsIdea: options.captureAsIdea === true,
+      surfaceCondition: options.surfaceCondition ?? null,
       runSafe: options.runSafe === true,
       agentProfile: options.agentProfile ?? null,
       reviewExecutor: options.reviewExecutor ?? null,

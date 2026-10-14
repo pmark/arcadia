@@ -55,7 +55,7 @@ describe("ingress process command", () => {
     expect(readFileSync(result.data.requestFile, "utf8")).toContain("# A captured idea");
     expect(readFileSync(result.data.attachmentFiles[0], "utf8")).toContain("A captured idea");
     expect(result.data.captureEnvelope).toMatchObject({
-      originalText: "Capture this idea and route it deterministically.",
+      originalText: readFileSync(result.data.requestFile, "utf8").trim(),
       ingressSource: "ingress:iCloudIdeas",
       status: "captured"
     });
@@ -66,9 +66,55 @@ describe("ingress process command", () => {
     });
     const processed = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 });
     expect(processed.data.counts.processed).toBe(1);
+    expect(processed.data.files[0]).toMatchObject({ status: "processed" });
     withDatabase(workspace, (db) => {
       const row = db.prepare("SELECT COUNT(*) AS count FROM ask_capture_envelopes").get() as { count: number };
       expect(row.count).toBe(1);
+    });
+    const effectsAfterProcessing = withDatabase(workspace, (db) => ({
+      asks: db.prepare("SELECT COUNT(*) AS count FROM ask_requests").get(),
+      actions: db.prepare("SELECT COUNT(*) AS count FROM work_items").get(),
+      ideas: db.prepare("SELECT COUNT(*) AS count FROM back_burner_items").get()
+    }));
+    expect(runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 }).data.counts.processed).toBe(0);
+    expect(withDatabase(workspace, (db) => ({
+      asks: db.prepare("SELECT COUNT(*) AS count FROM ask_requests").get(),
+      actions: db.prepare("SELECT COUNT(*) AS count FROM work_items").get(),
+      ideas: db.prepare("SELECT COUNT(*) AS count FROM back_burner_items").get()
+    }))).toEqual(effectsAfterProcessing);
+  });
+
+  it("refuses an edited ingress request file before routing it under the captured request", () => {
+    const workspace = initializedWorkspace();
+    const ingressRoot = initializedIngressRoot();
+    const uploadRoot = mkdtempSync(path.join(tmpdir(), "arcadia-ingress-edited-upload-"));
+    roots.push(uploadRoot);
+    const uploadPath = path.join(uploadRoot, "idea.md");
+    writeFileSync(uploadPath, "# Original idea\n", "utf8");
+    const captured = runIngressCaptureCommand({
+      workspace,
+      ingressRoot,
+      files: [uploadPath],
+      description: "Capture this original idea."
+    });
+    writeFileSync(captured.data.requestFile, "Create a different project action instead.\n", "utf8");
+
+    const processed = runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 });
+
+    expect(processed.data.files[0]).toMatchObject({ status: "failed" });
+    expect(processed.data.files[0]?.failureReason).toContain("no longer matches its receipt-time text or attachments");
+    expect(withDatabase(workspace, (db) => ({
+      captures: db.prepare("SELECT COUNT(*) AS n FROM ask_capture_envelopes").get(),
+      asks: db.prepare("SELECT COUNT(*) AS n FROM ask_requests").get(),
+      actions: db.prepare("SELECT COUNT(*) AS n FROM work_items").get(),
+      backBurner: db.prepare("SELECT COUNT(*) AS n FROM back_burner_items").get(),
+      capture: db.prepare("SELECT status FROM ask_capture_envelopes WHERE request_id = ?").get(captured.data.captureEnvelope.requestId)
+    }))).toEqual({
+      captures: { n: 1 },
+      asks: { n: 0 },
+      actions: { n: 0 },
+      backBurner: { n: 0 },
+      capture: { status: "captured" }
     });
   });
 

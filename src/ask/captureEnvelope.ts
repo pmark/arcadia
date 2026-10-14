@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 
 export type DerivationStatus = "completed" | "unavailable" | "not_applicable";
@@ -149,9 +150,14 @@ export function captureAskEnvelope(db: Database.Database, input: {
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
   return writeTransaction(db, () => {
-    const existing = db.prepare("SELECT id, status, envelope_json, fingerprint, routing_identity FROM ask_capture_envelopes WHERE request_id = ?")
-      .get(requestId) as { id: string; status: string; envelope_json: string; fingerprint: string; routing_identity: string | null } | undefined;
-    if (existing && input.reuseExisting) return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+    const existing = db.prepare("SELECT id, status, original_text, ingress_source, envelope_json, fingerprint, routing_identity FROM ask_capture_envelopes WHERE request_id = ?")
+      .get(requestId) as { id: string; status: string; original_text: string; ingress_source: string; envelope_json: string; fingerprint: string; routing_identity: string | null } | undefined;
+    if (existing && input.reuseExisting) {
+      if (existing.original_text !== input.originalText || existing.ingress_source !== input.ingressSource) {
+        throw new Error(`Capture request ${requestId} cannot be reused with changed original text or ingress source.`);
+      }
+      return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+    }
     const prepared = prepareInput(input);
     if (existing) {
       if (existing.fingerprint !== prepared.fingerprint) {
@@ -207,6 +213,23 @@ export function captureAskEnvelope(db: Database.Database, input: {
   });
 }
 
+/** Fail closed when an ingress file no longer matches its receipt-time capture. */
+export function assertAskCaptureEnvelopeMatches(db: Database.Database, input: {
+  requestId: string;
+  originalText: string;
+  ingressSource: string;
+  attachments?: CaptureAttachmentInput[];
+}): void {
+  const requestId = input.requestId.trim();
+  const existing = db.prepare("SELECT fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
+    .get(requestId) as { fingerprint: string } | undefined;
+  if (!existing) throw validationError(`Ingress capture ${requestId} is missing; refusing to route unbound content.`);
+  const prepared = prepareInput(input);
+  if (existing.fingerprint !== prepared.fingerprint) {
+    throw validationError(`Ingress capture ${requestId} no longer matches its receipt-time text or attachments; refusing to route changed content.`);
+  }
+}
+
 function legacyRoutingReplayIsProven(
   db: Database.Database,
   captureId: string,
@@ -218,7 +241,7 @@ function legacyRoutingReplayIsProven(
   // consequential routing controls are at their legacy defaults.
   if (status !== "completed" || identity.executeReview === true || identity.correctionRoute != null ||
       identity.approvedReviewItemId != null || identity.captureAsIdea === true || identity.milestone != null ||
-      identity.reviewReference != null || identity.runSafe === true || identity.agentProfile != null ||
+      identity.reviewReference != null || identity.surfaceCondition != null || identity.runSafe === true || identity.agentProfile != null ||
       identity.reviewExecutor != null || identity.sourceRef != null || identity.facetTags != null) return false;
   const ask = db.prepare(`
     SELECT COALESCE(work.project_id, review.project_id) AS project_id
