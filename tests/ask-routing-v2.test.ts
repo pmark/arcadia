@@ -145,6 +145,7 @@ describe("ask.routing.v2: an operator Ask is never shelved unseen", () => {
         approvedReviewItemId: null,
         correctionRoute: null,
         captureAsIdea: false,
+        surfaceCondition: null,
         runSafe: false,
         agentProfile: null,
         reviewExecutor: null,

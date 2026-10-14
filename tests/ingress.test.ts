@@ -1,5 +1,6 @@
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -76,7 +77,12 @@ describe("ingress process command", () => {
       actions: db.prepare("SELECT COUNT(*) AS count FROM work_items").get(),
       ideas: db.prepare("SELECT COUNT(*) AS count FROM back_burner_items").get()
     }));
-    expect(runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 }).data.counts.processed).toBe(0);
+    const processedFile = processed.data.files[0];
+    if (!processedFile?.finalPath) throw new Error("Processed ingress request has no final path to replay.");
+    const replayPath = path.join(ingressRoot, "iCloudIdeas", "In", path.basename(processedFile.finalPath));
+    copyFileSync(processedFile.finalPath, replayPath);
+    expect(runIngressProcessCommand({ workspace, ingressRoot, stableSeconds: 0 }).data.counts.processed).toBe(1);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_capture_envelopes").get())).toEqual({ n: 1 });
     expect(withDatabase(workspace, (db) => ({
       asks: db.prepare("SELECT COUNT(*) AS count FROM ask_requests").get(),
       actions: db.prepare("SELECT COUNT(*) AS count FROM work_items").get(),

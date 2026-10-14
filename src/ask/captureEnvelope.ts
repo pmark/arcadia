@@ -147,6 +147,8 @@ export function captureAskEnvelope(db: Database.Database, input: {
   project?: string | null;
   /** Routing choices are idempotency identity, never evidence of approval or authority. */
   routingIdentity?: Record<string, unknown> | null;
+  /** Ingress may atomically bind the first route only to an exact captured receipt. */
+  pinUnboundIngressRoute?: boolean;
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
   return writeTransaction(db, () => {
@@ -166,6 +168,17 @@ export function captureAskEnvelope(db: Database.Database, input: {
       const routingIdentity = input.routingIdentity === undefined || input.routingIdentity === null
         ? null
         : JSON.stringify(input.routingIdentity);
+      if (existing.routing_identity === null && input.pinUnboundIngressRoute && existing.status === "captured" &&
+          existing.ingress_source.startsWith("ingress:") && routingIdentity !== null) {
+        db.prepare("UPDATE ask_capture_envelopes SET routing_identity = ? WHERE id = ? AND routing_identity IS NULL AND status = 'captured'")
+          .run(routingIdentity, existing.id);
+        const pinned = db.prepare("SELECT routing_identity FROM ask_capture_envelopes WHERE id = ?")
+          .get(existing.id) as { routing_identity: string | null };
+        if (pinned.routing_identity !== routingIdentity) {
+          throw new Error(`Capture request ${requestId} was concurrently pinned to different routing choices.`);
+        }
+        return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+      }
       if (existing.routing_identity !== null && existing.routing_identity !== routingIdentity) {
         throw new Error(`Capture request ${requestId} was already submitted with different routing choices.`);
       }

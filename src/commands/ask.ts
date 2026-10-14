@@ -215,7 +215,7 @@ function runAskCommandWithRouting(
   const verifiedIngressReuse = options.reuseCaptureEnvelope &&
     /^ingress:[a-z0-9_-]+$/i.test(options.sourceIngress?.trim() ?? "") &&
     (options.attachments?.length ?? 0) > 0;
-  if (options.reuseCaptureEnvelope && ((!options.correctionRoute && !verifiedIngressReuse) || options.executeReview || options.approvedReviewItemId)) {
+  if (options.reuseCaptureEnvelope && ((!options.correctionRoute && !verifiedIngressReuse) || options.executeReview || options.approvedReviewItemId || (options.runSafe && !verifiedIngressReuse))) {
     throw validationError("Reusing an Ask capture is reserved for a verified ingress receipt or a no-execution correction with an explicit correction route.");
   }
   const routingIdentity = withDatabase(workspacePath, (db) => {
@@ -242,18 +242,18 @@ function runAskCommandWithRouting(
     ingressSource: options.sourceIngress?.trim() || "ask",
     attachments: options.attachments,
     routingIdentity,
-    reuseExisting: options.reuseCaptureEnvelope
+    reuseExisting: options.reuseCaptureEnvelope && !verifiedIngressReuse,
+    pinUnboundIngressRoute: verifiedIngressReuse
   }));
-  // Approval follow-up intentionally reuses a completed capture to attach the
-  // approved Action to the same journey; its transactional approval claim is
-  // the idempotency guard for that path.
-  if (options.reuseCaptureEnvelope) {
-    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
+  // Exact-text correction reuses its original capture without execution. Ingress
+  // reuse stays on the ordinary fenced processing path below.
+  if (options.reuseCaptureEnvelope && !verifiedIngressReuse) {
+    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope, undefined, verifiedIngressReuse);
   }
   const processingOwner = randomUUID();
   const claim = withDatabase(workspacePath, (db) => claimAskCaptureProcessing(db, captureEnvelope.id, processingOwner));
   if (claim === "complete") {
-    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
+    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope, undefined, verifiedIngressReuse);
   }
   if (claim !== "claimed") {
     const existing = ignoredAskData(options.request);
@@ -267,7 +267,7 @@ function runAskCommandWithRouting(
     });
   }
   try {
-    const response = runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope, processingOwner);
+    const response = runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope, processingOwner, verifiedIngressReuse);
     const completed = withDatabase(workspacePath, (db) => finishAskCaptureProcessing(db, captureEnvelope.id, processingOwner));
     if (!completed) throw new Error(`Ask capture ${captureEnvelope.requestId} lost processing ownership before completion.`);
     return response;
@@ -296,7 +296,8 @@ function runAskCommandAfterCapture(
   flagEnabled: boolean,
   trace: { memo?: AskMemo },
   captureEnvelope: AskCaptureEnvelope,
-  captureProcessingOwner?: string
+  captureProcessingOwner?: string,
+  verifiedIngressReuse = false
 ): CommandSuccess<AskCommandData> {
   const markRouteEffects = (db?: Database.Database) => {
     if (captureProcessingOwner) {
@@ -320,7 +321,7 @@ function runAskCommandAfterCapture(
       .get(captureEnvelope.id) as { id: string } | undefined;
     return row ?? null;
   });
-  if (priorAsk && !options.reuseCaptureEnvelope) {
+  if (priorAsk && (!options.reuseCaptureEnvelope || verifiedIngressReuse)) {
     const existing = ignoredAskData(options.request);
     return createSuccess({
       command: "ask",
