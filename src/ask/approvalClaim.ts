@@ -69,15 +69,15 @@ export function claimApprovalForAction(
   if (!review || (review.status !== "open" && review.status !== "deferred")) {
     throw validationError("Requires Review Decision is already decided.", { id: input.reviewItemId, status: review?.status ?? null });
   }
-  if (review.resulting_ask_request_id) {
+  const claim = db.prepare("SELECT owner, work_item_id, plan_id, lease_expires_at FROM review_approval_claims WHERE review_item_id = ?").get(
+    input.reviewItemId
+  ) as ClaimRow | undefined;
+  if (review.resulting_ask_request_id && !claim) {
     throw validationError("An earlier approval attempt already made the Action for this Decision.", {
       id: input.reviewItemId,
       remedy: "Run the approval again; it reuses that Action."
     });
   }
-  const claim = db.prepare("SELECT owner, work_item_id, plan_id, lease_expires_at FROM review_approval_claims WHERE review_item_id = ?").get(
-    input.reviewItemId
-  ) as ClaimRow | undefined;
   if (!claim) return { kind: "create" };
   if (claim.owner !== input.owner && claim.lease_expires_at > now.toISOString()) {
     throw validationError("Another approval of this Decision is in progress, so nothing was created.", {

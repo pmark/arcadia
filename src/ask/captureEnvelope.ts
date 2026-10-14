@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 
 export type DerivationStatus = "completed" | "unavailable" | "not_applicable";
 
@@ -57,6 +59,83 @@ export interface CaptureActor {
   id: string;
 }
 
+export type AskCaptureProcessingClaim = "claimed" | "complete" | "partial" | "failed";
+
+/**
+ * Own the safe, read-only preparation phase. A replacement token fences an
+ * older process that was still preparing; durable effects require the owner
+ * to transition the capture to `partial` first.
+ */
+export function claimAskCaptureProcessing(db: Database.Database, captureId: string, owner: string): AskCaptureProcessingClaim {
+  return writeTransaction(db, () => {
+    const row = db.prepare("SELECT status, processing_owner FROM ask_capture_envelopes WHERE id = ?").get(captureId) as
+      | { status: string; processing_owner: string | null } | undefined;
+    if (!row) throw new Error(`Ask capture ${captureId} disappeared before processing.`);
+    const priorAsk = db.prepare("SELECT id FROM ask_requests WHERE capture_id = ? ORDER BY created_at LIMIT 1")
+      .get(captureId) as { id: string } | undefined;
+    if (row.status === "completed" && priorAsk) return "complete";
+    if (row.status === "captured") {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'processing', processing_owner = ? WHERE id = ? AND status = 'captured'")
+        .run(owner, captureId);
+      return "claimed";
+    }
+    if (row.status === "processing" && row.processing_owner) {
+      // Rotating the fence is safe only in this pre-effect phase. A previous
+      // owner must prove the token again before its first durable write.
+      db.prepare("UPDATE ask_capture_envelopes SET processing_owner = ? WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+        .run(owner, captureId, row.processing_owner);
+      return "claimed";
+    }
+    if (row.status === "processing") {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ? AND status = 'processing'").run(captureId);
+      return "partial";
+    }
+    return row.status === "partial" ? "partial" : row.status === "failed" ? "failed" : "complete";
+  });
+}
+
+/** Mark that the fenced owner is about to commit a route effect. */
+export function markAskCaptureEffectsStarted(db: Database.Database, captureId: string, owner: string): void {
+  const row = db.prepare("SELECT status, processing_owner FROM ask_capture_envelopes WHERE id = ?").get(captureId) as
+    | { status: string; processing_owner: string | null } | undefined;
+  if (row?.status === "partial" && row.processing_owner === owner) return;
+  const changed = db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ? AND status = 'processing' AND processing_owner = ?"
+  ).run(captureId, owner);
+  if (changed.changes !== 1) throw new Error(`Ask capture ${captureId} processing ownership was superseded before route effects.`);
+}
+
+/** Fence a public Review-reply Ask and preserve its exact Decision for recovery inspection. */
+export function markAskCaptureReviewEffectsStarted(
+  db: Database.Database,
+  captureId: string,
+  owner: string,
+  reviewId: string
+): void {
+  writeTransaction(db, () => {
+    const existing = db.prepare("SELECT related_review_id FROM ask_capture_envelopes WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+      .get(captureId, owner) as { related_review_id: string | null } | undefined;
+    if (!existing) throw new Error(`Ask capture ${captureId} processing ownership was superseded before Review effects.`);
+    if (existing.related_review_id && existing.related_review_id !== reviewId) {
+      throw new Error(`Ask capture ${captureId} is already linked to a different Review Decision.`);
+    }
+    db.prepare("UPDATE ask_capture_envelopes SET status = 'partial', related_review_id = ? WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+      .run(reviewId, captureId, owner);
+  });
+}
+
+export function finishAskCaptureProcessing(db: Database.Database, captureId: string, owner: string): boolean {
+  return writeTransaction(db, () => db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'completed', processing_owner = NULL WHERE id = ? AND processing_owner = ? AND status IN ('processing', 'partial')"
+  ).run(captureId, owner).changes === 1);
+}
+
+export function resetAskCaptureBeforeEffects(db: Database.Database, captureId: string, owner: string): boolean {
+  return writeTransaction(db, () => db.prepare(
+    "UPDATE ask_capture_envelopes SET status = 'captured', processing_owner = NULL WHERE id = ? AND processing_owner = ? AND status = 'processing'"
+  ).run(captureId, owner).changes === 1);
+}
+
 export function captureAskEnvelope(db: Database.Database, input: {
   requestId?: string;
   originalText: string;
@@ -66,48 +145,76 @@ export function captureAskEnvelope(db: Database.Database, input: {
   /** Provenance metadata kept out of the fingerprint; see AskCaptureEnvelope. */
   actor?: CaptureActor | null;
   project?: string | null;
+  /** Routing choices are idempotency identity, never evidence of approval or authority. */
+  routingIdentity?: Record<string, unknown> | null;
+  /** Ingress may atomically bind the first route only to an exact captured receipt. */
+  pinUnboundIngressRoute?: boolean;
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
-  const existing = db.prepare("SELECT envelope_json, fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
-    .get(requestId) as { envelope_json: string; fingerprint: string } | undefined;
-  if (existing && input.reuseExisting) return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
-  const prepared = prepareInput(input);
-  if (existing) {
-    if (existing.fingerprint !== prepared.fingerprint) {
-      throw new Error(`Capture request ${requestId} was already submitted with different content.`);
+  return writeTransaction(db, () => {
+    const existing = db.prepare("SELECT id, status, original_text, ingress_source, envelope_json, fingerprint, routing_identity FROM ask_capture_envelopes WHERE request_id = ?")
+      .get(requestId) as { id: string; status: string; original_text: string; ingress_source: string; envelope_json: string; fingerprint: string; routing_identity: string | null } | undefined;
+    if (existing && input.reuseExisting) {
+      if (existing.original_text !== input.originalText || existing.ingress_source !== input.ingressSource) {
+        throw new Error(`Capture request ${requestId} cannot be reused with changed original text or ingress source.`);
+      }
+      return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
     }
-    return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
-  }
-
-  const capturedAt = new Date().toISOString();
-  const attachmentReceipts = prepared.attachments.map((attachment) => ({
-    id: `capture_attachment_${randomUUID()}`,
-    ...attachment.receipt
-  }));
-  const derivations = attachmentReceipts.flatMap((attachment, index) =>
-    buildDerivations(attachment, capturedAt, prepared.attachments[index]?.extractedText ?? null)
-  );
-  const envelope: AskCaptureEnvelope = {
-    id: `capture_${randomUUID()}`,
-    requestId,
-    originalText: input.originalText,
-    ingressSource: input.ingressSource,
-    capturedAt,
-    submittedUrls: extractUrls(input.originalText),
-    canonicalLinkCandidates: canonicalCandidates(extractUrls(input.originalText)),
-    attachments: attachmentReceipts,
-    derivations,
-    status: "captured",
-    authority: "untrusted_input",
-    ...(input.actor !== undefined ? { actor: input.actor } : {}),
-    ...(input.project !== undefined ? { project: input.project } : {})
-  };
-
-  db.transaction(() => {
+    const prepared = prepareInput(input);
+    if (existing) {
+      if (existing.fingerprint !== prepared.fingerprint) {
+        throw new Error(`Capture request ${requestId} was already submitted with different content.`);
+      }
+      const routingIdentity = input.routingIdentity === undefined || input.routingIdentity === null
+        ? null
+        : JSON.stringify(input.routingIdentity);
+      if (existing.routing_identity === null && input.pinUnboundIngressRoute && existing.status === "captured" &&
+          existing.ingress_source.startsWith("ingress:") && routingIdentity !== null) {
+        db.prepare("UPDATE ask_capture_envelopes SET routing_identity = ? WHERE id = ? AND routing_identity IS NULL AND status = 'captured'")
+          .run(routingIdentity, existing.id);
+        const pinned = db.prepare("SELECT routing_identity FROM ask_capture_envelopes WHERE id = ?")
+          .get(existing.id) as { routing_identity: string | null };
+        if (pinned.routing_identity !== routingIdentity) {
+          throw new Error(`Capture request ${requestId} was concurrently pinned to different routing choices.`);
+        }
+        return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+      }
+      if (existing.routing_identity !== null && existing.routing_identity !== routingIdentity) {
+        throw new Error(`Capture request ${requestId} was already submitted with different routing choices.`);
+      }
+      if (existing.routing_identity === null && routingIdentity !== null && !legacyRoutingReplayIsProven(db, existing.id, existing.status, input.routingIdentity ?? {})) {
+        throw new Error(`Capture request ${requestId} has no pinned routing identity; use a new request id to avoid changing its route.`);
+      }
+      return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+    }
+    const capturedAt = new Date().toISOString();
+    const attachmentReceipts = prepared.attachments.map((attachment) => ({
+      id: `capture_attachment_${randomUUID()}`,
+      ...attachment.receipt
+    }));
+    const derivations = attachmentReceipts.flatMap((attachment, index) =>
+      buildDerivations(attachment, capturedAt, prepared.attachments[index]?.extractedText ?? null)
+    );
+    const envelope: AskCaptureEnvelope = {
+      id: `capture_${randomUUID()}`,
+      requestId,
+      originalText: input.originalText,
+      ingressSource: input.ingressSource,
+      capturedAt,
+      submittedUrls: extractUrls(input.originalText),
+      canonicalLinkCandidates: canonicalCandidates(extractUrls(input.originalText)),
+      attachments: attachmentReceipts,
+      derivations,
+      status: "captured",
+      authority: "untrusted_input",
+      ...(input.actor !== undefined ? { actor: input.actor } : {}),
+      ...(input.project !== undefined ? { project: input.project } : {})
+    };
     db.prepare(`INSERT INTO ask_capture_envelopes
-      (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(envelope.id, requestId, prepared.fingerprint, input.originalText, input.ingressSource, capturedAt, envelope.status, JSON.stringify(envelope));
+      (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json, routing_identity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(envelope.id, requestId, prepared.fingerprint, input.originalText, input.ingressSource, capturedAt, envelope.status, JSON.stringify(envelope),
+        input.routingIdentity === undefined || input.routingIdentity === null ? null : JSON.stringify(input.routingIdentity));
     const insertAttachment = db.prepare(`INSERT INTO ask_capture_attachments
       (id, capture_id, original_filename, media_type, byte_size, sha256, storage_reference, proposed_role, derivation_status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -115,8 +222,51 @@ export function captureAskEnvelope(db: Database.Database, input: {
       insertAttachment.run(attachment.id, envelope.id, attachment.originalFilename, attachment.mediaType,
         attachment.byteSize, attachment.sha256, attachment.storageReference, attachment.proposedRole, attachment.derivationStatus);
     }
-  })();
-  return envelope;
+    return envelope;
+  });
+}
+
+/** Fail closed when an ingress file no longer matches its receipt-time capture. */
+export function assertAskCaptureEnvelopeMatches(db: Database.Database, input: {
+  requestId: string;
+  originalText: string;
+  ingressSource: string;
+  attachments?: CaptureAttachmentInput[];
+}): void {
+  const requestId = input.requestId.trim();
+  const existing = db.prepare("SELECT fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
+    .get(requestId) as { fingerprint: string } | undefined;
+  if (!existing) throw validationError(`Ingress capture ${requestId} is missing; refusing to route unbound content.`);
+  const prepared = prepareInput(input);
+  if (existing.fingerprint !== prepared.fingerprint) {
+    throw validationError(`Ingress capture ${requestId} no longer matches its receipt-time text or attachments; refusing to route changed content.`);
+  }
+}
+
+function legacyRoutingReplayIsProven(
+  db: Database.Database,
+  captureId: string,
+  status: string,
+  identity: Record<string, unknown>
+): boolean {
+  // A prior capture with no route pin is replayable only after completion and
+  // only when its canonical Ask proves the selected Project and all other
+  // consequential routing controls are at their legacy defaults.
+  if (status !== "completed" || identity.executeReview === true || identity.correctionRoute != null ||
+      identity.approvedReviewItemId != null || identity.captureAsIdea === true || identity.milestone != null ||
+      identity.reviewReference != null || identity.surfaceCondition != null || identity.runSafe === true || identity.agentProfile != null ||
+      identity.reviewExecutor != null || identity.sourceRef != null || identity.facetTags != null) return false;
+  const ask = db.prepare(`
+    SELECT COALESCE(work.project_id, review.project_id) AS project_id
+    FROM ask_requests ask
+    LEFT JOIN execution_plans plan ON plan.id = ask.plan_id
+    LEFT JOIN work_items work ON work.id = COALESCE(ask.work_item_id, plan.work_item_id)
+    LEFT JOIN review_items review ON review.capture_id = ask.capture_id
+    WHERE ask.capture_id = ? ORDER BY ask.created_at LIMIT 1
+  `)
+    .get(captureId) as { project_id: string | null } | undefined;
+  if (!ask) return false;
+  return identity.explicitProjectId == null || identity.explicitProjectId === ask.project_id;
 }
 
 export function findCaptureRequestIdByStorageReferences(

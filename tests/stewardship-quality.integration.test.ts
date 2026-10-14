@@ -24,6 +24,58 @@ afterEach(() => {
 });
 
 describe("stewardship quality integration fixtures", () => {
+  it("validates exact-file narrowing at the final explicitly selected Project", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-final-project-scope-"));
+    const repoA = mkdtempSync(path.join(tmpdir(), "arcadia-final-project-a-"));
+    const repoB = mkdtempSync(path.join(tmpdir(), "arcadia-final-project-b-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "arcadia-final-project-outside-"));
+    workspaces.push(workspace, repoA, repoB, outside);
+    initWorkspace(workspace);
+    writeFileSync(path.join(outside, "HelloWorld.txt"), "outside", "utf8");
+    symlinkSync(path.join(outside, "HelloWorld.txt"), path.join(repoB, "HelloWorld.txt"));
+    mkdirSync(path.join(repoB, "Directory.txt"));
+    const [projectA, projectB] = withDatabase(workspace, (db) => {
+      const a = createProjectWithInitialWork(db, {
+        name: "Scope Project A", mission: "A scope fixture.", goal: "A.", status: "active",
+        currentMilestone: "Scope", nextAction: "Continue.", workClassification: "agent"
+      });
+      const b = createProjectWithInitialWork(db, {
+        name: "Scope Project B", mission: "B scope fixture.", goal: "B.", status: "active",
+        currentMilestone: "Scope", nextAction: "Continue.", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: a.project.id, repoPath: repoA, aliases: [a.project.name], validationCommands: [] });
+      upsertProjectMetadata(db, { projectId: b.project.id, repoPath: repoB, aliases: [b.project.name], validationCommands: [] });
+      return [a.project, b.project];
+    });
+
+    const safeRequest = runAskCommand({
+      workspace, project: projectB.name,
+      request: `Implement NewNote.txt in ${projectA.name}, containing exactly the bytes "Hello!\\n".`
+    });
+    expect(safeRequest.data.stewardship.generatedCodexGoalText).toContain("Create only NewNote.txt");
+
+    const optionOnly = runAskCommand({
+      workspace, project: projectB.name,
+      request: `Implement HelloWorld.txt, containing exactly the bytes "Hello!\\n".`
+    });
+    expect(optionOnly.data.stewardship.generatedCodexGoalText).not.toContain("Create only HelloWorld.txt");
+    expect(optionOnly.data.intake.extractedFields.requestedArtifact).toBeUndefined();
+
+    const symlinkRequest = runAskCommand({
+      workspace, project: projectB.name,
+      request: `Implement HelloWorld.txt in ${projectA.name}, containing exactly the bytes "Hello!\\n".`
+    });
+    expect(symlinkRequest.data.stewardship.generatedCodexGoalText).not.toContain("Create only HelloWorld.txt");
+    expect(symlinkRequest.data.intake.extractedFields.requestedArtifact).toBeUndefined();
+
+    const directoryRequest = runAskCommand({
+      workspace, project: projectB.name,
+      request: `Implement Directory.txt in ${projectA.name}, containing exactly the bytes "Hello!\\n".`
+    });
+    expect(directoryRequest.data.stewardship.generatedCodexGoalText).not.toContain("Create only Directory.txt");
+    expect(directoryRequest.data.intake.extractedFields.requestedArtifact).toBeUndefined();
+  });
+
   it("refuses exact-file narrowing when the named output is a symlink", () => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-scope-root-"));
     const outside = mkdtempSync(path.join(tmpdir(), "arcadia-scope-outside-"));
