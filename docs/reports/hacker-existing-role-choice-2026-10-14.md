@@ -77,3 +77,19 @@ host access is required:
 
 The guidance files are source artifacts. Installed adoption and automatic
 invocation remain separate, unproved stages; merging this PR proves neither.
+
+## Independent review and preservation receipt
+
+An independent read-only context passed head
+`37a4e13c0c1bbf7452250eb44250f2b4456e6f45` against base
+`f6de70becab5be70d38c9e20df9a0d674804cbb2`, with no blocking or nonblocking
+findings. It independently checked guidance fingerprints, instruction evidence,
+archive bytes and whitespace; it did not rerun the author's 51 tests. The
+session-ledger row is a snapshot after that full-head review; any subsequent
+record-only delta verification is recorded on PR1413.
+
+The first sandboxed `git add` was refused because the common Git directory's
+`index.lock` was outside the write boundary. The same supported isolated-branch
+operation succeeded through ordinary host permission recovery under the direct
+operator instruction, with freshly resolved agent identity. No claim, Go
+reservation, profile or shared-main workaround was used.

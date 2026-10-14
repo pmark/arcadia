@@ -1,0 +1,33 @@
+{
+  "session_id": "01a13c30-6123-7aa1-8d85-8c55fd16befe",
+  "role": "lead",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "configured_effort": "high",
+  "effective_effort": "high",
+  "effort_source": "native turn_context receipt",
+  "action_id": "operator-directed:hacker-existing-role-choice",
+  "pr": 1413,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-git-index-host-permission",
+      "cost_min": null,
+      "fix_ref": null
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Choice recorded; naming pending. Snapshot after full-head review1; later record-only delta verification is tracked in PR.",
+  "candidate_head": "37a4e13c0c1bbf7452250eb44250f2b4456e6f45",
+  "evidence_source": "docs/reports/hacker-existing-role-choice-2026-10-14.md",
+  "task_class": "operator-directed governance documentation"
+}
