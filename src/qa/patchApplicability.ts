@@ -642,7 +642,9 @@ const DOCS_PROSE_PREFIXES = ["docs/reports/"];
 const AUTHORITY_PREFIXES = ["docs/agent-guidance/", "docs/decisions/", "docs/plans/", "runs/"];
 const AUTHORITY_PATHS = new Set([
   "docs/agents-context.md", "docs/managed-documents.md", "docs/planning-process.md",
-  "docs/working-copy-safety.md", "docs/managed-production-readiness.md"
+  "docs/working-copy-safety.md", "docs/managed-production-readiness.md",
+  // Under the prose prefix docs/reports/, but `arcadia plan close-out` reads its legacy friction table into a hashed record.
+  "docs/reports/production-simulation-living-notes.md"
 ]);
 /** Directories whose documents are agent instructions (commands, skills, rules, hooks). */
 const AGENT_DIRECTORIES = new Set(["commands", "agents", "skills", "rules", "hooks", "workflows", "instructions", "prompts", "modes", "chatmodes", "personas"]);
