@@ -21,9 +21,7 @@
       "title": "Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.",
       "status": "done",
       "outcome": "done",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -35,9 +33,7 @@
       "title": "Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.",
       "status": "done",
       "outcome": "split",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -58,9 +54,7 @@
       "title": "Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.",
       "status": "done",
       "outcome": "split",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -72,9 +66,7 @@
       "title": "Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.",
       "status": "done",
       "outcome": "done",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -86,9 +78,7 @@
       "title": "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly.",
       "status": "done",
       "outcome": "done",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -100,9 +90,7 @@
       "title": "Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.",
       "status": "done",
       "outcome": "done",
-      "prs": [
-        1348
-      ],
+      "prs": [],
       "ledgerSessions": [],
       "completion": {
         "date": "2026-10-12",
@@ -239,5 +227,5 @@
     "recommendation": null,
     "reason": "the Plan document names no successor"
   },
-  "hash": "a765eabe4e1930f30d9d1c31ec00a1262a7615ac51676790558d0a9b327798be"
+  "hash": "64e7f9104cdaf08e7acc182af58faf9580ea98250b5dbdafbfcb36a6ebdfb61a"
 }

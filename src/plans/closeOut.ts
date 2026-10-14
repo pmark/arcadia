@@ -321,24 +321,32 @@ export function parseSuccessor(body: string): { recommendation: string | null; r
 }
 
 /**
- * Resolves a commit sha to the PR whose merge commit first brought it into the default branch:
- * `git log --merges --first-parent --ancestry-path --format=%s <sha>..<branch>`, oldest merge, `Merge pull request #N`.
- * Returns null when the sha is unknown, not merged, or the merge subject names no PR.
+ * Resolves a commit sha to the PR that brought it in, never by "next merge". A sha belongs to PR N only when
+ * a `Merge pull request #N` commit M on the default branch's first-parent line has the sha reachable from
+ * M^2 and not from M^1, or when the sha is itself a first-parent squash commit whose subject ends `(#N)`.
+ * A commit that landed directly on the branch, or an unknown/unmerged sha, resolves to null.
  */
 export function gitShaToPr(repoRoot: string): (sha: string) => number | null {
   const run = (args: string[]): string | null => {
     try { return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; }
   };
+  const ok = (args: string[]): boolean => run(args) !== null;
   const remoteHead = run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?.trim();
-  const branch = [remoteHead, "main", "master", "HEAD"].find((name): name is string => !!name && run(["rev-parse", "--verify", "--quiet", `${name}^{commit}`]) !== null);
+  const branch = [remoteHead, "main", "master", "HEAD"].find((name): name is string => !!name && ok(["rev-parse", "--verify", "--quiet", `${name}^{commit}`]));
   return (sha: string): number | null => {
     if (!branch || !/^[0-9a-f]{7,40}$/.test(sha)) return null;
-    const out = run(["log", "--merges", "--first-parent", "--ancestry-path", "--format=%s", `${sha}..${branch}`]);
-    if (out === null) return null;
-    const subjects = out.split("\n").filter(line => line !== "");
-    for (let index = subjects.length - 1; index >= 0; index -= 1) {
-      const match = /^Merge pull request #(\d+)\b/.exec(subjects[index]);
-      if (match) return Number(match[1]);
+    const full = run(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`])?.trim();
+    if (!full || !ok(["merge-base", "--is-ancestor", full, branch])) return null;
+    const subject = run(["log", "-1", "--format=%s", full])?.trim() ?? "";
+    const squash = /\(#(\d+)\)$/.exec(subject);
+    const firstParent = run(["rev-list", "--first-parent", branch])?.split("\n") ?? [];
+    if (squash && firstParent.includes(full) && run(["rev-list", "--parents", "-n", "1", full])?.trim().split(" ").length === 2) return Number(squash[1]);
+    const merges = run(["log", "--merges", "--first-parent", "--ancestry-path", "--format=%H %s", `${full}..${branch}`]);
+    if (merges === null) return null;
+    for (const line of merges.split("\n").filter(entry => entry !== "").reverse()) {
+      const match = /^([0-9a-f]{40}) Merge pull request #(\d+)\b/.exec(line);
+      if (!match) continue;
+      if (ok(["merge-base", "--is-ancestor", full, `${match[1]}^2`]) && !ok(["merge-base", "--is-ancestor", full, `${match[1]}^1`])) return Number(match[2]);
     }
     return null;
   };

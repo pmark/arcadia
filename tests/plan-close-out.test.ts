@@ -295,3 +295,62 @@ describe("evidence, closed flag, PR resolution and the load path", () => {
     });
   });
 });
+
+describe("gitShaToPr attribution", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  const sh = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+  const commit = (root: string, file: string, message: string): string => {
+    writeFileSync(path.join(root, file), message);
+    sh(root, "add", "-A");
+    sh(root, "commit", "-q", "-m", message);
+    return sh(root, "rev-parse", "HEAD");
+  };
+  const repo = (): string => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "close-out-attr-"));
+    dirs.push(root);
+    sh(root, "init", "-q", "-b", "main");
+    commit(root, "base.txt", "base");
+    return root;
+  };
+  const pr = (root: string, branch: string, number: number, from = "main"): string => {
+    sh(root, "checkout", "-q", "-b", branch, from);
+    const sha = commit(root, `${branch}.txt`, `work on ${branch}`);
+    sh(root, "checkout", "-q", "main");
+    return sha;
+  };
+  const merge = (root: string, branch: string, number: number): void => {
+    sh(root, "merge", "--no-ff", "-q", "-m", `Merge pull request #${number} from o/${branch}`, branch);
+  };
+
+  it("attributes a sha inside a no-ff PR branch to that PR", () => {
+    const root = repo();
+    const sha = pr(root, "f1", 5);
+    merge(root, "f1", 5);
+    expect(gitShaToPr(root)(sha)).toBe(5);
+  });
+
+  it("returns null for a sha committed directly on main followed by an unrelated merged PR", () => {
+    const root = repo();
+    const direct = commit(root, "direct.txt", "settle commit pushed straight to main");
+    pr(root, "other", 9);
+    merge(root, "other", 9);
+    expect(gitShaToPr(root)(direct)).toBeNull();
+  });
+
+  it("attributes a sha that is itself a squash commit to its (#N)", () => {
+    const root = repo();
+    const squash = commit(root, "sq.txt", "feat: squashed change (#77)");
+    expect(gitShaToPr(root)(squash)).toBe(77);
+  });
+
+  it("picks the second merge when only it contains the sha", () => {
+    const root = repo();
+    const first = pr(root, "f1", 1);
+    const second = pr(root, "f2", 2);
+    merge(root, "f1", 1);
+    merge(root, "f2", 2);
+    expect(gitShaToPr(root)(second)).toBe(2);
+    expect(gitShaToPr(root)(first)).toBe(1);
+  });
+});
