@@ -236,6 +236,8 @@ export interface PreflightResult {
   status: "pass" | "fail" | "unknown";
   blocker: string | null;
   remedy: string | null;
+  /** Informational context for a pass (never a blocker). */
+  note?: string | null;
 }
 
 export const INPUT_NAMES = ["preferences", "queue", "redAlerts", "runId", "sessionId", "runAsks"] as const;
@@ -368,6 +370,12 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
       check: "queue_order_valid", ok: false, status: "fail",
       blocker: `The global queue order is invalid with ${global.unpositionedCount} unpositioned Action(s) in Project(s): ${global.unpositionedProjects.join(", ") || "none named"}; dispatch is blocked for every Project.`,
       remedy: placeRemedy
+    });
+  } else if (project === "") {
+    // No Project in play: only the global verdict (valid here) is reportable; never evaluate an empty name.
+    out.push({
+      check: "queue_order_valid", ok: true, status: "pass", blocker: null, remedy: null,
+      note: "global queue order is valid (no Project selected)"
     });
   } else if (queue === null) {
     out.push({

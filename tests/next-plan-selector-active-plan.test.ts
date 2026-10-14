@@ -131,6 +131,51 @@ describe("S3: authorship unknown never offers run", () => {
   });
 });
 
+describe("no Project selected: only the global queue verdict is reported", () => {
+  const none = (overrides: Partial<SelectorInput> = {}) =>
+    selectNextPlan(input({ preferences: [], plans: [], activePlans: {}, queues: [], ...overrides }));
+  const queueCheck = (r: ReturnType<typeof selectNextPlan>) => r.preflight.find(c => c.check === "queue_order_valid")!;
+
+  it("global valid passes with no blocker and a note, never an empty Project name", () => {
+    const check = queueCheck(none({ queueGlobal: { orderValid: true, unpositionedCount: 0, unpositionedProjects: [] } }));
+    expect(check.status).toBe("pass");
+    expect(check.ok).toBe(true);
+    expect(check.blocker).toBeNull();
+    expect(check.note).toBe("global queue order is valid (no Project selected)");
+  });
+
+  it("global invalid fails naming the count and Projects", () => {
+    const check = queueCheck(none({ queueGlobal: { orderValid: false, unpositionedCount: 3, unpositionedProjects: ["ppn"] } }));
+    expect(check.status).toBe("fail");
+    expect(check.blocker).toContain("3 unpositioned");
+    expect(check.blocker).toContain("ppn");
+  });
+
+  it("global unreadable is unknown naming the reader error", () => {
+    const check = queueCheck(none({ queues: null, queueGlobal: null, liveErrors: { queue: "SqliteError" } }));
+    expect(check.status).toBe("unknown");
+    expect(check.blocker).toContain("SqliteError");
+  });
+
+  it("no message contains an empty Project name", () => {
+    for (const global of [
+      { orderValid: true, unpositionedCount: 0, unpositionedProjects: [] },
+      { orderValid: false, unpositionedCount: 1, unpositionedProjects: ["ppn"] }
+    ]) {
+      const text = JSON.stringify(none({ queueGlobal: global }));
+      expect(text).not.toContain("for ,");
+      expect(text).not.toMatch(/entry for\s*,/);
+    }
+  });
+
+  it("a selected Project with no queue entry stays unknown", () => {
+    const result = selectNextPlan(input({ queues: [], activePlans: { arcadia: null }, queueGlobal: { orderValid: true, unpositionedCount: 0, unpositionedProjects: [] } }));
+    expect(result.chosen).not.toBeNull();
+    expect(queueCheck(result).status).toBe("unknown");
+    expect(queueCheck(result).blocker).toContain("arcadia");
+  });
+});
+
 describe("fail closed: a Project absent from activePlans has an UNKNOWN active Plan", () => {
   it("a queue entry alone is not a pointer: unknown, not ready, no run option", () => {
     const adapted = adaptQueue(queueWith([]), {});
