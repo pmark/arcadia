@@ -4,7 +4,7 @@ type: decision
 id: "0129"
 slug: decide-whether-to-authorize-one-bounded-native-source-repair-for-the-existing
 project: arcadia
-status: open
+status: approved
 question: Decide whether to authorize one bounded native source repair for the existing Agent Ask scalar-amendment bug that now blocks safe PPN acceptance-criteria repair and protected Go.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
-updated: 2026-10-14
+updated: 2026-10-13
+answer: Authorize the bounded scalar-writer repair
+decided: 2026-10-13
 ---
 
 # Decision 0129: Decide whether to authorize one bounded native source repair for the existing Agent Ask scalar-amendment bug that now blocks safe PPN acceptance-criteria repair and protected Go.
