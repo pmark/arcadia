@@ -118,7 +118,7 @@
       "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
       "path": "docs/agent-guidance/ask-todo-scout.md",
       "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
-      "sha256": "f95eed75ef768e2933a0d27b185dee489822baca0941987b8fd24c8b840eb410"
+      "sha256": "8a6847fbf5c77a49e6c5b1eb1ab4a6b2b4b263b8e1453209224a092ed78bbb0e"
     },
     {
       "id": "session-roles-and-briefs",
@@ -133,6 +133,13 @@
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
       "sha256": "b737deb3861d9833e915b69f0f04c432b7072ad399209f3ecf8d2f6f1b4f1c74"
+    },
+    {
+      "id": "scout-continuation",
+      "trigger": "continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff",
+      "path": "docs/scout/CONTINUE.md",
+      "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
+      "sha256": "d51c7bbd8256ceb9f9e6862e82d8a71f7ba27ec9ab505b3f8f4611e18b3273ef"
     }
   ]
 }
