@@ -2430,14 +2430,12 @@ command existed are linked when their text and time match exactly one capture.
 If a capture is marked `partial`, `ask show <request-id>` lists any capture-linked
 Actions, Plans, Decisions, or Back Burner items and explains that automatic retry
 is unsafe. For a partial capture linked to a Review, inspect its Decision, original
-reply, Action, Plan, approval claim, and Run outcomes. Only when Ask show lists an
-approval claim and its Action/Plan, the Review remains open or deferred, and no Run
-is listed, use the exact Review id shown there with
-`pnpm arcadia review approve <review-id> --execute`; Arcadia resumes that claim and
-reuses its Action and Plan. If a Run is listed, do not submit another approval.
-Otherwise continue the original reply's approval, rejection, deferral, or answer intent
-only after inspecting the recorded effects. Never treat a partial receipt as proof
-that nothing happened.
+reply, Action, Plan, approval claim, and Run outcomes. If a Run is listed, do not
+submit another approval. Otherwise inspect the original reply and all recorded
+effects, including any existing claim, before continuing that reply's approval,
+rejection, deferral, or answer intent. The claim preserves its Action and Plan for a
+later valid approval, but the capture link alone does not identify the reply's intent.
+Never treat a partial receipt as proof that nothing happened.
 
 To see how much of your input actually reaches Arcadia through Ask or Ingress,
 run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is

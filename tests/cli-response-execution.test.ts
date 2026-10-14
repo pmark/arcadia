@@ -37,6 +37,80 @@ describe("CLI response contract — execution and review", () => {
     }
   });
 
+  it("keeps an earlier approval claim from overriding a captured reject or defer reply", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const project = createProject(workspace);
+    withDatabase(workspace, (db) => upsertProjectMetadata(db, {
+      projectId: project.project.id,
+      aliases: ["CLI Fixture Project"],
+      repoPath: repo,
+      statusSummary: "Fixture repo.",
+      validationCommands: ["test -f HelloWorld.txt"]
+    }));
+    const sourceInput = 'Implement HelloWorld.txt in CLI Fixture Project, containing exactly the bytes "Hello World!\\n". Change no other project files.';
+    const reviewId = withDatabase(workspace, (db) => {
+      const ask = createAskRequest(db, {
+        rawRequest: sourceInput,
+        resolvedIntent: "CreateWork",
+        registryVersion: 1,
+        outputKind: "requires_review",
+        status: "requires_review"
+      });
+      return createReviewItem(db, {
+        askRequestId: ask.id,
+        projectId: project.project.id,
+        decisionNeeded: "Approve this scoped Action.",
+        recommendation: "Approve the exact requested file.",
+        sourceInput,
+        proposedAction: sourceInput,
+        resolvedIntent: "CreateWork",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {}
+      }).id;
+    });
+    withDatabase(workspace, (db) => db.exec(
+      "CREATE TRIGGER refuse_claim_run BEFORE INSERT ON execution_runs BEGIN SELECT RAISE(ABORT, 'claim run refused'); END"
+    ));
+    expect(() => runReviewApproveCommand({ workspace, id: reviewId, execute: true, executor: "codex" })).toThrow(/claim run refused/);
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER refuse_claim_run"));
+    const claim = withDatabase(workspace, (db) => db.prepare(
+      "SELECT work_item_id, plan_id FROM review_approval_claims WHERE review_item_id = ?"
+    ).get(reviewId) as { work_item_id: string; plan_id: string } | undefined);
+    expect(claim?.work_item_id).toBeTruthy();
+    expect(claim?.plan_id).toBeTruthy();
+
+    for (const disposition of ["reject", "defer"] as const) {
+      const nextStatus = disposition === "reject" ? "rejected" : "deferred";
+      const triggerName = `refuse_${disposition}_before_resolve`;
+      withDatabase(workspace, (db) => db.exec(
+        `CREATE TRIGGER ${triggerName} BEFORE UPDATE OF status ON review_items WHEN NEW.id = '${reviewId}' AND NEW.status = '${nextStatus}' BEGIN SELECT RAISE(ABORT, '${disposition} blocked before resolver'); END`
+      ));
+      const requestId = `partial-${disposition}-with-claim`;
+      expect(() => runAskCommand({
+        workspace,
+        request: `${disposition} ${reviewId}`,
+        requestId,
+        adapterMetadata: { reviewId }
+      })).toThrow(`${disposition} blocked before resolver`);
+      withDatabase(workspace, (db) => db.exec(`DROP TRIGGER ${triggerName}`));
+      const shown = runAskShowCommand({ workspace, id: requestId });
+      expect(shown.data.capture).toMatchObject({ status: "partial", relatedReviewId: reviewId });
+      expect(shown.data.capture?.outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "approval_claim", id: reviewId }),
+        expect.objectContaining({ kind: "action", id: claim?.work_item_id }),
+        expect.objectContaining({ kind: "plan", id: claim?.plan_id })
+      ]));
+      expect(withDatabase(workspace, (db) => getReviewItem(db, reviewId))).toMatchObject({ status: "open" });
+      const trailText = renderAskTrailSuccess(shown).join("\n");
+      expect(trailText).toContain("existing approval claim");
+      expect(trailText).not.toContain(`arcadia review approve ${reviewId} --execute`);
+      expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n).toBe(0);
+    }
+  });
+
   it("pins explicit Project routing to the request id and shows the original Project on replay", () => {
     const workspace = initializedWorkspace();
     const repo = initializedGitRepo();
@@ -884,7 +958,9 @@ describe("CLI response contract — execution and review", () => {
       expect.objectContaining({ kind: "action", id: claim?.work_item_id }),
       expect.objectContaining({ kind: "plan", id: claim?.plan_id })
     ]));
-    expect(renderAskTrailSuccess(failedShow).join("\n")).toContain(`arcadia review approve ${reviewId} --execute`);
+    expect(failedShow.data.capture?.outcomes).toContainEqual(expect.objectContaining({ kind: "approval_claim", id: reviewId }));
+    expect(renderAskTrailSuccess(failedShow).join("\n")).toContain("existing approval claim");
+    expect(renderAskTrailSuccess(failedShow).join("\n")).not.toContain(`arcadia review approve ${reviewId} --execute`);
 
     const exactRetry = runAskCommand({
       workspace,

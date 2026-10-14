@@ -288,14 +288,10 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
       `Text: ${capture.originalText.split("\n")[0]}`
     );
     if (capture.status === "partial") {
-      const linkedDecision = capture.outcomes.find((outcome) => outcome.kind === "decision" && outcome.id === capture.relatedReviewId);
       const linkedRun = capture.outcomes.find((outcome) => outcome.kind === "run");
-      const linkedApprovalClaim = capture.outcomes.find((outcome) => outcome.kind === "approval_claim" && outcome.id === capture.relatedReviewId);
       const recovery = linkedRun
         ? `Recovery: Review ${capture.relatedReviewId} already has Run ${linkedRun.id} [${linkedRun.status}]; do not submit another approval.`
-        : capture.relatedReviewId && linkedDecision && linkedApprovalClaim && ["open", "deferred"].includes(linkedDecision.status ?? "")
-          ? `Recovery: inspect this Review's Action/Plan. Resume only with arcadia review approve ${capture.relatedReviewId} --execute; its approval claim reuses that exact Action/Plan. Do not replay this Ask as a new approval.`
-          : "Recovery: do not retry automatically; inspect the listed durable effects and original reply. Continue the original approval, rejection, deferral, or answer intent only after confirming its outcome.";
+        : `Recovery: do not retry automatically; inspect the listed durable effects and original reply${capture.outcomes.some((outcome) => outcome.kind === "approval_claim") ? " and note the existing approval claim" : ""}. Continue the original approval, rejection, deferral, or answer intent only after confirming its outcome.`;
       lines.push(recovery);
       for (const outcome of capture.outcomes) {
         lines.push(`  → ${outcome.kind} ${outcome.id}${outcome.status ? ` (${outcome.status})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
