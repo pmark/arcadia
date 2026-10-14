@@ -11,7 +11,7 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 2,
+  "review_rounds": 3,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -23,5 +23,5 @@
     }
   ],
   "outcome": "split",
-  "notes": "Recovery instructions and proposed official contract. Taxonomy registration/Decision, installed skill adoption and any automatic invocation remain pending; PR records final head review/CI. Follow-up integrates operator-supplied simplification prior art into existing responsibilities; new head requires delta review and CI."
+  "notes": "Hacker proposal and selective simplification guidance. Role registration and installed adoption pending; PR records final-head review/CI."
 }
