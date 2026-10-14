@@ -1,0 +1,33 @@
+{
+  "session_id": "01a13873-456a-7251-b927-5806072014ba",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "operator-directed:#1388",
+  "pr": 1394,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 5,
+  "blocking_findings": [
+    {
+      "class": "ingress-provenance-continuity",
+      "caught_by": "PR1394 independent Code-reviewer and QA R5"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "scout-review-limit-provenance-gap",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1401"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Operator requested wrap-up; PR1394 final R5 remains blocked at the five-round limit. Proposal-only review clarification registered; no additional review or live launch authorized.",
+  "notes": "PR1394: 299 source tests/all7 CI pass; R5 blocked. Consumer patch preserved only. No liveScout/HelloWorld proof. Review rounds refer to PR1394."
+}
