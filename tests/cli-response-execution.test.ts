@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createAskRequest, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
@@ -712,6 +712,67 @@ describe("CLI response contract — execution and review", () => {
     } finally {
       process.env["PATH"] = prevPath;
     }
+  });
+
+  it("resumes the same CreateWork Action and Plan when queue insertion fails after approval", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const project = createProject(workspace);
+    withDatabase(workspace, (db) => upsertProjectMetadata(db, {
+      projectId: project.project.id,
+      aliases: ["CLI Fixture Project"],
+      repoPath: repo,
+      statusSummary: "HelloWorld fixture repo.",
+      validationCommands: ["test -f HelloWorld.txt"]
+    }));
+    const sourceInput = 'Implement HelloWorld.txt in CLI Fixture Project, containing exactly the bytes "Hello World!\\n". Change no other project files.';
+    const reviewId = withDatabase(workspace, (db) => {
+      const ask = createAskRequest(db, {
+        rawRequest: sourceInput,
+        resolvedIntent: "CreateWork",
+        registryVersion: 1,
+        outputKind: "requires_review",
+        status: "requires_review"
+      });
+      return createReviewItem(db, {
+        askRequestId: ask.id,
+        projectId: project.project.id,
+        decisionNeeded: "Approve this scoped Ask-created Action.",
+        recommendation: "Approve the exact requested file.",
+        sourceInput,
+        proposedAction: sourceInput,
+        resolvedIntent: "CreateWork",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: {}
+      }).id;
+    });
+    const actionsBefore = withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM work_items").get() as { n: number }).n;
+    const plansBefore = withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_plans").get() as { n: number }).n;
+    const runsBefore = withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n;
+    withDatabase(workspace, (db) => db.exec(
+      "CREATE TRIGGER no_execution_run BEFORE INSERT ON execution_runs BEGIN SELECT RAISE(ABORT, 'run row refused'); END"
+    ));
+    expect(() => runReviewApproveCommand({ workspace, id: reviewId, execute: true, executor: "codex" }))
+      .toThrow(/run row refused/);
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER no_execution_run"));
+    const claim = withDatabase(workspace, (db) => db.prepare(
+      "SELECT work_item_id, plan_id FROM review_approval_claims WHERE review_item_id = ?"
+    ).get(reviewId) as { work_item_id: string; plan_id: string } | undefined);
+    expect(claim?.work_item_id).toBeTruthy();
+    expect(claim?.plan_id).toBeTruthy();
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM work_items").get() as { n: number }).n).toBe(actionsBefore + 1);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n).toBe(runsBefore);
+
+    const retried = runReviewApproveCommand({ workspace, id: reviewId, execute: true, executor: "codex" });
+    expect(retried.data.run?.id).toBeTruthy();
+    expect(withDatabase(workspace, (db) => db.prepare(
+      "SELECT work_item_id, plan_id FROM execution_runs WHERE id = ?"
+    ).get(retried.data.run?.id))).toEqual(claim);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n).toBe(runsBefore + 1);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM work_items").get() as { n: number }).n).toBe(actionsBefore + 1);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_plans").get() as { n: number }).n).toBe(plansBefore + 1);
   });
 
   it("refuses an Ask approval that conflicts with a pre-attached Action", () => {

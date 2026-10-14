@@ -203,11 +203,6 @@ function runAskCommandWithRouting(
   flagEnabled: boolean,
   trace: { memo?: AskMemo }
 ): CommandSuccess<AskCommandData> {
-  const normalizedInput = normalizeAskInput(options.request);
-  const submittedRequest = normalizedInput.askText;
-  const askRules = withDatabase(workspacePath, (db) =>
-    validateAskRuleRegistry(workspacePath, db, loadAskRuleRegistry(workspacePath))
-  );
   const captureEnvelope = withDatabase(workspacePath, (db) => captureAskEnvelope(db, {
     requestId: options.requestId,
     originalText: options.request,
@@ -215,6 +210,68 @@ function runAskCommandWithRouting(
     attachments: options.attachments,
     reuseExisting: options.reuseCaptureEnvelope
   }));
+  // Approval follow-up intentionally reuses a completed capture to attach the
+  // approved Action to the same journey; its transactional approval claim is
+  // the idempotency guard for that path.
+  if (options.reuseCaptureEnvelope) {
+    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
+  }
+  const claim = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+    const row = db.prepare("SELECT status FROM ask_capture_envelopes WHERE id = ?").get(captureEnvelope.id) as
+      | { status: string } | undefined;
+    if (!row) throw new Error(`Ask capture ${captureEnvelope.id} disappeared before processing.`);
+    const priorAsk = db.prepare("SELECT id FROM ask_requests WHERE capture_id = ? ORDER BY created_at LIMIT 1")
+      .get(captureEnvelope.id) as { id: string } | undefined;
+    if (priorAsk) return { kind: "complete" as const };
+    if (row.status === "captured") {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'processing' WHERE id = ? AND status = 'captured'")
+        .run(captureEnvelope.id);
+      return { kind: "claimed" as const };
+    }
+    return { kind: row.status === "processing" ? "processing" as const : "failed" as const };
+  }));
+  if (claim.kind === "complete") {
+    return runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
+  }
+  if (claim.kind !== "claimed") {
+    const existing = ignoredAskData(options.request);
+    const summary = claim.kind === "processing"
+        ? `Request ${captureEnvelope.requestId} is already being processed; inspect it with ask show ${captureEnvelope.requestId}.`
+        : `Request ${captureEnvelope.requestId} did not finish processing; inspect it with ask show ${captureEnvelope.requestId} before retrying.`;
+    return createSuccess({
+      command: "ask",
+      workspace: workspacePath,
+      data: { ...existing, captureEnvelope, result: { status: claim.kind === "processing" ? "captured" : "ignored", summary } }
+    });
+  }
+  try {
+    const response = runAskCommandAfterCapture(options, workspacePath, flagEnabled, trace, captureEnvelope);
+    withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'completed' WHERE id = ? AND status = 'processing'")
+        .run(captureEnvelope.id);
+    }));
+    return response;
+  } catch (error) {
+    withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'failed' WHERE id = ? AND status = 'processing'")
+        .run(captureEnvelope.id);
+    }));
+    throw error;
+  }
+}
+
+function runAskCommandAfterCapture(
+  options: AskOptions,
+  workspacePath: string,
+  flagEnabled: boolean,
+  trace: { memo?: AskMemo },
+  captureEnvelope: AskCaptureEnvelope
+): CommandSuccess<AskCommandData> {
+  const normalizedInput = normalizeAskInput(options.request);
+  const submittedRequest = normalizedInput.askText;
+  const askRules = withDatabase(workspacePath, (db) =>
+    validateAskRuleRegistry(workspacePath, db, loadAskRuleRegistry(workspacePath))
+  );
   // A request id is an idempotency key for the whole Ask journey, not just its
   // capture envelope. Return the existing receipt instead of routing the same
   // captured input into a second Ask when a caller retries after a lost reply.
@@ -275,12 +332,6 @@ function runAskCommandWithRouting(
   const parsedIntake = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
     const parsed = resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 });
-    const requestedFile = parsed.extractedFields.requestedArtifact;
-    const project = parsed.project?.id ? getProjectMetadata(db, parsed.project.id) : null;
-    if (requestedFile && /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}$/.test(requestedFile) && !safeSingleFileScope(project?.repo_path, requestedFile)) {
-      const { requestedArtifact: _discarded, ...extractedFields } = parsed.extractedFields;
-      return { intake: { ...parsed, extractedFields }, workspaceContext };
-    }
     return { intake: parsed, workspaceContext };
   });
   let intake = parsedIntake.intake;
@@ -356,16 +407,33 @@ function runAskCommandWithRouting(
   const route: AskRoute | undefined = options.correctionRoute ?? memo?.type;
   // An explicit Project from the operator wins over the one the memo remembers.
   const projectRef = options.project ?? memo?.projectId ?? undefined;
-  // A work correction takes the approved-Decision path: it skips Clarify First and Back Burner and creates the Action.
-  const forceWork = route === "work";
-  const correcting = route !== undefined;
-  // Work, idea and status corrections (and memos) never take a direct answer route (project create/update, listings).
-  const skipDirectRoutes = route === "work" || route === "idea" || route === "status";
-  const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
-  const selectedProject = selectProject(projectRef) ?? (intake.project ? { id: intake.project.id, name: intake.project.name } : null);
-  // The final route may differ from intake's fuzzy Project guess (for example
-  // an explicit --project option). Validate the exact-file claim against the
-  // repository that will actually receive the Action.
+  const routing = withDatabase(workspacePath, (db) => {
+    const explicit = resolveProjectReference(db, projectRef);
+    if (projectRef && !explicit) {
+      throw projectNotFound(projectRef);
+    }
+    const review = parsedReviewResponse.reviewId
+      ? getReviewItem(db, parsedReviewResponse.reviewId)
+      : parsedReviewResponse.reviewSlug
+        ? getReviewItemBySlug(db, parsedReviewResponse.reviewSlug)
+        : null;
+    const extractedId = projectIdFromIntake(intake) ?? intake.project?.id ?? null;
+    const extracted = resolveProjectReference(db, extractedId);
+    return buildAskRoutingDecision({
+      explicit,
+      prefix: ruleMatch?.rule.destination,
+      reply: resolveProjectReference(db, review?.project_id),
+      extracted,
+      general: resolveGeneralProjectReference(db, request)
+    });
+  });
+  const routedProjectId = routing.selected?.projectId ?? null;
+  const routedProject = routedProjectId
+    ? withDatabase(workspacePath, (db) => resolveProjectReference(db, routedProjectId))
+    : null;
+  const selectedProject = routedProject ?? selectProject(projectRef) ?? (intake.project ? { id: intake.project.id, name: intake.project.name } : null);
+  // Scope belongs to the repository selected by the final routing precedence,
+  // which can differ from intake's fuzzy Project guess.
   const finalRepoPath = selectedProject
     ? withDatabase(workspacePath, (db) => getProjectMetadata(db, selectedProject.id)?.repo_path)
     : null;
@@ -375,6 +443,12 @@ function runAskCommandWithRouting(
     const { requestedArtifact: _discarded, ...extractedFields } = intake.extractedFields;
     intake = { ...intake, extractedFields };
   }
+  // A work correction takes the approved-Decision path: it skips Clarify First and Back Burner and creates the Action.
+  const forceWork = route === "work";
+  const correcting = route !== undefined;
+  // Work, idea and status corrections (and memos) never take a direct answer route (project create/update, listings).
+  const skipDirectRoutes = route === "work" || route === "idea" || route === "status";
+  const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
   const { resolved, computedStewardship } = deriveStewardship(approvedFromReview, selectedProject);
   let stewardship: GoalStewardshipResult = options.captureAsIdea || route === "idea"
     ? {
@@ -403,27 +477,6 @@ function runAskCommandWithRouting(
     // A memo hit says so; otherwise the rules' own confidence label.
     confidence: memo ? "memo" : intake.confidenceLabel
   };
-  const routing = withDatabase(workspacePath, (db) => {
-    const explicit = resolveProjectReference(db, projectRef);
-    if (projectRef && !explicit) {
-      throw projectNotFound(projectRef);
-    }
-    const review = parsedReviewResponse.reviewId
-      ? getReviewItem(db, parsedReviewResponse.reviewId)
-      : parsedReviewResponse.reviewSlug
-        ? getReviewItemBySlug(db, parsedReviewResponse.reviewSlug)
-        : null;
-    const extractedId = projectIdFromIntake(intake) ?? intake.project?.id ?? null;
-    const extracted = resolveProjectReference(db, extractedId);
-    return buildAskRoutingDecision({
-      explicit,
-      prefix: ruleMatch?.rule.destination,
-      reply: resolveProjectReference(db, review?.project_id),
-      extracted,
-      general: resolveGeneralProjectReference(db, request)
-    });
-  });
-  const routedProjectId = routing.selected?.projectId ?? null;
   if (ruleMatch) {
     processingReceipt = buildAskProcessingReceipt({
       match: ruleMatch,
@@ -1411,6 +1464,12 @@ function runAskCommandWithRouting(
  */
 function linkApprovedDecisionToAsk(db: Database.Database, reviewItemId: string | undefined, askId: string): void {
   if (!reviewItemId) return;
+  const current = db.prepare("SELECT status, resulting_ask_request_id FROM review_items WHERE id = ?").get(reviewItemId) as
+    | { status: string; resulting_ask_request_id: string | null } | undefined;
+  // Queue insertion can fail after the Action/Ask/link commit. A retry resumes
+  // the claimed Action and creates its retry receipt; the original link is
+  // already authoritative and must not make that retry fail.
+  if ((current?.status === "open" || current?.status === "deferred") && current.resulting_ask_request_id) return;
   const linked = db.prepare(
     `UPDATE review_items SET resulting_ask_request_id = ?
       WHERE id = ? AND status IN ('open', 'deferred') AND resulting_ask_request_id IS NULL`

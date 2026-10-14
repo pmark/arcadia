@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { writeTransaction } from "../db/connection.js";
 
 export type DerivationStatus = "completed" | "unavailable" | "not_applicable";
 
@@ -68,42 +69,40 @@ export function captureAskEnvelope(db: Database.Database, input: {
   project?: string | null;
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
-  const existing = db.prepare("SELECT envelope_json, fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
-    .get(requestId) as { envelope_json: string; fingerprint: string } | undefined;
-  if (existing && input.reuseExisting) return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
-  const prepared = prepareInput(input);
-  if (existing) {
-    if (existing.fingerprint !== prepared.fingerprint) {
-      throw new Error(`Capture request ${requestId} was already submitted with different content.`);
+  return writeTransaction(db, () => {
+    const existing = db.prepare("SELECT envelope_json, fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
+      .get(requestId) as { envelope_json: string; fingerprint: string } | undefined;
+    if (existing && input.reuseExisting) return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
+    const prepared = prepareInput(input);
+    if (existing) {
+      if (existing.fingerprint !== prepared.fingerprint) {
+        throw new Error(`Capture request ${requestId} was already submitted with different content.`);
+      }
+      return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
     }
-    return JSON.parse(existing.envelope_json) as AskCaptureEnvelope;
-  }
-
-  const capturedAt = new Date().toISOString();
-  const attachmentReceipts = prepared.attachments.map((attachment) => ({
-    id: `capture_attachment_${randomUUID()}`,
-    ...attachment.receipt
-  }));
-  const derivations = attachmentReceipts.flatMap((attachment, index) =>
-    buildDerivations(attachment, capturedAt, prepared.attachments[index]?.extractedText ?? null)
-  );
-  const envelope: AskCaptureEnvelope = {
-    id: `capture_${randomUUID()}`,
-    requestId,
-    originalText: input.originalText,
-    ingressSource: input.ingressSource,
-    capturedAt,
-    submittedUrls: extractUrls(input.originalText),
-    canonicalLinkCandidates: canonicalCandidates(extractUrls(input.originalText)),
-    attachments: attachmentReceipts,
-    derivations,
-    status: "captured",
-    authority: "untrusted_input",
-    ...(input.actor !== undefined ? { actor: input.actor } : {}),
-    ...(input.project !== undefined ? { project: input.project } : {})
-  };
-
-  db.transaction(() => {
+    const capturedAt = new Date().toISOString();
+    const attachmentReceipts = prepared.attachments.map((attachment) => ({
+      id: `capture_attachment_${randomUUID()}`,
+      ...attachment.receipt
+    }));
+    const derivations = attachmentReceipts.flatMap((attachment, index) =>
+      buildDerivations(attachment, capturedAt, prepared.attachments[index]?.extractedText ?? null)
+    );
+    const envelope: AskCaptureEnvelope = {
+      id: `capture_${randomUUID()}`,
+      requestId,
+      originalText: input.originalText,
+      ingressSource: input.ingressSource,
+      capturedAt,
+      submittedUrls: extractUrls(input.originalText),
+      canonicalLinkCandidates: canonicalCandidates(extractUrls(input.originalText)),
+      attachments: attachmentReceipts,
+      derivations,
+      status: "captured",
+      authority: "untrusted_input",
+      ...(input.actor !== undefined ? { actor: input.actor } : {}),
+      ...(input.project !== undefined ? { project: input.project } : {})
+    };
     db.prepare(`INSERT INTO ask_capture_envelopes
       (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -115,8 +114,8 @@ export function captureAskEnvelope(db: Database.Database, input: {
       insertAttachment.run(attachment.id, envelope.id, attachment.originalFilename, attachment.mediaType,
         attachment.byteSize, attachment.sha256, attachment.storageReference, attachment.proposedRole, attachment.derivationStatus);
     }
-  })();
-  return envelope;
+    return envelope;
+  });
 }
 
 export function findCaptureRequestIdByStorageReferences(
