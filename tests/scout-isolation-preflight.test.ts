@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeakSnapshot } from "../src/workspace/leakCheck.js";
-import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateScoutPreflight, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
+import { deriveHistoricalSourcePin, deriveRetainedScoutObservations, evaluateBoundedScoutIsolation, evaluateScoutPreflight, validateBoundedScoutDecision, verifyEvidenceManifest } from "../src/scout/isolationPreflight.js";
 
 const root = "/tmp/scout-fixture";
 const workspace = `${root}/workspace`;
@@ -96,6 +96,81 @@ function retainedEvidence() {
 }
 
 describe("offline scout isolation preflight", () => {
+  const decisionPath = "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md";
+  const decisionText = readFileSync(decisionPath, "utf8");
+
+  it("validates the canonical approved Decision 0128 and rejects obsolete or altered approval", () => {
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(true);
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: `docs/decisions/../decisions/${path.basename(decisionPath)}`, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText.replace("status: approved", "status: rejected"), canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText.replace("at most3 total live builder attempts", "one live attempt"), canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: `${decisionText}\n# altered scope`, canonicalPath: decisionPath, now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: "docs/decisions/0125-old.md", now: "2026-10-13T12:00:00Z" }).approved).toBe(false);
+    expect(validateBoundedScoutDecision({ text: decisionText, canonicalPath: decisionPath, now: "2026-10-18T00:00:00Z" }).approved).toBe(false);
+  });
+
+  it("admits a fresh, exactly pinned Decision 0128 fixture preflight while historical replay stays held", () => {
+    const actualRoot = mkdtempSync(path.join(os.tmpdir(), "scout-authorized-"));
+    tempRoots.push(actualRoot);
+    const actualWorkspace = path.join(actualRoot, "workspace");
+    const actualRepo = path.join(actualWorkspace, "repo");
+    const actualTrust = path.join(actualRepo, "project");
+    mkdirSync(actualTrust, { recursive: true });
+    const livePath = mkdtempSync(path.join(os.tmpdir(), "scout-protected-live-")); tempRoots.push(livePath);
+    const base = input();
+    const before = snapshot({ liveWorkspace: { ...base.before.liveWorkspace, path: livePath } });
+    const result = evaluateBoundedScoutIsolation({
+      pins: { ...base.pins, fixtureRoot: actualRoot, workspace: actualWorkspace, fixtureRepo: actualRepo, fixtureTrustPath: actualTrust, liveWorkspacePath: livePath },
+      before, after: before, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z"
+    });
+    expect(result.reasons).toEqual([]);
+    expect(result.verdict).toBe("isolated");
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.scope).toBe("bounded-decision-0128-isolation-only");
+    expect(result.attemptLimitSeconds).toBe(90);
+    expect(result.decision.sha256).toBe(hash(decisionText));
+    expect(evaluateScoutPreflight(input()).verdict).toBe("blocked");
+    expect(JSON.stringify(result)).not.toContain("trust_level");
+  });
+
+  it("blocks stale witnesses, a live-overlapping fixture, and symlinked fixture paths", () => {
+    const actualRoot = mkdtempSync(path.join(os.tmpdir(), "scout-authorized-refusal-"));
+    tempRoots.push(actualRoot);
+    const actualWorkspace = path.join(actualRoot, "workspace");
+    const actualRepo = path.join(actualWorkspace, "repo");
+    const actualTrust = path.join(actualRepo, "project");
+    mkdirSync(actualTrust, { recursive: true });
+    const livePath = mkdtempSync(path.join(os.tmpdir(), "scout-protected-live-")); tempRoots.push(livePath);
+    const base = input();
+    const pins = { ...base.pins, fixtureRoot: actualRoot, workspace: actualWorkspace, fixtureRepo: actualRepo, fixtureTrustPath: actualTrust, liveWorkspacePath: livePath };
+    const liveSnapshot = snapshot({ liveWorkspace: { ...base.before.liveWorkspace, path: livePath } });
+    const old = snapshot({ takenAt: "2026-10-13T11:00:00Z" });
+    expect(evaluateBoundedScoutIsolation({ pins, before: old, after: old, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).reasons)
+      .toContain("protected-state witnesses must be ordered, current, and no more than five minutes old");
+    const overlap = { ...pins, liveWorkspacePath: actualRoot };
+    expect(evaluateBoundedScoutIsolation({ pins: overlap, before: liveSnapshot, after: liveSnapshot, decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).reasons)
+      .toContain("fixture scope overlaps the protected live workspace");
+    const symlinkParent = path.join(actualRoot, "alias"); symlinkSync(livePath, symlinkParent);
+    const nestedFixture = path.join(symlinkParent, "fixture");
+    const nestedWorkspace = path.join(nestedFixture, "workspace");
+    const nestedRepo = path.join(nestedWorkspace, "repo");
+    const nestedTrust = path.join(nestedRepo, "project"); mkdirSync(nestedTrust, { recursive: true });
+    const symlinkAncestorPins = { ...pins, fixtureRoot: nestedFixture, workspace: nestedWorkspace, fixtureRepo: nestedRepo, fixtureTrustPath: nestedTrust };
+    expect(evaluateBoundedScoutIsolation({ pins: symlinkAncestorPins, before: liveSnapshot, after: liveSnapshot,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).reasons)
+      .toContain("fixture scope overlaps the protected live workspace");
+    expect(evaluateBoundedScoutIsolation({ pins: { ...pins, liveWorkspacePath: path.join(actualRoot, "missing-live") }, before: liveSnapshot, after: liveSnapshot,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
+    const changedProtected = snapshot({ hashes: { ...base.before.hashes, userConfig: hash("unexpected config change") } });
+    expect(evaluateBoundedScoutIsolation({ pins, before: base.before, after: changedProtected,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
+    const link = path.join(actualRoot, "linked-workspace");
+    writeFileSync(path.join(actualRoot, "marker"), "fixture");
+    symlinkSync(path.join(actualRoot, "marker"), link);
+    expect(evaluateBoundedScoutIsolation({ pins: { ...pins, fixtureTrustPath: link }, before: base.before, after: base.after,
+      decision: { text: decisionText, canonicalPath: decisionPath }, now: "2026-10-13T12:00:00Z" }).verdict).toBe("blocked");
+  });
+
   it("requires a custody-pinned manifest covering every consumed replay file", () => {
     const full = makeEvidenceRoot();
     expect(verifyEvidenceManifest(full.root, full.expected)).toEqual({ checked: consumedFiles.length, mismatches: [], manifestSha256: full.expected });

@@ -32,8 +32,10 @@ export interface StewardshipQualityFixture {
     slots?: Record<string, string>;
     requestedWorkArtifactIncludes?: string[];
     requestedWorkArtifactExcludes?: string[];
+    goalExcludes?: string[];
     packetArtifactIncludes?: string[];
     packetArtifactExcludes?: string[];
+    goalIncludes?: string[];
     packetIncludes?: string[];
     packetCritiqueStatus?: string;
     packetPurpose?: "planning" | "build";
@@ -82,6 +84,33 @@ export const defaultProjects: SeedProject[] = [
 ];
 
 export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
+  {
+    name: "keeps an explicit single-file request and builder scope exact",
+    input: 'Implement HelloWorld.txt in Arcadia, containing exactly the bytes "Hello World!\\n".',
+    seed: { projects: [{ ...defaultProjects[0], repoPath: process.cwd() }] },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      requestedWorkArtifactIncludes: ["HelloWorld.txt"],
+      requestedWorkArtifactExcludes: ["implementation with tests"],
+      goalIncludes: ["Create only HelloWorld.txt", "Tests and validation are harness-owned", "outside the builder's file scope"],
+      askRawInputIncludes: ['Implement HelloWorld.txt in Arcadia, containing exactly the bytes "Hello World!\\n".']
+    }
+  },
+  {
+    name: "does not narrow an ambiguous multi-file Ask to one exact file",
+    input: "Implement HelloWorld.txt and README.md in Arcadia.",
+    seed: { projects: [{ ...defaultProjects[0], repoPath: process.cwd() }] },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      goalExcludes: ["Create only HelloWorld.txt", "Create only README.md"]
+    }
+  },
   {
     name: "normalizes pnpm arcadia ask wrapper before planning stewardship",
     input: "pnpm arcadia ask \"Plan and implement Publishing support for Pinterest for Rebuster project\"",
