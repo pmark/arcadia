@@ -103,6 +103,13 @@ Production remained Off; credentials, real email, external collectors,
 Turnstile and live inquiry tests were outside scope. The Action and pointer
 were not completed or advanced.
 
+## Complementary simplification
+
+After a verified recovery, use [code simplification](code-simplification.md)
+only for an assigned cleanup or concrete maintainability finding. Existing
+planner/critic/implementer responsibilities suffice. Protect the urgent repair's
+scope and acceptance; defer broader cleanup with a named revival trigger.
+
 ## Hand-back and prevention
 
 Persist the failed receipt, incorrect assumption, route tested, exact successful

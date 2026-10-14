@@ -60,6 +60,13 @@ Keep actual model/effort, custody and sole writer explicit. This is diagnostic
 behavior within the supervision assignment, not permission to spawn, message,
 steal a claim, increase spend or bypass a refusal.
 
+## Complexity signals
+
+Route a concrete maintainability finding through the Project's indexed
+`docs/agent-guidance/code-simplification.md` and existing planner/critic/implementer
+responsibilities. Keep one writer and the remaining allowance. Do not commission
+routine cleanup after every Session or delay an urgent repair for cosmetic work.
+
 ## At session completion
 
 Under explicit messaging authority ask the Lead for ideas, opportunities, key

@@ -64,6 +64,14 @@ researcher at depth 1. Delegates return help requests to the Lead and never spaw
 children. Code-reviewer and QA need separate independent Sessions, never native
 children. Decisions 0112/0114 govern these limits.
 
+## Simplification within existing roles
+
+For an assigned simplification or a concrete complexity finding, read the
+Project's indexed `docs/agent-guidance/code-simplification.md`. Planner scopes,
+critics assess read-only, and the sole implementer changes code. This adds no
+Simplifier role, automatic review stage, dispatch or permission. Keep bug repair
+and behavior-preserving cleanup distinguishable; hand back evidence and benefit.
+
 ## Recovery behavior across roles
 
 For repeated unchanged workflow refusals or a stop-the-line request load

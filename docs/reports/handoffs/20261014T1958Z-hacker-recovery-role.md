@@ -56,3 +56,14 @@ PPN Issue292/PR293 is a verified example, not a general permission to bypass a
 host/security refusal. Correct the owning procedure instead of adding a parallel
 memory store or watcher. Operator acceptance of the taxonomy proposal and merge
 remain separate gates; then plan/validate registration and skill adoption.
+
+## Follow-up: supplied simplification prior art
+
+Operator requested integration of Addy Osmani's code-simplification skill.
+Pinned source file revision fea75b16472ba87e8c11f13a9e000c3ffdb2d1f5,
+retrieved2026-10-14. Selected principles are adapted with attribution in the
+indexed code-simplification procedure. Role/supervisor skills, principles and
+Hacker recovery route to it conditionally; no extra registry role or automatic
+cleanup stage. Semantic examples require caller-contract proof, and repair
+behavior changes remain distinct. The earlier independent PASS applies only
+to head2b1e0bb; the pushed delta requires fresh review and CI before handoff.

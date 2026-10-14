@@ -56,6 +56,13 @@ This rule is subordinate to what the operator actually asked for. Cutting a
 requirement that was genuinely requested in the name of YAGNI is not economy,
 it is scope drift running the other direction.
 
+## Simplification as an existing responsibility
+
+For refactoring or a concrete complexity finding, retrieve
+[bounded code simplification](code-simplification.md). It assigns planning,
+critique and implementation to existing roles and requires contract evidence;
+it does not add a role or make cleanup a mandatory phase of every task.
+
 ## Divide and conquer
 
 A goal that feels too large to start is usually not too large to finish — it

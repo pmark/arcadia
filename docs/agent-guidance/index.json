@@ -34,7 +34,7 @@
       "trigger": "scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue",
       "path": "docs/agent-guidance/principles.md",
       "read_before": "Before choosing scope, deferring work, or capturing a new defect.",
-      "sha256": "799a20c84463dce7e6bf1ac66b5b830f6d396370091952d518525e10faecbc9c"
+      "sha256": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894"
     },
     {
       "id": "pull-requests",
@@ -139,7 +139,14 @@
       "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
       "path": "docs/agent-guidance/hacker-recovery.md",
       "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
-      "sha256": "8233f47874b91d7806ed6c8999b53d42c3f96a89813c1f63db0fe55646f99e01"
+      "sha256": "83ad21f81c2c838ab2c2efbf9c792c330d457e7892ff23f81d7db8a5ee22fb78"
+    },
+    {
+      "id": "code-simplification",
+      "trigger": "code simplification, simplify code, refactoring, maintainability, complexity finding",
+      "path": "docs/agent-guidance/code-simplification.md",
+      "read_before": "Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage.",
+      "sha256": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4"
     }
   ]
 }
