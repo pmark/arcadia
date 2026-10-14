@@ -1,0 +1,35 @@
+{
+  "session_id": "01a12d10-scalar-writer-repair-20261013",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "amend-action-consumes-block-scalar-and-literal-ids",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [
+    {
+      "class": "scalar-field-preservation",
+      "caught_by": "canonical regressions/internal review"
+    }
+  ],
+  "operator_touches": 1,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "scalar-amendment-orphaned-values",
+      "cost_min": null,
+      "fix_ref": "tests/agent-ask-settlement.test.ts"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Bounded source-only repair ends at operator PR handoff; governed prerequisite and Action remain open.",
+  "notes": "Snapshot at source handback before PR review. Native implementer gpt-6.1-sol/high,28.36min; no Arcadia admission. PR metadata holds final review/CI counts.",
+  "candidate_head": "3670894d843c0e32f44dd8c217b30b3d45ab37e4",
+  "evidence_source": "docs/reports/handoffs/20261014T0300Z-01a12d10-scalar-writer-repair-20261013.md"
+}
