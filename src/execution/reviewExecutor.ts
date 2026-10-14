@@ -19,6 +19,7 @@ import type { Artifact, ProjectMetadata, ReviewItemSummary, WorkItemSummary } fr
 import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 import { cloudflareWorkerName } from "../projects/stagingDeployment.js";
+import { APPROVED_SCOPE_CONTEXT_KEY, approvedReviewScopeSha256 } from "./approvedReviewScope.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
@@ -134,6 +135,14 @@ export function executeApprovedReview(
     throw validationError("Execution requires a current approved Run receipt for this Review and Action.", {
       id: triggerReview.id,
       status: triggerReview.status,
+      runId: options.runId ?? null
+    });
+  }
+
+  const approvedScopeSha256 = parseContextJson(review.context_json)[APPROVED_SCOPE_CONTEXT_KEY];
+  if (typeof approvedScopeSha256 !== "string" || approvedScopeSha256 !== approvedReviewScopeSha256(db, review)) {
+    throw validationError("Execution approval is stale or missing its approved scope fingerprint.", {
+      reviewId: review.id,
       runId: options.runId ?? null
     });
   }
@@ -340,8 +349,12 @@ function canExecuteReview(
 ): boolean {
   if (!run || !run.review_item_id || !["pending_execution", "running"].includes(run.status)) return false;
   if (run.review_item_id !== triggerReview.id || run.work_item_id !== executionReview.work_item_id || run.plan_id !== executionReview.plan_id) return false;
-  if (triggerReview.status !== "open" && triggerReview.status !== "deferred") return false;
+  const projectProposalPending = triggerReview.resolved_intent === "ProjectProposalApproval"
+    && triggerReview.status === "approved"
+    && /execution pending/i.test(triggerReview.decision_note ?? "");
+  if (triggerReview.status !== "open" && triggerReview.status !== "deferred" && !projectProposalPending) return false;
   if (triggerReview.id === executionReview.id) {
+    if (projectProposalPending) return true;
     return executionReview.status === "open" || executionReview.status === "deferred";
   }
   return executionReview.status === "approved" && /execution pending/i.test(executionReview.decision_note ?? "");

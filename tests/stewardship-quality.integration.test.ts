@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,7 +30,9 @@ describe("stewardship quality integration fixtures", () => {
     workspaces.push(root, outside);
     writeFileSync(path.join(outside, "HelloWorld.txt"), "outside", "utf8");
     symlinkSync(path.join(outside, "HelloWorld.txt"), path.join(root, "HelloWorld.txt"));
+    mkdirSync(path.join(root, "Directory.txt"));
     expect(safeSingleFileScope(root, "HelloWorld.txt")).toBe(false);
+    expect(safeSingleFileScope(root, "Directory.txt")).toBe(false);
     expect(safeSingleFileScope(root, "Other.txt")).toBe(true);
     expect(safeSingleFileScope(outside, "../HelloWorld.txt")).toBe(false);
   });

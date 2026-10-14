@@ -609,6 +609,25 @@ describe("CLI response contract — execution and review", () => {
     expect(executionDecision).toBeTruthy();
     const queued = runReviewApproveCommand({ workspace, id: executionDecision?.id as string, execute: true, executor: "codex" });
     expect(queued.data.run?.id).toBeTruthy();
+    const approvedReviewId = first.data.reviewItemId as string;
+    const approvedContext = withDatabase(workspace, (db) => getReviewItem(db, approvedReviewId)?.context_json);
+    withDatabase(workspace, (db) => db.prepare("UPDATE review_items SET context_json = '{broken' WHERE id = ?").run(approvedReviewId));
+    expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
+      workspace,
+      reviewId: executionDecision?.id as string,
+      executorName: "codex",
+      runId: queued.data.run?.id
+    }))).toThrow(/approval is stale or missing its approved scope fingerprint/);
+    withDatabase(workspace, (db) => db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?")
+      .run(approvedContext, approvedReviewId));
+    withDatabase(workspace, (db) => db.prepare("UPDATE work_items SET expected_artifact = ? WHERE id = ?")
+      .run("HelloWorld.txt and another file", approvedAction?.id));
+    expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
+      workspace,
+      reviewId: executionDecision?.id as string,
+      executorName: "codex",
+      runId: queued.data.run?.id
+    }))).toThrow(/approval is stale or missing its approved scope fingerprint/);
 
     const fakeBin = fakeExecutorBin(["codex"]);
     const executorCalls = path.join(fakeBin, "calls");
@@ -622,6 +641,9 @@ describe("CLI response contract — execution and review", () => {
     const prevPath = process.env["PATH"];
     process.env["PATH"] = `${fakeBin}${path.delimiter}${prevPath ?? ""}`;
     try {
+      expect(existsSync(executorCalls)).toBe(false);
+      withDatabase(workspace, (db) => db.prepare("UPDATE work_items SET expected_artifact = ? WHERE id = ?")
+        .run("HelloWorld.txt", approvedAction?.id));
       const execution = withDatabase(workspace, (db) => executeApprovedReview(db, {
         workspace,
         reviewId: executionDecision?.id as string,

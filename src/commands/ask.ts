@@ -2090,6 +2090,7 @@ export function safeSingleFileScope(repoPath: string | null | undefined, fileNam
     if (!existsSync(target)) return true;
     const targetStat = lstatSync(target);
     if (targetStat.isSymbolicLink()) return false;
+    if (!targetStat.isFile()) return false;
     const physicalTarget = realpathSync(target);
     return physicalTarget.startsWith(`${root}${path.sep}`);
   } catch {

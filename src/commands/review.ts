@@ -66,6 +66,7 @@ import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
 import { recordAnswerCorrection } from "../ask/corrections.js";
+import { APPROVED_SCOPE_CONTEXT_KEY, approvedReviewScopeSha256 } from "../execution/approvedReviewScope.js";
 
 export interface RequiresReviewPacket {
   id: string;
@@ -935,6 +936,9 @@ export function runReviewApproveCommand(
         status: "approved",
         decisionNote: "Project proposal approved. Execution pending."
       }) as ReviewItemSummary;
+      mergeReviewItemContext(db, decision.id, {
+        [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, decision)
+      });
       const run = createReviewExecutionRun(db, {
         reviewItemId: decision.id,
         executorName,
@@ -1320,6 +1324,9 @@ export function runReviewApproveCommand(
     if (!item) {
       throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
     }
+    mergeReviewItemContext(db, item.id, {
+      [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, item)
+    });
     recordAnswerCorrection(db, item, approvalAskId);
     deleteApprovalClaim(db, reviewItem.id);
     return {
@@ -1378,6 +1385,9 @@ function runReviewApproveExecuteCommand(
     }
 
     const executorName = options.executor ?? "codex";
+    mergeReviewItemContext(db, reviewItem.id, {
+      [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, reviewItem)
+    });
     const pendingRun = createReviewExecutionRun(db, {
       reviewItemId: reviewItem.id,
       executorName,
