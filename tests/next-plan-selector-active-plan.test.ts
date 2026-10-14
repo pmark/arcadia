@@ -158,6 +158,21 @@ describe("fail closed: a Project absent from activePlans has an UNKNOWN active P
     expect(result.chosen).toEqual({ project: "arcadia", plan: "next-plan" });
   });
 
+  it("previous_plan_closed_out is unknown (not pass) when the active Plan is unknown, with no run option", () => {
+    const result = selectNextPlan(input({ activePlans: {} }));
+    const check = result.preflight.find(c => c.check === "previous_plan_closed_out")!;
+    expect(check.status).toBe("unknown");
+    expect(check.ok).toBe(false);
+    expect(check.blocker).toBe("The Project's active Plan is not known, so its close-out cannot be checked.");
+    expect(result.card!.options.map(o => o.id)).toEqual(["resolve-blockers"]);
+  });
+
+  it("previous_plan_closed_out passes for an explicit null pointer", () => {
+    const adapted = adaptQueue(queueWith([]), { arcadia: null });
+    const result = selectNextPlan(input({ queues: adapted.queues, queueGlobal: adapted.global, activePlans: { arcadia: null } }));
+    expect(result.preflight.find(c => c.check === "previous_plan_closed_out")!.status).toBe("pass");
+  });
+
   it("an explicit slug is unchanged", () => {
     const result = selectNextPlan(input({ activePlans: { arcadia: "active-plan" } }));
     expect(result.chosen).toEqual({ project: "arcadia", plan: "next-plan" });

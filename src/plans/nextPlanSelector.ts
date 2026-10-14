@@ -163,6 +163,9 @@ export function adaptQueue(
       .map(e => `${project}/${e.actionId ?? "unknown"}`);
     // Waiting is about the ACTIVE Plan, not the Project: only an attention entry whose planSlug equals the
     // active Plan's slug counts. Waiting-kind entries with no planSlug cannot be tied, so waiting is unknown.
+    // `?? null` here (and in `activePlan` below) maps a missing pointer to null, which means UNKNOWN for
+    // waiting (`waits = null` is never a bypass); the selector itself reads `activePlans` directly through
+    // `activeSlugOf`, never this field, so absent never becomes "none".
     const activeSlug = activePlans[project] ?? null;
     const waitingEntries = (queue.attention ?? []).filter(e => e.projectSlug === project && e.attentionKind != null && waitingKinds.has(e.attentionKind));
     let waits: boolean | null;
@@ -404,8 +407,16 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
   }
 
   // Previous Plan: the Project's active Plan, when it is a different Plan from the chosen one.
-  const previous = activeSlugOf(project, input) ?? null;
-  if (previous === null || previous === plan) {
+  // undefined (Project absent from the pointer record) stays distinct from null (the pointer says none).
+  const previousRaw = activeSlugOf(project, input);
+  const previous = previousRaw ?? null;
+  if (previousRaw === undefined) {
+    out.push({
+      check: "previous_plan_closed_out", ok: false, status: "unknown",
+      blocker: "The Project's active Plan is not known, so its close-out cannot be checked.",
+      remedy: "No one-click control exists yet: re-run once PROJECT.md active_plan can be read for this Project."
+    });
+  } else if (previous === null || previous === plan) {
     out.push({ check: "previous_plan_closed_out", ok: true, status: "pass", blocker: null, remedy: null });
   } else if (queue !== null && queue.activePlanWaitsOnOperator) {
     // Decision 0116 answered "Run the same Project's next Plan": a waiting active Plan does not block.
