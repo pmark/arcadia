@@ -1,0 +1,51 @@
+{
+  "session_id": "01a13bae-ec86-7ab1-9056-1bec92ece2a4",
+  "role": "driver",
+  "model": "unknown-native-runtime",
+  "effort": null,
+  "configured_effort": "medium",
+  "effective_effort": null,
+  "effort_source": "Plan recommendation only; runtime unavailable",
+  "action_id": "launch-failure-keeps-cause",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "P2 credential fragment after raw clipping",
+      "caught_by": "independent launch_diagnostic_review and manager snapshot reviewer"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate permission bridge refusal",
+      "cost_min": null,
+      "fix_ref": "operator refreshed same chat permissions"
+    },
+    {
+      "id": "preservation hash-object timeout",
+      "cost_min": null,
+      "fix_ref": "presv_c0fb8c2c413748cdb3"
+    },
+    {
+      "id": "Go-parity sandbox-marker fixture refusal",
+      "cost_min": null,
+      "fix_ref": null
+    },
+    {
+      "id": "manager status-message auto-review rejection",
+      "cost_min": null,
+      "fix_ref": "manager observes read_thread/wait_threads"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Corrected candidate awaits manager replay and single independent delta review before completion settlement and PR delivery. Fresh session warranted after bounded safety recovery.",
+  "notes": "One original implementation pass and authorized safety correction. Production Off. Original replay superseded; no final-head PASS."
+}

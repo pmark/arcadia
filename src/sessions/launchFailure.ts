@@ -1,7 +1,6 @@
 import { redactSecrets, sanitizeOutput } from "./validationEvidence.js";
 
 export const LAUNCH_FAILURE_MAX_CHARS = 2048;
-const INPUT_WINDOW_CHARS = 64 * 1024;
 
 /** Keep diagnostic text, never a subprocess's argv, environment or arbitrary details. */
 export function formatLaunchFailure(error: unknown): string {
@@ -34,5 +33,7 @@ export function formatLaunchFailure(error: unknown): string {
 }
 
 function clean(text: string): string {
-  return redactSecrets(sanitizeOutput(text.slice(0, INPUT_WINDOW_CHARS))).trim();
+  // Truncation before these passes can shorten a token below the redactor's
+  // threshold; removing a long terminal escape can then expose that prefix.
+  return redactSecrets(sanitizeOutput(text)).trim();
 }

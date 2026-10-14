@@ -46,6 +46,16 @@ describe("launch failure diagnostics", () => {
     expect(formatLaunchFailure(error)).toBe("circular launch error");
     expect(formatLaunchFailure("known string failure")).toBe("known string failure");
   });
+
+  it.each([
+    { label: "OSC", input: "\u001b]" + "x".repeat(65518) + "\u0007API_KEY=abcdefghijklmno" },
+    { label: "CSI", input: "\u001b[" + "0;".repeat(32757) + "m" + "sk-" + "S".repeat(40) }
+  ])("redacts a secret after a removable $label sequence at the input boundary", ({ input }) => {
+    const output = formatLaunchFailure(new Error(input));
+    expect(output).toContain("[redacted");
+    expect(output).not.toContain("abcdefg");
+    expect(output).not.toContain("sk-SSS");
+  });
 });
 
 describe("system tmux launch failures", () => {
@@ -78,5 +88,15 @@ describe("system tmux launch failures", () => {
     try { launch(); } catch (error) {
       expect(String(error)).not.toMatch(/PRIVATE_(PAYLOAD|ARGUMENT|STDOUT)/);
     }
+  });
+
+  it("withholds an incomplete credential line when real subprocess stderr exceeds the capture limit", () => {
+    const launch = launchWith("printf '\\033]' >&2\nprintf '%65518s' x >&2\nprintf '\\007API_KEY=abcdefghijklmno' >&2\nexit 1");
+    let caught: unknown;
+    try { launch(); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    expect(String(caught)).toContain("ENOBUFS");
+    expect(String(caught)).toContain("incomplete stderr line withheld");
+    expect(String(caught)).not.toContain("abcdefg");
   });
 });

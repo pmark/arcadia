@@ -311,8 +311,14 @@ export const systemTmux: TmuxAdapter = {
       env: tmuxQueryEnv()
     });
     if (result.error || result.status !== 0) {
-      const outcome = result.error?.message ?? `tmux new-session failed (${result.signal ?? result.status}).`;
-      throw new Error(formatLaunchFailure(new Error(outcome, { cause: result.stderr?.trim() || undefined })));
+      const overflow = result.error && "code" in result.error && result.error.code === "ENOBUFS";
+      const stderr = result.stderr ?? "";
+      // A capture-limit failure can cut a credential in the last line below
+      // the redactor's threshold. Keep only complete lines from that stream.
+      const diagnostic = overflow ? stderr.slice(0, stderr.lastIndexOf("\n") + 1) : stderr;
+      const outcome = (result.error?.message ?? `tmux new-session failed (${result.signal ?? result.status}).`) +
+        (overflow ? " [stderr capture truncated; incomplete stderr line withheld]" : "");
+      throw new Error(formatLaunchFailure(new Error(outcome, { cause: diagnostic.trim() || undefined })));
     }
   },
   killSession(name) {
