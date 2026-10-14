@@ -17,7 +17,7 @@ const liveQueue: LiveQueue = {
   ready: [entry("arcadia", "next-plan-selector", "explicit", 1)],
   running: [entry("arcadia", "other-action", "explicit", 2, "running")],
   flagged: [],
-  attention: [entry("arcadia", "operator-gated", "explicit", 3, "attention", "decision")]
+  attention: [{ ...entry("arcadia", "operator-gated", "explicit", 3, "attention", "decision"), planSlug: "active-plan" }]
 };
 
 function input(overrides: Partial<SelectorInput> = {}): SelectorInput {
@@ -63,7 +63,7 @@ describe("adaptQueue", () => {
     const valid: LiveQueue = { ...liveQueue, orderValid: true, unpositionedCount: 0, ordered: [entry("arcadia", "a", "explicit", 1)], running: [], attention: [] };
     const { queues, global } = adaptQueue(valid);
     expect(global.orderValid).toBe(true);
-    expect(queues).toEqual([{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: null, activePlanWaitsOnOperator: false }]);
+    expect(queues).toEqual([{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: null, activePlanWaitsOnOperator: null }]);
   });
 
   it("does not mutate its input", () => {

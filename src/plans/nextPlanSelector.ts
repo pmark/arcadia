@@ -45,7 +45,8 @@ export const PREFLIGHT_CHECKS = [
   "no_open_red_alert",
   "previous_plan_closed_out",
   "pointer_free",
-  "authorship_known"
+  "authorship_known",
+  "active_plan_known"
 ] as const;
 export type PreflightCheckName = (typeof PREFLIGHT_CHECKS)[number];
 
@@ -83,7 +84,8 @@ export interface QueueSummary {
   runningActions: string[];
   /** The Project's active Plan slug, and whether it is waiting on the operator (Decision 0116). */
   activePlan: string | null;
-  activePlanWaitsOnOperator: boolean;
+  /** true/false when tied to the active Plan; null when it cannot be tied (unknown, never a bypass). */
+  activePlanWaitsOnOperator: boolean | null;
 }
 
 export interface CloseOutSummary {
@@ -116,6 +118,8 @@ export interface LiveQueueEntry {
   actionId: string | null;
   state: string;
   attentionKind?: string | null;
+  /** The Plan the entry belongs to; waiting is tied to the active Plan by this slug. */
+  planSlug?: string | null;
   orderStatus?: string;
   position?: number | null;
   selected?: boolean;
@@ -157,7 +161,15 @@ export function adaptQueue(
     const mine = unpositioned.filter(entry => entry.projectSlug === project).length;
     const running = (queue.running ?? []).filter(e => e.projectSlug === project && e.state === "running")
       .map(e => `${project}/${e.actionId ?? "unknown"}`);
-    const waits = (queue.attention ?? []).some(e => e.projectSlug === project && e.attentionKind != null && waitingKinds.has(e.attentionKind));
+    // Waiting is about the ACTIVE Plan, not the Project: only an attention entry whose planSlug equals the
+    // active Plan's slug counts. Waiting-kind entries with no planSlug cannot be tied, so waiting is unknown.
+    const activeSlug = activePlans[project] ?? null;
+    const waitingEntries = (queue.attention ?? []).filter(e => e.projectSlug === project && e.attentionKind != null && waitingKinds.has(e.attentionKind));
+    let waits: boolean | null;
+    if (activeSlug === null) waits = null;
+    else if (waitingEntries.some(e => e.planSlug === activeSlug)) waits = true;
+    else if (waitingEntries.some(e => typeof e.planSlug !== "string" || e.planSlug === "")) waits = null;
+    else waits = false;
     return {
       project,
       orderValid: queue.orderValid === true && mine === 0,
@@ -184,6 +196,11 @@ export interface SelectorInput {
   closeOuts: CloseOutSummary[];
   /** null when the alerts could not be read: the alert check is then unknown, never a pass. */
   redAlerts: RedAlertSummary[] | null;
+  /**
+   * Each Project's active Plan slug from the checked-in pointer (PROJECT.md `active_plan`); null means the
+   * Project has none. A Project absent from this record has an UNKNOWN active Plan.
+   */
+  activePlans?: Record<string, string | null>;
   /** The global queue verdict, or null when unknown. */
   queueGlobal?: QueueGlobal | null;
   /** Error class names of live readers that failed (named in unknown blockers). */
@@ -272,7 +289,8 @@ function normalise(input: SelectorInput): SelectorInput {
       project: String(q.project ?? ""), orderValid: q.orderValid === true,
       unpositionedCount: typeof q.unpositionedCount === "number" ? q.unpositionedCount : Number.POSITIVE_INFINITY,
       runningActions: arr<string>(q.runningActions).map(String),
-      activePlan: str(q.activePlan), activePlanWaitsOnOperator: q.activePlanWaitsOnOperator === true
+      activePlan: str(q.activePlan),
+      activePlanWaitsOnOperator: typeof q.activePlanWaitsOnOperator === "boolean" ? q.activePlanWaitsOnOperator : null
     })),
     closeOuts: arr<Record<string, unknown>>(input.closeOuts).map(c => ({
       project: String(c.project ?? ""), plan: String(c.plan ?? ""), closed: c.closed === true,
@@ -290,6 +308,8 @@ function normalise(input: SelectorInput): SelectorInput {
     currentRunId: str(input.currentRunId),
     currentSessionId: str(input.currentSessionId),
     currentRunAsks: arr<string>(input.currentRunAsks).map(String),
+    activePlans: Object.fromEntries(Object.entries(input.activePlans ?? {})
+      .map(([project, slug]) => [project, typeof slug === "string" ? slug : null])),
     inputSources: Object.fromEntries(INPUT_NAMES.map(name => [name, input.inputSources?.[name] === "live" ? "live" : "caller"])),
     onlyProject: str(input.onlyProject),
     headSha: str(input.headSha),
@@ -308,6 +328,22 @@ function authoredHere(plan: PlanSummary, input: SelectorInput): string | null {
     return `its authoring session ${plan.authoringSession} is this session`;
   }
   return null;
+}
+
+/** The Project's active Plan: queue first, then the PROJECT.md pointer. undefined = unknown, null = none. */
+function activeSlugOf(project: string, input: SelectorInput): string | null | undefined {
+  const queue = input.queues?.find(q => q.project === project) ?? null;
+  if (queue !== null && queue.activePlan !== null) return queue.activePlan;
+  const pointers = input.activePlans ?? {};
+  if (Object.prototype.hasOwnProperty.call(pointers, project)) return pointers[project];
+  if (queue !== null) return null;
+  return undefined;
+}
+
+/** Receipt text for display: control and format characters stripped, at most 80 characters. */
+function displayReceipt(receipt: string): string {
+  const cleaned = receipt.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "");
+  return cleaned.length > 80 ? `${cleaned.slice(0, 80)}...` : cleaned;
 }
 
 function preflightFor(project: string, plan: string, input: SelectorInput, planDoc: PlanSummary | null): PreflightResult[] {
@@ -412,6 +448,15 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
     });
   } else out.push({ check: "pointer_free", ok: true, status: "pass", blocker: null, remedy: null });
 
+  const activeKnown = activeSlugOf(project, input);
+  out.push(activeKnown === undefined
+    ? {
+        check: "active_plan_known", ok: false, status: "unknown",
+        blocker: `The active Plan of ${project} is unknown: the queue is unreadable and PROJECT.md was not read.`,
+        remedy: "No one-click control exists yet: re-run once the queue or PROJECT.md active_plan can be read."
+      }
+    : { check: "active_plan_known", ok: true, status: "pass", blocker: null, remedy: null });
+
   const known = planDoc !== null && (planDoc.sourceAsks.length > 0 || planDoc.authoringSession !== null);
   const runKnown = input.currentRunId !== null || input.currentSessionId !== null || input.currentRunAsks.length > 0;
   out.push(known && runKnown
@@ -486,13 +531,14 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     }
     // Decision 0116 allows the Project's NEXT Plan only while its active Plan waits on the operator.
     const queueOf = input.queues?.find(q => q.project === pref.project) ?? null;
-    const activeSlug = queueOf?.activePlan ?? projectPlans.find(p => p.status === "active")?.slug ?? null;
+    const activeSlug = activeSlugOf(pref.project, input) ?? null;
     const activeDoc = activeSlug === null ? null : projectPlans.find(p => p.slug === activeSlug) ?? null;
     const activeIsLive = activeSlug !== null && (activeDoc === null || (activeDoc.status !== "complete" && activeDoc.status !== "superseded"));
-    if (activeIsLive && activeSlug !== plan.slug && !(queueOf?.activePlanWaitsOnOperator === true)) {
+    if (activeIsLive && activeSlug !== plan.slug && queueOf?.activePlanWaitsOnOperator !== true) {
+      const unknownWait = queueOf === null || queueOf.activePlanWaitsOnOperator === null;
       refusals.push({
         project: pref.project, plan: plan.slug, code: "project_has_active_plan",
-        message: `Project ${pref.project} already has active Plan ${activeSlug} that is not waiting on the operator; Decision 0116 allows the next Plan only while the active one waits.`
+        message: `Project ${pref.project} already has active Plan ${activeSlug} that ${unknownWait ? "is not known to be waiting" : "is not waiting"} on the operator; Decision 0116 allows the next Plan only while the active one waits.`
       });
       return;
     }
@@ -511,9 +557,9 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
 
   if (winner !== null) {
     reasons.push(`Plan ${winner.plan.slug} is ${winner.project}'s chosen Plan in the operator preference record (Decision 0122).`);
-    reasons.push(`The record carries approval receipt ${winner.receipt}.`);
+    reasons.push(`receipt claimed (caller-supplied, unverified): ${displayReceipt(winner.receipt)}`);
     const queue = input.queues?.find(q => q.project === winner.project) ?? null;
-    if (queue !== null && queue.activePlan !== null && queue.activePlan !== winner.plan.slug && queue.activePlanWaitsOnOperator) {
+    if (queue !== null && queue.activePlan !== null && queue.activePlan !== winner.plan.slug && queue.activePlanWaitsOnOperator === true) {
       reasons.push(`${winner.project}'s active Plan ${queue.activePlan} waits on the operator; Decision 0116 answered "Run the same Project's next Plan", so the Project is not skipped.`);
     }
     if (eligible.length > 1) {
@@ -556,6 +602,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
   const planPath = chosen === null ? null : `docs/plans/${chosen.plan}.md`;
   const BLOCKED_LABEL = "Resolve the named blockers first";
   const provenance = callerInputs.length > 0 ? ` Caller-supplied, unverified inputs: ${callerInputs.join(", ")}.` : "";
+  const callerNote = callerInputs.includes("preferences") ? ", based on a caller-supplied, unverified preference record" : "";
   let options;
   let what: string;
   let verb: "run" | "answer";
@@ -568,7 +615,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     }];
   } else if (!ready) {
     verb = "answer";
-    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is selected but not ready; ${blockers.length} preflight check(s) are not passing.`;
+    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is selected but not ready; ${blockers.length} preflight check(s) are not passing${callerNote}.`;
     const first = blockers[0];
     options = [{
       id: "resolve-blockers", label: BLOCKED_LABEL,
@@ -576,7 +623,7 @@ export function selectNextPlan(rawInput: SelectorInput): Selection {
     }];
   } else {
     verb = "run";
-    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is ready to be activated.`;
+    what = `Advisory only: ${chosen.project}'s next Plan ${chosen.plan} is ready to be activated${callerNote}.`;
     options = [{
       id: "run-plan", label: `Run ${chosen.plan}`,
       consequence: `Preview only: pressing grants nothing and starts nothing; activating Plan ${chosen.plan} is the governed Agent Ask settlement \`arcadia agent-ask settle --activate\` (src/ask/settlement.ts), which changes PROJECT.md active_plan and which the operator merges.${provenance}`.slice(0, 1000)

@@ -51,8 +51,11 @@ function readJson(file: string, label: string): Record<string, unknown> {
 
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
+const PLAN_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /** True when `docs/plans/<slug>.md` exists on the local main ref (no network); false when unknown. */
 function planOnMain(repo: string, slug: string): boolean {
+  if (!PLAN_SLUG.test(slug)) return false;
   try {
     execFileSync("git", ["-C", repo, "cat-file", "-e", `main:docs/plans/${slug}.md`], { stdio: "ignore" });
     return true;
@@ -86,7 +89,9 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
         sourceAsks: [...asks], authoringSession: null
       });
       const recordPath = path.join(plansDir, `${doc.slug}.close-out.json`);
-      if (existsSync(recordPath)) {
+      if (!PLAN_SLUG.test(doc.slug)) {
+        gaps.push("A Plan slug failed the slug rule; its close-out record and main-branch presence are unknown.");
+      } else if (existsSync(recordPath)) {
         try {
           const record = JSON.parse(readFileSync(recordPath, "utf8")) as {
             plan?: { closed?: unknown }; openRemainders?: { id?: unknown; status?: unknown }[]; ledger?: { evidence?: unknown };
@@ -178,6 +183,7 @@ export function runPlanSelectNextCommand(options: PlanSelectNextOptions): Comman
     currentSessionId: options.sessionId ?? process.env.ARCADIA_SESSION_ID ?? null,
     currentRunAsks: (options.runAsk ?? "").split(",").map(value => value.trim()).filter(value => value !== ""),
     onlyProject: options.project ?? null,
+    activePlans,
     inputSources: {
       preferences: "caller", // no operator preference store exists, so a preference file is always caller-supplied
       queue: options.queue ? "caller" : "live",
