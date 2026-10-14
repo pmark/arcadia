@@ -7,7 +7,7 @@ status: active
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-13
+updated: 2026-10-14
 actions:
   - id: decision-card-contract
     title: Implement the arcadia-decision-card-v1 schema and validator in src/decisions/card.ts so every operator touch is one pinned card with a verb, consequence, evidence and receipt.
@@ -87,10 +87,10 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
   - id: plan-close-out-record
     title: Implement arcadia plan close-out writing a deterministic docs/plans/PLAN/close-out.json from the session ledger and Plan state, and backfill one record for the hardening Plan.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement arcadia plan close-out writing a deterministic docs/plans/PLAN/close-out.json from the session ledger and Plan state, and backfill one record for the hardening Plan.
+    next_action: Completed via Agent Ask complete-plan-close-out-record-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask plan-close-out-record
     clarification: clarified
     confidence: high
