@@ -587,7 +587,9 @@ describe("launchGuardedHostSession", () => {
     failing.failLaunch = true;
     const preview = preview1(fixture);
 
-    expectArcadiaError(() => doLaunch(fixture, failing, preview.previewFingerprint), "could not start");
+    const error = captureArcadiaError(() => doLaunch(fixture, failing, preview.previewFingerprint));
+    expect(error.message).toContain("could not start");
+    expect(error.details.cause).toBe("synthetic spawn failure");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
 
     // The failed attempt released the lease. A fresh preview against the

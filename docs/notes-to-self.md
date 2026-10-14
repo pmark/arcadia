@@ -216,7 +216,7 @@ files in the same mode.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
-keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest
+keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest, CODEX_SANDBOX, host controller
 
 Bridge dependencies with the script, never with a hand-made symlink:
 
@@ -230,6 +230,8 @@ errors ("`Message` is an error type", "assertion is unnecessary") and those
 app tests fail to load, even in files you changed. The script skips a tree
 whose target already exists, so rerunning it is safe. CI does a clean install
 and is the source of truth.
+
+Five Go-parity cases in `tests/session-launch.test.ts` refuse an inherited `CODEX_SANDBOX` marker before fixture assertions; ordinary host escalation still inherited it on 2026-10-14. Do not unset the marker or weaken tests. `vitest run tests/session-launch.test.ts -t '^launchGuardedHostSession'` covers the launch path; preserve the broader refusal and require clean-environment CI for the full file. Evidence: `docs/reports/launch-failure-keeps-cause-2026-10-14.md`.
 
 ## Run one Vitest file without launching the whole suite
 

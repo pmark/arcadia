@@ -35,6 +35,7 @@ import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff
 import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
+import { formatLaunchFailure } from "./launchFailure.js";
 
 export type ProjectTransitionKind =
   | "launch"
@@ -303,10 +304,16 @@ export const systemTmux: TmuxAdapter = {
   },
   launch(input) {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
-    execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
-      stdio: "ignore",
+    const result = spawnSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
+      stdio: ["ignore", "ignore", "pipe"],
+      encoding: "utf8",
+      maxBuffer: 64 * 1024,
       env: tmuxQueryEnv()
     });
+    if (result.error || result.status !== 0) {
+      const outcome = result.error?.message ?? `tmux new-session failed (${result.signal ?? result.status}).`;
+      throw new Error(formatLaunchFailure(new Error(outcome, { cause: result.stderr?.trim() || undefined })));
+    }
   },
   killSession(name) {
     // `kill-session` only; never the worktree or branch. A session that is
@@ -796,7 +803,7 @@ export function launchPreparedSession(
     failPreparedSession(db, session.id);
     throw validationError(`tmux could not start the ${providerLabel(session.provider)} Session.`, {
       sessionId: session.id,
-      cause: error instanceof Error ? error.message : String(error)
+      cause: formatLaunchFailure(error)
     });
   }
   const started = new Date().toISOString();

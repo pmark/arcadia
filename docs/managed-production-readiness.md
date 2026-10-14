@@ -2,7 +2,26 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-10** (the section below). The 2026-10-02 derivation after it, and everything under it, is earlier evidence kept for history and has not been re-derived.
+Latest derivation: **2026-10-14**, limited to the active unattended-Claude Plan and its first diagnostic candidate. Earlier derivations below retain their historical observations; they do not prove the current candidate is installed.
+
+## Current answer, 2026-10-14: launch diagnostics are proven in a candidate; unattended production remains unproven
+
+The active Plan is `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider`, with `launch-failure-keeps-cause` still selected. Activation PR #1406 is merged; activation alone supplies no live-run evidence. At 22:37:43 UTC the configured workspace reported Inactive · Idle, policy 47 / epoch 28, zero live admissions. Historical red alert `ra-2bcf88b68759` still contains the generic cause discarded before this repair.
+
+The candidate now proves that real tmux stderr reaches persisted red-alert evidence and `production status` JSON through the real worker tick, bounded to 2,048 diagnostic characters with credential redaction and launch-payload omission. The first regression failed before repair. The scoped core checks passed 81 tests, the launch path passed 42, TypeScript and the lint/build command passed, and the existing two-Action rehearsal passed with no errors. The manager separately replayed eight failure-edge/regression cases and pinned six unchanged source hashes. Full-file Go-parity tests still encounter five inherited sandbox-marker refusals; retain that boundary and require normal CI rather than weakening guards. See [candidate evidence](reports/launch-failure-keeps-cause-2026-10-14.md).
+
+| Active Plan Action | Current evidence / remaining gate |
+| --- | --- |
+| launch-failure-keeps-cause | Candidate regression, scoped checks and manager replay proven; independent exact-head review, settlement, PR/CI and publication remain at this checkpoint. |
+| claude-worker-launch-replay | Not yet performed; next after governed completion of the selected Action. Must drive the real Claude worker launch path to a running Session and draft PR using disposable external-service fixtures. |
+| claude-capacity-evidence | Unproved; fresh unattended usage or an explicit gate-off path and an operator-owned Claude spend bound remain necessary. |
+| first-supervised-claude-run | Unperformed; fresh scoped preview, operator activation and real repository PR proof remain gated. |
+| worker-review-and-merge | Unbuilt/unproved; exact-head review, seven green checks and non-authority-adjacent PR classification must gate GitHub-only merge. |
+| production-spend-budget | Unproved; approved window budget/reserve need implementation and hermetic refusal proof. |
+| credential-preflight | Unproved; unattended refreshability must be checked without modifying host credentials. |
+| first-unattended-run | Unperformed; at least three real Actions reaching merged PRs with only activation and authority-adjacent merge touches are required. |
+
+Critical path remains diagnostic delivery → Claude worker replay → capacity/spend-bound decision → supervised real run → automated review/merge plus budget and credential gates → multi-Action unattended proof. Decisions 0060/0080 still require independent current-head review and all seven CI jobs before any qualified routine merge; important Decisions and authority changes remain operator-owned. No production activation, installed-runtime freshness, spend grant or historical-cause reconstruction is claimed by this refresh.
 
 ## Current answer, 2026-10-10: not yet; a supervised first run on Arcadia's own repository becomes possible once gates 1 to 6 below are cleared, and unattended production does not
 

@@ -1,0 +1,24 @@
+{
+  "observedAt": "2026-10-14T22:38:59.989893+00:00",
+  "candidate": "/Users/pmark/.codex/worktrees/launch-failure-keeps-cause-20261014T181827489Z/arcadia",
+  "argv": [
+    "node_modules/.bin/vitest",
+    "run",
+    "tests/launch-failure.test.ts",
+    "tests/production-tick.test.ts",
+    "-t",
+    "launch failure diagnostics|system tmux launch failures|retains real tmux stderr"
+  ],
+  "exitCode": 0,
+  "sourceHashes": {
+    "src/sessions/index.ts": "bef52dbf10a4e5a8a07fa336444cb595a1c4b7eaaa64f62889a2ca1b25c6dbfc",
+    "src/sessions/launchFailure.ts": "ae9f93d18b97fc60abc9d7a914cc94bb02518f4b56e1b37a95aee07e11a909e8",
+    "src/production/tick.ts": "8b90ef8c934e892683daf68e0e02a73ba908c2817f0be77b7b87d58093192e11",
+    "tests/launch-failure.test.ts": "86a8781f74f92d53a8c959d5e69aeb232f089b8d5fb7140b7f88875cf5f747e8",
+    "tests/production-tick.test.ts": "037eef58ddc1e56737c9234cd7313afa8f96e385a0803c9d5481612764fb5b3a",
+    "tests/session-launch.test.ts": "c24b4cd105786187bfe42e8fe9d9dd0c803ffa9b041f4d261e5a888a6ef41421"
+  },
+  "unchangedDuringReplay": true,
+  "log": "/private/tmp/arcadia-manager-launch-failure-replay.txt",
+  "meaning": "Manager deterministic replay of known-stderr surfaces plus formatter/adapter failure edges; no live production/provider launch."
+}
