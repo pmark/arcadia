@@ -10,8 +10,13 @@ import {
 import type { ReviewItemSummary } from "../domain/types.js";
 
 export const APPROVED_SCOPE_CONTEXT_KEY = "approvedExecutionScopeSha256";
+export const APPROVED_RUN_SCOPE_CONTEXT_KEY = "approvedExecutionRunScope";
 
-export function approvedReviewScopeSha256(db: Database.Database, review: ReviewItemSummary): string {
+export function approvedReviewScopeSha256(
+  db: Database.Database,
+  review: ReviewItemSummary,
+  runId: string | null = null
+): string {
   const action = review.work_item_id ? getWorkItem(db, review.work_item_id) : null;
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   const projectId = review.project_id ?? action?.project_id ?? null;
@@ -32,6 +37,8 @@ export function approvedReviewScopeSha256(db: Database.Database, review: ReviewI
     intent: review.resolved_intent,
     sourceInput: review.source_input,
     proposedAction: review.proposed_action,
+    effectivePlanSummary: plan?.summary ?? review.plan_summary,
+    runId,
     projectId,
     physicalRepoPath,
     action: action ? {
@@ -52,4 +59,18 @@ export function approvedReviewScopeSha256(db: Database.Database, review: ReviewI
     } : null
   };
   return createHash("sha256").update(JSON.stringify(scope), "utf8").digest("hex");
+}
+
+export function approvedRunScopeMatches(review: ReviewItemSummary, runId: string, scopeSha256: string): boolean {
+  let context: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(review.context_json);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) context = parsed as Record<string, unknown>;
+  } catch {
+    return false;
+  }
+  const receipt = context[APPROVED_RUN_SCOPE_CONTEXT_KEY];
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) return false;
+  const record = receipt as Record<string, unknown>;
+  return record.runId === runId && record.scopeSha256 === scopeSha256;
 }

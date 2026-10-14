@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -82,7 +82,7 @@ import {
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { resolveIntent, type ResolvedIntent } from "../intent/resolver.js";
 import type { IntakeProjectAttribute, IntakeProjectContext, IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
-import { resolveIntake } from "../intake/index.js";
+import { explicitSingleFileRequest, resolveIntake } from "../intake/index.js";
 import { normalizeAskInput } from "../intake/normalization.js";
 import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
 import { parseReviewResponse } from "../review/responseParser.js";
@@ -353,8 +353,8 @@ function runAskCommandWithRouting(
         classificationReason: "Explicit idea capture is deterministically routed to Back Burner."
       }
     : computedStewardship;
-  const exactRequestedFile = intake.extractedFields.requestedArtifact;
-  if (exactRequestedFile && /^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12}$/.test(exactRequestedFile)) {
+  const exactRequestedFile = explicitSingleFileRequest(intake.extractedFields.requestedAction ?? "");
+  if (exactRequestedFile && exactRequestedFile === intake.extractedFields.requestedArtifact) {
     stewardship = {
         ...stewardship,
         generatedCodexGoalText: `Create only ${exactRequestedFile} in the selected repository. Preserve the user's exact request. Tests and validation are harness-owned and are outside the builder's file scope.`
@@ -2087,8 +2087,12 @@ export function safeSingleFileScope(repoPath: string | null | undefined, fileNam
     const root = realpathSync(path.resolve(repoPath));
     if (!statSync(root).isDirectory()) return false;
     const target = path.join(root, fileName);
-    if (!existsSync(target)) return true;
-    const targetStat = lstatSync(target);
+    let targetStat;
+    try {
+      targetStat = lstatSync(target);
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    }
     if (targetStat.isSymbolicLink()) return false;
     if (!targetStat.isFile()) return false;
     const physicalTarget = realpathSync(target);

@@ -66,7 +66,11 @@ import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
 import { recordAnswerCorrection } from "../ask/corrections.js";
-import { APPROVED_SCOPE_CONTEXT_KEY, approvedReviewScopeSha256 } from "../execution/approvedReviewScope.js";
+import {
+  APPROVED_RUN_SCOPE_CONTEXT_KEY,
+  APPROVED_SCOPE_CONTEXT_KEY,
+  approvedReviewScopeSha256
+} from "../execution/approvedReviewScope.js";
 
 export interface RequiresReviewPacket {
   id: string;
@@ -946,6 +950,12 @@ export function runReviewApproveCommand(
         planId: decision.plan_id,
         summary: `Approved Project scaffold and staging deployment queued with ${executorName}.`
       });
+      mergeReviewItemContext(db, decision.id, {
+        [APPROVED_RUN_SCOPE_CONTEXT_KEY]: {
+          runId: run.id,
+          scopeSha256: approvedReviewScopeSha256(db, getReviewItem(db, decision.id) as ReviewItemSummary, run.id)
+        }
+      });
       return { decision, run, duplicate: false };
     }));
     return createSuccess({
@@ -1356,7 +1366,7 @@ export function runReviewApproveCommand(
 function runReviewApproveExecuteCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
-  const { run, review } = withDatabase(options.workspace, (db) => {
+  const { run, review } = withDatabase(options.workspace, (db) => writeTransaction(db, () => {
     const reviewItem = getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id);
     if (!reviewItem) {
       throw validationError("Requires Review Decision was not found.", { id: options.id });
@@ -1384,10 +1394,28 @@ function runReviewApproveExecuteCommand(
       realpathSync(absolute); // resolves symlinks — validates the path is real
     }
 
+    const reviewContext = parseObject(reviewItem.context_json);
+    const originalReviewId = typeof reviewContext.originalReviewId === "string" ? reviewContext.originalReviewId : null;
+    if (reviewItem.resolved_intent === "ReviewExecutionPending" && !originalReviewId) {
+      throw validationError("Execution approval is missing its original approved Review scope.", { reviewId: reviewItem.id });
+    }
+    const scopeReview = originalReviewId ? getReviewItem(db, originalReviewId) : reviewItem;
+    if (!scopeReview) {
+      throw validationError("Original approved Review was not found.", { reviewId: reviewItem.id, originalReviewId });
+    }
+    const currentScope = approvedReviewScopeSha256(db, scopeReview);
+    if (originalReviewId) {
+      const originalContext = parseObject(scopeReview.context_json);
+      if (originalContext[APPROVED_SCOPE_CONTEXT_KEY] !== currentScope) {
+        throw validationError("Execution approval scope changed after the Ask was approved.", {
+          reviewId: scopeReview.id,
+          executionReviewId: reviewItem.id
+        });
+      }
+    } else {
+      mergeReviewItemContext(db, scopeReview.id, { [APPROVED_SCOPE_CONTEXT_KEY]: currentScope });
+    }
     const executorName = options.executor ?? "codex";
-    mergeReviewItemContext(db, reviewItem.id, {
-      [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, reviewItem)
-    });
     const pendingRun = createReviewExecutionRun(db, {
       reviewItemId: reviewItem.id,
       executorName,
@@ -1395,9 +1423,15 @@ function runReviewApproveExecuteCommand(
       planId: reviewItem.plan_id,
       summary: `Execution queued for ${reviewItem.slug ?? reviewItem.id} with ${executorName}.`
     });
+    mergeReviewItemContext(db, scopeReview.id, {
+      [APPROVED_RUN_SCOPE_CONTEXT_KEY]: {
+        runId: pendingRun.id,
+        scopeSha256: approvedReviewScopeSha256(db, scopeReview, pendingRun.id)
+      }
+    });
 
     return { run: pendingRun, review: reviewItem };
-  });
+  }));
 
   return createSuccess({
     command: "review.approve",

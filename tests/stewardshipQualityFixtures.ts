@@ -32,6 +32,7 @@ export interface StewardshipQualityFixture {
     slots?: Record<string, string>;
     requestedWorkArtifactIncludes?: string[];
     requestedWorkArtifactExcludes?: string[];
+    goalExcludes?: string[];
     packetArtifactIncludes?: string[];
     packetArtifactExcludes?: string[];
     goalIncludes?: string[];
@@ -96,6 +97,18 @@ export const stewardshipQualityFixtures: StewardshipQualityFixture[] = [
       requestedWorkArtifactExcludes: ["implementation with tests"],
       goalIncludes: ["Create only HelloWorld.txt", "Tests and validation are harness-owned", "outside the builder's file scope"],
       askRawInputIncludes: ['Implement HelloWorld.txt in Arcadia, containing exactly the bytes "Hello World!\\n".']
+    }
+  },
+  {
+    name: "does not narrow an ambiguous multi-file Ask to one exact file",
+    input: "Implement HelloWorld.txt and README.md in Arcadia.",
+    seed: { projects: [{ ...defaultProjects[0], repoPath: process.cwd() }] },
+    expect: {
+      intentType: "Project Work",
+      executionPath: "Requires Review",
+      confidenceLabel: "high",
+      project: "Arcadia",
+      goalExcludes: ["Create only HelloWorld.txt", "Create only README.md"]
     }
   },
   {

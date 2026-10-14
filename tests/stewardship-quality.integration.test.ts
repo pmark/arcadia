@@ -30,8 +30,10 @@ describe("stewardship quality integration fixtures", () => {
     workspaces.push(root, outside);
     writeFileSync(path.join(outside, "HelloWorld.txt"), "outside", "utf8");
     symlinkSync(path.join(outside, "HelloWorld.txt"), path.join(root, "HelloWorld.txt"));
+    symlinkSync(path.join(outside, "missing.txt"), path.join(root, "Dangling.txt"));
     mkdirSync(path.join(root, "Directory.txt"));
     expect(safeSingleFileScope(root, "HelloWorld.txt")).toBe(false);
+    expect(safeSingleFileScope(root, "Dangling.txt")).toBe(false);
     expect(safeSingleFileScope(root, "Directory.txt")).toBe(false);
     expect(safeSingleFileScope(root, "Other.txt")).toBe(true);
     expect(safeSingleFileScope(outside, "../HelloWorld.txt")).toBe(false);
@@ -53,6 +55,9 @@ describe("stewardship quality integration fixtures", () => {
       expect(initial.data.stewardship.relatedProject?.name ?? null).toBe(fixture.expect.project);
       for (const phrase of fixture.expect.goalIncludes ?? []) {
         expect(initial.data.stewardship.generatedCodexGoalText ?? "", `${fixture.name}: goal includes ${phrase}`).toContain(phrase);
+      }
+      for (const phrase of fixture.expect.goalExcludes ?? []) {
+        expect(initial.data.stewardship.generatedCodexGoalText ?? "", `${fixture.name}: goal excludes ${phrase}`).not.toContain(phrase);
       }
 
       for (const [slot, expected] of Object.entries(fixture.expect.slots ?? {})) {

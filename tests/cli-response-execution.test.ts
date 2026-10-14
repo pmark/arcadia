@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
-import { getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
+import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { createExecutableReview, createNeutralCwd, createProject, createTempRepo, createTempWorkspacePath, fakeExecutorBin, importWorkItem, initializedGitRepo, initializedWorkspace, parseJson, runCli, cleanupTrackedPaths } from "./cli-response-fixture.js";
@@ -572,6 +573,20 @@ describe("CLI response contract — execution and review", () => {
     });
   });
 
+  it("includes the packet Plan-summary fallback in the approved scope fingerprint", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const { reviewId } = createExecutableReview(workspace, repo);
+    withDatabase(workspace, (db) => {
+      const review = getReviewItem(db, reviewId);
+      expect(review).toBeTruthy();
+      const withoutPlan = { ...review!, plan_id: null, plan_summary: "fallback A" };
+      expect(approvedReviewScopeSha256(db, withoutPlan)).not.toBe(
+        approvedReviewScopeSha256(db, { ...withoutPlan, plan_summary: "fallback B" })
+      );
+    });
+  });
+
   it("carries a real approved HelloWorld Ask through its Action, Run, packet, and Artifact", () => {
     const workspace = initializedWorkspace();
     const repo = initializedGitRepo();
@@ -607,16 +622,44 @@ describe("CLI response contract — execution and review", () => {
       listActionableReviewItems(db).find((item) => item.resolved_intent === "ReviewExecutionPending")
     );
     expect(executionDecision).toBeTruthy();
+    const approvedReviewId = first.data.reviewItemId as string;
     const queued = runReviewApproveCommand({ workspace, id: executionDecision?.id as string, execute: true, executor: "codex" });
     expect(queued.data.run?.id).toBeTruthy();
-    const approvedReviewId = first.data.reviewItemId as string;
-    const approvedContext = withDatabase(workspace, (db) => getReviewItem(db, approvedReviewId)?.context_json);
-    withDatabase(workspace, (db) => db.prepare("UPDATE review_items SET context_json = '{broken' WHERE id = ?").run(approvedReviewId));
+    const secondExecutionDecision = withDatabase(workspace, (db) => {
+      const approvedReview = getReviewItem(db, approvedReviewId);
+      expect(approvedReview).toBeTruthy();
+      return createReviewItem(db, {
+        askRequestId: approvedReview?.ask_request_id,
+        workItemId: approvedReview?.work_item_id,
+        planId: approvedReview?.plan_id,
+        projectId: approvedReview?.project_id,
+        decisionNeeded: "Execute approved work.",
+        recommendation: "Approve this item to run the executor.",
+        sourceInput: approvedReview?.source_input ?? "",
+        proposedAction: "Run the exact approved scope.",
+        resolvedIntent: "ReviewExecutionPending",
+        confidenceLabel: "high",
+        confidence: 1,
+        missingFields: [],
+        context: { originalReviewId: approvedReviewId }
+      });
+    });
+    const laterQueued = runReviewApproveCommand({ workspace, id: secondExecutionDecision.id, execute: true, executor: "codex" });
+    expect(laterQueued.data.run?.id).toBeTruthy();
+    expect(laterQueued.data.run?.id).not.toBe(queued.data.run?.id);
     expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
       workspace,
       reviewId: executionDecision?.id as string,
       executorName: "codex",
       runId: queued.data.run?.id
+    }))).toThrow(/approval is stale or missing its approved scope fingerprint/);
+    const approvedContext = withDatabase(workspace, (db) => getReviewItem(db, approvedReviewId)?.context_json);
+    withDatabase(workspace, (db) => db.prepare("UPDATE review_items SET context_json = '{broken' WHERE id = ?").run(approvedReviewId));
+    expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
+      workspace,
+      reviewId: secondExecutionDecision.id,
+      executorName: "codex",
+      runId: laterQueued.data.run?.id
     }))).toThrow(/approval is stale or missing its approved scope fingerprint/);
     withDatabase(workspace, (db) => db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?")
       .run(approvedContext, approvedReviewId));
@@ -624,9 +667,9 @@ describe("CLI response contract — execution and review", () => {
       .run("HelloWorld.txt and another file", approvedAction?.id));
     expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
       workspace,
-      reviewId: executionDecision?.id as string,
+      reviewId: secondExecutionDecision.id,
       executorName: "codex",
-      runId: queued.data.run?.id
+      runId: laterQueued.data.run?.id
     }))).toThrow(/approval is stale or missing its approved scope fingerprint/);
 
     const fakeBin = fakeExecutorBin(["codex"]);
@@ -646,24 +689,24 @@ describe("CLI response contract — execution and review", () => {
         .run("HelloWorld.txt", approvedAction?.id));
       const execution = withDatabase(workspace, (db) => executeApprovedReview(db, {
         workspace,
-        reviewId: executionDecision?.id as string,
+        reviewId: secondExecutionDecision.id,
         executorName: "codex",
-        runId: queued.data.run?.id
+        runId: laterQueued.data.run?.id
       }));
       expect(readFileSync(path.join(repo, "HelloWorld.txt"), "utf8")).toBe("Hello World!\n");
       expect(execution.changedFiles).toEqual(["HelloWorld.txt"]);
       const prompt = readFileSync(path.join(path.dirname(execution.metadataPath), "prompt.md"), "utf8");
-      expect(prompt).toContain(`Approval receipt: ${queued.data.run?.id}`);
+      expect(prompt).toContain(`Approval receipt: ${laterQueued.data.run?.id}`);
       expect(prompt).toContain("Approved artifact scope: HelloWorld.txt");
       expect(prompt).toContain(request);
       expect(execution.artifact).toBeTruthy();
       expect(readFileSync(executorCalls, "utf8")).toBe("x");
-      withDatabase(workspace, (db) => db.prepare("UPDATE execution_runs SET status = 'completed' WHERE id = ?").run(queued.data.run?.id));
+      withDatabase(workspace, (db) => db.prepare("UPDATE execution_runs SET status = 'completed' WHERE id = ?").run(laterQueued.data.run?.id));
       expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, {
         workspace,
-        reviewId: executionDecision?.id as string,
+        reviewId: secondExecutionDecision.id,
         executorName: "codex",
-        runId: queued.data.run?.id
+        runId: laterQueued.data.run?.id
       }))).toThrow(/current approved Run receipt/);
       expect(readFileSync(executorCalls, "utf8")).toBe("x");
     } finally {

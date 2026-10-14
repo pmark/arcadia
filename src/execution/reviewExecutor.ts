@@ -19,7 +19,11 @@ import type { Artifact, ProjectMetadata, ReviewItemSummary, WorkItemSummary } fr
 import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
 import { cloudflareWorkerName } from "../projects/stagingDeployment.js";
-import { APPROVED_SCOPE_CONTEXT_KEY, approvedReviewScopeSha256 } from "./approvedReviewScope.js";
+import {
+  APPROVED_SCOPE_CONTEXT_KEY,
+  approvedReviewScopeSha256,
+  approvedRunScopeMatches
+} from "./approvedReviewScope.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
@@ -139,8 +143,14 @@ export function executeApprovedReview(
     });
   }
 
-  const approvedScopeSha256 = parseContextJson(review.context_json)[APPROVED_SCOPE_CONTEXT_KEY];
-  if (typeof approvedScopeSha256 !== "string" || approvedScopeSha256 !== approvedReviewScopeSha256(db, review)) {
+  const context = parseContextJson(review.context_json);
+  const approvedScopeSha256 = context[APPROVED_SCOPE_CONTEXT_KEY];
+  if (
+    typeof approvedScopeSha256 !== "string"
+    || approvedScopeSha256 !== approvedReviewScopeSha256(db, review)
+    || !approvalRun
+    || !approvedRunScopeMatches(review, approvalRun.id, approvedReviewScopeSha256(db, review, approvalRun.id))
+  ) {
     throw validationError("Execution approval is stale or missing its approved scope fingerprint.", {
       reviewId: review.id,
       runId: options.runId ?? null
