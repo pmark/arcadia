@@ -408,7 +408,8 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
       original_text TEXT NOT NULL, ingress_source TEXT NOT NULL, captured_at TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
       envelope_json TEXT NOT NULL,
-      processing_owner TEXT
+      processing_owner TEXT,
+      related_review_id TEXT
     );
     CREATE TABLE IF NOT EXISTS ask_capture_attachments (
       id TEXT PRIMARY KEY, capture_id TEXT NOT NULL, original_filename TEXT NOT NULL,
@@ -424,6 +425,9 @@ function ensureAskCaptureEnvelopeTables(db: Database.Database): void {
     // A legacy processing row has no fence token, so it may belong to an older
     // live attempt. Preserve it for inspection rather than assuming it is dead.
     db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE status = 'processing'").run();
+  }
+  if (!columns.has("related_review_id")) {
+    db.prepare("ALTER TABLE ask_capture_envelopes ADD COLUMN related_review_id TEXT").run();
   }
 }
 

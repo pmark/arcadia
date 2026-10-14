@@ -7,6 +7,7 @@ import { createAskRequest, createReviewItem, getExecutionRun, getProjectMetadata
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
+import { renderAskTrailSuccess, runAskShowCommand } from "../src/commands/askTrail.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { createExecutableReview, createNeutralCwd, createProject, createTempRepo, createTempWorkspacePath, fakeExecutorBin, importWorkItem, initializedGitRepo, initializedWorkspace, parseJson, runCli, cleanupTrackedPaths } from "./cli-response-fixture.js";
 
@@ -773,6 +774,83 @@ describe("CLI response contract — execution and review", () => {
     expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n).toBe(runsBefore + 1);
     expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM work_items").get() as { n: number }).n).toBe(actionsBefore + 1);
     expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_plans").get() as { n: number }).n).toBe(plansBefore + 1);
+  });
+
+  it("shows and safely resumes a public idempotent Ask approval after Run insertion fails", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const project = createProject(workspace);
+    withDatabase(workspace, (db) => upsertProjectMetadata(db, {
+      projectId: project.project.id,
+      aliases: ["CLI Fixture Project"],
+      repoPath: repo,
+      statusSummary: "HelloWorld fixture repo.",
+      validationCommands: ["test -f HelloWorld.txt"]
+    }));
+    const sourceInput = 'Implement HelloWorld.txt in CLI Fixture Project, containing exactly the bytes "Hello World!\\n". Change no other project files.';
+    const original = runAskCommand({ workspace, project: "CLI Fixture Project", request: sourceInput, requestId: "original-ask" });
+    const reviewId = original.data.reviewItemId as string;
+    expect(reviewId).toMatch(/^review_/);
+    const counts = () => withDatabase(workspace, (db) => ({
+      actions: (db.prepare("SELECT COUNT(*) AS n FROM work_items").get() as { n: number }).n,
+      plans: (db.prepare("SELECT COUNT(*) AS n FROM execution_plans").get() as { n: number }).n,
+      runs: (db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get() as { n: number }).n
+    }));
+    const before = counts();
+    withDatabase(workspace, (db) => db.exec(
+      "CREATE TRIGGER no_public_approval_run BEFORE INSERT ON execution_runs BEGIN SELECT RAISE(ABORT, 'public run row refused'); END"
+    ));
+    expect(() => runAskCommand({
+      workspace,
+      request: `approve ${reviewId}`,
+      requestId: "approval-request-retry",
+      adapterMetadata: { reviewId },
+      executeReview: true,
+      reviewExecutor: "codex"
+    })).toThrow(/public run row refused/);
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER no_public_approval_run"));
+
+    const claim = withDatabase(workspace, (db) => db.prepare(
+      "SELECT work_item_id, plan_id FROM review_approval_claims WHERE review_item_id = ?"
+    ).get(reviewId) as { work_item_id: string; plan_id: string } | undefined);
+    expect(claim?.work_item_id).toBeTruthy();
+    expect(claim?.plan_id).toBeTruthy();
+    const failedShow = runAskShowCommand({ workspace, id: "approval-request-retry" });
+    expect(failedShow.data.capture).toMatchObject({ status: "partial", relatedReviewId: reviewId });
+    expect(failedShow.data.capture?.outcomes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "decision", id: reviewId }),
+      expect.objectContaining({ kind: "action", id: claim?.work_item_id }),
+      expect.objectContaining({ kind: "plan", id: claim?.plan_id })
+    ]));
+    expect(renderAskTrailSuccess(failedShow).join("\n")).toContain(`arcadia review approve ${reviewId} --execute`);
+
+    const exactRetry = runAskCommand({
+      workspace,
+      request: `approve ${reviewId}`,
+      requestId: "approval-request-retry",
+      adapterMetadata: { reviewId },
+      executeReview: true,
+      reviewExecutor: "codex"
+    });
+    expect(exactRetry.data.result.status).toBe("ignored");
+    expect(counts()).toEqual({ actions: before.actions + 1, plans: before.plans + 1, runs: before.runs });
+
+    const resumed = runAskCommand({
+      workspace,
+      request: `approve ${reviewId}`,
+      requestId: "approval-request-recovery",
+      adapterMetadata: { reviewId },
+      executeReview: true,
+      reviewExecutor: "codex"
+    });
+    expect(resumed.data.run?.id).toBeTruthy();
+    expect(withDatabase(workspace, (db) => db.prepare(
+      "SELECT work_item_id, plan_id FROM execution_runs WHERE id = ?"
+    ).get(resumed.data.run?.id))).toEqual(claim);
+    expect(counts()).toEqual({ actions: before.actions + 1, plans: before.plans + 1, runs: before.runs + 1 });
+    const recoveredShow = runAskShowCommand({ workspace, id: "approval-request-retry" });
+    expect(recoveredShow.data.capture?.outcomes).toContainEqual(expect.objectContaining({ kind: "run", id: resumed.data.run?.id }));
+    expect(renderAskTrailSuccess(recoveredShow).join("\n")).toContain("already has Run");
   });
 
   it("refuses an Ask approval that conflicts with a pre-attached Action", () => {

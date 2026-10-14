@@ -17,6 +17,7 @@ import {
   claimAskCaptureProcessing,
   finishAskCaptureProcessing,
   markAskCaptureEffectsStarted,
+  markAskCaptureReviewEffectsStarted,
   resetAskCaptureBeforeEffects,
   type AskCaptureEnvelope,
   type CaptureAttachmentInput
@@ -590,7 +591,18 @@ function runAskCommandAfterCapture(
   // it is free-form prose. Clarification answers are intentionally not one of
   // the short approve/reject/defer tokens recognized by the parser.
   if (!correcting && parsedReviewResponse.hasReviewReference && !options.project && !ruleMatch) {
-    markRouteEffects();
+    if (captureProcessingOwner) {
+      const reviewId = withDatabase(workspacePath, (db) => {
+        const review = parsedReviewResponse.reviewId
+          ? getReviewItem(db, parsedReviewResponse.reviewId)
+          : parsedReviewResponse.reviewSlug
+            ? getReviewItemBySlug(db, parsedReviewResponse.reviewSlug)
+            : null;
+        if (!review) throw validationError("Requires Review Decision was not found.", { id: parsedReviewResponse.reviewId ?? parsedReviewResponse.reviewSlug ?? null });
+        return review.id;
+      });
+      withDatabase(workspacePath, (db) => markAskCaptureReviewEffectsStarted(db, captureEnvelope.id, captureProcessingOwner, reviewId));
+    }
     const reviewResolution = runReviewResolveReplyCommand({
       workspace: workspacePath,
       id: parsedReviewResponse.reviewId,

@@ -19,11 +19,12 @@ export interface AskTrailCapture {
   ingressSource: string;
   capturedAt: string;
   status: string;
+  relatedReviewId: string | null;
   outcomes: AskTrailOutcome[];
 }
 
 export interface AskTrailOutcome {
-  kind: "action" | "plan" | "decision" | "back_burner_item";
+  kind: "action" | "plan" | "decision" | "back_burner_item" | "run";
   id: string;
   status: string | null;
   summary: string | null;
@@ -74,6 +75,7 @@ interface CaptureRow {
   ingress_source: string;
   captured_at: string;
   status: string;
+  related_review_id: string | null;
 }
 
 interface AskRow {
@@ -132,6 +134,7 @@ function buildAskTrail(db: Database.Database, id: string): AskTrailData {
           ingressSource: capture.ingress_source,
           capturedAt: capture.captured_at,
           status: capture.status,
+          relatedReviewId: capture.related_review_id,
           outcomes: captureOutcomes(db, capture.id)
         }
       : null,
@@ -221,7 +224,26 @@ function captureOutcomes(db: Database.Database, captureId: string): AskTrailOutc
   for (const row of db.prepare("SELECT id FROM execution_plans WHERE capture_id = ?").all(captureId) as Array<{ id: string }>) outcomes.push(...planOutcome(db, row.id));
   for (const row of db.prepare("SELECT review.id, review.status, review.decision_needed, project.name AS project_name FROM review_items review LEFT JOIN projects project ON project.id = review.project_id WHERE review.capture_id = ?").all(captureId) as Array<{ id: string; status: string; decision_needed: string; project_name: string | null }>) outcomes.push({ kind: "decision", id: row.id, status: row.status, summary: row.decision_needed, projectName: row.project_name });
   for (const row of db.prepare("SELECT item.id, item.status, item.classification, project.name AS project_name FROM back_burner_items item LEFT JOIN projects project ON project.id = item.project_id WHERE item.capture_id = ?").all(captureId) as Array<{ id: string; status: string; classification: string; project_name: string | null }>) outcomes.push({ kind: "back_burner_item", id: row.id, status: row.status, summary: row.classification, projectName: row.project_name });
-  return outcomes;
+  const linkedReview = db.prepare(`
+    SELECT review.id, review.status, review.decision_needed, project.name AS project_name,
+      COALESCE(claim.work_item_id, resulting.work_item_id, review.work_item_id) AS work_item_id,
+      COALESCE(claim.plan_id, resulting.plan_id, review.plan_id) AS plan_id
+    FROM ask_capture_envelopes capture
+    JOIN review_items review ON review.id = capture.related_review_id
+    LEFT JOIN projects project ON project.id = review.project_id
+    LEFT JOIN review_approval_claims claim ON claim.review_item_id = review.id
+    LEFT JOIN ask_requests resulting ON resulting.id = review.resulting_ask_request_id
+    WHERE capture.id = ?
+  `).get(captureId) as { id: string; status: string; decision_needed: string; project_name: string | null; work_item_id: string | null; plan_id: string | null } | undefined;
+  if (linkedReview) {
+    outcomes.push({ kind: "decision", id: linkedReview.id, status: linkedReview.status, summary: linkedReview.decision_needed, projectName: linkedReview.project_name });
+    if (linkedReview.work_item_id) outcomes.push(...actionOutcome(db, linkedReview.work_item_id));
+    if (linkedReview.plan_id) outcomes.push(...planOutcome(db, linkedReview.plan_id));
+    for (const row of db.prepare("SELECT id, status, summary FROM execution_runs WHERE review_item_id = ? ORDER BY created_at, id").all(linkedReview.id) as Array<{ id: string; status: string; summary: string }>) {
+      outcomes.push({ kind: "run", id: row.id, status: row.status, summary: row.summary, projectName: linkedReview.project_name });
+    }
+  }
+  return outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index);
 }
 
 function planOutcome(db: Database.Database, planId: string): AskTrailOutcome[] {
@@ -262,7 +284,14 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
       `Text: ${capture.originalText.split("\n")[0]}`
     );
     if (capture.status === "partial") {
-      lines.push("Recovery: do not retry automatically; reconcile the listed durable effects, then submit a new request only after confirming the intended outcome.");
+      const linkedDecision = capture.outcomes.find((outcome) => outcome.kind === "decision" && outcome.id === capture.relatedReviewId);
+      const linkedRun = capture.outcomes.find((outcome) => outcome.kind === "run");
+      const recovery = linkedRun
+        ? `Recovery: Review ${capture.relatedReviewId} already has Run ${linkedRun.id} [${linkedRun.status}]; do not submit another approval.`
+        : capture.relatedReviewId && linkedDecision && ["open", "deferred"].includes(linkedDecision.status ?? "")
+          ? `Recovery: inspect this Review's Action/Plan. Resume only with arcadia review approve ${capture.relatedReviewId} --execute; its approval claim reuses that exact Action/Plan. Do not replay this Ask as a new approval.`
+          : "Recovery: do not retry automatically; inspect the listed durable effects, then submit a new request only after confirming the intended outcome.";
+      lines.push(recovery);
       for (const outcome of capture.outcomes) {
         lines.push(`  → ${outcome.kind} ${outcome.id}${outcome.status ? ` (${outcome.status})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
       }

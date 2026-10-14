@@ -250,7 +250,8 @@ CREATE TABLE IF NOT EXISTS ask_capture_envelopes (
   captured_at TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
   envelope_json TEXT NOT NULL,
-  processing_owner TEXT
+  processing_owner TEXT,
+  related_review_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ask_capture_attachments (

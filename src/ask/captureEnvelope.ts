@@ -104,6 +104,25 @@ export function markAskCaptureEffectsStarted(db: Database.Database, captureId: s
   if (changed.changes !== 1) throw new Error(`Ask capture ${captureId} processing ownership was superseded before route effects.`);
 }
 
+/** Fence a public Review-reply Ask and preserve its exact Decision for recovery inspection. */
+export function markAskCaptureReviewEffectsStarted(
+  db: Database.Database,
+  captureId: string,
+  owner: string,
+  reviewId: string
+): void {
+  writeTransaction(db, () => {
+    const existing = db.prepare("SELECT related_review_id FROM ask_capture_envelopes WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+      .get(captureId, owner) as { related_review_id: string | null } | undefined;
+    if (!existing) throw new Error(`Ask capture ${captureId} processing ownership was superseded before Review effects.`);
+    if (existing.related_review_id && existing.related_review_id !== reviewId) {
+      throw new Error(`Ask capture ${captureId} is already linked to a different Review Decision.`);
+    }
+    db.prepare("UPDATE ask_capture_envelopes SET status = 'partial', related_review_id = ? WHERE id = ? AND status = 'processing' AND processing_owner = ?")
+      .run(reviewId, captureId, owner);
+  });
+}
+
 export function finishAskCaptureProcessing(db: Database.Database, captureId: string, owner: string): boolean {
   return writeTransaction(db, () => db.prepare(
     "UPDATE ask_capture_envelopes SET status = 'completed', processing_owner = NULL WHERE id = ? AND processing_owner = ? AND status IN ('processing', 'partial')"
