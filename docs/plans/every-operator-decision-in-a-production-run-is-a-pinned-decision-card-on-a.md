@@ -87,10 +87,10 @@ actions:
     references: ["docs/strategy/autonomous-production-strategy.md", "docs/reports/production-simulation-living-notes.md", "https://github.com/pmark/arcadia/issues/1284"]
   - id: plan-close-out-record
     title: Implement arcadia plan close-out writing a deterministic docs/plans/PLAN/close-out.json from the session ledger and Plan state, and backfill one record for the hardening Plan.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement arcadia plan close-out writing a deterministic docs/plans/PLAN/close-out.json from the session ledger and Plan state, and backfill one record for the hardening Plan.
+    next_action: Completed via Agent Ask complete-plan-close-out-record-2026-10-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask plan-close-out-record
     clarification: clarified
     confidence: high

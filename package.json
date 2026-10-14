@@ -49,6 +49,7 @@
     "check:session-ledger": "node --import tsx scripts/check-session-ledger.ts",
     "ledger:tail": "node --import tsx scripts/ledger-tail.ts",
     "check:frozen-records": "node --import tsx scripts/check-frozen-records.ts",
+    "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
     "fast-rehearsal": "node scripts/fast-rehearsal.mjs"
   },

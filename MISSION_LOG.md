@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-13
+updated: 2026-10-14
 ---
 
 # Mission Log: Arcadia
@@ -2470,3 +2470,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A reader returns the legacy session-ledger.jsonl rows first and then the files under docs/reports/session-ledger/ sorted by name, and the validator, check script and qa command use it, with session_id uniqueness enforced across both sources and errors that name the file."; "Two branches from one base that each add a session row, a friction entry and a hand-off update merge in either order with no conflict, proven by a scripted git merge-tree test."; "The duplicated friction row numbers are renamed in the frozen table, new frictions and hand-offs are created as one file each with a slug or session id, and a CI check fails any diff that appends to a frozen file."; "The guidance that tells sessions where to record a ledger row, friction and hand-off names the new locations, qa returns the same linked rows for every existing session before and after, and focused tests pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-ledger-rows-without-merge-conflicts-2026-10-13).
+
+## 2026-10-14 — Completed arcadia/plan-close-out-record
+
+- **Did:** Completed Action arcadia/plan-close-out-record from accepted evidence (Candidate 5b30843dc38e4619a96d927bda19c6a69ab7e143).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema validates and the same inputs produce the same hash."; "The record lists Actions with outcome and PRs, open remainders, open blockers, ledger aggregates, frictions with test ids and a successor recommendation."; "A backfilled record exists for the autonomous-production hardening Plan and a validator rejects a malformed record in CI."; "Focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-plan-close-out-record-2026-10-13).

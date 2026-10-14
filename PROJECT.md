@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.
 active_plan: every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a
 current_action: delegation-policy-records
-updated: 2026-10-13
+updated: 2026-10-14
 ---
 
 # Arcadia

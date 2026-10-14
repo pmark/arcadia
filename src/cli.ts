@@ -428,6 +428,7 @@ import {
 } from "./commands/next.js";
 import { renderTodoSuccess, runTodoCommand } from "./commands/todo.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderPlanCloseOutSuccess, runPlanCloseOutCommand } from "./commands/planCloseOut.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlanProgressSuccess, renderPlansSuccess, runPlanProgressCommand, runPlansCommand } from "./commands/plans.js";
 import {
@@ -3901,6 +3902,23 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           (response) => renderPlanProgressSuccess(response, options.all)
         )
       : runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
+  );
+
+  const planGroup = program.command("plan").description("Plan records derived from checked-in documents");
+  addJsonOption(
+    planGroup
+      .command("close-out")
+      .description("Derive a Plan's deterministic close-out record from its document, the session ledger and frictions. The record is a snapshot: if a Plan Action is later renamed or removed, delete the record and re-run with --write")
+      .argument("<plan-slug>", "Plan slug (docs/plans/<slug>.md)")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--write", "Write docs/plans/<slug>.close-out.json (never replaces a record with a different hash)")
+  ).action((planSlug: string, options: { repo: string; write?: boolean; json?: boolean }) =>
+    runCliAction(
+      "plan.close-out",
+      options,
+      () => runPlanCloseOutCommand({ repo: options.repo, planSlug, write: options.write }),
+      renderPlanCloseOutSuccess
+    )
   );
 
   const operatorTask = program
