@@ -3,8 +3,8 @@
   "role": "lead",
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
-  "action_id": "operator-directed:#1438",
-  "pr": 1440,
+  "action_id": "operator-directed:#1441",
+  "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
@@ -14,16 +14,16 @@
   "review_rounds": 1,
   "blocking_findings": [
     {
-      "class": "receipt-link recovery data loss (repaired; delta review pending)",
-      "caught_by": "independent review round 1"
+      "class": "PR1440 receipt recovery loss repaired; independent round2 PASS at87ab2bd76",
+      "caught_by": "independent review round1"
     }
   ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "split",
-  "candidate_head": "05e989d6496f59e2d4ca65e7911913cdf17aad9c",
-  "evidence_source": "docs/reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md",
-  "task_class": "workspace-ask-receipt-loop",
-  "notes": "Ask loop PR1440; receipt-history loss repaired. CI eager imports fixed without mock changes; ledger enum corrected. Artifact delivery remains next slice. No main or governed edits."
+  "candidate_head": "7d3b7eda9d2226e24f2abcbce104c9adc55a0db6",
+  "evidence_source": "docs/design/workspace-artifact-opening.md",
+  "task_class": "workspace-artifact-opening",
+  "notes": "Artifact viewer in fresh candidate: 59 tests, two browser journeys and builds pass. Review/CI pending. Ask PR1440 merged after two reviews; no main edits or governed Action."
 }
