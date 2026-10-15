@@ -205,24 +205,12 @@ If `go` prepares a worktree but no session launches, preview `pnpm -s arcadia ti
 Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
 Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
-## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED
+## Arcadia CLI workspace writes fail with `SQLITE_WORKSPACE_WRITE_DENIED`
 
-keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, pnpm arcadia next, dispatch brief
+keys: SQLITE_WORKSPACE_WRITE_DENIED, readonly database, workspace write denied, SQLite, sandbox, approved host execution, host permission, agent-ask preview, arcadia next, tidy, tidy --apply, work monitor, Claude Code, trust settings, TMPDIR
 
-`gh` and `git push` always need to run outside the Bash sandbox. Most
-`pnpm arcadia` calls do too, but **stay sandboxed by default and bypass only on
-an actual failure**, per the sandbox's own reactive-only policy — never
-pre-disable it for a whole worktree or session, since that also runs whatever
-`src/cli.ts` and its command modules do with host access. Recognize the
-symptom instead of guessing: a read-only-looking noun like `arcadia next` or
-`arcadia work monitor` still opens the workspace SQLite db read-write (WAL
-journal) and fails `Error [SQLITE_WORKSPACE_WRITE_DENIED]: ... attempt to
-write a readonly database` inside the sandbox — that specific error is the
-signal to retry the *same single command* with `dangerouslyDisableSandbox:
-true`, not a reason to disable it ahead of time. The
-sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so
-a file written in one mode is missing in the other — write and read scratch
-files in the same mode.
+Preserve the exact error. If the host offers its ordinary permission request or approved host execution, retry the same supported CLI command against the same configured workspace; for `agent-ask preview`, keep the exact request id and content. This covers `arcadia next`, `work monitor`, `tidy --apply`, and `agent-ask preview`, which can write workspace receipts or SQLite WAL state even when they look read-only.
+Never retry the denied write in the unchanged sandbox, disable restrictions, guess another workspace, or edit SQLite directly. If host execution is unavailable or denied, preserve any validated Ask draft and report the boundary; do not claim a receipt. A sandboxed shell may have a different `$TMPDIR`, so keep scratch-file writes and reads in the same execution mode. For Claude trust-settings copy errors, run `gh` and `git push` through the host as well.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
