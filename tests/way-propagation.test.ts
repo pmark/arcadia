@@ -299,19 +299,49 @@ function tempWorkspace(): string {
 }
 
 describe("runWayPropagation", () => {
-  it("opens nothing for a repository that would produce byte-identical files", () => {
+  it("leaves no candidate worktree or branch after repeated no-op applies", () => {
     const { repo } = initGitRepo();
     const workspace = tempWorkspace();
     seedProject(workspace, repo);
     const calls: Array<{ command: string; args: string[] }> = [];
 
-    const summary = withDatabase(workspace, (db) =>
+    const first = withDatabase(workspace, (db) =>
+      runWayPropagation({ db, runCommand: fakeGhRunner(calls) })
+    );
+    const second = withDatabase(workspace, (db) =>
       runWayPropagation({ db, runCommand: fakeGhRunner(calls) })
     );
 
-    expect(summary.results).toHaveLength(1);
-    expect(summary.results[0].status).toBe("current");
+    expect(first.results).toHaveLength(1);
+    expect(first.results[0]).toMatchObject({ status: "current", candidatePath: null, candidateBranch: null, candidateHead: null });
+    expect(second.results[0]).toMatchObject({ status: "current", candidatePath: null, candidateBranch: null, candidateHead: null });
+    expect(git(repo, ["branch", "--list", "arcadia-way/propagate-*"])).toBe("");
+    expect(git(repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-way-propagate-");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
+  });
+
+  it("preserves the untouched no-op candidate when cleanup fails", () => {
+    const { repo } = initGitRepo();
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "worktree" && args[1] === "remove") {
+          return { ok: false, stdout: "", stderr: "cleanup refused" };
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/) });
+    expect(result.candidatePath).not.toBeNull();
+    expect(result.candidateHead).not.toBeNull();
+    expect(existsSync(result.candidatePath!)).toBe(true);
+    expect(git(repo, ["show-ref", "--verify", `refs/heads/${result.candidateBranch}`])).toContain(result.candidateHead);
   });
 
   it("keeps a dirty primary checkout and its HEAD reflog untouched while publishing from a candidate", () => {

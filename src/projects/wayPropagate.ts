@@ -222,7 +222,12 @@ function applyPropagation(
     if (writable.length === 0 && plan.unmanageable.some((change) => change.path !== "CLAUDE.md")) {
       return { ...base, repoPath, ...candidate, status: "error", detail: `Guidance delivery is blocked on the pinned candidate base: ${plan.unmanageable.map((change) => `${change.path}: ${change.reason}`).join(" ")}`, unmanageable };
     }
-    if (writable.length === 0) return { ...base, repoPath, ...candidate, status: "current", detail: "Already current on the pinned candidate base.", unmanageable };
+    if (writable.length === 0) {
+      // This candidate has not written, committed, or published anything. Do
+      // not retain an empty worktree/branch on every successful no-op apply.
+      discardUntouchedCandidate(context.runCommand, repoPath, candidatePath, branch, candidate.candidateHead!);
+      return { ...base, repoPath, status: "current", detail: "Already current on the pinned candidate base.", unmanageable };
+    }
     for (const change of writable) assertGuidanceTarget(candidatePath, change.path);
     for (const change of writable) {
       const target = path.join(candidatePath, change.path);
@@ -273,6 +278,14 @@ function applyPropagation(
       unmanageable
     };
   }
+}
+
+/** Remove only a candidate proved untouched by a zero-write plan. */
+function discardUntouchedCandidate(runCommand: CommandRunner, repoPath: string, candidatePath: string, branch: string, pinnedHead: string): void {
+  runOrThrow(runCommand, repoPath, "git", ["worktree", "remove", candidatePath]);
+  // The expected old OID makes this deletion fail rather than discard a
+  // branch another process moved after this apply created it.
+  runOrThrow(runCommand, repoPath, "git", ["update-ref", "-d", `refs/heads/${branch}`, pinnedHead]);
 }
 
 function commitMessage(plan: WayPropagationPlan): string {
