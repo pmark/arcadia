@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { PROJECT_STATUSES } from "../domain/constants.js";
+import { TOKEN_IMPACTS, type TokenImpact } from "../docs/types.js";
 
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete", "split"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
@@ -54,10 +55,12 @@ export interface NormalizedAgentAskOption { label: string; consequence: string; 
  */
 export type AgentAskEvidenceStatus = "met" | "failed" | "skipped";
 export interface NormalizedAgentAskEvidence { criterion: string; status: AgentAskEvidenceStatus; note: string | null; }
+/** A Plan-wide, paired token declaration. It is deliberately separate from Action amendments. */
+export interface NormalizedPlanMetadata { tokenImpact: TokenImpact; tokenBudget: string; }
 export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[];
   /** The single Action's `why` for an `action` Ask with no `actions` list; absent otherwise (bundles carry `actions[].why`). */
   why?: string;
-  actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+  actions: NormalizedAgentAskAction[]; targetRef: string | null; planMetadata: NormalizedPlanMetadata | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -70,7 +73,8 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
   sourcePath: string | null;
 }
 
-export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question", "why"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "plan_metadata", "requested_authority", "candidate_revision", "evidence", "gate_question", "why"]);
+export const STRICT_PLAN_METADATA_FIELDS = new Set(["token_impact", "token_budget"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
 export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
 export const ACTION_WHY_MAX_LENGTH = 300;
@@ -94,7 +98,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const strict = isRecord(parsed) && Object.hasOwn(parsed, "agent_ask");
   if (!strict) {
     const requestId = requiredText(input.requestId, "Natural Agent Ask requires --request-id.");
-    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [], gateQuestion: null };
+    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, planMetadata: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [], gateQuestion: null };
   }
   const data = parsed as Record<string, unknown>;
   const unknown = Object.keys(data).filter((key) => !STRICT_FIELDS.has(key));
@@ -107,6 +111,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const actions = actionList(data.actions);
   const rawTargetRef = optionalText(data.target_ref);
   const targetRef = intent === "project_update" ? rawTargetRef?.toLowerCase() ?? null : rawTargetRef;
+  const planMetadata = planMetadataField(data.plan_metadata);
   if (intent === "plan" && !targetRef && actions.length === 0) {
     throw validationError("A new Plan Agent Ask requires at least one governed Action.");
   }
@@ -115,6 +120,9 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   }
   if (actions.length > 0 && targetRef && intent === "action") {
     throw validationError("A multi-Action Agent Ask cannot also amend one Action target_ref.");
+  }
+  if (planMetadata !== null && (intent !== "plan" || !targetRef || actions.length > 0)) {
+    throw validationError("Agent Ask plan_metadata is only supported for a named Plan amendment with no Action changes.");
   }
   const options = optionList(data.options);
   if (options.length > 0 && intent !== "decision") {
@@ -172,7 +180,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, planMetadata, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 /**
@@ -301,6 +309,7 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?
     const itemTargetRef = resolved ? resolved.targetRef : (item.targetRef ?? normalized.targetRef);
     const operation = resolved ? "update" : normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
     const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies, references: item.references };
+    if (normalized.planMetadata) fields.planMetadata = normalized.planMetadata;
     if ("why" in item && item.why) fields.why = item.why;
     if (normalized.intent === "decision") { fields.status = "open"; fields.options = normalized.options; }
     if (resolved) { fields.resolvedIdentifier = resolved.targetRef; fields.resolvedLabel = resolved.label; }
@@ -313,6 +322,15 @@ export function requiresManagedDocumentTransition(intent: AgentAskIntent): boole
 function requiredText(value: unknown, message: string): string { if (typeof value !== "string" || !value.trim()) throw validationError(message); return value.trim(); }
 function optionalText(value: unknown): string | null { if (value === undefined || value === null) return null; if (typeof value !== "string") throw validationError("Agent Ask text fields must be strings."); return value.trim() || null; }
 function stringList(value: unknown, field: string): string[] { if (value === undefined || value === null) return []; if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) throw validationError(`Agent Ask ${field} must be a list of non-empty strings.`); return value.map((item) => (item as string).trim()); }
+function planMetadataField(value: unknown): NormalizedPlanMetadata | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value)) throw validationError("Agent Ask plan_metadata must be an object.");
+  const unknown = Object.keys(value).filter((key) => !STRICT_PLAN_METADATA_FIELDS.has(key));
+  if (unknown.length > 0) throw validationError("Agent Ask plan_metadata contains unknown fields.", { fields: unknown.sort() });
+  const tokenImpact = requiredText(value.token_impact, "Agent Ask plan_metadata.token_impact is required.") as TokenImpact;
+  if (!(TOKEN_IMPACTS as readonly string[]).includes(tokenImpact)) throw validationError("Agent Ask plan_metadata.token_impact is unsupported.", { tokenImpact, supported: TOKEN_IMPACTS });
+  return { tokenImpact, tokenBudget: requiredText(value.token_budget, "Agent Ask plan_metadata.token_budget is required.") };
+}
 function actionList(value: unknown): NormalizedAgentAskAction[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length === 0) throw validationError("Agent Ask actions must be a non-empty list.");

@@ -2046,6 +2046,29 @@ describe("Agent Ask settlement", () => {
     expect(readFileSync(planPath, "utf8")).not.toContain("Cross Project edit");
   });
 
+  it("previews and applies only paired Plan budget metadata", () => {
+    const { workspace, repo } = fixture();
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    const request = JSON.stringify({ agent_ask: "v1", request_id: "amend-plan-budget", project: "demo", intent: "plan",
+      target_ref: "plan/demo-plan", desired_result: "Correct the Plan budget", requested_authority: "apply_if_approved",
+      plan_metadata: { token_impact: "small", token_budget: "One bounded implementation pass." } });
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(proposal.data.proposal.effects[0]).toMatchObject({ targetRef: "plan/demo-plan", fields: {
+      planMetadata: { tokenImpact: "small", tokenBudget: "One bounded implementation pass." }
+    } });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-plan-budget", disposition: "accepted" as const };
+    const preview = runAgentAskSettleCommand(options);
+    const after = preview.data.receipt.review!.documents.find((doc) => doc.path === "docs/plans/demo-plan.md")!.after!;
+    expect(after).toContain("token_impact: small");
+    expect(after).toContain("token_budget: One bounded implementation pass.");
+    expect(after).toContain("  - id: existing");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+    runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true });
+    expect(readFileSync(planPath, "utf8")).toBe(after);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: existing");
+  });
+
   it("keeps two concurrent Agent Asks' paths, request ids, receipts, effects, and repositories fully disjoint", () => {
     const { workspace, repo } = fixture();
     addOtherProject(workspace, repo);
