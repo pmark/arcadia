@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -12,6 +12,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { exactTextHash } from "../src/learning/lessons.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { parseJson, runCli } from "./cli-response-fixture.js";
+import { installLosslessCacheReplacement } from "../src/cli.js";
 
 const workspaces: string[] = [];
 afterEach(() => workspaces.splice(0).forEach((workspace) => rmSync(workspace, { recursive: true, force: true })));
@@ -140,5 +141,55 @@ describe("arcadia learn", () => {
     expect(imported.status).toBe(0);
     expect(parseJson(imported.stdout).data.snapshots).toBe(2);
     expect(runLearnSearchCommand({ workspace: ws, scope: "project:fixture", query: "old retained" }).data.lessons).toHaveLength(1);
+  });
+
+  it("preserves custody across cache interleavings and retention failure", () => {
+    const ws = workspace();
+    const repo = mkdtempSync(path.join(tmpdir(), "arcadia-learn-custody-"));
+    workspaces.push(repo);
+    const source = path.join(repo, "notes.md");
+    const original = "## Original\nkeys: custody\noriginal bytes\n";
+    const replacement = "";
+    writeFileSync(path.join(repo, "tracked.txt"), "clean\n", "utf8");
+    spawnSync("git", ["init"], { cwd: repo });
+    spawnSync("git", ["config", "user.email", "test@example.invalid"], { cwd: repo });
+    spawnSync("git", ["config", "user.name", "Test"], { cwd: repo });
+    spawnSync("git", ["add", "tracked.txt"], { cwd: repo });
+    spawnSync("git", ["commit", "-m", "fixture"], { cwd: repo });
+    writeFileSync(path.join(repo, "tracked.txt"), "dirty tracked bytes\n", "utf8");
+    writeFileSync(path.join(repo, "untracked.txt"), "dirty untracked bytes\n", "utf8");
+    writeFileSync(source, original, "utf8");
+    chmodSync(source, 0o600);
+    installLosslessCacheReplacement(ws, source, original, replacement, "project:one");
+    expect(readFileSync(source, "utf8")).toBe(replacement);
+    expect(statSync(source).mode & 0o777).toBe(0o600);
+    expect(runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "original bytes" }).data.lessons).toHaveLength(1);
+    expect(readFileSync(path.join(repo, "tracked.txt"), "utf8")).toBe("dirty tracked bytes\n");
+    expect(readFileSync(path.join(repo, "untracked.txt"), "utf8")).toBe("dirty untracked bytes\n");
+
+    const changed = "## Changed\nkeys: custody\nconcurrent actual bytes\n";
+    writeFileSync(source, original, "utf8");
+    let movedCustody = "";
+    expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one", {
+      afterMove: (_source, custody) => { movedCustody = custody; writeFileSync(custody, changed, "utf8"); }
+    })).toThrow(/changed before custody/i);
+    expect(readFileSync(source, "utf8")).toBe(changed);
+    expect(readFileSync(movedCustody, "utf8")).toBe(changed);
+    expect(runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "concurrent actual bytes" }).data.lessons).toHaveLength(1);
+
+    writeFileSync(source, original, "utf8");
+    let recreatedCustody = "";
+    expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one", {
+      beforeExclusiveInstall: (target, custody) => { recreatedCustody = custody; writeFileSync(target, "external replacement\n", "utf8"); }
+    })).toThrow(/changed concurrently/i);
+    expect(readFileSync(source, "utf8")).toBe("external replacement\n");
+    expect(readFileSync(recreatedCustody, "utf8")).toBe(original);
+
+    writeFileSync(source, original, "utf8");
+    withDatabase(ws, (db) => db.exec("CREATE TRIGGER fail_custody_observation BEFORE INSERT ON lesson_observations WHEN NEW.source_ref LIKE 'custody:%' BEGIN SELECT RAISE(ABORT, 'custody retention failure'); END"));
+    expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one")).toThrow(/durable capture failed/i);
+    const failedCustody = (withDatabase(ws, (db) => db.prepare("SELECT source_ref FROM lesson_observations WHERE source_ref LIKE 'custody:%' ORDER BY rowid DESC LIMIT 1").get() as { source_ref?: string } | undefined)?.source_ref ?? "").replace(/^custody:/, "");
+    expect(readFileSync(source, "utf8")).toBe(original);
+    expect(existsSync(failedCustody) || existsSync(path.join(ws, "artifacts", "learn-cache-custody"))).toBe(true);
   });
 });

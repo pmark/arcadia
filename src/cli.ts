@@ -5307,7 +5307,13 @@ function readContainedLessonHistory(file: string): { snapshots: Array<{ revision
  * source path is installed only with an exclusive hard link, so a concurrent
  * writer that recreates it wins and its bytes are never overwritten.
  */
-function installLosslessCacheReplacement(workspace: string, file: string, planned: string, replacement: string, scope: string | undefined): void {
+export interface LearnCacheCustodyHooks {
+  afterMove?: (source: string, custody: string) => void;
+  captureActual?: (actual: string, custody: string) => void;
+  beforeExclusiveInstall?: (source: string, custody: string) => void;
+}
+
+export function installLosslessCacheReplacement(workspace: string, file: string, planned: string, replacement: string, scope: string | undefined, hooks: LearnCacheCustodyHooks = {}): void {
   const source = resolveInvocationPath(file);
   const custodyDir = path.join(getWorkspacePaths(workspace).artifacts, "learn-cache-custody");
   mkdirSync(custodyDir, { recursive: true });
@@ -5321,9 +5327,11 @@ function installLosslessCacheReplacement(workspace: string, file: string, planne
   } catch (error) {
     throw validationError("Notes cache could not be moved into durable custody; no cache deletion was written.", { file, custody, error: error instanceof Error ? error.message : String(error) });
   }
+  hooks.afterMove?.(source, custody);
   const actual = readFileSync(custody, "utf8");
   try {
-    runLearnImportNotesCommand({ workspace, scope: resolveLessonScope(scope), markdown: actual, sourceRef: `custody:${custody}` });
+    if (hooks.captureActual) hooks.captureActual(actual, custody);
+    else runLearnImportNotesCommand({ workspace, scope: resolveLessonScope(scope), markdown: actual, sourceRef: `custody:${custody}` });
   } catch (error) {
     restoreCustodyOnlyIfAbsent(custody, source);
     throw validationError("Actual Notes bytes were retained in custody but durable capture failed; cache replacement was refused.", { file, custody, error: error instanceof Error ? error.message : String(error) });
@@ -5336,6 +5344,7 @@ function installLosslessCacheReplacement(workspace: string, file: string, planne
   try {
     writeFileSync(temporary, replacement, { encoding: "utf8", flag: "wx", mode });
     chmodSync(temporary, mode);
+    hooks.beforeExclusiveInstall?.(source, custody);
     linkSync(temporary, source);
     unlinkSync(temporary);
   } catch (error) {
