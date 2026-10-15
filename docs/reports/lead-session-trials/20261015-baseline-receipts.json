@@ -1,0 +1,63 @@
+{
+  "observedAt": "2026-10-15T07:16:35.768211+00:00",
+  "kind": "supporting-observation-not-governance",
+  "parentThread": "01a13daa-1709-7461-87fd-cddb773b0488",
+  "brokerStatus": {
+    "revision": "7bbfbed074505adc22513e7b7944cfa3974a4019",
+    "ready": true,
+    "releaseDirectory": "/Users/pmark/.local/share/arcadia/go-broker/releases/7bbfbed074505adc22513e7b7944cfa3974a4019",
+    "brokerIssues": [],
+    "preservationTransport": {
+      "ready": true,
+      "detail": "Fresh host worker heartbeat."
+    },
+    "agentGoTransport": {
+      "ready": true,
+      "state": "ready",
+      "detail": "Host worker has serviced agent go requests recently."
+    },
+    "briefSupervisor": {
+      "ready": true,
+      "detail": "Each fixed brief launcher self-spawned under its deadline and returned a structured receipt."
+    },
+    "command": "arcadia go-broker status --json",
+    "exitCode": 0
+  },
+  "manifest": {
+    "path": "/Users/pmark/.local/share/arcadia/go-broker/releases/7bbfbed074505adc22513e7b7944cfa3974a4019/broker-manifest.json",
+    "revision": "7bbfbed074505adc22513e7b7944cfa3974a4019",
+    "sourceRepository": "/Users/pmark/.codex/worktrees/broker-install/arcadia"
+  },
+  "productionStatus": {
+    "display": {
+      "state": "inactive_idle",
+      "label": "Inactive \u00b7 Idle",
+      "observedAt": "2026-10-15T07:16:39.719Z"
+    },
+    "desiredState": "inactive",
+    "liveAdmissions": 0,
+    "command": "arcadia production status --json",
+    "exitCode": 0
+  },
+  "planProposalRegistration": {
+    "id": "agentask_393754da66d93667b9",
+    "captureId": "capture_340a15d0-5ad1-444b-bb45-7faf08d7eddb",
+    "fingerprint": "393754da66d93667b96df93ee333eeff57ae4d5808c15b119b52baa66d4378d5",
+    "createdAt": "2026-10-15T07:17:52.087Z",
+    "writes": {
+      "captureReceipt": true,
+      "proposalReceipt": true,
+      "projectChanges": false
+    },
+    "managedDocumentTransition": {
+      "required": true,
+      "status": "withheld_until_acceptance",
+      "authority": "checked_in_documents"
+    },
+    "queueConsequence": "none_until_accepted",
+    "conflicts": [],
+    "refused": [],
+    "requestId": "plan-lead-session-trial-learning-20261015",
+    "source": "arcadia agent-ask draft --dir <candidate> --json"
+  }
+}
