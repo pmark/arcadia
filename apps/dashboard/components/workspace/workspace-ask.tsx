@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AskTrailResponse } from "../../lib/arcadia-cli";
 import type { AskResponse } from "../../lib/types";
+import { WorkspaceArtifactViewer } from "./workspace-artifact-viewer";
 import { newRequestId } from "../../lib/launch-flow";
 
 type Target = { projectId?: string; label: string; context: string };
@@ -176,13 +177,14 @@ export function WorkspaceAsk({ target, available }: { target: Target; available:
         update({ ...saved, exchange: null, history: [e, ...saved.history].slice(0, 5) });
         const url = new URL(window.location.href); url.searchParams.delete("receipt"); window.history.replaceState(null, "", url);
       }}>Keep in history and start a new Ask</button>}
-      {trail && <TrailCards trail={trail} />}
+      {trail && <TrailCards trail={trail} receipt={e.id} />}
     </section>}
     <details className="workspace-history"><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update(selectExchange(saved, recoverExchange(old))); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
   </div>;
 }
 
-function TrailCards({ trail }: { trail: AskTrailResponse }) {
+function TrailCards({ trail, receipt }: { trail: AskTrailResponse; receipt: string }) {
+  const [opened, setOpened] = useState<string | null>(null);
   const outcomes = [...(trail.capture?.outcomes ?? []), ...trail.asks.flatMap(ask => ask.outcomes)].filter((o, i, all) => all.findIndex(other => other.kind === o.kind && other.id === o.id) === i);
   const runs = trail.asks.flatMap(ask => ask.runs).filter((r, i, all) => all.findIndex(other => other.id === r.id) === i);
   return <section aria-label="Current Ask evidence"><h3>Current work & evidence</h3>
@@ -192,7 +194,8 @@ function TrailCards({ trail }: { trail: AskTrailResponse }) {
     {outcomes.map(o => <article key={`${o.kind}:${o.id}`}><h4>{o.summary ?? (o.kind === "decision" ? "Decision" : o.kind === "plan" ? "Execution Plan" : o.kind === "action" ? "Action" : o.kind === "back_burner_item" ? "Back Burner item" : o.kind)}</h4><p>{o.status ?? "No status recorded"}{o.projectName ? ` · ${o.projectName}` : ""}</p><details><summary>Record details</summary><p>{o.kind} · <code>{o.id}</code></p>{o.supersededBy && <p>Superseded by {o.supersededBy.askId}</p>}</details></article>)}
     {!outcomes.length && <p>No produced records yet.</p>}
     {!runs.length && <p>No Runs are linked. Capture or queueing alone does not prove work is complete.</p>}
-    {runs.map(run => <article key={run.id}><h4>{run.summary ?? "Run"} · {run.status}</h4>{run.waitingReason && <p>{run.waitingReason}</p>}{run.artifacts.length ? run.artifacts.map(artifact => <div key={artifact.id}><p>Artifact · {artifact.status} · {artifact.kind}</p><details><summary>Artifact evidence</summary><p>ID: <code>{artifact.id}</code></p><p>Evidence reference: <code>{artifact.evidenceReference}</code></p><p>File access is not available from this receipt.</p></details></div>) : <p>No linked Artifacts.</p>}<details><summary>Run details</summary><p>ID: <code>{run.id}</code></p></details></article>)}
+    {runs.map(run => <article key={run.id}><h4>{run.summary ?? "Run"} · {run.status}</h4>{run.waitingReason && <p>{run.waitingReason}</p>}{run.artifacts.length ? run.artifacts.map(artifact => <div key={artifact.id}><p>Artifact · {artifact.status} · {artifact.kind}</p><button type="button" onClick={() => setOpened(artifact.id)}>Open Artifact</button><details><summary>Artifact evidence</summary><p>ID: <code>{artifact.id}</code></p><p>Evidence reference: <code>{artifact.evidenceReference}</code></p></details></div>) : <p>No linked Artifacts.</p>}<details><summary>Run details</summary><p>ID: <code>{run.id}</code></p></details></article>)}
+    {opened && <WorkspaceArtifactViewer key={`${receipt}:${opened}`} id={opened} receipt={receipt} onClose={() => setOpened(null)} />}
     <details><summary>Routing & provenance</summary>{trail.capture && <p>Capture: <code>{trail.capture.id}</code></p>}{trail.asks.map(ask => <div key={ask.id}><p>Ask <code>{ask.id}</code> · {ask.status}</p><p>{ask.projectName ?? "No Project recorded"} · {ask.executionPath ?? ask.outputKind}</p>{ask.reason && <p>Why: {ask.reason}</p>}{ask.supersededBy.map(link => <p key={link.askId}>Superseded by {link.askId} · {link.record.id ?? "no new record"}</p>)}</div>)}</details>
   </section>;
 }

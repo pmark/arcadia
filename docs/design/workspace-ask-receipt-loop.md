@@ -1,5 +1,9 @@
 # Workspace Ask receipt loop — implementation evidence
 
+Extension: [Open linked Artifacts](workspace-artifact-opening.md) implements
+image/text viewing from these cards. Artifact-delivery deferrals below describe
+the original PR #1440 snapshot; the new guide gives current limits and evidence.
+
 Operator-directed continuation, intake #1438. Candidate: `codex/workspace-ask-integration`, base `e63ef8c734c6321e203ace84f125a7c20d73d233`, worktree `/Users/pmark/.codex/worktrees/workspace-ask-integration/arcadia`. Implementer role, depth 1, sole product writer; Lead owns independent review, preservation and delivery. This assignment creates no managed Action, claim, enrollment, authority or completion. Current unrelated pointer was rechecked as `claude-worker-launch-replay` in the active production Plan. Parent supplied the clean-candidate/monitor overlap evidence before edits. No primary or other candidate changed.
 
 ## Delivered behavior

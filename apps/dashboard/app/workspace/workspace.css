@@ -68,3 +68,11 @@
 /* The sky can be pale at any hour; navigation keeps its own readable surface. */
 .workspace-header {background:rgb(12 18 36 / .82);border-radius:0 0 18px 18px;}
 .workspace-breadcrumbs {background:rgb(12 18 36 / .82);border-radius:12px;padding:10px 14px;width:fit-content;}
+
+.workspace-artifact-viewer { color: #f5f2ed; background: #0c1224; border: 1px solid #59647b; border-radius: 16px; padding: 20px; width: min(900px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; box-sizing: border-box; }
+.workspace-artifact-viewer::backdrop { background: rgb(0 0 0 / 70%); }
+.workspace-artifact-viewer header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.workspace-artifact-viewer header h2 { margin: 0; }
+.workspace-artifact-viewer button { min-height: 44px; padding: 8px 14px; border: 1px solid #8290a9; border-radius: 8px; }
+.workspace-artifact-viewer img { display: block; width: 100%; height: auto; max-height: 72dvh; object-fit: contain; background: #fff; }
+.workspace-artifact-viewer pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
