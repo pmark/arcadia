@@ -3,7 +3,7 @@
   "role": "lead",
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
-  "action_id": "operator-directed:#1426",
+  "action_id": "operator-directed:#1430",
   "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
@@ -17,8 +17,8 @@
   "host_touches": null,
   "frictions": [],
   "outcome": "complete",
-  "candidate_head": "e1e7d3b1907e1778a1a182d9fa0150139b58920b",
-  "evidence_source": "docs/design/conversational-ui-shell.md",
-  "task_class": "conversational-UI-scaffold",
-  "notes": "Continues design session after #1422. Native implementer gpt-6.1-sol/medium; URL tests, Ask regressions and fixture browser journey passed. No Ask integration claimed."
+  "candidate_head": "1c536ce00aed6e7004c0638d346594cccf5d67c3",
+  "evidence_source": "docs/reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md",
+  "task_class": "conversational-workspace-design-and-handoff",
+  "notes": "API #1422 and shell #1427 merged. Preserves design/artifacts and Ask-loop brief; read-only researcher gpt-6.1-sol/low. Coding held for custody coordination; primary originals untouched."
 }
