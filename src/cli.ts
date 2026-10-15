@@ -1593,8 +1593,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; revision?: string; sourceRef?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
-      const markdown = readContainedLessonFile(merged.file);
-      return runCliAction("learn.import-notes", merged, () => runLearnImportNotesCommand({ ...merged, scope: resolveLessonScope(merged.scope), markdown, sourceRef: merged.sourceRef ?? merged.file }), renderLearnImportSuccess);
+      return runCliAction("learn.import-notes", merged, () => {
+        const markdown = readContainedLessonFile(merged.file);
+        return runLearnImportNotesCommand({ ...merged, scope: resolveLessonScope(merged.scope), markdown, sourceRef: merged.sourceRef ?? merged.file });
+      }, renderLearnImportSuccess);
     });
   addJsonOption(learn.command("import-history").requiredOption("--file <path>", "Notes To Self file whose Git history to retain", resolveInvocationPath))
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
@@ -1619,15 +1621,17 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
-      const payload = JSON.parse(readFileSync(merged.file, "utf8"));
-      return runCliAction("learn.restore", merged, () => runLearnRestoreCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), payload }), renderLearnRestoreSuccess);
+      return runCliAction("learn.restore", merged, () => {
+        const payload = JSON.parse(readFileSync(merged.file, "utf8"));
+        return runLearnRestoreCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), payload });
+      }, renderLearnRestoreSuccess);
     });
   addJsonOption(learn.command("cache-maintain").requiredOption("--file <path>", "Current Notes To Self file", resolveInvocationPath).option("--evict <lesson-id>", "Explicit retained lesson id to remove from the hot cache").option("--apply", "Write the planned cache update after a byte check"))
     .action((options: { file: string; evict?: string; apply?: boolean; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
-      const source = readContainedLessonFile(merged.file);
       return runCliAction("learn.cache-maintain", merged, () => {
+        const source = readContainedLessonFile(merged.file);
         const response = runLearnCacheMaintainCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), markdown: source, sourceRef: merged.file, evictId: merged.evict });
         if (merged.apply && response.data.updatedMarkdown !== null) installLosslessCacheReplacement(merged.workspace, merged.file, source, response.data.updatedMarkdown, merged.scope);
         return response;

@@ -8,7 +8,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import { tryGit } from "../git/worktrees.js";
 import {
   captureLesson, correctLesson, getLesson, LESSON_CONFIDENCE, LESSON_FRESHNESS,
-  LESSON_PROVENANCE, noteEntries, normalizeLessonScope, restoreLessonGraph, searchLessons, type CaptureLessonInput,
+  LESSON_PROVENANCE, noteEntries, noteEntryRanges, normalizeLessonScope, restoreLessonGraph, searchLessons, type CaptureLessonInput,
   type Lesson
 } from "../learning/lessons.js";
 
@@ -120,6 +120,7 @@ export function runLearnExportCommand(options: { workspace: string; scope?: stri
  */
 export function runLearnCacheMaintainCommand(options: LearnCacheMaintainOptions): CommandSuccess<{ imported: number; entryCount: number; evictedId: string | null; updatedMarkdown: string | null }> {
   const entries = noteEntries(options.markdown);
+  const ranges = noteEntryRanges(options.markdown);
   if (!entries.length) throw validationError("Notes file has no importable `##` entries; cache maintenance made no change.", {});
   const imported = runLearnImportNotesCommand(options).data;
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -128,13 +129,14 @@ export function runLearnCacheMaintainCommand(options: LearnCacheMaintainOptions)
   const result = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
     const lesson = getLesson(db, evictId, true);
     if (!lesson || lesson.scope_key !== normalizeLessonScope(options.scope) || !lesson.current) throw validationError("Eviction lesson was not found in this scope.", { id: evictId });
-    const index = entries.indexOf(lesson.current.text);
+    const current = lesson.current;
+    const index = ranges.findIndex((entry) => entry.text === current.text);
     if (index < 0) throw validationError("Eviction lesson does not match an exact current Notes entry; cache was left untouched.", { id: options.evictId });
-    const receiptExists = db.prepare("SELECT receipt_json FROM lesson_receipts WHERE lesson_id = ? AND receipt_json LIKE ?").get(lesson.id, `%${lesson.current.text_hash}%`);
+    const receiptExists = db.prepare("SELECT receipt_json FROM lesson_receipts WHERE lesson_id = ? AND receipt_json LIKE ?").get(lesson.id, `%${current.text_hash}%`);
     if (!receiptExists) throw validationError("No exact-content retention receipt exists; cache was left untouched.", { id: options.evictId });
-    return entries[index];
+    return ranges[index];
   }));
-  return createSuccess({ command: "learn.cache-maintain", workspace: workspacePath, data: { imported: imported.imported, entryCount: entries.length, evictedId: evictId, updatedMarkdown: options.markdown.replace(result, "") } });
+  return createSuccess({ command: "learn.cache-maintain", workspace: workspacePath, data: { imported: imported.imported, entryCount: entries.length, evictedId: evictId, updatedMarkdown: options.markdown.slice(0, result.start) + options.markdown.slice(result.end) } });
 }
 /** Restore only validates the documented export envelope; no paths are interpreted from it. */
 export function runLearnRestoreCommand(options: { workspace: string; scope?: string; payload: LearnExport }): CommandSuccess<{ restored: number }> {

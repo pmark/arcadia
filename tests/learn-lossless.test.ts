@@ -54,11 +54,20 @@ describe("arcadia learn", () => {
     expect(lesson.current?.freshness).toBe("stale");
     const changed = runLearnCorrectCommand({ workspace: ws, scope: "project:one", id: lesson.id, text: "Fresh replacement" }).data.lesson;
     const exported = runLearnExportCommand({ workspace: ws, scope: "project:one" }).data;
+    const source = exported.lessons[0];
     const target = workspace();
     expect(runLearnRestoreCommand({ workspace: target, scope: "project:one", payload: exported }).data.restored).toBe(1);
     const restored = runLearnShowCommand({ workspace: target, scope: "project:one", id: changed.id }).data.lesson;
     expect(restored.versions?.map((version) => version.id)).toEqual(changed.versions?.map((version) => version.id));
-    withDatabase(target, (db) => expect((db.prepare("SELECT COUNT(*) AS count FROM lesson_receipts").get() as { count: number }).count).toBeGreaterThan(0));
+    expect(restored.receipts).toEqual(source.receipts);
+    expect(restored.source_back_burner_item_id).toBe(source.back_burner_item_id);
+    expect(restored.back_burner_item_id).not.toBe(source.back_burner_item_id);
+    const repeated = workspace();
+    const reexported = runLearnExportCommand({ workspace: target, scope: "project:one" }).data;
+    runLearnRestoreCommand({ workspace: repeated, scope: "project:one", payload: reexported });
+    const restoredAgain = runLearnShowCommand({ workspace: repeated, scope: "project:one", id: changed.id }).data.lesson;
+    expect(restoredAgain.source_back_burner_item_id).toBe(source.back_burner_item_id);
+    expect(restoredAgain.receipts).toEqual(source.receipts);
   });
 
   it("imports every Notes entry before an explicit receipt-verified cache eviction", () => {
@@ -72,6 +81,17 @@ describe("arcadia learn", () => {
     expect(evicted.data.updatedMarkdown).not.toContain("body one");
     expect(runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "body one" }).data.lessons[0]?.id).toBe(first.id);
     expect(() => runLearnCacheMaintainCommand({ workspace: ws, scope: "project:one", markdown: "not an entry" })).toThrow(/no importable/i);
+  });
+
+  it("evicts the selected entry range without corrupting a matching preamble", () => {
+    const ws = workspace();
+    const target = "## Target\nkeys: target\nKeep target.\n";
+    const other = "## Other\nkeys: other\nKeep other.\n\n";
+    const markdown = `# Notes\nExample ${target}\n${other}${target}`;
+    const imported = runLearnImportNotesCommand({ workspace: ws, scope: "project:one", markdown });
+    const targetId = imported.data.lessonIds[1];
+    const planned = runLearnCacheMaintainCommand({ workspace: ws, scope: "project:one", markdown, evictId: targetId });
+    expect(planned.data.updatedMarkdown).toBe(`# Notes\nExample ${target}\n${other}`);
   });
 
   it("retains bounded available history and refuses malformed restore graphs", () => {
@@ -101,6 +121,10 @@ describe("arcadia learn", () => {
     };
     expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:one", payload: cyclic })).toThrow(/current-version|exact-content/i);
     expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:two", payload: { schema: "arcadia-lessons-v1", lessons: [retained] } })).toThrow(/different scope/i);
+    const malformedReceipt = { schema: "arcadia-lessons-v1" as const, lessons: [{ ...retained, receipts: [{ ...retained.receipts![0], lesson_id: "lesson_foreign" }] }] };
+    const receiptTarget = workspace();
+    expect(() => runLearnRestoreCommand({ workspace: receiptTarget, scope: "project:one", payload: malformedReceipt })).toThrow(/receipt/i);
+    expect(runLearnExportCommand({ workspace: receiptTarget, scope: "project:one" }).data.lessons).toHaveLength(0);
   });
 
   it("exercises CLI parsing, Project-scope inference, and invalid enum refusal in a disposable repository", () => {

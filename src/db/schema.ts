@@ -1578,6 +1578,7 @@ function ensureLessonTables(db: Database.Database): void {
       scope_key TEXT NOT NULL,
       fingerprint TEXT NOT NULL,
       back_burner_item_id TEXT UNIQUE REFERENCES back_burner_items(id) ON DELETE SET NULL,
+      source_back_burner_item_id TEXT,
       current_version_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -1627,6 +1628,9 @@ function ensureLessonTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_lesson_versions_lesson ON lesson_versions(lesson_id, version DESC);
     CREATE INDEX IF NOT EXISTS idx_lesson_versions_freshness ON lesson_versions(freshness);
   `);
+  const columns = new Set((db.prepare("PRAGMA table_info(lessons)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!columns.has("source_back_burner_item_id")) db.prepare("ALTER TABLE lessons ADD COLUMN source_back_burner_item_id TEXT").run();
+  db.prepare("UPDATE lessons SET source_back_burner_item_id = back_burner_item_id WHERE source_back_burner_item_id IS NULL").run();
 }
 
 /**

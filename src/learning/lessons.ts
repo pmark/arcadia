@@ -28,16 +28,28 @@ export interface LessonVersion {
   evidence: string[];
   observations: Array<{ repository_revision: string | null; source_ref: string | null; observed_at: string }>;
 }
+export interface LessonReceipt {
+  id: string;
+  lesson_id: string;
+  request_fingerprint: string;
+  operation: "capture" | "correct" | "import" | "restore" | "cache-maintain";
+  receipt_json: string;
+  created_at: string;
+}
+
 export interface Lesson {
   id: string;
   scope_key: string;
   fingerprint: string;
   back_burner_item_id: string | null;
+  /** Original intake link retained when a portable graph receives a local intake row. */
+  source_back_burner_item_id: string | null;
   current_version_id: string | null;
   created_at: string;
   updated_at: string;
   current: LessonVersion | null;
   versions?: LessonVersion[];
+  receipts?: LessonReceipt[];
 }
 
 export interface CaptureLessonInput {
@@ -87,10 +99,14 @@ function getVersion(db: Database.Database, id: string): LessonVersion | null {
   const row = db.prepare("SELECT * FROM lesson_versions WHERE id = ?").get(id) as (Omit<LessonVersion, "keywords" | "evidence"> & { keywords_json: string }) | undefined;
   return row ? hydrateVersion(db, row) : null;
 }
+function lessonReceipts(db: Database.Database, id: string): LessonReceipt[] {
+  return db.prepare("SELECT id, lesson_id, request_fingerprint, operation, receipt_json, created_at FROM lesson_receipts WHERE lesson_id = ? ORDER BY created_at, id").all(id) as LessonReceipt[];
+}
 export function getLesson(db: Database.Database, id: string, includeVersions = true): Lesson | null {
   const row = db.prepare("SELECT * FROM lessons WHERE id = ?").get(id) as Omit<Lesson, "current" | "versions"> | undefined;
   if (!row) return null;
   const lesson: Lesson = { ...row, current: row.current_version_id ? getVersion(db, row.current_version_id) : null };
+  lesson.receipts = lessonReceipts(db, id);
   if (includeVersions) lesson.versions = (db.prepare("SELECT * FROM lesson_versions WHERE lesson_id = ? ORDER BY version DESC").all(id) as Array<Omit<LessonVersion, "keywords" | "evidence"> & { keywords_json: string }>).map((entry) => hydrateVersion(db, entry));
   return lesson;
 }
@@ -147,8 +163,8 @@ export function captureLesson(db: Database.Database, input: CaptureLessonInput):
     reason: "Captured as a durable lesson through `arcadia learn`.",
     suggestedNextStep: "Search or correct this lesson before acting on it."
   });
-  db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)")
-    .run(id, scope, fingerprint, backBurner.id, createdAt, createdAt);
+  db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, source_back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)")
+    .run(id, scope, fingerprint, backBurner.id, backBurner.id, createdAt, createdAt);
   const versionId = `lessonVersion_${randomUUID()}`;
   db.prepare(`INSERT INTO lesson_versions (id, lesson_id, version, text, text_hash, keywords_json, provenance_kind, confidence, freshness, repository_revision, source_ref, supersedes_version_id, created_at)
     VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
@@ -194,7 +210,7 @@ export function searchLessons(db: Database.Database, query: string, scope?: stri
 
 /** Restores the complete exported version graph or refuses before a collision can overwrite it. */
 export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void {
-  if (!lesson || typeof lesson.id !== "string" || typeof lesson.fingerprint !== "string" || typeof lesson.scope_key !== "string" || typeof lesson.current_version_id !== "string" || !isExportVersion(lesson.current) || !Array.isArray(lesson.versions) || lesson.versions.length === 0 || !lesson.versions.every(isExportVersion) || !/^lesson_[a-f0-9]{20}$/.test(lesson.id)) {
+  if (!lesson || typeof lesson.id !== "string" || typeof lesson.fingerprint !== "string" || typeof lesson.scope_key !== "string" || (lesson.source_back_burner_item_id !== null && typeof lesson.source_back_burner_item_id !== "string") || typeof lesson.current_version_id !== "string" || !isExportVersion(lesson.current) || !Array.isArray(lesson.versions) || lesson.versions.length === 0 || !lesson.versions.every(isExportVersion) || !/^lesson_[a-f0-9]{20}$/.test(lesson.id)) {
     throw validationError("Lesson export contains an invalid lesson graph.", { id: lesson?.id });
   }
   const scope = normalizeLessonScope(lesson.scope_key);
@@ -218,6 +234,8 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
   }
   const conflict = db.prepare("SELECT id FROM lessons WHERE id = ? OR (scope_key = ? AND fingerprint = ?)").get(lesson.id, scope, lesson.fingerprint);
   if (conflict) throw validationError("Lesson restore conflicts with an existing retained lesson.", { id: lesson.id });
+  if (!Array.isArray(lesson.receipts) || !lesson.receipts.every(isExportReceipt)) throw validationError("Lesson export has invalid receipt history.", { id: lesson.id });
+  validateReceiptGraph(db, lesson, versionIds);
   for (const version of lesson.versions) {
     if (version.lesson_id !== lesson.id || exactTextHash(version.text) !== version.text_hash || !LESSON_PROVENANCE.includes(version.provenance_kind) || !LESSON_CONFIDENCE.includes(version.confidence) || !LESSON_FRESHNESS.includes(version.freshness) || (version.supersedes_version_id !== null && !versionIds.has(version.supersedes_version_id))) {
       throw validationError("Lesson export version failed exact-content validation.", { lessonId: lesson.id, versionId: version.id });
@@ -231,8 +249,8 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
     reason: "Restored durable lesson intake linkage.",
     suggestedNextStep: "Search or correct this lesson before acting on it."
   });
-  db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(lesson.id, scope, lesson.fingerprint, backBurner.id, lesson.current_version_id, lesson.created_at, lesson.updated_at);
+  db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, source_back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(lesson.id, scope, lesson.fingerprint, backBurner.id, lesson.source_back_burner_item_id ?? lesson.back_burner_item_id, lesson.current_version_id, lesson.created_at, lesson.updated_at);
   for (const version of ordered) {
     db.prepare(`INSERT INTO lesson_versions (id, lesson_id, version, text, text_hash, keywords_json, provenance_kind, confidence, freshness, repository_revision, source_ref, supersedes_version_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -240,8 +258,37 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
     insertEvidence(db, version.id, version.evidence);
     for (const observation of version.observations) recordObservation(db, version.id, observation.repository_revision, observation.source_ref, observation.observed_at);
   }
-  const restored = getLesson(db, lesson.id)!;
-  receipt(db, restored, "restore", hash(JSON.stringify({ operation: "restore", id: lesson.id, exactTextHash: lesson.current.text_hash })));
+  for (const entry of lesson.receipts) {
+    db.prepare("INSERT INTO lesson_receipts (id, lesson_id, request_fingerprint, operation, receipt_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(entry.id, lesson.id, entry.request_fingerprint, entry.operation, entry.receipt_json, entry.created_at);
+  }
+}
+
+function isExportReceipt(value: unknown): value is LessonReceipt {
+  if (!value || typeof value !== "object") return false;
+  const receipt = value as Partial<LessonReceipt>;
+  return typeof receipt.id === "string" && typeof receipt.lesson_id === "string"
+    && typeof receipt.request_fingerprint === "string" && typeof receipt.operation === "string"
+    && ["capture", "correct", "import", "restore", "cache-maintain"].includes(receipt.operation)
+    && typeof receipt.receipt_json === "string" && typeof receipt.created_at === "string";
+}
+function validateReceiptGraph(db: Database.Database, lesson: Lesson, versionIds: Set<string>): void {
+  const ids = new Set<string>(); const fingerprints = new Set<string>();
+  for (const entry of lesson.receipts ?? []) {
+    if (entry.lesson_id !== lesson.id || !entry.id || !/^[a-f0-9]{64}$/.test(entry.request_fingerprint) || ids.has(entry.id) || fingerprints.has(entry.request_fingerprint)) throw validationError("Lesson export receipt graph has duplicate or foreign references.", { id: lesson.id, receiptId: entry.id });
+    ids.add(entry.id); fingerprints.add(entry.request_fingerprint);
+    let payload: unknown; try { payload = JSON.parse(entry.receipt_json); } catch { throw validationError("Lesson export receipt JSON is invalid.", { id: lesson.id, receiptId: entry.id }); }
+    const body = payload as { lessonId?: unknown; operation?: unknown; versionId?: unknown; exactTextHash?: unknown };
+    const unbound = body.versionId === null && body.exactTextHash === null;
+    const bound = typeof body.versionId === "string" && typeof body.exactTextHash === "string" && versionIds.has(body.versionId);
+    if (!body || body.lessonId !== lesson.id || body.operation !== entry.operation || (!unbound && !bound)) throw validationError("Lesson export receipt does not belong to its retained graph.", { id: lesson.id, receiptId: entry.id });
+    if (typeof body.versionId === "string") {
+      const version = lesson.versions!.find((item) => item.id === body.versionId)!;
+      if (body.exactTextHash !== version.text_hash) throw validationError("Lesson export receipt exact hash is invalid.", { id: lesson.id, receiptId: entry.id });
+    }
+    const collision = db.prepare("SELECT id FROM lesson_receipts WHERE id = ? OR request_fingerprint = ?").get(entry.id, entry.request_fingerprint);
+    if (collision) throw validationError("Lesson restore receipt conflicts with retained receipt history.", { id: lesson.id, receiptId: entry.id });
+  }
 }
 
 /** The duplicate `current` projection must be exactly the graph's selected version. */
@@ -293,11 +340,15 @@ function likelyDuplicates(db: Database.Database, scope: string, text: string, ex
 }
 
 /** Parse exact Notes entries; the heading and every byte below it remain text. */
-export function noteEntries(markdown: string): string[] {
+export interface NoteEntryRange { text: string; start: number; end: number; }
+export function noteEntryRanges(markdown: string): NoteEntryRange[] {
   const headings = [...markdown.matchAll(/^## (?!How the cache works\b)([^\n]+)$/gm)];
   return headings.map((match, index) => {
     const start = match.index ?? 0;
     const end = headings[index + 1]?.index ?? markdown.length;
-    return markdown.slice(start, end);
-  }).filter((entry) => entry.trim().length > 3);
+    return { text: markdown.slice(start, end), start, end };
+  }).filter((entry) => entry.text.trim().length > 3);
+}
+export function noteEntries(markdown: string): string[] {
+  return noteEntryRanges(markdown).map((entry) => entry.text);
 }
