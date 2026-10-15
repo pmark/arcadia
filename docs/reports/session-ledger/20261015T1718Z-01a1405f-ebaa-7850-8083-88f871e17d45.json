@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 2,
+  "review_rounds": 3,
   "blocking_findings": [
     {
       "class": "scope isolation (fixed in6130bf75e)",
@@ -23,6 +23,10 @@
     {
       "class": "no-op propagation retains unused candidates (repaired)",
       "caught_by": "independent code-reviewer R1 on1452"
+    },
+    {
+      "class": "partial cleanup reports removed worktree/stale head (repaired)",
+      "caught_by": "independent code-reviewer R2 on1452"
     }
   ],
   "operator_touches": null,

@@ -344,6 +344,60 @@ describe("runWayPropagation", () => {
     expect(git(repo, ["show-ref", "--verify", `refs/heads/${result.candidateBranch}`])).toContain(result.candidateHead);
   });
 
+  it("reports a retained advanced branch after cleanup races a clean candidate commit", () => {
+    const { repo } = initGitRepo();
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+    let advancedHead = "";
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "worktree" && args[1] === "remove") {
+          const candidate = args[2];
+          const agents = path.join(candidate, "AGENTS.md");
+          writeFileSync(agents, `${readFileSync(agents, "utf8")}\nConcurrent clean candidate commit.\n`, "utf8");
+          git(candidate, ["add", "AGENTS.md"]);
+          git(candidate, ["commit", "-m", "concurrent no-op candidate advance"]);
+          advancedHead = git(candidate, ["rev-parse", "HEAD"]).trim();
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidatePath: null, candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/), candidateHead: advancedHead });
+    expect(existsSync(result.candidatePath ?? "")).toBe(false);
+    expect(git(repo, ["show-ref", "--verify", `refs/heads/${result.candidateBranch}`])).toContain(advancedHead);
+    expect(result.detail).toContain(`git worktree add <new-path> ${result.candidateBranch}`);
+  });
+
+  it("reports uncertain cleanup state without a stale candidate head", () => {
+    const { repo } = initGitRepo();
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+    let candidateHeadReads = 0;
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD" && cwd !== repo) {
+          candidateHeadReads += 1;
+          if (candidateHeadReads > 1) return { ok: false, stdout: "", stderr: "candidate unavailable" };
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidatePath: expect.any(String), candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/) });
+    expect(result.candidateHead).toBe(git(repo, ["rev-parse", "--verify", `refs/heads/${result.candidateBranch}`]).trim());
+    expect(result.detail).toContain("could not confirm the candidate worktree and branch state");
+    expect(result.detail).not.toContain("advanced after planning");
+  });
+
   it("keeps a dirty primary checkout and its HEAD reflog untouched while publishing from a candidate", () => {
     const { repo } = initGitRepo();
     writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n");

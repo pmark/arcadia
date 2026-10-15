@@ -225,7 +225,10 @@ function applyPropagation(
     if (writable.length === 0) {
       // This candidate has not written, committed, or published anything. Do
       // not retain an empty worktree/branch on every successful no-op apply.
-      discardUntouchedCandidate(context.runCommand, repoPath, candidatePath, branch, candidate.candidateHead!);
+      const recovery = discardUntouchedCandidate(context.runCommand, repoPath, candidatePath, branch, candidate.candidateHead!);
+      if (recovery) {
+        return { ...base, repoPath, ...recovery, status: "error", detail: recovery.detail, unmanageable };
+      }
       return { ...base, repoPath, status: "current", detail: "Already current on the pinned candidate base.", unmanageable };
     }
     for (const change of writable) assertGuidanceTarget(candidatePath, change.path);
@@ -281,11 +284,46 @@ function applyPropagation(
 }
 
 /** Remove only a candidate proved untouched by a zero-write plan. */
-function discardUntouchedCandidate(runCommand: CommandRunner, repoPath: string, candidatePath: string, branch: string, pinnedHead: string): void {
+function discardUntouchedCandidate(
+  runCommand: CommandRunner,
+  repoPath: string,
+  candidatePath: string,
+  branch: string,
+  pinnedHead: string
+): (Pick<WayPropagationResult, "candidatePath" | "candidateBranch" | "candidateHead"> & { detail: string }) | null {
+  const candidateExists = existsSync(candidatePath);
+  const currentCandidateHead = tryRunCommand(runCommand, candidatePath, "git", ["rev-parse", "HEAD"]);
+  const currentBranchHead = tryRunCommand(runCommand, repoPath, "git", ["rev-parse", "--verify", `refs/heads/${branch}`]);
+  if (!candidateExists || !currentCandidateHead || !currentBranchHead) {
+    return {
+      candidatePath: candidateExists ? candidatePath : null,
+      candidateBranch: currentBranchHead ? branch : null,
+      candidateHead: currentBranchHead || currentCandidateHead || null,
+      detail: `No-op cleanup could not confirm the candidate worktree and branch state. Inspect ${candidateExists ? candidatePath : `Git ref ${branch}`} before recovery.`
+    };
+  }
+  if (currentCandidateHead !== pinnedHead || currentBranchHead !== pinnedHead) {
+    return {
+      candidatePath,
+      candidateBranch: branch,
+      candidateHead: currentBranchHead || currentCandidateHead || pinnedHead,
+      detail: `No-op cleanup stopped because candidate branch ${branch} advanced after planning. The worktree and branch were preserved; review the retained candidate before any recovery.`
+    };
+  }
   runOrThrow(runCommand, repoPath, "git", ["worktree", "remove", candidatePath]);
   // The expected old OID makes this deletion fail rather than discard a
   // branch another process moved after this apply created it.
-  runOrThrow(runCommand, repoPath, "git", ["update-ref", "-d", `refs/heads/${branch}`, pinnedHead]);
+  const deleted = runCommand(repoPath, "git", ["update-ref", "-d", `refs/heads/${branch}`, pinnedHead]);
+  if (deleted.ok) return null;
+  const retainedHead = tryRunCommand(runCommand, repoPath, "git", ["rev-parse", "--verify", `refs/heads/${branch}`]);
+  return {
+    candidatePath: null,
+    candidateBranch: retainedHead ? branch : null,
+    candidateHead: retainedHead || null,
+    detail: retainedHead
+      ? `No-op cleanup removed its worktree, but branch deletion failed and retained ${branch} at ${retainedHead}.${deleted.stderr.trim() ? ` Git reported: ${deleted.stderr.trim()}.` : ""} Recreate a worktree with \`git worktree add <new-path> ${branch}\` before recovery.`
+      : `No-op cleanup removed its worktree and could not confirm branch ${branch}; inspect Git refs before recovery.`
+  };
 }
 
 function commitMessage(plan: WayPropagationPlan): string {

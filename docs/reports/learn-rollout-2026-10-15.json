@@ -20,16 +20,9 @@
       {
         "check": "lint",
         "exitCode": 0
-      },
-      {
-        "check": "ledger",
-        "exitCode": 0
-      },
-      {
-        "check": "guidance",
-        "exitCode": 0
       }
-    ]
+    ],
+    "reviewR2": "BLOCK on d1d5d9083: concurrent clean commit during partial no-op cleanup preserves branch but stale error fields can claim removed worktree. Repaired before R3; final verdict and required checks recorded on PR1452."
   },
   "adopters": [
     {
