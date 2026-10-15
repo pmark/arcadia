@@ -32,4 +32,4 @@ For a pull request, require an independent review of the exact head, all require
 - [Production strategy](strategy/autonomous-production-strategy.md) — direction and explicitly unbuilt goals.
 - [Managed production in `START_HERE.md`](../START_HERE.md#managed-production-the-standing-authorization) — current CLI orientation and status commands.
 - [Pull-request gates](agent-guidance/pull-requests.md) — exact-head review, CI and merge conditions.
-- [Decisions 0060 and 0080](decisions/0060-settle-whether-constitution-md-s-rule-do-not-merge-without-an-explicit-decision.md) — bounded merge gate; read with the current Constitution and PR procedure.
+- [Decision 0060](decisions/0060-settle-whether-constitution-md-s-rule-do-not-merge-without-an-explicit-decision.md) and [Decision 0080](decisions/0080-decide-whether-the-standing-merge-exception-decision-0060-is-conditioned-on-an.md) — bounded merge gate; read with the current Constitution and PR procedure.
