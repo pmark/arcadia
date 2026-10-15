@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 interface AskRequest {
   request?: unknown;
   requestId?: unknown;
+  projectId?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -27,8 +28,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ask request is required.", details: null }, { status: 400 });
     }
 
+    if (body.projectId !== undefined && (typeof body.projectId !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(body.projectId))) {
+      return NextResponse.json({ error: "Project ID must be a non-empty identifier.", details: null }, { status: 400 });
+    }
+
     const response = await runAsk({
       request: text,
+      projectId: body.projectId,
       requestId: typeof body.requestId === "string" ? body.requestId : undefined
     });
     return NextResponse.json({

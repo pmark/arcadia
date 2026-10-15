@@ -1,5 +1,9 @@
 # Conversational workspace shell
 
+Current extension: [the implemented Ask receipt loop](workspace-ask-receipt-loop.md)
+adds the composer, Project routing, reply, work cards and browser-local recovery.
+The scaffold-only feature boundaries and validation below describe PR #1427.
+
 Operator-directed scaffold for [Issue 1426](https://github.com/pmark/arcadia/issues/1426).
 No governed Action exists for this request. The existing active Plan, Action,
 queue and authority rules are unchanged.
@@ -32,7 +36,7 @@ Add real Ask receipt cards and contextual previews there as bounded components.
 `lib/workspace-scope.ts` owns the URL contract; it grants no Ask routing semantics.
 `app/workspace/workspace.css` scopes all foreground and sky CSS to this surface.
 
-There is no composer. Conversation capture, saved history, attachments and
+The original scaffold had no composer. Conversation capture, saved history, attachments and
 Artifact previews are explicitly not connected. The next feature must connect
 real Ask submission, receipts, references, status and recovery before offering
 an active input; selected context is not yet an Ask API destination field.

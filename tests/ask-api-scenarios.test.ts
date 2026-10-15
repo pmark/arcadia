@@ -47,10 +47,10 @@ function recordTiming(operation: "submit" | "show", began: number): void {
   expect(milliseconds, `${operation} exceeded operator-selected ${variable}=${budget}`).toBeLessThanOrEqual(budget);
 }
 
-async function submit(text: string, requestId: string, expectNewAsk = true): Promise<AskResponse> {
+async function submit(text: string, requestId: string, expectNewAsk = true, selectedProjectId?: string): Promise<AskResponse> {
   const began = performance.now();
   const response = await POST(new Request("http://localhost/api/ask", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: text, requestId })
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: text, requestId, projectId: selectedProjectId })
   }));
   recordTiming("submit", began);
   const body = await response.json() as { message: string; result: AskResponse };
@@ -73,6 +73,31 @@ async function reopen(id: string): Promise<AskTrailResponse> {
 }
 
 describe("Ask API UI scenarios through the real CLI", () => {
+  it("uses the selected Project despite contrary text and replays its stable receipt", async () => {
+    const selected = withDatabase(workspace, db => createProjectWithInitialWork(db, {
+      name: "Selected garden", mission: "Grow the garden", goal: "Ship garden tools", status: "active",
+      currentMilestone: "First tools", nextAction: "Build a tool", workClassification: "agent"
+    }).project.id);
+    const text = "Improve UX of Arcadia Runs page in the web dashboard UI. Add tabs for segregating concerns.";
+    const asked = await submit(text, "scoped-project", true, selected);
+    const trail = await reopen(asked.captureEnvelope.id);
+    expect(trail.asks[0].projectName).toBe("Selected garden");
+    const replay = await submit(text, "scoped-project", false, selected);
+    expect(replay.result.status).toBe("ignored");
+    expect(replay.captureEnvelope.id).toBe(asked.captureEnvelope.id);
+    expect((await reopen("scoped-project")).asks).toHaveLength(1);
+  });
+  it("preserves service-unavailable errors during scoped Project validation", async () => {
+    vi.stubEnv("ARCADIA_WORKSPACE", path.join(workspace, "missing"));
+    const response = await POST(new Request("http://localhost/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Garden request", projectId }) }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("WORKSPACE_NOT_FOUND"), details: expect.any(Object) });
+  });
+  it("refuses unknown Project IDs before capture or routing fallback", async () => {
+    const response = await POST(new Request("http://localhost/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Thanks", requestId: "unknown-project", projectId: "unknown-project" }) }));
+    expect(response.status).toBe(400);
+    expect(withDatabase(workspace, db => db.prepare("SELECT COUNT(*) AS count FROM ask_capture_envelopes").get())).toEqual({ count: 0 });
+  });
   it("submits a Project request and reopens the same Action/Plan by all receipt identifiers", async () => {
     const asked = await submit("Improve UX of Arcadia Runs page in the web dashboard UI .\n\n* Add tabs for segregating concerns", "api-plan");
     expect(asked.workItem?.id).toBeTruthy();

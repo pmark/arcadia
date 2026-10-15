@@ -3,7 +3,7 @@
   "role": "lead",
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
-  "action_id": "operator-directed:#1430",
+  "action_id": "operator-directed:#1438",
   "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
@@ -16,9 +16,9 @@
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
-  "outcome": "complete",
-  "candidate_head": "1c536ce00aed6e7004c0638d346594cccf5d67c3",
+  "outcome": "handed_off",
+  "candidate_head": "e63ef8c734c6321e203ace84f125a7c20d73d233",
   "evidence_source": "docs/reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md",
-  "task_class": "conversational-workspace-design-and-handoff",
-  "notes": "API #1422 and shell #1427 merged. Preserves design/artifacts and Ask-loop brief; read-only researcher gpt-6.1-sol/low. Coding held for custody coordination; primary originals untouched."
+  "task_class": "workspace-ask-receipt-loop",
+  "notes": "Ask loop in fresh candidate: 50 tests and production browser pass. Builds/rehearsal pass with recorded caveats. Independent review/CI pending. No governed Action or main edits."
 }
