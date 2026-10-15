@@ -153,7 +153,7 @@
       "trigger": "continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff",
       "path": "docs/scout/CONTINUE.md",
       "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
-      "sha256": "6af2a298257bd31207093cb28f6244a4adb693c8e97c0b05516701dfb7669729"
+      "sha256": "04a8038933ba0031dfb5c77c758928cbd040f787c3b0e0919f118454038bec28"
     }
   ]
 }

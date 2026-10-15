@@ -216,7 +216,7 @@ files in the same mode.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
-keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest
+keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest, GitHub Actions, failed job logs, gh api
 
 Bridge dependencies with the script, never with a hand-made symlink:
 
@@ -230,6 +230,12 @@ errors ("`Message` is an error type", "assertion is unnecessary") and those
 app tests fail to load, even in files you changed. The script skips a tree
 whose target already exists, so rerunning it is safe. CI does a clean install
 and is the source of truth.
+
+When a CI job has failed but the workflow still runs, `gh run view <run> --job
+<job> --log-failed` may say the log is unavailable. The read-only endpoint
+`gh api --allow-escape-sequences repos/<owner>/<repo>/actions/jobs/<job>/logs`
+returned a completed job log while other shards ran. Filter to the failing step
+and preserve its check URL.
 
 ## Run one Vitest file without launching the whole suite
 
@@ -286,12 +292,6 @@ A generated managed document is judged by real Arcadia code, never a canned `err
 A stub `codex`/`opencode` must exit quietly unless `args[0]` is `exec`/`run` (and answer `codex exec --help` with `--json --sandbox`, which the launch preflight checks): Arcadia's capacity probe spawns `codex app-server` with the PATH `codex` in the checkout's directory (an always-acting stub once committed a MARKER.md on the checkout's branch). The headless-provider test keeps its experiment workspace in `$TMPDIR`, not `workspaces/exp-*`, because Codex's workspace-write sandbox can write the temp directory and not the workspaces directory; its provider-side `arcadia` shim pins that workspace. A Codex workspace-write sandbox cannot create Git's `index.lock` even in a gitdir under `$TMPDIR` (`.git` stays read-only inside writable roots), so the commit is the host's job: the test then runs `runPreserveCommand` (the manual-handoff path after reconcile; the worker's leased path needs an Active production policy that an experiment workspace cannot hold, and the Seatbelt validation cannot nest inside the agent sandbox), falling back to "PASS (agent); host preservation not exercised". OpenCode `run` auto-rejects any `external_directory` prompt, and its allowlist in `~/.config/opencode` omits `/private/var/folders`, so the test grants its own tree through `OPENCODE_CONFIG_CONTENT`. Codex persists `[projects."<repo>"] trust_level = "trusted"` to `~/.codex/config.toml` for a new project directory (it showed as a changed `hashes.codexConfig` in the leak check, ruled by the operator on 2026-10-09 to be neither attributed nor a Decision 0082 stop condition (the test now reports it as "Codex trust entry (operator ruled 2026-10-09: not a stop condition)"); any other leak-check change, including Claude's `hashes.claudeTrust`/`claudeSettings`, is still a possible stop condition to attribute); the test passes a per-invocation `--config projects."<path>".trust_level="trusted"` for its own paths to try to avoid the write (unverified until a run), and `codex exec` also has `--ignore-user-config` and `--ephemeral`, untried. The library checker refuses an operator `.sh` whose text names the Agent Ask command without a declared settlement, so `test-headless-provider-single-action` keeps its logic in `scripts/headless-provider-test.ts`; `mise exec` writes a trust link the agent sandbox denies, so test that entry with `node --import tsx` and the launcher with a fake `mise`. The test now tries Codex, OpenCode and Claude independently (a missing precondition SKIPs only that provider); Claude runs the builder's exact argv (`--print --output-format stream-json --verbose --permission-mode acceptEdits --settings <per-session file> --setting-sources ""`), its allow list carries only the Project's registered validation command (`node scripts/check-fixture.mjs`) and `arcadia agent-ask draft`, so it cannot commit and the host step commits (its result event's `permission_denials` is the evidence); a stub `claude` must answer `--help` with the six headless flags and `auth status --json`, and a model already bound in another tier cannot be a light-tier override (ambiguous identity), so `--model-<provider>` selects that tier via `sessionStartTier` instead. `env -u CLAUDE_CODE_OAUTH_TOKEN pnpm exec vitest run tests/headless-provider-operator-script.test.ts -t 'skips Claude when|refuses when no selected provider'` passes both logged-out cases; production preflight accepts an inherited token despite the fake loggedIn:false reply. Remove it only from the test process, never the host credential configuration. Fixture isolation is a separate defect; preserve token-login coverage.
 A direct Claude Code resume must pass its positional query before the variadic `--allowedTools` list; a trailing query may be consumed as another tool value and fail before inference. Query an existing long-running task with native `TaskOutput` before rerunning validation; task `bfuefcl1z` returned `[killed]` with no rehearsal report.
 For the Luna scout, a config hash delta alone is not trust-only proof: retain exact content-equivalence evidence, or keep the historical hold blocked. `scripts/scout-isolation-preflight.ts` and `tests/scout-isolation-preflight.test.ts` replay saved receipts offline; zero replay inference excludes development agents. Expires when #1365 closes.
-
-## Retrieve a failed CI job while its workflow is running
-
-keys: GitHub Actions, gh run view, --log-failed, job logs, checks still running
-
-`gh run view <run> --job <job> --log-failed` may say logs are unavailable until the whole workflow finishes, even after that job has failed. The read-only endpoint `gh api --allow-escape-sequences repos/<owner>/<repo>/actions/jobs/<job>/logs` returned the finished job log immediately while other shards were still running; filter it to the failure step and preserve its check URL.
 
 ## Re-run a passed Action on a reused fixture
 
