@@ -1,0 +1,19 @@
+{
+  "observedAt": "2026-10-14T23:27:45.028530+00:00",
+  "head": "4e19fd0b0aded12ed64bc3f3ab4c28a354b4f50b",
+  "tree": "f175ee7ee212b3334a4830f2a13545e5165411fa",
+  "cleanAfter": true,
+  "expectedHeadUnchanged": true,
+  "exitCode": 0,
+  "tests": "11passed,73outsidefilter",
+  "log": "/private/tmp/arcadia-manager-launch-failure-corrected-replay.txt",
+  "scope": "hermetic known stderr red alert/status and formatter/adapter safety; no live production",
+  "argv": [
+    "node_modules/.bin/vitest",
+    "run",
+    "tests/launch-failure.test.ts",
+    "tests/production-tick.test.ts",
+    "-t",
+    "launch failure diagnostics|system tmux launch failures|retains real tmux stderr"
+  ]
+}

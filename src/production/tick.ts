@@ -34,6 +34,7 @@ import {
 } from "./redAlerts.js";
 import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
+import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
@@ -2352,7 +2353,7 @@ function attemptProjectLaunch(
       }
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatLaunchFailure(error);
     recordRepairAttempt(db, actionKey, message, input.now);
     recordFailedRun(db, input.projectSlug, { reason: `Launch failed for ${actionKey}: ${message}`, actionKey });
     input.log(`Launch attempt failed for ${actionKey}: ${message}`);

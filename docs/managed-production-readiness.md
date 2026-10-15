@@ -2,9 +2,39 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-10** (the section below). The 2026-10-02 derivation after it, and everything under it, is earlier evidence kept for history and has not been re-derived.
+Latest derivation: **2026-10-15**, from this PR candidate's `PROJECT.md`, the active [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) and retained validation/review evidence. This is candidate state; PR #1416 remains open. Historical observations below do not establish installed adoption or current live authority.
 
-## Current answer, 2026-10-10: not yet; a supervised first run on Arcadia's own repository becomes possible once gates 1 to 6 below are cleared, and unattended production does not
+## Current answer, 2026-10-15: launch diagnostics are complete in the candidate; Claude worker replay is selected; unattended production remains unproved
+
+The active Plan is `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider`. Its eight Actions contain **one done and seven open**. Both the Plan and `PROJECT.md` select **`claude-worker-launch-replay`**. `launch-failure-keeps-cause` is done through canonical completion commit [`5ece238d`](https://github.com/pmark/arcadia/commit/5ece238decf7851c3eca632b1ab4a7b67377fb4c), preserved in merge head `b5a27da3e4d7b5d45785b10610dc8e40a2b628f8`. Activation PR #1406 and this source completion establish neither installed adoption nor a live production result.
+
+The real tmux adapter/worker-tick regression proves that bounded underlying launch errors reach red-alert evidence and `production status --json`, with credential redaction before the 2,048-character clip. The failing-first credential-boundary correction and preservation-input recovery retain their earlier failed receipts. The corrected suites passed 84 core tests, 42 scoped Session tests, 78 preservation tests and 14 manager replay cases, with lint, TypeScript, build and the 13-tick rehearsal. Independent round 4 and all seven required CI jobs passed on [PR #1416](https://github.com/pmark/arcadia/pull/1416) head `b5a27da3` ([review and CI summary](https://github.com/pmark/arcadia/pull/1416#issuecomment-6194077190), [CI run 38746922956](https://github.com/pmark/arcadia/actions/runs/38746922956)); these are source/PR proofs. This documentation push needs its own delta review and fresh CI before merge. See [diagnostic evidence](reports/launch-failure-keeps-cause-2026-10-14.md) and [preservation recovery evidence](reports/preservation-input-repair-2026-10-14.md).
+
+Canonical completion documents committed successfully, then the command failed while removing its temporary publication directory. Trailer `asksettle_29fbccd3b7974288b0` identifies that canonical commit; a stored settlement receipt was not returned. Requery refused “Action is already done”; no completion was reapplied. The operational receipt/projection gap remains disclosed, with reconciliation after integration still pending. It does not undo the candidate's checked-in completion or prove the primary checkout's projection has advanced. Earlier local full-file Go-parity sandbox refusals remain historical failed evidence; the later CI result is separate proof, not a rewrite of those receipts.
+
+| Stage | Evidence at this derivation |
+| --- | --- |
+| Diagnostic source, canonical completion and PR verification | Proven in the candidate; PR remains open. |
+| Installed adoption of this candidate and preservation-input repair | Unproved; source, host-exception commit and CI are not installation receipts. |
+| Production activation and live Claude run | Unproved by this work; no activation or real Claude production run was performed here. |
+| Last retained live observation | Inactive · Idle, policy 47 / epoch 28, zero live admissions at 2026-10-15 00:56:14 UTC in the retained manager status receipt; this doc correction did not refresh that live reading. Historical alert `ra-2bcf88b68759` retains its discarded generic cause. |
+
+| Active Plan Action | Governed status / dependency | Current evidence / remaining criterion |
+| --- | --- | --- |
+| launch-failure-keeps-cause | **Done**; no dependency | Canonical `5ece238d` completion, source proof and PR review/CI passed; PR integration and installed adoption remain separate. |
+| claude-worker-launch-replay | **Open — selected**; after `launch-failure-keeps-cause` | Real worker-tick replay on `claude-code` must evidence a running Session and recorded draft PR with only external services faked; retain failing-first fixes and state whether the original tmux failure reproduces. |
+| claude-capacity-evidence | Open; after `claude-worker-launch-replay` | Evidence unattended Claude usage refresh or an explicit status-visible gate-off path and consequence; raise the supervised Claude spend-bound Decision card. |
+| first-supervised-claude-run | Open; after `claude-capacity-evidence` | Propose retirement or Claude rescope of the earlier overlap Action; publish a one-Action, concurrency-1, remote-preservation preview and activation card. Only after operator activation, evidence a real Session, reviewed draft PR and merge, then refresh this report. |
+| worker-review-and-merge | Open; after `first-supervised-claude-run` | Evidence GitHub-only merge after independent exact-head review and green required checks; authority-adjacent PRs must wait on the batch-merge card, with moved-head/check/review refusals tested. |
+| production-spend-budget | Open; after `claude-capacity-evidence` | Evidence enforcement of the approved percent-of-window budget and reserve (Decisions 0103/0111), same-tick refusal visibility and unknown usage failing closed. |
+| credential-preflight | Open; after `claude-worker-launch-replay` | Evidence valid/expired/unreadable credential handling before launch, a named remedy card and one operator ping, without modifying host credentials. |
+| first-unattended-run | Open; after `worker-review-and-merge`, `production-spend-budget` and `credential-preflight` | Publish a preview for at least three ready Claude Actions and an activation card; after operator activation, evidence every Action reaching a merged PR with only activation and authority-adjacent merge touches, then re-derive this report. |
+
+The dependency frontier is now **Claude worker replay**. Its capacity branch runs `claude-capacity-evidence` → `first-supervised-claude-run` → `worker-review-and-merge`; `production-spend-budget` also follows capacity evidence. `credential-preflight` follows worker replay independently of that branch. The final unattended proof joins automated review/merge, spend-budget and credential-preflight evidence. Installation/adoption and the Plan's operator activation gates must be proven before a live attempt; this report grants neither. Decisions 0060/0080 still govern qualified merges, and important Decisions and authority changes remain operator-owned.
+
+The dated derivations and run records below are **historical**. Their old Plan names, Action counts, gates, runtime states and operational advice describe their stated observation dates; they are not the current Plan's gate checklist. Only supported current Plan criteria and evidence are carried into the scoreboard above. The Refresh contract at the end remains applicable.
+
+## Historical answer, 2026-10-10 (superseded): not yet; a supervised first run on Arcadia's own repository becomes possible once gates 1 to 6 below are cleared, and unattended production does not
 
 **Proven.** One Action runs from a confirmed Launch to a draft PR in about 80 seconds (Claude Haiku and Codex, Decision 0096). Under Decisions 0097 (merge-then-next), 0100 and 0119 the disposable fixture ran all nine of its Actions to merged PRs (fixture PRs #11 to #19), with no operator step for the last five. Settlement now leaves a completed Action unambiguous (#1212), the deterministic review gate accepts that exact shape, and the reviewer pre-flight smoke is a maintained script with a spend guard (#1226). Nothing in this list has run on Arcadia's own repository.
 
@@ -87,7 +117,7 @@ Rehearsal procedure, standard and failure catalog (runs 1 to 5, 2026-10-06):
 
 ## Vital few next steps
 
-*Earlier, from the 2026-10-02 derivation; superseded by the 2026-10-10 answer at the top.*
+*Historical, from the 2026-10-02 derivation; superseded by the 2026-10-15 current answer above.*
 
 1. Keep B's completed recovery closed: the exact Grant was consumed, the candidate integrated once, and production is Off. Reassess the remaining parent criteria without repeating B or reusing the succeeded button. The literal two-Session A completion remains unproven; browser closure and a complete operator-intervention ledger are also not established by current receipts.
 2. Preserve the completed terminal repair and live evidence separately. #866 bound the accepted exit and exact settlement, validated the unchanged candidate, and created the canonical preservation receipt without reviving a Session; #865's pinned path integrated it. The recorded validation command exited 0, fixture main and candidate both resolve to `c6b4c4e`, and the one base-advance receipt records the transition.

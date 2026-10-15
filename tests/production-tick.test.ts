@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import type Database from "better-sqlite3";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
-import { renderProductionStatusSuccess } from "../src/commands/production.js";
+import { renderProductionStatusSuccess, runProductionStatusCommand } from "../src/commands/production.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -55,7 +55,7 @@ import {
 import BetterSqlite3 from "better-sqlite3";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
-import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, systemTmux, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -63,6 +63,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -2642,6 +2643,47 @@ describe("red alerts from the worker tick", () => {
   const openAlerts = (fixture: ReturnType<typeof preparedFixture>) => withReadOnlyDatabase(fixture.workspace, (db) => listOpenRedAlerts(db));
   const redNotices = (db: Database.Database) => listPendingAgentAskNotifications(db).filter((entry) => entry.requestId?.startsWith("red-alert-"));
   const pendingNotices = (fixture: ReturnType<typeof preparedFixture>) => withDatabase(fixture.workspace, (db) => redNotices(db));
+
+  it("retains real tmux stderr in bounded red-alert evidence and production status JSON without publishing the launch payload", () => {
+    const fixture = preparedFixture();
+    const bin = path.join(fixture.root, "bin");
+    mkdirSync(bin);
+    const cause = "known tmux stderr: cannot create server socket";
+    const secret = "sk-ant-" + "s".repeat(40);
+    const stderr = `${cause}\nCLAUDE_CODE_OAUTH_TOKEN=${secret}\n${"diagnostic noise ".repeat(1000)}`;
+    const diagnostic = path.join(fixture.root, "tmux-stderr.txt");
+    writeFileSync(diagnostic, stderr);
+    const executable = path.join(bin, "tmux");
+    writeFileSync(executable, `#!/bin/sh\ncat '${diagnostic}' >&2\nexit 1\n`);
+    chmodSync(executable, 0o755);
+    vi.stubEnv("PATH", `${bin}${path.delimiter}${process.env.PATH ?? ""}`);
+    const tmux = new FakeTmux();
+    // Exercise the actual adapter subprocess and wrapper; only presence checks are fake.
+    tmux.launch = input => systemTmux.launch(input);
+    activatePolicy(fixture);
+    for (let attempt = 0; attempt < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction; attempt++) {
+      const tick = tickAt(fixture, tmux, attempt * 1000, true);
+      expect(tick.projects[0].launch?.outcome).toBe("failed");
+    }
+
+    const [alert] = openAlerts(fixture);
+    const evidence = readFileSync(alert.evidencePath, "utf8");
+    const status = runProductionStatusCommand({ workspace: fixture.workspace });
+    const json = JSON.stringify(status);
+    for (const surface of [evidence, json]) {
+      expect(surface).toContain(cause);
+      expect(surface).toContain("[redacted]");
+      expect(surface).not.toContain(secret);
+      expect(surface).not.toContain("immutable build packet");
+      expect(surface).not.toContain("Command failed: tmux");
+    }
+    expect(alert.detail.length).toBeLessThanOrEqual(2400);
+    expect(status.data.redAlerts[0].detail).toBe(alert.detail);
+    expect(status.data.operatorEscalations[0].message).toContain(cause);
+    const lastError = withReadOnlyDatabase(fixture.workspace, db =>
+      (db.prepare("SELECT last_error FROM production_repair_attempts").get() as { last_error: string }).last_error);
+    expect(lastError.length).toBeLessThanOrEqual(2048);
+  });
 
   it("raises one repair_budget_repeat alert, updates it on repeat, posts once, and clears when the budget is reset", () => {
     const fixture = preparedFixture();

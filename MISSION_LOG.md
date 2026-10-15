@@ -2492,6 +2492,13 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-15 — Completed arcadia/launch-failure-keeps-cause
+
+- **Did:** Completed Action arcadia/launch-failure-keeps-cause from accepted evidence (Candidate c62d604d9c6eec678a33d5df20b61858c402ebc2).
+- **Result:** Every declared acceptance criterion was accepted as met: "When tmux or the provider launch fails, the red-alert evidence file and arcadia production status --json carry the underlying error text (stderr or exception message), bounded in length."; "A hermetic test makes the tmux launch fail with a known stderr and asserts that text appears in the red-alert evidence and in production status."; "Focused tests, lint, tsc and pnpm build pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-launch-failure-keeps-cause-20261014).
+
 ## 2026-10-14 — Agent Ask record-hacker-existing-role-choice-20261014
 
 - **Did:** Record the operator-approved choice to retain seven registered roles and use Hacker recovery as a bounded mode of existing Lead and implementer, preserving mandatory recovery triggers and existing authority.
