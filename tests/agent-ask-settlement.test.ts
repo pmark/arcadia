@@ -1403,9 +1403,7 @@ describe("Agent Ask settlement", () => {
   it("replaces explicit empty dependency and reference lists during a Plan Action amendment", () => {
     const { workspace, repo } = fixture();
     const planPath = path.join(repo, "docs/plans/demo-plan.md");
-    const original = readFileSync(planPath, "utf8");
-    const before = original.replace("token_budget: Deterministic resolution with one implementation pass.", "token_budget: |-\n  Legacy multiline budget must not survive the replacement.");
-    writeFileSync(planPath, before);
+    const before = readFileSync(planPath, "utf8");
     const finished = [
       "  - id: finished", "    title: Finished prerequisite", "    status: done",
       "    responsibility: codex", "    effort: session", "    next_action: Preserve proof.",
@@ -1934,7 +1932,11 @@ describe("Agent Ask settlement", () => {
     ]);
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const planPath = path.join(repo, "docs/plans/demo-plan.md");
-    const before = readFileSync(planPath, "utf8");
+    const before = readFileSync(planPath, "utf8").replace(
+      "token_budget: Deterministic resolution with one implementation pass.",
+      "token_budget: |-\n  Legacy multiline budget must not survive the replacement."
+    );
+    writeFileSync(planPath, before);
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-missing-bundle-target",
       disposition: "accepted", revision: 1
@@ -2066,6 +2068,7 @@ describe("Agent Ask settlement", () => {
     expect(after).toContain("token_budget: One bounded implementation pass.");
     expect(after).not.toContain("Legacy multiline budget must not survive the replacement.");
     expect(after).toContain("  - id: existing");
+    expect((parseDoc("docs/plans/demo-plan.md", planPath, after).doc as PlanDoc).tokenBudget).toBe("One bounded implementation pass.");
     expect(readFileSync(planPath, "utf8")).toBe(before);
     runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true });
     expect(readFileSync(planPath, "utf8")).toBe(after);
