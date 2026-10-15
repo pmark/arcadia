@@ -1179,6 +1179,13 @@ dependency-safe queue segment in the same settlement. Adding an Action to the
 active Plan requires both its approved Responsibility and a placement. A draft
 Plan can be amended but cannot be queued before activation.
 
+A metadata-only named-Plan amendment may instead carry the strict paired
+`plan_metadata` fields `token_impact` and `token_budget`. Preview shows the
+exact before/after metadata and settlement remains subject to the same
+acceptance gate; it changes neither Actions nor activation, pointers, or the
+queue. New Plan creation keeps its existing defaults. This does not extend the
+Action-only operator-script runner or activate a Plan automatically.
+
 An `action` Ask still supports a smaller ordered bundle in the active Plan,
 inserted at one approved boundary while preserving its declared order. Preview
 lists every proposed effect, and the settlement receipt and Discord summary
