@@ -11,7 +11,16 @@ interface AskRequest {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as AskRequest;
+    let parsed: unknown;
+    try {
+      parsed = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Ask request must contain valid JSON.", details: null }, { status: 400 });
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Ask request must be a JSON object.", details: null }, { status: 400 });
+    }
+    const body = parsed as AskRequest;
     const text = typeof body.request === "string" ? body.request.trim() : "";
 
     if (!text) {
