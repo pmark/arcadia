@@ -88,9 +88,14 @@ cost, latency or escalation quality, not by adding a paid classification call
 to every action.
 
 First use the four development cases to make the smallest usable B/C pipeline.
-They are excluded from scored results. Only proceed to the scored corpus when
-all arms meet the same quality floor on development cases. Keep the held-out
-customer facts out of examples and tuning. This is held-out factual content
+They are excluded from scored results. The development enrollment gate is
+4/4 independently accepted development cases in each arm, once per case, using
+the applicable mandatory site-acceptance gates and the bounded repair/cost limits
+below. After tuning, run a complete qualifying pass on all four cases with the
+final candidate workflow versions before freezing scored enrollment. Development
+work stays within its proposed allocation and labor ceilings. The 22/24
+acceptance-rate threshold applies only to the subsequent scored trials, not
+to development enrollment. Keep the held-out customer facts out of examples and tuning. This is held-out factual content
 within known website families, not evaluation on unseen task families. Before scored runs,
 independently check that the existing site family can meet the prescribed
 inputs; unsupported capability must be reported before randomization.

@@ -16,7 +16,7 @@ The base advanced to `b0f8b57ce`; only `MISSION_LOG.md` conflicted during
 The candidate's stage-2 Log was exactly stage 1 plus 1,228 bytes: two authentic
 historical PR lifecycle settlement entries. Resolution preserves the entire
 419,900-byte stage-3 base Log followed by that exact suffix. Both histories
-remain intact; no proposal text, Plan, pointer, Decision, queue, production,
+remain intact. During the base reconciliation no proposal text, Plan, pointer, Decision, queue, production,
 service, or permission was changed. This does not execute or approve the
 benchmark. Current-base records arrive through the merge, not new author edits.
 
@@ -25,10 +25,12 @@ notifications use `arcadia ping send`, never new PR-branch Log settlements.
 No settlement or notification is replayed during this repair. The prior
 settlements are retained as history, not represented as new authority.
 
-Verification: byte-equality assertions for the conflict resolution; original
-benchmark/corpus/review blobs unchanged; focused proposal tests and session
-ledger validation; independent delta review and latest-head CI recorded in
-PR #1208. Re-check mergeability immediately before handoff.
+Verification at reconciliation head `f974a4406`: byte-equality assertions for
+the conflict resolution and original benchmark/corpus/review blobs; focused
+proposal tests and session-ledger validation. These files are scope/local-proof
+snapshots. Independent review and required CI are checked separately on each
+published head, with their results maintained on PR #1208. Re-check mergeability
+immediately before handoff.
 
 Two close-out probes were corrected before continuing: a mistaken procedure
 path was replaced with the index's `docs/working-copy-safety.md`; monitor
@@ -63,3 +65,20 @@ Project pointer and exact `launch-failure-keeps-cause` Action were read only
 to exclude overlap. Repository reads covered Orientation, PR QA and Working-Copy
 Safety/automatic conflict recovery. Notes reads targeted worktree, archive,
 Log, conflict, and dependency bridging entries. No unrelated Action was claimed.
+
+## Newly available advisory findings
+
+CodeRabbit's review of `f974a4406` identified a material acceptance ambiguity:
+the development cases lacked an explicit enrollment denominator, while the
+scored 22/24 threshold cannot be applied to four cases. The protocol now requires
+4/4 independently accepted development cases in each arm on a complete final
+qualifying pass, using the mandatory site gates and existing repair, cost and
+development limits; 22/24 remains scored-only. This is a definition, not a run.
+
+A second, minor finding concerned verification wording. The records now
+explicitly distinguish local snapshots from each head's independent review/CI
+evidence on the PR, avoiding an implication that pending checks have passed.
+
+The new material acceptance finding justifies one bounded fourth independent
+review under `pull-requests.md`'s significant-defect exception; no further
+review cycle is assumed. The corpus and original Astra review remain unchanged.

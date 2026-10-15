@@ -10,8 +10,8 @@
   "tokens_out": null,
   "subagent_tokens_total": null,
   "wall_min": null,
-  "attempts": 2,
-  "review_rounds": 3,
+  "attempts": 3,
+  "review_rounds": 4,
   "blocking_findings": [
     {
       "class": "unidentifiable-jev-intervention",
@@ -20,6 +20,10 @@
     {
       "class": "base-log-append-conflict",
       "caught_by": "archive-readiness check"
+    },
+    {
+      "class": "undefined-development-enrollment-denominator",
+      "caught_by": "CodeRabbit, verified against protocol"
     }
   ],
   "operator_touches": null,
@@ -32,7 +36,7 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Benchmark definition and Astra remedies preserved in PR #1208. Close-out reconciles base drift; final review and CI are recorded on the PR. Execution and budget adoption remain separate.",
+  "notes": "Protocol and remedies preserved in PR #1208. This row is a scope/local-proof snapshot; each published head requires separate independent review and CI on the PR. Execution remains separate.",
   "evidence_source": "docs/reports/frictions/20261015-production-benchmark-archive-conflict.md",
   "task_class": "operator-directed benchmark definition and archive close-out"
 }
