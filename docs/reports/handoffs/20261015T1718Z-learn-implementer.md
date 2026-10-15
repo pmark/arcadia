@@ -3,6 +3,7 @@
 Candidate: `/Users/pmark/.codex/worktrees/learn-lossless-capture/arcadia`  
 Branch: `codex/learn-lossless-capture-20261015`  
 Implementation commit: `fd50f7fba1c5b1346a4a07b1757af3e2c3024e8a`.  
+Base reconciliation: Lead merged `origin/main` at `e63ef8c73` conflict-free; the merged candidate was `40712ac107468433797775362dee4504f5d6f17c` before this report-only update.
 Implementer: Codex, actual model `gpt-5.6-terra`, high effort.  
 Authority: operator-directed GitHub #1432. No governed Action, plan pointer, status, Ask, approval, or broader reflection worker was created or changed. The broader `build-agent-agnostic-learning-loop` Action remains open.
 
@@ -33,7 +34,64 @@ Learn is the authoritative durable, scoped evidence store. `docs/notes-to-self.m
 - `pnpm check:agent-guidance` — exit 0.
 - `pnpm check:session-ledger` — exit 0.
 - `git diff --check` — recorded immediately before commit.
-- Build receipt: the original direct `pnpm build` output reached `eslint src test tests scripts apps/dashboard apps/discord-bot` but this implementer transport returned no exit/session receipt. Two background persistence attempts returned from their launcher with no output and left zero-byte `/private/tmp/learn-lossless-build.log` plus no `.exit` file; no session id was provided. Build remains unproved here. Lead Hacker recovery owns the single supported direct build session `92373`; record its actual exit in a follow-up report-only commit before PR readiness.
+- Build receipt: Lead Hacker recovery directly awaited supported `pnpm build` session `92373`; it completed exit 0, with final output `$ tsc -p tsconfig.json`. The original direct output reached `eslint src test tests scripts apps/dashboard apps/discord-bot` but this implementer transport returned no exit/session receipt. Two background persistence attempts returned from their launcher with no output and left zero-byte `/private/tmp/learn-lossless-build.log` plus no `.exit` file; no build failure is inferred from those dropped receipts.
+
+## Disposable operator/end-user QA
+
+Run this only as bounded fixture QA before Decision 0082 expires on 2026-10-18. It creates two disposable experiment workspaces and a fixture Project repository under the first experiment's allowed root; it does not use or mutate the exclusive live workspace.
+
+```sh
+repo_root=/Users/pmark/.codex/worktrees/learn-lossless-capture/arcadia
+qa_root="$(mktemp -d)"; workspace="$qa_root/workspace"; restored="$qa_root/restored"
+node --import tsx "$repo_root/src/cli.ts" init "$workspace" --profile experiment
+node --import tsx "$repo_root/src/cli.ts" init "$restored" --profile experiment
+repo="$workspace/projects/learn-qa"; mkdir -p "$repo/docs"; cd "$repo"
+cat > PROJECT.md <<'EOF'
+---
+arcadia: v1
+type: project
+slug: learn-qa
+name: Learn QA
+status: active
+goal: Exercise durable Learn intake
+updated: 2026-10-15
+---
+EOF
+cat > docs/notes-to-self.md <<'EOF'
+## Cache entry
+keys: learn qa
+Durable cache record with exact  spaces.
+EOF
+git init && git config user.email qa@example.invalid && git config user.name QA
+git add PROJECT.md docs/notes-to-self.md && git commit -m 'initial Notes'
+```
+
+The commands below deliberately omit `--scope` for capture/search/show/correct: from this repository the expected scope is `project:learn-qa`. `capture_json` yields a stable `lesson_…` id; the replay leaves the correction current and appends its evidence to the first retained version.
+
+```sh
+capture_json="$(node --import tsx "$repo_root/src/cli.ts" learn 'Original advice' --evidence 'operator test evidence' --workspace "$workspace" --json)"
+lesson_id="$(printf '%s' "$capture_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).data.lesson.id))')"
+node --import tsx "$repo_root/src/cli.ts" learn show "$lesson_id" --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn correct "$lesson_id" 'Corrected advice' --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn 'Original advice' --evidence 'replay evidence belongs to v1' --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn search 'Original advice' --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn correct "$lesson_id" 'Retracted advice' --retract --workspace "$workspace"
+```
+
+Expected human output includes the stable lesson ID, all retained version bodies from `show`, labelled `superseded`/`retracted` historical advice in search, and the current correction/retraction without a duplicate lesson. The next commands prove the required `--file` migration, receipt-backed cache mutation, available Git history import, and lossless export/restore.
+
+```sh
+node --import tsx "$repo_root/src/cli.ts" learn import-notes --file docs/notes-to-self.md --workspace "$workspace"
+cache_json="$(node --import tsx "$repo_root/src/cli.ts" learn search 'Durable cache record' --workspace "$workspace" --json)"
+cache_id="$(printf '%s' "$cache_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).data.lessons[0].id))')"
+node --import tsx "$repo_root/src/cli.ts" learn cache-maintain --file docs/notes-to-self.md --evict "$cache_id" --apply --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn import-history --file docs/notes-to-self.md --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn export --file "$repo/lessons.json" --workspace "$workspace"
+node --import tsx "$repo_root/src/cli.ts" learn restore --file "$repo/lessons.json" --workspace "$restored"
+node --import tsx "$repo_root/src/cli.ts" learn search 'Original advice' --scope project:learn-qa --workspace "$restored"
+```
+
+Expected output: import reports retained entries; cache maintenance prints `Evicted: lesson_…` only after receipt verification; history reports locally available snapshots (and any shallow/unavailable gap); export writes JSON once; restore reports its count; final search finds the retained historical version in the restored workspace. Remove the disposable directory when finished: `rm -rf "$qa_root"`.
 
 ## Internal review and custody
 
@@ -43,4 +101,4 @@ Ledger custody: `docs/reports/session-ledger/20261015T1718Z-01a1405f-ebaa-7850-8
 
 Loaded instructions/evidence: `AGENTS.md` (10,118 bytes); `.agents/skills/arcadia-role/SKILL.md` (8,539); `/tmp/learn-implementer-brief.json` (4,922); `CONSTITUTION.md` (3,320); `PROJECT.md` (31,677); `docs/AGENT_ORIENTATION.md` (13,594); `docs/agent-guidance/index.json` (9,014); `docs/agent-guidance/learning.md`; `docs/agent-guidance/arcadia-repository.md`; `docs/notes-to-self.md` (36,802); and indexed continuation, working-copy safety, operator-directed work, principles, identity, semantics, experiment-workspace, and PR procedures. Retrieved portions covered mandatory Notes lookup/cache, DB semantics, scope/CLI safety, experiment containment, identity/commit, validation and handoff.
 
-Friction: the prepared candidate is outside default writable roots, so ordinary host escalation was required for candidate-only writes. The primary checkout was never edited; manager evidence says its baseline reflog is unchanged. This transport did not preserve the first build exit and the two persistence launch attempts produced no output/receipt; that is a validation-evidence gap, not a build failure claim. Remaining budget is unmeasured; no purchased credits or reset redemption was used.
+Friction: the prepared candidate is outside default writable roots, so ordinary host escalation was required for candidate-only writes. The primary checkout was never edited; manager evidence says its baseline reflog is unchanged. This transport did not preserve the first build exit and the two persistence launch attempts produced no output/receipt; reusable prevention is to directly await `exec_command`, retain its session id, and poll with `write_stdin`. The root cause of the earlier dropped launches remains unproved. Remaining budget is unmeasured; no purchased credits or reset redemption was used.
