@@ -1319,6 +1319,8 @@ cannot reach, falls back to the default channel, so nothing is lost.
 
 ## Managed production: the standing authorization
 
+For a concise orientation to the live records, readiness evidence and operator decision points, see the [autonomous production operator guide](docs/autonomous-production-operator-guide.md).
+
 Managed production is the switch that lets Arcadia admit and advance approved
 work without a new chat or a manual Session launch between Actions. It is a
 *permission*, not an activity: **Active** means Arcadia may admit work,
