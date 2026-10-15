@@ -68,6 +68,7 @@ describe("arcadia learn", () => {
     const restoredAgain = runLearnShowCommand({ workspace: repeated, scope: "project:one", id: changed.id }).data.lesson;
     expect(restoredAgain.source_back_burner_item_id).toBe(source.back_burner_item_id);
     expect(restoredAgain.receipts).toEqual(source.receipts);
+    expect(changed.receipts?.some((receipt) => receipt.operation === "correct")).toBe(true);
   });
 
   it("imports every Notes entry before an explicit receipt-verified cache eviction", () => {
@@ -125,6 +126,15 @@ describe("arcadia learn", () => {
     const receiptTarget = workspace();
     expect(() => runLearnRestoreCommand({ workspace: receiptTarget, scope: "project:one", payload: malformedReceipt })).toThrow(/receipt/i);
     expect(runLearnExportCommand({ workspace: receiptTarget, scope: "project:one" }).data.lessons).toHaveLength(0);
+    runLearnCorrectCommand({ workspace: ws, scope: "project:one", id: retained.id, text: "Corrected retained graph" });
+    const second = runLearnCaptureCommand({ workspace: ws, scope: "project:one", text: "Second retained graph" }).data.lesson;
+    const complete = runLearnExportCommand({ workspace: ws, scope: "project:one" }).data;
+    const emptyHistory = { ...complete.lessons.find((lesson) => lesson.id === second.id)!, receipts: [] };
+    const partialHistory = { ...complete.lessons.find((lesson) => lesson.id === retained.id)!, receipts: [complete.lessons.find((lesson) => lesson.id === retained.id)!.receipts![0]] };
+    const mixedTarget = workspace();
+    expect(() => runLearnRestoreCommand({ workspace: mixedTarget, scope: "project:one", payload: { schema: "arcadia-lessons-v1", lessons: [complete.lessons.find((lesson) => lesson.id === retained.id)!, emptyHistory] } })).toThrow(/receipt history/i);
+    expect(runLearnExportCommand({ workspace: mixedTarget, scope: "project:one" }).data.lessons).toHaveLength(0);
+    expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:one", payload: { schema: "arcadia-lessons-v1", lessons: [partialHistory] } })).toThrow(/cover every retained version/i);
   });
 
   it("exercises CLI parsing, Project-scope inference, and invalid enum refusal in a disposable repository", () => {

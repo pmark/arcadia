@@ -116,3 +116,8 @@ QA R394 is preserved compactly at `docs/reviews/2026-10-15-learn-pr1435-qa-r394.
 
 
 Final portable-link detail: capture now stores its original Back Burner ID in the non-FK `source_back_burner_item_id`; the additive migration backfills existing null source provenance from the active link. Repeated restore/export therefore keeps the original source ID even if a local active Back Burner projection later disappears. Receipt fingerprints must be 64-character SHA-256 values; a receipt payload must bind both version ID and exact hash together (or both null), and bound hashes must equal the retained version. Final focused validation session `96326`: `pnpm exec vitest run tests/learn-lossless.test.ts` 9/9, `pnpm exec tsc -p tsconfig.json --noEmit`, touched `eslint`, and `git diff --check`, all exit 0.
+
+
+## Round-four receipt closure
+
+Raw independent review is preserved at `docs/reviews/2026-10-15-learn-pr1435-round4.md`. Its sole blocker was valid: `receipts: []` passed vacuous `every` validation. Restore now requires a nonempty receipt history and requires every retained version to have a bound version-ID/exact-hash receipt. Capture and correction responses rehydrate after their receipt insert, so returned lesson projections are current. Focused validation session `41223` passed 9/9, TypeScript, touched lint, and `git diff --check` (all exit 0). Session `36394` first exposed an inadequate partial-coverage fixture (one historical version); it exited 1 and was corrected before the final run. The final head still requires the fifth independent review and fresh QA.

@@ -154,7 +154,8 @@ export function captureLesson(db: Database.Database, input: CaptureLessonInput):
     }
     const updated = getLesson(db, existing.id)!;
     receipt(db, updated, "capture", hash(JSON.stringify({ operation: "capture", scope, text })), observedVersion);
-    return { lesson: updated, created: false, duplicateCandidates: likelyDuplicates(db, scope, text, updated.id) };
+    const refreshed = getLesson(db, existing.id)!;
+    return { lesson: refreshed, created: false, duplicateCandidates: likelyDuplicates(db, scope, text, refreshed.id) };
   }
   const createdAt = now();
   const id = `lesson_${fingerprint.slice(0, 20)}`;
@@ -174,7 +175,8 @@ export function captureLesson(db: Database.Database, input: CaptureLessonInput):
   recordObservation(db, versionId, input.revision, input.sourceRef, createdAt);
   const lesson = getLesson(db, id)!;
   receipt(db, lesson, "capture", hash(JSON.stringify({ operation: "capture", scope, text })));
-  return { lesson, created: true, duplicateCandidates: likelyDuplicates(db, scope, text, id) };
+  const refreshed = getLesson(db, id)!;
+  return { lesson: refreshed, created: true, duplicateCandidates: likelyDuplicates(db, scope, text, id) };
 }
 
 export function correctLesson(db: Database.Database, id: string, input: CaptureLessonInput, retract = false): Lesson {
@@ -196,7 +198,7 @@ export function correctLesson(db: Database.Database, id: string, input: CaptureL
   db.prepare("UPDATE lessons SET current_version_id = ?, updated_at = ? WHERE id = ?").run(versionId, timestamp, id);
   const updated = getLesson(db, id)!;
   receipt(db, updated, "correct", hash(JSON.stringify({ operation: "correct", id, text, retract })));
-  return updated;
+  return getLesson(db, id)!;
 }
 
 export function searchLessons(db: Database.Database, query: string, scope?: string): Lesson[] {
@@ -273,7 +275,9 @@ function isExportReceipt(value: unknown): value is LessonReceipt {
     && typeof receipt.receipt_json === "string" && typeof receipt.created_at === "string";
 }
 function validateReceiptGraph(db: Database.Database, lesson: Lesson, versionIds: Set<string>): void {
+  if (!lesson.receipts?.length) throw validationError("Lesson export must retain nonempty receipt history.", { id: lesson.id });
   const ids = new Set<string>(); const fingerprints = new Set<string>();
+  const boundVersions = new Set<string>();
   for (const entry of lesson.receipts ?? []) {
     if (entry.lesson_id !== lesson.id || !entry.id || !/^[a-f0-9]{64}$/.test(entry.request_fingerprint) || ids.has(entry.id) || fingerprints.has(entry.request_fingerprint)) throw validationError("Lesson export receipt graph has duplicate or foreign references.", { id: lesson.id, receiptId: entry.id });
     ids.add(entry.id); fingerprints.add(entry.request_fingerprint);
@@ -285,10 +289,12 @@ function validateReceiptGraph(db: Database.Database, lesson: Lesson, versionIds:
     if (typeof body.versionId === "string") {
       const version = lesson.versions!.find((item) => item.id === body.versionId)!;
       if (body.exactTextHash !== version.text_hash) throw validationError("Lesson export receipt exact hash is invalid.", { id: lesson.id, receiptId: entry.id });
+      boundVersions.add(body.versionId);
     }
     const collision = db.prepare("SELECT id FROM lesson_receipts WHERE id = ? OR request_fingerprint = ?").get(entry.id, entry.request_fingerprint);
     if (collision) throw validationError("Lesson restore receipt conflicts with retained receipt history.", { id: lesson.id, receiptId: entry.id });
   }
+  for (const versionId of versionIds) if (!boundVersions.has(versionId)) throw validationError("Lesson export receipt history does not cover every retained version.", { id: lesson.id, versionId });
 }
 
 /** The duplicate `current` projection must be exactly the graph's selected version. */
