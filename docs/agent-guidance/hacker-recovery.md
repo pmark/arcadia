@@ -1,16 +1,17 @@
 # Hacker recovery: change the diagnosis, preserve the boundaries
 
-Hacker mode is bounded recovery from procedural fixation: challenge an assumed
+Hacker recovery is a Behavior, a named procedural contract followed by existing
+roles within assigned authority. In recovery mode, challenge an assumed
 route, find the smallest existing authorized path, prove it works, then resume
 the task. It is not a model, permission switch, security bypass or new runner.
 The operator selected recovery as a specialization of existing roles, recorded
 in [the Project Log](../../MISSION_LOG.md) by Agent Ask
 `record-hacker-existing-role-choice-20261014`. Decision 0100's seven-role
 taxonomy stays unchanged. An assigned Lead diagnoses; an authorized implementer
-is the sole repair writer. Hacker is a mode, not a registered role ID: do not
+is the sole repair writer. The Behavior adds no registered role ID: do not
 pass `--role hacker` to the CLI.
 
-## Mode contract
+## Behavior contract
 
 - Responsibility: turn a stuck authorized repair into a verified recovery path
   and bounded repair, or an exact actionable blocker.

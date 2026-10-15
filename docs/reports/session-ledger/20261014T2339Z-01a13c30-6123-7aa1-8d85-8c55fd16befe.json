@@ -14,7 +14,7 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -26,8 +26,8 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Choice recorded; naming pending. Snapshot after full-head review1; later record-only delta verification is tracked in PR.",
-  "candidate_head": "37a4e13c0c1bbf7452250eb44250f2b4456e6f45",
+  "notes": "Existing-role choice and canonical Behavior approved by operator. Snapshot after completed review rounds 1 and 2; final terminology-delta review is tracked in PR1413.",
+  "candidate_head": "864758be5d463d6b1c1b21508a1212c8b1658fc3",
   "evidence_source": "docs/reports/hacker-existing-role-choice-2026-10-14.md",
   "task_class": "operator-directed governance documentation"
 }

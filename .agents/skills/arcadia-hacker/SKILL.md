@@ -5,8 +5,9 @@ description: Recover from repeated workflow refusals, procedural fixation or an 
 
 # Arcadia Hacker
 
-Hacker is a bounded recovery mode of existing roles, not an eighth registered
-role or a new executor. Read the assigned Project's indexed
+Hacker recovery is a Behavior: a bounded procedural contract followed by
+existing roles. Entering recovery mode activates that Behavior, not an eighth
+registered role or a new executor. Read the assigned Project's indexed
 `docs/agent-guidance/hacker-recovery.md` and the installed `arcadia-role` skill.
 If either is unavailable, preserve the assignment and report the missing
 adoption. Do not invent registry admission.

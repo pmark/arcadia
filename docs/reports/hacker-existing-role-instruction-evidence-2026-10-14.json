@@ -40,7 +40,7 @@
     {
       "path": "docs/agent-guidance/index.json",
       "bytes": 9014,
-      "sha256": "57b9fcc6db6d50245f67d37868f1e8331af21e17c1f6ed1abc2a523abbf89978",
+      "sha256": "97f4cac0cfd10c3af0a9a59253da9558a0bf447b5e44568eaef67f33bc355eb0",
       "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
     },
     {
@@ -99,14 +99,14 @@
     },
     {
       "path": "docs/agent-guidance/native-app-sessions.md",
-      "bytes": 8797,
-      "sha256": "a627f3dca120c9b6b75d3944458050d3f2d5315459f35fe5e90f6bfd4ee72e2c",
+      "bytes": 8892,
+      "sha256": "ba79f21c3f006f312e971f66182761cc2ce9ee532f6b132b3c299ed11f9a0130",
       "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
     },
     {
       "path": "docs/agent-guidance/hacker-recovery.md",
-      "bytes": 7869,
-      "sha256": "2a54249faceefcc2f64835235cdd46453157031d7b0b27991196459a5749b576",
+      "bytes": 7943,
+      "sha256": "2a8a57a063a53f8fe0ac4d39fa6bc6faa9f4ff9caca68194c23161ca054eec58",
       "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
     },
     {
@@ -117,8 +117,8 @@
     },
     {
       "path": "docs/arcadia-semantics.md",
-      "bytes": 14180,
-      "sha256": "539c0f298d654d501a20a9c228b2b53ed5842f943aaa4c32c82b8ddfc989a663",
+      "bytes": 15647,
+      "sha256": "ca8ade28e573a4521567866e528d94c8526d740a3164c1e5b97eb6c177969031",
       "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
     },
     {
