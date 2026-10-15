@@ -1,0 +1,34 @@
+{
+  "session_id": "native-carry-forward-20261015",
+  "role": "driver",
+  "model": "inherited-native-runtime-unmeasured",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": "Native parent inheritance; actual model and effort binding unavailable.",
+  "action_id": "operator-directed-issue-1443-no-governed-action",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "pr1402-fresh-host-permission-and-fingerprint",
+      "cost_min": null,
+      "fix_ref": "docs/reports/frictions/20261015-pr1402-fresh-host-permission-and-fingerprint.md"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Native depth1 implementer /root/carry_forward under Lead /root; safe task-derived ID, no UUID exposed. No governed enrollment/claim. Implementation handback only; no PR acceptance claimed.",
+  "candidate_head": "7d3b7eda9d2226e24f2abcbce104c9adc55a0db6",
+  "evidence_source": "docs/reports/handoffs/20261015T2018Z-native-carry-forward-20261015.md",
+  "task_class": "operator-directed-carry-forward",
+  "stop_reason": "Implementation checkpoint; assigned validation still running; final handback pending"
+}

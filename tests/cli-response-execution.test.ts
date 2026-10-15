@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { withDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
-import { createAskRequest, createProjectWithInitialWork, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, upsertProjectMetadata } from "../src/db/repositories.js";
+import { claimNextPendingRun, createAskRequest, createProjectWithInitialWork, createReviewItem, getExecutionRun, getProjectMetadata, getReviewItem, getWorkItem, listActionableReviewItems, updateExecutionRunStatus, upsertProjectMetadata } from "../src/db/repositories.js";
 import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { approvedReviewScopeSha256 } from "../src/execution/approvedReviewScope.js";
 import { runAskCommand } from "../src/commands/ask.js";
@@ -669,6 +669,135 @@ describe("CLI response contract — execution and review", () => {
     const { reviewId } = createExecutableReview(workspace, repo);
     expect(() => withDatabase(workspace, (db) => executeApprovedReview(db, { workspace, reviewId, executorName: "codex" })))
       .toThrow(/current approved Run receipt/);
+  });
+
+  it("claims only the explicitly selected pending Run and never claims it twice", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const first = createExecutableReview(workspace, repo);
+    const second = createExecutableReview(workspace, repo);
+    const firstRunId = parseJson(runCli(["review", "approve", first.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+    const secondRunId = parseJson(runCli(["review", "approve", second.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+    withDatabase(workspace, (db) => {
+      const selected = claimNextPendingRun(db, 11001, secondRunId);
+      expect(selected?.id).toBe(secondRunId);
+      expect(getExecutionRun(db, secondRunId)?.status).toBe("running");
+      expect(getExecutionRun(db, firstRunId)?.status).toBe("pending_execution");
+      expect(claimNextPendingRun(db, 11002, secondRunId)).toBeNull();
+      expect(getExecutionRun(db, firstRunId)?.status).toBe("pending_execution");
+    });
+  });
+
+  it("omitted selector falls back to the legacy oldest-pending FIFO claim", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const older = createExecutableReview(workspace, repo);
+    const newer = createExecutableReview(workspace, repo);
+    const olderRunId = parseJson(runCli(["review", "approve", older.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+    const newerRunId = parseJson(runCli(["review", "approve", newer.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE execution_runs SET created_at = ? WHERE id = ?").run("2020-01-01T00:00:00.000Z", olderRunId);
+      db.prepare("UPDATE execution_runs SET created_at = ? WHERE id = ?").run("2020-01-02T00:00:00.000Z", newerRunId);
+
+      expect(claimNextPendingRun(db, 21001)?.id).toBe(olderRunId);
+      expect(getExecutionRun(db, olderRunId)?.status).toBe("running");
+      expect(getExecutionRun(db, newerRunId)?.status).toBe("pending_execution");
+    });
+  });
+
+  it.each(["", "   ", "\t\n"])(
+    "an explicitly supplied blank selector %j returns no claim and never falls back to FIFO (#1404 regression)",
+    (blankSelector) => {
+      const workspace = initializedWorkspace();
+      const repo = initializedGitRepo();
+      const fixture = createExecutableReview(workspace, repo);
+      const runId = parseJson(runCli(["review", "approve", fixture.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+      withDatabase(workspace, (db) => {
+        const before = getExecutionRun(db, runId);
+        expect(claimNextPendingRun(db, 22001, blankSelector)).toBeNull();
+        const after = getExecutionRun(db, runId);
+        expect(after?.status).toBe("pending_execution");
+        expect(after?.pid).toBe(before?.pid);
+        expect(after?.updated_at).toBe(before?.updated_at);
+      });
+    }
+  );
+
+  it("an explicitly supplied unknown selector returns no claim without touching unrelated pending Runs", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fixture = createExecutableReview(workspace, repo);
+    const runId = parseJson(runCli(["review", "approve", fixture.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+    withDatabase(workspace, (db) => {
+      const before = getExecutionRun(db, runId);
+      expect(claimNextPendingRun(db, 22002, "run_does-not-exist")).toBeNull();
+      const after = getExecutionRun(db, runId);
+      expect(after?.status).toBe("pending_execution");
+      expect(after?.pid).toBe(before?.pid);
+      expect(after?.updated_at).toBe(before?.updated_at);
+    });
+  });
+
+  it.each(["running", "completed", "failed"] as const)(
+    "an explicit selector targeting a %s Run returns no claim and leaves it and unrelated Runs unchanged",
+    (status) => {
+      const workspace = initializedWorkspace();
+      const repo = initializedGitRepo();
+      const target = createExecutableReview(workspace, repo);
+      const unrelated = createExecutableReview(workspace, repo);
+      const targetRunId = parseJson(runCli(["review", "approve", target.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+      const unrelatedRunId = parseJson(runCli(["review", "approve", unrelated.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+      withDatabase(workspace, (db) => {
+        if (status === "running") {
+          expect(claimNextPendingRun(db, 23001, targetRunId)?.id).toBe(targetRunId);
+        } else {
+          updateExecutionRunStatus(db, targetRunId, status, { summary: `forced ${status} for test` });
+        }
+        const targetBefore = getExecutionRun(db, targetRunId);
+        const unrelatedBefore = getExecutionRun(db, unrelatedRunId);
+
+        expect(claimNextPendingRun(db, 23002, targetRunId)).toBeNull();
+
+        const targetAfter = getExecutionRun(db, targetRunId);
+        expect(targetAfter?.status).toBe(targetBefore?.status);
+        expect(targetAfter?.pid).toBe(targetBefore?.pid);
+        expect(targetAfter?.updated_at).toBe(targetBefore?.updated_at);
+
+        const unrelatedAfter = getExecutionRun(db, unrelatedRunId);
+        expect(unrelatedAfter?.status).toBe(unrelatedBefore?.status);
+        expect(unrelatedAfter?.pid).toBe(unrelatedBefore?.pid);
+        expect(unrelatedAfter?.updated_at).toBe(unrelatedBefore?.updated_at);
+      });
+    }
+  );
+
+  it("a duplicate claim attempt from a second, competing database connection loses and leaves exactly one claimant", () => {
+    const workspace = initializedWorkspace();
+    const repo = initializedGitRepo();
+    const fixture = createExecutableReview(workspace, repo);
+    const runId = parseJson(runCli(["review", "approve", fixture.reviewId, "--workspace", workspace, "--json"]).stdout).data.run.id as string;
+
+    const dbA = openDatabase(workspace);
+    const dbB = openDatabase(workspace);
+    try {
+      const claimedByA = claimNextPendingRun(dbA, 24001, runId);
+      const claimedByB = claimNextPendingRun(dbB, 24002, runId);
+
+      expect(claimedByA?.id).toBe(runId);
+      expect(claimedByB).toBeNull();
+
+      const final = getExecutionRun(dbA, runId);
+      expect(final?.status).toBe("running");
+      expect(final?.pid).toBe(24001);
+    } finally {
+      dbA.close();
+      dbB.close();
+    }
   });
 
   it("refuses a queued receipt after its Review approval is revoked", () => {
