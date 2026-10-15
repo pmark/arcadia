@@ -5,7 +5,7 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants as fsConstants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -5308,6 +5308,7 @@ function readContainedLessonHistory(file: string): { snapshots: Array<{ revision
  * writer that recreates it wins and its bytes are never overwritten.
  */
 export interface LearnCacheCustodyHooks {
+  beforeMove?: (source: string) => void;
   afterMove?: (source: string, custody: string) => void;
   captureActual?: (actual: string, custody: string) => void;
   beforeExclusiveInstall?: (source: string, custody: string) => void;
@@ -5322,23 +5323,30 @@ export function installLosslessCacheReplacement(workspace: string, file: string,
   const custody = path.join(custodyDir, `${operation}.notes.md`);
   const intent = path.join(custodyDir, `${operation}.intent.json`);
   writeFileSync(intent, JSON.stringify({ source, plannedHash: lessonPayloadHash(planned), createdAt: new Date().toISOString() }), { encoding: "utf8", flag: "wx" });
+  hooks.beforeMove?.(source);
   try {
     renameSync(source, custody);
   } catch (error) {
     throw validationError("Notes cache could not be moved into durable custody; no cache deletion was written.", { file, custody, error: error instanceof Error ? error.message : String(error) });
   }
   hooks.afterMove?.(source, custody);
-  const actual = readFileSync(custody, "utf8");
+  let actual: string;
+  try {
+    actual = readRegularCustody(custody);
+  } catch (error) {
+    const rollback = restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Moved Notes object is not a regular file; it was not imported and remains in custody.", { file, custody, recovery: custody, rollback, error: error instanceof Error ? error.message : String(error) });
+  }
   try {
     if (hooks.captureActual) hooks.captureActual(actual, custody);
     else runLearnImportNotesCommand({ workspace, scope: resolveLessonScope(scope), markdown: actual, sourceRef: `custody:${custody}` });
   } catch (error) {
-    restoreCustodyOnlyIfAbsent(custody, source);
-    throw validationError("Actual Notes bytes were retained in custody but durable capture failed; cache replacement was refused.", { file, custody, error: error instanceof Error ? error.message : String(error) });
+    const rollback = restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Actual Notes bytes were retained in custody but durable capture failed; cache replacement was refused.", { file, custody, rollback, error: error instanceof Error ? error.message : String(error) });
   }
   if (actual !== planned) {
-    restoreCustodyOnlyIfAbsent(custody, source);
-    throw validationError("Notes changed before custody transfer; actual bytes were retained and restored without applying a stale eviction.", { file, custody, recovery: custody });
+    const rollback = restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Notes changed before custody transfer; actual bytes remain in custody and stale replacement was refused.", { file, custody, recovery: custody, rollback });
   }
   const temporary = path.join(path.dirname(source), `.${path.basename(source)}.${operation}.learn-next`);
   try {
@@ -5349,13 +5357,31 @@ export function installLosslessCacheReplacement(workspace: string, file: string,
     unlinkSync(temporary);
   } catch (error) {
     try { unlinkSync(temporary); } catch {}
-    restoreCustodyOnlyIfAbsent(custody, source);
-    throw validationError("Notes changed concurrently; original bytes remain in custody and the new source was not overwritten.", { file, custody, recovery: custody, error: error instanceof Error ? error.message : String(error) });
+    const rollback = restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Notes changed concurrently; original bytes remain in custody and the new source was not overwritten.", { file, custody, recovery: custody, rollback, error: error instanceof Error ? error.message : String(error) });
   }
 }
 
-function restoreCustodyOnlyIfAbsent(custody: string, source: string): void {
-  try { linkSync(custody, source); } catch {}
+function readRegularCustody(custody: string): string {
+  // Reject directories, FIFOs and links without opening them: opening a FIFO
+  // can block even when it will immediately be rejected.
+  if (!lstatSync(custody).isFile()) throw new Error("custody object is not a regular file");
+  const descriptor = openSync(custody, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+  try {
+    if (!fstatSync(descriptor).isFile()) throw new Error("custody object is not a regular file");
+    return readFileSync(descriptor, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function restoreCustodyOnlyIfAbsent(custody: string, source: string): "restored" | "source-present" | "failed" {
+  try {
+    linkSync(custody, source);
+    return "restored";
+  } catch {
+    try { lstatSync(source); return "source-present"; } catch { return "failed"; }
+  }
 }
 
 /**

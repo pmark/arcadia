@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -184,6 +184,38 @@ describe("arcadia learn", () => {
     })).toThrow(/changed concurrently/i);
     expect(readFileSync(source, "utf8")).toBe("external replacement\n");
     expect(readFileSync(recreatedCustody, "utf8")).toBe(original);
+
+    const privateFile = path.join(repo, "private.md");
+    writeFileSync(privateFile, "## Private\nkeys: private\nnever import this\n", "utf8");
+    writeFileSync(source, original, "utf8");
+    let symlinkCustody = "";
+    expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one", {
+      beforeMove: (target) => { unlinkSync(target); symlinkSync(privateFile, target); },
+      afterMove: (target, custody) => { symlinkCustody = custody; writeFileSync(target, "concurrent replacement\n", "utf8"); }
+    })).toThrow(/not a regular file/i);
+    expect(readFileSync(source, "utf8")).toBe("concurrent replacement\n");
+    expect(lstatSync(symlinkCustody).isSymbolicLink()).toBe(true);
+    expect(runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "never import this" }).data.lessons).toHaveLength(0);
+
+    writeFileSync(source, original, "utf8");
+    let directoryCustody = "";
+    expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one", {
+      beforeMove: (target) => { unlinkSync(target); mkdirSync(target); },
+      afterMove: (_target, custody) => { directoryCustody = custody; }
+    })).toThrow(/not a regular file/i);
+    expect(lstatSync(directoryCustody).isDirectory()).toBe(true);
+
+    const fifo = path.join(repo, "notes.fifo");
+    if (spawnSync("mkfifo", [fifo]).status === 0) {
+      writeFileSync(source, original, "utf8");
+      let fifoCustody = "";
+      expect(() => installLosslessCacheReplacement(ws, source, original, replacement, "project:one", {
+        beforeMove: (target) => { unlinkSync(target); renameSync(fifo, target); },
+        afterMove: (_target, custody) => { fifoCustody = custody; }
+      })).toThrow(/not a regular file/i);
+      expect(lstatSync(fifoCustody).isFIFO()).toBe(true);
+      unlinkSync(source);
+    }
 
     writeFileSync(source, original, "utf8");
     withDatabase(ws, (db) => db.exec("CREATE TRIGGER fail_custody_observation BEFORE INSERT ON lesson_observations WHEN NEW.source_ref LIKE 'custody:%' BEGIN SELECT RAISE(ABORT, 'custody retention failure'); END"));
