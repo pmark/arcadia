@@ -48,7 +48,7 @@
       "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
       "path": "docs/agent-guidance/learning.md",
       "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
-      "sha256": "2334b0d679ad80288b1d2c98e564f1e8b4db23a24989385fe8781dcca92757a9"
+      "sha256": "314b3725a64260d17e1b59763647f4fcbb70be82b4cb8c54be3d4ac2d7cf4da1"
     },
     {
       "id": "git-identity",

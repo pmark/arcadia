@@ -77,6 +77,19 @@ const INSIDE_ALLOWED_ROOT = (option: string, flag: string): CommandClassificatio
   ({ options, experiment }) => typeof options[option] !== "string" || isInside(experiment.allowedRepoRoot, options[option])
 );
 
+const LESSON_EXPORT_FILE = guarded(
+  "Writing a lesson export outside the experiment's allowed repository root can change a live checkout.",
+  "Omit --file to print the export, or write it under the experiment's allowed repository root.",
+  ({ options, experiment }) => typeof options.file !== "string" || isInside(experiment.allowedRepoRoot, options.file)
+);
+
+const LESSON_CACHE_APPLY = guarded(
+  "Applying Notes cache maintenance outside the experiment's allowed repository root can alter a live checkout.",
+  "Preview without --apply, or use a disposable Notes file under the experiment's allowed repository root.",
+  ({ options, experiment }) => options.apply !== true
+    || (typeof options.file === "string" && isInside(experiment.allowedRepoRoot, options.file))
+);
+
 /**
  * One row per CLI command path (space-separated names below the program).
  * `allowed`: runs unchanged in an experiment workspace. `guarded`: refused
@@ -132,6 +145,15 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
   capture: ALLOWED,
+  learn: ALLOWED,
+  "learn search": ALLOWED,
+  "learn show": ALLOWED,
+  "learn correct": ALLOWED,
+  "learn import-notes": ALLOWED,
+  "learn import-history": ALLOWED,
+  "learn export": LESSON_EXPORT_FILE,
+  "learn restore": ALLOWED,
+  "learn cache-maintain": LESSON_CACHE_APPLY,
   "schedule status": ALLOWED,
   "schedule log": ALLOWED,
   // Calendar intake only captures proposals in the explicitly resolved workspace.

@@ -25,6 +25,7 @@ import {
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { compareAttributedFields, compareLeakSnapshots, takeLeakSnapshot } from "../src/workspace/leakCheck.js";
+import { runCli as runSubprocessCli } from "./cli-response-fixture.js";
 
 const roots: string[] = [];
 let root: string;
@@ -262,11 +263,11 @@ describe("command classification", () => {
     ]));
     for (const key of guarded) {
       const outside = path.join(root, "outside");
-      const refused = evaluateCommandGuard(key, { workspace: experiment, apply: true, repoPath: outside, contentRepoPath: outside });
+      const refused = evaluateCommandGuard(key, { workspace: experiment, apply: true, file: outside, repoPath: outside, contentRepoPath: outside });
       expect(refused, key).not.toBeNull();
       expect(refused!.refused.code).toBe("EXPERIMENT_WORKSPACE_REFUSED");
       expect(refused!.refused.message).toContain(key);
-      expect(evaluateCommandGuard(key, { workspace: live, apply: true, repoPath: outside, contentRepoPath: outside }), key).toBeNull();
+      expect(evaluateCommandGuard(key, { workspace: live, apply: true, file: outside, repoPath: outside, contentRepoPath: outside }), key).toBeNull();
     }
     for (const operation of Object.keys(GUARDED_OPERATIONS)) {
       expect(GUARDED_OPERATIONS[operation].reason).not.toBe("");
@@ -282,6 +283,20 @@ describe("command classification", () => {
     expect(evaluateCommandGuard("ingress process", { workspace: experiment, ingressRoot: path.join(experiment, "ingress") })).toBeNull();
     expect(evaluateCommandGuard("ingress process", { workspace: experiment, ingressRoot: path.join(root, "shared-ingress") })).not.toBeNull();
     expect(evaluateCommandGuard("ingress process", { workspace: experiment })).not.toBeNull();
+    const fixtureFile = path.join(experiment, "projects", "fixture", "lessons.json");
+    expect(evaluateCommandGuard("learn export", { workspace: experiment, file: fixtureFile })).toBeNull();
+    expect(evaluateCommandGuard("learn cache-maintain", { workspace: experiment, file: fixtureFile, apply: true })).toBeNull();
+  });
+
+  it("refuses external Learn export and cache writes through the CLI", () => {
+    const external = path.join(root, "outside", "lessons.json");
+    const exported = runSubprocessCli(["learn", "export", "--workspace", experiment, "--file", external, "--json"], { HOME: home }, { configPath: userConfig, cwd: root });
+    expect(exported.status).toBe(2);
+    expect(`${exported.stdout}\n${exported.stderr}`).toContain("EXPERIMENT_WORKSPACE_REFUSED");
+    const maintained = runSubprocessCli(["learn", "cache-maintain", "--workspace", experiment, "--file", external, "--apply", "--json"], { HOME: home }, { configPath: userConfig, cwd: root });
+    expect(maintained.status).toBe(2);
+    expect(`${maintained.stdout}\n${maintained.stderr}`).toContain("EXPERIMENT_WORKSPACE_REFUSED");
+    expect(existsSync(external)).toBe(false);
   });
 
   it("never evaluates allowed or exempt commands", () => {
