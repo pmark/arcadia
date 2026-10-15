@@ -5,6 +5,8 @@ import path from "node:path";
 import type { AllPlansResponse, PlanDetailResponse } from "../../apps/dashboard/lib/plans-types";
 import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 
+type SavedExchange = { id: string; target: { projectId?: string; context: string }; lookupOnly?: boolean };
+
 const plan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: { open: 1, in_progress: 0, done: 0, blocked: 0 }, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
 const detail: PlanDetailResponse = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }], note: "Fixture records" } };
@@ -160,19 +162,51 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     expect(posts[3].requestId).not.toBe(uncertainId);
     // Receipt persistence/read must finish before this fixture deliberately corrupts storage.
     await expect(page.getByRole("button", { name: "Sending…", exact: true })).toHaveCount(0);
+    // Opening saved receipt B must retain uncertain A and restore B's original context.
+    const receiptA = posts[1];
+    const receiptB = posts[0];
+    const recoverySeed = await page.evaluate(({ aId, bId }) => {
+      const saved = JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { exchange: SavedExchange; history: SavedExchange[] };
+      const all = [saved.exchange, ...saved.history];
+      const a = all.find(item => item.id === aId);
+      const b = all.find(item => item.id === bId);
+      if (!a || !b) throw new Error("Expected both original receipt payloads in the fixture history.");
+      localStorage.setItem("arcadia.workspace.ask.v1", JSON.stringify({ draft: "Draft retained across receipt links", target: a.target, exchange: { ...a, phase: "uncertain" }, history: [b, b] }));
+      return { receipt: b, target: a.target };
+    }, { aId: receiptA.requestId, bId: receiptB.requestId });
+    await page.goto(`${url}/workspace?receipt=${encodeURIComponent(receiptB.requestId)}`);
+    await expect(page.getByRole("textbox")).toHaveValue("Draft retained across receipt links");
+    await expect(page.getByText(/Sent context:/)).toContainText(recoverySeed.receipt.target.context);
+    const afterLink = await page.evaluate(() => JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { exchange: SavedExchange; history: SavedExchange[]; target: SavedExchange["target"] | null });
+    expect(afterLink.exchange).toEqual(recoverySeed.receipt);
+    expect(afterLink.exchange.lookupOnly).not.toBe(true);
+    expect(afterLink.history.map(item => item.id)).toEqual([receiptA.requestId]);
+    expect(afterLink.target).toEqual(recoverySeed.target);
+    expect(posts).toHaveLength(4);
+    readMode = "missing";
+    await page.getByText("History & recovery", { exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(receiptA.requestId) }).click();
+    await expect(page.getByRole("button", { name: "Retry original unchanged Ask" })).toBeVisible();
+    expect(posts).toHaveLength(4);
+    postMode = "success"; readMode = "ready";
+    await page.getByRole("button", { name: "Retry original unchanged Ask" }).click();
+    await expect.poll(() => posts.length).toBe(5);
+    await expect(page.getByRole("button", { name: "Sending…", exact: true })).toHaveCount(0);
+    expect(posts[4]).toEqual(receiptA);
+    await expect(page.getByRole("textbox")).toHaveValue("Draft retained across receipt links");
     // Malformed but valid JSON is visible and stays untouched by recovery reads.
     await page.evaluate(() => localStorage.setItem("arcadia.workspace.ask.v1", JSON.stringify({ draft: 42 })));
     await page.reload();
     await expect(page.getByRole("alert").filter({ hasText: "Saved Ask recovery data is invalid" })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("arcadia.workspace.ask.v1"))).toBe('{"draft":42}');
-    expect(posts).toHaveLength(4);
+    expect(posts).toHaveLength(5);
     // Storage failures and insecure-context UUID availability remain visible and usable.
     await page.evaluate(() => { Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true }); Storage.prototype.setItem = () => { throw new Error("Fixture storage refused"); }; });
     postMode = "lost"; readMode = "ready";
     await page.getByRole("textbox").fill("No storage request");
     await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
     await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
-    await expect.poll(() => posts.length).toBe(5);
+    await expect.poll(() => posts.length).toBe(6);
     await expect(page.getByText("Submission acknowledged via receipt.", { exact: true })).toBeVisible();
     await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });

@@ -1,7 +1,3 @@
-import { ArcadiaError } from "../../../src/cli/errors.js";
-import { resolveReadyWorkspace } from "../../../src/cli/workspace.js";
-import { withReadOnlyDatabase } from "../../../src/db/connection.js";
-import { getProject } from "../../../src/db/repositories.js";
 import type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -1102,6 +1098,13 @@ export async function runAsk(input: {
   // Exact database identity only: never let aliases or classifier fallback retarget a scoped Ask.
   if (input.projectId !== undefined) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(input.projectId)) throw new ArcadiaCliError("Invalid Project ID.", 400);
+    // Keep the core workspace/session graph out of unrelated bridge consumers.
+    const [{ ArcadiaError }, { resolveReadyWorkspace }, { withReadOnlyDatabase }, { getProject }] = await Promise.all([
+      import("../../../src/cli/errors.js"),
+      import("../../../src/cli/workspace.js"),
+      import("../../../src/db/connection.js"),
+      import("../../../src/db/repositories.js")
+    ]);
     const projectId = input.projectId;
     try {
       const { workspacePath } = resolveReadyWorkspace();

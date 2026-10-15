@@ -79,11 +79,11 @@ Frozen product/test SHA-256 (proof document excluded to avoid self-reference):
 - `apps/dashboard/app/workspace/layout.tsx`: `27e1625c933012cfd60532f15ffdfeca7e0e8fb8a7f63a60a4a20d12efe98137`
 - `apps/dashboard/app/workspace/workspace.css`: `a150179c77b8e0462d0d4222a8275a2ff3291a3109ea19030cc512d5e6625abf`
 - `apps/dashboard/components/workspace/workspace-view.tsx`: `9a9df7b147cbf58ee3030a1c87ad5580fc9adb516ee1b73921f15334e782bcbf`
-- `apps/dashboard/components/workspace/workspace-ask.tsx`: `9562804b811069835e5693830b408855eab2481a7fe083ee5ee5b2dfbdca2d2c`
-- `apps/dashboard/lib/arcadia-cli.ts`: `6ecf695a18d6471830aa50e12a1f6a5bff5a460b4c4d4db1dbff33d34ffc9c75`
+- `apps/dashboard/components/workspace/workspace-ask.tsx`: `89c92bb5cc02ad89e8732d4187754afb27a3493a6a4ca838ec4f439990e53078`
+- `apps/dashboard/lib/arcadia-cli.ts`: `05e17e765c66759dcf2c57dff75a8774a3e9d8598630a1bac30f32f3b12a5197`
 - `tests/ask-api-boundaries.test.ts`: `deed95f62ff41e7b099ea0e0cf7e4ca20d63f2e4e42b2bcddcbd5b3d9436ddc2`
 - `tests/ask-api-scenarios.test.ts`: `aab88e12c536a5df9c00942631cb9194789f04079dc8995ac78daaa4d051dad9`
-- `tests/e2e/workspace-shell.spec.ts`: `ab693d30fc02b27f185b481748de230375da968c902b87bf33e69d61507f1e60`
+- `tests/e2e/workspace-shell.spec.ts`: `6aace2a6987246a3ca81e66ccb30359b6a829e0272e57676ab0a52fcaa453610`
 
 ## Operator QA and next slice
 
@@ -131,3 +131,34 @@ Lead refreshed the no-PR work monitor before guide edits. Other candidates'
 historical changes include other START_HERE sections; no active writer overlap
 with this workspace-specific section was established. No other checkout was
 edited. The parent primary reflog remains ef6c83e47, 7bbfbed07, f6de70bec.
+
+## Independent review and CI repairs
+
+PR [#1440](https://github.com/pmark/arcadia/pull/1440), first head
+`05e989d6496f59e2d4ca65e7911913cdf17aad9c`: independent read-only round 1
+found one blocking P2. Opening receipt B replaced saved exchange A without
+retaining A in History. A regression failed before the fix. Shared bounded,
+deduplicated selection now retains A and restores B's known original metadata;
+the test verifies preserved draft/target, GET-only navigation and A's unchanged
+retry. Implementer production-browser verification passed in 6.1s; raw logs
+`/tmp/workspace-ask-deeplink-{before,lint,build,browser}.log`.
+
+First-head CI exposed eager core imports breaking unrelated bridge consumer
+mocks in PR description, approval and production-reactivation tests. These
+imports now load only inside scoped Ask validation. No mocks or CI gates were
+weakened. Implementer PR-description + API tests passed 37/37, approval tests
+2/2, focused lint and final production dashboard build passed. Raw logs:
+`/tmp/workspace-ask-lazy-import-{tests,approve,lint,build}.log`.
+
+CI also rejected the Lead's post-check ledger value `handed_off`: its schema
+allows complete, split or stopped. The row now uses `split` because Artifact
+delivery remains a separate MVP slice. This corrects the record, not the
+validator. Failed CI logs are retained as `/tmp/workspace-ask-ci-*-failed.log`.
+The revised commit requires fresh independent delta review and all seven CI
+jobs before merge. No production or shared checkout action is implied.
+
+Parent post-repair verification: **60 tests passed across seven focused files**,
+exit 0, 28.38s, including all three CI-affected bridge consumers and source-CLI
+Ask scenarios (`/tmp/workspace-ask-parent-post-review-tests.log`). Final
+production-browser regression passed in 7.3s, exit 0
+(`/tmp/workspace-ask-parent-post-review-browser.log`).

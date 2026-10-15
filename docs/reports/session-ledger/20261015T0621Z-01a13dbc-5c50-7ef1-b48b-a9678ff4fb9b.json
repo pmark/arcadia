@@ -4,21 +4,26 @@
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
   "action_id": "operator-directed:#1438",
-  "pr": null,
+  "pr": 1440,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "receipt-link recovery data loss (repaired; delta review pending)",
+      "caught_by": "independent review round 1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
-  "outcome": "handed_off",
-  "candidate_head": "e63ef8c734c6321e203ace84f125a7c20d73d233",
+  "outcome": "split",
+  "candidate_head": "05e989d6496f59e2d4ca65e7911913cdf17aad9c",
   "evidence_source": "docs/reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md",
   "task_class": "workspace-ask-receipt-loop",
-  "notes": "Ask loop in fresh candidate: 50 tests and production browser pass. Builds/rehearsal pass with recorded caveats. Independent review/CI pending. No governed Action or main edits."
+  "notes": "Ask loop PR1440; receipt-history loss repaired. CI eager imports fixed without mock changes; ledger enum corrected. Artifact delivery remains next slice. No main or governed edits."
 }

@@ -28,6 +28,18 @@ function isExchange(value: unknown): value is Exchange {
   return typeof e.id === "string" && typeof e.text === "string" && isTarget(e.target) && (e.summary === undefined || typeof e.summary === "string") && (e.status === undefined || typeof e.status === "string") && (e.lookupOnly === undefined || typeof e.lookupOnly === "boolean") && ["sending", "acknowledged", "uncertain"].includes(e.phase);
 }
 
+function selectExchange(saved: Saved, exchange: Exchange): Saved {
+  const history = [saved.exchange, ...saved.history]
+    .filter((item): item is Exchange => item !== null && item.id !== exchange.id)
+    .filter((item, index, all) => all.findIndex(other => other.id === item.id) === index)
+    .slice(0, 5);
+  return { ...saved, exchange, history };
+}
+
+function recoverExchange(exchange: Exchange): Exchange {
+  return exchange.phase === "sending" ? { ...exchange, phase: "uncertain" } : exchange;
+}
+
 /** Mounted once in the workspace layout: navigation cannot replace an operation's identity. */
 export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<Saved>(empty);
@@ -87,7 +99,7 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     lock.current = true; setBusy(true); setTrail(null); setReadError(null); setMissing(false); ++reading.current;
     // Synchronous storage attempt precedes fetch; the exact payload stays pinned even if navigation changes.
     const before = current.current;
-    update({ ...before, ...(fresh ? { draft: "", target: null, history: before.exchange ? [before.exchange, ...before.history].slice(0, 5) : before.history } : {}), exchange: { ...exchange, phase: "sending" } });
+    update({ ...selectExchange(before, { ...exchange, phase: "sending" }), ...(fresh ? { draft: "", target: null } : {}) });
     const url = new URL(window.location.href); url.searchParams.set("receipt", exchange.id); window.history.replaceState(null, "", url);
     try {
       const response = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: exchange.text, requestId: exchange.id, projectId: exchange.target.projectId }) });
@@ -111,12 +123,17 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
         setWarning("Saved Ask recovery data is invalid. No draft or history was restored. The stored data remains unchanged until you edit or send.");
       }
     } catch { preserveRaw.current = true; setWarning("Browser storage could not be read. Reload recovery is unavailable; use a receipt link."); }
-    if (restored.exchange?.phase === "sending") restored = { ...restored, exchange: { ...restored.exchange, phase: "uncertain" } };
+    if (restored.exchange) restored = selectExchange(restored, recoverExchange(restored.exchange));
     const id = new URL(window.location.href).searchParams.get("receipt");
-    if (id && id !== restored.exchange?.id) restored = { ...restored, exchange: { id, text: "Original request is being read from its receipt.", target: { label: "Receipt lookup", context: "Original context unavailable" }, phase: "uncertain", lookupOnly: true } };
+    if (id && id !== restored.exchange?.id) {
+      const known = restored.history.find(exchange => exchange.id === id);
+      restored = selectExchange(restored, known ? recoverExchange(known) : { id, text: "Original request is being read from its receipt.", target: { label: "Receipt lookup", context: "Original context unavailable" }, phase: "uncertain", lookupOnly: true });
+      // Persist the selection with the prior exchange retained, including when a known receipt is already acknowledged.
+      if (!preserveRaw.current) update(restored);
+    }
     current.current = restored; setSaved(restored);
     if (restored.exchange) void inspect(restored.exchange.id);
-    // Initialization is read-only; a reload never calls send.
+    // Initialization only reads the server; a reload never calls send.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send }}>{children}</AskContext.Provider>;
@@ -161,7 +178,7 @@ export function WorkspaceAsk({ target, available }: { target: Target; available:
       }}>Keep in history and start a new Ask</button>}
       {trail && <TrailCards trail={trail} />}
     </section>}
-    <details className="workspace-history"><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update({ ...saved, exchange: old, history: (saved.exchange ? [saved.exchange, ...saved.history] : saved.history).filter(item => item.id !== old.id).slice(0, 5) }); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
+    <details className="workspace-history"><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update(selectExchange(saved, recoverExchange(old))); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
   </div>;
 }
 
