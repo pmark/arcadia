@@ -1,0 +1,112 @@
+{
+  "session": "01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b",
+  "primary": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+  "note": "Exact-byte snapshot before delivery-status edits. Primary remains untouched; no cleanup or main reconciliation is authorized by this manifest. Canonical session ledger is not overwritten by its old primary draft.",
+  "files": [
+    {
+      "source": "docs/articles/README.md",
+      "sha256": "65b875696f44c3155f2ac4f3d04519d6b5cf1d4340bb8e6d9435098f93f8ff45",
+      "preservedAs": "docs/articles/README.md"
+    },
+    {
+      "source": "docs/articles/2026-10-14-arcadia-spatial-background.md",
+      "sha256": "f15f35a8784c6cf11663cc65b419ee85a7c8f9c01854b6fab794553a43b264b7",
+      "preservedAs": "docs/articles/2026-10-14-arcadia-spatial-background.md"
+    },
+    {
+      "source": "docs/articles/receipts/arcadia-spatial-background.md",
+      "sha256": "6bda438a24a76a594180724a718f20cb47c86304859cb1417cdaf06d50869d86",
+      "preservedAs": "docs/articles/receipts/arcadia-spatial-background.md"
+    },
+    {
+      "source": "docs/design/README.md",
+      "sha256": "937b494e5fd94a818dbfa977bab83f0ad3cf8fac39bd9117729b3dc6e19bbb0c",
+      "preservedAs": "docs/design/README.md"
+    },
+    {
+      "source": "docs/design/arcadia-conversational-workspace-evidence.md",
+      "sha256": "32f100d63c594965df6edb772b9efc6c0a31be424d048ddfe45edd65919ecaca",
+      "preservedAs": "docs/design/arcadia-conversational-workspace-evidence.md"
+    },
+    {
+      "source": "docs/design/arcadia-conversational-workspace.md",
+      "sha256": "97e86a5e47708bbe44a25dfbc85df0f1f38d28445652ff35d3fcc2a9e07bde99",
+      "preservedAs": "docs/design/arcadia-conversational-workspace.md"
+    },
+    {
+      "source": "docs/design/arcadia-mvp-80-20-technical-analysis.md",
+      "sha256": "bf9a615043f44d69c4ba65900e99bbca1e5ce35e053bcb918be0113f74bd971f",
+      "preservedAs": "docs/design/arcadia-mvp-80-20-technical-analysis.md"
+    },
+    {
+      "source": "docs/design/arcadia-mvp-milestones.md",
+      "sha256": "b28b7343316ac77cb778930eb10d910bf8ae89f11c7758275dd1ada89f003d80",
+      "preservedAs": "docs/design/arcadia-mvp-milestones.md"
+    },
+    {
+      "source": "docs/design/mission-control-sky-react-reuse.md",
+      "sha256": "978203d6b78645ff626c60d3a8bfaefbafcb498978fde5d9a4fc7461127c6788",
+      "preservedAs": "docs/design/mission-control-sky-react-reuse.md"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/concept-01-messaging-and-context.png",
+      "sha256": "fe9b529261e80827bcb0ec6b6323ee1f0d1f6c7073a91567cf77d36b94a1ba4a",
+      "preservedAs": "assets/arcadia-conversational-workspace/concept-01-messaging-and-context.png"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/concept-02-moon-garden.png",
+      "sha256": "c2545921c5517396fc7e4309b7fdb1dcc9e29c1fa743c70565eb86f654fe3b7b",
+      "preservedAs": "assets/arcadia-conversational-workspace/concept-02-moon-garden.png"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/concept-03-mission-control-sky.png",
+      "sha256": "86312b6da60e52a1e5b6e2e0407849eb541aeb35173e373e8718df97e338e486",
+      "preservedAs": "assets/arcadia-conversational-workspace/concept-03-mission-control-sky.png"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png",
+      "sha256": "773595e26dbecf74ad2dd7c0f459fe0e7186e2e27f9b75248d3c48b2b79e67f2",
+      "preservedAs": "assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/concept-05-iphone-navigation.png",
+      "sha256": "89787de6e80137b8023336a333f63e26899e98fdf15ea72910e6fb07c5f05d7c",
+      "preservedAs": "assets/arcadia-conversational-workspace/concept-05-iphone-navigation.png"
+    },
+    {
+      "source": "assets/arcadia-conversational-workspace/operator-logo-reference.jpg",
+      "sha256": "095b5cf36c7799556b09a1ee8206fac1880206e04462472a06ff546529c0f1f6",
+      "preservedAs": "assets/arcadia-conversational-workspace/operator-logo-reference.jpg"
+    },
+    {
+      "source": "docs/design/assets/arcadia-conversational-workspace/concept-01-messaging-and-context.png",
+      "sha256": "fe9b529261e80827bcb0ec6b6323ee1f0d1f6c7073a91567cf77d36b94a1ba4a",
+      "preservedAs": "docs/design/assets/arcadia-conversational-workspace/concept-01-messaging-and-context.png"
+    },
+    {
+      "source": "docs/design/assets/arcadia-conversational-workspace/concept-02-moon-garden.png",
+      "sha256": "c2545921c5517396fc7e4309b7fdb1dcc9e29c1fa743c70565eb86f654fe3b7b",
+      "preservedAs": "docs/design/assets/arcadia-conversational-workspace/concept-02-moon-garden.png"
+    },
+    {
+      "source": "docs/design/assets/arcadia-conversational-workspace/concept-03-mission-control-sky.png",
+      "sha256": "86312b6da60e52a1e5b6e2e0407849eb541aeb35173e373e8718df97e338e486",
+      "preservedAs": "docs/design/assets/arcadia-conversational-workspace/concept-03-mission-control-sky.png"
+    },
+    {
+      "source": "docs/design/assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png",
+      "sha256": "773595e26dbecf74ad2dd7c0f459fe0e7186e2e27f9b75248d3c48b2b79e67f2",
+      "preservedAs": "docs/design/assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png"
+    },
+    {
+      "source": "docs/design/assets/arcadia-conversational-workspace/operator-logo-reference.jpg",
+      "sha256": "095b5cf36c7799556b09a1ee8206fac1880206e04462472a06ff546529c0f1f6",
+      "preservedAs": "docs/design/assets/arcadia-conversational-workspace/operator-logo-reference.jpg"
+    },
+    {
+      "source": "docs/reports/session-ledger/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.json",
+      "sha256": "a442b40733318818c84e0272f41ceaa2ff7d7d26c82e750e808dd49e9a1cf7c0",
+      "preservedAs": "docs/reports/handoffs/2026-10-15-workspace-design-original-ledger.json"
+    }
+  ]
+}
