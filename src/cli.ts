@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
+import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -279,9 +281,11 @@ import {
 } from "./commands/review.js";
 import {
   renderQaListSuccess,
+  renderQaEffectivenessSuccess,
   renderQaPrReviewSuccess,
   renderQaRecordSuccess,
   runQaListCommand,
+  runQaEffectivenessCommand,
   runQaPrReviewCommand,
   runQaRecordCommand,
   runQaRefreshCommand,
@@ -424,6 +428,8 @@ import {
 } from "./commands/next.js";
 import { renderTodoSuccess, runTodoCommand } from "./commands/todo.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
+import { renderPlanCloseOutSuccess, runPlanCloseOutCommand } from "./commands/planCloseOut.js";
+import { renderPlanSelectNextSuccess, runPlanSelectNextCommand } from "./commands/planSelectNext.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlanProgressSuccess, renderPlansSuccess, runPlanProgressCommand, runPlansCommand } from "./commands/plans.js";
 import {
@@ -1121,7 +1127,31 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     json?: boolean;
   }) => runCliAction("capture", options, () => runCaptureCommand(options), renderCaptureSuccess));
 
-  const schedule = program.command("schedule").description("Production scheduling: per-Project queues by tier, the GitHub board projection, and discovery");
+  const schedule = program.command("schedule").description("Project work priority, GitHub projection, discovery, and recurring calendar triggers");
+  for (const command of ["register", "recurring", "enable", "pause", "tick", "retry", "edit"] as const) {
+    const descriptions = {
+      register: "Register a recurring JSON definition, initially paused",
+      recurring: "Read recurring schedules, next times and occurrence receipts",
+      enable: "Enable a registered recurring proposal trigger",
+      pause: "Pause a recurring trigger without deleting its receipts",
+      tick: "Submit due recurring Action proposals without approving or executing them",
+      retry: "Reset the retry budget for a failed occurrence",
+      edit: "Change recurring timing with a fingerprint, preserving its receipts"
+    };
+    const subcommand = schedule.command(command).description(descriptions[command]);
+    if (["register", "edit"].includes(command)) subcommand.requiredOption("--file <path>", "Schedule JSON definition");
+    if (["enable", "pause", "retry", "edit"].includes(command)) subcommand.argument("<id>", "Recurring schedule id");
+    if (["enable", "pause"].includes(command)) subcommand.option("--expected <fingerprint>", "Refuse a stale schedule change");
+    if (command === "retry") subcommand.requiredOption("--occurrence <date>", "Failed occurrence date YYYY-MM-DD");
+    addJsonOption(subcommand.option("--workspace <path>", "Workspace path", defaultWorkspace()));
+    if (["enable", "pause", "retry", "edit"].includes(command)) {
+      subcommand.action((id: string, options: { workspace: string; occurrence?: string; file?: string; expected?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, { ...options, id }), renderRecurringScheduleSuccess));
+    } else {
+      subcommand.action((options: { workspace: string; file?: string; json?: boolean }) =>
+        runCliAction(`schedule.${command}`, options, () => runRecurringScheduleCommand(command, options), renderRecurringScheduleSuccess));
+    }
+  }
   addJsonOption(
     schedule
       .command("status")
@@ -1319,11 +1349,12 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .command("reset-repair-budget <actionKey>")
       .description("Reset an Action's exhausted repair budget after fixing what made every launch attempt fail")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((actionKey: string, options: { workspace: string; json?: boolean }) =>
+      .option("--expect-kind <kind>", "Only reset when the Action's recorded blocker is of this kind (a no-op when it is already gone)")
+  ).action((actionKey: string, options: { workspace: string; expectKind?: string; json?: boolean }) =>
     runCliAction(
       "production.reset-repair-budget",
       options,
-      () => runProductionResetRepairBudgetCommand({ workspace: options.workspace, actionKey }),
+      () => runProductionResetRepairBudgetCommand({ workspace: options.workspace, actionKey, expectKind: options.expectKind }),
       renderProductionResetRepairBudgetSuccess
     )
   );
@@ -2210,6 +2241,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--status <status>", "open, approved, rejected, or deferred", "approved")
       .option("--dry-run", "Report the consequence the answer would apply without writing anything")
       .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
+      .option("--expect-status <status>", "Refuse, writing nothing, unless the Decision currently has this status")
+      .option("--expect-updated <value>", "Refuse, writing nothing, unless the Decision's updated field equals this")
+      .option("--expect-no-pointer-move", "Refuse, writing nothing, if a defer option's target is the current Action (it would move the active pointer)")
+      .option("--expect-options <sha256>", "Refuse, writing nothing, unless sha256 of the Decision's question and options (label, consequence, effect, in order) equals this")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
@@ -2219,6 +2254,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     status?: string;
     dryRun?: boolean;
     requestId?: string;
+    expectStatus?: string;
+    expectUpdated?: string;
+    expectOptions?: string;
+    expectNoPointerMove?: boolean;
     json?: boolean;
   }) =>
     runCliAction(
@@ -2232,7 +2271,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         decided: options.decided,
         status: options.status as never,
         dryRun: options.dryRun,
-        requestId: options.requestId
+        requestId: options.requestId,
+        expectStatus: options.expectStatus,
+        expectUpdated: options.expectUpdated,
+        expectOptions: options.expectOptions,
+        expectNoPointerMove: options.expectNoPointerMove
       }),
       renderDecisionApproveSuccess
     )
@@ -3026,8 +3069,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     work
       .command("prs")
       .description("List outstanding GitHub pull requests across Project repositories")
+      .option("--lightweight", "List PRs and CI without per-PR bodies, files or briefing")
+      .option("--repositories-only", "Resolve configured GitHub origins locally without GitHub reads")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  ).action((options: { workspace: string; lightweight?: boolean; repositoriesOnly?: boolean; json?: boolean }) =>
     runCliAction(
       "work.pull-requests",
       options,
@@ -3556,6 +3601,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   const qa = program.command("qa").description("Configured Candidate QA queue");
   addJsonOption(
     qa
+      .command("effectiveness")
+      .description("Read-only model and effort effectiveness from persisted review receipts; invokes no model")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("qa.effectiveness", options, () => runQaEffectivenessCommand(options), renderQaEffectivenessSuccess)
+  );
+  addJsonOption(
+    qa
       .command("list")
       .description("List checked-in active Candidates for operator QA")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -3850,6 +3903,39 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           (response) => renderPlanProgressSuccess(response, options.all)
         )
       : runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
+  );
+
+  const planGroup = program.command("plan").description("Plan records derived from checked-in documents");
+  addJsonOption(
+    planGroup
+      .command("close-out")
+      .description("Derive a Plan's deterministic close-out record from its document, the session ledger and frictions. The record is a snapshot: if a Plan Action is later renamed or removed, delete the record and re-run with --write")
+      .argument("<plan-slug>", "Plan slug (docs/plans/<slug>.md)")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--write", "Write docs/plans/<slug>.close-out.json (never replaces a record with a different hash)")
+  ).action((planSlug: string, options: { repo: string; write?: boolean; json?: boolean }) =>
+    runCliAction(
+      "plan.close-out",
+      options,
+      () => runPlanCloseOutCommand({ repo: options.repo, planSlug, write: options.write }),
+      renderPlanCloseOutSuccess
+    )
+  );
+  addJsonOption(
+    planGroup
+      .command("select-next")
+      .description("Preview the next Plan under Decisions 0116 and 0122 with its preflight and decision card; read-only, never activates")
+      .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
+      .option("--project <slug>", "Only consider this Project")
+      .option("--preferences <file>", "JSON Project preference record: { projects: [{ project, included, chosenPlan }] }", resolveInvocationPath)
+      .option("--workspace <path>", "Workspace for the live read-only queue and red-alert readers", defaultWorkspace())
+      .option("--queue <file>", "Override the live queue: selector-shape { queues } or `advance queue --json` output", resolveInvocationPath)
+      .option("--red-alerts <file>", "Override live red alerts: { alerts: [{ id, project, trigger? }] }", resolveInvocationPath)
+      .option("--run-id <id>", "Current run id")
+      .option("--session-id <id>", "Current session id")
+      .option("--run-ask <ids>", "Comma-separated Agent Ask ids submitted by this run")
+  ).action((options: { repo: string; workspace?: string; project?: string; preferences?: string; queue?: string; redAlerts?: string; runId?: string; sessionId?: string; runAsk?: string; json?: boolean }) =>
+    runCliAction("plan.select-next", options, () => runPlanSelectNextCommand(options), renderPlanSelectNextSuccess)
   );
 
   const operatorTask = program
@@ -4171,6 +4257,27 @@ Origin: every item has "origin" (a string from a field its source records, else 
     runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
   );
 
+  const roles = program.command("roles").description("Read the governed role registry; grants no authority");
+  addJsonOption(roles.option("--workspace <path>", "Read-only workspace config override")).action((options: { workspace?: string; json?: boolean }) =>
+    runCliAction("roles", options, () => runRolesCommand(options), renderRolesSuccess));
+  addJsonOption(roles.command("show <id>").option("--workspace <path>", "Read-only workspace config override")).action((id: string, _options: { workspace?: string; json?: boolean }, command: Command) => {
+    const options: { workspace?: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction("roles show", options, () => runRolesCommand({ ...options, id }), renderRolesSuccess);
+  });
+  const role = program.command("role").description("Read a governed specialist brief");
+  addJsonOption(role.command("brief")
+    .requiredOption("--role <id>", "Registered role ID")
+    .requiredOption("--agent <agent>", "codex, claude or opencode")
+    .requiredOption("--tier <tier>", "light, standard or heavy")
+    .option("--action <ref>", "Exact plan-slug#action-id")
+    .option("--specialization <label>", "Domain label only; cannot grant permissions")
+    .option("--requested-by <role>", "Validate native delegate eligibility for this requester role; pair with --depth")
+    .option("--depth <number>", "Requester depth (top-level Lead is 0); pair with --requested-by", (value: string) => /^\d+$/.test(value) ? Number(value) : NaN)
+    .option("--repo <path>", "Repository to read the Action from", resolveInvocationPath, invocationRoot())
+    .option("--workspace <path>", "Read-only workspace config override"))
+    .action((options: { role: string; agent: string; tier: string; action?: string; specialization?: string; requestedBy?: string; depth?: number; repo: string; workspace?: string; json?: boolean }) =>
+      runCliAction("role brief", options, () => runRoleBriefCommand({ ...options, repoRoot: options.repo }), renderRoleBriefSuccess));
+
   const identityCommand = program
     .command("identity")
     .description("Semantic agent identities: who each coding agent signs commits and comments as");
@@ -4341,12 +4448,13 @@ Origin: every item has "origin" (a string from a field its source records, else 
   addJsonOption(
     intelligence
       .command("narrate")
-      .description("Narrate text, a file, or a GitHub issue's commentary into one WAV via the local speech route (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
+      .description("Narrate text, a file, a PR body, or a GitHub issue's commentary into one WAV via the local speech route (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--text <text>", "Text to narrate")
       .option("--file <path>", "Read narration text from a local file")
       .option("--issue <ref>", "GitHub issue URL, owner/repo#number, or number (with --repo)")
-      .option("--repo <owner/name>", "Repository for a bare --issue number")
+      .option("--pull-request <ref>", "Narrate only a GitHub PR body (URL, owner/repo#number, or number with --repo)")
+      .option("--repo <owner/name>", "Repository for a bare --issue or --pull-request number")
       .option("--voice-id <id>", "Semantic Arcadia voice id (e.g. arcadia.narrator)")
       .option("--route <name>", "Local speech route/model alias")
       .option("--out <path>", "Output WAV path (default: <workspace>/artifacts/narration/)")
@@ -4357,6 +4465,7 @@ Origin: every item has "origin" (a string from a field its source records, else 
     text?: string;
     file?: string;
     issue?: string;
+    pullRequest?: string;
     repo?: string;
     voiceId?: string;
     route?: string;
@@ -5313,7 +5422,7 @@ function commandNameFromArgv(argv: string[]): string {
     return `production.${second}`;
   }
 
-  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume"].includes(second ?? "")) {
+  if (first === "schedule" && ["status", "log", "prioritize", "classify", "discover", "reconcile", "resume", "register", "recurring", "enable", "pause", "tick", "retry", "edit"].includes(second ?? "")) {
     return `schedule.${second}`;
   }
 

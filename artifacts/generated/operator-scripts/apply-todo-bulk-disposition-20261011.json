@@ -1,0 +1,69 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "apply-todo-bulk-disposition-20261011",
+  "title": "Finish the /todo cleanup (reject 15 superseded Asks + 24 off-path proposals)",
+  "script": "apply-todo-bulk-disposition-20261011.sh",
+  "repeatable": false,
+  "problem": "After the 2026-10-10 cleanup, /todo still lists items you would dismiss. 15 Arcadia Agent Asks are superseded: 11 are first drafts whose later revision filed the Decision (their 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241), 2 are the /clock request and Plan already delivered by PR #1234, and 2 are the Action-cost research request and its r1 Plan, both superseded by PR #1233 and its r2 proposal. 24 WayProposal review items are off the trial path: 23 of them you rejected on 2026-10-10, and docs sync reopened them at 06:28Z (fixed in PR #1241); one (Field Notes, R378) is tracked by Issue #1211 with its revival trigger. List: docs/reports/todo-bulk-disposition-2026-10-11.json, sha256 fb3675c8b11fd4aac09353c4ee6a73a06660d1cf8994f8e5ed54f9bbc1a8502d; evidence per item in docs/reports/todo-bulk-disposition-2026-10-11.md. Pressing this button is your acceptance of that list; agents cannot reject Asks or review items themselves.",
+  "desired_effect": "Rejects the 15 pinned pending Arcadia Agent Asks (one recorded settlement each, request id bulk-20261011-<proposal>; the proposal and its content stay in the workspace) and rejects the 24 listed review items (proposal files and Issues stay). Every item is re-checked just before it is applied; anything already settled, decided or changed is skipped and listed. No Project, Plan, Action, pointer, queue or Decision changes. If a rejection archives a drafted Ask file, that commit lands on a fresh worktree branch, operator/todo-bulk-disposition-archives-20261011, which is pushed and opened as a pull request; nothing is committed on the main checkout. Kept visible on purpose: the one-click Launch Ask (critical path), the r2 economic-evidence Plan, the plan-scoped Ask and Ask-capture ideas, the Issue-triage Plan, R380 (supervisors), and R147 and the Living Songbook item (rejecting them would reset or reopen work). Preview read-only first: /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/apply-todo-bulk-disposition-20261011.sh --dry-run",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/apply-todo-bulk-disposition-20261011.sh run",
+  "preconditions": [
+    "This script, its descriptor, the list, scripts/apply-todo-bulk-disposition.ts, its src modules, the canonical writers and src/docs/sync.ts are tracked, unmodified, and identical to origin/main in the Arcadia checkout (so PR #1241's fixes are in place)",
+    "The list's sha256 is fb3675c8b11fd4aac09353c4ee6a73a06660d1cf8994f8e5ed54f9bbc1a8502d and every declared proposal is one the list rejects",
+    "ARCADIA_WORKSPACE is not exported and the CLI default workspace is martianrover",
+    "~/tmp/arcadia-todo-bulk-disposition-20261011 is absent, or is a clean worktree of this repository on operator/todo-bulk-disposition-archives-20261011 (a resumed run)"
+  ],
+  "expected_duration": "About 5 to 10 minutes: each of the 15 Asks is previewed and then applied (about 5 seconds each), then 24 review items, and one push and pull request when Ask files were archived. Bounded at 2 hours.",
+  "cost_note": "No model use and no spend; local Arcadia writes, and at most one push and one pull request.",
+  "agentAskRejections": {
+    "manifest": "docs/reports/todo-bulk-disposition-2026-10-11.json",
+    "sha256": "fb3675c8b11fd4aac09353c4ee6a73a06660d1cf8994f8e5ed54f9bbc1a8502d",
+    "proposals": [
+      "agentask_81deb15974333adbe3",
+      "agentask_55cdc3bcf470d574fd",
+      "agentask_eb6679c36226268a03",
+      "agentask_57c88403c5a33597c3",
+      "agentask_12695d0a692f7664e3",
+      "agentask_880122d5d1483655df",
+      "agentask_9279f393884806f5f5",
+      "agentask_aaec7e29dd72d01942",
+      "agentask_538cfdf002e4d6bd05",
+      "agentask_df7f665098b8b5cce5",
+      "agentask_ed8a7ffaefec85b6b0",
+      "agentask_1a3837112b0c55e4e3",
+      "agentask_3d1cc3159a8ed295d8",
+      "agentask_ab7a3676ca47ed2abb",
+      "agentask_279348e2c90a0e3252"
+    ]
+  },
+  "authority": {
+    "does": [
+      "Refuses before any write unless this action's files are tracked, unmodified and identical to origin/main, the list's sha256 matches, the descriptor's declared proposals are all rejections the list makes, ARCADIA_WORKSPACE is not exported and the default workspace is martianrover",
+      "Runs under its own operator execution context, so Arcadia's settlement guard admits only disposition rejected and only for the 15 proposals pinned in agentAskRejections; any other settlement is refused by the canonical code, not by this script",
+      "For each pinned Agent Ask still pending: previews the canonical settlement (arcadia agent-ask settle, disposition rejected, request id bulk-20261011-<proposal>) and applies exactly that preview fingerprint; skips and records an Ask already settled or missing; any other preview refusal, apply error or settlement needing recovery fails the run so a Retry resumes it",
+      "For each listed review item still open or deferred: arcadia review reject <id>; skips and records anything already decided",
+      "Runs every settlement from a fresh worktree ~/tmp/arcadia-todo-bulk-disposition-20261011 (branch operator/todo-bulk-disposition-archives-20261011 from origin/main), so any Ask-file archive commit lands there; verifies each such commit is that worktree's HEAD and that the main checkout's HEAD never moves; pushes the branch without force and opens (or reuses) one pull request; removes the worktree and branch when nothing needed archiving",
+      "Resumes idempotently: a rerun re-checks every item and skips what is already applied, reuses the same settlement request ids and the existing archive worktree",
+      "--dry-run reads the live state, previews every settlement (no apply) and lists exactly what would happen, writing nothing to the workspace, any branch or GitHub",
+      "Writes runs/<timestamp-pid>/receipt.json, the per-item disposition-receipt.json and run.log, plus failure-handoff.md on failure"
+    ],
+    "never_does": [
+      "Never touches cross-repo items (Private Practice Now, Mission Control Site, Rebuster) and never commits on another repository's checkout",
+      "Never touches review items R366 (review_c1cc2f67b165454dab) or R368 (review_af4fe69f0faf47ad9b), PR #1212, PR #1033, the Ask pr-opened-arcadia-pr1212, the Ask pr-opened-arcadia-pr1033, PR #1178 or Issue #1177",
+      "Never accepts an Ask, settles one outside the pinned 15, or rejects an item whose state changed since the list; never approves or defers a review item",
+      "Never touches review items R147 (review_ac701e4ed8a5442099), R380 (review_ed15b634cdcc444084) or the Living Songbook item (review_41438cecfd7743499e), whose rejection would reset or reopen work or answer a live question",
+      "Never changes any Project, Plan, Action, pointer, queue or Decision; never completes or reopens a Project",
+      "Never commits on the main checkout, force-pushes, rewrites history, merges a pull request or deletes anything other than its own empty archive worktree and branch",
+      "Never touches production, the go-broker, a Grant, a Session or any reset, G6, G7 or G8 receipt, and never restarts a service",
+      "Never edits the workspace database directly and never exports ARCADIA_WORKSPACE"
+    ]
+  },
+  "success": {
+    "effect": "Every pinned item is either rejected or skipped with a recorded reason; the per-item receipt lists each one. /todo no longer shows the superseded Asks or the off-path proposals. If any Ask file was archived, the receipt names the pull request carrying those archive commits.",
+    "next": "Open /todo to confirm the cleanup. If the receipt names an archive pull request, it merges on the normal review gate. Cross-repo items need their own disposition in their repositories."
+  },
+  "failure": {
+    "effect": "The receipt and failure handoff name the stage and reason; the per-item receipt lists everything applied before it stopped. Nothing was forced, reset or deleted, no Ask was accepted, and production, the broker and Grants were not touched.",
+    "next": "Correct the named cause and press Retry; the rerun skips everything already applied and resumes under the same request ids and archive worktree."
+  }
+}

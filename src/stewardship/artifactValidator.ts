@@ -464,19 +464,60 @@ function approvalContradictionEvidence(
     keywords.add("implementation");
   }
 
-  return lines.filter((line) => {
-    const normalizedLine = normalize(line);
-    if (!/\bapproval\b/.test(normalizedLine) && !/\bwithout\b/.test(normalizedLine)) {
-      return false;
+  // Judged per clause, failing closed. "Planning requires no approval.
+  // Implementation requires a separate approved goal." is a correct pair; a
+  // clause that concerns the implementation (named, or carried across clauses,
+  // sentences and pronouns until another subject appears) and negates or
+  // pre-grants its approval is a contradiction. A phrase that merely gates the
+  // implementation ("not ... without a separate approved goal") is stripped first.
+  const keywordIn = (normalized: string): boolean =>
+    [...keywords].some((keyword) => normalize(keyword).split(" ").some((token) => normalized.includes(token)));
+  const flagged: string[] = [];
+  let implementationSubject = false;
+  for (const line of lines) {
+    if (/^#{1,6}\s/.test(line)) implementationSubject = false;
+    for (const sentence of splitSentences(line.replaceAll("\u2019", "'"))) {
+      for (const clause of sentence.split(CLAUSE_SPLIT)) {
+        const text = clause?.trim();
+        if (!text) continue;
+        const lowered = text.toLowerCase().replace(/implementation[- ]plan(?:s|ning)?\b/g, "plan");
+        if (IMPLEMENTATION_TERMS.test(lowered)) {
+          implementationSubject = true;
+        } else if (OTHER_SUBJECT_TERMS.test(lowered)) {
+          implementationSubject = false;
+        }
+        if (!implementationSubject && !keywordIn(normalize(lowered))) continue;
+        const claim = lowered.replace(GATE_PHRASE, " ");
+        const negated = NEGATION.test(claim) && APPROVAL_WORD.test(claim);
+        const approvalNoun = /\bapprov\w*\b[^.]*\b(?:not|n't|never|unnecessary|optional|waived|skipped)\b/.test(claim);
+        if (negated || approvalNoun || PREGRANTED.test(claim)) {
+          flagged.push(sentence);
+          break;
+        }
+      }
     }
+  }
+  return flagged;
+}
 
-    const contradictsApproval = /\b(?:no approval|approval is not required|approval not required|without approval|approved to|approval unnecessary|can proceed directly)\b/i.test(line);
-    if (!contradictsApproval) {
-      return false;
-    }
+const CLAUSE_SPLIT = /[;,()]|\b(?:but|however|whereas|while|although|though|yet|and|then)\b/i;
+const IMPLEMENTATION_TERMS =
+  /\b(?:implementation|implement(?:s|ed|ing)?|build(?:s|ing)?|ship(?:s|ped|ping)?|patch(?:es)?|code|coding|changes?|prs?|pull requests?|deploy(?:s|ed|ment|ing)?|merg(?:e|es|ed|ing))\b/;
+const OTHER_SUBJECT_TERMS =
+  /\b(?:planning|plans?|run|review|validation|research|analysis|discovery|artifact|document(?:ation)?|report|investigation|assessment|design|proposal)\b/;
+const GATE_PHRASE =
+  /\b(?:without|until|unless|before|absent)\b[^.;,]*?\b(?:separate(?:ly)?|explicit(?:ly)?|express|prior|operator|written)\b[^.;,]*?\bapprov\w*/g;
+const NEGATION = /(?:\bno\b|\bnot\b|n't\b|\bwithout\b|\bnever\b|\bnone\b|\bnor\b|\bneither\b|\bnothing\b)/;
+const APPROVAL_WORD = /\b(?:approv\w*|sign-?off)\b/;
+const PREGRANTED = /\b(?:pre-?approved|already approved|previously approved|approved to|proceed(?:s|ed)? directly)\b/;
 
-    return [...keywords].some((keyword) => normalize(keyword).split(" ").some((token) => normalizedLine.includes(token)));
-  });
+/** Splits on sentence ends without breaking on `i.e.`, `e.g.`, `etc.`, `vs.` or list numbers. */
+function splitSentences(line: string): string[] {
+  const protectedLine = line.replace(/\b(?:i\.e|e\.g|etc|vs|cf)\.|\b\d+\./gi, (match) => match.replaceAll(".", "\u0000"));
+  return protectedLine
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.replaceAll("\u0000", ".").trim())
+    .filter(Boolean);
 }
 
 function approvalGateTypes(approvalText: string): string[] {

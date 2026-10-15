@@ -43,9 +43,16 @@ describe("Agent Ask split", () => {
     expect(plan).toMatchObject({
       currentAction: "first-remainder",
       actions: [
-        expect.objectContaining({ id: "first", status: "done", acceptanceCriteria: ["First slice done."] }),
+        // Split marks the narrowed Action done through the same canonical
+        // writer `complete` uses, so its next_action is rewritten the same
+        // unambiguous way rather than keeping the narrowed-title text
+        // `amendAction` wrote just before it.
+        expect.objectContaining({
+          id: "first", status: "done", acceptanceCriteria: ["The first slice proof exists."],
+          nextAction: "Completed via Agent Ask split-first; no further action."
+        }),
         expect.objectContaining({ id: "second", status: "open" }),
-        expect.objectContaining({ id: "first-remainder", status: "open", acceptanceCriteria: ["Second slice done."] })
+        expect.objectContaining({ id: "first-remainder", status: "open", acceptanceCriteria: ["The second slice proof exists."] })
       ]
     });
     const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
@@ -105,7 +112,7 @@ describe("Agent Ask split", () => {
 
   it("refuses a narrowed acceptance list equal to the full declared criteria", () => {
     const { workspace, head } = fixture();
-    const request = splitAsk("split-full", head).replace('acceptance:\n  - "First slice done."', 'acceptance:\n  - "First slice done."\n  - "Second slice done."');
+    const request = splitAsk("split-full", head).replace('acceptance:\n  - "The first slice proof exists."', 'acceptance:\n  - "The first slice proof exists."\n  - "The second slice proof exists."');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-full", disposition: "accepted"
@@ -114,7 +121,7 @@ describe("Agent Ask split", () => {
 
   it("refuses when a dropped criterion does not reappear in any remainder Action", () => {
     const { workspace, head } = fixture();
-    const request = splitAsk("split-drop", head).replace('acceptance:\n      - "Second slice done."', 'acceptance:\n      - "Something else entirely."');
+    const request = splitAsk("split-drop", head).replace('acceptance:\n      - "The second slice proof exists."', 'acceptance:\n      - "Something else entirely."');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-drop", disposition: "accepted"
@@ -123,7 +130,7 @@ describe("Agent Ask split", () => {
 
   it("refuses evidence that does not cover the narrowed acceptance verbatim", () => {
     const { workspace, head } = fixture();
-    const request = splitAsk("split-evidence", head).replace('criterion: "First slice done."', 'criterion: "Wrong criterion."');
+    const request = splitAsk("split-evidence", head).replace('criterion: "The first slice proof exists."', 'criterion: "Wrong criterion."');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-evidence", disposition: "accepted"
@@ -142,8 +149,8 @@ describe("Agent Ask split", () => {
   it("refuses acceptance criteria not drawn verbatim from the Action's declared list", () => {
     const { workspace, head } = fixture();
     const request = splitAsk("split-invented", head)
-      .replace('acceptance:\n  - "First slice done."', 'acceptance:\n  - "Invented criterion."')
-      .replace('criterion: "First slice done."', 'criterion: "Invented criterion."');
+      .replace('acceptance:\n  - "The first slice proof exists."', 'acceptance:\n  - "Invented criterion."')
+      .replace('criterion: "The first slice proof exists."', 'criterion: "Invented criterion."');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-invented", disposition: "accepted"
@@ -179,7 +186,7 @@ describe("Agent Ask split", () => {
   it("records split_into on the narrowed Action even when a remainder depends on it directly", () => {
     const { workspace, repo, head } = fixture();
     const request = splitAsk("split-remainder-depends-on-narrowed", head)
-      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - first');
+      .replace('    acceptance:\n      - "The second slice proof exists."', '    acceptance:\n      - "The second slice proof exists."\n    dependencies:\n      - first');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-remainder-depends-on-narrowed", disposition: "accepted"
@@ -212,7 +219,7 @@ describe("Agent Ask split", () => {
     // remainder.
     const { workspace, repo, head } = fixture({ withDependentOnFirst: true, secondDependsOnThird: true });
     const request = splitAsk("split-transitive-cycle", head)
-      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+      .replace('    acceptance:\n      - "The second slice proof exists."', '    acceptance:\n      - "The second slice proof exists."\n    dependencies:\n      - second');
     const proposal = runAgentAskPreviewCommand({ workspace, request });
     const preview = runAgentAskSettleCommand({
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-transitive-cycle", disposition: "accepted"
@@ -273,7 +280,7 @@ function fixture(
     "  - id: first", "    title: First Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the first Action.",
     "    expected_artifact: First proof", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - First slice done.", "      - Second slice done.",
+    "    acceptance_criteria:", "      - The first slice proof exists.", "      - The second slice proof exists.",
     "    depends_on: []", "    decisions: []", "    references: []",
     "  - id: second", "    title: Second Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the second Action.",
@@ -333,12 +340,42 @@ function splitAsk(requestId: string, candidateRevision: string): string {
     "target_ref: action/first", "desired_result: Finish the first slice of the first Action",
     "rationale: The session could only finish half of the declared criteria.",
     `candidate_revision: ${candidateRevision}`,
-    "acceptance:", '  - "First slice done."',
-    "evidence:", '  - criterion: "First slice done."', "    status: met",
+    "acceptance:", '  - "The first slice proof exists."',
+    "evidence:", '  - criterion: "The first slice proof exists."', "    status: met",
     "actions:",
     "  - id: first-remainder",
     '    desired_result: "Finish the second slice of the first Action"',
     "    acceptance:",
-    '      - "Second slice done."'
+    '      - "The second slice proof exists."'
   ].join("\n");
 }
+
+
+it.each(["$&", "$`", "$'"])("split request id preserves literal %s through all Plan writers", token => {
+  const { workspace, repo } = fixture({ withDependentOnFirst: true });
+  const planPath = path.join(repo, "docs/plans/demo-plan.md");
+  const before = readFileSync(planPath, "utf8").replace("Finish the third Action.", () => `Finish the third Action ${token} literally.`);
+  writeFileSync(planPath, before);
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Synthetic literal dependent instruction"], { cwd: repo });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  const second = before.slice(before.indexOf("  - id: second"), before.indexOf("  - id: third"));
+  const proposal = runAgentAskPreviewCommand({ workspace, request: splitAsk(`literal-split-${token}`, head) });
+  const options = { workspace, proposal: proposal.data.proposal.id, requestId: `settle-literal-split-${token}`, disposition: "accepted" as const };
+  const preview = runAgentAskSettleCommand(options);
+  const after = preview.data.receipt.review!.documents.find(doc => doc.path === "docs/plans/demo-plan.md")!.after!;
+  expect(after).toContain(second);
+  expect(readFileSync(planPath, "utf8")).toBe(before);
+  const applied = runAgentAskSettleCommand({ ...options, apply: true, operator: true, preview: preview.data.receipt.previewFingerprint });
+  const docs = discoverDocs(repo);
+  expect(docs.errors).toEqual([]);
+  const plan = docs.docs.find(doc => doc.type === "plan") as PlanDoc;
+  expect(plan.actions).toHaveLength(4);
+  expect(plan.actions[0]).toMatchObject({ id: "first", status: "done", source: `Agent Ask literal-split-${token}`,
+    nextAction: `Completed via Agent Ask literal-split-${token}; no further action.`, splitInto: ["first-remainder"] });
+  expect(plan.actions.find(action => action.id === "third")).toMatchObject({
+    dependsOn: ["first", "first-remainder"], nextAction: `Finish the third Action ${token} literally.`
+  });
+  expect(readFileSync(planPath, "utf8")).toBe(after);
+  expect(runAgentAskSettleCommand({ ...options, apply: true, operator: true, preview: preview.data.receipt.previewFingerprint }).data.receipt).toEqual(applied.data.receipt);
+});

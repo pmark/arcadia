@@ -35,7 +35,7 @@ function action(id: string, title: string, dependsOn: string[] = []): string {
     `    expected_artifact: docs/${id}.md`,
     "    clarification: clarified",
     "    acceptance_criteria:",
-    `      - ${id} is finished.`,
+    `      - The expected Artifact exists at docs/${id}.md.`,
     `    depends_on: [${dependsOn.join(", ")}]`,
     "    decisions: []",
     "    references: []"
@@ -135,7 +135,16 @@ test("the Production console drives and monitors production at phone width", asy
   const pauseAll = page.getByRole("button", { name: "Pause all" });
   await expect(pauseAll).toBeDisabled();
 
+  // Projects first: one card per Project, its Plan and the Action production would pick now.
+  const projects = page.getByRole("list", { name: "Projects in the production scope" });
+  await expect(projects.getByText("Arcadia", { exact: true })).toBeVisible();
+  await expect(projects.getByText(/Would pick now:/)).toBeVisible();
+  // The Project links to its plans page and its Plan to the Plan's own page.
+  await expect(projects.getByRole("link", { name: "Arcadia" })).toHaveAttribute("href", /\/projects\/[^/]+\/plans$/);
+  await expect(projects.locator('a[href^="/plans/arcadia/"]').first()).toBeVisible();
+
   // The queue in batches: the two ready Actions share one repository, so they are batch 1 and batch 2.
+  await page.getByRole("tab", { name: "Batches" }).click();
   await expect(page.getByText(/Batch 1 · 1 Action · first in each repository/)).toBeVisible();
   await expect(page.getByText("Ship the pointer Action")).toBeVisible();
   await expect(page.getByText("Ship the second ready Action")).toBeVisible();

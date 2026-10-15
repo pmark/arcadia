@@ -16,7 +16,7 @@ import { resolveProjectReference } from "./rules.js";
 import { listProjects } from "../db/repositories.js";
 import { parseDoc } from "../docs/parse.js";
 import type { DecisionDoc, PlanDoc } from "../docs/types.js";
-import { tryGit } from "../git/worktrees.js";
+import { tryAskGit as tryGit } from "../git/askIsolation.js";
 
 export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null;
   /**

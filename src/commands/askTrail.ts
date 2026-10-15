@@ -5,6 +5,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { supersessionsReplacing, supersessionThatCreated, type AskSupersession } from "../ask/supersession.js";
+import { listAskRunEvidence, type RunEvidence } from "./runEvidence.js";
 
 export interface AskTrailOptions {
   workspace: string;
@@ -17,10 +18,13 @@ export interface AskTrailCapture {
   originalText: string;
   ingressSource: string;
   capturedAt: string;
+  status: string;
+  relatedReviewId: string | null;
+  outcomes: AskTrailOutcome[];
 }
 
 export interface AskTrailOutcome {
-  kind: "action" | "plan" | "decision" | "back_burner_item";
+  kind: "action" | "plan" | "decision" | "back_burner_item" | "run" | "approval_claim";
   id: string;
   status: string | null;
   summary: string | null;
@@ -51,6 +55,8 @@ export interface AskTrailAsk {
   reason: string | null;
   projectName: string | null;
   outcomes: AskTrailOutcome[];
+  /** Every Run correlated through this Ask's captured Action or Review, including terminal evidence. */
+  runs: RunEvidence[];
   /** Corrections that replaced this Ask, oldest first. Empty for an Ask nobody corrected. */
   supersededBy: AskTrailSupersession[];
   /** The correction that created this Ask, when it is itself a replacement. */
@@ -68,6 +74,8 @@ interface CaptureRow {
   original_text: string;
   ingress_source: string;
   captured_at: string;
+  status: string;
+  related_review_id: string | null;
 }
 
 interface AskRow {
@@ -124,7 +132,10 @@ function buildAskTrail(db: Database.Database, id: string): AskTrailData {
           requestId: capture.request_id,
           originalText: capture.original_text,
           ingressSource: capture.ingress_source,
-          capturedAt: capture.captured_at
+          capturedAt: capture.captured_at,
+          status: capture.status,
+          relatedReviewId: capture.related_review_id,
+          outcomes: captureOutcomes(db, capture.id)
         }
       : null,
     asks: asks.map((ask) => traceAsk(db, ask))
@@ -189,6 +200,7 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
     reason: stewardship.classificationReason ?? null,
     projectName: stewardship.relatedProject?.name ?? null,
     outcomes: outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index),
+    runs: listAskRunEvidence(db, ask.id, ask.capture_id, ask.work_item_id),
     supersededBy: replacedBy.map((link) => trailSupersession(link, link.newAskRequestId)),
     supersedes: replaces ? trailSupersession(replaces, replaces.oldAskRequestId) : null
   };
@@ -212,7 +224,30 @@ function captureOutcomes(db: Database.Database, captureId: string): AskTrailOutc
   for (const row of db.prepare("SELECT id FROM execution_plans WHERE capture_id = ?").all(captureId) as Array<{ id: string }>) outcomes.push(...planOutcome(db, row.id));
   for (const row of db.prepare("SELECT review.id, review.status, review.decision_needed, project.name AS project_name FROM review_items review LEFT JOIN projects project ON project.id = review.project_id WHERE review.capture_id = ?").all(captureId) as Array<{ id: string; status: string; decision_needed: string; project_name: string | null }>) outcomes.push({ kind: "decision", id: row.id, status: row.status, summary: row.decision_needed, projectName: row.project_name });
   for (const row of db.prepare("SELECT item.id, item.status, item.classification, project.name AS project_name FROM back_burner_items item LEFT JOIN projects project ON project.id = item.project_id WHERE item.capture_id = ?").all(captureId) as Array<{ id: string; status: string; classification: string; project_name: string | null }>) outcomes.push({ kind: "back_burner_item", id: row.id, status: row.status, summary: row.classification, projectName: row.project_name });
-  return outcomes;
+  const linkedReview = db.prepare(`
+    SELECT review.id, review.status, review.decision_needed, project.name AS project_name,
+      COALESCE(claim.work_item_id, resulting.work_item_id, review.work_item_id) AS work_item_id,
+      COALESCE(claim.plan_id, resulting.plan_id, review.plan_id) AS plan_id,
+      claim.review_item_id AS claimed_review_id
+    FROM ask_capture_envelopes capture
+    JOIN review_items review ON review.id = capture.related_review_id
+    LEFT JOIN projects project ON project.id = review.project_id
+    LEFT JOIN review_approval_claims claim ON claim.review_item_id = review.id
+    LEFT JOIN ask_requests resulting ON resulting.id = review.resulting_ask_request_id
+    WHERE capture.id = ?
+  `).get(captureId) as { id: string; status: string; decision_needed: string; project_name: string | null; work_item_id: string | null; plan_id: string | null; claimed_review_id: string | null } | undefined;
+  if (linkedReview) {
+    outcomes.push({ kind: "decision", id: linkedReview.id, status: linkedReview.status, summary: linkedReview.decision_needed, projectName: linkedReview.project_name });
+    if (linkedReview.work_item_id) outcomes.push(...actionOutcome(db, linkedReview.work_item_id));
+    if (linkedReview.plan_id) outcomes.push(...planOutcome(db, linkedReview.plan_id));
+    if (linkedReview.claimed_review_id && linkedReview.work_item_id && linkedReview.plan_id) {
+      outcomes.push({ kind: "approval_claim", id: linkedReview.id, status: "durable", summary: `Action ${linkedReview.work_item_id}; Plan ${linkedReview.plan_id}`, projectName: linkedReview.project_name });
+    }
+    for (const row of db.prepare("SELECT id, status, summary FROM execution_runs WHERE review_item_id = ? ORDER BY created_at, id").all(linkedReview.id) as Array<{ id: string; status: string; summary: string }>) {
+      outcomes.push({ kind: "run", id: row.id, status: row.status, summary: row.summary, projectName: linkedReview.project_name });
+    }
+  }
+  return outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index);
 }
 
 function planOutcome(db: Database.Database, planId: string): AskTrailOutcome[] {
@@ -249,13 +284,26 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
     lines.push(
       `Capture: ${capture.id} (${capture.ingressSource}, ${capture.capturedAt})`,
       `Request: ${capture.requestId}`,
+      `Status: ${capture.status}`,
       `Text: ${capture.originalText.split("\n")[0]}`
     );
+    if (capture.status === "partial") {
+      const linkedRun = capture.outcomes.find((outcome) => outcome.kind === "run");
+      const recovery = linkedRun
+        ? `Recovery: Review ${capture.relatedReviewId} already has Run ${linkedRun.id} [${linkedRun.status}]; do not submit another approval.`
+        : `Recovery: do not retry automatically; inspect the listed durable effects and original reply${capture.outcomes.some((outcome) => outcome.kind === "approval_claim") ? " and note the existing approval claim" : ""}. Continue the original approval, rejection, deferral, or answer intent only after confirming its outcome.`;
+      lines.push(recovery);
+      for (const outcome of capture.outcomes) {
+        lines.push(`  → ${outcome.kind} ${outcome.id}${outcome.status ? ` (${outcome.status})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}`);
+      }
+    }
   } else {
     lines.push("Capture: not linked (recorded before Ask tracing)");
   }
   if (asks.length === 0) {
-    lines.push("Outcome: no linked Ask — none was processed, or it predates Ask tracing and could not be matched unambiguously.");
+    lines.push(capture?.status === "partial"
+      ? "Outcome: processing stopped before a linked Ask; inspect the recovery effects above before proceeding."
+      : "Outcome: no linked Ask — none was processed, or it predates Ask tracing and could not be matched unambiguously.");
   }
   for (const ask of asks) {
     lines.push(
@@ -271,6 +319,10 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
         ? ` [superseded by ${outcome.supersededBy.recordId ?? "Ask"} via ${outcome.supersededBy.askId}]`
         : "";
       lines.push(`  → ${outcome.kind} ${outcome.id}${detail ? ` (${detail})` : ""}${outcome.summary ? `: ${outcome.summary}` : ""}${replaced}`);
+    }
+    for (const run of ask.runs) {
+      lines.push(`  Run ${run.id}: ${run.status}${run.waitingReason ? ` — ${run.waitingReason}` : ""}`);
+      for (const artifact of run.artifacts) lines.push(`    Artifact ${artifact.id}: ${artifact.status} (${artifact.evidenceReference})`);
     }
     for (const link of ask.supersededBy) {
       lines.push(`  Superseded by ${link.askId}: corrected to ${link.targetType} (${link.source}, ${link.at}); ${describeOld(link)} -> ${describeNew(link)}`);

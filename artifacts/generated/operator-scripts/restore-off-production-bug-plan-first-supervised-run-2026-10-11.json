@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "restore-off-production-bug-plan-first-supervised-run-2026-10-11",
+  "title": "STOP production: turn Off now (merges, deletes and restarts nothing; a Session already running is not terminated)",
+  "script": "restore-off-production-bug-plan-first-supervised-run-2026-10-11.sh",
+  "repeatable": true,
+  "problem": "You want production stopped: the first supervised run on Arcadia's own repository (the seven-bug Plan) is doing something you do not want, or you simply want it to stop admitting work. Production Off is the only authority change this button makes, and it only removes authority.",
+  "desired_effect": "Reads production status, and if production is Active (under any request id) turns it Off through `arcadia production deactivate` under a fresh request id, then reads status back and requires desiredState inactive. If production is already Inactive it changes nothing and records that. Writes a timestamped receipt and, on any failure, a handoff naming the exact next step. It checks no Git state, Plan or Decision, so a drifted or dirty checkout cannot block it; it does run the Arcadia CLI from the main checkout, so a missing or broken install there blocks it (then use the Terminal fallback in failure.next, which needs the same CLI).",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/restore-off-production-bug-plan-first-supervised-run-2026-10-11.sh run",
+  "authority": {
+    "does": [
+      "Reads production status and, when Active, turns production Off through the governed `arcadia production deactivate` path, then reads status back to prove it",
+      "Records a receipt with the request id, policy revision and live admissions it observed before and after",
+      "Refuses only inside an agent sandbox; it checks no Git state, Plan or Decision, so it can always run"
+    ],
+    "never_does": [
+      "Never starts, restarts or terminates a Session, a worker or any service, and never kills an already-running Session: it finishes under the host worker and its work is preserved to a draft PR as usual",
+      "Never merges, readies or closes a pull request, pushes a branch, deletes or resets any work, branch, worktree or file",
+      "Never edits the workspace config, a Decision, a Plan or a Grant, and never turns production back on or creates a Grant"
+    ]
+  },
+  "success": {
+    "effect": "Production reads Inactive (turned Off now, or already Inactive); the receipt records which, with the policy revision and live admissions before and after.",
+    "next": "Read production status. If a Session was running at the time it finishes on its own; its work is preserved to a draft PR and nothing merges. To resume, a fresh Grant is needed; do not press the start button again until the cause is understood."
+  },
+  "failure": {
+    "effect": "Production may still be Active. The script records the stage and reason and writes a handoff that says so.",
+    "next": "Do not retry blindly. Read the handoff, then run `arcadia production status` and, if Active, `arcadia production deactivate --request-id <fresh-id> --reason <why>` from the Terminal panel."
+  }
+}

@@ -70,6 +70,8 @@ export interface MilestoneSummary extends Milestone {
   project_name: string;
 }
 
+export type ExecutionRoute = "build" | "plan-run";
+
 export interface WorkItem {
   id: string;
   project_id: string | null;
@@ -133,6 +135,8 @@ export interface WorkItem {
    * as a JSON string array. `null` for an Action that was never split.
    */
   split_into_json: string | null;
+  /** Declared route of a plan Action (`build` or `plan-run`); `null` means route by keywords. */
+  execution_route?: ExecutionRoute | null;
   /** One sentence on why this Action matters, mirrored from a plan's optional `why`; `null` when none is declared. */
   why: string | null;
   created_at: string;
@@ -659,6 +663,8 @@ export interface AssociateCodexTaskInput {
 
 export interface CreateWorkItemInput {
   projectId?: string | null;
+  /** Capture provenance when the Action is created before its Ask receipt. */
+  captureId?: string | null;
   milestoneId?: string | null;
   title: string;
   rawInput: string;
@@ -709,6 +715,8 @@ export interface UpdateWorkItemInput {
   executionRequirementJson?: string | null;
   /** Declared acceptance criteria as a JSON string array; `null` clears it. */
   acceptanceCriteriaJson?: string | null;
+  /** Declared route (`build` or `plan-run`); `null` clears it. */
+  executionRoute?: string | null;
 }
 
 export interface UpdateArtifactInput {

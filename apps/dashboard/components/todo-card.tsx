@@ -1,4 +1,7 @@
+"use client";
+
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { useState } from "react";
 import Link from "next/link";
 import type { Approval } from "../lib/approvals";
 import type { Choice } from "../hooks/use-approvals";
@@ -52,9 +55,23 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
     : null;
   // A recommendation is shown only when the data carries one.
   const askRecommendation = approval.kind === "agent_ask" ? options.find((option) => option.recommended) ?? null : null;
+  const reviewControl = approval.readOnly || approval.buildPacket ? null : approval.reviewControl ?? null;
+  const blockerRemedy = approval.blockerRemedy ?? null;
+  const clearControl = blockerRemedy?.oneClick ? blockerRemedy : null;
+  // Two interactions at most: the button, then this confirm. The consequence is shown before either.
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const blockingLive = approval.blocking && !approval.staleReason;
   return (
-    <article id={anchorOf(approval)} className="min-w-0 scroll-mt-20 rounded-md border border-line bg-panel p-4 shadow-soft">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <article
+      id={anchorOf(approval)}
+      className={`min-w-0 scroll-mt-20 rounded-md border bg-panel p-4 shadow-soft ${blockingLive ? "border-2 border-red-600" : "border-line"}`}
+    >
+      {blockingLive ? (
+        <p className="mb-2 inline-block rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">
+          Blocking progress
+        </p>
+      ) : null}
+      <span className="block text-xs font-semibold uppercase tracking-wide text-muted">
         {kindLabel(approval.kind)} · {approval.project}
         {approval.blocking ? " · Blocking" : ""}
         {approval.staleReason ? " · Stale" : ""}
@@ -64,11 +81,18 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
         {approval.kind === "decision" ? "Decision id" : "Id"}: <code className="text-ink">{approval.id}</code>
         {approval.requestId ? <> · Request id: <code className="text-ink">{approval.requestId}</code></> : null}
       </p>
-      {approval.readOnly ? (
+      {clearControl ? (
+        <p className="mt-2 text-sm text-muted">{clearControl.consequence}</p>
+      ) : approval.readOnly ? (
         <ReadOnlyAnswer approval={approval} />
       ) : approval.buildPacket ? (
         <p className="mt-2 text-sm text-muted">
           Approving records your answer only; it starts nothing. The guarded build Session is launched separately.
+        </p>
+      ) : reviewControl ? (
+        <p className="mt-2 text-sm text-muted">
+          {reviewControl.consequence}
+          {reviewControl.canReject && reviewControl.rejectConsequence ? ` Reject: ${reviewControl.rejectConsequence}` : ""}
         </p>
       ) : approval.kind === "decision" ? (
         recommendedOption ? (
@@ -88,6 +112,26 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
+        {clearControl ? (
+          confirmingClear ? (
+            <>
+              <button
+                type="button"
+                disabled={pendingId !== null}
+                onClick={() => { setConfirmingClear(false); onAct(approval, { label: "Clear", blockerClear: true }); }}
+                className={PRIMARY_BUTTON}
+              >
+                {pendingId === `${key}:Clear` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Confirm: {clearControl.label}
+              </button>
+              <button type="button" onClick={() => setConfirmingClear(false)} className={SECONDARY_BUTTON}>Cancel</button>
+            </>
+          ) : (
+            <button type="button" disabled={pendingId !== null} onClick={() => setConfirmingClear(true)} className={PRIMARY_BUTTON}>
+              {clearControl.label}…
+            </button>
+          )
+        ) : null}
         {approval.readOnly ? null : approval.buildPacket ? (
           <>
             <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Approve", reviewAction: "approve" })} className={PRIMARY_BUTTON}>
@@ -98,6 +142,19 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
               {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
               Reject
             </button>
+          </>
+        ) : reviewControl ? (
+          <>
+            <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Approve", reviewAction: "approve" })} className={PRIMARY_BUTTON}>
+              {pendingId === `${key}:Approve` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {reviewControl.approveLabel}
+            </button>
+            {reviewControl.canReject ? (
+              <button type="button" disabled={pendingId !== null} onClick={() => onAct(approval, { label: "Reject", reviewAction: "reject" })} className={SECONDARY_BUTTON}>
+                {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Reject
+              </button>
+            ) : null}
           </>
         ) : approval.kind === "decision" ? (
           recommendedOption ? (
@@ -129,7 +186,7 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
             </button>
           </>
         )}
-        {approval.readOnly || !onToggle ? null : (
+        {(approval.readOnly && !clearControl) || !onToggle ? null : (
           <button
             type="button"
             aria-expanded={expanded}
@@ -139,6 +196,11 @@ export function TodoCard({ approval, expanded, onToggle, pendingId, onAct, showL
             Details {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
           </button>
         )}
+        {blockerRemedy && !blockerRemedy.oneClick && blockerRemedy.href ? (
+          <Link href={blockerRemedy.href} className="inline-flex min-h-11 items-center text-sm font-semibold text-steel hover:underline">
+            {blockerRemedy.label}
+          </Link>
+        ) : null}
         {approval.launchHref ? (
           <Link href={approval.launchHref} className="inline-flex min-h-11 items-center text-sm font-medium text-steel hover:underline">
             Open launch dialog

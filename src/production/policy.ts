@@ -134,6 +134,17 @@ export const PRODUCTION_CONTROL_DEADLINES = {
 } as const;
 
 /**
+ * How long the worker tick launches nothing for a Project after one of its
+ * Sessions died on a provider sign-in failure (Issue #1155). The launch
+ * preflight cannot see an unrefreshable credential, so without this hold the
+ * next tick would relaunch the same dead login every tick. Kept outside
+ * `PRODUCTION_CONTROL_DEADLINES` because that object is the frozen readout the
+ * status command prints; this is a worker-side retry spacing, not a control
+ * target. A fresh sign-in failure refreshes it.
+ */
+export const SIGN_IN_FAILURE_HOLD_MS = 15 * 60 * 1000;
+
+/**
  * The separately explicit authority a finished, validated Session candidate
  * needs before the host may integrate its agent-owned branch into the governed
  * base branch (Decision 0058). It is deliberately not a `MechanicalTransition`:
@@ -212,6 +223,14 @@ export interface ProductionScope {
    * A per-launch `agent_sessions.time_limit_ms` override wins over it.
    */
   sessionTimeLimitMs?: number;
+  /**
+   * Per-Session ceiling on input tokens (uncached + cached) for each managed
+   * Session launched under this scope. Absent means the Session's tier default
+   * (`SESSION_INPUT_TOKEN_CEILING_DEFAULTS`). This policy record is the ONLY
+   * source of a non-default value: no prompt, brief or Action text reads it.
+   * See `src/production/sessionTokenCeiling.ts`.
+   */
+  sessionInputTokenCeiling?: number;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -338,7 +357,9 @@ const REVIEWED_SCOPE_FIELDS = [
   // never added by Off, reactivation or the dashboard toggle.
   "remotePreservation",
   // A reviewed bound on how long a Session may run; carried like the others.
-  "sessionTimeLimitMs"
+  "sessionTimeLimitMs",
+  // A reviewed per-Session input-token ceiling; carried like the time limit.
+  "sessionInputTokenCeiling"
 ] as const satisfies ReadonlyArray<keyof ProductionScope>;
 
 /** The names of scope fields an Off dropped (grants, exceptions, delegation expiry). */
@@ -596,6 +617,15 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
     }
     normalized.sessionTimeLimitMs = input.sessionTimeLimitMs;
   }
+  if (input.sessionInputTokenCeiling !== undefined) {
+    if (!Number.isSafeInteger(input.sessionInputTokenCeiling) || input.sessionInputTokenCeiling < 1) {
+      throw validationError("The Session input-token ceiling must be a positive whole number of tokens.", {
+        field: "sessionInputTokenCeiling",
+        value: input.sessionInputTokenCeiling
+      });
+    }
+    normalized.sessionInputTokenCeiling = input.sessionInputTokenCeiling;
+  }
   return normalized;
 }
 
@@ -730,7 +760,9 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // And for the packet-approval expiry.
     ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {}),
     // And for the Session time limit.
-    ...(scope.sessionTimeLimitMs ? { sessionTimeLimitMs: scope.sessionTimeLimitMs } : {})
+    ...(scope.sessionTimeLimitMs ? { sessionTimeLimitMs: scope.sessionTimeLimitMs } : {}),
+    // And for the Session input-token ceiling.
+    ...(scope.sessionInputTokenCeiling ? { sessionInputTokenCeiling: scope.sessionInputTokenCeiling } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
@@ -827,6 +859,63 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
       observedAt
     };
   }
+}
+
+/** The one-click remedy named by every scope-drift refusal and alert. */
+export const SCOPE_DRIFT_REMEDY =
+  "On /production press \"Turn production Off\" (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
+
+/**
+ * Whether `currentPlanSlug`, the Project's current Plan, is inside an Active
+ * production policy's scope. A Plan change (activation, pause, re-point) while
+ * this holds would strand the run's scope, so callers refuse it before writing
+ * anything. Returns null when production is Inactive, the Project or its
+ * current Plan is outside the scope. FAILS CLOSED: when the policy store
+ * cannot be read, the Project may be inside an Active scope, so this throws
+ * a refusal naming a remote retry remedy rather than allowing the change.
+ */
+export function activeScopeCoveringPlan(
+  db: Database.Database,
+  projectSlug: string,
+  currentPlanSlug: string
+): { scope: ProductionScope; planKey: string } | null {
+  // An absent policy row (or table) is "no policy has ever been written": no Active scope,
+  // so nothing can be stranded. Anything else that fails to read is unknown, and fails closed.
+  try {
+    if (!db.prepare("SELECT 1 FROM production_policy WHERE id = 'workspace'").get()) return null;
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return null;
+  }
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok") {
+    throw validationError(
+      "The production policy could not be read, so Arcadia cannot confirm this Plan is outside an Active production scope. Nothing was changed.",
+      { reason: read.reason, remedy: "Retry in a moment; if it persists, open /production to see the policy state and press \"Turn production Off\" once it loads." }
+    );
+  }
+  if (read.policy.desiredState !== "active" || !read.policy.scope) return null;
+  const planKey = `${projectSlug}/${currentPlanSlug}`;
+  const scope = read.policy.scope;
+  return scope.projects.includes(projectSlug) && scope.plans.includes(planKey) ? { scope, planKey } : null;
+}
+
+export const SCOPE_HELD_CODE = "production_scope_held";
+
+/**
+ * Refuse `change` before anything is written when an Active production scope
+ * covers the Project's current Plan. Membership is by Plan: a scope names Plans
+ * and (optionally) a subset of their Actions, and any Plan-level change under a
+ * covered Plan strands the run whichever Actions the scope lists. `code` lets a
+ * caller (the worker tick) treat the refusal as a hold, not a failure.
+ */
+export function assertNoActiveScopeOverPlan(db: Database.Database, projectSlug: string, currentPlanSlug: string | null, change: string): void {
+  if (!currentPlanSlug) return;
+  const covering = activeScopeCoveringPlan(db, projectSlug, currentPlanSlug);
+  if (!covering) return;
+  throw validationError(
+    `Plan ${currentPlanSlug} is inside the Active production scope; ${change} would strand it. Nothing was changed.`,
+    { code: SCOPE_HELD_CODE, activePlan: covering.planKey, remedy: SCOPE_DRIFT_REMEDY }
+  );
 }
 
 /** The Project/Plan/Action a caller wants checked against an active policy's scope. */

@@ -5,6 +5,7 @@ import type { Approval } from "../lib/approvals";
 import { parseTodoPath, todoHrefOf, todoKeyOf } from "../lib/approvals";
 import { TodoItemView, TodoListView, type TodoCommon } from "./todo-views";
 import { TodoCard } from "./todo-card";
+import { requestFor } from "../hooks/use-approvals";
 
 function row(kind: Approval["kind"], project: string, id: string, extra: Partial<Approval> = {}): Approval {
   return {
@@ -32,10 +33,10 @@ describe("TodoListView", () => {
 
   it("shows the blocking count, then groups in order, with stale collapsed", () => {
     expect(html).toContain("1 blocking · 4 waiting on you");
-    const order = ["Blocking (1)", "Decisions (1)", "Agent Asks (1)", "Other (1)", "Stale (1)"].map((label) => html.indexOf(label));
+    const order = ["Blocking (1)", "Decisions (1)", "Agent Asks (1)", "Other (1)", "Done elsewhere (1)"].map((label) => html.indexOf(label));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(html).toMatch(/<details class="mt-4"><summary[^>]*>Stale \(1\)/);
+    expect(html).toMatch(/<details class="mt-4"><summary[^>]*>Done elsewhere \(1\)/);
   });
 
   it("shows full titles, ids, anchors and deep links on every card", () => {
@@ -200,6 +201,24 @@ describe("TodoCard build packets and Ask eligibility", () => {
     expect(html).not.toContain("Read-only here");
   });
 
+  it("gives each planning review item its own button label, a consequence line and a Blocking progress badge", () => {
+    const control = (approveLabel: string, canReject = true) => ({
+      approveLabel, consequence: `Consequence of ${approveLabel}.`, noExecute: true, canReject, rejectConsequence: canReject ? "Rejecting does this." : null
+    });
+    const retry = render(row("review_item", "alpha", "rv1", { blocking: true, origin: "codex_planning_artifact_validation", reviewControl: control("Retry planning") }));
+    expect(retry).toContain("Retry planning");
+    expect(retry).toContain("Consequence of Retry planning.");
+    expect(retry).toContain(">Reject<");
+    expect(retry).toContain("Blocking progress");
+    expect(retry).not.toContain("Read-only here");
+    const accept = render(row("review_item", "alpha", "rv2", { origin: "CodexPlanningArtifactAcceptance", reviewControl: control("Accept plan", false) }));
+    expect(accept).toContain("Accept plan");
+    expect(accept).not.toContain(">Reject<");
+    expect(accept).not.toContain("Blocking progress");
+    const stale = render(row("review_item", "alpha", "rv3", { readOnly: true, blocking: true, staleReason: "done elsewhere" }));
+    expect(stale).not.toContain("Blocking progress");
+  });
+
   it("disables Accept with the reason and makes Reject primary when accepting would not apply", () => {
     const html = render(row("agent_ask", "alpha", "p1", { acceptable: false, acceptWhy: "Agent Ask Project has no resolvable active managed Plan." }));
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Likely won(&#x27;|')t apply — Agent Ask Project has no resolvable active managed Plan\.<\/button>/);
@@ -210,5 +229,34 @@ describe("TodoCard build packets and Ask eligibility", () => {
   it("keeps the normal Accept when eligibility is unknown or true", () => {
     expect(render(row("agent_ask", "alpha", "p1"))).toContain(">Accept<");
     expect(render(row("agent_ask", "alpha", "p1", { acceptable: true }))).toContain(">Accept<");
+  });
+});
+
+describe("platform blocker controls (#1284)", () => {
+  const blocker = (kind: string, extra: Partial<Approval>) =>
+    row("review_item", "alpha", "act-1", { blocking: true, origin: "action:act-1", title: `Stop ${kind}`, ...extra });
+  const clear = { kind: "environment_wall", label: "Clear environment stop", consequence: "Clears this stop only.", oneClick: true, actionKey: "alpha/act-1", href: null };
+
+  it("renders the consequence and one pinned clear button, which sends the pin and nothing typed", () => {
+    const approval = blocker("environment_wall", { readOnly: true, blockerRemedy: clear });
+    const html = renderToStaticMarkup(<TodoCard approval={approval} expanded={false} pendingId={null} onAct={() => undefined} />);
+    expect(html).toContain("Clear environment stop…");
+    expect(html).toContain("Clears this stop only.");
+    expect(html).not.toContain("Confirm:");
+    expect(requestFor(approval, { label: "Clear", blockerClear: true })).toEqual({
+      url: "/api/blocker-clear",
+      body: { actionKey: "alpha/act-1", kind: "environment_wall" }
+    });
+  });
+
+  it("links a scope stop to /production without a clear button", () => {
+    const approval = blocker("scope_successor_held", {
+      readOnly: true,
+      blockerRemedy: { kind: "scope_successor_held", label: "Turn production Off", consequence: "x", oneClick: false, actionKey: null, href: "/production" }
+    });
+    const html = renderToStaticMarkup(<TodoCard approval={approval} expanded={false} pendingId={null} onAct={() => undefined} />);
+    expect(html).toContain('href="/production"');
+    expect(html).toContain("Turn production Off");
+    expect(html).not.toContain("…</button>");
   });
 });

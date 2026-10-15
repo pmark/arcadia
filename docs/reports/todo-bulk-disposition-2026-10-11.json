@@ -1,0 +1,655 @@
+{
+ "schema": "arcadia-todo-bulk-disposition-v1",
+ "id": "todo-bulk-disposition-2026-10-11",
+ "buttonTitle": "Finish the /todo cleanup (reject 15 superseded Asks + 24 off-path proposals)",
+ "generatedAt": "2026-10-11T07:58:22.987Z",
+ "source": "arcadia todo --all --json on the PR #1241 code (workspace martianrover), read-only; Arcadia, unknown and Living Songbook Asks and review items only",
+ "summary": {
+  "listed": 48,
+  "bulk": {
+   "agentAsksRejected": 15,
+   "reviewItemsRejected": 24,
+   "fixtureProjectsRetired": 0
+  }
+ },
+ "writers": {
+  "agent_ask": "arcadia agent-ask settle --proposal <id> --request-id bulk-20261011-<id> --disposition rejected (preview, then --apply --preview <fingerprint>)",
+  "review_item": "arcadia review reject <id>"
+ },
+ "notes": [
+  "Rejected is a recorded settlement: the proposal and its content stay in the workspace; nothing about any Project, Plan, Action, pointer or queue changes.",
+  "Each item is re-checked just before it is settled; one whose state changed since this list is skipped and reported.",
+  "Cross-repo items (Private Practice Now, Mission Control Site, Rebuster) are not in this list; they stay for their own repositories.",
+  "Not touched: PR #1212, PR #1033, Ask pr-opened-arcadia-pr1212, PR #1178, Issue #1177, R366/R368."
+ ],
+ "fixtureProjects": [],
+ "items": [
+  {
+   "key": "review_item:living-songbook/review_41438cecfd7743499e",
+   "kind": "review_item",
+   "project": "living-songbook",
+   "createdAt": "2026-08-28",
+   "title": "Planning artifact validation failed for \"Plan the first usable build for Living Songbook\".",
+   "writer": null,
+   "cls": "e",
+   "evidence": "failed planning validation for Living Songbook; rejecting re-opens its work item to the agent work queue",
+   "disposition": "keep visible (rejecting changes work-item state)"
+  },
+  {
+   "key": "review_item:arcadia/review_ac701e4ed8a5442099",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-02",
+   "title": "Do you accept the live agent-managed queue proof and, if so, should Arcadia reactivate the guided understanding session as the next preserved Ask tail?",
+   "writer": null,
+   "cls": "e",
+   "evidence": "ActionClarification repeating open Decision 0041; rejecting resets Action work_b281953673dd4233a8 to unclarified and re-lists it",
+   "disposition": "keep visible (rejecting changes work-item state; answer Decision 0041 instead)"
+  },
+  {
+   "key": "review_item:arcadia/review_98733d41ef28410fba",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-04",
+   "title": "Can Arcadia give a cloud coding-agent session (no reachable operator workspace) a documented, deterministic path for setup, orientation, and completing its assigned Action — instead of leaving each of those to session-by-session judgment calls?",
+   "writer": {
+    "review_item": "review_98733d41ef28410fba"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_3e3f6d9ce47f4545b8",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-05",
+   "title": "Can Agent Ask amend execution profiles and token budgets on existing managed Plans and Actions without hand-editing governance state?",
+   "writer": {
+    "review_item": "review_3e3f6d9ce47f4545b8"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_b914fa130b184138bd",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-05",
+   "title": "Can Arcadia provide a previewable completion transition that records accepted revision-bound evidence, marks one managed Action done, and resolves the next governed Action, question, blocker, or completed Plan without redispatching finished work?",
+   "writer": {
+    "review_item": "review_b914fa130b184138bd"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_28725e41ce514793a5",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-12",
+   "title": "Can Arcadia render the route from here to a named completion state — for every active Project at once, at a chosen scope — and deliver it to Discord on request and whenever it changes?",
+   "writer": {
+    "review_item": "review_28725e41ce514793a5"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_c1dc13e54bbd41ba80",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-12",
+   "title": "Can Arcadia catch an invalid governed document before it blocks dispatch — through a read-only `docs validate`, one shared dispatch-readiness check, and generators for the schema'd documents agents author by hand?",
+   "writer": {
+    "review_item": "review_c1dc13e54bbd41ba80"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_e1f105e1a75a40379a",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-12",
+   "title": "Should Arcadia render an operator procedure as a guided surface — one step at a time, with resumable state and a place to supply the judgment, evidence, and approvals only the operator can give — instead of handing over prose the operator must hold in their head?",
+   "writer": {
+    "review_item": "review_e1f105e1a75a40379a"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_a4a1922e861741afae",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-12",
+   "title": "Should Arcadia stop gating work it can derive by itself, and spend the operator's attention only on judgment — measured by the rule that any common, critical function a local model could decide must not cost a round trip?",
+   "writer": {
+    "review_item": "review_a4a1922e861741afae"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_34db21c929c140a2a9",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-14",
+   "title": "Can Arcadia give agents a known-good baseline for `pnpm test` in the sandboxed agent environment, so a full-suite run reports only what changed instead of forcing every agent to re-judge which failures are pre-existing sandbox artifacts?",
+   "writer": {
+    "review_item": "review_34db21c929c140a2a9"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_dd4eec8f4fcc49a38f",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-14",
+   "title": "Can Arcadia detect when the installed arcadia-go skill (and its sibling brokers) has drifted from the checked-in template, instead of relying on someone remembering to run `go-broker install` after every template change merges?",
+   "writer": {
+    "review_item": "review_dd4eec8f4fcc49a38f"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_ef12d4e665fe4bf897",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-14",
+   "title": "What is Arcadia for, what should its 80/20 Managed Production capability own, and how should it allocate constrained coding-agent capacity across many projects without becoming a large-scale agent orchestration platform?",
+   "writer": {
+    "review_item": "review_ef12d4e665fe4bf897"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_84beee8321614354b4",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-16",
+   "title": "Mark has stated a personal, live need to cut Arcadia's real operating cost, and wants standing, budget-aware, continuously-updated model selection as a core operating feature — not a one-off addition. Should Arcadia adopt that as a Way-level economy policy, and does an OpenRouter-accessible coding-a",
+   "writer": {
+    "review_item": "review_84beee8321614354b4"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_c0ce674954a2496780",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-16",
+   "title": "Can Arcadia route complex planning work to a dedicated planning agent — a configurable model, default gpt-5.6-luna at high reasoning — whose output is constrained by few-shot structural templates into exact, ordered, observable steps an executor agent can follow without interpretation?",
+   "writer": {
+    "review_item": "review_c0ce674954a2496780"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_81deb15974333adbe3",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-09-16",
+   "title": "Should Arcadia treat plan and Action priority as a projection of the live queue, re-derived at dispatch, so priority belongs in advance queue order and never becomes a Decision?",
+   "requestId": "priority-is-queue-derived-2026-09-16",
+   "writer": {
+    "agent_ask": "agentask_81deb15974333adbe3"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision priority-is-queue-derived-2026-09-16-v2 filed Decision 0054 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "review_item:arcadia/review_5c4db5d0532e4645b6",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-16",
+   "title": "Can Arcadia surface open, un-promoted GitHub Issues and let one selection promote them into governed Actions through the existing Agent Ask path, so a logged defect cannot be forgotten without a second tracker or auto-approval?",
+   "writer": {
+    "review_item": "review_5c4db5d0532e4645b6"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_33b5e8222eb84662ba",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-19",
+   "title": "Can the planning step (work plan, planning packet, planning Run) run on any configured coding-agent provider, so an operator running a single non-Codex provider such as opencode is not forced through Codex?",
+   "writer": {
+    "review_item": "review_33b5e8222eb84662ba"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_6f63aec2e9d74cdab5",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-20",
+   "title": "Can an Agent Ask amend an Action's title, a Plan's heading and slug, and retire a draft Plan as superseded?",
+   "writer": {
+    "review_item": "review_6f63aec2e9d74cdab5"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:unknown/agentask_1544892fa44fbb626d",
+   "kind": "agent_ask",
+   "project": "unknown",
+   "createdAt": "2026-09-21",
+   "title": "verify draft target",
+   "requestId": "verify-465-scratch",
+   "writer": null,
+   "cls": "e",
+   "evidence": "scratch Ask from a temp directory (verify-465-scratch); no resolved Project, so settlement refuses it",
+   "disposition": "keep visible (no writer)"
+  },
+  {
+   "key": "review_item:arcadia/review_edd915dc56f94fac9b",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-22",
+   "title": "Can Arcadia dispatch several coding-agent sessions in parallel, each getting a different ready Action automatically, with a visible per-Action claim so two sessions never independently start the same governed work?",
+   "writer": {
+    "review_item": "review_edd915dc56f94fac9b"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_4d7df4c38b0944fdae",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-25",
+   "title": "Should Arcadia admit work from the portfolio's ready set, in operator-owned queue order, so the operator moves forward as fast as they can afford, instead of advancing one stored pointer per Project from one Session to the next?",
+   "writer": {
+    "review_item": "review_4d7df4c38b0944fdae"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_de80cfcb9f864afb82",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-27",
+   "title": "Can `arcadia tidy`'s report line for a branch it cannot prove merged add an advisory note when Arcadia's own settlement records suggest the branch's effect already shipped through a completed Action or a directly-settled Ask -- purely informational, with no change to tidy's verdict, no retirement, a",
+   "writer": {
+    "review_item": "review_de80cfcb9f864afb82"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_03edd64d2b9f4c63a3",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-09-30",
+   "title": "Can Arcadia adopt a host-owned automated-session lifecycle that preserves sandboxed agent isolation, validates and independently reviews immutable candidates before publication, and permits only tightly bounded agent-branch commits and publication through audited host brokers?",
+   "writer": {
+    "review_item": "review_03edd64d2b9f4c63a3"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_7815fcbcf6204d2ba5",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-01",
+   "title": "Can the operator-action library reject a fingerprint-pinned historical Plan amendment through canonical settlement, without requiring a terminal or accepting the old amendment?",
+   "writer": {
+    "review_item": "review_7815fcbcf6204d2ba5"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_55cdc3bcf470d574fd",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-02",
+   "title": "Decide how Flight Deck represents the work pointer versus running work in the Project → Plan → Action tree.",
+   "requestId": "decision-work-pointer-vs-running-indicator-2026-10-01",
+   "writer": {
+    "agent_ask": "agentask_55cdc3bcf470d574fd"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decision-work-pointer-vs-running-indicator-2026-10-01-v2 filed Decision 0079 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_eb6679c36226268a03",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-02",
+   "title": "Decide whether to activate exactly one bounded Docker host audit of the preserved PPN baseline static export, and accept the host-route substitute for Issue #847s named-profile-only check. No activation or PPN measurement has occurred.",
+   "requestId": "activate-scoped-container-audit-847-2026-10-02",
+   "writer": {
+    "agent_ask": "agentask_eb6679c36226268a03"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision activate-scoped-container-audit-847-2026-10-02-v3 filed Decision 0079 docker audit (open; stays on /todo as a Decision); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "review_item:arcadia/review_4bafc1545e0b4e3fa3",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-05",
+   "title": "Can Arcadia turn a GitHub issue's commentary (or any long text) into a narrated podcast through its local text-to-speech route?",
+   "writer": {
+    "review_item": "review_4bafc1545e0b4e3fa3"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_57c88403c5a33597c3",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-06",
+   "title": "Decide the first real distribution boundary for Arcadia Assets after the local Asset Service and deterministic mirror contract are proved.",
+   "requestId": "decide-first-asset-distribution-boundary-2026-10-06",
+   "writer": {
+    "agent_ask": "agentask_57c88403c5a33597c3"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-first-asset-distribution-boundary-2026-10-06-r2 filed Decision 0105 (open; stays on /todo as a Decision); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "review_item:arcadia/review_90ddd89ce8b34df09a",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-06",
+   "title": "Should an operator's direct request for new work become a first-class, tracked, parallel Plan, so it can start immediately without a queue slot and without disturbing the active Plan?",
+   "writer": {
+    "review_item": "review_90ddd89ce8b34df09a"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "review_item:arcadia/review_f34a74f55721494ca7",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-06",
+   "title": "Which Phase 2 direction should the operator timeline take first (a live \"what is happening now\" board, a scrubbable replay timeline, or a \"what kind of work\" lens), and how should the open attribution questions below be answered?",
+   "writer": {
+    "review_item": "review_f34a74f55721494ca7"
+   },
+   "cls": "e",
+   "evidence": "WayProposal off the trial path: rejected by your 2026-10-10 disposition (receipt 20261011T012939Z-76435), reopened at 2026-10-11T06:28Z by docs sync (bug fixed in PR #1241); re-applies that rejection",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_12695d0a692f7664e3",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide what the first version of the dashboard /agents page shows and whether it can change anything.",
+   "requestId": "decide-agents-page-scope-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_12695d0a692f7664e3"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-agents-page-scope-2026-10-09-r3 filed Decision 0101 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_880122d5d1483655df",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide what deterministic model and effort selection does when a task's required capability and the remaining budget conflict.",
+   "requestId": "decide-budget-pressure-model-selection-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_880122d5d1483655df"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-budget-pressure-model-selection-2026-10-09-r3 filed Decision 0102 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_9279f393884806f5f5",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide how token burn is measured and limited so 24/7 work can continue, and how the operator emergency reserve is sized and released.",
+   "requestId": "decide-burn-rate-and-emergency-reserve-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_9279f393884806f5f5"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-burn-rate-and-emergency-reserve-2026-10-09-r3 filed Decision 0103 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_aaec7e29dd72d01942",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide how a subagent request is admitted, queued or declined, and how strongly Arcadia enforces it.",
+   "requestId": "decide-delegation-admission-semantics-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_aaec7e29dd72d01942"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-delegation-admission-semantics-2026-10-09-r3 filed Decision 0104 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_538cfdf002e4d6bd05",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide what a supervisor is and how the supervisor chain reaches the operator.",
+   "requestId": "decide-supervisor-chain-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_538cfdf002e4d6bd05"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-supervisor-chain-2026-10-09-r2 filed Decision 0113 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_df7f665098b8b5cce5",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide which governed roles may request subagents, and how deep delegation may go.",
+   "requestId": "decide-which-roles-may-delegate-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_df7f665098b8b5cce5"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-which-roles-may-delegate-2026-10-09-r2 filed Decision 0114 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_ed8a7ffaefec85b6b0",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Decide the starting size of the operator emergency reserve, as a share of each provider capacity window.",
+   "requestId": "decide-operator-reserve-size-2026-10-09",
+   "writer": {
+    "agent_ask": "agentask_ed8a7ffaefec85b6b0"
+   },
+   "cls": "c",
+   "evidence": "superseded draft: its revision decide-operator-reserve-size-2026-10-09-r3 filed Decision 0111 (approved); this draft never applied (the 2026-10-10 rejection failed only on the #1236 prefix bug, fixed in PR #1241)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_f95e6a65cad68821cb",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-09",
+   "title": "Add a --yes flag (and a one-click /production Launch) that lets the operator mint the Decision 0096 one-shot launch authorization without the typed confirmation prompt, for use from non-interactive operator shells and phones.",
+   "requestId": "propose-operator-launch-yes-flag-20261009",
+   "writer": null,
+   "cls": "d",
+   "evidence": "one-click /production Launch (Decision 0096 one-shot launch from the phone): first step of the trial",
+   "disposition": "keep visible"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_278441e5158b89a59c",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-10",
+   "title": "Add a natural-language Ask scoped to one Plan on its /plans/<project>/<plan> page, so the operator can adjust that Plan (add, split, reorder dependencies, defer or reword Actions) by typing what they want; it drafts a plan-amendment Agent Ask, shows its settle preview with consequences, and applies ",
+   "requestId": "plan-scoped-natural-language-ask-2026-10-10",
+   "writer": null,
+   "cls": "e",
+   "evidence": "plan-scoped natural-language Ask (2026-10-10): new operator-UX idea, no delivered equivalent",
+   "disposition": "keep visible (open, off the trial path)"
+  },
+  {
+   "key": "review_item:arcadia/review_0a57f6c4a8804b7a9c",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Can Arcadia implement the Decision 0120 Field Notes publication capability and connect its production instruction file to governed cadence?",
+   "writer": {
+    "review_item": "review_0a57f6c4a8804b7a9c"
+   },
+   "cls": "e",
+   "evidence": "Field Notes publication capability (Decision 0120): tracked by Issue #1211 with revival trigger 'autonomous production On and one Arcadia Action completed without operator help'; PRs #1219/#1223 delivered the handoff and scheduler. Rejecting loses nothing: the proposal file and Issue stay",
+   "disposition": "reject (review reject)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_1a3837112b0c55e4e3",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Provide the simplest useful scheduler UI at /clock in the existing Arcadia dashboard so the operator can see schedules, change their timing and activate or pause them. First use Arcadia planning with a bounded Opus High UX design consultation, dependency-ordered session-sized Actions and 80/20 scope",
+   "requestId": "clock-ui-outcome-20261011",
+   "writer": {
+    "agent_ask": "agentask_1a3837112b0c55e4e3"
+   },
+   "cls": "c",
+   "evidence": "/clock outcome delivered by PR #1234 (feat: manage recurring schedules from Clock), merged; docs/reports/clock-ui-2026-10-11.md",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_3d1cc3159a8ed295d8",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Research and propose a separate Arcadia Plan for evidence-based cost and size accounting per Action: exact selected and observed provider/model/effort per attempt and delegate, provider-reported usage and generated tokens, cached/input/output/reasoning categories where available, failed attempts/ret",
+   "requestId": "action-cost-accounting-research-20261011",
+   "writer": {
+    "agent_ask": "agentask_3d1cc3159a8ed295d8"
+   },
+   "cls": "c",
+   "evidence": "research request fulfilled: PR #1233 merged the research report and the r2 Plan proposal (agentask_d89203864aaa466a4e), which stays on /todo for your Accept",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_ab7a3676ca47ed2abb",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Create an inactive Action economic evidence Plan: the operator can inspect chosen and observed provider/model/effort, authoritative tokens and generated size, and qualified actual or near-exact cost across all work attributable to an Action. Milestone: read-only CLI rollup over durable provider rece",
+   "requestId": "plan-action-economic-evidence-20261011",
+   "writer": {
+    "agent_ask": "agentask_ab7a3676ca47ed2abb"
+   },
+   "cls": "c",
+   "evidence": "r1 of the Action economic evidence Plan; docs/reports/action-cost-evidence-plan-2026-10-11.md (PR #1233): r2 (agentask_d89203864aaa466a4e) supersedes it, 'never settle both versions'. r2 stays on /todo",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_279348e2c90a0e3252",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "The operator can see, change timing and enable or pause existing recurring schedules on the dashboard at /clock, preserving receipt history, deduplication and approval gates. Token impact medium; budget one bounded Opus High UX consultation, one repository-aware planning pass, one implementation ses",
+   "requestId": "clock-ui-plan-20261011",
+   "writer": {
+    "agent_ask": "agentask_279348e2c90a0e3252"
+   },
+   "cls": "c",
+   "evidence": "/clock Plan proposal for work PR #1234 already built and merged (built on direct operator request, docs/reports/clock-ui-2026-10-11.md)",
+   "disposition": "reject (agent-ask settle --disposition rejected)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_d89203864aaa466a4e",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Create an inactive Action economic evidence Plan: the operator can inspect chosen and observed provider/model/effort, authoritative tokens and generated size, and qualified actual or near-exact cost across all work attributable to an Action. Milestone: read-only CLI rollup over durable provider rece",
+   "requestId": "plan-action-economic-evidence-20261011-r2",
+   "writer": null,
+   "cls": "e",
+   "evidence": "r2 Action economic evidence Plan (PR #1233): the live version you asked for; off the trial path",
+   "disposition": "keep visible (open; your Accept creates the inactive Plan)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_b68b59e69e3623f287",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Add to the Ask UX plan (ux-improvements-make-every-operator-interaction-fast-phone-first-and-self, or a successor under the Ask-only operator input plan): (1) The Dashboard Ask capture screen shows, immediately after submit, a Heard receipt and an intent-correction menu of alternative next steps tie",
+   "requestId": "dashboard-ask-capture-intent-correction-and-relationship-map-2026-10-11",
+   "writer": null,
+   "cls": "e",
+   "evidence": "Ask capture intent-correction screen (2026-10-11): new operator direction, no delivered equivalent",
+   "disposition": "keep visible (open, off the trial path)"
+  },
+  {
+   "key": "review_item:arcadia/review_ed15b634cdcc444084",
+   "kind": "review_item",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Decide whether and how Arcadia sessions get a supervisor that watches for friction during a session, files bugs through a new arcadia bug utility, and asks the peer agent for ideas and insights after it, extending Decision 0113.",
+   "writer": null,
+   "cls": "e",
+   "evidence": "supervisors for Arcadia sessions extending Decision 0113: new operator input 2026-10-11, genuinely open",
+   "disposition": "keep visible (open)"
+  },
+  {
+   "key": "agent_ask:arcadia/agentask_4de405d82d948d6737",
+   "kind": "agent_ask",
+   "project": "arcadia",
+   "createdAt": "2026-10-11",
+   "title": "Every open GitHub Issue in pmark/arcadia is classified once into a five-route vocabulary, reconciled both ways with governed Actions, the vital few (about 20 percent) are verified, and the top batches plus a Decision-ready change list are delivered as one local report, with no GitHub mutation.",
+   "requestId": "plan-open-issue-triage-divide-yagni-pareto-2026-10-11",
+   "writer": null,
+   "cls": "e",
+   "evidence": "open GitHub Issue triage Plan proposal filed 2026-10-11T07:47Z, during this cleanup: new, genuinely open",
+   "disposition": "keep visible (open, off the trial path)"
+  }
+ ]
+}

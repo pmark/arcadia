@@ -1,4 +1,5 @@
 import { launchHrefOf } from "./launch-link";
+import { blockerRemedyFor } from "../../../src/production/blockerRemedies";
 import type { AgentAskEligibility, AgentAskPendingItem, OpenDecisionItem, OperatorTodoItem } from "./arcadia-cli";
 
 export type ApprovalOption = { label: string; consequence: string; recommended: boolean };
@@ -53,10 +54,82 @@ export interface Approval {
   acceptWhy: string | null;
   /** A build-packet Decision (resolved intent CodexBuildPacketApproval): approved with `review approve --no-execute`, never executed from here. */
   buildPacket: boolean;
+  /** The one-click control for a planning review item (see {@link PLANNING_REVIEW_CONTROLS}); null/absent when the row has none. */
+  reviewControl?: ReviewControl | null;
+  /**
+   * An escalation or scope stop's registry remedy (src/production/blockerRemedies.ts): `oneClick` rows carry the pinned
+   * clear (`actionKey` + `kind` are the pin); the others name an existing control by `href`. Null on every other row.
+   */
+  blockerRemedy?: BlockerRemedyView | null;
+}
+
+export interface BlockerRemedyView {
+  kind: string;
+  label: string;
+  consequence: string;
+  oneClick: boolean;
+  /** The pinned Action (`<project>/<action>`); only for a one-click clear. */
+  actionKey: string | null;
+  /** The route of an existing control on another surface, or null. */
+  href: string | null;
+}
+
+/** What the dashboard offers for one kind of planning review item; every field is the truth about what the answer does. */
+export interface ReviewControl {
+  /** The approve button's label. */
+  approveLabel: string;
+  /** What approving does, in one line; shown beside the buttons and as the row's cost. */
+  consequence: string;
+  /**
+   * Whether approve is sent with `--no-execute`. False only where the approval itself is what queues work: a planning
+   * run approval queues its Run for the worker, and `--no-execute` would approve it with no Run queued, stranding it.
+   */
+  noExecute: boolean;
+  /** Whether the card offers Reject. Sending a prepared plan back needs written feedback, which a button cannot supply. */
+  canReject: boolean;
+  /** What Reject does, in one line, when it is offered. */
+  rejectConsequence: string | null;
 }
 
 /** The resolved intent of a build-packet approval review item. */
 export const BUILD_PACKET_INTENT = "CodexBuildPacketApproval";
+
+/**
+ * The planning review items the dashboard answers with one click, keyed by the origin `arcadia todo` records (the
+ * item's resolved intent). Each entry was checked against `runReviewApproveCommand` (src/commands/review.ts) and
+ * `queueApprovedPlanningRun` (src/execution/planningAuthorization.ts): none of these starts an executor in the
+ * dashboard's process. A kind absent here stays read-only.
+ */
+export const PLANNING_REVIEW_CONTROLS: Record<string, ReviewControl> = {
+  CodexPlanningRunApproval: {
+    approveLabel: "Approve planning run",
+    consequence: "Queues the approved planning run for the production worker, which then runs the coding agent. Planning only; no build starts.",
+    noExecute: false,
+    canReject: true,
+    rejectConsequence: "Declines the planning request; the Action stays in review until its request or packet is revised."
+  },
+  CodexPlanningRetryApproval: {
+    approveLabel: "Approve planning retry",
+    consequence: "Queues a new planning attempt from the unchanged approved packet for the production worker. Planning only; no build starts.",
+    noExecute: false,
+    canReject: true,
+    rejectConsequence: "Declines the retry; the Action stays in review until its request or packet is revised."
+  },
+  codex_planning_artifact_validation: {
+    approveLabel: "Retry planning",
+    consequence: "Creates a planning-retry approval for the same packet. Nothing runs until you approve that retry.",
+    noExecute: true,
+    canReject: true,
+    rejectConsequence: "Rejects the failed validation and reopens the Action for a fresh planning packet."
+  },
+  CodexPlanningArtifactAcceptance: {
+    approveLabel: "Accept plan",
+    consequence: "Accepts the validated plan. A governed Action gets its build packet prepared for your approval; a captured Action is marked done. No Run starts.",
+    noExecute: true,
+    canReject: false,
+    rejectConsequence: null
+  }
+};
 
 /** True when the link target names this item by its key or by one of its aliases (same kind and Project). */
 export function matchesTodoTarget(approval: Approval, target: { kind: string; project: string; id: string; todoKey: string }): boolean {
@@ -118,7 +191,8 @@ function toAgentAskApproval(item: AgentAskPendingItem): Approval {
     aliases: item.requestId ? [item.requestId] : [],
     acceptable: null,
     acceptWhy: null,
-    buildPacket: false
+    buildPacket: false,
+    reviewControl: null
   };
 }
 
@@ -147,7 +221,8 @@ function toDecisionApproval(item: OpenDecisionItem): Approval {
     aliases: item.slug ? [item.slug] : [],
     acceptable: null,
     acceptWhy: null,
-    buildPacket: false
+    buildPacket: false,
+    reviewControl: null
   };
 }
 
@@ -164,9 +239,26 @@ function evidenceLines(item: OperatorTodoItem): string[] {
 
 function toReadOnlyApproval(item: OperatorTodoItem): Approval {
   const id = idOfTodo(item);
-  // A build packet is the one review item the dashboard can answer: approving it never executes anything
+  // A build packet is answerable from the dashboard: approving it never executes anything
   // (`review approve --no-execute`), so the control is safe to put on a phone.
   const buildPacket = item.kind === "review_item" && item.origin === BUILD_PACKET_INTENT && !item.staleReason;
+  // The planning review items in PLANNING_REVIEW_CONTROLS are answerable the same way, each with its own accurate
+  // consequence; a stale row (the world moved on) keeps no control.
+  const reviewControl = item.kind === "review_item" && !item.staleReason && item.origin && Object.hasOwn(PLANNING_REVIEW_CONTROLS, item.origin)
+    ? PLANNING_REVIEW_CONTROLS[item.origin]
+    : null;
+  const escalationKind = item.kind.startsWith("escalation:") ? item.kind.slice("escalation:".length) : null;
+  const remedy = escalationKind && !item.staleReason ? blockerRemedyFor(escalationKind) : null;
+  const blockerRemedy: BlockerRemedyView | null = remedy
+    ? {
+        kind: remedy.kind,
+        label: remedy.label,
+        consequence: remedy.consequence,
+        oneClick: remedy.oneClick,
+        actionKey: remedy.oneClick ? `${item.project}/${id}` : null,
+        href: remedy.href
+      }
+    : null;
   return {
     kind: item.kind,
     id,
@@ -177,9 +269,12 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     options: item.options ?? [],
     evidence: [],
     sourceEvidence: evidenceLines(item),
-    cost: buildPacket ? "Deterministic — approving records the Decision; no execution starts." : READ_ONLY_COST,
+    cost: buildPacket
+      ? "Deterministic — approving records the Decision; no execution starts."
+      : reviewControl?.consequence ?? (blockerRemedy?.oneClick ? blockerRemedy.consequence : READ_ONLY_COST),
     createdAt: item.createdAt,
-    readOnly: !buildPacket,
+    // A blocker's pinned clear is rendered by its own control, never as a settle control, so the row stays read-only.
+    readOnly: !buildPacket && !reviewControl,
     blocking: item.blocking,
     staleReason: item.staleReason ?? null,
     answer: item.answer,
@@ -188,12 +283,15 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     origin: item.origin ?? null,
     todoKey: todoKeyOf(item.kind, item.project, id),
     href: todoHrefOf(item.kind, item.project, id),
-    launchHref: item.kind.startsWith("escalation") ? launchHrefOf(`${item.project}/${id}`) : null,
+    // A scope stop is keyed by its alert id, not an Action: its control is /production's Turn Off, never a Launch dialog.
+    launchHref: item.kind.startsWith("escalation") && !blockerRemedy?.href ? launchHrefOf(`${item.project}/${id}`) : null,
     requestId: null,
     aliases: [],
     acceptable: null,
     acceptWhy: null,
-    buildPacket
+    buildPacket,
+    reviewControl,
+    blockerRemedy
   };
 }
 

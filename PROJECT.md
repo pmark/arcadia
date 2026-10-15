@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents."
-active_plan: governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a
-current_action: define-governed-role-registry
-updated: 2026-10-10
+milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
+current_action: claude-worker-launch-replay
+updated: 2026-10-15
 ---
 
 # Arcadia

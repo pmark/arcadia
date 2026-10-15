@@ -201,7 +201,7 @@ function planDoc(options: { shipItStatus?: "open" | "done"; currentAction?: stri
     "  - id: second-step", "    title: Take the blocked second step", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Take the second step.",
     "    expected_artifact: A second receipt", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - The second step happens.", "    depends_on: []",
+    "    acceptance_criteria:", "      - The second receipt exists.", "    depends_on: []",
     "    decisions: [\"0001\"]", "    references: []",
     "questions: []", "---", "", "# Main plan", ""
   ].join("\n");

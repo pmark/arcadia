@@ -6,7 +6,7 @@
       "trigger": "start, continue, go, pointer, title, handoff, stop",
       "path": "docs/agent-guidance/continuation.md",
       "read_before": "Before starting or handing off any Action.",
-      "sha256": "8c5a3080c0b542f859fd2479db35d539edaa947c2ca395c0271ad8aeb6085f49"
+      "sha256": "2aff933e46ecf27aea494044dd087c799b9ad6857aa6f4293920bbefec3c88dd"
     },
     {
       "id": "agent-asks",
@@ -20,7 +20,7 @@
       "trigger": "operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this",
       "path": "docs/agent-guidance/operator-actions.md",
       "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
-      "sha256": "0326303502812d7cd7142ddf6964427eb8778bfa52600b0ceeddb980be8485ce"
+      "sha256": "eded1471052873342f34c782d28bd1b8fe6f8639e4e8199606ce8bd7a4e85518"
     },
     {
       "id": "proposals",
@@ -34,21 +34,21 @@
       "trigger": "scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue",
       "path": "docs/agent-guidance/principles.md",
       "read_before": "Before choosing scope, deferring work, or capturing a new defect.",
-      "sha256": "799a20c84463dce7e6bf1ac66b5b830f6d396370091952d518525e10faecbc9c"
+      "sha256": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894"
     },
     {
       "id": "pull-requests",
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "6631aa236c1f5727197ab8151fdeaaef7f4405b55c0f3620eb9933c574eb045a"
+      "sha256": "f22e2c95ab9aff98d96ade26517415b80e30a02df6bbeeff5715c8d293344000"
     },
     {
       "id": "learning",
       "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
       "path": "docs/agent-guidance/learning.md",
       "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
-      "sha256": "a417f0a3fad627ddb8fadd1e8a6ce001a2a4c8a34d617237e97f608ad0d2ef5a"
+      "sha256": "2334b0d679ad80288b1d2c98e564f1e8b4db23a24989385fe8781dcca92757a9"
     },
     {
       "id": "git-identity",
@@ -62,14 +62,14 @@
       "trigger": "Project, Plan, Action, Decision, status, acceptance",
       "path": "docs/managed-documents.md",
       "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "40a0b99dcad5948c70670c664cd0ac6b7b8cc312b3d3c516186aadff40fdfb2a"
+      "sha256": "09a26196fa657894956c84e6f9dd1f7377ae50110b3803ee92b07b61d0d2cb04"
     },
     {
       "id": "planning",
       "trigger": "new planning cycle, raw outcome, interview, architect",
       "path": "docs/planning-process.md",
       "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
-      "sha256": "a426d88c54aac5f434a71af6270147c9b69b646d592d272bf328a06faa5f2c22"
+      "sha256": "4adb5e415decc021a2ce9b0b919e2e55abdb6ba2fedacdbd1edfd001b08ebc50"
     },
     {
       "id": "working-copy",
@@ -112,6 +112,55 @@
       "path": "docs/agent-guidance/standard-harness.md",
       "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
       "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
+    },
+    {
+      "id": "ask-todo-scout",
+      "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
+      "path": "docs/agent-guidance/ask-todo-scout.md",
+      "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
+      "sha256": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8"
+    },
+    {
+      "id": "session-roles-and-briefs",
+      "trigger": "launch subagent, driver brief, session ledger row, model per role",
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
+      "sha256": "67c9170da196a91dd53622f9a9bcb6aeaa5b79a985fd528582d713e5e923c01f"
+    },
+    {
+      "id": "native-app-sessions",
+      "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
+      "path": "docs/agent-guidance/native-app-sessions.md",
+      "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
+      "sha256": "626d725cce8c6d2df255f4b216a8d8d13da163e751195eb683386672cba57731"
+    },
+    {
+      "id": "hacker-recovery",
+      "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
+      "path": "docs/agent-guidance/hacker-recovery.md",
+      "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
+      "sha256": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e"
+    },
+    {
+      "id": "code-simplification",
+      "trigger": "code simplification, simplify code, refactoring, maintainability, complexity finding",
+      "path": "docs/agent-guidance/code-simplification.md",
+      "read_before": "Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage.",
+      "sha256": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4"
+    },
+    {
+      "id": "scout-continuation",
+      "trigger": "continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff",
+      "path": "docs/scout/CONTINUE.md",
+      "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
+      "sha256": "45a48b5fe893e47d14d44f1bea6aeee5132e5048aac18db39be8a4bd33e887c3"
+    },
+    {
+      "id": "chat-titles",
+      "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
+      "path": "docs/agent-guidance/chat-titles.md",
+      "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
+      "sha256": "2f3b490b15c77d9139b003b8a4b978dd8a808489622a1a980d44f5c7606a8c7d"
     }
   ]
 }

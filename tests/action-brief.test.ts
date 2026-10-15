@@ -30,6 +30,15 @@ describe("renderActionBrief", () => {
       baseRevision: head(repo)
     });
 
+    expect(brief).toContain("Role: lead");
+    expect(brief).toContain("arcadia roles --json");
+    expect(brief).toContain(".agents/skills/arcadia-role/SKILL.md");
+    expect(brief).toContain("--requested-by lead --depth 0 --action 'copy-proof#define-contract'");
+    expect(brief).toContain("Code-reviewer and qa require separate independent Sessions");
+    expect(brief).toContain("Only a top-level Lead (depth 0)");
+    expect(brief).toContain("Governed capacity admission remains unavailable");
+    expect(brief).toContain("if the skill is unavailable, preserve the assignment");
+    expect(brief).toContain("grants no authority, claim, admission or second writer");
     expect(brief).toContain("Project: test-project");
     expect(brief).toContain("Plan: copy-proof — docs/plans/copy-proof.md");
     expect(brief).toContain("Action: define-contract");
@@ -190,6 +199,17 @@ describe("renderActionBrief", () => {
       return { dir: match[1], json: match[2].replaceAll("'\\''", "'") };
     };
 
+    it("opens with the in-Session environment probe as the first step when a workspace is given", () => {
+      const repo = briefRepo();
+      const base = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: repo, branch: "claude/define-contract", agent: "claude" as const, baseRevision: head(repo), headless: true };
+      const brief = renderActionBrief({ ...base, probeCommand: "node /arcadia/scripts/session-capability-probe.mjs --workspace '/ws/martianrover' --worktree '/wt' --nonce abc123" });
+      expect(brief).toContain("First step — environment probe");
+      expect(brief).toContain("session-capability-probe.mjs --workspace '/ws/martianrover' --worktree");
+      expect(brief).toContain("STOP");
+      expect(brief.indexOf("First step")).toBeLessThan(brief.indexOf("Next action:"));
+      expect(renderActionBrief(base)).not.toContain("environment probe");
+    });
+
     it("replaces the generic steps 2-3 for headless Claude with the host-owned statement and one exact draft command", () => {
       const repo = briefRepo();
       const brief = headless(repo, "claude");
@@ -239,7 +259,7 @@ describe("renderActionBrief", () => {
     });
 
     it("refuses the rendered command run verbatim, with its placeholders unfilled, and writes nothing", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       expect(() => runAgentAskDraftCommand({ request: json, dir, workspace: path.join(repo, "no-workspace") }))
         .toThrowError(/still contains the placeholder <REPLACE:.*Replace each note/);
@@ -279,7 +299,7 @@ describe("renderActionBrief", () => {
     });
 
     it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
-      const repo = briefRepo();
+      const repo = candidateBriefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
       const filled = json.replaceAll("<REPLACE: the command you ran and what you observed for this criterion>", "ran the validation; it passed");
       const drafted = runAgentAskDraftCommand({ request: filled, dir, workspace: path.join(repo, "no-workspace") });
@@ -383,6 +403,10 @@ describe("renderActionBrief", () => {
 
   it("fails closed when the Action declares no acceptance criteria", () => {
     const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace(
+      "    acceptance_criteria:\n      - The legacy contract record exists.", "    acceptance_criteria: []"
+    ));
     try {
       renderActionBrief({
         repoRoot: repo,
@@ -398,7 +422,8 @@ describe("renderActionBrief", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ArcadiaError);
       expect((error as ArcadiaError).code).toBe("VALIDATION_ERROR");
-      expect((error as Error).message).toContain('Action "legacy-action" declares no acceptance criteria');
+      expect((error as Error).message).toContain("actions[1].acceptance_criteria");
+      expect((error as Error).message).toContain("precise, checkable conditions");
     }
   });
 });
@@ -438,7 +463,8 @@ actions:
     status: open
     responsibility: agent
     next_action: Finish the legacy action.
-    acceptance_criteria: []
+    acceptance_criteria:
+      - The legacy contract record exists.
 ---
 `);
   execFileSync("git", ["init", "-q"], { cwd: root });
@@ -456,4 +482,12 @@ function brief(repo: string, baseRevision = head(repo)): string {
     repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
     worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode", baseRevision
   });
+}
+
+function candidateBriefRepo(): string {
+  const primary = briefRepo();
+  const candidate = `${primary}-candidate`;
+  roots.push(candidate);
+  execFileSync("git", ["worktree", "add", "-q", "-b", "brief/candidate", candidate], { cwd: primary });
+  return candidate;
 }

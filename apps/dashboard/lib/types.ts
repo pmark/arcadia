@@ -453,6 +453,7 @@ export interface DashboardOutstandingPullRequest {
   readinessLabel: string;
   summary: string;
   briefing: DashboardPullRequestBriefing | null;
+  detailsLoaded?: boolean;
 }
 
 export interface DashboardPullRequestBriefing {
@@ -471,6 +472,7 @@ export interface DashboardPullRequestProjectError {
 }
 
 export interface DashboardOutstandingPullRequests {
+  repositories?: Array<{ projectId: string; projectName: string; repository: string; repositoryPath: string }>;
   generatedAt: string;
   projectsScanned: number;
   pullRequests: DashboardOutstandingPullRequest[];
@@ -933,4 +935,14 @@ export interface DashboardArtifact {
   workItemTitle: string | null;
   actionTitle: string | null;
   updatedAt: string;
+}
+
+export interface DashboardPullRequestDetails {
+  body: string;
+  files: string[];
+  url: string;
+  headBranch: string;
+  baseBranch: string;
+  reviewDecision: string | null;
+  mergeStateStatus: string | null;
 }

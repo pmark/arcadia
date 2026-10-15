@@ -24,6 +24,7 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { discoverDocs } from "../src/docs/discover.js";
+import { planStepsForWorkItem } from "../src/execution/skills.js";
 import { isManagedDoc, parseDoc } from "../src/docs/parse.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -77,7 +78,7 @@ function writeDoc(repoRoot: string, relativePath: string, content: string): void
 
 /** A minimal inactive plan whose only job is to own the named Action ids. */
 function fixturePlan(slug: string, actionIds: string[]): string {
-  const actions = actionIds.map((id) => `  - id: ${id}\n    title: ${id}\n    status: done`).join("\n");
+  const actions = actionIds.map((id) => `  - id: ${id}\n    title: ${id}\n    status: done\n    acceptance_criteria:\n      - The fixture report names ${id}.`).join("\n");
   return `---
 arcadia: v1
 type: plan
@@ -117,6 +118,8 @@ actions:
     clarification: clarified
     confidence: high
     source: conversation
+    acceptance_criteria:
+      - Running the migration twice leaves exactly one migrated column.
     depends_on: []
   - id: blocked-thing
     title: Blocked thing
@@ -125,6 +128,8 @@ actions:
     clarification: question_open
     gap_type: missing-decision
     question: Which environment goes first?
+    acceptance_criteria:
+      - A Decision records the selected first environment.
     depends_on: [do-the-thing]
 questions:
   - id: rollout
@@ -446,9 +451,8 @@ describe("docs sync", () => {
       repo,
       "docs/plans/sample-plan.md",
       PLAN.replace(
-        "    source: conversation",
+        "    acceptance_criteria:\n      - Running the migration twice leaves exactly one migrated column.",
         [
-          "    source: conversation",
           "    acceptance_criteria:",
           "      - The migration runs twice without duplicating a column.",
           "      - The command is covered by a test."
@@ -465,18 +469,17 @@ describe("docs sync", () => {
       "The command is covered by a test."
     ]);
 
-    // An action that declares none is explicitly empty, not an empty list, so
-    // downstream cannot mistake "declared nothing" for "declared something".
+    // A question-open Action also carries its observable Decision criterion.
     const blocked = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing"));
-    expect(blocked!.acceptance_criteria_json).toBeNull();
+    expect(JSON.parse(blocked!.acceptance_criteria_json!)).toEqual(["A Decision records the selected first environment."]);
   });
 
   it("updates the Action when the plan's acceptance criteria change", () => {
     const repo = scratch();
     const withCriteria = (criterion: string): string =>
       PLAN.replace(
-        "    source: conversation",
-        ["    source: conversation", "    acceptance_criteria:", `      - ${criterion}`].join("\n")
+        "    acceptance_criteria:\n      - Running the migration twice leaves exactly one migrated column.",
+        ["    acceptance_criteria:", `      - ${criterion}`].join("\n")
       );
 
     writeDoc(repo, "docs/plans/sample-plan.md", withCriteria("The old bar is cleared."));
@@ -930,6 +933,54 @@ describe("docs sync", () => {
       schema: "arcadia.execution/v1",
       profile: "routine_implementation"
     });
+  });
+
+  it("declares an Action route (execution: build | plan-run), validates it, and routes by it over the prose (#1277)", () => {
+    const withRoute = (route: string, nextAction = "Implement the code change for staging."): string =>
+      PLAN.replace("    depends_on: []", `    depends_on: []\n    execution: ${route}`).replace(
+        "Run the migration against staging.",
+        nextAction
+      );
+
+    const bad = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", withRoute("deploy"));
+    expect(bad.errors.map((error) => error.message).join("\n")).toMatch(/exactly `build` or `plan-run`/);
+    const good = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", withRoute("plan-run"));
+    expect(good.errors).toEqual([]);
+    expect((good.doc as never as { actions: Array<{ executionRoute: string | null }> }).actions[0].executionRoute).toBe("plan-run");
+
+    const routeOf = (document: string): { declared: string | null | undefined; executor: string | undefined } => {
+      const repo = scratch();
+      writeDoc(repo, "docs/plans/sample-plan.md", document);
+      const workspace = workspaceWithProject(repo);
+      runDocsSyncCommand({ workspace, apply: true });
+      const item = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"));
+      return { declared: item?.execution_route, executor: planStepsForWorkItem(item as never)[0]?.executorType };
+    };
+
+    // Prose says "implement the code" (keywords would pick build), the declaration wins.
+    expect(routeOf(withRoute("plan-run"))).toEqual({ declared: "plan-run", executor: "codex_planning" });
+    // Prose says "planning" (keywords would pick planning), the declaration wins.
+    expect(routeOf(withRoute("build", "Write the planning notes for staging."))).toEqual({
+      declared: "build",
+      executor: "codex_build"
+    });
+    // Neither declared: today's keyword behaviour is unchanged.
+    expect(routeOf(PLAN.replace("Run the migration against staging.", "Implement the code change for staging."))).toEqual({
+      declared: null,
+      executor: "codex_build"
+    });
+  });
+
+  it("refuses a declared route on an operator-owned Action instead of routing it to a coding agent (#1277)", () => {
+    const operatorOwned = PLAN.replace("    responsibility: codex", "    responsibility: requires_review").replace(
+      "    depends_on: []",
+      "    depends_on: []\n    execution: build"
+    );
+    const result = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", operatorOwned);
+    expect(result.errors.map((error) => error.message).join("\n")).toMatch(/only valid on an agent or autonomous Action/);
+    expect(
+      planStepsForWorkItem({ work_classification: "requires_review", queue: "work_queue", execution_route: "build", title: "t", raw_input: "", next_action: "n" } as never)[0]?.executorType
+    ).toBe("operator");
   });
 
   it("follows a renamed title without forking a second Action", () => {

@@ -9,10 +9,12 @@ token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: high
-updated: 2026-08-30
+updated: 2026-10-12
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
+    acceptance_criteria:
+      - Parsing a managed frontmatter fixture returns its declared Project, Plan or Decision fields; an invalid vocabulary value reports the exact file and field without throwing away errors in other files.
     status: done
     responsibility: agent
     effort: session
@@ -20,10 +22,12 @@ actions:
     expected_artifact: Frontmatter parser reporting per-field validation errors
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: []
   - id: build-upsert
     title: Build the upsert layer (project/plan/decision -> DB rows)
+    acceptance_criteria:
+      - Applying the same managed-document fixture twice leaves one row per doc_ref and no duplicate dependency links; a changed title updates the existing row rather than creating another.
     status: done
     responsibility: agent
     effort: session
@@ -31,10 +35,12 @@ actions:
     expected_artifact: Idempotent doc_ref-keyed upsert
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: [build-parser]
   - id: wire-docs-sync-command
     title: Wire arcadia docs sync [--project] [--apply] into the CLI
+    acceptance_criteria:
+      - CLI help lists docs sync with --project and --apply; a fixture dry run writes no Project rows, the same --apply run persists the declared records, and portfolio reports the synced Project.
     status: done
     responsibility: agent
     effort: short
@@ -42,7 +48,7 @@ actions:
     expected_artifact: docs sync and portfolio commands
     clarification: clarified
     confidence: high
-    source: dogfooding pass against Arcadia's own repository
+    source: Agent Ask precise-criteria-portfolio-docs-protocol-20261012
     depends_on: [build-upsert]
   - id: contract-work-pointer
     title: Add the authoritative work pointer and dispatch resolution
@@ -657,10 +663,11 @@ Rules:
 - `current_action` must name an action id in this plan. A dangling pointer
   fails validation: leaving an agent with no objective is worse than leaving it
   with no pointer.
-- The **current action** must carry `acceptance_criteria` when it is
-  `clarified`. Other actions may omit them — requiring criteria on completed
-  history would invalidate it retroactively — but work about to be started must
-  say what finished means before anyone starts it.
+- **Every Plan Action** must carry a non-empty `acceptance_criteria` list,
+  regardless of status, clarification or pointer. Each condition names an
+  observable result and a verification method or evidence, with explicit limits
+  where relevant. Parsing and settlement reject missing or malformed criteria;
+  historical backfills specify evaluation conditions without claiming new proof.
 - Only the plan named by `active_plan` may declare `current_action`. A second
   plan declaring one is a competing objective and is reported as a blocker.
 - An action may name its own `milestone:` when a plan spans more than one
@@ -797,10 +804,12 @@ should be current, do not guess: write the candidates into a decision file with
 `status: open` and leave `current_action` pointing at the action that is
 blocked on it.
 
-**Acceptance criteria.** The action named by `current_action` must carry
-`acceptance_criteria` — a list of objective, checkable conditions — whenever it
-is `clarified`. "Works correctly" is not a criterion; "the migration runs twice
-without duplicating a column" is. Other actions may omit them. An action may
+**Acceptance criteria.** Every Plan Action must carry `acceptance_criteria`,
+a non-empty list of precise, checkable conditions, including completed and
+question-open Actions. State the observable result, verification method or
+evidence, and thresholds with units where relevant. "Works correctly" is not a
+criterion; "running the migration twice leaves exactly one column named x" is.
+Unresolved requirements stay explicit questions, not invented answers. An Action may
 also list `decisions: ["0007"]` for decisions that must be answered before it
 starts, and `references:` for paths a worker needs to read.
 

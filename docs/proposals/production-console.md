@@ -94,9 +94,18 @@ at once, so that going from one Session to many changes no concept.
   time, and On/Off each confirm on the page and state their consequence.
 - It works at 375px.
 
-What can ship now as read-only: the cards, latest skip reasons, `Would pick
-now`, Needs you, the Not running fold, and Sessions this week. The controls
-wait on the scheduling Decisions in
-[portfolio-parallel-execution.md](portfolio-parallel-execution.md#scheduling-strategy-operator-preferences-2026-10-09)
-(0115-0118, plus 0103 and 0111) and on a preference record the operator can
-change while production is on.
+The first read-only slice has shipped: a Projects view, the Queue section's
+default tab, with one card per Project. Each card shows its pointer Plan with
+open and ready counts, what production would pick now, a state chip
+(`Running`, `Next up`, `Ready`, `Needs you`, `Repository busy`, `Waiting`,
+`Blocked`, `Nothing authorized`) with its reason, the escalations Arcadia
+recorded for that Project, and its other active Plans. Projects the production
+scope does not admit fold into `Not in the production scope`. Cards follow
+each Project's first position in today's queue, and the page says so. Launch
+stays on the card's next Action.
+
+Still to come, read-only: `Would pick now · as of`, the latest tick skip reason
+per Project, Needs you from `arcadia todo --json`, and Sessions this week. The
+controls wait on Decisions 0115-0118 and on a preference record the operator
+can change while production is on. (Decisions 0103 and 0111, on burn and the
+reserve, are answered.)

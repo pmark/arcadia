@@ -66,6 +66,8 @@ A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`, `rea
 Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
 The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action (managed tick: after the host-services recovery restarts the worker). Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/preservation-index-lock.test.ts`, `tests/candidate-preservation.test.ts`.
 
+Issue #1414: an observed `hash-object -w --stdin` timeout left Git blocked reading stdin while Node waited. Root cause remains unproved; ordinary input probes passed. The candidate's private regular-file stdin mitigation has a failing-first withheld-EOF regression plus binary/empty-byte, cleanup and timeout checks; it is not installed-runtime proof. See `docs/reports/preservation-input-repair-2026-10-14.md`. Respect the current finite recovery budget before any retry; source changes do not authorize invoking or reinstalling the live broker.
+
 ## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
 
 keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries, liveness, lsof, handed out
@@ -168,14 +170,6 @@ Inspect `git status --porcelain`, `git ls-files` and `git check-ignore`: new gen
 Preserve unrelated runtime receipts with exact hashes in ignored custody; inspect private metadata before choosing what a public recovery PR may contain.
 Hermetic Git shims must pass through `-c` options unchanged; stripping `core.hooksPath` invalidates the hook-isolation test. See `docs/reports/three-action-managed-production-scope-design-2026-10-02.md` for the disclosed operator recovery boundary.
 
-## `agent-ask draft` printed "Failed to auto-discover N files"
-
-keys: auto-discover, already used with different content, draft noise
-
-Ignore it when the listed files are old, already-settled Asks: it is a false
-positive. Look only at the lines above it (`Agent Ask drafted`,
-`Previewed: fingerprint`). Expires when #592 closes.
-
 ## Protected brief fails at `next` despite the correct Codex profile
 
 keys: sandbox, brief broker, arcadia-unattended, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, restart
@@ -194,11 +188,12 @@ Regression: `tests/dispatch-journal.test.ts`, sandbox-callable broker section.
 
 ## Brief launcher returned `BRIEF_DEADLINE_EXCEEDED` (or seemed to hang)
 
-keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status
+keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status, arcadia go, tidy, no session, quarantine
 
 The fixed brief supervises itself: one JSON document on stdout within 25s.
 A failure names `error.details.stage`, `correlationId` and `recovery`; it is read-only, so rerun the same launcher once.
 `work-monitor` = many worktrees or a hung git; `advance`/`next` = a SQLite lock. Never run mutable `next` or widen the sandbox.
+If `go` prepares a worktree but no session launches, preview `pnpm -s arcadia tidy --repo <main checkout>` (quarantines merged worktrees and branches, nothing deleted), then `tidy --apply` only after reviewing it; `tidy undo <run>` restores them. Unverified that this clears a `work-monitor` stall.
 Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
 Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
@@ -223,7 +218,7 @@ files in the same mode.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
-keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest
+keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest, CODEX_SANDBOX, host controller
 
 Bridge dependencies with the script, never with a hand-made symlink:
 
@@ -237,6 +232,8 @@ errors ("`Message` is an error type", "assertion is unnecessary") and those
 app tests fail to load, even in files you changed. The script skips a tree
 whose target already exists, so rerunning it is safe. CI does a clean install
 and is the source of truth.
+
+Five Go-parity cases in `tests/session-launch.test.ts` refuse an inherited `CODEX_SANDBOX` marker before fixture assertions; ordinary host escalation still inherited it on 2026-10-14. Do not unset the marker or weaken tests. `vitest run tests/session-launch.test.ts -t '^launchGuardedHostSession'` covers the launch path; preserve the broader refusal and require clean-environment CI for the full file. Evidence: `docs/reports/launch-failure-keeps-cause-2026-10-14.md`.
 
 ## Run one Vitest file without launching the whole suite
 
@@ -284,13 +281,14 @@ Keep normal Git hooks enabled. Verify the recovered tree against the landed comm
 
 ## Test operator scripts behaviorally outside the agent sandbox
 
-keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise, fixture, docs sync, passthrough, stub codex, codex app-server, headless provider, test-headless-provider-single-action
+keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise, fixture, docs sync, passthrough, stub codex, codex app-server, headless provider, test-headless-provider-single-action, logged out, CLAUDE_CODE_OAUTH_TOKEN, expected refused
 
 The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
 Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
 A fake CLI that `process.exit`s right after `process.stdout.write` truncates a pipe answer over 64 KB (the real `advance queue --json`: `jq: parse error: Unfinished string`); set `process.exitCode` and return instead.
 A generated managed document is judged by real Arcadia code, never a canned `errorCount`: the fake's `{ passthrough: "probe" | "cli" }` reply runs the checkout's code (G1's fixture once hid invalid YAML behind a faked docs sync).
-A stub `codex`/`opencode` must exit quietly unless `args[0]` is `exec`/`run` (and answer `codex exec --help` with `--json --sandbox`, which the launch preflight checks): Arcadia's capacity probe spawns `codex app-server` with the PATH `codex` in the checkout's directory (an always-acting stub once committed a MARKER.md on the checkout's branch). The headless-provider test keeps its experiment workspace in `$TMPDIR`, not `workspaces/exp-*`, because Codex's workspace-write sandbox can write the temp directory and not the workspaces directory; its provider-side `arcadia` shim pins that workspace. A Codex workspace-write sandbox cannot create Git's `index.lock` even in a gitdir under `$TMPDIR` (`.git` stays read-only inside writable roots), so the commit is the host's job: the test then runs `runPreserveCommand` (the manual-handoff path after reconcile; the worker's leased path needs an Active production policy that an experiment workspace cannot hold, and the Seatbelt validation cannot nest inside the agent sandbox), falling back to "PASS (agent); host preservation not exercised". OpenCode `run` auto-rejects any `external_directory` prompt, and its allowlist in `~/.config/opencode` omits `/private/var/folders`, so the test grants its own tree through `OPENCODE_CONFIG_CONTENT`. Codex persists `[projects."<repo>"] trust_level = "trusted"` to `~/.codex/config.toml` for a new project directory (it showed as a changed `hashes.codexConfig` in the leak check, ruled by the operator on 2026-10-09 to be neither attributed nor a Decision 0082 stop condition (the test now reports it as "Codex trust entry (operator ruled 2026-10-09: not a stop condition)"); any other leak-check change, including Claude's `hashes.claudeTrust`/`claudeSettings`, is still a possible stop condition to attribute); the test passes a per-invocation `--config projects."<path>".trust_level="trusted"` for its own paths to try to avoid the write (unverified until a run), and `codex exec` also has `--ignore-user-config` and `--ephemeral`, untried. The library checker refuses an operator `.sh` whose text names the Agent Ask command without a declared settlement, so `test-headless-provider-single-action` keeps its logic in `scripts/headless-provider-test.ts`; `mise exec` writes a trust link the agent sandbox denies, so test that entry with `node --import tsx` and the launcher with a fake `mise`. The test now tries Codex, OpenCode and Claude independently (a missing precondition SKIPs only that provider); Claude runs the builder's exact argv (`--print --output-format stream-json --verbose --permission-mode acceptEdits --settings <per-session file> --setting-sources ""`), its allow list carries only the Project's registered validation command (`node scripts/check-fixture.mjs`) and `arcadia agent-ask draft`, so it cannot commit and the host step commits (its result event's `permission_denials` is the evidence); a stub `claude` must answer `--help` with the six headless flags and `auth status --json`, and a model already bound in another tier cannot be a light-tier override (ambiguous identity), so `--model-<provider>` selects that tier via `sessionStartTier` instead.
+A stub `codex`/`opencode` must exit quietly unless `args[0]` is `exec`/`run` (and answer `codex exec --help` with `--json --sandbox`, which the launch preflight checks): Arcadia's capacity probe spawns `codex app-server` with the PATH `codex` in the checkout's directory (an always-acting stub once committed a MARKER.md on the checkout's branch). The headless-provider test keeps its experiment workspace in `$TMPDIR`, not `workspaces/exp-*`, because Codex's workspace-write sandbox can write the temp directory and not the workspaces directory; its provider-side `arcadia` shim pins that workspace. A Codex workspace-write sandbox cannot create Git's `index.lock` even in a gitdir under `$TMPDIR` (`.git` stays read-only inside writable roots), so the commit is the host's job: the test then runs `runPreserveCommand` (the manual-handoff path after reconcile; the worker's leased path needs an Active production policy that an experiment workspace cannot hold, and the Seatbelt validation cannot nest inside the agent sandbox), falling back to "PASS (agent); host preservation not exercised". OpenCode `run` auto-rejects any `external_directory` prompt, and its allowlist in `~/.config/opencode` omits `/private/var/folders`, so the test grants its own tree through `OPENCODE_CONFIG_CONTENT`. Codex persists `[projects."<repo>"] trust_level = "trusted"` to `~/.codex/config.toml` for a new project directory (it showed as a changed `hashes.codexConfig` in the leak check, ruled by the operator on 2026-10-09 to be neither attributed nor a Decision 0082 stop condition (the test now reports it as "Codex trust entry (operator ruled 2026-10-09: not a stop condition)"); any other leak-check change, including Claude's `hashes.claudeTrust`/`claudeSettings`, is still a possible stop condition to attribute); the test passes a per-invocation `--config projects."<path>".trust_level="trusted"` for its own paths to try to avoid the write (unverified until a run), and `codex exec` also has `--ignore-user-config` and `--ephemeral`, untried. The library checker refuses an operator `.sh` whose text names the Agent Ask command without a declared settlement, so `test-headless-provider-single-action` keeps its logic in `scripts/headless-provider-test.ts`; `mise exec` writes a trust link the agent sandbox denies, so test that entry with `node --import tsx` and the launcher with a fake `mise`. The test now tries Codex, OpenCode and Claude independently (a missing precondition SKIPs only that provider); Claude runs the builder's exact argv (`--print --output-format stream-json --verbose --permission-mode acceptEdits --settings <per-session file> --setting-sources ""`), its allow list carries only the Project's registered validation command (`node scripts/check-fixture.mjs`) and `arcadia agent-ask draft`, so it cannot commit and the host step commits (its result event's `permission_denials` is the evidence); a stub `claude` must answer `--help` with the six headless flags and `auth status --json`, and a model already bound in another tier cannot be a light-tier override (ambiguous identity), so `--model-<provider>` selects that tier via `sessionStartTier` instead. `env -u CLAUDE_CODE_OAUTH_TOKEN pnpm exec vitest run tests/headless-provider-operator-script.test.ts -t 'skips Claude when|refuses when no selected provider'` passes both logged-out cases; production preflight accepts an inherited token despite the fake loggedIn:false reply. Remove it only from the test process, never the host credential configuration. Fixture isolation is a separate defect; preserve token-login coverage.
+For the Luna scout, a config hash delta alone is not trust-only proof: retain exact content-equivalence evidence, or keep the historical hold blocked. `scripts/scout-isolation-preflight.ts` and `tests/scout-isolation-preflight.test.ts` replay saved receipts offline; zero replay inference excludes development agents. Expires when #1365 closes.
 
 ## Re-run a passed Action on a reused fixture
 
@@ -330,3 +328,11 @@ Live single-Action run on a fixture (operator Launch, 2026-10-09):
 - `scripts/services.sh restart` from the checkout refuses without an inline `ARCADIA_WORKSPACE=<live workspace>` and leaves the old services running.
 - An agent cannot settle its own Agent Ask (the auto-mode classifier denies it as self-approval). The operator accepts it in the approval queue on /runs, then answers the Decision it opens (Discord or /review).
 - The desktop app's built-in browser pane blocks the dashboard's `/_next` assets (`ERR_BLOCKED_BY_CLIENT`), so pages look empty there; check with `curl` against `127.0.0.1:3020` instead.
+- A rehearsal handoff prompt (runbook section 10) goes stale within a day: before acting, `git log` the runbook, `rg -l -i "chain|rehears" docs/decisions` for Decisions answered since (0097 retired stacked chains on 2026-10-09), list open PRs and ask the peer session that last held the fixture. A fix a prior release manager left as a dirty open PR (#1033) is cheaper to port with `git apply --3way` onto fresh main than to rebase.
+- Do not put a literal dollar-ampersand (`$&`), dollar-backtick or dollar-apostrophe in an Agent Ask that amends an Action until #1213 lands: `amendAction` passes the text to `String.replace` as a string, the replacement pattern expands, the Plan stops parsing, and `settle --apply` fails with "did not produce a ready canonical Action" (the preview still passes; the apply rolls back, nothing is written). Spell the sequence in words, reject the proposal and re-draft under a new request id (2026-10-10, bug Plan amendment).
+
+## Before announcing a production run as startable or hands-off
+
+keys: production, START, supervised run, hands-off, planning run, planStepsForWorkItem, unpublished settlement, main level, merge commit, 1277, 1284
+
+Check each Action's route: `planStepsForWorkItem` sends text without "implement", "code" or "prototype" to a planning run (extra Decision, validation, acceptance; the validator flags "no approval" next to "implementation", #1277). Check the Plan file and pointer are on the remote main and that the checkout is level with it; a settlement can sit only in the local main, and a squash merge of it makes local main diverge, so merge it as a merge commit. Full report and plan: `docs/reports/first-supervised-production-run-learnings-2026-10-11.md`; sandbox write denial is covered by the SQLITE_WORKSPACE_WRITE_DENIED entries above.

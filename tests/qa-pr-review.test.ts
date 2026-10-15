@@ -71,7 +71,7 @@ describe("minimal independent pull-request QA", () => {
           reviewerCwd = cwd;
           const outputPath = args[args.indexOf("--output-last-message") + 1];
           writeFileSync(outputPath, `${JSON.stringify(passingModelVerdict("The documentation Candidate is internally consistent."))}\n`, "utf8");
-          return success('{"type":"task.completed"}\n');
+          return success('{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":400,"output_tokens":50}}\n');
         }
         return failure(`Unexpected command: ${command} ${args.join(" ")}`);
       }
@@ -90,7 +90,10 @@ describe("minimal independent pull-request QA", () => {
     expect(first.data.decision.status).toBe("approved");
     expect(first.data.artifact.artifact_type).toBe("qa_report");
     expect(first.data.artifact.status).toBe("ready");
-    expect(first.data.reviewer).toMatchObject({ profile: "fake_qa", model: "gpt-test" });
+    expect(first.data.reviewer).toMatchObject({
+      profile: "fake_qa", model: "gpt-test", configuredEffort: "e2_standard", effectiveEffort: "medium",
+      usage: { inputTokens: 600, cachedInputTokens: 400, outputTokens: 50 }, usageSource: "provider reviewer-events JSONL"
+    });
     expect(reviewerInvocations).toBe(1);
     expect(Object.keys(reviewerEnvironment ?? {}).sort()).toEqual(
       ["PATH", "HOME", "SHELL", "TERM", "TMPDIR"].filter((key) => process.env[key] !== undefined).sort()
@@ -130,9 +133,11 @@ describe("minimal independent pull-request QA", () => {
     expect(second.data.decision.id).toBe(first.data.decision.id);
     expect(second.data.artifact.id).toBe(first.data.artifact.id);
     expect(reviewerInvocations).toBe(1);
+    expect(second.data.reviewer.usage).toEqual(first.data.reviewer.usage);
 
     const canonicalReceiptPath = path.resolve(path.dirname(reportPath), "..", "..", "result.json");
     const forgedReceipt = JSON.parse(readFileSync(canonicalReceiptPath, "utf8"));
+    expect(forgedReceipt.requiredFiles.some((file: { path: string }) => file.path.endsWith("/reviewer-events.jsonl"))).toBe(true);
     const evidencePath = path.join(fixture.workspace, second.data.evidencePath);
     writeFileSync(evidencePath, "forged evidence\n", "utf8");
     const forgedEvidenceHash = createHash("sha256").update(readFileSync(evidencePath)).digest("hex");

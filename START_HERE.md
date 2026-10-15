@@ -1,5 +1,71 @@
 # Arcadia: Start Here
 
+For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
+
+## Conversational workspace preview
+
+Start the dashboard with `pnpm dashboard`, then open <http://127.0.0.1:3020/workspace>.
+This opt-in shell leaves the normal landing page unchanged. Follow Project → Plan →
+Action links, or use the scope breadcrumbs and browser Back to return. Records
+come from the existing read-only Plans API. History, conversation capture and
+result previews are labeled extension regions; use the normal dashboard for Ask.
+See [the shell handoff](docs/design/conversational-ui-shell.md) for routes and seams.
+
+## Governed specialist roles
+
+Read the seven canonical roles and render a bounded brief from the repository:
+
+```sh
+node --import tsx src/cli.ts roles --json
+node --import tsx src/cli.ts roles show researcher
+node --import tsx src/cli.ts role brief --role researcher --agent codex --tier light --specialization 'database migration research'
+```
+
+For an existing Action add `--action '<plan-slug>#<action-id>'` and optionally
+`--repo <repository>`. `--json` returns a structured brief. These commands make
+no model calls, write no workspace state and do not claim or admit a Session.
+The tier selects the displayed model/identity; it does not change the running
+agent. Unknown roles and unsafe specialization labels fail.
+
+For an explicitly authorized native delegate, add `--requested-by lead --depth 0`
+to `role brief`. Both options must be supplied together. This validates supplied
+policy labels only: only top-level Lead can prepare planner, plan-critic,
+implementer or researcher at depth 1. Nested/unknown targets and code-reviewer/QA
+native targets fail; review and QA require separate independent Sessions.
+Pass the full brief plus bounded assignment and mandatory arcadia-role skill read
+to existing Codex `spawn_agent` or Claude `Agent`. Native dispatch requires host
+authorization and records its own launch evidence; this command launches nothing.
+Governed capacity admission remains unavailable. Use installed `arcadia` and the
+installed role skill in adopting Projects; missing skills stop dispatch until
+installed. Lead and implementer never write concurrently.
+
+A [Behavior](docs/arcadia-semantics.md#behavior) is a named procedural contract
+followed by an existing Role; mode describes its active operating state.
+Supervision is a Behavior attached to a Supervisor's assigned relationship.
+Hacker recovery is a bounded Behavior followed in recovery mode, not an eighth
+role: the Lead diagnoses and the authorized implementer repairs. Supervisors
+require
+the [recovery procedure](docs/agent-guidance/hacker-recovery.md) after two
+unchanged refusals without evidence gain, or immediately for an explicit
+stop-the-line request. The mode adds no authority or allowance; installing the
+guidance and wiring automatic invocation remain separate work.
+
+The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
+`config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
+`roles` object keyed by registered ID, with only `default_tier` and
+`default_effort` patches; authority fields cannot be overridden. For example:
+`{"schema":"arcadia-agent-roles-v1","roles":{"researcher":{"default_tier":"standard"}}}`.
+Pass `--workspace` or let Arcadia resolve its configured workspace; never infer
+one from a Project slug. Model bindings use the existing coding-agent-models
+registry. Action launch briefs include the canonical Lead charter, preserving
+existing launcher ownership and sole-writer constraints.
+
+Use the repository's [shared role skill](.agents/skills/arcadia-role/SKILL.md) and
+[supervisor skill](.agents/skills/arcadia-supervisor/SKILL.md) for the common protocol and assigned
+supervision. Supervisor event automation, enforced caps and `arcadia bug` remain
+unavailable; the installed release-manager skill remains usable.
+
+
 Local browser measurements currently fail closed under `arcadia-unattended`.
 The [inactive Docker audit preparation](docs/reports/issue-847-container-route-2026-10-02.md)
 has real synthetic Lighthouse and containment evidence. Installation does not
@@ -22,6 +88,12 @@ produces a complete triage report and proposed changes, with bounded validity
 checks. Follow the [installation instructions](.agents/skills/arcadia-github-issues/references/installation.md)
 for Claude Code, OpenCode and Codex;
 triage does not change the Project pointer or apply GitHub updates.
+
+Field Notes production uses the [evidence-first instruction file](docs/strategy/field-notes-production.md)
+and article/receipt templates. [Decision 0120](docs/decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
+approves automatic site/RSS publication after independent fact-checking;
+the site routes, delivery gate and automatic cadence still need implementation.
+The existing `blog` commands create local scaffolds and operator review items.
 
 Open **Now** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/now> (on this Mac: <http://127.0.0.1:3020/now>). This is the screen to bookmark. It answers one question — how far away is the single thing that matters, and what is the one next move toward it — and refuses to answer any other. The target, the Project that owns it, and the gates that stand between you and it are declared in `NORTH_STAR.md` at the workspace root; edit that file to change what the screen measures. Below the distance, local Intelligence writes a short, specific account of what actually happened this week from the commit subjects in each Project's repository, followed by the share of the week's commits that landed in the target Project. One action is offered at full size, and one fifteen-minute alternative that is still on the target. The same brief is available in the terminal:
 
@@ -357,7 +429,7 @@ Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
 this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 **To-do** (Accept/Reject for Agent Asks, Approve for Decisions, and any
 review items read-only with the command that answers them; the same list as
-`arcadia todo --all`, with stale items folded into a collapsed **Stale** group)
+`arcadia todo --all`, with stale items folded into a collapsed **Done elsewhere** group)
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
@@ -370,6 +442,12 @@ preview on every click. A failed click shows its machine-readable reason, the
 changed field, and the exact recovery step with a durable receipt. If settlement
 committed but publication failed, retrying that same action verifies and publishes
 the existing commit without settling twice. It never changes a queue or pointer. The [shared runner contract](docs/operator-plan-amendments.md) documents pinned inputs and safe recovery.
+
+The `run-scout-hello-world-probe` action runs the bounded Ask/To-do Hello World
+scout and retains its machine-readable report, log, and receipt. A captured
+report can correctly say product outcome `no`; harness success only means the
+observation completed. This action appears in Operator actions after its
+reviewed script library is published. See the [scout instructions](docs/agent-guidance/ask-todo-scout.md).
 
 **Test headless Codex, OpenCode and Claude single-Action runs (experiment
 fixture)** (`test-headless-provider-single-action`, from `/runs` or the terminal)
@@ -470,7 +548,9 @@ Open **System Status** at <http://127.0.0.1:3020/admin/status> when you need a q
 
 Open **Dispatch Journal** at <http://127.0.0.1:3020/admin/dispatch-journal> to see how often Arcadia refused to dispatch work, and which field in the managed documents blocked it. A field that blocks a large share of resolutions is either a rule worth relaxing or a habit worth fixing. It is read-only, like every other admin surface.
 
-Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> to see every open pull request across configured Project repositories, grouped with its Project, branch, review/check state, and plain-English readiness rating. Each card now includes a deterministic **Briefing**: changed paths, files not named in the PR body, managed pointer or plan changes, governed Decision documents, schema or migration changes, outward-facing paths, branch-order collisions, and the current CI conclusion. Expand the changed-path list when you need the evidence behind a fact. This view is read-only and never approves, merges, comments, or dispatches a PR; if GitHub cannot provide the detail payload, the inventory remains visible and the card says that briefing facts are unavailable.
+Open **Outstanding PRs** at <http://127.0.0.1:3020/admin/pull-requests> for a compact open-PR and CI inventory across configured Project repositories. The newest-created PRs appear first; unavailable creation dates use update dates, with undated PRs last. The list reads only open-PR display fields and CI status, with no per-PR bodies or changed files. A private lightweight server snapshot under the checkout’s ignored `.cache/pr-inventory/` survives service restarts and `.next` rebuilds. Restored cards retain their checked-at time and show as stale while one bounded background scan refreshes them; failed scans preserve the last known cards. Cache data never authorizes source reads or merge readiness. Managed restarts warm this page and its cache API before reporting completion; a warmup failure is reported without stopping healthy services. A first-ever visit with no saved snapshot still waits for its initial inventory. `ARCADIA_DASHBOARD_WARM=0` disables warming for isolated tests. Return visits restore the browser session's last cards, labelled stale while the server checks them. The visible page refreshes about once a minute and when you return to it; **Refresh** explicitly requests a new scan. CI status is not merge authority. Choose **Load PR details** for the current description, changed paths, branch/review state and GitHub CI/QA evidence for that one PR. Details show their checked time and reset when the inventory reports that PR changed. The full `arcadia work prs` CLI still produces deterministic portfolio briefings; `--lightweight` skips body/file reads, and `--repositories-only` resolves configured GitHub origins locally without GitHub queries. Local origin resolution supports normal GitHub HTTPS and SSH URLs; custom SSH aliases and enterprise hosts are not granted source access by that resolver. Choose **Load TLDR / Listen** to retrieve an existing matching summary; ordinary cards do not read PR sources until requested. After the scoped paid-cloud choice is approved and delivered, **Generate TLDR · Fast Text Cloud** explicitly uses Arcadia Intelligence’s configured fast cloud text route and may incur charges. Cloud summaries use their own cache identity; earlier local jobs stay preserved and are not reused or reset. **Play TLDR** uses only the completed summary, preserving its fresh title/body revision and summary-job identity. Audio supports pause/seek and **Download MP3**; matching revisits reconnect to existing jobs/assets without narrating the full body or comments. Use **Read or listen to a PR TLDR** for a merged or closed PR in a configured repository, including `/admin/pull-requests?pr=https://github.com/pmark/arcadia/pull/1308`. Speech remains on its existing route; FFmpeg/libmp3lame must be on the Intelligence service PATH. Summary generation uses only the explicitly selected Fast Text Cloud route, with no automatic fallback or background generation. This read-only page never approves, merges, comments, or dispatches a PR.
+
+The first inventory scan after a Dashboard process starts can take tens of seconds, so the page shows PR-card-shaped skeletons and an accessible loading message. Later visits display the process's most recent inventory immediately while one coalesced refresh runs, with the checked time and stale/refreshing state visible. **Refresh** requests a new scan without removing the cards already on screen. A failed refresh keeps the last successful inventory and offers a bounded retry; when only one Project scan fails, its last successful cards remain visible beside that Project's exception instead of disappearing into an apparently empty portfolio. This display cache never supplies merge authority or fresh gate evidence: any future merge preview or execution must still revalidate the exact head, review, required checks, authority, and clean merge state.
 
 Open the **QA queue** at <http://127.0.0.1:3020/qa> to test each configured Candidate from one exact procedure. The queue shows the configured revision, target state, validation and evidence freshness; **Test Candidate** opens only that configured target. **Check** runs the live reachability probe without delaying page load; an access-protected target that returns 403 is labelled unverifiable from here, not unhealthy. Above the Candidate cards, a **project strip** shows each configured Project once — the branch its checkout is actually on, its HEAD, how far it has drifted, and what its services report. Updating a checkout is a Project operation, so it lives there rather than repeating on every target card. Each strip offers one primary action for the state it is in: **Check for updates** fetches origin's refs and touches nothing else, **Pull *n* commits** fast-forwards without restarting, and **Restart services** is offered separately — and only when the incoming diff says it is needed. The verdict is computed from the changed paths before you pull, so a lockfile change reads as *install then restart* while a stylesheet reads as *HMR should cover this*; the files behind every verdict are one tap away, and the wording never claims a restart is unnecessary, only that HMR should cover it. **Check** stays available even when the pull is refused, because fetching never touches the working tree. When a checkout is on some other branch or detached, the strip offers **Switch to *base*** — one destination, the Project's own base branch, never a branch picker. Switching leaves the branch it moved away from exactly where it was, and says whether that branch had commits origin does not, so moving away from unmerged work is stated rather than silent. A dirty tree is refused before anything happens, and being ahead of origin is refused too — those stay yours to resolve. Remote targets never offer pull or restart because their deployment workflow owns that authority, and Projects without `scripts/services.sh` say plainly that Arcadia cannot restart them. Record Pass, Fail, or Needs follow-up with an optional note to create a revision-bound Decision. This records QA evidence only—it never merges, deploys, or releases work. Target configuration lives in the workspace at `config/qa-targets.json` — repository paths and LAN hostnames are facts about one machine, so they are not checked in; `config/qa-targets.example.json` documents the shape. Revision, validation, and evidence freshness are computed from each project's checkout rather than typed by hand.
 
@@ -528,6 +608,34 @@ security and authority, compatibility, tests). Its report and Decision live
 under `artifacts/code-review/pull-requests/`. For a managed candidate it records
 the exact-head code-review verdict the worker needs before it integrates (see
 the managed-production section below).
+
+Read the model-and-effort effectiveness projection without running another
+reviewer:
+
+```sh
+pnpm arcadia qa effectiveness
+```
+
+The report groups only receipts with the same explicitly observed task class,
+difficulty, review role, rubric version, provider, model, and effective effort.
+Configured effort and pricing date are coverage, not cohort keys; conflicts are
+shown. Unknown class or difficulty stays visible as an unranked singleton rather
+than being inferred from the rubric or combined with another unknown receipt. It separates
+configured from runtime-effective effort, reviewer-only usage from additional
+resource observations explicitly linked to the exact review attempt and head,
+and reviewer environment failures from model verdicts. A model `fail` means the
+Candidate failed model review; it is not scored as reviewer failure. Cached receipt replay is
+deduplicated by attempt identity. Findings count as confirmed, rejected, or
+duplicate only when a separate trusted later outcome verifies that validation;
+a same-receipt metadata reference, a Pass,
+or author acceptance is not ground truth and no escaped-defect record is not
+reported as zero misses. Finding disposition (Required correction, Worthwhile
+improvement, or Follow-up opportunity) stays separate from its resolution state
+and remains unknown when the receipt did not observe it. Resource sums are
+labelled observed partial until both terminal outcome and immutable resource
+evidence verify. Missing tokens, time, billed cost, pricing, and included-capacity
+consumption retain known/total coverage; the command opens the workspace database
+read-only, makes no model call, and changes no routing policy.
 
 Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
@@ -744,6 +852,13 @@ moves the governed pointer to the first ready Action in that order, using the
 same preview-then-apply transition as `make-next`. Projects are scanned in
 one configured order and the first with runnable work is selected.
 
+Recurring calendar triggers use the existing worker and submit Agent Ask proposals.
+Open **Clock** from the dashboard menu, or visit `/clock`, to see existing recurring schedules, enable/pause them and edit their timing. Timing edits preserve occurrence history and refuse stale changes or unresolved proposals/retries. New timing begins at a future scheduled time; the existing worker still owns proposal intake. This page requires the updated dashboard and CLI build; it does not install or restart the runtime.
+
+See the [scheduler guide](docs/strategy/recurring-scheduler.md) for daily, weekly
+and monthly definitions, Field Notes examples, pause and retry controls.
+Registration starts paused; acceptance and dispatch retain their existing gates.
+
 ```sh
 pnpm arcadia schedule status --workspace "$WORKSPACE"
 pnpm arcadia schedule prioritize --order private-practice-now arcadia rebuster --workspace "$WORKSPACE"
@@ -922,6 +1037,16 @@ copy, draft file, settlement or new coding session is required on this path.
 If receipt writes are sandbox-denied, request the host's normal permission or
 approved host execution for this same command; proceed only if granted. Otherwise
 preserve a validated draft in an isolated checkout through the Git/PR handoff.
+`agent-ask draft` refuses the shared primary checkout and the base/default branch,
+even from a subdirectory or when a workspace is unavailable. Use inline
+`agent-ask preview '<json>'` there; create draft files only in your own candidate.
+Settlement reserves Git's HEAD and index locks before writing governed documents, uses
+private temporary indices, and never runs repository hooks or clean filters.
+Apply settlement from a named candidate branch; detached writes refuse before changes.
+An existing lock refuses without changing documents, HEAD, or the index; let its
+owning Git operation finish and retry. Settlement intentionally integrates
+approved governed records, and does not use the shared checkout for scratch.
+
 Before successful registration, local input storage alone is not registered
 intake or a remote backup. The detailed
 [agent-neutral procedure](docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work)
@@ -1194,13 +1319,16 @@ Set `DISCORD_CATEGORY_CHANNELS` in the bot's `.env` (see
 `apps/discord-bot/README.md`) to split the bot's proactive messages across
 channels you can mute separately. `alerts` gets production red alerts, CI-blocked
 pings, failed runs and blocked work; `briefings` gets the daily orientation
-packet and digests; `log` gets routine progress such as settlements, PR-opened
-pings and completed work. Anything that needs you (review items, opened
+packet and digests; `log` gets routine progress such as settlements and
+completed work. PR-opened and PR-ready are operator pings, so they go to the
+default channel. Anything that needs you (review items, opened
 Decisions, PR-ready pings) always stays in the default channel, which is also the
 only one that accepts requests. A category you leave unset, or a channel the bot
 cannot reach, falls back to the default channel, so nothing is lost.
 
 ## Managed production: the standing authorization
+
+For a concise orientation to the live records, readiness evidence and operator decision points, see the [autonomous production operator guide](docs/autonomous-production-operator-guide.md).
 
 Managed production is the switch that lets Arcadia admit and advance approved
 work without a new chat or a manual Session launch between Actions. It is a
@@ -2317,8 +2445,21 @@ To find out what any Ask became, pass the `capture_…` id from its receipt (or
 its request id, or an `ask_…` id) to `pnpm arcadia ask-trail <id>`. It prints
 the capture, how the Ask was classified and why, the Project it routed to, and
 every Action, Decision, or Back Burner item it produced, including the Action a
-shelved item was later promoted to. It only reads. Asks recorded before this
+shelved item was later promoted to. It also shows Runs correlated through the
+Ask's Action or Review, with current status, waiting reason and linked Artifact
+evidence. `todo --project <slug> --json` exposes the same Run evidence for that
+Project. Approval receipts report a queued Run id and status; neither approval
+nor queueing proves completion. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
+If a capture is marked `partial`, `ask show <request-id>` lists any capture-linked
+Actions, Plans, Decisions, or Back Burner items and explains that automatic retry
+is unsafe. For a partial capture linked to a Review, inspect its Decision, original
+reply, Action, Plan, approval claim, and Run outcomes. If a Run is listed, do not
+submit another approval. Otherwise inspect the original reply and all recorded
+effects, including any existing claim, before continuing that reply's approval,
+rejection, deferral, or answer intent. The claim preserves its Action and Plan for a
+later valid approval, but the capture link alone does not identify the reply's intent.
+Never treat a partial receipt as proof that nothing happened.
 
 To see how much of your input actually reaches Arcadia through Ask or Ingress,
 run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is
@@ -3098,7 +3239,11 @@ settled `rejected` (Asks naming each other in a cycle of any length, two or more
 cancel out: no member of the cycle is hidden). A review item is stale
 when its work item is done or its `doc_ref` names an answered (approved or
 rejected) Decision. An open Decision is
-stale when its `action` is done. The default view hides stale items;
+stale when its `action` is done. An Agent Ask, review item or production
+escalation of a `completed` Project is stale (`its Project <slug> is completed`):
+production never ticks a retired Project again, so its escalation cannot clear
+itself. Retire a finished fixture with `arcadia project update <id> --status completed`.
+The default view hides stale items (on `/todo`, in a collapsed **Done elsewhere** group);
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
 
@@ -3321,3 +3466,25 @@ file audit does not prove agent understanding. See
 The JSON parameters use schema `arcadia-rehearsal-dry-preparation-v1`, `runId`, `actionCount`, the existing fixture pins (`fixtureRepoPath` and `fixtureGithubRepo`), `requiredCommits` entries (`commit`, `why`), and `preservation` (`resetRunId`, `resetHead`, `terminalOffRunId`, `localMain`). The existing required-commit floor cannot be removed; unfilled bindings refuse. These are supplied bindings, not proof that prerequisite receipts were ratified or commits installed.
 
 This command stages two reviewed documents and a receipt only. Its neutral Action IDs are not yet supported by the existing live rehearsal-chain operator scripts. Applying the baseline requires that adapter and the governed Ask path. Real `SMOKE_DRY=1` review dispatch, first-attempt reviewer receipts and unattended V1 evidence remain separate integration work; this generator makes none of those claims and starts no Session.
+
+Every Plan Action must declare precise, checkable `acceptance_criteria`, including
+completed and non-current Actions. State the observable result and its verification
+method or evidence, with explicit thresholds where applicable. `docs sync` and
+Agent Ask settlement reject invalid criteria; use a Plan amendment Ask to correct
+them. Deterministic validation catches structural defects and known vague wording;
+independent review still evaluates coverage and proof.
+When adoption seeds a Plan, every Action receives either its supplied conditions,
+a condition derived from its expected Artifact, or a requirement for a recorded
+clarification answer. Missing product criteria remain an open question and do not
+authorize implementation.
+
+## Reading coding-agent chat titles
+
+Talk to the workstream coordinator whose title has no arrow. A leading `↳` marks
+a background helper that reports through its coordinator. Orange (🟠) means a
+concrete question or approval needs an answer; red (🔴) means externally blocked.
+The title names the actual need, such as `approve pilot budget` or
+`blocked: host permission`. Green (🟢) means evidenced completion; ⏸ means a
+deliberately parked or superseded contact. Older titles may not yet follow this
+convention. See [chat titles and attention signals](docs/agent-guidance/chat-titles.md)
+for all states and examples. Titles never release ownership or grant authority.

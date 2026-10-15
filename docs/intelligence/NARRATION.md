@@ -35,8 +35,10 @@ pnpm arcadia intelligence narrate --workspace "$WORKSPACE" --file ./notes.md --o
 pnpm arcadia intelligence narrate --workspace "$WORKSPACE" --text "Welcome to the show."
 ```
 
-Exactly one of `--text`, `--file`, or `--issue` is required. `--issue` accepts a
+Exactly one of `--text`, `--file`, `--issue`, or `--pull-request` is required. `--issue` accepts a
 full URL, `owner/repo#number`, or a bare number with `--repo owner/name`.
+
+Use `--pull-request https://github.com/owner/repo/pull/123` to read only a PR body, with Markdown formatting removed and comments excluded. This source also accepts `owner/repo#123` or a number with `--repo`.
 
 Options: `--voice-id` (default `arcadia.narrator`), `--route`, `--out`
 (default `<workspace>/artifacts/narration/narration-<timestamp>.wav`),

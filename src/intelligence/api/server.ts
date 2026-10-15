@@ -1,3 +1,4 @@
+import { parseSpeechInput } from "../speech/input.js";
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import type { IntelligenceArtifactStore } from "../artifacts/store.js";
 import type { IntelligenceV01Config } from "../config/types.js";
@@ -30,6 +31,7 @@ import type { IntelligenceRequest } from "../types.js";
  *
  * Routes:
  * - POST /api/intelligence/jobs
+ * - GET  /api/intelligence/jobs?idempotencyKey=:key
  * - GET  /api/intelligence/jobs/:jobId
  * - POST /api/intelligence/jobs/:jobId/retry
  * - GET  /api/intelligence/health
@@ -75,6 +77,11 @@ async function handleRequest(
   const method = req.method ?? "GET";
 
   try {
+    if (method === "GET" && url.pathname === "/api/intelligence/jobs") {
+      await handleGetJobByIdempotencyKey(res, repository, url.searchParams.get("idempotencyKey"));
+      return;
+    }
+
     if (method === "POST" && url.pathname === "/api/intelligence/jobs") {
       await handleSubmitJob(req, res, repository, scheduler);
       return;
@@ -109,6 +116,19 @@ async function handleRequest(
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }
+}
+
+async function handleGetJobByIdempotencyKey(
+  res: ServerResponse,
+  repository: IntelligenceJobRepository,
+  idempotencyKey: string | null,
+): Promise<void> {
+  // eslint-disable-next-line no-control-regex -- control bytes are deliberately invalid in an external lookup key.
+  if (!idempotencyKey || idempotencyKey.length > 512 || /[\u0000-\u001f\u007f]/.test(idempotencyKey)) {
+    sendJson(res, 400, { error: "A valid idempotencyKey query parameter is required." });
+    return;
+  }
+  sendJson(res, 200, { job: await repository.findByIdempotencyKey(idempotencyKey) ?? null });
 }
 
 async function handleSubmitJob(
@@ -429,16 +449,7 @@ function validateIntelligenceRequestShape(body: unknown): string | undefined {
     }
   }
   if (request.capability === "audio.speech.generate") {
-    const input = request.input as Record<string, unknown> | null;
-    if (!input || typeof input.text !== "string" || input.text.trim().length === 0) {
-      return 'capability "audio.speech.generate" requires a non-empty string input.text.';
-    }
-    if (typeof input.voiceId !== "string" || input.voiceId.trim().length === 0) {
-      return 'capability "audio.speech.generate" requires a non-empty string input.voiceId.';
-    }
-    if (input.format !== undefined && input.format !== "wav") {
-      return 'capability "audio.speech.generate" only supports input.format "wav".';
-    }
+    try { parseSpeechInput(request.input); } catch (error) { return error instanceof Error ? error.message : "Invalid speech input."; }
   }
   if (!request.outputContract || typeof request.outputContract.jsonSchema !== "object") {
     return "outputContract.jsonSchema is required.";

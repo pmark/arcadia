@@ -18,6 +18,7 @@ import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { writeHeadlessClaudeSettings } from "./headlessPermissions.js";
+import { issueSessionProbe } from "./sessionProbeCommand.js";
 import { sessionRecordingFor, wrapRecordedLaunch, type SessionRecording } from "./sessionRecording.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { OperatorGateResolution } from "../docs/operatorGate.js";
@@ -34,6 +35,7 @@ import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff
 import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
+import { formatLaunchFailure } from "./launchFailure.js";
 
 export type ProjectTransitionKind =
   | "launch"
@@ -302,10 +304,22 @@ export const systemTmux: TmuxAdapter = {
   },
   launch(input) {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
-    execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
-      stdio: "ignore",
+    const result = spawnSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
+      stdio: ["ignore", "ignore", "pipe"],
+      encoding: "utf8",
+      maxBuffer: 64 * 1024,
       env: tmuxQueryEnv()
     });
+    if (result.error || result.status !== 0) {
+      const overflow = result.error && "code" in result.error && result.error.code === "ENOBUFS";
+      const stderr = result.stderr ?? "";
+      // A capture-limit failure can cut a credential in the last line below
+      // the redactor's threshold. Keep only complete lines from that stream.
+      const diagnostic = overflow ? stderr.slice(0, stderr.lastIndexOf("\n") + 1) : stderr;
+      const outcome = (result.error?.message ?? `tmux new-session failed (${result.signal ?? result.status}).`) +
+        (overflow ? " [stderr capture truncated; incomplete stderr line withheld]" : "");
+      throw new Error(formatLaunchFailure(new Error(outcome, { cause: diagnostic.trim() || undefined })));
+    }
   },
   killSession(name) {
     // `kill-session` only; never the worktree or branch. A session that is
@@ -795,7 +809,7 @@ export function launchPreparedSession(
     failPreparedSession(db, session.id);
     throw validationError(`tmux could not start the ${providerLabel(session.provider)} Session.`, {
       sessionId: session.id,
-      cause: error instanceof Error ? error.message : String(error)
+      cause: formatLaunchFailure(error)
     });
   }
   const started = new Date().toISOString();
@@ -1384,6 +1398,10 @@ function buildProviderLaunch(
   registry?: ModelTierRegistry
 ): { command: string; args: string[] } {
   const continuation = getSessionContinuation(db, session);
+  // Fails closed (named refusal) when the packaged probe script is missing.
+  const probe = workspace
+    ? issueSessionProbe({ workspace, sessionId: session.id, worktreePath: session.worktree_path })
+    : null;
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,
     projectSlug: session.project_slug,
@@ -1400,6 +1418,7 @@ function buildProviderLaunch(
     model: session.model,
     registry,
     headless,
+    probeCommand: probe?.command,
     partners: readProjectPartners(db, {
       projectSlug: session.project_slug,
       excludeSessionId: session.id,
@@ -1463,7 +1482,8 @@ function buildProviderLaunch(
     const settingsFile = writeHeadlessClaudeSettings({
       workspace,
       sessionId: session.id,
-      validationCommands: decodeStringArray(metadata?.validation_commands)
+      validationCommands: decodeStringArray(metadata?.validation_commands),
+      probeCommand: probe?.command
     });
     args = [
       "--print", "--output-format", "stream-json", "--verbose",

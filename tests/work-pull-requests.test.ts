@@ -1,5 +1,9 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  listOutstandingPullRequests,
   buildPullRequestBriefing,
   derivePullRequestReadiness,
   normalizeCheck,
@@ -117,5 +121,94 @@ describe("outstanding pull-request readiness", () => {
       { name: "e2e", status: "COMPLETED", conclusion: "SUCCESS", url: expect.stringMatching(/^https:\/\/github\.com\/pmark\/arcadia\/actions\/runs\//) },
       { name: "CodeRabbit", status: "PENDING", conclusion: null, url: null }
     ]);
+  });
+});
+
+it("retains configured repositories when no PR is open", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-pr-registry-"));
+  try {
+    const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], { runCommand: (_cwd, command, args) => ({ ok: true, stdout: command === "git" ? "true" : args[0] === "repo" ? "owner/repo" : "[]", stderr: "" }) });
+    expect(snapshot.pullRequests).toEqual([]);
+    expect(snapshot.repositories).toEqual([{ projectId: "project", projectName: "Project", repository: "owner/repo", repositoryPath: realpathSync(directory) }]);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+
+describe("lightweight PR reads", () => {
+  it("does one list and zero body/file/detail reads for multiple open PRs", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "arcadia-light-pr-"));
+    const calls: string[][] = [];
+    try {
+      const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], {
+        lightweight: true,
+        runCommand: (_cwd, command, args) => {
+          calls.push([command, ...args]);
+          return { ok: true, stderr: "", stdout: command === "git" ? (args[0] === "remote" ? "git@github.com:owner/repo.git" : "true")
+            : JSON.stringify([1, 2].map(number => ({ number, title: `PR ${number}`, url: `https://github.com/owner/repo/pull/${number}`, mergeStateStatus: "CLEAN", reviewDecision: "APPROVED", statusCheckRollup: [] }))) };
+        }
+      });
+      expect(snapshot.pullRequests).toHaveLength(2);
+      expect(snapshot.pullRequests.every(pr => pr.briefing === null && pr.detailsLoaded === false && pr.readiness !== "merge_ready")).toBe(true);
+      expect(calls.filter(call => call[0] === "gh")).toHaveLength(1);
+      expect(calls.find(call => call[0] === "gh")?.slice(1, 3)).toEqual(["pr", "list"]);
+      const list = calls.find(call => call[0] === "gh")!;
+      expect(list[list.indexOf("--json") + 1]).toBe("number,title,url,state,isDraft,createdAt,updatedAt,statusCheckRollup");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("preserves rich default callers and their body/file briefing reads", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "arcadia-rich-pr-"));
+    const calls: string[][] = [];
+    try {
+      const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], {
+        runCommand: (_cwd, command, args) => {
+          calls.push([command, ...args]);
+          return { ok: true, stderr: "", stdout: command === "git" ? "true" : args[0] === "repo" ? "owner/repo"
+            : args[1] === "view" ? JSON.stringify({ body: "Changes fix.ts", files: [{ path: "src/fix.ts" }] })
+            : JSON.stringify([{ number: 1, title: "PR", url: "https://github.com/owner/repo/pull/1", mergeStateStatus: "CLEAN", reviewDecision: "APPROVED", statusCheckRollup: [] }]) };
+        }
+      });
+      expect(snapshot.pullRequests[0].readiness).toBe("merge_ready");
+      expect(snapshot.pullRequests[0].briefing?.changedFiles).toEqual(["src/fix.ts"]);
+      expect(calls.filter(call => call[0] === "gh")).toHaveLength(3);
+      expect(calls.some(call => call.includes("body,files"))).toBe(true);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(["git@github.com:owner/repo.git", "https://github.com/owner/repo.git", "ssh://git@github.com/owner/repo.git"])("resolves configured %s without any remote GitHub call", origin => {
+    const directory = mkdtempSync(path.join(tmpdir(), "arcadia-local-pr-"));
+    const calls: string[] = [];
+    try {
+      const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], { repositoriesOnly: true,
+        runCommand: (_cwd, command, args) => { calls.push(command); return { ok: true, stdout: args[0] === "remote" ? origin : "true", stderr: "" }; }
+      });
+      expect(snapshot.repositories?.[0]?.repository).toBe("owner/repo");
+      expect(snapshot.pullRequests).toEqual([]);
+      expect(calls).not.toContain("gh");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("refuses a configured directory that is not a Git repository without a GitHub query", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "arcadia-local-pr-"));
+    const calls: string[] = [];
+    try {
+      const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], { repositoriesOnly: true,
+        runCommand: (_cwd, command) => { calls.push(command); return { ok: false, stdout: "", stderr: "not Git" }; }
+      });
+      expect(snapshot.repositories).toEqual([]);
+      expect(snapshot.errors).toHaveLength(1);
+      expect(calls).toEqual(["git"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(["https://evilgithub.com/owner/repo", "git@other.test:owner/repo.git", "https://github.com/owner", "not-a-remote"])("refuses untrusted or unsupported origin %s", origin => {
+    const directory = mkdtempSync(path.join(tmpdir(), "arcadia-local-pr-"));
+    try {
+      const snapshot = listOutstandingPullRequests([{ id: "project", name: "Project", repositoryPath: directory }], { repositoriesOnly: true,
+        runCommand: (_cwd, _command, args) => ({ ok: true, stdout: args[0] === "remote" ? origin : "true", stderr: "" })
+      });
+      expect(snapshot.repositories).toEqual([]);
+      expect(snapshot.errors).toHaveLength(1);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

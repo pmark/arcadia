@@ -66,6 +66,11 @@ import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
 import { recordAnswerCorrection } from "../ask/corrections.js";
+import {
+  APPROVED_RUN_SCOPE_CONTEXT_KEY,
+  APPROVED_SCOPE_CONTEXT_KEY,
+  approvedReviewScopeSha256
+} from "../execution/approvedReviewScope.js";
 
 export interface RequiresReviewPacket {
   id: string;
@@ -935,12 +940,21 @@ export function runReviewApproveCommand(
         status: "approved",
         decisionNote: "Project proposal approved. Execution pending."
       }) as ReviewItemSummary;
+      mergeReviewItemContext(db, decision.id, {
+        [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, decision)
+      });
       const run = createReviewExecutionRun(db, {
         reviewItemId: decision.id,
         executorName,
         workItemId: decision.work_item_id,
         planId: decision.plan_id,
         summary: `Approved Project scaffold and staging deployment queued with ${executorName}.`
+      });
+      mergeReviewItemContext(db, decision.id, {
+        [APPROVED_RUN_SCOPE_CONTEXT_KEY]: {
+          runId: run.id,
+          scopeSha256: approvedReviewScopeSha256(db, getReviewItem(db, decision.id) as ReviewItemSummary, run.id)
+        }
       });
       return { decision, run, duplicate: false };
     }));
@@ -1249,13 +1263,20 @@ export function runReviewApproveCommand(
   const earlierAskId = reviewItem.resulting_ask_request_id;
   const earlierAsk = earlierAskId
     ? withDatabase(workspacePath, (db) => {
-        const found = db.prepare("SELECT id, work_item_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
-          | { id: string; work_item_id: string | null }
+        const found = db.prepare("SELECT id, work_item_id, plan_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
+          | { id: string; work_item_id: string | null; plan_id: string | null }
           | undefined;
         if (found?.work_item_id) assertReusableApprovalAction(db, found.work_item_id, found.id);
         return found;
       })
     : undefined;
+  if (reviewItem.work_item_id && !earlierAsk?.work_item_id) {
+    throw validationError("This Review already references an Action without its originating Ask; approval cannot create a second Action.", {
+      reviewId: reviewItem.id,
+      workItemId: reviewItem.work_item_id,
+      resultingAskRequestId: earlierAskId
+    });
+  }
   const reusedAskId = earlierAsk?.work_item_id ? earlierAsk.id : null;
   const approvalClaimOwner = randomUUID();
   let approval: ReturnType<typeof runAskCommand> | null = null;
@@ -1281,6 +1302,11 @@ export function runReviewApproveCommand(
     throw validationError("Approved Requires Review Decision did not produce an ask request.", { id: reviewItem.id });
   }
   const approvalAskId = reusedAskId ?? (approval?.data.ask?.id as string);
+  const approvedWorkItemId = approval?.data.workItem?.id ?? earlierAsk?.work_item_id ?? null;
+  const approvedPlanId = approval?.data.plan?.id ?? earlierAsk?.plan_id ?? null;
+  if (!approvedWorkItemId) {
+    throw validationError("Approved Ask did not produce its governed Action.", { reviewId: reviewItem.id, approvalAskId });
+  }
 
   // The approval, the memo of an answered Ask question and the pending-execution marker commit together. The status is
   // re-read under the write lock, as for a build packet above.
@@ -1289,6 +1315,17 @@ export function runReviewApproveCommand(
     if (!current || (current.status !== "open" && current.status !== "deferred")) {
       throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: current?.status ?? null });
     }
+    if ((current.work_item_id && current.work_item_id !== approvedWorkItemId) || (current.plan_id && current.plan_id !== approvedPlanId)) {
+      throw validationError("Approved Ask Action or Plan does not match the Review Decision scope.", {
+        reviewId: current.id,
+        reviewWorkItemId: current.work_item_id,
+        approvedWorkItemId,
+        reviewPlanId: current.plan_id,
+        approvedPlanId
+      });
+    }
+    db.prepare("UPDATE review_items SET work_item_id = ?, plan_id = ?, updated_at = ? WHERE id = ?")
+      .run(approvedWorkItemId, approvedPlanId, new Date().toISOString(), current.id);
     const item = updateReviewItemStatus(db, reviewItem.id, {
       status: "approved",
       decisionNote: "Approved from Requires Review. Execution pending.",
@@ -1297,6 +1334,9 @@ export function runReviewApproveCommand(
     if (!item) {
       throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
     }
+    mergeReviewItemContext(db, item.id, {
+      [APPROVED_SCOPE_CONTEXT_KEY]: approvedReviewScopeSha256(db, item)
+    });
     recordAnswerCorrection(db, item, approvalAskId);
     deleteApprovalClaim(db, reviewItem.id);
     return {
@@ -1326,13 +1366,62 @@ export function runReviewApproveCommand(
 function runReviewApproveExecuteCommand(
   options: ReviewDecisionCommandOptions
 ): CommandSuccess<ReviewDecisionCommandData> {
-  const { run, review } = withDatabase(options.workspace, (db) => {
+  // An Ask-originated Review initially has no Action. Create its governed
+  // Action through the same approval-claim path used by the non-executing
+  // approval route, then bind that exact Action to this approval and Run.
+  // This keeps the user's one approval round trip and never invents an Action.
+  const beforeApproval = withDatabase(options.workspace, (db) => getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id));
+  let actionApproval: ReturnType<typeof runAskCommand> | null = null;
+  let approvalClaimOwner: string | null = null;
+  if (beforeApproval?.ask_request_id && !beforeApproval.work_item_id) {
+    if (beforeApproval.status !== "open" && beforeApproval.status !== "deferred") {
+      throw validationError("Requires Review Decision is already decided.", { id: beforeApproval.id, status: beforeApproval.status });
+    }
+    if (parseObject(beforeApproval.context_json)[APPROVED_SCOPE_CONTEXT_KEY] !== undefined) {
+      throw validationError("This Ask approval already has a recorded scope but no linked Action; refusing to refresh its approval.", {
+        reviewId: beforeApproval.id
+      });
+    }
+    const claimOwner = randomUUID();
+    approvalClaimOwner = claimOwner;
+    try {
+      actionApproval = runAskCommand({
+        workspace: options.workspace,
+        request: beforeApproval.source_input,
+        approvedReviewItemId: beforeApproval.id,
+        approvalClaimOwner: claimOwner
+      });
+    } catch (error) {
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+      throw error;
+    }
+    if (!actionApproval.data.ask || !actionApproval.data.workItem) {
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+      throw validationError("Approved Ask did not produce its governed Action.", { reviewId: beforeApproval.id });
+    }
+  }
+
+  let queued: { run: ReturnType<typeof createReviewExecutionRun>; review: ReviewItemSummary };
+  try {
+    queued = withDatabase(options.workspace, (db) => writeTransaction(db, () => {
     const reviewItem = getReviewItem(db, options.id) ?? getReviewItemBySlug(db, options.id);
     if (!reviewItem) {
       throw validationError("Requires Review Decision was not found.", { id: options.id });
     }
     if (reviewItem.status !== "open" && reviewItem.status !== "deferred") {
       throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: reviewItem.status });
+    }
+    if (actionApproval?.data.workItem) {
+      if ((reviewItem.work_item_id && reviewItem.work_item_id !== actionApproval.data.workItem.id) ||
+          (reviewItem.plan_id && reviewItem.plan_id !== actionApproval.data.plan?.id)) {
+        throw validationError("Approved Ask Action or Plan does not match the Review Decision scope.", {
+          reviewId: reviewItem.id, reviewWorkItemId: reviewItem.work_item_id,
+          approvedWorkItemId: actionApproval.data.workItem.id, reviewPlanId: reviewItem.plan_id,
+          approvedPlanId: actionApproval.data.plan?.id ?? null
+        });
+      }
+      db.prepare("UPDATE review_items SET work_item_id = ?, plan_id = ?, updated_at = ? WHERE id = ?")
+        .run(actionApproval.data.workItem.id, actionApproval.data.plan?.id ?? null, new Date().toISOString(), reviewItem.id);
     }
 
     // Validate repo path upfront so the user gets an error immediately, not when the worker runs.
@@ -1354,17 +1443,62 @@ function runReviewApproveExecuteCommand(
       realpathSync(absolute); // resolves symlinks — validates the path is real
     }
 
+    const reviewContext = parseObject(reviewItem.context_json);
+    const originalReviewId = typeof reviewContext.originalReviewId === "string" ? reviewContext.originalReviewId : null;
+    if (reviewItem.resolved_intent === "ReviewExecutionPending" && !originalReviewId) {
+      throw validationError("Execution approval is missing its original approved Review scope.", { reviewId: reviewItem.id });
+    }
+    const scopeReview = originalReviewId ? getReviewItem(db, originalReviewId) : reviewItem;
+    if (!scopeReview) {
+      throw validationError("Original approved Review was not found.", { reviewId: reviewItem.id, originalReviewId });
+    }
+    const approvalReview = reviewItem.ask_request_id && actionApproval?.data.ask
+      ? updateReviewItemStatus(db, reviewItem.id, {
+          status: "approved",
+          decisionNote: "Approved from Ask. Execution queued.",
+          resultingAskRequestId: actionApproval.data.ask.id
+        })
+      : reviewItem;
+    const linkedReview = getReviewItem(db, scopeReview.id) as ReviewItemSummary;
+    const currentScope = approvedReviewScopeSha256(db, linkedReview);
+    if (originalReviewId) {
+      const originalContext = parseObject(scopeReview.context_json);
+      if (originalContext[APPROVED_SCOPE_CONTEXT_KEY] !== currentScope) {
+        throw validationError("Execution approval scope changed after the Ask was approved.", {
+          reviewId: scopeReview.id,
+          executionReviewId: reviewItem.id
+        });
+      }
+    } else {
+      mergeReviewItemContext(db, scopeReview.id, { [APPROVED_SCOPE_CONTEXT_KEY]: currentScope });
+    }
     const executorName = options.executor ?? "codex";
+    const runReview = approvalReview ?? linkedReview;
     const pendingRun = createReviewExecutionRun(db, {
       reviewItemId: reviewItem.id,
       executorName,
-      workItemId: reviewItem.work_item_id,
-      planId: reviewItem.plan_id,
+      workItemId: runReview.work_item_id,
+      planId: runReview.plan_id,
       summary: `Execution queued for ${reviewItem.slug ?? reviewItem.id} with ${executorName}.`
     });
-
-    return { run: pendingRun, review: reviewItem };
-  });
+    const refreshedScopeReview = getReviewItem(db, scopeReview.id) as ReviewItemSummary;
+    mergeReviewItemContext(db, scopeReview.id, {
+      [APPROVED_RUN_SCOPE_CONTEXT_KEY]: {
+        runId: pendingRun.id,
+        scopeSha256: approvedReviewScopeSha256(db, refreshedScopeReview, pendingRun.id)
+      }
+    });
+    if (approvalClaimOwner) deleteApprovalClaim(db, reviewItem.id);
+    return { run: pendingRun, review: runReview };
+    }));
+  } catch (error) {
+    if (approvalClaimOwner && beforeApproval) {
+      const claimOwner = approvalClaimOwner;
+      try { withDatabase(options.workspace, (db) => releaseApprovalClaim(db, beforeApproval.id, claimOwner)); } catch { /* lease expires */ }
+    }
+    throw error;
+  }
+  const { run, review } = queued;
 
   return createSuccess({
     command: "review.approve",
@@ -1375,11 +1509,11 @@ function runReviewApproveExecuteCommand(
         status: "pending_execution",
         summary: `Execution queued as run ${run.id}. Start the worker to execute: arcadia worker start`
       },
-      approval: null,
+      approval: actionApproval?.data ?? null,
       execution: null,
       run: { id: run.id }
     },
-    artifacts: []
+    artifacts: actionApproval?.artifacts ?? []
   });
 }
 
@@ -1911,7 +2045,7 @@ function decisionForOption(option: string | undefined): "approve" | "reject" | "
 
 function confirmationForDecision(item: RequiresReviewPacket, decision: "approve" | "reject" | "defer", summary: string): string {
   if (decision === "approve") {
-    return `${item.slug} approved. Resuming execution.`;
+    return `${item.slug} approved. ${summary}`;
   }
   if (decision === "reject") {
     return `${item.slug} rejected.`;

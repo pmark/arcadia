@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
-import { runAgentAskDraftCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
@@ -33,7 +33,7 @@ function fixture() {
   git("config", "commit.gpgsign", "false");
   git("init", "--bare", "-q", origin);
   git("remote", "add", "origin", origin);
-  const action = { id: "first", title: "Prove the runner", status: "open", responsibility: "agent", effort: "session", next_action: "Prove the original scope", expected_artifact: "Runner evidence", clarification: "clarified", confidence: "high", acceptance_criteria: ["Original criterion: real newline."], depends_on: [], decisions: [], references: [] };
+  const action = { id: "first", title: "Prove the runner", status: "open", responsibility: "agent", effort: "session", next_action: "Prove the original scope", expected_artifact: "Runner evidence", clarification: "clarified", confidence: "high", acceptance_criteria: ["The original runner receipt contains a real newline."], depends_on: [], decisions: [], references: [] };
   const project = { arcadia: "v1", type: "project", slug: "demo", name: "Demo", status: "active", goal: "Prove settlement", outcome: "Safe settlement", milestone: "Settlement", active_plan: "demo-plan", current_action: "first", updated: "2026-09-30" };
   const plan = { arcadia: "v1", type: "plan", slug: "demo-plan", project: "demo", status: "active", milestone: "Settlement", current_action: "first", token_impact: "none", token_budget: "No models", recommended_model: "gpt-6.1-sol", updated: "2026-09-30", actions: [action], questions: [], decisions: [] };
   const writeDoc = (file: string, data: unknown) => writeFileSync(path.join(repo, file), `---\n${stringify(data)}---\n\n# Real document body\n`);
@@ -49,14 +49,16 @@ function fixture() {
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     arrangeActionOrder(db, { currentKeys: ["demo/first"], order: ["demo/first"], requestId: "fixture-order", apply: true });
   });
-  const ask = { agent_ask: "v1", request_id: "amend-first", project: "demo", intent: "plan", target_ref: "plan/demo-plan", desired_result: "Replace only first scope", requested_authority: "apply_if_approved", actions: [{ target_ref: "action/first", desired_result: "Prove the amended scope", acceptance: ["New criterion: real newline.", "Second criterion."], dependencies: [], references: [] }] };
-  // Canonical draft and stored proposal, including real YAML newlines.
-  const draft = runAgentAskDraftCommand({ workspace, dir: repo, request: stringify(ask) });
-  expect(draft.data.workspaceStatus).toBe("previewed");
+  const ask = { agent_ask: "v1", request_id: "amend-first", project: "demo", intent: "plan", target_ref: "plan/demo-plan", desired_result: "Replace only first scope", requested_authority: "apply_if_approved", actions: [{ target_ref: "action/first", desired_result: "Prove the amended scope", acceptance: ["The amended runner receipt contains a real newline.", "The amended runner receipt names the second condition."], dependencies: [], references: [] }] };
+  // Seed reviewed operator input bytes, then register inline without a main-checkout draft.
+  const askPath = path.join(repo, ".arcadia", "asks", "agent-ask-amend-first.yaml");
+  mkdirSync(path.dirname(askPath), { recursive: true }); writeFileSync(askPath, stringify(ask));
+  const registered = runAgentAskPreviewCommand({ workspace, dir: repo, file: askPath });
+  expect(registered.data.proposal.id).toBeTruthy();
   git("add", "."); git("commit", "-qm", "Pinned source");
   const base = git("rev-parse", "HEAD");
   const after = { ...action, next_action: ask.actions[0].desired_result, acceptance_criteria: ask.actions[0].acceptance, source: "Agent Ask amend-first" };
-  const input: PlanAmendmentInput = { schema: "arcadia-plan-amendment-v1", checkout: { path: repo, origin, branch: "main", reviewedBase: base }, ask: { path: path.relative(repo, draft.data.path), sha256: createHash("sha256").update(readFileSync(draft.data.path)).digest("hex"), proposal: "amend-first" }, settlement: { requestId: "accept-first", disposition: "accepted", operator: true }, envelope: { project: "demo", plan: "demo-plan", action: "first", projectUnchanged: { slug: "demo", active_plan: "demo-plan", current_action: "first" }, planUnchanged: { slug: "demo-plan", project: "demo", status: "active", current_action: "first", milestone: "Settlement" }, actionBefore: action, actionAfter: after, noChange: ["id", "title", "status", "responsibility", "effort", "expected_artifact", "clarification", "confidence", "depends_on", "decisions", "references"] }, publication: { remote: "origin", branch: "main" } };
+  const input: PlanAmendmentInput = { schema: "arcadia-plan-amendment-v1", checkout: { path: repo, origin, branch: "main", reviewedBase: base }, ask: { path: path.relative(repo, askPath), sha256: createHash("sha256").update(readFileSync(askPath)).digest("hex"), proposal: "amend-first" }, settlement: { requestId: "accept-first", disposition: "accepted", operator: true }, envelope: { project: "demo", plan: "demo-plan", action: "first", projectUnchanged: { slug: "demo", active_plan: "demo-plan", current_action: "first" }, planUnchanged: { slug: "demo-plan", project: "demo", status: "active", current_action: "first", milestone: "Settlement" }, actionBefore: action, actionAfter: after, noChange: ["id", "title", "status", "responsibility", "effort", "expected_artifact", "clarification", "confidence", "depends_on", "decisions", "references"] }, publication: { remote: "origin", branch: "main" } };
   const id = "accept-first";
   const descriptor = path.join(library, `${id}.json`);
   const saveDescriptor = () => writeFileSync(descriptor, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, title: "Hermetic amendment", problem: "Prove safe amendment", desired_effect: "Replace pinned scope", authority: { does: ["Amend this Action"], never_does: ["Change queue or pointer"] }, success: { effect: "Scope replaced", next: "Keep receipt" }, failure: { effect: "Refused", next: "Restore named precondition" }, planAmendment: input }, null, 2) + "\n");
@@ -126,7 +128,7 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
   });
   it("preserves declared non-amendment operator settlement through the real path", () => {
     const f = fixture();
-    runAgentAskDraftCommand({ workspace: f.workspace, dir: f.repo, request: JSON.stringify({ agent_ask: "v1", request_id: "record-proof", project: "demo", intent: "log", desired_result: "Record hermetic operator proof" }) });
+    runAgentAskPreviewCommand({ workspace: f.workspace, dir: f.repo, request: JSON.stringify({ agent_ask: "v1", request_id: "record-proof", project: "demo", intent: "log", desired_result: "Record hermetic operator proof" }) });
     const d = JSON.parse(readFileSync(f.descriptor, "utf8")) as Record<string, unknown>;
     delete d.planAmendment; d.agentAsk = { proposal: "record-proof", intent: "log", targetRef: null };
     writeFileSync(f.descriptor, JSON.stringify(d));
@@ -193,7 +195,7 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
   });
   it.each(["status", "responsibility", "acceptance_criteria", "references"])("refuses target %s drift before mutation", field => {
     const f = fixture();
-    const changed: Record<string, unknown> = { status: "in_progress", responsibility: "requires_review", acceptance_criteria: ["Drift"], references: ["README.md"] };
+    const changed: Record<string, unknown> = { status: "in_progress", responsibility: "requires_review", acceptance_criteria: ["The runner receipt records the changed scope."], references: ["README.md"] };
     f.writeDoc("docs/plans/demo-plan.md", { ...f.plan, actions: [{ ...f.action, [field]: changed[field] }] }); f.commit(); f.noMutation("TARGET_STATE_DRIFT");
   });
   it("refuses semantic effects outside the pinned replacement", () => {

@@ -12,6 +12,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,6 +36,8 @@ import {
 
 import { requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
 
+const canonicalRoleRegistry = readFileSync(path.resolve(import.meta.dirname, "../config/defaults/agent-roles.json"), "utf8");
+const roleRegistrySha256 = createHash("sha256").update(canonicalRoleRegistry).digest("hex");
 const roots: string[] = [];
 const template = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-go.SKILL.md"), "utf8");
 const agentAskTemplate = readFileSync(path.resolve(import.meta.dirname, "../src/agentSetup/arcadia-agent-ask.SKILL.md"), "utf8");
@@ -573,6 +576,22 @@ describe("go broker agent setup", () => {
       }));
   });
 
+  it.each(["missing", "malformed"])("refuses READY with a %s registry even when launchers answer", (kind) => {
+    const fixture = createInstalledFixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
+    const registry = path.join(fixture.home, ".local/share/arcadia/test-revision/dist/config/defaults/agent-roles.json");
+    if (kind === "missing") rmSync(registry);
+    else writeFileSync(registry, "{}");
+    expect(() => runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") }))
+      .toThrow(expect.objectContaining({
+        message: "Protected broker setup is not ready.",
+        details: expect.objectContaining({
+          ready: false,
+          brokerIssues: expect.arrayContaining(["The protected broker role registry is missing or malformed."])
+        })
+      }));
+  });
+
   it("still refuses a missing preserve launcher on an otherwise correct install", () => {
     const fixture = createInstalledFixture();
     vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
@@ -619,9 +638,10 @@ describe("go broker release staging covers every protected launcher", () => {
     const release = path.join(fixture.home, ".local", "share", "arcadia", "staged-revision");
     const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
     write(brokerEntrypoint, "// fixture runtime\n");
+    write(path.join(release, "dist", "config", "defaults", "agent-roles.json"), canonicalRoleRegistry);
     write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
     write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
-    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: "staged-revision", brokerEntrypoint }));
+    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "staged-revision", brokerEntrypoint }));
     stageBrokerLaunchers(release, brokerEntrypoint);
     for (const agent of agents) {
       // Only the brief self-test needs a runnable entrypoint; every other staged launcher is used as written.
@@ -645,9 +665,10 @@ describe("go broker release staging covers every protected launcher", () => {
     const fixture = createFixture(false);
     const release = path.join(fixture.home, "releases", "rev-1");
     mkdirSync(path.join(release, "node_modules"), { recursive: true });
+    write(path.join(release, "dist", "config", "defaults", "agent-roles.json"), canonicalRoleRegistry);
     write(path.join(release, "dist", "database", "schema.sql"), "-- schema\n");
     write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// bridge\n");
-    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: "rev-1" }));
+    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "rev-1" }));
     stageBrokerLaunchers(release, "/unused/arcadia-go-broker.js");
     expect(() => validateExistingRelease(release, "rev-1")).not.toThrow();
     for (const agent of agents) rmSync(path.join(release, `arcadia-enroll-broker-${agent}`), { force: true });
@@ -907,10 +928,11 @@ function createInstalledFixture(brief: "working" | "stale" = "working") {
   const release = path.join(fixture.home, ".local", "share", "arcadia", "test-revision");
   const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
   write(brokerEntrypoint, "// fixture runtime\n");
+  write(path.join(release, "dist", "config", "defaults", "agent-roles.json"), canonicalRoleRegistry);
   write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
   write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
   write(path.join(release, "broker-manifest.json"), JSON.stringify({
-    schema: "arcadia-go-broker-install-v1", revision: "test-revision", brokerEntrypoint
+    schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "test-revision", brokerEntrypoint
   }));
   for (const providers of Object.values(fixture.executables)) {
     for (const [agent, executable] of Object.entries(providers)) {

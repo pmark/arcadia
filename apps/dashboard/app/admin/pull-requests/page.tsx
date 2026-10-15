@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CircleAlert, Clock3, GitMerge, GitPullRequest } from "lucide-react";
+import { useState } from "react";
+import { CircleAlert, Clock3, GitPullRequest } from "lucide-react";
+import { PullRequestLinkAudio } from "../../../components/pull-request-link-audio";
+import { PullRequestAudio } from "../../../components/pull-request-audio";
+import { PullRequestInventorySkeleton } from "../../../components/pull-request-inventory-skeleton";
+import { PullRequestDetailsPanel } from "../../../components/pull-request-details";
 import { DashboardChrome } from "../../../components/chrome";
-import { EmptyState, ErrorState, LoadingState, Metric, Section } from "../../../components/dashboard-ui";
+import { EmptyState, ErrorState, Metric, Section } from "../../../components/dashboard-ui";
+import { sortPullRequestsNewestFirst } from "../../../lib/pull-request-order";
+import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import type {
   DashboardOutstandingPullRequest,
   DashboardOutstandingPullRequests,
@@ -11,57 +17,55 @@ import type {
 } from "../../../lib/types";
 
 export default function AdminPullRequestsPage() {
-  const [data, setData] = useState<DashboardOutstandingPullRequests | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const response = await fetch("/api/pull-requests", { cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(errorMessage(body, "Outstanding pull requests are unavailable."));
-      setData(body as DashboardOutstandingPullRequests);
-      setError(null);
-      setLastLoadedAt(new Date());
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const [readerRevision, setReaderRevision] = useState(0);
+  const { data, checkedAt, error, loading, refreshing, stale, incomplete, retainedProjectIds, refresh } = usePullRequestInventory();
 
   return (
     <DashboardChrome
       title="Outstanding PRs"
       subtitle={data ? `${data.counts.total} open across ${data.projectsScanned} Projects` : "Across every configured Project repository."}
       refreshing={refreshing}
-      lastLoadedAt={lastLoadedAt}
-      onRefresh={() => void refresh()}
+      lastLoadedAt={checkedAt ? new Date(checkedAt) : null}
+      onRefresh={() => { setReaderRevision(value => value + 1); void refresh(); }}
     >
-      {error ? <ErrorState title="Outstanding PRs unavailable" message={error} /> : null}
-      {loading && !data ? <LoadingState /> : null}
-      {data ? <PullRequestBody data={data} /> : null}
+      <InventoryStatus checkedAt={checkedAt} stale={stale} incomplete={incomplete} refreshing={refreshing} />
+      {error ? (
+        <div className="grid gap-3">
+          <ErrorState
+            title={data ? "Inventory refresh failed" : "Outstanding PRs unavailable"}
+            message={data ? `${error} Showing the last successful inventory.` : error}
+          />
+          <button type="button" onClick={() => { void refresh(); }} className="min-h-11 justify-self-start rounded-md border border-line bg-panel px-4 py-2 text-sm font-semibold">
+            Retry inventory refresh
+          </button>
+        </div>
+      ) : null}
+      {loading && !data ? <PullRequestInventorySkeleton /> : null}
+      <PullRequestLinkAudio refreshToken={readerRevision} />
+      {data ? <PullRequestBody data={data} retainedProjectIds={retainedProjectIds} /> : null}
     </DashboardChrome>
   );
 }
 
-function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
+function InventoryStatus({ checkedAt, stale, incomplete, refreshing }: { checkedAt: string | null; stale: boolean; incomplete: boolean; refreshing: boolean }) {
+  if (!checkedAt) return null;
+  const label = refreshing
+    ? `Showing the ${incomplete ? "incomplete " : ""}inventory checked ${formatDate(checkedAt)} while a refresh runs.`
+    : incomplete
+      ? `Inventory checked ${formatDate(checkedAt)}; one or more Project scans were incomplete.`
+      : stale
+      ? `Showing stale inventory checked ${formatDate(checkedAt)}.`
+      : `Inventory checked ${formatDate(checkedAt)}.`;
+  return <p className={`text-xs ${stale ? "text-gold" : "text-muted"}`} role="status" aria-live="polite">{label}</p>;
+}
+
+function PullRequestBody({ data, retainedProjectIds }: { data: DashboardOutstandingPullRequests; retainedProjectIds: string[] }) {
   return (
     <div className="grid min-w-0 gap-6">
-      <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-5" aria-label="Pull-request readiness">
+      <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Pull-request CI inventory">
         <Metric label="Open" value={data.counts.total} tone="steel" />
-        <Metric label="Merge-ready" value={data.counts.mergeReady} tone="green" />
-        <Metric label="Ready for review" value={data.counts.ready} tone="neutral" />
         <Metric label="Drafts" value={data.counts.drafts} tone="gold" />
-        <Metric label="Blocked / checks" value={data.counts.blocked + data.counts.checksFailing + data.counts.checksPending} tone={data.counts.blocked + data.counts.checksFailing > 0 ? "clay" : "gold"} />
+        <Metric label="Checks need attention" value={data.counts.checksFailing + data.counts.checksPending} tone="gold" />
       </section>
 
       {data.errors.length > 0 ? (
@@ -74,6 +78,9 @@ function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
             {data.errors.map((entry) => (
               <li key={`${entry.projectId}:${entry.message}`}>
                 <span className="font-semibold">{entry.projectName}:</span> {entry.message}
+                {retainedProjectIds.includes(entry.projectId)
+                  ? " Showing last-known cards for this Project. Repository details were not fully reverified; these cards are incomplete display data and not merge authority."
+                  : null}
               </li>
             ))}
           </ul>
@@ -82,10 +89,12 @@ function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
 
       <Section title="Open pull requests">
         {data.pullRequests.length === 0 ? (
-          <EmptyState text="No open pull requests found across the configured Project repositories." />
+          <EmptyState text={data.errors.length > 0
+            ? `No open pull requests found in the repositories scanned successfully. ${data.errors.length} Project scan${data.errors.length === 1 ? " was" : "s were"} incomplete.`
+            : "No open pull requests found across the configured Project repositories."} />
         ) : (
           <div className="grid min-w-0 gap-3">
-            {data.pullRequests.map((pullRequest) => (
+            {sortPullRequestsNewestFirst(data.pullRequests).map((pullRequest) => (
               <PullRequestCard key={`${pullRequest.repository}:${pullRequest.number}`} pullRequest={pullRequest} />
             ))}
           </div>
@@ -93,7 +102,7 @@ function PullRequestBody({ data }: { data: DashboardOutstandingPullRequests }) {
       </Section>
 
       <p className="text-xs text-muted">
-        Read-only GitHub view. Readiness combines draft state, mergeability, review state, and reported checks; it does not approve, merge, or modify a PR.
+        Read-only CI inventory, refreshed about once a minute while visible. Load PR details or its TLDR when needed. CI status does not verify merge authority or approve, merge, or modify a PR.
       </p>
     </div>
   );
@@ -117,50 +126,17 @@ function PullRequestCard({ pullRequest }: { pullRequest: DashboardOutstandingPul
             </div>
             <ReadinessBadge readiness={pullRequest.readiness} label={pullRequest.readinessLabel} />
           </div>
-          <dl className="mt-4 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
-            <Detail label="Branch" value={`${pullRequest.headBranch} → ${pullRequest.baseBranch}`} />
-            <Detail label="Author" value={pullRequest.author ?? "Unknown"} />
-            <Detail label="Review" value={pullRequest.reviewDecision ? labelValue(pullRequest.reviewDecision) : "Not requested"} />
-            <Detail label="Checks" value={checkCounts} />
-            <div className="sm:col-span-2"><Detail label="Readiness" value={pullRequest.summary} /></div>
-          </dl>
-          <PullRequestBriefing briefing={pullRequest.briefing} />
+          <p className="mt-3 text-sm">CI: {checkCounts}</p>
+          <PullRequestDetailsPanel key={`details:${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
+          <PullRequestAudio key={`audio:${pullRequest.repository}:${pullRequest.number}:${pullRequest.updatedAt}`} repository={pullRequest.repository} number={pullRequest.number} />
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             {pullRequest.isDraft ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> Draft</span> : null}
-            {pullRequest.readiness === "merge_ready" ? <span className="inline-flex items-center gap-1 text-moss"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> Approved and merge-ready</span> : null}
+
             {pullRequest.updatedAt ? <span>Updated {formatDate(pullRequest.updatedAt)}</span> : null}
           </div>
         </div>
       </div>
     </article>
-  );
-}
-
-function PullRequestBriefing({ briefing }: { briefing: DashboardOutstandingPullRequest["briefing"] }) {
-  return (
-    <section className="mt-4 rounded-md border border-steel/20 bg-steel/5 p-3" aria-label="Pull-request briefing">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-steel">Briefing</h4>
-      {briefing ? (
-        <>
-          <ul className="mt-2 grid gap-1 text-sm leading-5 text-ink">
-            {briefing.materialFacts.map((fact) => <li key={fact}>• {fact}</li>)}
-          </ul>
-          {briefing.unmentionedFiles.length > 0 ? (
-            <p className="mt-2 text-xs text-muted">Unmentioned paths: {briefing.unmentionedFiles.join(", ")}</p>
-          ) : null}
-          {briefing.changedFiles.length > 0 ? (
-            <details className="mt-2 text-xs text-muted">
-              <summary className="cursor-pointer font-semibold">Changed paths ({briefing.changedFiles.length})</summary>
-              <ul className="mt-1 grid gap-1 break-all pl-4">
-                {briefing.changedFiles.map((file) => <li key={file}>{file}</li>)}
-              </ul>
-            </details>
-          ) : null}
-        </>
-      ) : (
-        <p className="mt-1 text-xs leading-5 text-muted">Material facts are unavailable; the pull-request inventory remains visible.</p>
-      )}
-    </section>
   );
 }
 
@@ -177,15 +153,6 @@ function ReadinessBadge({ readiness, label }: { readiness: PullRequestReadiness;
   return <span className={`inline-flex h-7 items-center rounded-md border px-2 text-xs font-semibold ${className}`}>{label}</span>;
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="mt-1 min-w-0 break-words leading-5">{value}</dd>
-    </div>
-  );
-}
-
 function summarizeChecks(pullRequest: DashboardOutstandingPullRequest): string {
   if (pullRequest.checks.length === 0) return "No checks reported";
   const passing = pullRequest.checks.filter((check) => check.conclusion?.toUpperCase() === "SUCCESS").length;
@@ -193,15 +160,6 @@ function summarizeChecks(pullRequest: DashboardOutstandingPullRequest): string {
   return failing > 0 ? `${passing} passing · ${failing} need attention` : `${passing} passing`;
 }
 
-function labelValue(value: string): string {
-  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
-}
-
-function errorMessage(body: unknown, fallback: string): string {
-  if (!body || typeof body !== "object") return fallback;
-  return "error" in body && typeof body.error === "string" ? body.error : fallback;
 }

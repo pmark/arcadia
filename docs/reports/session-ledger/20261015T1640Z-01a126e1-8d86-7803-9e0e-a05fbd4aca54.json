@@ -1,0 +1,38 @@
+{
+  "session_id": "01a126e1-8d86-7803-9e0e-a05fbd4aca54",
+  "role": "lead",
+  "model": "unknown (native parent model variant not exposed)",
+  "effort": null,
+  "action_id": "operator-directed:#1207",
+  "pr": 1208,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 2,
+  "review_rounds": 3,
+  "blocking_findings": [
+    {
+      "class": "unidentifiable-jev-intervention",
+      "caught_by": "independent Astra review"
+    },
+    {
+      "class": "base-log-append-conflict",
+      "caught_by": "archive-readiness check"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "production-benchmark-archive-conflict",
+      "cost_min": null,
+      "fix_ref": "docs/agent-guidance/pull-requests.md#pr-lifecycle-notifications"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Benchmark definition and Astra remedies preserved in PR #1208. Close-out reconciles base drift; final review and CI are recorded on the PR. Execution and budget adoption remain separate.",
+  "evidence_source": "docs/reports/frictions/20261015-production-benchmark-archive-conflict.md",
+  "task_class": "operator-directed benchmark definition and archive close-out"
+}

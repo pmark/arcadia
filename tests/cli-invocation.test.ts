@@ -151,7 +151,9 @@ describe("path options are wired to the invocation-aware resolver", () => {
     expect(found.sort()).toEqual([
       "advance --repo",
       "assess-blast-radius --repo",
+      "brief --repo",
       "close --repo",
+      "close-out --repo",
       "code-review --repo",
       "configure --repo-path",
       "decline --repo",
@@ -170,11 +172,24 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "push-unpushed --repo",
       "raise --repo",
       "reconcile --repo",
+      "select-next --repo",
       "setup-context --repo",
       "show --repo",
       "tidy --repo",
       "triggers --repo"
     ]);
+  });
+});
+
+describe("plan close-out --repo", () => {
+  it("resolves a relative --repo against the operator's directory, not the process cwd", () => {
+    const stood = scratch();
+    process.env.ARCADIA_INVOKED_FROM = stood;
+    const plan = buildProgram().commands.find((command) => command.name() === "plan")!;
+    const closeOut = plan.commands.find((command) => command.name() === "close-out")!;
+    const option = closeOut.options.find((candidate) => candidate.long === "--repo")!;
+    expect(option.parseArg!("sub/repo", undefined)).toBe(path.join(stood, "sub", "repo"));
+    expect(option.parseArg!(".", undefined)).toBe(stood);
   });
 });
 

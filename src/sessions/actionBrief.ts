@@ -1,3 +1,5 @@
+import { renderRoleBlock } from "../agentRoles/brief.js";
+import { getRole, loadRoleRegistry } from "../agentRoles/registry.js";
 import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
@@ -63,6 +65,27 @@ export interface ActionBriefInput {
    * generic protocol.
    */
   headless?: boolean;
+  /**
+   * The exact probe command (from `issueSessionProbe`). With it the brief
+   * opens with the capability probe as the Session's first step; the host
+   * reads the probe's one JSON line (echoing the command's nonce) from the
+   * Session log and ends the attempt on a failed check.
+   */
+  probeCommand?: string;
+}
+
+/** The first-step probe instructions: one short command, then stop at once on any failed check. */
+function renderProbeStep(input: ActionBriefInput): string[] {
+  if (!input.probeCommand) return [];
+  return [
+    "",
+    "First step — environment probe (do this before anything else, even reading files):",
+    `  ${input.probeCommand}`,
+    "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero when this Session's sandbox cannot write the workspace,",
+    "  run host validation or write a completion receipt. If it exits non-zero or prints \"ok\":false, STOP",
+    "  IMMEDIATELY: make no edits, run no other command, spend no more tokens, and exit. The host records",
+    "  the named environment wall from that line; retrying or working around it only wastes budget."
+  ];
 }
 
 /** Whether this Session's posture is one that cannot commit or preserve (host-owned). */
@@ -152,6 +175,13 @@ export function renderActionBrief(input: ActionBriefInput): string {
       doc.project.toLowerCase() === input.projectSlug.toLowerCase()
   );
   if (!plan) {
+    const errors = discovered.errors.filter((error) => error.relativePath === `docs/plans/${input.planSlug}.md`);
+    if (errors.length > 0) {
+      throw validationError(
+        `A managed-production Session cannot launch: plan "${input.planSlug}" is invalid: ${errors.map((error) => `${error.field}: ${error.message}`).join("; ")}`,
+        { planSlug: input.planSlug, projectSlug: input.projectSlug, errors }
+      );
+    }
     throw validationError(
       `A managed-production Session cannot launch: plan "${input.planSlug}" was not found in repository ${input.repoRoot}.`,
       { planSlug: input.planSlug, projectSlug: input.projectSlug, repoRoot: input.repoRoot }
@@ -188,6 +218,11 @@ export function renderActionBrief(input: ActionBriefInput): string {
     ...(input.identity
       ? renderIdentityBlock(input.identity, input.partners ?? null)
       : renderSessionIdentityBlock({ agent: input.agent, partners: input.partners ?? null })),
+    "",
+    ...renderProbeStep(input),
+    "",
+    ...renderRoleBlock(getRole(loadRoleRegistry(), "lead")),
+    ...renderNativeRoleDispatch(input),
     "",
     "Next action:",
     action.nextAction ?? "(none declared)",
@@ -288,6 +323,21 @@ function pinnedConstitution(input: ActionBriefInput): ConstitutionReference | nu
   return current.reference;
 }
 
+/** Discover and prepare native role assignments using existing commands and harness tools. */
+function renderNativeRoleDispatch(input: ActionBriefInput): string[] {
+  const ref = `${input.planSlug}#${input.actionId}`;
+  return ["", "Canonical role discovery and native dispatch:",
+    "Read docs/agent-guidance/session-roles-and-briefs.md and .agents/skills/arcadia-role/SKILL.md before dispatch. Adopting Projects use installed arcadia and their installed arcadia-role skill; if the skill is unavailable, preserve the assignment and request installation before dispatch. Use arcadia roles --json and arcadia roles show <role> to discover registered roles and defaults.",
+    "Only a top-level Lead (depth 0) may dispatch planner, plan-critic, implementer or researcher at depth 1, when the operator or existing launch instruction explicitly authorizes native delegation. Role eligibility alone grants nothing.",
+    "Prepare the target's assignment with the existing read-only command (replace researcher and light with the chosen registered role and authorized tier):",
+    `  arcadia role brief --role researcher --agent ${input.agent} --tier light --requested-by lead --depth 0 --action ${shellSingleQuote(ref)} --repo ${shellSingleQuote(input.repoRoot)}`,
+    "Pass the complete resulting brief to the native tool, together with Task, candidate/revision, acceptance, files, sole writer, raw checks, budget/deadline and hand-back Artifact path. Require the child to read .agents/skills/arcadia-role/SKILL.md, declare its role and depth 1, and return help requests to the Lead without spawning children.",
+    input.agent === "codex" ? "Native tool: spawn_agent. Use a self-contained prompt and the authorized model/effort; do not run nested codex exec." : input.agent === "claude" ? "Native tool: Agent. Use a self-contained prompt and the authorized model/effort." : "No native dispatch path is verified for OpenCode here. Preserve the prepared brief and request an authorized relaunch; do not invent a runner.",
+    "An implementer becomes the sole candidate writer; the Lead pauses its edits until hand-back. Other delegate roles are read-only. Specialization labels change no authority.",
+    "Code-reviewer and qa require separate independent Sessions under the PR/QA procedure; --requested-by refuses them as native delegates. A plan-critic may be a sibling delegate independent of the planner whose output it critiques.",
+    "The command validates supplied role/depth eligibility only; it cannot prove live lineage or host authorization. Governed capacity admission remains unavailable; no native tool call claims or enrolls an Arcadia Session. Record actual tool launch and hand-back evidence separately."];
+}
+
 /**
  * "Calling in help": a Session starts on the registry's start-tier model (the
  * smallest by default) and names the plan's tier as the escalation target. What a Session can safely do
@@ -307,7 +357,8 @@ export function renderCallingInHelp(input: {
     `Calling in help — you started on ${input.model}, a smaller model than the one the plan is sized for.`,
     `Started on: ${input.model}. Escalation target: ${target}.`,
     "Do the routine work yourself. Escalate only a sub-problem you cannot settle (a design choice, a stubborn bug,",
-    "a review of your own work), and give the helper a self-contained prompt; never hand over the whole Action."
+    "a bounded research question), and give the helper a self-contained role brief; never hand over the whole Action.",
+    "Follow the canonical native role dispatch recipe above. Code review and QA require separate independent Sessions, never children."
   ];
   if (input.agent === "claude") {
     // The Agent tool takes the sonnet/opus/haiku aliases; a concrete Claude ID maps to its family.

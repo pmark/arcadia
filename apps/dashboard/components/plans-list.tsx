@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { PlanRow } from "../lib/plans-types";
 
 /**
@@ -28,11 +29,25 @@ function statusLabel(plan: PlanRow): string {
   return plan.governed ? plan.status : `${plan.status} · ungoverned`;
 }
 
-export function PlanListRow({ plan, detailed }: { plan: PlanRow; detailed: boolean }) {
+/** Finished or replaced Plans fold away on /plans so it shows what is still in play. */
+export function isFinishedPlan(plan: PlanRow): boolean {
+  return plan.status === "complete" || plan.status === "superseded";
+}
+
+/** The linkable page for one Plan: `/plans/<project>/<plan>`. */
+export function planHref(projectSlug: string, planSlug: string): string {
+  return `/plans/${encodeURIComponent(projectSlug)}/${encodeURIComponent(planSlug)}`;
+}
+
+export function PlanListRow({ plan, detailed, href }: { plan: PlanRow; detailed: boolean; href?: string }) {
   return (
     <div className="min-w-0 rounded-md border border-line bg-panel p-3 text-sm shadow-soft">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-semibold text-ink">{plan.slug}</span>
+        {href ? (
+          <Link href={href} className="min-w-0 truncate font-semibold text-steel underline-offset-2 hover:underline">{plan.slug}</Link>
+        ) : (
+          <span className="min-w-0 truncate font-semibold text-ink">{plan.slug}</span>
+        )}
         <span className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-xs font-semibold ${statusStyle(plan)}`}>
           {statusLabel(plan)}
         </span>

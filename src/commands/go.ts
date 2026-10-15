@@ -18,7 +18,8 @@ import { operatorGateBlockers, renderOperatorAlerts } from "../docs/operatorGate
 import { resolveOperatorGate } from "../ask/operatorGate.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
-import { activateNextPlan, type ActivateNextPlanResult } from "../dispatch/planActivationApply.js";
+import { activateNextPlan, scopeHoldOnActivation, type ActivateNextPlanResult, type ScopeActivationHold } from "../dispatch/planActivationApply.js";
+import { SCOPE_HELD_CODE } from "../production/policy.js";
 import {
   SAFE_TASK_BRANCH,
   SAFE_TASK_BRANCH_PREFIXES,
@@ -81,6 +82,7 @@ import { readPreservationReadiness, type PreservationReadiness } from "../sessio
 import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { readProjectPartners } from "../sessions/partners.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
+import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 
 /**
@@ -133,6 +135,8 @@ export interface GoCommandOptions {
   now?: Date;
   /** Test-only process boundary. */
   tmux?: TmuxAdapter;
+  /** Session capability preflight override; defaults to the real probe (skipped under Vitest). */
+  workerCapability?: (workspace: string, profileSandbox: string | null) => EnvironmentWall[];
   /** Deterministic fault injection after Git creation but before reservation commit. */
   testHooks?: {
     afterWorktreeCreatedBeforeReservationCommit?: () => void;
@@ -217,6 +221,8 @@ export interface GoCommandData {
   dispatchable: boolean;
   /** The cross-Plan activation this invocation performed (or would perform), if any. */
   activation: ActivateNextPlanResult | null;
+  /** Set on a preview when an Active production scope holds the Plan change; apply refuses instead. */
+  activationHold: ScopeActivationHold | null;
   transition: ProjectTransition;
   session: AgentSession | null;
   handoff: {
@@ -337,6 +343,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     });
   }
   let activationResult: ActivateNextPlanResult | null = null;
+  let activationHold: ScopeActivationHold | null = null;
   let workspaceForActivation: string | null = null;
   // Decision 0048: when the active Plan is absent or complete, the explicit
   // queue may determine exactly one approved Plan and Action that can continue.
@@ -377,7 +384,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       });
     }
     needsActivation = options.apply === true && options.agent !== undefined;
-    if (!needsActivation && workspaceForActivation) {
+    // Scope-drift guard (A6): decided here, before any fast-forward, worktree removal or branch
+    // deletion below, so a refused activation integrates and retires nothing.
+    if (workspaceForActivation) {
+      activationHold = withReadOnlyDatabase(workspaceForActivation, (db) => scopeHoldOnActivation(db, projectRoot, projectSlug, resolution.candidate?.planSlug ?? null));
+      if (activationHold && needsActivation) {
+        throw validationError(activationHold.message, { code: SCOPE_HELD_CODE, activePlan: activationHold.activePlan, remedy: activationHold.remedy });
+      }
+    }
+    if (!needsActivation && workspaceForActivation && !activationHold) {
       // A preview reports the same non-mutating activation the apply would do.
       activationResult = withDatabase(workspaceForActivation, (db) =>
         activateNextPlan(db, { repoRoot: projectRoot, projectSlug, requestId: `go-preview-${projectSlug}`, apply: false }));
@@ -658,6 +673,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       const provider = providerForSessionAgent(options.agent);
       checkLaunchPrerequisites({ provider, headless, env: options.preflightEnv });
       if (headless) refuseUnlessSignedIn(provider, checkProviderSignIn(provider, workspacePath, options.preflightEnv));
+      // The same Session capability preflight the guarded launch runs: a wall
+      // (workspace write, host validation, preservation) refuses here, before
+      // any worktree, claim or process, so no tokens are spent against it.
+      assertWorkerCapability({
+        workspace: workspacePath,
+        actionLabel: dispatch.context?.action?.id ? String(dispatch.context.action.id) : "the next Action",
+        profileSandbox: null,
+        override: options.workerCapability
+      });
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
         repoRoot: dispatchRoot,
         projectSlug,
@@ -1058,6 +1082,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       // transition that refuses to launch anything.
       dispatchable: transition.kind === "launch",
       activation: activationResult,
+      activationHold,
       transition,
       session,
       handoff: {

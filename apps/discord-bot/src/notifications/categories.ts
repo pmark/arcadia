@@ -51,7 +51,7 @@ export function categorizeNotification(key: string, context: CategorizationConte
   return null;
 }
 
-function categorizeAgentAsk(notification: AgentAskNotificationItem): NotificationCategory | null {
+export function categorizeAgentAsk(notification: AgentAskNotificationItem): NotificationCategory | null {
   const requestId = notification.requestId ?? "";
   // A production red alert wins over everything else.
   if (notification.desiredResult?.startsWith("RED ALERT")) return "alerts";

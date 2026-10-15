@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-10
+updated: 2026-10-15
 ---
 
 # Mission Log: Arcadia
@@ -2223,6 +2223,293 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 
 - **Did:** Activated governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a at define-governed-role-registry.
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator explicitly requested activation. Preserve the unfinished work in the existing active Plan and use the exact activation preview before applying.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1212
+
+- **Did:** PR #1212 ports the done-Action settlement fix onto current main: a completed Action now reads "Completed via Agent Ask <id>" instead of stale guidance, and the runbook handoff is brought up to date. Independent review and CI are running. https://github.com/pmark/arcadia/pull/1212
+- **Result:** Operator-directed rehearsal release-manager request, recommendation 1. Supersedes dirty PR #1033; no governed Action is completed and the pointer and queue are untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1226
+
+- **Did:** PR #1226 turns the reviewer smoke into a maintained script: it builds the Action 1 shape from the fixture, writes the real settlement, asserts the done record and refuses any paid run without your yes. Dry run is green; review and CI are running. https://github.com/pmark/arcadia/pull/1226
+- **Result:** Operator-directed rehearsal release-manager request, runbook recommendation 2 (Issue #1225). No governed Action is completed; pointer and queue untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1229
+
+- **Did:** PR #1229 drafts your bug Plan: seven verified, small loop-integrity bugs in dependency order (inactive, nothing activated), plus an honest production-readiness answer with the gates left before a first run on Arcadia itself. Review is running. https://github.com/pmark/arcadia/pull/1229
+- **Result:** Operator request 2026-10-10 to run production on a Plan of the most important bugs once satisfied it can start. The Plan is an inactive draft; pointer, queue and authority untouched.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1237
+
+- **Did:** PR 1237 is open: three new UX Actions give the Dashboard Ask screen a one-tap intent-correction menu, an evidence panel and a relationship map - https://github.com/pmark/arcadia/pull/1237
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1244
+
+- **Did:** PR #1244 stops an expired Claude login from pausing the Project: the exit now shows a sign-in blocker with the remedy and holds relaunches for 15 minutes instead of spending the failed-Run budget. Reviewed and green-checked; it waits for your merge because it touches production budget code. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Operator request 2026-10-11: fix the small half of #1155. Refs #1155; the preflight probe stays open. Known limit filed as #1243.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1244-budget-code-2026-10-11
+
+- **Did:** Your call: PR #1244 (an expired login no longer pauses the Project; it holds relaunches 15 minutes) is reviewed and all 7 checks are green, but it changes production budget code, so it waits for your merge. The merge button is near the bottom of the Conversation tab. https://github.com/pmark/arcadia/pull/1244
+- **Result:** Production budget accounting and launch spacing are excluded from merge on green; independent review passed and CI is green on 126c295a8.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1245
+
+- **Did:** PR #1245 keeps a stray hand-written Ask file from riding into a draft PR: preservation now refuses it and names the file. Two review rounds done, fast-rehearsal green; it waits for your merge because it touches preservation and launch-publish code. https://github.com/pmark/arcadia/pull/1245
+- **Result:** Operator request 2026-10-11: fix #1177. Closes #1177.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1235-v3
+
+- **Did:** Notes-only PR 1235 is open: it adds the arcadia tidy remedy for a go handoff that launches no session to the brief-deadline notes entry. https://github.com/pmark/arcadia/pull/1235
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1240
+
+- **Did:** PR 1240 is open: Decision 0121 asks whether sessions get a friction-watching supervisor, an arcadia bug utility and an insight harvest - https://github.com/pmark/arcadia/pull/1240
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-opened-arcadia-pr1250
+
+- **Did:** PR #1250 stops an expired login from stranding an Action: a sign-in death now leaves its development attempt live, so signing in again resumes it instead of needing a governed amendment after about 33 minutes. Reviewed (pass); fast-rehearsal is running; it waits for your merge because it changes repair-budget accounting. https://github.com/pmark/arcadia/pull/1250
+- **Result:** Operator request 2026-10-11: prep #1243. Closes #1243; the attention-queue escalation for a login dead for hours is filed as #1249.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-issue-triage-plan-2026-10-11
+
+- **Did:** Activated every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route at snapshot-open-issues-and-build-packets.
+- **Result:** Operator-settled Plan transition. Previous Plan governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a remains draft with completion state preserved. Operator directed activation after PR 1246 merged; first Action is a light-tier snapshot.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-plans-project-route-2026-10-11
+
+- **Did:** Activated add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans at add-plans-project-route.
+- **Result:** Operator-settled Plan transition. Previous Plan every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route remains draft with completion state preserved. Operator asked for /plans/PROJECT to be a prioritized governed Action that runs soon (capture_6123f2ba). Activation replaces the active Plan; the issue-triage Plan stays draft with completion state preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask pr-ready-arcadia-pr1259-decision-answer-2026-10-11
+
+- **Did:** Your call: Decision 0122 (the spend bound for the first production run on Arcadia) is drafted in PR #1259 with four options and consequences; I recommend Codex only, gate on, attended first run. It was fact-checked and corrected. Merge the PR so it lands, then answer 0122 on the dashboard. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Spend is an approval boundary, so the PR carries a Decision and waits for the operator. Fact-check: 9 of 10 claims true, one blocking inaccuracy fixed before merge.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask correct-spend-bound-decision-number-2026-10-11
+
+- **Did:** Correction: the spend bound Decision is 0123, not 0122. Main already had a different 0122 (production admission follows an operator-owned Project, answered in #1260), so PR #1259 renumbers mine to 0123; it is still open and unanswered. An earlier notice named it 0122. https://github.com/pmark/arcadia/pull/1259
+- **Result:** Parallel Decision-number allocation race (#1187). The Decision was unanswered and unmerged, so it was renumbered in place; CodeRabbit wording on provider substitution was also verified and fixed.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-seven-bug-plan-2026-10-11
+
+- **Did:** Activated seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and at keep-claim-when-passed-attempt-receipt-is-unparseable.
+- **Result:** Operator-settled Plan transition. Previous Plan add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans remains draft with completion state preserved. Operator instruction in chat, 2026-10-11: 'activate the bug plan', given together with the answer to Decision 0123 (Codex only, gate on, attended first run). No Action content changes; this Ask carries the settle-time --activate. Consequence accepted by the operator: the currently active Plan add-plans-project-route returns to draft with Action completion state unchanged.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-11 — Agent Ask activate-completed-governance-overlap-recovery-2026-10-11
+
+- **Did:** Activated recover-completed-governance-overlap-in-protected-go at reconcile-completed-governance-overlap.
+- **Result:** Operator-settled Plan transition. Previous Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and remains draft with completion state preserved. The operator explicitly instructed in this chat: Authorize acceptance and activation of the repair Plan, resolve the guidance gate, and launch through the managed host route. Yes, publish the technical Issue to pmark/arcadia. Draft Plan creation was canonically accepted at 3b21b7469. Issue #1280 is now published. The canonical node --import tsx scripts/check-agent-guidance.ts passed with zero problems; the earlier full-file hash comparison was incorrect because guidanceFingerprint hashes trimmed procedure bodies or managed regions. No source/index edit is needed and no stale-guidance refusal is claimed. Select only reconcile-completed-governance-overlap with the configured heavy tier and high effort; preserve every unfinished Action of the previous bug Plan and other Projects relative queue order. This activation grants no new production policy, packet approval, install, restart, production access, base push or publication authority. Managed launch must validate its own scope, packet, capacity, ownership and session binding; existing active bug-run policy is not silently reused for this repair.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Agent Ask activate-production-hardening-batch-2026-10-12
+
+- **Did:** Activated production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the at stop-spending-into-an-environment-wall.
+- **Result:** Operator-settled Plan transition. Previous Plan recover-completed-governance-overlap-in-protected-go remains draft with completion state preserved. Operator answered activate the batch Plan in chat on 2026-10-12. Accepted consequence: the governance-overlap Plan returns to draft with its Action unharmed and is re-activated after the batch merges.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Completed arcadia/stop-spending-into-an-environment-wall
+
+- **Did:** Completed Action arcadia/stop-spending-into-an-environment-wall from accepted evidence (Candidate e56fa5e7ac1bdf30aba5bf120548e0a902be4c3d).
+- **Result:** Every declared acceptance criterion was accepted as met: "An attempt that exits incomplete_resumable with no diff and a recorded environment blocker is counted by the repair budget on the first occurrence, raises exactly one named blocker, and is not relaunched automatically."; "A replay of the 2026-10-12 00:40Z Session (no diff, workspace write denied, sandbox test refusals) yields one named blocker and no second launch."; "Tokens per attempt are recorded and visible on the Action."; "Focused tests for the preflight and the repair-budget path exist and the production tick tests and pnpm fast-rehearsal pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/refuse-a-session-before-launch-when-its-sandbox-cannot-write immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-stop-spending-finished-slice-2026-10-12-v2).
+
+## 2026-10-12 — Agent Ask activate-autonomous-production-hardening-2026-10-12
+
+- **Did:** Activated every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in at replay-environment-wall-session.
+- **Result:** Operator-settled Plan transition. Previous Plan production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the remains draft with completion state preserved. Operator asked in chat on 2026-10-12 to create and activate this Plan with minimal interaction. Accepted consequence: the production-hardening batch Plan returns to draft with its remainder Action and completion records preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-12 — Completed arcadia/declare-action-route-and-fix-the-approval-check
+
+- **Did:** Completed Action arcadia/declare-action-route-and-fix-the-approval-check from accepted evidence (Candidate c35c01f2c10d81878d6d7c0ef135d957be618fc2).
+- **Result:** Every declared acceptance criterion was accepted as met: "An Action with execution: build routes to a build packet regardless of its wording; an Action with execution: plan-run routes to a plan run; an Action with neither keeps today's behaviour and the preview says so."; "The production preview lists each Action's route and the operator touches it expects."; "The artifact sentence pair quoted in Issue #1277 (a statement that the run itself needs no approval followed by one that the later implementation needs a separate approved goal) passes the validator, and a sentence saying the implementation needs no approval still fails it."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-declare-action-route-and-fix-the-approval-check-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/refuse-plan-changes-inside-an-active-production-scope
+
+- **Did:** Completed Action arcadia/refuse-plan-changes-inside-an-active-production-scope from accepted evidence (Candidate dc0cb021b79ac8826b921e6f32df6e90b07fa03a).
+- **Result:** Every declared acceptance criterion was accepted as met: "Applying an activation or pause that changes the current Plan of a Project covered by an Active policy scope is refused before any document is written, naming STOP as the remedy."; "A pointer that leaves an Active policy's scope raises a red alert naming the mismatch, with a one-click remedy."; "With production Inactive the existing activation behaviour is unchanged."; "Focused tests exist and pnpm fast-rehearsal passes.".
+- **Next:** Next ready Action in this inactive Plan: name-every-production-stall-with-a-one-click-fix.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-plan-changes-inside-an-active-production-scope-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/replay-environment-wall-session
+
+- **Did:** Completed Action arcadia/replay-environment-wall-session from accepted evidence (Candidate 2c668b00c08eac8089802d1e65efd938ef17231c).
+- **Result:** Every declared acceptance criterion was accepted as met: "The scenario exists in the fast-rehearsal set, is deterministic and runs in under 30 seconds, and on a tree without the environment-wall stop it fails."; "scripts/fast-rehearsal.mjs prints the report path and exits non-zero when report.json is missing or unparsable."; "The scenario asserts exactly one named environment blocker, no second launch and a recorded per-attempt token record."; "Focused tests for the scenario builder pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-replay-environment-wall-session-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/record-session-ledger
+
+- **Did:** Completed Action arcadia/record-session-ledger from accepted evidence (Candidate 917b38e1f352c2186f0d6d5d3aadd40edb55fccd).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema requires session_id, role, model, effort, action_id, pr, tokens_in_uncached, tokens_in_cached, tokens_out, wall_min, attempts, review_rounds, blocking_findings, operator_touches, host_touches, frictions and outcome with a stop_reason."; "The validator rejects a row with a missing or mistyped field and the CI job runs it on every pull request that touches the ledger."; "The ledger has four backfilled rows for A12, A3, A5 and A6 taken from the living notes, and the living notes link to the ledger."; "Focused validator tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-record-session-ledger-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/enforce-session-token-ceiling
+
+- **Did:** Completed Action arcadia/enforce-session-token-ceiling from accepted evidence (Candidate df6799f372bf93250398397dfa463a08d1cfd152).
+- **Result:** Every declared acceptance criterion was accepted as met: "The replay scenario stops at the ceiling and the stop receipt names budget_exhausted with the ceiling value and both token counts."; "An attempt that hits the ceiling is not relaunched automatically and raises exactly one named blocker."; "The ceiling has a per-tier default and cannot be disabled or raised from a prompt, brief or Action text."; "Focused tests for the ceiling and the production tick pass and pnpm fast-rehearsal passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-session-token-ceiling-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/revise-agent-roles-and-session-briefs
+
+- **Did:** Completed Action arcadia/revise-agent-roles-and-session-briefs from accepted evidence (Candidate c84eed3b4c8b5b2b6a7c59aee3510b6fcda34c11).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/agent-guidance records Lead as one Action per session, Driver on standard tier returning only diff, test command and exit code, Reviewer as one fresh role replacing Critic, a deterministic Replayer script role, and the live Observer deferred with its revisit trigger."; "A brief template names file:line ranges, focused test files, the adversarial strings for any guard or validator Action, and forbids repeating sandbox text in hand-backs."; "The model and effort per role are stated with the cost reasoning and the guidance index routes to the new section."; "The documentation budget check and docs link check pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-revise-agent-roles-and-session-briefs-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/probe-environment-inside-session
+
+- **Did:** Completed Action arcadia/probe-environment-inside-session from accepted evidence (Candidate 2c84a20d7d09356ed7220f497623d1c335298af3).
+- **Result:** Every declared acceptance criterion was accepted as met: "The host-worker side probe is no longer counted as evidence of Session capability."; "A passing probe adds a bounded, recorded token cost and a failing probe raises exactly one environment_wall blocker with its remedy."; "Focused tests and pnpm fast-rehearsal pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/attach-the-session-probe-result-to-the-reconcile-receipt immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-probe-environment-inside-session-2026-10-12).
+
+## 2026-10-12 — Completed arcadia/fix-docs-sync-lock-and-activation-order
+
+- **Did:** Completed Action arcadia/fix-docs-sync-lock-and-activation-order from accepted evidence (Candidate f14fc522b3302b87068a06fcdf0e2547a2177dda).
+- **Result:** Every declared acceptance criterion was accepted as met: "Other Projects relative queue order is unchanged by an activation."; "Focused settlement and queue tests pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/stage-pointer-with-queue-reorder-and-reproduce-live-lock immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-fix-docs-sync-lock-and-activation-order-2026-10-12).
+
+## 2026-10-12 — Agent Ask activate-decision-cards-plan-2026-10-12
+
+- **Did:** Activated every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a at decision-card-contract.
+- **Result:** Operator-settled Plan transition. Previous Plan every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in remains draft with completion state preserved. Operator answered in chat on 2026-10-12 to run the decision-cards Plan after the hardening Plan, and confirmed the program order. Accepted consequence: the autonomous-production hardening Plan returns to draft with its completion state preserved; its open Actions (one-click clears awaiting PR 1309, the probe-receipt remainder, the pointer/lock remainder) carry forward as drafts.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-13 — Completed arcadia/decision-card-contract
+
+- **Did:** Completed Action arcadia/decision-card-contract from accepted evidence (Candidate 17f05f789b416bc091d47d14d433dc511cc58d52).
+- **Result:** Every declared acceptance criterion was accepted as met: "The validator rejects a card with a missing consequence, missing pins or an unknown verb, and rejects a stale pin (state hash, head sha or preview fingerprint) at use time."; "Fixtures exist for the merge, run and answer verbs and each validates."; "A card carries a policy_match field that is null or a policy id and an expiry that the validator enforces."; "Focused tests pass and the dashboard import graph has no containerAuditTransport or commander edge.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-decision-card-contract-2026-10-12).
+
+## 2026-10-13 — Completed arcadia/batch-merge-decision-card
+
+- **Did:** Completed Action arcadia/batch-merge-decision-card from accepted evidence (Candidate a6d11b59f367da8b6f32dd5c9f997b67072a589b).
+- **Result:** Every declared acceptance criterion was accepted as met: "Each listed pull request shows the authority boundary its diff touches from a path-based classifier, the independent review verdict, the required checks and a one-sentence consequence, and the card orders stacked pull requests base first.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/wire-the-batch-merge-card-route, arcadia/publish-the-batch-merge-descriptor-and immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-batch-merge-decision-card-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/cards-from-existing-sources
+
+- **Did:** Completed Action arcadia/cards-from-existing-sources from accepted evidence (Candidate 0422ed36f9e52565c10c8328e61f9acc197fc81c).
+- **Result:** Every declared acceptance criterion was accepted as met: "Each of the three sources yields a valid decision card and the generator never mutates a Decision, script or PR."; "A pull request card names which authority boundary the diff touches using a path-based classifier with a documented list."; "The pinned fingerprint on a card changes when its source state changes."; "Focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-cards-from-existing-sources-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/todo-actions-render-cards
+
+- **Did:** Completed Action arcadia/todo-actions-render-cards from accepted evidence (Candidate e871367ba2b518cc06e4e732c876a8d61e52d859).
+- **Result:** Every declared acceptance criterion was accepted as met: "A card shows its consequence and evidence links on /todo or /actions and one verb button."; "The button request carries only the card id and pinned fingerprint and a stale card shows a refusal with the reason."; "An end-to-end dashboard test covers a run card and an answer card and the dashboard build passes."; "Existing /todo and /actions behaviour is unchanged for items with no card.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-todo-actions-render-cards-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/todo-next-steps-route-to-forward
+
+- **Did:** Completed Action arcadia/todo-next-steps-route-to-forward from accepted evidence (Candidate 94c21b15fec917bfbd43919c9e21ce15e98ed8f8).
+- **Result:** Every declared acceptance criterion was accepted as met: "/todo lists every open pull request awaiting the operator as one step, ordered so a pull request's stack parents come first and a pull request that advances the active-Plan pointer or unblocks a queued Action comes before an unrelated one."; "Each step names its one click, the pinned head sha and what it unblocks; a step the operator cannot take yet shows the step it waits on instead of a button."; "The top of /todo shows exactly one step to do now, and when nothing needs the operator it says production is moving and lists nothing else."; "Focused tests with fixtures cover stacked pull request order, a pointer-advancing pull request ahead of an unrelated one, a stale head, a waiting step and the empty state, and the dashboard build passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-todo-next-steps-route-to-forward-2026-10-13).
+
+## 2026-10-13 — Completed arcadia/package-protected-broker-role-registry
+
+- **Did:** Completed Action arcadia/package-protected-broker-role-registry from accepted evidence (Candidate 51cf5e48e7022c324ab61a10c0babb5e23ef120f).
+- **Result:** Every declared acceptance criterion was accepted as met: "The staged broker release includes the canonical role-registry JSON at dist/config/defaults/agent-roles.json, bound to the compiled import and identical canonical bytes; release validation refuses a missing or malformed required registry before ready publication rather than inventing default authority."; "A deterministic disposable-release regression loads the actual broker entrypoint or literal fixed launcher after source-tree access is removed or hidden, proves structured success with the correctly staged asset, and reproduces the missing-asset refusal. It performs no real installation, service restart, policy change or live workspace mutation."; "Focused release-staging/broker tests, internal review, independent exact-head review and all required CI checks pass. The PR preserves existing role/authority semantics and names separate installed verification, stale custody, packet-model and historical repair-budget gates; it claims no #1280 completion or successful PPN dispatch.".
+- **Next:** Next ready Action in this inactive Plan: reconcile-completed-governance-overlap.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-native-package-protected-broker-role-registry-20261013).
+
+## 2026-10-13 — Completed arcadia/ledger-rows-without-merge-conflicts
+
+- **Did:** Completed Action arcadia/ledger-rows-without-merge-conflicts from accepted evidence (Candidate cca096ee09dad810f9f547753482d44a6de8e323).
+- **Result:** Every declared acceptance criterion was accepted as met: "A reader returns the legacy session-ledger.jsonl rows first and then the files under docs/reports/session-ledger/ sorted by name, and the validator, check script and qa command use it, with session_id uniqueness enforced across both sources and errors that name the file."; "Two branches from one base that each add a session row, a friction entry and a hand-off update merge in either order with no conflict, proven by a scripted git merge-tree test."; "The duplicated friction row numbers are renamed in the frozen table, new frictions and hand-offs are created as one file each with a slug or session id, and a CI check fails any diff that appends to a frozen file."; "The guidance that tells sessions where to record a ledger row, friction and hand-off names the new locations, qa returns the same linked rows for every existing session before and after, and focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-ledger-rows-without-merge-conflicts-2026-10-13).
+
+## 2026-10-14 — Completed arcadia/plan-close-out-record
+
+- **Did:** Completed Action arcadia/plan-close-out-record from accepted evidence (Candidate 5b30843dc38e4619a96d927bda19c6a69ab7e143).
+- **Result:** Every declared acceptance criterion was accepted as met: "The schema validates and the same inputs produce the same hash."; "The record lists Actions with outcome and PRs, open remainders, open blockers, ledger aggregates, frictions with test ids and a successor recommendation."; "A backfilled record exists for the autonomous-production hardening Plan and a validator rejects a malformed record in CI."; "Focused tests pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-plan-close-out-record-2026-10-13).
+
+## 2026-10-14 — Completed arcadia/next-plan-selector
+
+- **Did:** Completed Action arcadia/next-plan-selector from accepted evidence (Candidate 8bcae20b8fa1f497b0cb863e51292ea969d91e72).
+- **Result:** Every declared acceptance criterion was accepted as met: "The selector follows Decisions 0116 and 0122 and returns the chosen Plan with the reasons."; "It refuses a Plan authored in the same run and a Plan the operator has not approved."; "A preflight failure names the blocker and the one-click remedy; no state is mutated."; "Focused tests pass and the preview matches the card contract.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-next-plan-selector-2026-10-14).
+
+## 2026-10-14 — Agent Ask activate-autonomous-production-plan-20261014-01a13b99
+
+- **Did:** Activated arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider at launch-failure-keeps-cause.
+- **Result:** Operator-settled Plan transition. Previous Plan every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a remains draft with completion state preserved. Operator explicitly directed: Find that plan and activate it. All I want is progress towards that single objective.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-15 — Completed arcadia/launch-failure-keeps-cause
+
+- **Did:** Completed Action arcadia/launch-failure-keeps-cause from accepted evidence (Candidate c62d604d9c6eec678a33d5df20b61858c402ebc2).
+- **Result:** Every declared acceptance criterion was accepted as met: "When tmux or the provider launch fails, the red-alert evidence file and arcadia production status --json carry the underlying error text (stderr or exception message), bounded in length."; "A hermetic test makes the tmux launch fail with a known stderr and asserts that text appears in the red-alert evidence and in production status."; "Focused tests, lint, tsc and pnpm build pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-launch-failure-keeps-cause-20261014).
+
+## 2026-10-14 — Agent Ask record-hacker-existing-role-choice-20261014
+
+- **Did:** Record the operator-approved choice to retain seven registered roles and use Hacker recovery as a bounded mode of existing Lead and implementer, preserving mandatory recovery triggers and existing authority.
+- **Result:** Direct operator judgment in Codex thread01a13c30-6123-7aa1-8d85-8c55fd16befe,2026-10-14: after Astra recommended option2, the operator answered Yes,1 to Record option2 through governance. Exact selected option: Keep Hacker mode as a specialization of Lead and implementer. This preserves approved Decision0100; no eighth role, new executor, admission or permission is justified. Existing Lead diagnoses and one authorized implementer repairs; Supervisor remains an assigned relationship and duty. Diagnose the first persistent refusal; two unchanged refusals without evidence gain or an explicit stop-the-line request require bounded recovery before another retry. Preserve existing ten-minute/three-route ceilings within remaining allowance, custody, sole writer, independent review and all approval boundaries. Proposal agentask_e56fa527ae72bb51b0 is retired because its question is now answered by the human, not because option2 was rejected. Proposed Decision0130 was only a non-applying preview and is not a canonical answered Decision. No PPN pointer/Action completion, production activation, installed-skill adoption or automatic invocation is asserted. Umbrella terminology (Behavior,Mode,Acts as) remains a separate naming question.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-15 — Agent Ask record-canonical-behavior-term-20261014
+
+- **Did:** Record the operator-approved canonical term Behavior for named procedural contracts followed by existing agent roles.
+- **Result:** Direct operator judgment on2026-10-14 in Codex thread01a13c30-6123-7aa1-8d85-8c55fd16befe: 1 behavior should be canonical. The selected option was Behavior as the canonical supporting term; preserve mode for an active operating state and acts as for descriptive composition. A Role determines governed responsibility, lineage and eligibility. A Behavior specifies a reusable procedure, including its trigger or assignment, duties, scope, required evidence and bounded stop condition, within existing authority. Supervision is a Behavior whose Supervisor remains an assigned relationship and duty; Hacker recovery is a Behavior performed in recovery mode by existing eligible roles. No additional role, behavior runtime registry, identity, permission, delegation eligibility, admission, model default or allowance is created. Compatible Behaviors may apply together; all existing authority, custody and one-writer constraints remain. Retire naming proposal agentask_af04b72a0100dc530c as answered by the human, not as rejection of Behavior. Update canonical semantics and directly relevant source guidance; installed adoption and automatic invocation remain separate and unproved. No Project pointer, queue, PPN Action completion, production or service change.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 

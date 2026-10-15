@@ -1205,6 +1205,10 @@ function requestedArtifactForWork(input: {
   target: string | null;
   project: string;
 }): string {
+  const exactFile = explicitSingleFileRequest(input.requestedAction);
+  if (exactFile) {
+    return exactFile;
+  }
   const lead = input.platform ?? input.channel ?? null;
   const detail = input.feature ?? input.target ?? cleanActionForArtifact(input.action);
   const subject = lead && detail && !normalizeText(detail).includes(normalizeText(lead))
@@ -1215,6 +1219,12 @@ function requestedArtifactForWork(input: {
     ? "implementation plan, safe repository changes, and docs/tests if applicable"
     : "implementation with tests";
   return `${artifactSubject} for ${input.project} ${suffix}.`;
+}
+
+/** Narrow only a plainly named, single basename; paths and extra request text keep normal review scope. */
+export function explicitSingleFileRequest(requestedAction: string): string | null {
+  const match = /^(?:create|write|add|generate|implement)\s+([A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9]{1,12})(?:,\s*containing exactly the bytes\s+["'][^"']+["'])?(?:\s+change no other project files\.?)?$/i.exec(requestedAction.trim());
+  return match?.[1] ?? null;
 }
 
 function proposedActionSubject(fields: Record<string, string>, fallback: string): string {

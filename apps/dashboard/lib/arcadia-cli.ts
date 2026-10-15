@@ -1,3 +1,4 @@
+import type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -25,7 +26,7 @@ import type {
 } from "./types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
-import type { ProjectPlansResponse } from "./plans-types";
+import type { PlanProgressData, ProjectPlansResponse } from "./plans-types";
 import type {
   WorkQueue,
   WorkQueueMakeNextResponse,
@@ -49,25 +50,26 @@ export interface MissionControlReplyResponse {
   applied: boolean;
 }
 
-export interface AskTrailResponse {
-  capture: { id: string; requestId: string; originalText: string; ingressSource: string; capturedAt: string } | null;
-  asks: Array<{
-    id: string;
-    resolvedIntent: string;
-    outputKind: string;
-    status: string;
-    createdAt: string;
-    executionPath: string | null;
-    reason: string | null;
-    projectName: string | null;
-    outcomes: Array<{ kind: string; id: string; status: string | null; summary: string | null; projectName: string | null }>;
-  }>;
-}
+// Keep the dashboard contract aligned with the read-only CLI projection.
+export type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
 
 const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
   return runArcadiaCliJson<DashboardSnapshotResponse>(["dashboard", "snapshot"]);
+}
+
+export async function loadRecurringSchedules() {
+  return runArcadiaCliJson<import("./clock-types").ClockStatus>(["schedule", "recurring"]);
+}
+export async function changeRecurringSchedule(input: { action: "enable" | "pause" | "edit"; id: string; expected: string; timing?: import("./clock-types").ClockTiming }) {
+  if (input.action !== "edit") return runArcadiaCliJson(["schedule", input.action, input.id, "--expected", input.expected]);
+  const directory = await mkdtemp(path.join(tmpdir(), "arcadia-clock-"));
+  try {
+    const file = path.join(directory, "timing.json");
+    await writeFile(file, JSON.stringify({ ...input.timing, expected: input.expected }));
+    return await runArcadiaCliJson(["schedule", "edit", input.id, "--file", file]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
 export async function loadWorkQueue(): Promise<ArcadiaJsonSuccess<WorkQueue>> {
@@ -353,6 +355,8 @@ export interface OpenDecisionOption {
   label: string;
   consequence: string;
   recommended: boolean;
+  /** The machine effect the writer applies when this option is chosen (e.g. "defer"); null or absent when none. Unknown values are kept as-is. */
+  effect?: string | null;
 }
 
 export interface OpenDecisionItem {
@@ -365,6 +369,9 @@ export interface OpenDecisionItem {
   gateQuestion: string | null;
   recommendation: string | null;
   options: OpenDecisionOption[];
+  /** The Action a `defer` option parks, and the project field the deferral uses; both pinned by the options digest. */
+  action?: string | null;
+  project?: string | null;
   relativePath: string;
   updated: string;
 }
@@ -403,8 +410,10 @@ export interface OperatorTodoData {
 
 /** The one operator to-do list, every live and stale item. Read-only; nothing here settles anything. */
 export async function loadOperatorTodo(): Promise<ArcadiaJsonSuccess<OperatorTodoData>> {
-  // Short timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
-  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 15_000 });
+  // Bounded timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
+  // About 3 s of work plus tsx start-up; 15 s was exceeded under the page's parallel CLI load (2026-10-11), which
+  // silently dropped the list to the fallback (no staleness, no review items).
+  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 30_000 });
 }
 
 export interface DecisionApproveResponse {
@@ -412,16 +421,47 @@ export interface DecisionApproveResponse {
   applied: boolean;
 }
 
+export interface BlockerClearResponse {
+  actionKey: string;
+  attemptsCleared: number;
+  lastError: string | null;
+  reviewStepsCleared: number;
+  pinnedKind?: string | null;
+  alreadyClear?: boolean;
+}
+
+/**
+ * Clear one platform-raised blocker: `production reset-repair-budget <actionKey> --expect-kind <kind>`. The pin makes the
+ * CLI refuse (409) when the Action is held by a different blocker and no-op when this one is already gone.
+ */
+export async function clearPinnedBlocker(input: { actionKey: string; kind: string }): Promise<ArcadiaJsonSuccess<BlockerClearResponse>> {
+  return runArcadiaCliJson<BlockerClearResponse>(
+    ["production", "reset-repair-budget", input.actionKey, "--expect-kind", input.kind],
+    { timeoutMs: 60_000 }
+  );
+}
+
 /** Answer a Decision with one of its offered option labels, using the canonical writer `decision approve` shares with the CLI. */
 export async function approveDecision(input: {
   projectSlug: string;
   decisionId: string;
   answer: string;
+  /** Writer preconditions: refused with nothing written unless the Decision still has this status / updated value. */
+  expectStatus?: string;
+  expectUpdated?: string;
+  /** sha256 of the question and options as shown (src/decisions/optionsDigest.ts); the writer refuses on mismatch. */
+  expectOptions?: string;
+  /** The writer refuses (defer_would_move_pointer) when applying the answer would move the active pointer. */
+  expectNoPointerMove?: boolean;
 }): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
   return runArcadiaCliJson<DecisionApproveResponse>([
     "decision", "approve", input.decisionId,
     "--project", input.projectSlug,
-    "--answer", input.answer
+    "--answer", input.answer,
+    ...(input.expectStatus !== undefined ? ["--expect-status", input.expectStatus] : []),
+    ...(input.expectUpdated !== undefined ? ["--expect-updated", input.expectUpdated] : []),
+    ...(input.expectOptions !== undefined ? ["--expect-options", input.expectOptions] : []),
+    ...(input.expectNoPointerMove === true ? ["--expect-no-pointer-move"] : [])
   ], { timeoutMs: 60_000 });
 }
 
@@ -429,8 +469,24 @@ export interface OutstandingPullRequestsResponse {
   snapshot: DashboardOutstandingPullRequests;
 }
 
-export async function loadOutstandingPullRequests(): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
-  return runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs"]);
+type ConfiguredPullRequestRepository = { repository: string; repositoryPath: string };
+let pullRequestRepositories: { expiresAt: number; entries: ConfiguredPullRequestRepository[] } | null = null;
+const outstandingPullRequestsInFlight = new Map<string, Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>>>();
+
+export async function loadOutstandingPullRequests(options: { workspace?: string; scopeIdentity?: string } = {}): Promise<ArcadiaJsonSuccess<OutstandingPullRequestsResponse>> {
+  // A changed checkout/config/database identity must never join the prior scan.
+  const key = JSON.stringify([options.workspace ?? null, options.scopeIdentity ?? null]);
+  const pending = outstandingPullRequestsInFlight.get(key);
+  if (pending) return pending;
+  const request = runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--lightweight", ...(options.workspace ? ["--workspace", options.workspace] : [])]).then(response => {
+    if (!options.workspace) pullRequestRepositories = {
+      expiresAt: Date.now() + 5 * 60_000,
+      entries: (response.data.snapshot.repositories ?? response.data.snapshot.pullRequests).map(entry => ({ repository: entry.repository, repositoryPath: entry.repositoryPath })),
+    };
+    return response;
+  }).finally(() => { outstandingPullRequestsInFlight.delete(key); });
+  outstandingPullRequestsInFlight.set(key, request);
+  return request;
 }
 
 export interface ProjectContinuationResponse {
@@ -542,6 +598,18 @@ export async function loadProjectPlans(
     args.push("--project", projectSlug);
   }
   return runArcadiaCliJson<ProjectPlansResponse>(args);
+}
+
+/**
+ * One Plan's progress with every Action: `arcadia plans --plan <slug> --all`.
+ * Reads the Plan document only, like `loadProjectPlans`.
+ */
+export async function loadPlanProgress(
+  repoPath: string,
+  projectSlug: string,
+  planSlug: string
+): Promise<ArcadiaJsonSuccess<PlanProgressData>> {
+  return runArcadiaCliJson<PlanProgressData>(["plans", "--repo", repoPath, "--project", projectSlug, "--plan", planSlug, "--all"]);
 }
 
 export interface ProjectSetupContextResponse {
@@ -1521,7 +1589,7 @@ async function runArcadiaCliJson<TData>(
   }
 }
 
-function findRepoRoot(start: string): string {
+export function findRepoRoot(start: string): string {
   let current = path.resolve(start);
 
   while (true) {
@@ -1606,4 +1674,52 @@ function statusForArcadiaError(code: string, details: unknown): number {
   }
 
   return 500;
+}
+
+export async function loadPullRequestDescription(repository: string, number: number) {
+  const known = await configuredPullRequestRepository(repository);
+
+  const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "title,body,url,state"], {
+    cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,
+  });
+  const source = JSON.parse(result.stdout) as { title?: unknown; body?: unknown; url?: unknown; state?: unknown };
+  if (typeof source.body !== "string" || !source.body.trim()) throw new ArcadiaCliError("This PR has no body to read aloud.", 400);
+  return {
+    repository: known.repository, number,
+    title: typeof source.title === "string" ? source.title : `PR #${number}`,
+    body: source.body,
+    url: typeof source.url === "string" ? source.url : `https://github.com/${known.repository}/pull/${number}`,
+    state: typeof source.state === "string" ? source.state : "UNKNOWN",
+  };
+}
+
+let configuredRepositoriesInFlight: Promise<void> | null = null;
+async function configuredPullRequestRepository(repository: string): Promise<ConfiguredPullRequestRepository> {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new ArcadiaCliError("Invalid repository.", 400);
+  if (!pullRequestRepositories || pullRequestRepositories.expiresAt <= Date.now()) {
+    configuredRepositoriesInFlight ??= runArcadiaCliJson<OutstandingPullRequestsResponse>(["work", "prs", "--repositories-only"]).then(response => {
+      pullRequestRepositories = { expiresAt: Date.now() + 5 * 60_000, entries: response.data.snapshot.repositories ?? [] };
+    }).finally(() => { configuredRepositoriesInFlight = null; });
+    await configuredRepositoriesInFlight;
+  }
+  const known = pullRequestRepositories?.entries.find(entry => entry.repository.toLowerCase() === repository.toLowerCase());
+  if (!known) throw new ArcadiaCliError("This repository is not configured in Arcadia.", 404);
+  return known;
+}
+
+export async function loadPullRequestDetails(repository: string, number: number): Promise<import("./types").DashboardPullRequestDetails> {
+  const known = await configuredPullRequestRepository(repository);
+  const result = await execFileAsync("gh", ["pr", "view", String(number), "--repo", known.repository, "--json", "body,files,url,headRefName,baseRefName,reviewDecision,mergeStateStatus"], {
+    cwd: known.repositoryPath, encoding: "utf8", timeout: 30_000, maxBuffer: 8 * 1024 * 1024
+  });
+  const raw = JSON.parse(result.stdout) as Record<string, unknown>;
+  return {
+    body: typeof raw.body === "string" ? raw.body : "",
+    files: Array.isArray(raw.files) ? raw.files.flatMap(file => file && typeof file === "object" && "path" in file && typeof file.path === "string" ? [file.path] : []) : [],
+    url: typeof raw.url === "string" ? raw.url : `https://github.com/${known.repository}/pull/${number}`,
+    headBranch: typeof raw.headRefName === "string" ? raw.headRefName : "Unknown",
+    baseBranch: typeof raw.baseRefName === "string" ? raw.baseRefName : "Unknown",
+    reviewDecision: typeof raw.reviewDecision === "string" ? raw.reviewDecision : null,
+    mergeStateStatus: typeof raw.mergeStateStatus === "string" ? raw.mergeStateStatus : null
+  };
 }

@@ -1,6 +1,7 @@
 # How Arcadia updates are published and promoted
 
-Status: operator decisions recorded 2026-10-10 (see the last section). Nothing
+Status: operator decisions recorded 2026-10-10; automatic site/RSS publishing
+authority approved in Decision 0120, implementation pending. Nothing
 here posts anywhere. It governs the Mission Control site (ArcadiaMissionControl.com,
 own repo) and drafts kept in this repo. Standing rule: honesty outranks conversion.
 
@@ -19,16 +20,16 @@ own repo) and drafts kept in this repo. Standing rule: honesty outranks conversi
    Ship notes: weekly, only when there is shipped work, never padded; a quiet
    week means no post. Essays: only at a real milestone, at most monthly.
    Never publish to hit a schedule.
-4. **Publishing authority.** Until the governed Decision "agents publish Field
-   Notes to the operator's own site automatically, under the honesty gate" is
-   answered and implemented, every post needs the operator's per-post `/todo`
-   approval. After it, agents may publish Field Notes on the Mission Control
-   site only, on the cadence above. The agent fact-check gate stays mandatory
-   in both modes, and the Decision covers no other site or platform.
+4. **Publishing authority.** [Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
+   approves automatic Mission Control site/RSS publication under the honesty
+   gate, without per-post operator approval. The exception is not implemented
+   in the current blogging commands; they still create operator review items.
+   Do not bypass those gates by editing status. The [production instruction](field-notes-production.md)
+   defines the content package and the remaining publication capability.
 5. **No social posting yet.** HN, X, dev.to, Reddit and Lobsters are all held.
    The only outward channels now are the site, its RSS feed and an email list.
-6. **First article:** publish on the site and RSS (after fact-check and
-   per-post approval); no external submission.
+6. **First article:** publish on the site and RSS after fact-check and the
+   implemented Decision 0120 gate; no external submission.
 
 ## Front-matter contract (agents draft against this)
 
@@ -40,7 +41,7 @@ type: ship | essay
 slug: single-action-path-runs-itself   # optional, else from filename
 summary: "One or two plain sentences; used for feed and social cards."
 author: "Arcadia (drafted by <agent name>)"
-status: draft | reviewed | approved | published
+status: draft | reviewed | approved # publication state lives in the receipt
 claims_receipt: docs/articles/receipts/<slug>.md   # claim -> PR/receipt table
 not_done: true              # post must contain a "What is not done" section
 canonical: https://arcadiamissioncontrol.com/notes/<slug>/   # filled at publish
@@ -62,8 +63,11 @@ absent, or `status` is not `approved`.
 - Agent-written text is labelled as agent-drafted.
 
 **Review gate:** (1) independent agent fact-check of each claim against its
-receipt, as done for the first article, with findings resolved; (2) Mark
-approves from `/todo`; (3) status flips to `approved`, then publish.
+receipt, with findings resolved; (2) the implemented publication gate verifies
+Decision 0120's exact scope and review binding; (3) source status becomes
+`approved`, then publish. Until that gate exists, the current blog commands'
+operator review requirements remain in force. Record publication in a receipt;
+keep source status `approved` so the build can continue including it.
 
 ## Channels, ranked for a not-yet-installable project
 
@@ -117,9 +121,10 @@ Notes on norms:
 1. Agent drafts the post, its receipts file and, for the email list, an email
    draft. No per-channel social variants are produced while social is held.
 2. Independent agent fact-checks; findings fixed. Mandatory in every mode.
-3. Until the Decision lands: one `/todo` item per post with a Discord deep
-   link showing the exact text and the consequence of approving or skipping.
-4. After the Decision: agents publish on cadence to the Mission Control site;
+3. Decision 0120 is approved; the current commands still create operator
+   review items until its gate is implemented. Do not generate recurring
+   schedule review items as a substitute for automated cadence.
+4. After implementation: agents publish on cadence to the Mission Control site;
    the operator is notified, and can unpublish. Failed fact-check means no
    post and an alert, not a retry loop.
 5. Email: the operator signs up for the tool himself (account creation is his
@@ -131,7 +136,7 @@ Notes on norms:
 ## First post
 
 Publish `The single-Action path runs itself` on the site and RSS after the
-fact-check and the operator's approval, keeping its "fixture only" framing.
+fact-check and the implemented Decision 0120 gate, keeping its "fixture only" framing.
 No external submission. When social is later authorized, the earlier channel
 analysis above still applies, and Show HN waits for an installable project.
 
@@ -144,8 +149,9 @@ analysis above still applies, and Show HN waits for an installable project.
    agents draft emails only.
 4. **Automatic publishing:** the operator wants the entire blog (Field Notes
    on the Mission Control site only) managed automatically on a regular
-   cadence per post type. Pending a governed Decision, being raised now.
-   Until it is answered and implemented, publishing stays per-post operator
-   approval. The default cadence is in Recommendation 3.
+   cadence per post type. Decision 0120 is approved. Its publication capability
+   is pending implementation; the existing blog commands still require review.
+   The default cadence is in Recommendation 3. See the production instruction
+   for the inspected capability gap and efficient preparation workflow.
 5. **X:** yes eventually, but no presence today. The only handle is @pmark.
    No posting until the operator says so.

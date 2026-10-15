@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -20,6 +21,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { BRIEF_CHILD_ENV, BRIEF_DEADLINE_ENV, BRIEF_SELF_TEST_ENV } from "../briefSupervisor.js";
 import { validationError } from "../cli/errors.js";
+import { loadRoleRegistry, validateRoleRegistry } from "../agentRoles/registry.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import type { GoBrokerAgent, ProtectedBrokerOperation } from "../goBroker.js";
 import {
@@ -180,6 +182,7 @@ export function runGoBrokerInstallCommand(
         force: true
       });
       stageGoBrokerDatabaseSchema(repository, stagedRelease);
+      const roleRegistry = stageGoBrokerRoleRegistry(repository, stagedRelease);
       mkdirSync(path.join(stagedRelease, "dist", "scripts"), { recursive: true });
       copyFileSync(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
@@ -209,8 +212,10 @@ export function runGoBrokerInstallCommand(
         revision,
         sourceRepository: repository,
         runtimeExecutable: process.execPath,
+        roleRegistrySha256: createHash("sha256").update(readFileSync(roleRegistry)).digest("hex"),
         brokerEntrypoint
       }, null, 2)}\n`);
+      validateExistingRelease(stagedRelease, revision);
       chmodSync(manifest, 0o444);
       renameSync(stagedRelease, releaseDirectory);
     } finally {
@@ -531,6 +536,7 @@ export function validateExistingRelease(releaseDirectory: string, revision: stri
   if (!existsSync(manifestPath) || !existsSync(schemaPath) || !existsSync(bridgeScript) || executablePaths.some((candidate) => !existsSync(candidate))) {
     throw validationError("The existing protected broker release is incomplete.", { releaseDirectory });
   }
+  validateGoBrokerRoleRegistry(releaseDirectory);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { schema?: string; revision?: string };
   if (manifest.schema !== INSTALL_SCHEMA || manifest.revision !== revision) {
     throw validationError("The existing protected broker release manifest does not match its revision.", {
@@ -538,6 +544,52 @@ export function validateExistingRelease(releaseDirectory: string, revision: stri
       expectedRevision: revision
     });
   }
+}
+
+/** This is the release-local target of agentRoles/registry.js's static JSON import. */
+export function validateGoBrokerRoleRegistry(releaseDirectory: string, expectedSha256?: string): string {
+  const file = path.join(releaseDirectory, "dist", "config", "defaults", "agent-roles.json");
+  let bytes: Buffer;
+  let registry: ReturnType<typeof validateRoleRegistry>;
+  try {
+    if (!lstatSync(file).isFile() || realpathSync(file) !== path.join(realpathSync(releaseDirectory), "dist", "config", "defaults", "agent-roles.json")) {
+      throw new Error("Registry is not release-local.");
+    }
+    bytes = readFileSync(file);
+    registry = validateRoleRegistry(JSON.parse(bytes.toString("utf8")) as unknown);
+  } catch {
+    throw validationError("The protected broker role registry is missing or malformed.", { file });
+  }
+  // During installation this compares to the trusted bundled registry. Inside
+  // an installed release the bundle is the asset itself: its independent byte
+  // binding is the manifest fingerprint, never a runtime source-tree fallback.
+  if (JSON.stringify(registry) !== JSON.stringify(loadRoleRegistry())) {
+    throw validationError("The protected broker role registry does not match its canonical data.", { file });
+  }
+  const fingerprint = expectedSha256 ?? (JSON.parse(readFileSync(path.join(releaseDirectory, "broker-manifest.json"), "utf8")) as { roleRegistrySha256?: unknown }).roleRegistrySha256;
+  if (typeof fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(fingerprint) || createHash("sha256").update(bytes).digest("hex") !== fingerprint) {
+    throw validationError("The protected broker role registry does not match its canonical byte fingerprint.", { file });
+  }
+  return file;
+}
+
+export function stageGoBrokerRoleRegistry(repository: string, stagedRelease: string): string {
+  const source = path.join(repository, "config", "defaults", "agent-roles.json");
+  const destination = path.join(stagedRelease, "dist", "config", "defaults", "agent-roles.json");
+  mkdirSync(stagedRelease, { recursive: true });
+  let directory = stagedRelease;
+  for (const segment of ["dist", "config", "defaults"]) {
+    if (!lstatSync(directory).isDirectory()) {
+      throw validationError("The protected broker registry staging directory is not release-local.", { directory });
+    }
+    directory = path.join(directory, segment);
+    if (!existsSync(directory)) mkdirSync(directory);
+  }
+  if (!lstatSync(directory).isDirectory() || ((existsSync(destination) || isDanglingLink(destination)) && !lstatSync(destination).isFile())) {
+    throw validationError("The protected broker registry staging path is not release-local.", { destination });
+  }
+  copyFileSync(source, destination);
+  return validateGoBrokerRoleRegistry(stagedRelease, createHash("sha256").update(readFileSync(source)).digest("hex"));
 }
 
 export function stageGoBrokerDatabaseSchema(repository: string, stagedRelease: string): string {
@@ -692,6 +744,11 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
   }
   if (!existsSync(path.join(releaseDirectory, "scripts", "bridge-worktree-deps.mjs"))) {
     issues.push("broker dependency bridge helper is missing");
+  }
+  try {
+    validateGoBrokerRoleRegistry(releaseDirectory);
+  } catch (error) {
+    issues.push(error instanceof Error ? error.message : "broker role registry is invalid");
   }
   try {
     const manifest = JSON.parse(readFileSync(path.join(releaseDirectory, "broker-manifest.json"), "utf8")) as {

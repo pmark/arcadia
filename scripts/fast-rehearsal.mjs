@@ -17,10 +17,11 @@
 // See tests/fast-rehearsal/README.md.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectScenarioReports, writeCombinedReport } from "./fast-rehearsal-report.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PHASES = ["queueWait", "agentExecution", "validation", "gitFinalization", "review", "integration", "advancement"];
@@ -44,12 +45,16 @@ const started = Date.now();
 const run = spawnSync(process.execPath, [vitest, "run", "tests/fast-rehearsal", ...vitestArgs], { cwd: root, env, stdio: "inherit" });
 const wallMs = Date.now() - started;
 
-const reports = readdirSync(reportDir)
-  .filter((file) => file.endsWith(".json"))
-  .map((file) => JSON.parse(readFileSync(path.join(reportDir, file), "utf8")))
-  .sort((a, b) => `${a.file}/${a.scenario}`.localeCompare(`${b.file}/${b.scenario}`));
-const combined = { wallMs, vitestStatus: run.status, reportDir, scenarios: reports };
-writeFileSync(path.join(reportDir, "report.json"), `${JSON.stringify(combined, null, 2)}\n`);
+console.log(`Fast rehearsal report path: ${path.join(reportDir, "report.json")}`);
+let reports;
+try {
+  reports = collectScenarioReports(reportDir);
+  writeCombinedReport(reportDir, { wallMs, vitestStatus: run.status, reportDir, scenarios: reports });
+} catch (error) {
+  console.error(error.message);
+  console.error(`fast-rehearsal: failing (vitest exit ${String(run.status)}); expected report ${path.join(reportDir, "report.json")}.`);
+  process.exit(run.status || 3);
+}
 
 console.log("");
 console.log(`Fast rehearsal report: ${reports.length} scenario(s), ${seconds(wallMs)} wall (vitest exit ${String(run.status)})`);

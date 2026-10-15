@@ -1,9 +1,14 @@
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
-import { createReviewItem, getProjectBySlug, updateReviewItemStatus } from "../db/repositories.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
+import { createReviewItem, getProjectBySlug, listReviewItems, updateReviewItemStatus } from "../db/repositories.js";
 import type { ReviewItemSummary } from "../domain/types.js";
+import { buildModelEffectivenessReport, type ModelEffectivenessReport } from "../reports/modelEffectiveness.js";
+import { parsePersistedQaContext, verifyPersistedQaContextEvidence, type PrReviewRole } from "../qa/prReview.js";
+import { listMonitoredProjects } from "./workMonitor.js";
+import type { SessionLedgerRow } from "../reports/sessionLedger.js";
+import { readSessionLedger } from "../reports/sessionLedgerSource.js";
 import {
   freshnessSummary,
   loadQaTargetsFile,
@@ -74,6 +79,110 @@ export interface QaCandidate {
 
 export interface QaListCommandData { candidates: QaCandidate[]; }
 export interface QaRecordCommandData { candidate: QaCandidate; decision: QaDecision; review: ReviewItemSummary; }
+export interface QaEffectivenessCommandData { report: ModelEffectivenessReport; sourceWarnings: string[]; }
+
+/** Read-only effectiveness projection over existing QA/code-review Decisions; invokes no model. */
+export function runQaEffectivenessCommand(options: { workspace: string }): CommandSuccess<QaEffectivenessCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const sourceWarnings: string[] = [];
+  const records = withReadOnlyDatabase(workspacePath, db => {
+    const repositoryByProject = new Map(listMonitoredProjects(db, { includeInactive: true }).map(project => [project.id, project.repositoryPath]));
+    const ledgers = new Map<string, SessionLedgerRow[]>();
+    const ledgerFor = (projectId: string): SessionLedgerRow[] => {
+      if (ledgers.has(projectId)) return ledgers.get(projectId)!;
+      const repositoryPath = repositoryByProject.get(projectId);
+      if (!repositoryPath) return ledgers.set(projectId, []).get(projectId)!;
+      const combined = readSessionLedger(repositoryPath);
+      // One invalid source is skipped with a named warning; the rest of the ledger is kept.
+      for (const error of combined.errors) sourceWarnings.push(`${repositoryPath}: skipped invalid session ledger source ${error}`);
+      const rows = combined.rows;
+      ledgers.set(projectId, rows);
+      return rows;
+    };
+    return listReviewItems(db, "all").flatMap(item => {
+      const role: PrReviewRole | null = item.resolved_intent === "IndependentPullRequestQa"
+        ? "qa"
+        : item.resolved_intent === "IndependentPullRequestCodeReview" ? "code-review" : null;
+      if (!role) return [];
+      const context = parsePersistedQaContext(item.context_json, role);
+      if (!context) {
+        sourceWarnings.push(`${item.slug ?? item.id}: ignored invalid QA receipt context`);
+        return [];
+      }
+      if (item.project_id !== context.candidate.projectId || item.source_input !== context.candidate.url || item.artifact_path !== context.reportPath ||
+          !item.artifact_id || !verifyPersistedQaContextEvidence(workspacePath, context, { decisionId: item.id, artifactId: item.artifact_id })) {
+        sourceWarnings.push(`${item.slug ?? item.id}: ignored QA receipt whose candidate identity or immutable evidence did not verify`);
+        return [];
+      }
+      const attemptRequestId = context.effectiveness?.attemptRequestId ?? null;
+      const linkedRows = attemptRequestId === null ? [] : ledgerFor(context.candidate.projectId).filter(row =>
+        row.review_attempt_request_id === attemptRequestId && row.candidate_head === context.candidate.headSha);
+      const linkedResourceRows = linkedRows.filter(row => row.resource_scope === "lineage-additional");
+      if (linkedResourceRows.length > 0) {
+        sourceWarnings.push(`${item.slug ?? item.id}: linked ledger resources are observed partial data; no immutable resource-source proof is available for verified-outcome totals`);
+      }
+      const distinct = (values: Array<string | null | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))];
+      const taskClasses = distinct(linkedRows.map(row => row.task_class));
+      const difficulties = distinct(linkedRows.map(row => row.difficulty));
+      if (taskClasses.length > 1 || difficulties.length > 1) {
+        sourceWarnings.push(`${item.slug ?? item.id}: conflicting observed task classification; task class and difficulty reported as unknown`);
+      }
+      return [{
+        id: item.id,
+        role,
+        context,
+        observedTaskClass: taskClasses.length === 1 && difficulties.length <= 1 ? taskClasses[0] : null,
+        observedDifficulty: difficulties.length === 1 && taskClasses.length <= 1 ? difficulties[0] : null,
+        linkedResources: linkedResourceRows.map(row => ({
+          id: row.session_id,
+          attemptRequestId: row.review_attempt_request_id!,
+          inputTokens: row.tokens_in_uncached,
+          cachedInputTokens: row.tokens_in_cached,
+          outputTokens: row.tokens_out,
+          elapsedMs: row.wall_min === null ? null : row.wall_min * 60_000,
+          terminalOutcome: ["complete", "split", "stopped"].includes(row.outcome),
+          // A ledger row carries a reference, not an immutable resource proof.
+          // Keep it as an observation until a canonical bound source exists.
+          resourceEvidenceVerified: false
+        }))
+      }];
+    });
+  });
+  return createSuccess({ command: "qa.effectiveness", workspace: workspacePath, data: { report: buildModelEffectivenessReport(records), sourceWarnings } });
+}
+
+export function renderQaEffectivenessSuccess(response: CommandSuccess<QaEffectivenessCommandData>): string[] {
+  const { report, sourceWarnings } = response.data;
+  if (report.groups.length === 0) return [
+    "No valid QA or code-review receipts were found.",
+    ...sourceWarnings.map(warning => `Source warning: ${warning}`)
+  ];
+  return [
+    `Review effectiveness: ${report.deduplicatedRecords} unique receipt${report.deduplicatedRecords === 1 ? "" : "s"} (${report.records - report.deduplicatedRecords} replay duplicate${report.records - report.deduplicatedRecords === 1 ? "" : "s"} ignored).`,
+    ...report.groups.map(group => {
+      const task = group.taskClass ?? "task class unknown";
+      const effort = group.effectiveEffort ?? "effort unknown";
+      const difficulty = group.difficulty ?? "difficulty unknown";
+      const resources = (label: string, value: typeof group.reviewerResources) =>
+        `${label} observed ${value.inputTokens}+${value.cachedInputTokens} input, ${value.outputTokens} output tokens, ${value.elapsedMs} ms (known input ${value.inputTokensKnown}/${value.samples}, cached ${value.cachedInputTokensKnown}/${value.samples}, output ${value.outputTokensKnown}/${value.samples}, elapsed ${value.elapsedMsKnown}/${value.samples}; complete ${value.samplesWithCompleteUsage}/${value.samples})`;
+      const billed = group.billedCostKnown
+        ? `$${group.actualBilledCostUsd?.toFixed(4)} observed actual billed cost (known ${group.billedCostKnown}/${group.sampleSize})`
+        : `actual billed cost unknown (known 0/${group.sampleSize})`;
+      const estimated = group.estimatedCostKnown
+        ? `$${group.estimatedCostUsd?.toFixed(4)} observed estimate (known ${group.estimatedCostKnown}/${group.sampleSize}; ${group.pricingDateConflict ? `conflicting price dates ${group.pricingDates.join(", ")}` : `as of ${group.pricingAsOf}`})`
+        : `pricing estimate unknown (known 0/${group.sampleSize})`;
+      const capacity = group.includedCapacityKnown
+        ? `${group.includedCapacityConsumption} observed included-capacity units (known ${group.includedCapacityKnown}/${group.sampleSize})`
+        : `included-capacity consumption unknown (known 0/${group.sampleSize})`;
+      const outcomeResources = group.verifiedOutcomeResources
+        ? resources("verified outcome resources", group.verifiedOutcomeResources)
+        : `verified outcome resources unknown; ${resources("partial lineage resources", group.observedResourcesThroughOutcome)} (${group.verifiedLinkedResourceReceiptCount}/${group.linkedResourceReceiptCount} linked receipts verified)`;
+      const configured = group.configuredEffortConflict ? `conflicting ${group.configuredEffortValues.join(",")}` : group.configuredEffort ?? "unknown";
+      return `${group.role} / ${task} / ${difficulty} / rubric ${group.rubricVersion ?? "unknown"} / ${group.provider}:${group.model} / configured ${configured} (${group.configuredEffortKnown}/${group.sampleSize}) / effective ${effort} (${group.effectiveEffortKnown}/${group.sampleSize}): n=${group.sampleSize}, rounds=${group.reviewRounds}, fresh=${group.freshInvocations} (invocation coverage ${group.invocationKnown}/${group.sampleSize}), retries=${group.retryCount}, repairs=${group.repairCount} (trusted repair evidence ${group.repairOutcomeEvidenceKnown}/${group.repairReferences}), model-verdict pass=${group.passes}, candidate failed model review=${group.candidateModelReviewFailures} (model judgment coverage ${group.modelJudgmentKnown}/${group.sampleSize}), gate-fail=${group.deterministicGateFailures} (gate coverage ${group.deterministicGateKnown}/${group.sampleSize}), environment-fail=${group.environmentFailures} (environment coverage ${group.environmentOutcomeKnown}/${group.sampleSize}), confirmed blockers=${group.findingOutcomeEvidenceKnown === 0 && group.findingCount > 0 ? "unknown" : group.confirmedBlockingFindings}, rejected-or-duplicate=${group.rejectedOrDuplicateRate === null ? "unknown" : group.rejectedOrDuplicateRate.toFixed(3)} (trusted finding outcomes ${group.findingOutcomeEvidenceKnown}/${group.findingCount}), ${resources("reviewer usage", group.reviewerResources)}; ${outcomeResources}; ${billed}; ${estimated}; ${capacity}; class coverage ${group.taskClassKnown}/${group.sampleSize}, difficulty coverage ${group.difficultyKnown}/${group.sampleSize}.`;
+    }),
+    ...sourceWarnings.map(warning => `Source warning: ${warning}`)
+  ];
+}
 
 /**
  * Candidates, with the three freshness fields computed rather than declared.

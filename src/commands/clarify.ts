@@ -381,7 +381,9 @@ export function renderClarifyData(data: ClarifyCommandData): string[] {
       const handoff = applications.find((entry) => entry.workItemId === workItem.id)?.handoff;
       if (handoff) {
         lines.push(
-          handoff.status === "drafted"
+          handoff.status === "registered"
+            ? `  Handoff: registered Agent Ask ${handoff.requestId} (proposal ${handoff.proposalId})`
+            : handoff.status === "drafted"
             ? `  Handoff: drafted Agent Ask ${handoff.requestId} (${handoff.path})${
                 handoff.workspaceStatus && handoff.workspaceStatus !== "previewed"
                   ? `; no proposal recorded yet (${handoff.workspaceStatus})`

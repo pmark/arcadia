@@ -14,6 +14,10 @@ pnpm fast-rehearsal --no-file-parallelism    # steadier per-phase timings (about
 pnpm fast-rehearsal --unsandboxed-validator  # skip Seatbelt even where it can run
 ```
 
+### Ask/To-do scout
+
+Run `pnpm fast-rehearsal -t 'Ask/To-do scout'` for the deterministic Hello World capture probe. Its binary product outcome is in the scenario `scout` report object; a passing harness test means the journey and report were captured, while the expected product outcome remains `no` until a completed Run and matching accepted Artifact exist. The reusable contract is in [`docs/agent-guidance/ask-todo-scout.md`](../../docs/agent-guidance/ask-todo-scout.md).
+
 Run it unsandboxed (an agent shell: `dangerouslyDisableSandbox`), inside the
 Project's mise environment (`mise exec -- pnpm fast-rehearsal`), and in a
 worktree only after `node scripts/bridge-worktree-deps.mjs`. Only on macOS in
@@ -130,6 +134,8 @@ Simulated time advances one minute per tick; the table shows wall time.
 | `stacked-base-retarget.test.ts` | the stacked PR retargeted to `main` on GitHub | The review step requests no verdict while the PR's base differs from the one its plan describes: one `review_pull_request_unavailable` escalation naming `gh pr edit --base`; retargeted back, it integrates |
 | same | the stacked base branch's tip moved (onto the candidate's own head) | No verdict while the base is not at the tip preservation chose: one `review_pull_request_unavailable` escalation naming the tip to restore; restored, it integrates |
 | `stacked-base-existing-pr.test.ts` | an open PR for the candidate's branch already on `main` | Preservation refuses (`pull_request_base_mismatch`) before any push, and the tick's pre-check before host validation (never re-validated while blocked); one escalation naming `gh pr edit --base`; retargeted, that PR is preserved onto and integrates |
+| `environment-wall-session.test.ts` | the 2026-10-12 00:40Z Session: no diff, workspace write denied, sandbox test refusals, ~11M input tokens (mostly cached); the token counts come from the recorded Session, the log text is a reconstruction authored to the detector's patterns (no verbatim log was kept) | One named `budget_exhausted` escalation (the platform token ceiling; it names the walls too), no second launch, the stop receipt and attempt tokens recorded, nothing integrated; fails when the ceiling stop is removed |
+| `token-ceiling-session.test.ts` | the same spend with no wall text in the log, ~9M input tokens over the light-tier ceiling | One named `budget_exhausted` escalation, no second launch, the stop receipt names the ceiling and uncached and cached counts separately; fails when the ceiling stop is removed |
 | `executor-behaviours.test.ts` | untracked, unarchived draft | Run 4's defect (#981); with #983 the settle archives the draft and the candidate integrates |
 | same | draft edited after an inline preview | #983's N4 case: settle warning, the guard refuses every tick, one `terminal_candidate_not_integrable` escalation in `production status` |
 | `settle-then-dirty.test.ts` | extra uncommitted file / extra commit after settling | #994: reconciled incomplete, but the candidate already carries the Action's recorded completion settlement, so no continuation is offered (it could only refuse "Action is already done"); the terminal guards refuse the head after the settlement commit (the extra work is never integrated) and `production status` shows one `terminal_candidate_not_integrable` entry naming the settlement commit, the extra paths and the operator's `merge --ff-only <settlement commit>`; doing that admits Action 2 once. Its `it.fails` marker is flipped |

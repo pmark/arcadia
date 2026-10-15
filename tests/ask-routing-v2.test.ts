@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { handleArcadiaMessage } from "../apps/discord-bot/src/events/messageCreate.js";
 import type { ArcadiaCli } from "../apps/discord-bot/src/arcadia/cli.js";
@@ -10,6 +12,7 @@ import { runReviewApproveCommand, runReviewResolveReplyCommand } from "../src/co
 import { runAskCoverageCommand } from "../src/commands/askCoverage.js";
 import { renderTodoSuccess, runTodoCommand, TODO_ASK_CAP, TODO_OTHER_CAP, type TodoCommandOptions } from "../src/commands/todo.js";
 import { withDatabase } from "../src/db/connection.js";
+import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
 import { createProjectWithInitialWork, createReviewItem, upsertProjectMetadata } from "../src/db/repositories.js";
 import { intakeRoutingFlags, isImperativeRequest, resolveIntake, type IntakeWorkspaceContext } from "../src/intake/index.js";
 import { ACKNOWLEDGEMENTS, isTrivialAcknowledgement } from "../src/ask/suppression.js";
@@ -82,6 +85,114 @@ const NOT_AN_IDEA: Array<{ classification: string; text: string }> = [
 ];
 
 describe("ask.routing.v2: an operator Ask is never shelved unseen", () => {
+  it("serializes identical request ids across processes and refuses changed payloads", async () => {
+    const workspace = workspaceWithArcadia();
+    const request = "The sidebar is broken on mobile";
+    const moduleUrl = pathToFileURL(path.resolve(import.meta.dirname, "../src/commands/ask.ts")).href;
+    const script = `import { runAskCommand } from ${JSON.stringify(moduleUrl)};\n` +
+      `process.stdout.write("READY\\n");\n` +
+      `process.stdin.once("data", () => { const result = runAskCommand({ workspace: process.argv[1], request: process.argv[2], requestId: process.argv[3] }); ` +
+      `process.stdout.write(JSON.stringify({ status: result.data.result.status, askId: result.data.ask?.id }) + "\\n"); });`;
+    const start = () => {
+      let stdout = "";
+      let stderr = "";
+      let readyResolve!: () => void;
+      let resultResolve!: (result: { status: string; askId?: string }) => void;
+      let resultReject!: (error: Error) => void;
+      const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
+      const result = new Promise<{ status: string; askId?: string }>((resolve, reject) => { resultResolve = resolve; resultReject = reject; });
+      const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, workspace, request, "cross-process-scout"], {
+        cwd: path.resolve(import.meta.dirname, ".."), stdio: ["pipe", "pipe", "pipe"]
+      });
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+        stdout += chunk;
+        if (stdout.includes("READY\n")) readyResolve();
+      });
+      child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+      child.once("error", resultReject);
+      child.once("close", (code) => {
+        if (code !== 0) return resultReject(new Error(`Ask child exited ${code}: ${stderr}`));
+        try { resultResolve(JSON.parse(stdout.split("READY\n").at(-1)?.trim() ?? "") as { status: string; askId?: string }); }
+        catch (error) { resultReject(new Error(`Invalid Ask child response: ${stdout} ${stderr}`, { cause: error })); }
+      });
+      return { child, ready, result };
+    };
+
+    const children = [start(), start()];
+    await Promise.all(children.map((child) => child.ready));
+    for (const child of children) child.child.stdin.end("go");
+    const results = await Promise.all(children.map((child) => child.result));
+    expect(results).toHaveLength(2);
+    expect(results.filter((result) => result.askId)).toHaveLength(1);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests").get())).toEqual({ n: 1 });
+    expect(() => runAskCommand({ workspace, request: "Changed payload", requestId: "cross-process-scout" }))
+      .toThrow("already submitted with different content");
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests").get())).toEqual({ n: 1 });
+  });
+
+  it("recovers an exact retry after a child dies after claim but before creating an Ask", async () => {
+    const workspace = workspaceWithArcadia();
+    const request = "Why is the sidebar slow?";
+    withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "killed-before-ask",
+      originalText: request,
+      ingressSource: "ask",
+      routingIdentity: {
+        explicitProjectId: null,
+        milestone: null,
+        reviewReference: null,
+        executeReview: false,
+        approvedReviewItemId: null,
+        correctionRoute: null,
+        captureAsIdea: false,
+        surfaceCondition: null,
+        runSafe: false,
+        agentProfile: null,
+        reviewExecutor: null,
+        sourceRef: null,
+        facetTags: null
+      }
+    }));
+    const captureModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/ask/captureEnvelope.ts")).href;
+    const databaseModule = pathToFileURL(path.resolve(import.meta.dirname, "../src/db/connection.ts")).href;
+    const script = `import { claimAskCaptureProcessing } from ${JSON.stringify(captureModule)};\n` +
+      `import { withDatabase } from ${JSON.stringify(databaseModule)};\n` +
+      `const workspace = process.argv[1]; const id = process.argv[2];\n` +
+      `withDatabase(workspace, db => claimAskCaptureProcessing(db, id, "killed-child-owner"));\n` +
+      `process.stdout.write("CLAIMED\\n"); setInterval(() => {}, 1000);`;
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, workspace,
+      withDatabase(workspace, (db) => (db.prepare("SELECT id FROM ask_capture_envelopes WHERE request_id = ?").get("killed-before-ask") as { id: string }).id)], {
+      cwd: path.resolve(import.meta.dirname, ".."), stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`child did not claim capture: ${stdout}`)), 5000);
+      const poll = setInterval(() => {
+        if (stdout.includes("CLAIMED\n")) {
+          clearTimeout(timeout);
+          clearInterval(poll);
+          resolve();
+        }
+      }, 10);
+      child.once("error", reject);
+    });
+    const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    child.kill("SIGKILL");
+    await exited;
+
+    const retried = runAskCommand({ workspace, request, requestId: "killed-before-ask" });
+    expect(retried.data.ask?.id).toMatch(/^ask_/);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT status FROM ask_capture_envelopes WHERE request_id = ?").get("killed-before-ask")))
+      .toEqual({ status: "completed" });
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests WHERE capture_id = (SELECT id FROM ask_capture_envelopes WHERE request_id = ?)").get("killed-before-ask")))
+      .toEqual({ n: 1 });
+    const replay = runAskCommand({ workspace, request, requestId: "killed-before-ask" });
+    expect(replay.data.ask).toBeNull();
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM ask_requests WHERE capture_id = (SELECT id FROM ask_capture_envelopes WHERE request_id = ?)").get("killed-before-ask")))
+      .toEqual({ n: 1 });
+  });
+
   it.each(NOT_AN_IDEA)("sends a $classification Ask to Clarify First, a review_item that arcadia todo lists with an ask-origin answer", ({ classification, text }) => {
     const workspace = workspaceWithArcadia();
     const asked = runAskCommand({ workspace, request: text });
@@ -262,6 +373,49 @@ describe("intake: the operator's own phrasings are work, and two flags are recor
     const unnamed = runAskCommand({ workspace, request: "I should be able to schedule a recurring action" });
     expect(unnamed.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
     expect(unnamed.data.backBurnerItemId).toBeNull();
+  });
+
+  it("checks a single-file scope against the final routed repository", () => {
+    const workspace = workspaceWithArcadia();
+    const unsafeRoot = temp("unsafe-project-path");
+    const unsafeRepo = path.join(unsafeRoot, "not-a-directory");
+    writeFileSync(unsafeRepo, "file", "utf8");
+    const safeRepo = temp("safe-project-repo");
+    const projects = withDatabase(workspace, (db) => {
+      const makeProject = (name: string) => {
+        const created = createProjectWithInitialWork(db, {
+          name,
+          mission: "Route a bounded test request.",
+          goal: "Keep the file scope tied to the selected repository.",
+          status: "active",
+          currentMilestone: "Ask routing",
+          nextAction: "Review the bounded file request.",
+          workClassification: "agent"
+        });
+        upsertProjectMetadata(db, { projectId: created.project.id, aliases: [name], repoPath: name === "Safe Project B" ? safeRepo : unsafeRepo });
+        return created.project;
+      };
+      return { unsafe: makeProject("Unsafe Project A"), safe: makeProject("Safe Project B") };
+    });
+
+    const explicitOnly = runAskCommand({
+      workspace,
+      project: projects.safe.slug,
+      request: 'Implement HelloWorld.txt in Safe Project B, containing exactly the bytes "Hello World!\\n"'
+    });
+    expect(explicitOnly.data.stewardship.generatedCodexGoalText).toContain("Create only HelloWorld.txt");
+
+    const routed = runAskCommand({
+      workspace,
+      project: projects.safe.slug,
+      request: 'Implement HelloWorld.txt in Unsafe Project A, containing exactly the bytes "Hello World!\\n"'
+    });
+    const routedReview = withDatabase(workspace, (db) => db.prepare(
+      "SELECT project_id FROM review_items WHERE id = ?"
+    ).get(routed.data.reviewItemId));
+    expect(routedReview).toEqual({ project_id: projects.safe.id });
+    expect(routed.data.stewardship.generatedCodexGoalText).toContain("Create only HelloWorld.txt");
+    expect(routed.data.intake.extractedFields.requestedArtifact).toBe("HelloWorld.txt");
   });
 
   it.each(["every", "daily", "weekly", "monthly", "recurring", "schedule"])("sets recurrence for %s", (word) => {

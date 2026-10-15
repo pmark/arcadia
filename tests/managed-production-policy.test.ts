@@ -15,6 +15,7 @@ import {
 } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { buildProgram } from "../src/cli.js";
+import { runDocsSyncCommand } from "../src/commands/docs.js";
 import {
   buildProductionActivationPreview,
   describeProductionState
@@ -925,6 +926,41 @@ describe("production reset-repair-budget (Issue #703)", () => {
     ) as { kind: string } | undefined;
     expect(remaining?.kind).toBe("no_validation_commands");
   });
+
+  describe("pinned to a blocker kind (--expect-kind, the /todo one-click clear)", () => {
+    const seed = (target: string, kind: string) =>
+      withDatabase(target, (db) => {
+        db.prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('demo/migrate', ?, 'A named stop.', 'Fix it.', '2026-09-26T06:00:00.000Z', '2026-09-26T06:00:00.000Z')`
+        ).run(kind);
+      });
+    const kindOf = (target: string) =>
+      (withDatabase(target, (db) =>
+        db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get("demo/migrate")
+      ) as { kind: string } | undefined)?.kind;
+
+    it("clears exactly the pinned blocker, reports the pin, and is idempotent", () => {
+      const target = workspace();
+      seed(target, "environment_wall");
+      const first = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" });
+      expect(first.data).toMatchObject({ actionKey: "demo/migrate", pinnedKind: "environment_wall", alreadyClear: false });
+      expect(kindOf(target)).toBeUndefined();
+
+      const second = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" });
+      expect(second.data).toMatchObject({ pinnedKind: "environment_wall", alreadyClear: true, attemptsCleared: 0 });
+      expect(second.warnings).toEqual(["demo/migrate has no environment_wall blocker; it was already clear."]);
+    });
+
+    it("refuses a different blocker and leaves it recorded", () => {
+      const target = workspace();
+      seed(target, "budget_exhausted");
+      expect(() =>
+        runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate", expectKind: "environment_wall" })
+      ).toThrow(/budget_exhausted blocker, not environment_wall/);
+      expect(kindOf(target)).toBe("budget_exhausted");
+    });
+  });
 });
 
 describe("the control surface stays reachable when other sources are broken", () => {
@@ -994,7 +1030,7 @@ describe("the control surface stays reachable when other sources are broken", ()
 });
 
 describe("activation preview", () => {
-  function fixtureWorkspace(): string {
+  function fixtureWorkspace(shipItExecution?: string): string {
     const repo = scratch();
     mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
     writeFileSync(
@@ -1017,11 +1053,12 @@ describe("activation preview", () => {
         "  - id: migrate", "    title: Prepare the fixture", "    status: open",
         "    responsibility: agent", "    next_action: Prepare the fixture.",
         "    expected_artifact: A prepared fixture", "    clarification: clarified",
-        "    acceptance_criteria:", "      - The fixture is prepared.", "    depends_on: []",
+        "    acceptance_criteria:", "      - The fixture exists with its configured queue entries.", "    depends_on: []",
         "  - id: ship-it", "    title: Ship the view", "    status: open",
         "    responsibility: agent", "    next_action: Implement the view.",
+        ...(shipItExecution ? [`    execution: ${shipItExecution}`] : []),
         "    expected_artifact: A visible view", "    clarification: clarified",
-        "    acceptance_criteria:", "      - The view is visible.", "    depends_on: [migrate]",
+        "    acceptance_criteria:", "      - The view lists the configured Actions.", "    depends_on: [migrate]",
         "---", "", "# Queue plan", ""
       ].join("\n"),
       "utf8"
@@ -1060,6 +1097,11 @@ describe("activation preview", () => {
       "demo/ship-it"
     ]);
     expect(preview.includedPlans).toEqual(["demo/queue-plan"]);
+    // Every Action lists its route and expected operator touches; none declares `execution`, so the preview says so.
+    for (const action of preview.orderedActions) {
+      expect(action.route.declared).toBe(false);
+      expect(action.route.operatorTouches.length).toBeGreaterThan(0);
+    }
     expect(preview.scope.providers).toEqual(["claude", "codex"]);
     expect(preview.scope.maxConcurrentSessions).toBe(2);
     expect(preview.scope.mechanicalTransitions).toEqual(["pointer", "validation"]);
@@ -1067,6 +1109,18 @@ describe("activation preview", () => {
     expect(preview.offConsequence).toContain("keeps running");
     expect(preview.explicitStops.join(" ")).toContain("needs its own Decision");
     expect(preview.controlDeadlines).toBe(PRODUCTION_CONTROL_DEADLINES);
+  });
+
+  it("lists a declared route and the operator touches it expects, overriding the Action's wording (#1277)", () => {
+    const target = fixtureWorkspace("plan-run");
+    runDocsSyncCommand({ workspace: target, apply: true });
+    const preview = withDatabase(target, (db) =>
+      buildProductionActivationPreview(db, { projects: ["demo"], providers: ["claude"], intent: "Finish the queue Plan." })
+    );
+    const route = preview.orderedActions.find((action) => action.actionKey === "demo/ship-it")?.route;
+    // "Implement the view." would keyword-route to build; the declaration makes it a plan run.
+    expect(route).toMatchObject({ kind: "plan-run", declared: true });
+    expect(route?.operatorTouches.join(" ")).toMatch(/Planning-run approval/);
   });
 
   it("keeps an exact Action allowlist and never adds an Action outside it (Issue #392)", () => {
@@ -1361,7 +1415,7 @@ describe("judgment requests", () => {
     };
 
     expect(() =>
-      buildJudgmentRequest({ ...base, options: [{ label: "Only choice", consequence: "It happens." }] })
+      buildJudgmentRequest({ ...base, options: [{ label: "Only choice", consequence: "The fixture receipt exists." }] })
     ).toThrow(/two or more meaningful options/);
 
     expect(() =>

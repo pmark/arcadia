@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   acceptance_criteria_json TEXT,
   capture_id TEXT,
   split_into_json TEXT,
+  execution_route TEXT,
   why TEXT,
   archived_at TEXT,
   archive_reason TEXT,
@@ -248,7 +249,10 @@ CREATE TABLE IF NOT EXISTS ask_capture_envelopes (
   ingress_source TEXT NOT NULL,
   captured_at TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('captured', 'processing', 'partial', 'completed', 'failed')),
-  envelope_json TEXT NOT NULL
+  envelope_json TEXT NOT NULL,
+  processing_owner TEXT,
+  related_review_id TEXT,
+  routing_identity TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ask_capture_attachments (

@@ -226,12 +226,18 @@ export function markDevelopmentAttemptRunning(db: Database.Database, attempt: Se
  * terminal state commits with the receipt or not at all (a replayed
  * reconciliation finds the receipt and never re-settles). Resumable exits keep
  * the attempt live for the next launch to resume.
+ *
+ * `providerSignInFailure` is the reconciliation's own classification of an exit
+ * that died on a provider sign-in failure before doing any work. That is no
+ * outcome of the development, so it consumes no ordinal: the attempt stays live
+ * and the next launch resumes it for the same input revision (Issue #1243).
  */
 export function settleDevelopmentAttemptForExit(db: Database.Database, input: {
   session: AgentSession;
   outcome: SessionExitOutcome;
   exitReceiptId: string;
   now: Date;
+  providerSignInFailure?: boolean;
 }): SessionRoleAttempt | null {
   const { session } = input;
   const live = liveMutationOwner(db, requirementIdFor(session.project_slug, session.plan_slug, session.action_id));
@@ -245,6 +251,7 @@ export function settleDevelopmentAttemptForExit(db: Database.Database, input: {
     return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "passed", now: input.now,
       ...(head ? { targetHead: head } : {}), receipt: head ? receipt : { ...receipt, headUnreadable: true } });
   }
+  if (input.outcome === "failed_execution" && input.providerSignInFailure) return live;
   if (input.outcome === "failed_execution" || input.outcome === "missing_evidence") {
     return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "failed", now: input.now, receipt });
   }

@@ -10,19 +10,28 @@ export interface Choice {
   disposition?: "accepted" | "rejected";
   /** For kind "decision": the option label to answer with. */
   option?: string;
-  /** For a build-packet review item: approve or reject it through /api/review-action. Approve never executes. */
+  /** For a build-packet or planning review item: approve or reject it through /api/review-action. */
   reviewAction?: "approve" | "reject";
+  /** For a platform blocker: clear exactly this pinned stop (POST /api/blocker-clear). */
+  blockerClear?: boolean;
 }
 
-/** The request one choice sends: a build packet goes to /api/review-action with noExecute, everything else to /api/approvals. */
+/**
+ * The request one choice sends: a review item goes to /api/review-action, everything else to /api/approvals. Approve is
+ * sent with noExecute unless the row's own control says otherwise (a planning run approval is what queues its Run).
+ */
 export function requestFor(approval: Approval, choice: Choice): { url: string; body: Record<string, unknown> } {
+  if (choice.blockerClear && approval.blockerRemedy?.oneClick && approval.blockerRemedy.actionKey) {
+    return { url: "/api/blocker-clear", body: { actionKey: approval.blockerRemedy.actionKey, kind: approval.blockerRemedy.kind } };
+  }
   if (approval.kind === "review_item" && choice.reviewAction) {
+    const noExecute = approval.reviewControl?.noExecute ?? true;
     return {
       url: "/api/review-action",
       body: {
         id: approval.id,
         action: choice.reviewAction,
-        ...(choice.reviewAction === "approve" ? { noExecute: true } : {})
+        ...(choice.reviewAction === "approve" && noExecute ? { noExecute: true } : {})
       }
     };
   }
@@ -89,8 +98,19 @@ export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: 
   useEffect(() => {
     if (!enabled) return undefined;
     void refresh();
-    const interval = setInterval(() => void refresh(), APPROVAL_POLL_MS);
-    return () => clearInterval(interval);
+    // A hidden tab does not poll; coming back shows the last list at once and refreshes it straight away.
+    const poll = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "hidden") void refresh();
+    };
+    const interval = setInterval(poll, APPROVAL_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [enabled, refresh, refreshSignal]);
 
   const act = useCallback(async (approval: Approval, choice: Choice) => {

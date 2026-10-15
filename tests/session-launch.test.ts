@@ -30,7 +30,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
-import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
+import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES } from "../src/sessions/headlessPermissions.js";
 import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
@@ -399,6 +399,27 @@ describe("launchGuardedHostSession", () => {
     expect(() => launchWith(0, "req-1")).toThrow(/positive whole number/);
   });
 
+  it("refuses at the shared launch point, before any lease or process, when the capability preflight names a wall (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture, "req-wall");
+    const seen: Array<string | null> = [];
+    expect(() => withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "req-wall",
+        previewFingerprint: preview.previewFingerprint, profiles, adapters, now: fixture.now, tmux,
+        agentWorktreeRoot: path.join(fixture.root, "wall-wt"),
+        workerCapability: (_workspace, sandbox) => {
+          seen.push(sandbox);
+          return [{ wallClass: "preservation", evidence: "no preservation heartbeat", remedy: "Restart the worker." }];
+        }
+      })
+    )).toThrow(/Environment wall .*no tokens were spent/);
+    expect(seen).toHaveLength(1);
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
   it("exposes --time-limit-minutes on `session launch` and refuses a non-positive value", () => {
     const run = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", path.resolve(import.meta.dirname, "../src/cli.ts"), ...args], { encoding: "utf8" });
     expect(run(["session", "launch", "--help"]).stdout).toContain("--time-limit-minutes");
@@ -566,7 +587,9 @@ describe("launchGuardedHostSession", () => {
     failing.failLaunch = true;
     const preview = preview1(fixture);
 
-    expectArcadiaError(() => doLaunch(fixture, failing, preview.previewFingerprint), "could not start");
+    const error = captureArcadiaError(() => doLaunch(fixture, failing, preview.previewFingerprint));
+    expect(error.message).toContain("could not start");
+    expect(error.details.cause).toBe("synthetic spawn failure");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
 
     // The failed attempt released the lease. A fresh preview against the
@@ -1865,7 +1888,7 @@ describe("launch preflight and headless permission posture", () => {
     expect(sessionView(result.session, tmux).reattachCommand).toBe(`tmux attach-session -t ${result.session.tmux_session_name}`);
   });
 
-  it("allows only the Project's validation commands and `arcadia agent-ask draft`, in a workspace file no shared settings file feeds", () => {
+  it("allows only validation, role reads and `arcadia agent-ask draft`, in a workspace file no shared settings file feeds", () => {
     const fixture = preparedFixture();
     withDatabase(fixture.workspace, (db) => {
       const project = db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string };
@@ -1891,6 +1914,8 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(node -e \"process.exit\\(0\\)\")",
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
+          ...HEADLESS_ROLE_READ_RULES,
+          expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --nonce [0-9a-f]{32}\)$/),
           "Agent"
         ]
       }
@@ -1905,6 +1930,7 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(echo \\(a\\))",
       "Bash(arcadia agent-ask draft:*)",
       "Bash(pnpm arcadia agent-ask draft:*)",
+      ...HEADLESS_ROLE_READ_RULES,
       "Agent"
     ]);
   });

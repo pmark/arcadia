@@ -14,6 +14,7 @@ export type ArcadiaErrorCode =
   | "EXECUTION_PLAN_NOT_FOUND"
   | "EXECUTION_RUN_NOT_FOUND"
   | "SQLITE_ERROR"
+  | "SQLITE_LOCK_RETRIES_EXHAUSTED"
   | "SQLITE_NATIVE_ABI_MISMATCH"
   | "SQLITE_WORKSPACE_WRITE_DENIED"
   | "ORIENTATION_ENTRY_NOT_FOUND"
@@ -38,6 +39,7 @@ export type ArcadiaErrorCode =
   | "LEAK_CHECK_UNVERIFIABLE"
   | "PRODUCTION_ACTIVE_FREEZE"
   | "PRODUCTION_FREEZE_UNVERIFIED"
+  | "DECISION_PRECONDITION_FAILED"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -66,6 +68,11 @@ export function usageError(message: string, details: ArcadiaErrorDetails = {}): 
 
 export function validationError(message: string, details: ArcadiaErrorDetails = {}): ArcadiaError {
   return new ArcadiaError("VALIDATION_ERROR", message, 2, details);
+}
+
+/** A caller-supplied expectation about a Decision no longer holds; nothing was written. */
+export function decisionPreconditionFailed(message: string, details: ArcadiaErrorDetails = {}): ArcadiaError {
+  return new ArcadiaError("DECISION_PRECONDITION_FAILED", message, 2, { reason: "decision_precondition_failed", ...details });
 }
 
 export function workspaceNotFound(workspace: string): ArcadiaError {

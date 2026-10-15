@@ -1,0 +1,19 @@
+{
+  "schema": "arcadia-recurring-schedule-v1",
+  "project": "arcadia",
+  "timezone": "America/Los_Angeles",
+  "time": "09:00",
+  "acceptance": [
+    "Follow docs/strategy/field-notes-production.md and Decision 0120.",
+    "Skip with a receipt if there is no eligible new evidence; cadence is a ceiling.",
+    "Every factual claim has a primary-source receipt; an independent reviewer validates the package.",
+    "Provide the AMC title, slug, summary, search intent and internal links; preserve the What is not done section.",
+    "Use the last confirmed publication cutoff for collection; an unpublished package never advances it.",
+    "Submit the content package through the existing governed review path; this proposal grants no publication authority."
+  ],
+  "id": "field-notes-essay",
+  "cadence": "monthly",
+  "day": 1,
+  "starts_at": "2026-11-01T17:00:00.000Z",
+  "desired_result": "Evaluate an AMC Field Notes essay opportunity for the completed month {{period_start}} to {{period_end}}, due {{due_at}}. Require a newly proven Milestone, distinct search intent, and no essay already published this calendar month. Reuse any pending essay package. Follow the production instruction file, verify primary evidence and explicitly describe limitations. Skip if no eligible Milestone exists. Do not publish."
+}

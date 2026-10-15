@@ -302,6 +302,17 @@ describe("tmux-backed Sessions", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get())).toEqual({ n: 0 });
   });
 
+  it("refuses `go --launch` on a capability wall before any worktree, claim or process (A12)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    expect(() => launch(fixture, tmux, "launch", {
+      workerCapability: () => [{ wallClass: "workspace_write", evidence: "readonly database", remedy: "Grant workspace write." }]
+    } as never)).toThrow(/Environment wall .*no tokens were spent/);
+    expect(tmux.launches).toHaveLength(0);
+    expect(existsSync(path.join(fixture.root, "launch"))).toBe(false);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get())).toEqual({ n: 0 });
+  });
+
   it("requires the explicit launch authority shape", () => {
     const fixture = preparedFixture();
     expectArcadiaError(() => runGoCommand({ repo: fixture.repo, launch: true, agent: "claude" }), "requires --apply");
@@ -656,7 +667,7 @@ actions:
     next_action: ${responsibility === "agent" ? "Build the bounded slice." : "Choose whether to proceed."}
     expected_artifact: A transition receipt
     acceptance_criteria:
-      - The transition is explicit.
+      - The transition receipt names the selected Action.
 ---
 \n# Transition\n`);
   }

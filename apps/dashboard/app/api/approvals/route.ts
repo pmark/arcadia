@@ -1,53 +1,17 @@
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
-import {
-  approveDecision,
-  ArcadiaCliError,
-  peekAgentAskEligibility,
-  loadOpenDecisions,
-  loadOperatorTodo,
-  loadPendingAgentAsks,
-  settlePendingAgentAsk
-} from "../../../lib/arcadia-cli";
-import { buildApprovals } from "../../../lib/approvals";
+import { approveDecision, ArcadiaCliError, loadOpenDecisions, settlePendingAgentAsk } from "../../../lib/arcadia-cli";
+import { getApprovals, invalidateApprovalsCache } from "../../../lib/approvals-feed";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/**
- * The operator's one list, read fresh on every GET — a cheap, deterministic
- * read, no model call. `arcadia todo --json --all` supplies the list; the
- * Decision and Agent Ask loaders that predate it still supply each row's
- * options and settle controls, so those rows keep settling through their
- * existing canonical writer (`agent-ask settle --apply` or `decision
- * approve`) exactly as before. Review items and any other kind are read-only.
- * If the to-do call fails the old loaders stand alone with a visible note.
- */
 export async function GET() {
   try {
-    const [asks, decisions, todo] = await Promise.allSettled([loadPendingAgentAsks(), loadOpenDecisions(), loadOperatorTodo()]);
-    const loaderFailure = [asks, decisions].find((result) => result.status === "rejected");
-    if (loaderFailure && todo.status === "rejected") throw loaderFailure.reason;
-    const pendingAsks = asks.status === "fulfilled" ? asks.value.data.pending : null;
-    // Whether Accept would apply is read here, server-side, so the page never offers a button the data does not support.
-    // It never waits: cached verdicts only, previews run in the background (unknown until one lands).
-    const eligibility = pendingAsks ? peekAgentAskEligibility(pendingAsks) : undefined;
-    const list = buildApprovals({
-      eligibility,
-      asks: pendingAsks,
-      decisions: decisions.status === "fulfilled" ? decisions.value.data.decisions : null,
-      todo: todo.status === "fulfilled" ? { items: todo.value.data.items, unavailable: todo.value.data.unavailable ?? [] } : null,
-      loadError: loaderFailure ? describeFailure(loaderFailure.reason) : undefined,
-      todoError: todo.status === "rejected" ? describeFailure(todo.reason) : undefined
-    });
-    return NextResponse.json(list);
+    return NextResponse.json(await getApprovals());
   } catch (error) {
     return errorResponse(error);
   }
-}
-
-function describeFailure(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
 }
 
 interface ApprovalActionRequest {
@@ -115,6 +79,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: `Decision ${id} answered: ${chosen.label}.`, result: response.data });
   } catch (error) {
     return errorResponse(error);
+  } finally {
+    // Even a failed write may have changed state; the next poll must rebuild rather than serve the old list.
+    invalidateApprovalsCache();
   }
 }
 

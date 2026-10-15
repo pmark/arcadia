@@ -27,6 +27,12 @@ jobs:
         run: mise exec -- pnpm check:agent-guidance
       - name: Validate every generated operator action
         run: mise exec -- pnpm check:operator-scripts
+      - name: Validate the session ledger
+        run: mise exec -- pnpm check:session-ledger
+      - name: Validate frozen records are unchanged
+        run: mise exec -- pnpm check:frozen-records
+      - name: Validate Plan close-out records
+        run: mise exec -- pnpm check:plan-close-outs
 
   unit-1:
     runs-on: ubuntu-latest

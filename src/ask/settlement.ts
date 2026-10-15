@@ -1,3 +1,4 @@
+import { validateAcceptanceCriteria } from "../docs/acceptanceCriteria.js";
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -11,20 +12,23 @@ import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../d
 import { discoverDocs } from "../docs/discover.js";
 import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
-import { parseDoc } from "../docs/parse.js";
+import { parseDoc, parsePlanForAcceptanceRepair } from "../docs/parse.js";
 import { syncProjectDocs } from "../docs/sync.js";
-import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { ArcadiaDoc, DecisionDoc, DocValidationError, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
 import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
-import { assertClean, commitOnlyPaths, git, projectCheckoutFor, tryGit, untrackedDraftAskPaths } from "../git/worktrees.js";
+import { reserveAskGitIndex, askGit as git, tryAskGit as tryGit } from "../git/askIsolation.js";
+import { assertClean, projectCheckoutFor, untrackedDraftAskPaths } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
   getActiveWorktreeReservation,
   type ActionClaimFence
 } from "../sessions/index.js";
+import { getSessionExitReceipt } from "../sessions/reconciliation.js";
+import { activeScopeCoveringPlan, assertNoActiveScopeOverPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -161,6 +165,8 @@ export interface AgentAskSettlementTestHooks {
    * compare-and-set re-reads and re-applies rather than overwriting it.
    */
   beforeDocumentWrite?: () => void;
+  /** After resolution, before Git identity/index reservation; permits serialized race fixtures. */
+  beforeGitReservation?: () => void;
   /** Runs inside the operational-projection transaction, before the sync. */
   beforeOperationalSync?: () => void;
   /**
@@ -255,7 +261,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // A proposal recorded before `omittedLists` existed cannot say which lists
   // its Ask left out, so recover that from the stored request text (Issue #1079).
   const legacyListFallback = hydrateOmittedLists(db, proposal);
-  assertOperatorSettlementContract(proposal.normalized);
+  assertOperatorSettlementContract(proposal.normalized, { proposalId: proposal.id, disposition: input.disposition });
   const existingByRequest = db.prepare("SELECT operation_json, receipt_json FROM agent_ask_settlements WHERE request_id = ?")
     .get(input.settlementRequestId) as { operation_json: string; receipt_json: string } | undefined;
   if (existingByRequest) {
@@ -335,6 +341,22 @@ export function settleAgentAsk(db: Database.Database, input: {
   let queueActionKeys: string[] = [];
   let queueAfter = queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
   const actionIdsToValidate: string[] = [];
+  // A criteria-only repair may leave identical old errors on untouched Actions.
+  // It never permits a new error, or an error on an amended Action.
+  const retainedAcceptanceErrors = new Map<string, Set<string>>();
+  const retainsAcceptanceError = (error: DocValidationError): boolean =>
+    retainedAcceptanceErrors.get(error.relativePath)?.has(JSON.stringify(error)) === true;
+  const validateResultingPlan = (mutation: FileMutation): void => {
+    const relativePath = path.relative(repoRoot, mutation.path);
+    if (!relativePath.startsWith("docs/plans/") || !relativePath.endsWith(".md") || mutation.after === null) return;
+    const parsed = retainedAcceptanceErrors.has(relativePath)
+      ? parsePlanForAcceptanceRepair(relativePath, mutation.path, mutation.after)
+      : parseDoc(relativePath, mutation.path, mutation.after);
+    const errors = parsed.errors.filter((error) => !retainsAcceptanceError(error));
+    if (!parsed.doc || parsed.doc.type !== "plan" || errors.length > 0) {
+      throw validationError("Agent Ask resulting Plan failed validation.", { relativePath, errors: errors.length > 0 ? errors : parsed.errors });
+    }
+  };
   let arrangeQueue = false;
   let artifactInput: { title: string; path?: string } | null = null;
   let completionActionId: string | null = null;
@@ -356,6 +378,25 @@ export function settleAgentAsk(db: Database.Database, input: {
     // file -- so it is not fenced; every accepted settlement is.
     if (settlingClaim) claimFence = { ...settlingClaim };
     const discovered = discoverDocs(repoRoot);
+    // A criteria-only amendment must be able to repair the very validation
+    // error that otherwise hides its target. This read never grants dispatch.
+    let criteriaRepair = proposal.normalized.intent === "plan" && !!proposal.normalized.targetRef &&
+      proposal.normalized.actions.length > 0 && proposal.normalized.actions.every((action) =>
+        !!action.targetRef && action.omittedLists?.includes("dependencies") &&
+        action.omittedLists?.includes("references") && action.why === undefined) &&
+      proposal.normalized.references.length === 0 && !input.activate && !input.placement &&
+      !input.anchor && !input.responsibility;
+    if (criteriaRepair) {
+      const projectContext = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
+      const targetSlug = resolveManagedTargetRef(proposal.normalized.targetRef!, "plan", project.slug);
+      for (const relativePath of discovered.rejected) {
+        if (!relativePath.startsWith("docs/plans/")) continue;
+        const absolutePath = path.join(repoRoot, relativePath);
+        const repaired = parsePlanForAcceptanceRepair(relativePath, absolutePath, readFileSync(absolutePath, "utf8"));
+        if (repaired.doc?.type === "plan" && repaired.doc.project === project.slug &&
+            [targetSlug, projectContext?.activePlan].includes(repaired.doc.slug)) discovered.docs.push(repaired.doc);
+      }
+    }
     const projectDoc = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
     const plan = discovered.docs.find(
       (doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === projectDoc?.activePlan
@@ -372,6 +413,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposal.normalized.acceptance.length === 0) {
             throw validationError("Accepted Action settlement requires at least one observable acceptance criterion in the proposal.");
           }
+          assertCheckableAcceptance(proposal.normalized.acceptance);
           const dependencies = normalizeDependencies(proposal.normalized.dependencies, project.slug);
           const unknownDependencies = dependencies.filter((dependency) => !plan.actions.some((action) => action.id === dependency));
           if (unknownDependencies.length > 0) throw validationError("Agent Ask names dependencies outside the active Plan.", { dependencies: unknownDependencies });
@@ -411,6 +453,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           // A child carrying its own `target_ref` amends that existing Action
           // instead of creating a duplicate with an id derived from its
           // desired_result -- matching what `plan` intent amendments already
@@ -518,6 +561,10 @@ export function settleAgentAsk(db: Database.Database, input: {
           addMilestoneMutations(fileMutations, projectPath, activePlanPath, proposal.normalized.desiredResult);
           effects.push(`Updated Project ${project.slug} and active Plan ${plan.slug} Milestone.`);
         } else if (targetRef === "status") {
+          // Pausing or completing a Project under an Active scope would strand the run (A6).
+          if (proposal.normalized.desiredResult.trim().toLowerCase() !== "active") {
+            assertNoActiveScopeOverPlan(db, project.slug, plan.slug, `setting the Project status to ${proposal.normalized.desiredResult}`);
+          }
           const before = readFileSync(projectPath, "utf8");
           fileMutations.push({ path: projectPath, before, after: replaceTopLevelField(before, "status", proposal.normalized.desiredResult) });
           effects.push(`Updated Project ${project.slug} Status to ${proposal.normalized.desiredResult}.`);
@@ -556,15 +603,33 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (input.activate) {
             if (proposedActions.length || input.responsibility) throw validationError("Activate an existing Plan separately from Action amendments.");
             if (target.slug === plan.slug || target.status !== "draft") throw validationError("Activation requires a different draft Plan.");
+            // Scope-drift guard (A6): the previous Plan is the Active production scope's Plan, so
+            // re-pointing the Project would strand the run. Refuse before any file is written.
+            const covering = activeScopeCoveringPlan(db, project.slug, plan.slug);
+            if (covering) {
+              throw validationError(
+                `Plan ${plan.slug} is inside the Active production scope; activating ${target.slug} would strand it. Nothing was changed.`,
+                { activePlan: covering.planKey, requestedPlan: `${project.slug}/${target.slug}`, remedy: SCOPE_DRIFT_REMEDY }
+              );
+            }
             if (!input.action || !input.model || !input.placement) throw validationError("Activation requires --action, --model and an explicit queue placement.");
             if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(input.model)) throw validationError("Activation model must be a CLI model identifier.");
             if (input.effort && !["low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort)) throw validationError("Activation effort is unsupported.");
             const activeRun = db.prepare(`SELECT er.id FROM execution_runs er JOIN work_items wi ON wi.id = er.work_item_id
               WHERE wi.project_id = ? AND er.status IN ('pending_execution', 'running') LIMIT 1`).get(project.id);
-            const activeSession = db.prepare(`SELECT id FROM agent_sessions
-              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input') LIMIT 1`).get(project.id);
-            if (activeRun || activeSession || queue.running.some((entry) => entry.projectId === project.id) ||
-                queue.attention.some((entry) => entry.projectId === project.id && entry.attentionKind === "session")) {
+            // A Session that has ended and already holds a durable exit receipt is reconciled:
+            // it can no longer run, so it must not pin activation (reconcile never changes its status).
+            const isDeadReceipted = (sessionId: string): boolean => {
+              const row = db.prepare("SELECT ended_at FROM agent_sessions WHERE id = ?").get(sessionId) as { ended_at: string | null } | undefined;
+              return !!row?.ended_at && !!getSessionExitReceipt(db, sessionId);
+            };
+            const blockingSessionEntry = (entry: { projectId: string | null; id: string }): boolean =>
+              entry.projectId === project.id && !(entry.id.startsWith("session:") && isDeadReceipted(entry.id.slice("session:".length)));
+            const activeSession = (db.prepare(`SELECT id FROM agent_sessions
+              WHERE project_id = ? AND status IN ('prepared', 'running', 'needs_input')`).all(project.id) as Array<{ id: string }>)
+              .some((row) => !isDeadReceipted(row.id));
+            if (activeRun || activeSession || queue.running.some(blockingSessionEntry) ||
+                queue.attention.some((entry) => entry.attentionKind === "session" && blockingSessionEntry(entry))) {
               throw validationError("Reconcile the Project's existing Session or Run before activating another Plan.");
             }
             const selected = target.actions.find((action) => action.id === input.action);
@@ -636,6 +701,17 @@ export function settleAgentAsk(db: Database.Database, input: {
             break;
           }
 
+          if (criteriaRepair) {
+            const onlyCriteria = proposedActions.every((proposed) => {
+              const id = resolveManagedTargetRef(proposed.targetRef!, "action", project.slug);
+              const existing = target.actions.find((action) => action.id === id);
+              return existing && proposed.desiredResult === (existing.nextAction ?? existing.title);
+            });
+            if (!onlyCriteria && (discovered.rejected.includes(target.relativePath) || discovered.rejected.includes(plan.relativePath))) {
+              throw validationError("Criteria repair must preserve each Action's next_action and title.");
+            }
+            criteriaRepair = onlyCriteria;
+          }
           const takenIds = new Set(target.actions.map((action) => action.id));
           const newActionIds = proposedActions.map((action) => action.targetRef
             ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
@@ -651,6 +727,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             const existing = action.targetRef !== null;
             if (existing && !existingIds.has(id)) throw validationError("Agent Ask Plan Action amendment target was not found.", { targetRef: action.targetRef });
             if (action.acceptance.length === 0) throw validationError("Every created or amended Plan Action requires at least one observable acceptance criterion.", { action: id });
+            assertCheckableAcceptance(action.acceptance);
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
             const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
             if (unknownDependencies.length > 0) {
@@ -695,14 +772,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             if (action.existing) {
               after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
-                action.amendedReferences, proposal.normalized.requestId, undefined, action.why);
+                action.amendedReferences, proposal.normalized.requestId, undefined, action.why, criteriaRepair);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
                 dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
-              actionIdsToValidate.push(action.id);
+              if (!criteriaRepair) actionIdsToValidate.push(action.id);
             } else {
               after = appendPlanAction(after, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
@@ -713,6 +790,14 @@ export function settleAgentAsk(db: Database.Database, input: {
               effects.push(`Created Action ${project.slug}/${action.id} in Plan ${target.slug} with Responsibility ${input.responsibility}.`);
               actionIdsToValidate.push(action.id);
             }
+          }
+          if (criteriaRepair) {
+            const touchedIndices = new Set(normalizedActions.map((action) => target.actions.findIndex((existing) => existing.id === action.id)));
+            const original = parseDoc(target.relativePath, targetPath, before);
+            retainedAcceptanceErrors.set(target.relativePath, new Set(original.errors.filter((error) => {
+              const field = /^actions\[(\d+)\]\.acceptance_criteria(?:\[\d+\])?$/.exec(error.field);
+              return field !== null && !touchedIndices.has(Number(field[1]));
+            }).map((error) => JSON.stringify(error))));
           }
           fileMutations.push({ path: targetPath, before, after: withPlanUpdated(after) });
 
@@ -754,6 +839,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every draft Plan Action requires at least one observable acceptance criterion.");
           }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
           const planSlug = uniquePlanSlug(discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug), slugify(proposal.normalized.desiredResult));
           const targetPath = path.join(repoRoot, "docs", "plans", `${planSlug}.md`);
           const takenIds = new Set<string>();
@@ -892,7 +978,11 @@ export function settleAgentAsk(db: Database.Database, input: {
         // explicit queue may name exactly one approved successor Plan; activate
         // it here rather than leaving the pointer on a finished Plan. The Action
         // being completed is ignored so it is never offered as its own successor.
-        const activation = planComplete && completingActivePlan
+        // A10/A6 guard: when an Active production scope covers the completing Plan, auto-activating
+        // its successor would re-point the Project and strand the scope, so the successor stays
+        // queued behind and the pointer stays put until production is turned Off.
+        const scopeHoldsPlan = planComplete && completingActivePlan && !!activeScopeCoveringPlan(db, project.slug, targetPlan.slug);
+        const activation = planComplete && completingActivePlan && !scopeHoldsPlan
           ? resolvePlanActivation({
               repoRoot,
               projectSlug: project.slug,
@@ -912,7 +1002,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         // "omit unless this is the active plan"), so completing an Action in any
         // other Plan records its progress and leaves that Plan's pointer field
         // exactly as it was (Issue #1061).
-        const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId),
+        const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId, proposal.normalized.requestId),
           planComplete
             ? { status: "complete", current_action: null, updated }
             : completingActivePlan ? { current_action: nextResolution.actionId, updated } : { updated });
@@ -924,7 +1014,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (activatedNext) {
           effects.push(`Plan ${targetPlan.slug} is complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`);
         } else if (planComplete) {
-          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
+          effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}${scopeHoldsPlan ? ` Successor activation was held: the Plan is inside the Active production scope. ${SCOPE_DRIFT_REMEDY}` : ""}`);
         } else if (completingActivePlan) {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         } else {
@@ -1085,6 +1175,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         if (proposedActions.some((remainderAction) => remainderAction.acceptance.length === 0)) {
           throw validationError("Every remainder Action requires at least one observable acceptance criterion.");
         }
+          for (const action of proposedActions) assertCheckableAcceptance(action.acceptance);
         // Placing the remainder in the queue needs it on the base branch, the
         // same constraint `action` intent's queue placement enforces; the
         // generic `arrangeQueue` guard below refuses this from a candidate
@@ -1267,7 +1358,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             remainderIds.filter((id) => !freshReachableFrom(id).has(targetId));
 
           let next = amendAction(current, actionId, narrowedTitle, narrowed, freshAction.dependsOn, action.references, proposal.normalized.requestId);
-          next = markActionDone(next, actionId);
+          next = markActionDone(next, actionId, proposal.normalized.requestId);
           for (const remainderAction of normalizedRemainder) {
             next = appendPlanAction(next, {
               id: remainderAction.id, title: remainderAction.desiredResult, responsibility: action.responsibility,
@@ -1422,6 +1513,8 @@ export function settleAgentAsk(db: Database.Database, input: {
     archiveCanonicalDraftAskFile(fileMutations, effects, settlementWarnings, repoRoot, proposal, boundCandidateRevision);
   }
 
+  for (const mutation of fileMutations) validateResultingPlan(mutation);
+
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
     operation,
@@ -1474,12 +1567,15 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   };
 
+  hooks?.beforeGitReservation?.();
+  const gitReservation = fileMutations.length > 0 ? reserveAskGitIndex(repoRoot) : null;
+  try {
   if (fileMutations.length > 0) {
     // Draft Ask files are bounded intake, not incidental dirt. A complete
     // settlement consumes one of them, while other pending drafts must remain
     // available for their own future settlement. Nothing else in the working
     // tree is exempted.
-    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot));
+    assertClean(repoRoot, "Agent Ask Project repository", untrackedDraftAskPaths(repoRoot), git);
   }
 
   // A settlement's durable record is the committed managed document, not the
@@ -1564,6 +1660,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           mutation.before = current;
           mutation.after = mutation.retransform(current);
         }
+        validateResultingPlan(mutation);
         if (mutation.after === null) { try { unlinkSync(mutation.path); } catch {} }
         else writeAtomically(mutation.path, mutation.after);
         applied.push(mutation);
@@ -1615,7 +1712,7 @@ export function settleAgentAsk(db: Database.Database, input: {
       const written = new Set(
         fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
       );
-      const blocking = validation.errors.filter((error) => written.has(error.relativePath));
+      const blocking = validation.errors.filter((error) => written.has(error.relativePath) && !retainsAcceptanceError(error));
       if (blocking.length > 0) {
         throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
           errors: blocking,
@@ -1646,7 +1743,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // is recorded, and the working tree is reported as the recoverable part.
   let commitError: string | null = null;
   if (fileMutations.length > 0) {
-    commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt);
+    commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt, gitReservation!.commit);
     if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
     else baseReceipt.documentsCommit = tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
   }
@@ -1670,7 +1767,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         const written = new Set(
           fileMutations.map((mutation) => path.relative(repoRoot, mutation.path)),
         );
-        const blocking = sync.errors.filter((error) => written.has(error.relativePath));
+        const blocking = sync.errors.filter((error) => written.has(error.relativePath) && !retainsAcceptanceError(error));
         if (blocking.length > 0) {
           throw validationError("Accepted Agent Ask managed documents failed operational sync.", {
             errors: blocking,
@@ -1695,10 +1792,37 @@ export function settleAgentAsk(db: Database.Database, input: {
         const previouslyUnpositioned = new Set(queue.ordered.flatMap((entry) =>
           entry.orderStatus === "unpositioned" && entry.orderKey ? [entry.orderKey] : []));
         const arranged = (key: string): boolean => !previouslyUnpositioned.has(key) || queueActionKeys.includes(key);
-        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []).filter(arranged);
+        // Known gap (#1284): a reorder does not stage the matching PROJECT.md
+        // current_action pointer; that needs a governed pointer mutation.
+        // The queue the order was resolved against can differ from the one the
+        // synced documents now project (another Project's Plan merged in
+        // between). Reconcile instead of refusing the whole arrange: positioned
+        // keys keep their relative place, and an Action nobody has positioned
+        // stays unpositioned unless this settlement queued it.
+        const positioned = loadActionOrder(db).positions;
+        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : [])
+          .filter((key) => arranged(key) && (positioned.has(key) || queueActionKeys.includes(key)));
+        const current = new Set(currentKeys);
+        // Drift may drop keys someone else owned, never this settlement's own:
+        // an Action it queued that failed to project must fail loudly.
+        const missing = queueActionKeys.filter((key) => !current.has(key));
+        if (missing.length > 0) {
+          throw validationError("Batch order must contain every active approved Action exactly once.", {
+            missing,
+            remedy: "The settled Plan Actions did not project into the queue; run `arcadia docs sync` and inspect the Plan."
+          });
+        }
+        const order = queueAfter.filter((key) => arranged(key) && current.has(key));
+        const byPosition = [...current].sort((left, right) =>
+          (positioned.get(left) ?? Number.MAX_SAFE_INTEGER) - (positioned.get(right) ?? Number.MAX_SAFE_INTEGER));
+        byPosition.forEach((key, index) => {
+          if (order.includes(key)) return;
+          const before = byPosition.slice(0, index).reverse().find((candidate) => order.includes(candidate));
+          order.splice(before === undefined ? 0 : order.indexOf(before) + 1, 0, key);
+        });
         arrangeActionOrder(db, {
           currentKeys,
-          order: queueAfter.filter(arranged),
+          order,
           requestId: `agent-ask:${input.settlementRequestId}`,
           expectedRevision: queue.revision,
           apply: true
@@ -1775,6 +1899,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
   return settled;
+  } finally { gitReservation?.release(); }
 }
 
 /**
@@ -1937,8 +2062,13 @@ export function recordCommittedCompletionSettlement(db: Database.Database, input
  * settlement writers stamp, never free prose, so a Log entry that merely
  * mentions an Ask id does not register as that Ask's record.
  */
-function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
+export function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, requestId: string): string | null {
   const marker = `Agent Ask ${requestId}`;
+  // Only the writer's own line, with the whole request id, never a prefix or a
+  // prose mention: a revised Ask's id often extends the first draft's
+  // (`x` -> `x-r2`), and the draft did not file the revision's Decision (Issue
+  // #1236). The writer ends the id with a period; text may follow on the line.
+  const named = new RegExp(`^Proposed by ${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(?=\\s|$)`, "m");
   for (const doc of docs) {
     // A Plan Action created or amended by this Ask carries it as `source`.
     if (doc.type === "plan" && doc.project === projectSlug && doc.actions.some((action) => action.source === marker)) {
@@ -1949,7 +2079,7 @@ function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, reques
       return doc.relativePath;
     }
     // A Decision this Ask filed names it as its proposer.
-    if (doc.type === "decision" && doc.project === projectSlug && doc.body.includes(marker)) {
+    if (doc.type === "decision" && doc.project === projectSlug && named.test(doc.body)) {
       return doc.relativePath;
     }
   }
@@ -2000,7 +2130,8 @@ export function insertSettlementRow(
 function commitSettlementOutput(
   repoRoot: string,
   fileMutations: FileMutation[],
-  receipt: AgentAskSettlementReceipt
+  receipt: AgentAskSettlementReceipt,
+  commit: (paths: string[], message: string) => string | null
 ): string | null {
   const allPaths = fileMutations.map((mutation) => ({ relative: path.relative(repoRoot, mutation.path), deleted: mutation.after === null }));
   // A deletion mutation whose file was never tracked — the drafted Ask file
@@ -2038,7 +2169,7 @@ function commitSettlementOutput(
     "decision they record."
   ].join("\n");
   if (paths.length === 0) return null;
-  return commitOnlyPaths(repoRoot, paths, message);
+  return commit(paths, message);
 }
 
 const NOTIFICATION_UPCOMING_ACTION_LIMIT = 5;
@@ -2327,14 +2458,28 @@ function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility;
   }
 }
 
+/** Replace a whole YAML field value, including deeper-indented continuations.
+ * Blank lines belong to the value only when another continuation follows them.
+ * Callback replacements keep all dollar replacement patterns literal.
+ */
+function replaceYamlField(content: string, indent: number, field: string, value: string): string {
+  const pattern = new RegExp(`^ {${indent}}${escapeRegex(field)}[ \t]*:.*(?:(?:\\r?\\n[ \\t]*(?=\\r?\\n))*\\r?\\n {${indent + 1},}\\S.*)*`, "m");
+  return content.replace(pattern, () => `${" ".repeat(indent)}${field}:${value.startsWith("\n") ? "" : " "}${value}`);
+}
+
+/** Keep multiline prose on one YAML line without altering its parsed text. */
+function amendmentScalar(value: string): string {
+  return /[\r\n]/.test(value) ? JSON.stringify(value) : yamlScalar(value);
+}
+
 export function replaceTopLevelField(content: string, field: string, value: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw validationError("Managed document has no YAML frontmatter block to update.");
-  const lines = match[1].split(/\r?\n/);
-  const index = lines.findIndex((line) => new RegExp(`^${escapeRegex(field)}\\s*:`).test(line));
-  if (index < 0) throw validationError(`Managed document has no ${field} field to update.`);
-  lines[index] = `${field}: ${yamlScalar(value)}`;
-  return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
+  if (!new RegExp(`^${escapeRegex(field)}\\s*:`, "m").test(match[1])) {
+    throw validationError(`Managed document has no ${field} field to update.`);
+  }
+  const updated = replaceYamlField(match[0], 0, field, amendmentScalar(value));
+  return content.replace(match[0], () => updated);
 }
 
 /** Update only the frontmatter's top level, preserving Action state and narrative. */
@@ -2348,7 +2493,14 @@ function setTopLevelFields(content: string, fields: Record<string, string | null
     else if (index >= 0) lines[index] = `${field}: ${yamlScalar(value)}`;
     else lines.push(`${field}: ${yamlScalar(value)}`);
   }
-  return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
+  // A callback, not a string: the frontmatter block for a Plan document
+  // embeds the `actions:` list, so `lines` can carry an untouched Action
+  // field's literal text (for example `markActionDone`'s own completed
+  // next_action line, which may itself contain `$&`/`$1`/etc. from a
+  // caller-supplied Agent Ask request_id). A string replacement here would
+  // reinterpret those patterns against `match[0]`'s own match.
+  const newFrontmatter = `---\n${lines.join("\n")}\n---`;
+  return content.replace(match[0], () => newFrontmatter);
 }
 
 /** One top-level frontmatter scalar, unquoted; null when absent or empty. */
@@ -2616,21 +2768,34 @@ function amendAction(
   references: string[] | null,
   requestId: string,
   responsibility?: AgentAskResponsibility,
-  why?: string | null
+  why?: string | null,
+  criteriaOnly = false
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
-  if (!/^ {4}next_action:/m.test(block)) throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
-  block = block.replace(/^ {4}next_action:.*$/m, `    next_action: ${yamlScalar(nextAction)}`);
+  if (!criteriaOnly) {
+    if (!/^ {4}next_action:/m.test(block)) {
+      throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
+    }
+    block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
+  }
+  // Criteria-only changes preserve the original scalar bytes, including an
+  // absent instruction on an unresolved question; they do not answer it.
   if (responsibility) {
     if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
     block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
   if (acceptance.length > 0) {
-    const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`)].join("\n");
-    block = block.replace(/^ {4}acceptance_criteria:\r?\n(?: {6}- .*\r?\n?)*/m, `${replacement}\n`);
+    const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${amendmentScalar(criterion)}`)].join("\n");
+    if (/^ {4}acceptance_criteria:/m.test(block)) {
+      block = replaceYamlField(block, 4, "acceptance_criteria", `\n${acceptance.map((criterion) => `      - ${amendmentScalar(criterion)}`).join("\n")}`);
+    } else {
+      // Insert before the title so an unchanged block scalar (and its blank
+      // lines/chomping) remains contiguous and byte-for-byte intact.
+      block = block.replace(/^ {4}title:.*$/m, (line) => `${replacement}\n${line}`);
+    }
   }
   // depends_on/references may already be written as a multi-line block list
   // (each item on its own "      - " line) rather than an inline [a, b]; the
@@ -2638,35 +2803,68 @@ function amendAction(
   // sequence the YAML parser rejects. A `null` list was omitted by the Ask and
   // leaves the existing value alone; only an explicit `[]` clears (Issue #1079).
   if (dependencies !== null) {
-    block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
-      dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
+    block = replaceYamlField(block, 4, "depends_on", `[${dependencies.join(", ")}]`);
   }
   if (references !== null) {
-    block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
-      references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
+    block = replaceYamlField(block, 4, "references", `[${references.map((reference) => JSON.stringify(reference)).join(", ")}]`);
   }
   // An amendment that declares a `why` sets it; one that omits it leaves the
   // checked-in value alone. Function replacers keep `$` in prose literal.
   if (why) {
     const whyLine = `    why: ${quotedWhy(why)}`;
     block = /^ {4}why:/m.test(block)
-      ? block.replace(/^ {4}why:.*$/m, () => whyLine)
+      ? replaceYamlField(block, 4, "why", quotedWhy(why))
       : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n${whyLine}`);
   }
   block = /^ {4}source:/m.test(block)
-    ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
-    : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);
-  return content.replace(pattern, block);
+    ? replaceYamlField(block, 4, "source", amendmentScalar(`Agent Ask ${requestId}`))
+    : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n    source: ${amendmentScalar(`Agent Ask ${requestId}`)}`);
+  return content.replace(pattern, () => block);
 }
 
-function markActionDone(content: string, actionId: string): string {
+function markActionDone(content: string, actionId: string, requestId: string): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
   if (!/^ {4}status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
   block = block.replace(/^ {4}status:.*$/m, "    status: done");
-  return content.replace(pattern, block);
+  // `next_action` is optional in `src/docs/parse.ts` unless `clarification`
+  // is "clarified" (required) or this is the current pointer Action
+  // (clarification itself required); `complete` can target an otherwise
+  // valid legacy or non-active-Plan Action that never declared either. Rewrite
+  // the field only when it is present — there is no stale instruction to make
+  // unambiguous when it was never there, and the completion is still named by
+  // the canonical Log entry and settlement receipt either way. Leaving it
+  // absent preserves behavior the old writer already had for this shape.
+  if (/^ {4}next_action:/m.test(block)) {
+    // `next_action` is free text and may already be written as a YAML block
+    // scalar (`|`/`>`) spanning several more-indented lines; a header-only
+    // replace leaves those continuation lines behind, where they silently fold
+    // into the new plain scalar instead of being discarded. Consumed the same
+    // way `depends_on`/`references` consume their own continuation lines.
+    // A continuation line is one indented deeper than the 4-space key (5+
+    // spaces); blank lines count only when a deeper line follows them. The
+    // field's last line is often the block's last line (for the last Action the
+    // block runs to the closing `---` and includes top-level fields such as
+    // `questions:`), so the match must stop at the first line that is not a
+    // deeper-indented continuation and never consume that line's newline.
+    // The replacement is a callback, not a string: `requestId` is a caller-
+    // supplied Agent Ask request_id (normalized by `requiredText` only, so a
+    // literal `$&`/`$1`/etc is legal input), and `String.replace` expands those
+    // patterns in a string replacement. A callback returns it literally.
+    const completed = `Completed via Agent Ask ${requestId}; no further action.`;
+    // A request_id with a line break would otherwise inject YAML lines into the
+    // Action; a JSON double-quoted scalar is valid YAML and keeps it one line.
+    const completedScalar = /[\r\n]/.test(completed) ? JSON.stringify(completed) : yamlScalar(completed);
+    const newNextActionLine = `    next_action: ${completedScalar}`;
+    block = block.replace(/^ {4}next_action:.*(?:(?:\r?\n[ \t]*(?=\r?\n))*\r?\n {5,}\S.*)*/m, () => newNextActionLine);
+  }
+  // `block` now carries that same literal requestId text, so this final
+  // reinsertion into `content` must also use a callback: a string replacement
+  // here would reinterpret any `$&`/`$1`/etc. inside `block` against
+  // `pattern`'s own match in `content`, not keep `block` literal.
+  return content.replace(pattern, () => block);
 }
 
 /**
@@ -2683,7 +2881,7 @@ function setActionDependsOn(content: string, actionId: string, dependencies: str
   if (!/^ {4}depends_on:/m.test(block)) throw validationError("Managed Plan Action has no depends_on field to amend.", { actionId });
   block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  return content.replace(pattern, block);
+  return content.replace(pattern, () => block);
 }
 
 /**
@@ -2701,7 +2899,7 @@ function recordSplitInto(content: string, actionId: string, remainderIds: string
   if (!dependsOnField) throw validationError("Managed Plan Action has no depends_on field to anchor split_into after.", { actionId });
   const insertAt = dependsOnField.index + dependsOnField[0].length;
   const updatedBlock = `${block.slice(0, insertAt)}\n    split_into: [${remainderIds.join(", ")}]${block.slice(insertAt)}`;
-  return content.replace(pattern, updatedBlock);
+  return content.replace(pattern, () => updatedBlock);
 }
 
 /**
@@ -3060,4 +3258,11 @@ function today(): string {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function assertCheckableAcceptance(criteria: string[]): void {
+  const problems = validateAcceptanceCriteria(criteria);
+  if (problems.length > 0) {
+    throw validationError("Acceptance criteria must be precise and checkable.", { problems });
+  }
 }

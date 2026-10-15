@@ -17,6 +17,7 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
  *
+ * Read-only canonical role discovery/preparation is also allowed.
  * Nothing else is added: no commit, push, settle, broker or arbitrary shell.
  * The list is written to a per-Session settings file under the workspace and
  * passed with `--settings`, together with `--setting-sources ""`. Without that
@@ -43,6 +44,12 @@ export const HEADLESS_AGENT_ASK_DRAFT_RULES: readonly string[] = Object.freeze([
   "Bash(pnpm arcadia agent-ask draft:*)"
 ]);
 
+/** Existing read-only role discovery/preparation commands; no launch or workspace mutation. */
+export const HEADLESS_ROLE_READ_RULES: readonly string[] = Object.freeze([
+  "Bash(arcadia roles)", "Bash(arcadia roles --json)", "Bash(arcadia roles show:*)", "Bash(arcadia role brief:*)",
+  "Bash(pnpm arcadia roles)", "Bash(pnpm arcadia roles --json)", "Bash(pnpm arcadia roles show:*)", "Bash(pnpm arcadia role brief:*)"
+]);
+
 /**
  * The Agent (formerly Task) tool, so a Session that started on the smallest
  * model can call in a bigger one for a hard sub-problem ("Calling in help" in
@@ -58,19 +65,22 @@ function simpleCommands(command: string): string[] {
 }
 
 /** A Claude `Bash(...)` rule matching exactly one simple command. */
-function exactBashRule(command: string): string {
+export function exactBashRule(command: string): string {
   // `*` is Claude's wildcard (and `:*` its legacy prefix match), so a literal
   // star is escaped: a declared command ending in `:*` stays one exact command.
   return `Bash(${command.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("*", "\\*")})`;
 }
 
 /** The complete allow list for a Session whose Project declares `validationCommands`. */
-export function headlessClaudeAllowList(validationCommands: readonly string[]): string[] {
+export function headlessClaudeAllowList(validationCommands: readonly string[], probeCommand?: string | null): string[] {
   const rules = new Set<string>();
   for (const command of validationCommands) {
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
-  for (const rule of HEADLESS_AGENT_ASK_DRAFT_RULES) rules.add(rule);
+  for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
+  // The brief's first step: the in-Session capability probe, pinned to the one
+  // exact command string (path, arguments and this Session's nonce).
+  if (probeCommand) rules.add(exactBashRule(probeCommand));
   rules.add(HEADLESS_SUBAGENT_RULE);
   return [...rules];
 }
@@ -85,9 +95,10 @@ export function writeHeadlessClaudeSettings(input: {
   workspace: string;
   sessionId: string;
   validationCommands: readonly string[];
+  probeCommand?: string | null;
 }): string {
   const file = sessionSettingsPath(input.workspace, input.sessionId);
-  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands) } };
+  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands, input.probeCommand) } };
   try {
     mkdirSync(sessionRecordDirectory(input.workspace), { recursive: true });
     writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });

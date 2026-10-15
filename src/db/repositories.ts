@@ -375,7 +375,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
   const workItem: WorkItem = {
     id: createId("workItem"),
     project_id: input.projectId ?? null,
-    capture_id: null,
+    capture_id: input.captureId ?? null,
     milestone_id: input.milestoneId ?? null,
     title: required(input.title || titleFromRawInput(rawInput), "Action title"),
     raw_input: rawInput,
@@ -1125,6 +1125,11 @@ export function updateWorkItem(
     updates.push("execution_requirement_json = @execution_requirement_json");
   }
 
+  if (input.executionRoute !== undefined) {
+    parameters.execution_route = nullable(input.executionRoute);
+    updates.push("execution_route = @execution_route");
+  }
+
   if (input.acceptanceCriteriaJson !== undefined) {
     parameters.acceptance_criteria_json = nullable(input.acceptanceCriteriaJson);
     updates.push("acceptance_criteria_json = @acceptance_criteria_json");
@@ -1329,6 +1334,7 @@ export interface UpsertSkillDefinitionInput {
 
 export interface CreateExecutionPlanInput {
   workItemId: string;
+  captureId?: string | null;
   summary: string;
   steps: Array<{
     skillName: string;
@@ -1408,7 +1414,7 @@ export function createExecutionPlan(db: Database.Database, input: CreateExecutio
     const plan: ExecutionPlan = {
       id: createId("executionPlan"),
       work_item_id: input.workItemId,
-      capture_id: null,
+      capture_id: input.captureId ?? null,
       status: validateExecutionPlanStatus("planned"),
       summary: required(input.summary, "Execution plan summary"),
       created_at: timestamp,

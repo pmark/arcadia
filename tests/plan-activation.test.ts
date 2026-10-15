@@ -5,7 +5,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { activateNextPlan, activatePlan } from "../src/dispatch/planActivationApply.js";
 import { resolvePlanActivation } from "../src/dispatch/planActivation.js";
-import { seedActionOrderFifo, arrangeActionOrder } from "../src/dispatch/order.js";
+import { seedActionOrderFifo, arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -78,7 +79,7 @@ function planDoc(input: {
     `    expected_artifact: Evidence for ${action.id}`,
     `    clarification: ${action.clarification ?? "clarified"}`,
     "    acceptance_criteria:",
-    `      - ${action.id} is done.`,
+    `      - The proof for ${action.id} exists.`,
     `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
     `    decisions: [${(action.decisions ?? []).join(", ")}]`
   ]);
@@ -273,6 +274,32 @@ describe("activateNextPlan", () => {
     expect(replay.activation).toEqual(applied.activation);
   });
 
+  it("refuses before seeding or writing when an Active production scope covers the current Plan (A6)", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const workspacePath = workspace(repo);
+    const scope = normalizeProductionScope({ intent: "Run plan-a.", projects: ["demo"], plans: ["demo/plan-a"], actions: [],
+      providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+    withDatabase(workspacePath, (db) => activateProduction(db, {
+      requestId: "scope-a", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" }));
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+
+    expect(() => withDatabase(workspacePath, (db) =>
+      activateNextPlan(db, { repoRoot: repo, projectSlug: "demo", requestId: "held-1", apply: true }))).toThrow(/Active production scope/);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(head);
+    withDatabase(workspacePath, (db) => expect(loadActionOrder(db).positions.size).toBe(0));
+
+    // With the policy row absent there is no scope, so activation proceeds as before.
+    withDatabase(workspacePath, (db) => { db.prepare("DELETE FROM production_policy").run(); });
+    const applied = withDatabase(workspacePath, (db) =>
+      activateNextPlan(db, { repoRoot: repo, projectSlug: "demo", requestId: "held-2", apply: true }));
+    expect(applied.activation?.actionKey).toBe("demo/b1");
+  });
+
   it("previews an activation without writing the pointer", () => {
     const repo = scratch();
     writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
@@ -430,6 +457,57 @@ describe("arcadia go cross-Plan activation", () => {
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-b");
     // The next worktree is prepared from the base, which carries the activation.
     expect(result.data.nextWorktree?.branch).toContain("b1");
+  });
+
+  it("under an Active scope, go integrates and removes nothing on apply and reports a hold on preview (A6)", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const feature = path.join(scratch(), "feature");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "codex/task-branch", feature], { cwd: repo });
+    writeFileSync(path.join(feature, "proof.txt"), "proof\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: feature });
+    execFileSync("git", ["commit", "-qm", "add proof"], { cwd: feature });
+    const workspacePath = workspace(repo);
+    const scope = normalizeProductionScope({ intent: "Run plan-a.", projects: ["demo"], plans: ["demo/plan-a"], actions: [],
+      providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+    withDatabase(workspacePath, (db) => activateProduction(db, {
+      requestId: "scope-go", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" }));
+    const baseHead = execFileSync("git", ["rev-parse", "main"], { cwd: repo, encoding: "utf8" });
+
+    const preview = runGoCommand({ repo, source: feature, workspace: workspacePath });
+    expect(preview.data.activationHold).toMatchObject({ activePlan: "demo/plan-a", remedy: expect.stringContaining("Turn production Off") });
+    expect(preview.data.activation).toBeNull();
+
+    expect(() => runGoCommand({ repo, source: feature, apply: true, agent: "codex", workspace: workspacePath,
+      agentWorktreeRoot: path.join(scratch(), "worktrees") })).toThrow(/Active production scope/);
+    expect(execFileSync("git", ["rev-parse", "main"], { cwd: repo, encoding: "utf8" })).toBe(baseHead);
+    expect(execFileSync("git", ["branch", "--list", "codex/task-branch"], { cwd: repo, encoding: "utf8" })).toContain("codex/task-branch");
+    expect(readFileSync(path.join(feature, "proof.txt"), "utf8")).toBe("proof\n");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
+  });
+
+  it("replays an applied activation after a scope later becomes Active, and does not refuse a Project with no successor (A6)", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const workspacePath = workspace(repo);
+    const applied = withDatabase(workspacePath, (db) =>
+      activateNextPlan(db, { repoRoot: repo, projectSlug: "demo", requestId: "replay-1", apply: true }));
+    const scope = normalizeProductionScope({ intent: "Run plan-b.", projects: ["demo"], plans: ["demo/plan-a", "demo/plan-b"], actions: [],
+      providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+    withDatabase(workspacePath, (db) => activateProduction(db, {
+      requestId: "scope-replay", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" }));
+    const replay = withDatabase(workspacePath, (db) =>
+      activatePlan(db, { repoRoot: repo, projectSlug: "demo", actionKey: "demo/b1", queueRevision: applied.queueRevision, requestId: "replay-1", apply: true }));
+    expect(replay).toEqual(applied.activation);
+    // plan-b is now the covered current Plan and no other Plan is queued behind it: not refused.
+    expect(() => withDatabase(workspacePath, (db) =>
+      activateNextPlan(db, { repoRoot: repo, projectSlug: "demo", requestId: "replay-none", apply: true }))).not.toThrow();
   });
 
   it("activates on a temporary checkout of baseBranch when the base is unattached", () => {

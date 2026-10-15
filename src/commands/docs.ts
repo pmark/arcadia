@@ -1,8 +1,11 @@
-import { projectNotFound } from "../cli/errors.js";
+import type Database from "better-sqlite3";
+import type { Project } from "../domain/types.js";
+import { ArcadiaError, projectNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, writeTransaction } from "../db/connection.js";
+import { retryOnSqliteLock, SqliteLockRetriesExhaustedError } from "../db/lockRetry.js";
 import { getProject, getProjectBySlug, listProjects } from "../db/repositories.js";
 import { syncProjectDocs, type DocChange, type ProjectSyncResult } from "../docs/sync.js";
 
@@ -74,7 +77,7 @@ export function runDocsSyncCommand(options: DocsSyncOptions): CommandSuccess<Doc
             }
           :
         options.apply
-          ? db.transaction(() => syncProjectDocs(db, project, { apply: true }))()
+          ? syncWithLockRetry(db, project)
           : syncProjectDocs(db, project, { apply: false })
       );
   });
@@ -175,4 +178,20 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
   }
 
   return lines;
+}
+
+/** Applies one Project sync, retrying a transient lock and naming the failure once the bound is spent. */
+function syncWithLockRetry(db: Database.Database, project: Project): ProjectSyncResult {
+  try {
+    return retryOnSqliteLock(() => writeTransaction(db, () => syncProjectDocs(db, project, { apply: true })));
+  } catch (error) {
+    if (error instanceof SqliteLockRetriesExhaustedError) {
+      throw new ArcadiaError("SQLITE_LOCK_RETRIES_EXHAUSTED", error.message, 1, {
+        attempts: error.attempts,
+        cause: error.reason,
+        remedy: "Retry once the competing writer (a worker tick or service) finishes."
+      });
+    }
+    throw error;
+  }
 }

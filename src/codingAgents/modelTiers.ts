@@ -210,7 +210,7 @@ export function resolveHandoffModel(input: HandoffModelInput): HandoffModelResol
   };
 }
 
-function tierOfModel(agent: TierAgent, model: string, registry: ModelTierRegistry): ModelTier | null {
+export function tierOfModel(agent: TierAgent, model: string, registry: ModelTierRegistry): ModelTier | null {
   return MODEL_TIERS.find((tier) => registry.tiers[tier][agent]?.model === model) ?? null;
 }
 

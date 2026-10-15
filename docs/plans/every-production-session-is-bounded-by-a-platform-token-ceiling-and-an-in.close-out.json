@@ -1,0 +1,231 @@
+{
+  "schema": "arcadia-plan-close-out-v1",
+  "plan": {
+    "slug": "every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in",
+    "status": "draft",
+    "milestone": "Every production Session is bounded by a platform token ceiling and an in-Session environment probe, and every stop it raises clears from /todo in at most two clicks, proven by replays of recorded sessions and one validated ledger row per session.",
+    "closed": false
+  },
+  "actions": [
+    {
+      "id": "attach-the-session-probe-result-to-the-reconcile-receipt",
+      "title": "Attach the Session probe JSON and its budget to the reconcile receipt as a field, for both failing and passing probes, and verify the checks against a real provider sandbox.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    },
+    {
+      "id": "enforce-session-token-ceiling",
+      "title": "Implement a per-Session input-token ceiling in the production policy that ends the attempt and writes a budget_exhausted stop receipt with cached and uncached tokens recorded separately.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "df6799f372bf93250398397dfa463a08d1cfd152"
+      }
+    },
+    {
+      "id": "fix-docs-sync-lock-and-activation-order",
+      "title": "Implement activation so the activated Plan Actions are positioned inside the apply transaction and docs sync retries a transient database lock.",
+      "status": "done",
+      "outcome": "split",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "f14fc522b3302b87068a06fcdf0e2547a2177dda"
+      }
+    },
+    {
+      "id": "one-click-clear-every-blocker-kind",
+      "title": "Implement a blocker-kind remedy registry and /todo controls so every platform-raised stop clears in at most two clicks with no typing.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    },
+    {
+      "id": "probe-environment-inside-session",
+      "title": "Implement a deterministic probe script that runs as the Session first step and ends the attempt with environment_wall when the Session sandbox cannot write the workspace database, run host validation or produce a preservation receipt.",
+      "status": "done",
+      "outcome": "split",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "2c84a20d7d09356ed7220f497623d1c335298af3"
+      }
+    },
+    {
+      "id": "record-session-ledger",
+      "title": "Implement docs/reports/session-ledger.jsonl with a typed schema, a deterministic validator wired into CI, and backfilled rows for A12, A3, A5 and A6 so every session records cost, review findings, touches and frictions in one compact row.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "917b38e1f352c2186f0d6d5d3aadd40edb55fccd"
+      }
+    },
+    {
+      "id": "replay-environment-wall-session",
+      "title": "Implement a fast-rehearsal scenario built from the 2026-10-12 00:40Z Session receipts (no diff, workspace write denied, sandbox test refusals) that must end refused or stopped before a fixed token bound, and make a missing report.json fail loudly.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "2c668b00c08eac8089802d1e65efd938ef17231c"
+      }
+    },
+    {
+      "id": "revise-agent-roles-and-session-briefs",
+      "title": "Record the revised agent roles and a compact session brief template in the governed guidance so Lead sessions start from a generated brief and every role leaves one ledger row.",
+      "status": "done",
+      "outcome": "done",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": {
+        "date": "2026-10-12",
+        "candidate": "c84eed3b4c8b5b2b6a7c59aee3510b6fcda34c11"
+      }
+    },
+    {
+      "id": "stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+      "title": "Stage the matching current_action change in the same governed settlement as a queue reorder and reproduce the live post-activation database lock in a test.",
+      "status": "open",
+      "outcome": "open",
+      "prs": [],
+      "ledgerSessions": [],
+      "completion": null
+    }
+  ],
+  "openRemainders": [
+    {
+      "id": "attach-the-session-probe-result-to-the-reconcile-receipt",
+      "status": "open",
+      "source": "plan-action"
+    },
+    {
+      "id": "one-click-clear-every-blocker-kind",
+      "status": "open",
+      "source": "plan-action"
+    },
+    {
+      "id": "stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+      "status": "open",
+      "source": "plan-action"
+    }
+  ],
+  "openBlockers": [],
+  "ledger": {
+    "rowsConsidered": 35,
+    "rowsMatched": 0,
+    "rowsExcluded": 35,
+    "evidence": "none",
+    "sessions": null,
+    "reviewRounds": null,
+    "subagentTokens": null,
+    "attempts": null,
+    "operatorTouches": null,
+    "outcomes": null
+  },
+  "frictions": [],
+  "unresolvedFrictionIds": [],
+  "unmatchedLedgerRows": [
+    {
+      "session_id": "01a12d10-136c-7371-92e9-8e04912038f2/native-package-broker-registry-20261013",
+      "action_id": "package-protected-broker-role-registry"
+    },
+    {
+      "session_id": "01a12d10-scalar-writer-repair-20261013",
+      "action_id": "amend-action-consumes-block-scalar-and-literal-ids"
+    },
+    {
+      "session_id": "01a130f8-9330-77f0-9cd8-12622f7ee808-pr-page-design",
+      "action_id": "operator-directed:#1333"
+    },
+    {
+      "session_id": "01a13178-supervisor-bounded-scout-20261013",
+      "action_id": "operator-directed:#1388"
+    },
+    {
+      "session_id": "01a1328a-0bc5-7c71-a155-398daeff8097",
+      "action_id": "operator-directed:#1341"
+    },
+    {
+      "session_id": "01a1329d-1401-7720-b06b-e327d41bb425",
+      "action_id": "operator-directed:#1339+#1340"
+    },
+    {
+      "session_id": "01a135bd-b314-7df2-8954-c1b306ba8c87-pr-followup",
+      "action_id": "operator-directed:#1339+#1340"
+    },
+    {
+      "session_id": "01a135bd-lightweight-pr-inventory-2026-10-13",
+      "action_id": "operator-directed:#1370"
+    },
+    {
+      "session_id": "01a135bd-pr-control-keys-2026-10-13",
+      "action_id": "operator-directed:#1373"
+    },
+    {
+      "session_id": "01a135bd-pr-newest-first-2026-10-13",
+      "action_id": "operator-directed:#1377"
+    },
+    {
+      "session_id": "01a135bd-pr-persistent-cache-2026-10-13",
+      "action_id": "operator-directed:#1383"
+    },
+    {
+      "session_id": "01a135bd-pr-tldr-fast-cloud-2026-10-13",
+      "action_id": "operator-directed:#1380"
+    },
+    {
+      "session_id": "2026-10-12-codex-agent-ask-isolation-1331",
+      "action_id": "operator-directed:#1331"
+    },
+    {
+      "session_id": "2026-10-12-driver-a12",
+      "action_id": "stop-spending-into-an-environment-wall"
+    },
+    {
+      "session_id": "2026-10-12-driver-a3",
+      "action_id": "name-every-production-stall-with-a-one-click-fix"
+    },
+    {
+      "session_id": "2026-10-12-driver-a5",
+      "action_id": "declare-action-route-and-fix-the-approval-check"
+    },
+    {
+      "session_id": "2026-10-12-driver-a6",
+      "action_id": "refuse-plan-changes-inside-an-active-production-scope"
+    },
+    {
+      "session_id": "2026-10-12-driver-issue-1339",
+      "action_id": "operator-directed:#1339"
+    },
+    {
+      "session_id": "2026-10-12-driver-review-model-effectiveness",
+      "action_id": "operator-directed:review-model-effectiveness"
+    },
+    {
+      "session_id": "2026-10-12-driver2-model-effectiveness",
+      "action_id": "operator-directed:review-model-effectiveness"
+    }
+  ],
+  "unmatchedTruncated": true,
+  "duplicateLedgerSessions": [],
+  "successor": {
+    "recommendation": null,
+    "reason": "the Plan document names no successor"
+  },
+  "hash": "041ad98326939a797883b11ac59b1337cdee35f7142485b678f507a7540fd179"
+}

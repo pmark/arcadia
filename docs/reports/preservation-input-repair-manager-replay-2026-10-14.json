@@ -1,0 +1,13 @@
+{
+  "observedAt": "2026-10-15T00:38:27.389726+00:00",
+  "baseHead": "4e19fd0b0aded12ed64bc3f3ab4c28a354b4f50b",
+  "sourceHashes": {
+    "src/sessions/candidateSnapshot.ts": "e4bb1fd268271e574b076c6bb6549f42c0718bf121580b214ea6ad3a7e69fed7",
+    "tests/candidate-snapshot-input.test.ts": "db009d262813d9bbeb20e0b71a83761dc8388164969fb966f8dfb2c850c4f261"
+  },
+  "unchanged": true,
+  "tests": "14pass73outsidefilter",
+  "exitCode": 0,
+  "log": "/private/tmp/arcadia-manager-preservation-repair-replay.txt",
+  "meaning": "Exact dirtysourcehash-bound hermetic proof; not installedruntime or finalcommitproof"
+}

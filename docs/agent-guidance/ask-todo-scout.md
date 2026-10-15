@@ -1,0 +1,13 @@
+# Ask/To-do Hello World scout
+
+For project continuation, read [the maintained Scout guide](../scout/CONTINUE.md). This page describes the deterministic public measurement.
+
+Use the bounded scenario `pnpm fast-rehearsal -t 'Ask/To-do scout'` to measure one repeatable, zero-model Ask journey. It creates a disposable workspace and Project, asks Arcadia to create `HelloWorld.txt` with exact bytes `Hello World!\n`, and transports one explicitly labelled fixture operator approval through Ask. The scout interacts only through public Ask (including `Ask show`) and To-do command paths; it does not start a worker or rescue the journey through another command.
+
+Read the scenario's `scout` object in the harness `report.json`. `outcome` is `yes` only when the exact file exists and a correlated completed Run plus a ready or published Artifact at that path prove completion. A file alone, a queued Run, an approval receipt, or a passing Vitest test cannot produce `yes`. The expected current product result is `no`: the Run queues as `pending_execution`, the fixture has no worker, and completion evidence is absent. Ask approval returns the queued Run identifier; Ask show and To-do expose its evidence consistently.
+
+Vitest exit 0 means the bounded journey ran and its expected `no` report was written. It does not mean the requested file was completed. For this deterministic scout only, the report records zero model calls and tokens, supported by the deterministic Ask path and an empty provider-guard call list; this excludes any coding-agent work that builds the scout. It also records the Ask/capture/review/Run identifiers, permitted Ask and To-do transcript, exact artifact check, first blocker, and a proposed next step. An existing file without matching completion evidence is covered by the negative oracle.
+
+Ask approval returns the actual queued Run id and `queued` status. `ask show <request-id>` and `todo --project <slug> --json` expose the same correlated Run status, waiting reason, and linked Artifact evidence, including terminal Runs. This remains observation only: a queued Run or approval receipt is not completion, and the zero-model scout still reports `no` while its Run is pending and lacks accepted completion evidence.
+
+The reusable launch action is `run-scout-hello-world-probe`, in the generated operator-script library. It runs the same focused command once, retains its report and log, and writes a receipt plus a failure handoff even when the report is missing or malformed. The action becomes available only after the reviewed library is published. Its captured report may truthfully say product outcome `no`; a successful harness capture is not Hello World completion.

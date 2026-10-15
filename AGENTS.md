@@ -3,6 +3,15 @@
 This is the vendor-neutral work contract. CLAUDE.md imports this file; shared
 rules come from docs/agents-context.md. Detailed procedures are retrieved on demand.
 
+## Routine GitHub delivery
+
+Operator direction, 2026-10-12: a request to implement work includes the
+routine repository intake Issue, candidate branch push, and pull request
+handoff. Do not ask for a second confirmation for those steps. Include this
+standing authorization when requesting host permission for them; a host
+refusal still follows the normal permission recovery path. Merge, deployment,
+and other consequential approval boundaries retain their existing gates.
+
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
 
@@ -142,3 +151,7 @@ Before critical-path production work, read and refresh
 The detailed original procedures remain authoritative in their indexed homes.
 Change shared bootstrap wording in docs/agents-context.md and regenerate this
 managed region; preserve all adopter-owned material outside its markers.
+
+## Scout project continuation
+
+For “continue the Scout project for Arcadia Studio” or a Scout continuation/handoff request, read `docs/scout/CONTINUE.md` before choosing work. It records the preserved candidate, current gates and evidence; revalidate current authority and expiry before any live attempt. This is separate from an unrelated active Project Action.

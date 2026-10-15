@@ -62,7 +62,7 @@ function planDoc(): string {
     "  - id: second-step", "    title: Take the blocked second step", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Take the second step.",
     "    expected_artifact: A second receipt", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - The second step happens.", "    depends_on: []",
+    "    acceptance_criteria:", "      - The second receipt exists.", "    depends_on: []",
     "    decisions: [\"0001\"]", "    references: []",
     "questions: []", "---", "", "# Main plan", ""
   ].join("\n");
@@ -132,7 +132,7 @@ function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
       db.prepare("INSERT INTO ask_capture_envelopes (id, request_id, fingerprint, original_text, ingress_source, captured_at, status, envelope_json) VALUES (?, ?, 'f', 'x', 'test', ?, 'completed', '{}')")
         .run(`capture-${ask.id}`, `request-${ask.id}`, ask.createdAt);
       const normalized = {
-        project: ask.project ?? "demo", desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
+        project: ask.project ?? "demo", requestId: `request-${ask.id}`, desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
         targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: ask.options ?? [],
         gateQuestion: ask.gateQuestion ?? null, evidence: ask.evidence ?? []
       };
@@ -164,7 +164,7 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
@@ -335,7 +335,7 @@ function planWithDoneAction(): string {
       "  - id: first-step", "    title: Take the finished first step", "    status: done",
       "    responsibility: agent", "    effort: session", "    next_action: Take the first step.",
       "    expected_artifact: A first receipt", "    clarification: clarified", "    confidence: high",
-      "    acceptance_criteria:", "      - The first step happened.", "    depends_on: []",
+      "    acceptance_criteria:", "      - The first receipt exists.", "    depends_on: []",
       "    decisions: []", "    references: []",
       ""
     ].join("\n")
@@ -548,7 +548,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
   it("golden: the stale view as JSON", () => {
     const workspace = fixtureWorkspace(staleRepo(), [asks[0]]);
     expect(run({ workspace, now: NOW, stale: true }).data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null,
       view: "stale",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
@@ -717,7 +717,7 @@ describe("arcadia todo: review_items", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null, view: "default",
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null, view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 1, askQuestions: 0, askHidden: 0, agentsDoing: 0, backBurner: { incubating: 0, newInSevenDays: 0 }, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
@@ -856,7 +856,7 @@ describe("arcadia todo: review_items", () => {
     expect(run({ workspace, now: NOW, project: "demo" }).data.items.map((item) => item.key)).toEqual(["review_item:demo/review-norepo"]);
   });
 
-  it("lists a review_item of a completed Project in the 'unknown' bucket instead of dropping it (#1074)", () => {
+  it("keeps a review_item of a completed Project as stale under that Project, never dropping it (#1074)", () => {
     const workspace = fixtureWorkspace(selectableRepo());
     addReviews(workspace, [{ id: "review-live", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Live Project question." }]);
     withDatabase(workspace, (db) => {
@@ -874,9 +874,12 @@ describe("arcadia todo: review_items", () => {
 
     const { data } = run({ workspace, now: NOW });
 
-    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
-      ["review_item:demo/review-live", "demo", false],
-      ["review_item:unknown/review-finished", "unknown", false]
+    // The completed Project is positive evidence: the item is stale (hidden by default, counted), not live and not dropped.
+    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([["review_item:demo/review-live", "demo", false]]);
+    expect(data.counts).toMatchObject({ stale: 1, staleHidden: 1 });
+    const stale = run({ workspace, now: NOW, stale: true }).data.items;
+    expect(stale.map((item) => [item.key, item.project, item.staleReason])).toEqual([
+      ["review_item:finished/review-finished", "finished", "its Project finished is completed"]
     ]);
     // A --project view is that Project's alone.
     expect(keys(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["review_item:demo/review-live"]);
@@ -1049,6 +1052,31 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
     expect(data.counts).toMatchObject({ blocking: 2, other: 0, byKind: { decision: 2, escalation: 0, clarify: 0, plan_action: 0 } });
   });
 
+  it("shows a stalled planning gate once, as the review item that carries its one-click button, marked blocking (A3)", () => {
+    const workspace = fixtureWorkspace(fixtureRepo());
+    withDatabase(workspace, (db) => {
+      const projectId = (db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string }).id;
+      db.prepare(
+        `INSERT INTO review_items (id, slug, project_id, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-run-wait', 'R-RUN', ?, 'open', 'Approve the planning run?', 's', 'p', 'CodexPlanningRunApproval', 'medium', 0, '[]', '{}',
+           '2026-10-08T07:00:00.000Z', '2026-10-08T07:00:00.000Z')`
+      ).run(projectId);
+    });
+    addEscalations(workspace, [
+      {
+        actionKey: "demo/second-step", kind: "planning_run_approval_pending", firstDetectedAt: "2026-10-08T08:00:00.000Z",
+        message: "Launch of demo/second-step is held by pending review item review-run-wait: planning-run approval for demo/second-step.",
+        remedy: 'Press "Approve planning run" on /todo (review_item:demo/review-run-wait).'
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.filter((item) => item.kind.startsWith("escalation"))).toEqual([]);
+    expect(data.items.find((item) => item.key === "review_item:demo/review-run-wait")).toMatchObject({ blocking: true, origin: "CodexPlanningRunApproval" });
+  });
+
   it("does not merge an escalation into a Decision that is only cited in its message (Ask title, lapsed grant)", () => {
     const workspace = fixtureWorkspace(fixtureRepo());
     addEscalations(workspace, [
@@ -1088,6 +1116,70 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       ["decision:demo/0001", "demo", true, "arcadia decision approve 0001 --project demo --answer 'Go ahead'"]
     ]);
     expect(keysOf(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["decision:demo/0001"]);
+  });
+
+  it("treats an escalation and an Agent Ask of a completed Project as stale, so a retired Project's rows stop blocking", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "retired-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "retired", desiredResult: "Leftover." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const retired = createProjectWithInitialWork(db, {
+        name: "Retired", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(retired.project.id);
+    });
+    addEscalations(workspace, [
+      { actionKey: "retired/write-marker", kind: "build_packet_approval_pending", message: "The previewed Action is not ready to launch.", remedy: null, firstDetectedAt: "2026-10-08T07:00:00.000Z" },
+      { actionKey: "ghost/lost-step", kind: "dependency_unresolved", message: "Dependency is not resolvable.", remedy: null, firstDetectedAt: "2026-10-08T07:30:00.000Z" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+    // An unknown Project's escalation still blocks; the completed Project's rows are stale, counted, not listed.
+    expect(keysOf(data)).toEqual(["escalation:dependency_unresolved:ghost/lost-step", "decision:demo/0001"]);
+    expect(data.counts).toMatchObject({ blocking: 2, stale: 2, staleHidden: 2 });
+    expect(run({ workspace, now: NOW, stale: true }).data.items.map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:retired/retired-ask", "its Project retired is completed"],
+      ["escalation:build_packet_approval_pending:retired/write-marker", "its Project retired is completed"]
+    ]);
+  });
+
+  it("lists a completed fixture Project's leftover Ask as stale instead of collapsing it into the fixture count", () => {
+    // The dashboard matches its own pending-Ask rows against this list; an Ask missing from it shows live (#1236 cleanup).
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "chain-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "three-action-rehearsal", desiredResult: "Mark chain-step-09 complete." },
+      { id: "live-fixture-ask", createdAt: "2026-09-06T00:00:00.000Z", project: "two-action-rehearsal", desiredResult: "Still a fixture." }
+    ]);
+    withDatabase(workspace, (db) => {
+      const chain = createProjectWithInitialWork(db, {
+        name: "Three Action Rehearsal", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(chain.project.id);
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    expect(data.items.filter((item) => item.project.includes("rehearsal")).map((item) => [item.key, item.staleReason])).toEqual([
+      ["agent_ask:three-action-rehearsal/chain-ask", "its Project three-action-rehearsal is completed"]
+    ]);
+    // A live fixture item is still only a count.
+    expect(data.counts.fixture).toEqual({ projects: 2, items: 1 });
+  });
+
+  it("treats an Ask whose own Decision is already committed as stale, matching its whole request id, never a prefix (#1236)", () => {
+    const repo = fixtureRepo(0);
+    write(repo, "docs/decisions/0003-filed.md",
+      decisionDoc("0003", "Filed by the revision?", "2026-09-04") + "\nProposed by Agent Ask request-filed-r2.\n");
+    const workspace = fixtureWorkspace(repo, [
+      { id: "filed", createdAt: "2026-09-05T00:00:00.000Z", intent: "decision", desiredResult: "The first draft." },
+      { id: "filed-r2", createdAt: "2026-09-06T00:00:00.000Z", intent: "decision", desiredResult: "The revision that filed 0003." }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    const asks = data.items.filter((item) => item.kind === "agent_ask").map((item) => [item.key, item.staleReason ?? null]);
+    expect(asks).toEqual(expect.arrayContaining([
+      ["agent_ask:demo/filed", null],
+      ["agent_ask:demo/filed-r2", "its documents are already committed (docs/decisions/0003-filed.md); only its settlement receipt was never recorded"]
+    ]));
+    expect(asks).toHaveLength(2);
   });
 
   it("lists a waiting operator task with its own title and the canonical command; blocking only for the selected Action", () => {
@@ -1190,7 +1282,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
         ...(action.question
           ? ["    clarification: question_open", "    gap_type: missing-decision", `    question: ${action.question}`]
           : [`    next_action: Do ${action.id}.`, "    expected_artifact: A receipt", "    clarification: clarified", "    confidence: high"]),
-        "    acceptance_criteria:", "      - It happens.",
+        "    acceptance_criteria:", "      - The fixture receipt exists.",
         `    depends_on: [${(action.dependsOn ?? []).join(", ")}]`,
         `    decisions: [${(action.decisions ?? []).map((id) => `"${id}"`).join(", ")}]`, "    references: []"
       );
@@ -1406,7 +1498,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(data).toEqual({
-      schema: "arcadia-todo-v1", agentWork: [], askUnavailable: null,
+      schema: "arcadia-todo-v1", agentWork: [], runs: [], askUnavailable: null,
       view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
@@ -1460,6 +1552,24 @@ describe("arcadia todo: collapsed Projects never hide a blocking item", () => {
       ).run(actionKey);
     });
   }
+
+  it("lists an open scope stop (Red Alert) as a blocking escalation that names Turn production Off", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), []);
+    addBareProject(workspace, "Bare");
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        `INSERT INTO production_red_alerts (id, alert_key, project_slug, action_key, session_id, trigger, detail, evidence_path, status,
+           episode, occurrences, first_seen_at, last_seen_at)
+         VALUES ('alert-1', 'scope_successor_held:bare', 'bare', NULL, NULL, 'scope_successor_held', 'Plan bare/p finished inside the scope.', 'ev.json',
+           'open', 1, 1, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')`
+      ).run();
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+    const stop = data.items.find((item) => item.kind === "escalation:scope_successor_held");
+    expect(stop).toMatchObject({ project: "bare", blocking: true, title: "Plan bare/p finished inside the scope." });
+    expect(stop?.answer).toContain("Turn production Off");
+  });
 
   it("lists a no-repo_path Project's escalation as blocking, and counts only its non-blocking Ask and review_item", () => {
     const workspace = fixtureWorkspace(fixtureRepo(0), [

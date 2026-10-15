@@ -216,7 +216,7 @@ function action(id: string, title: string, status: string, references: string[])
     confidence: high
     source: Fixture evidence
     acceptance_criteria:
-      - The result is observable.
+      - The generated story contains the configured Action references.
     depends_on: []
     decisions: []
     references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]

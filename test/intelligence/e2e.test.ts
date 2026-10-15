@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIntelligenceServer } from "../../src/intelligence/api/server.js";
 import { createSqliteIntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
 import type { IntelligenceArtifactStore } from "../../src/intelligence/artifacts/store.js";
@@ -317,6 +317,31 @@ describe("Arcadia Intelligence v0.1 end-to-end", () => {
     expect(fetched.status).toBe("completed");
 
     await expect(client.retry(job.id)).rejects.toThrow();
+  });
+
+  it("looks up an exact durable idempotency key without creating, queuing, or retrying work", async () => {
+    const repository = setupRepository();
+    let firstId = "";
+    for (let index = 0; index < 205; index += 1) {
+      const { job } = await submitIntelligenceRequest(repository, buildIntelligenceRequest({ idempotencyKey: `lookup-${index}` }));
+      if (index === 0) firstId = job.id;
+    }
+    const create = vi.spyOn(repository, "createQueuedJob");
+    const retry = vi.spyOn(repository, "retryJob");
+    const config = testIntelligenceConfig(await unavailableLiteLlmBaseUrl());
+    const apiServer = createIntelligenceServer({ repository, config });
+    await new Promise<void>((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+    servers.push(apiServer);
+    const { port } = apiServer.address() as { port: number };
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const client = new ArcadiaIntelligenceClient({ baseUrl });
+
+    expect((await client.getJobByIdempotencyKey("lookup-0"))?.id).toBe(firstId);
+    expect(await client.getJobByIdempotencyKey("lookup-missing")).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
+    expect((await fetch(`${baseUrl}/api/intelligence/jobs?idempotencyKey=${encodeURIComponent("bad\nkey")}`)).status).toBe(400);
+    expect((await fetch(`${baseUrl}/api/intelligence/jobs`)).status).toBe(400);
   });
 
   it("reports health with LiteLLM reachability", async () => {

@@ -10,7 +10,8 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, updateReviewItemStatus } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, listActionableReviewItems, updateReviewItemStatus } from "../db/repositories.js";
+import { queueOperatorPing } from "../ping/operatorPing.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -18,7 +19,7 @@ import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBran
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -26,17 +27,38 @@ import {
   observeReconcileFailure,
   observeReconcileSuccess,
   observeRepairBudget,
+  observeScopeDriftForProject,
+  raiseScopeSuccessorHeld,
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
 import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
+import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
+import {
+  BUDGET_EXHAUSTED_ESCALATION_KIND,
+  decideTokenCeilingBreach,
+  describeBudgetExhausted,
+  resolveSessionTokenCeiling,
+  sessionTokenCeilingBreach
+} from "./sessionTokenCeiling.js";
 import { sessionLogPath } from "../sessions/sessionRecording.js";
+import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
+import {
+  describeEnvironmentWalls,
+  detectEnvironmentWalls,
+  ENVIRONMENT_WALL_ESCALATION_KIND,
+  parseSessionProbe,
+  SESSION_PROBE_TOKEN_BUDGET,
+  sessionProbeWalls,
+  sessionTokensFromLog,
+  type EnvironmentWall
+} from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
@@ -78,6 +100,13 @@ export interface ManagedProductionTickOptions {
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /**
+   * Pre-launch Session capability preflight (workspace write, host validation,
+   * preservation). Any wall refuses the launch before a Session is prepared, so
+   * no tokens are spent. The worker supplies `probeWorkerCapability`; absent,
+   * no preflight runs.
+   */
+  workerCapability?: (workspace: string) => EnvironmentWall[];
   /**
    * Re-stamp the preservation transport heartbeat between per-Project steps.
    * The tick blocks the event loop for minutes, so the worker's own 5s timer
@@ -477,6 +506,16 @@ export function ensureProductionTickTables(db: Database.Database): void {
       last_error TEXT,
       last_attempt_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS production_attempt_tokens (
+      action_key TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      outcome TEXT,
+      recorded_at TEXT NOT NULL,
+      PRIMARY KEY (action_key, session_id)
     );
     CREATE TABLE IF NOT EXISTS production_base_branch_observations (
       project_slug TEXT PRIMARY KEY,
@@ -966,6 +1005,92 @@ function recordInterruptedCompletionSettlement(
 }
 
 /**
+ * A launch wait that is the operator's, not time's: an in-scope Action whose
+ * preparation sits on a planning review item (run approval, artifact
+ * validation or artifact acceptance). These were once excluded as
+ * "self-resolving" because the item is visible in Review, which hid the first
+ * 2026-10-11 stall (A3, #1284). After {@link STALLED_GATE_MIN_DWELL_MS} of the
+ * same refusal the tick records ONE `production_operator_escalations` row
+ * naming the gate class, the Action and the one button that resolves it on
+ * /todo (`review_item:<project>/<id>`, also /review and /actions), and queues
+ * exactly one Discord ping. It decides, approves and executes nothing.
+ */
+export const STALLED_GATE_MIN_DWELL_MS = 60 * 1000;
+
+export const STALLED_PLANNING_GATES: Record<string, { kind: string; gate: string; button: string; consequence: string }> = {
+  CodexPlanningRunApproval: {
+    kind: "planning_run_approval_pending",
+    gate: "planning-run approval",
+    button: "Approve planning run",
+    consequence: "queues the planning run for the production worker; planning only, no build starts"
+  },
+  CodexPlanningRetryApproval: {
+    kind: "planning_run_approval_pending",
+    gate: "planning-retry approval",
+    button: "Approve planning retry",
+    consequence: "queues a new planning attempt from the unchanged packet; planning only, no build starts"
+  },
+  codex_planning_artifact_validation: {
+    kind: "planning_artifact_validation_pending",
+    gate: "planning-artifact validation",
+    button: "Retry planning",
+    consequence: "creates a planning-retry approval for the same packet; nothing runs until that retry is approved"
+  },
+  CodexPlanningArtifactAcceptance: {
+    kind: "planning_artifact_acceptance_pending",
+    gate: "planning-artifact acceptance",
+    button: "Accept plan",
+    consequence: "accepts the validated plan and prepares its build packet for approval; no Run starts"
+  }
+};
+
+/**
+ * Escalate (once) an in-scope Action that has been refused for a planning
+ * review item for at least the dwell. Returns true when a named row now holds
+ * the Action (new or unchanged); false when nothing qualifies, so the caller
+ * clears as it did before. One row per Action, one ping per distinct gate item.
+ */
+function escalateStalledPlanningGate(
+  db: Database.Database,
+  input: { actionKey: string; projectSlug: string; workItemId: string | null; lifecycleKind: string | null; now: Date; log: (message: string) => void }
+): boolean {
+  if (!input.workItemId || (input.lifecycleKind !== "planning_approval_pending" && input.lifecycleKind !== "planning_in_progress")) return false;
+  const refusal = db.prepare("SELECT first_at FROM production_launch_refusal_log WHERE action_key = ?").get(input.actionKey) as
+    | { first_at: string }
+    | undefined;
+  if (!refusal || input.now.getTime() - Date.parse(refusal.first_at) < STALLED_GATE_MIN_DWELL_MS) return false;
+  // Exactly the items /todo lists as operator-actionable (agent-flagged deferred items wait on an agent and are hidden there).
+  const item = listActionableReviewItems(db)
+    .filter((candidate) => candidate.work_item_id === input.workItemId && Object.hasOwn(STALLED_PLANNING_GATES, candidate.resolved_intent))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  if (!item) return false;
+  const gate = STALLED_PLANNING_GATES[item.resolved_intent];
+  // The leading words are the template /todo anchors on to show this item once, marked blocking.
+  const message = `Launch of ${input.actionKey} is held by pending review item ${item.id}: ${gate.gate} for ${input.actionKey}.`;
+  const todoKey = `review_item:${input.projectSlug}/${item.id}`;
+  const remedy = `Press "${gate.button}" on /todo (${todoKey}), also on /review and /actions: one click, nothing to copy or type. `
+    + `It ${gate.consequence}. This entry clears on the first tick after the gate is answered.`;
+  const previous = db.prepare("SELECT kind, message FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
+    | { kind: string; message: string }
+    | undefined;
+  if (previous?.kind === gate.kind && previous.message === message) return true;
+  recordOperatorEscalation(db, { actionKey: input.actionKey, kind: gate.kind, message, remedy, now: input.now });
+  input.log(`Escalated ${input.actionKey} to the operator (${gate.kind}): ${message}`);
+  try {
+    queueOperatorPing(db, {
+      message: `Production is waiting on you: ${gate.gate} for ${input.actionKey}. One click: "${gate.button}" on /todo.`,
+      kind: "attention",
+      todo: todoKey,
+      agent: "production-tick",
+      now: input.now
+    });
+  } catch (error) {
+    input.log(`Could not queue the ${gate.kind} ping for ${input.actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return true;
+}
+
+/**
  * The escalation kind for an in-scope Action whose launch the tick skips
  * because a pending operator item gates it: resolveProjectTransition answers
  * `decision` for an unsettled Agent Ask proposal or an open Decision naming
@@ -1213,6 +1338,13 @@ function recordRepairBudgetExhaustedEscalation(
   db: Database.Database,
   input: { actionKey: string; attempts: number; lastError: string | null; now: Date; log: (message: string) => void }
 ): string {
+  const wall = db.prepare("SELECT message FROM production_operator_escalations WHERE action_key = ? AND kind IN (?, ?)").get(
+    input.actionKey,
+    ENVIRONMENT_WALL_ESCALATION_KIND,
+    BUDGET_EXHAUSTED_ESCALATION_KIND
+  ) as { message: string } | undefined;
+  // A named environment wall or token-ceiling stop already explains this exhaustion; never replace it with the generic row.
+  if (wall) return wall.message;
   const remedy = `Repair the underlying problem, then run \`arcadia production reset-repair-budget ${input.actionKey}\`.`;
   const reason = `Repair budget exhausted for ${input.actionKey} after ${input.attempts} failed launch attempt(s); most recent error: ${input.lastError ?? "unknown"}. ${remedy}`;
   const previousKind = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
@@ -1521,6 +1653,9 @@ export function runManagedProductionTick(
     let handoffHead: string | null = null;
     let terminalRefusal: TerminalRefusalFacts | null = null;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
+    // Scope drift is observed once per tick for every Project, before any early skip below, so a
+    // stranded scope is seen whether or not this tick could launch, wait or reconcile.
+    safelyRaiseRedAlerts(log, "scope drift", () => observeScopeDriftForProject(alertCtx, repoRoot));
     // Set only once the exit-reconcile branch starts, so a throw from the
     // live-session stall observation is never reported as a failed reconcile.
     let alertLease: ReturnType<typeof getRepositoryLease> = null;
@@ -1567,7 +1702,8 @@ export function runManagedProductionTick(
           const { stopped, failed } = enforceSessionLifetime(db, {
             session: lease, tmux, now, stalled: activity.stalled,
             stallDeadlineMs: PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs,
-            headless: existsSync(sessionLogPath(workspace, lease.id))
+            headless: existsSync(sessionLogPath(workspace, lease.id)),
+            tokenCeilingBreach: sessionTokenCeilingBreach(db, { workspace, session: lease })?.message ?? null
           });
           if (stopped) {
             stoppedThisTick = true;
@@ -1619,6 +1755,16 @@ export function runManagedProductionTick(
         // recorded completion settlement with more work after it (Issue
         // #994): a continuation could only refuse "Action is already done";
         // the terminal guards take it instead (`recoverTerminalHandoff`).
+        // A Session over its platform token ceiling is recorded as stopped by
+        // it (also when it exited on its own): the receipt then names
+        // `budget_exhausted` with the ceiling and both token counts.
+        if (!lease.stop_reason) {
+          const overCeiling = sessionTokenCeilingBreach(db, { workspace, session: lease });
+          if (overCeiling) {
+            db.prepare("UPDATE agent_sessions SET stop_reason = ?, updated_at = ? WHERE id = ?").run(overCeiling.message, now.toISOString(), lease.id);
+            lease.stop_reason = overCeiling.message;
+          }
+        }
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const result = reconcileSessionExit({
@@ -1630,9 +1776,9 @@ export function runManagedProductionTick(
               : undefined,
           // Keep retry accounting atomic with the terminal Session/receipt.
           // A worker crash cannot commit one without the other; replay is a no-op.
-          onReceiptWrite: continuation ? (receipt) => {
+          onReceiptWrite: (receipt) => {
             const actionKey = `${project.slug}/${lease.action_id}`;
-            const unchanged = receipt.outcome === "incomplete_resumable"
+            const unchanged = continuation !== null && receipt.outcome === "incomplete_resumable"
               && receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
               && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
             if (unchanged) {
@@ -1643,10 +1789,16 @@ export function runManagedProductionTick(
                   lastError: attempts.lastError, now, log });
               }
             } else if (receipt.outcome === "accepted_completion"
-              || (receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
+              || (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
               resetRepairAttempts(db, actionKey);
             }
-          } : undefined
+            // Tokens per attempt and the environment-wall stop commit with the
+            // receipt, so a crash cannot lose the wall and relaunch into it.
+            recordSessionExitAccounting(db, {
+              workspace, projectSlug: project.slug, session: lease, outcome: receipt.outcome,
+              candidateRevision: receipt.candidate_revision, now, log
+            });
+          }
         });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
@@ -1692,7 +1844,22 @@ export function runManagedProductionTick(
           observeReconcileSuccess(alertCtx);
           observeStall(alertCtx, { session: null, stalled: false, tmux });
         });
-        if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
+        if (result.receipt.outcome === "failed_execution" && result.receipt.reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX)) {
+          // A dead login is not a defect in the work: it spends no failed-Run
+          // budget (so it cannot pause the Project or open a Decision) and is
+          // surfaced as a durable launch blocker instead (Issue #1155). The
+          // preflight cannot see an unrefreshable credential, so the blocker
+          // also holds this Project's launches for SIGN_IN_FAILURE_HOLD_MS.
+          const holdEnd = new Date(now.getTime() + SIGN_IN_FAILURE_HOLD_MS);
+          recordLaunchBlocker(db, {
+            projectSlug: project.slug,
+            code: PROVIDER_SIGN_IN_FAILED_CODE,
+            reason: providerSignInFailureBlockerReason({ sessionId: lease.id, provider: lease.provider, at: now, holdEnd, receiptReason: result.receipt.reason }),
+            actionKey: `${project.slug}/${lease.action_id}`,
+            at: now
+          });
+          log(`Provider sign-in failure for ${project.slug} (Session ${lease.id}, ${lease.provider}); not counted against the failed-Run budget. Launches held until ${holdEnd.toISOString()}.`);
+        } else if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
         }
@@ -1856,6 +2023,16 @@ function attemptProjectLaunch(
       activateNextPlan(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, requestId, apply: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A held successor is not a failure: the per-tick scope-drift observer already holds one
+      // named alert for it, so this tick stays quiet and skips (no log line, no retry storm).
+      if ((error as { details?: { code?: string } }).details?.code === SCOPE_HELD_CODE) {
+        const heldPlan = (error as { details?: { activePlan?: string } }).details?.activePlan;
+        if (heldPlan) {
+          safelyRaiseRedAlerts(input.log, "scope successor held", () =>
+            raiseScopeSuccessorHeld({ db, workspace: input.workspace, projectSlug: input.projectSlug, now: input.now }, { planKey: heldPlan }));
+        }
+        return { attempted: false, outcome: "skipped", reason: message, actionKey: null };
+      }
       input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
@@ -1901,6 +2078,23 @@ function attemptProjectLaunch(
   // finished; drop any dependency-unresolved bookkeeping left from an earlier
   // tick rather than waiting for it to be pruned as some other Action's.
   clearDependencyUnresolvedSighting(db, actionKey);
+
+  // Hold after a Session died on a provider sign-in failure (Issue #1155). The
+  // launch preflight cannot see an unrefreshable credential, so the durable
+  // blocker recorded at reconciliation is also this hold: nothing is
+  // previewed, reserved, counted as a repair attempt or cleared until it
+  // lapses. This sits before auto-settle, whose success clears the Project's
+  // launch blocker and would otherwise wipe the hold row. Past the hold the
+  // launch is attempted again; its success (or a confirmed sign-in) clears the
+  // blocker, and another sign-in failure re-records it with a fresh hold.
+  const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
+  if (signInHold) {
+    const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a Session launched now would die on the same dead login. Sign in again on this worker host.`;
+    if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
+      input.log(`Launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
+    }
+    return { attempted: false, outcome: "skipped", reason, actionKey };
+  }
 
   // A drafted `complete` Agent Ask already covering this Action's evidence
   // means a previous session finished the work and either ended, or was
@@ -1968,6 +2162,26 @@ function attemptProjectLaunch(
     }
   }
 
+  // Session capability preflight: a Session that cannot write the workspace,
+  // run host validation or preserve its work would only spend tokens against
+  // the same wall (the first production run: ~11.1M input tokens, no diff).
+  // Refused here, before any Session is prepared; one named blocker, no repair
+  // attempt counted because nothing was launched.
+  const walls = input.options.workerCapability?.(input.workspace) ?? [];
+  if (walls.length > 0) {
+    const named = describeEnvironmentWalls(actionKey, walls, "preflight");
+    const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
+      | { kind: string }
+      | undefined;
+    const newlyDetected = recordOperatorEscalation(db, {
+      actionKey, kind: ENVIRONMENT_WALL_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
+    });
+    if (newlyDetected || previous?.kind !== ENVIRONMENT_WALL_ESCALATION_KIND) {
+      input.log(`Escalated ${actionKey} to the operator (${ENVIRONMENT_WALL_ESCALATION_KIND}): ${named.message}`);
+    }
+    return { attempted: false, outcome: "refused", reason: named.message, actionKey };
+  }
+
   const requestId = `worker-tick-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`;
   try {
     const result = launchGuardedHostSession({
@@ -1984,6 +2198,9 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+      // The launch re-runs the same preflight with the selected profile's
+      // sandbox, which this tick's profile-less preflight cannot see.
+      workerCapability: input.options.workerCapability,
       // Clear a stale sign-in blocker the moment sign-in is confirmed, not
       // only on full launch success: a later, unrelated launch failure (a
       // repair-worthy defect, counted against the budget) must not leave
@@ -2085,7 +2302,13 @@ function attemptProjectLaunch(
       // metadata clears it, so it escalates the same way rather than
       // retrying the same refusal forever (the fate `planning_required` was
       // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
-      const escalationKind = rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
+      // A launch-side capability wall (assertWorkerCapability, e.g. a read-only
+      // profile sandbox the tick preflight cannot see) is one named blocker, not
+      // a silent per-tick refusal.
+      const environmentWall = rawCode === "session_environment_wall";
+      const escalationKind = environmentWall
+        ? ENVIRONMENT_WALL_ESCALATION_KIND
+        : rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
         : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED
@@ -2093,7 +2316,9 @@ function attemptProjectLaunch(
             ? resolvedLifecycleKind
             : null;
       if (escalationKind) {
-        const remedy = rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
+        const remedy = environmentWall
+          ? typeof error.details?.remedy === "string" ? error.details.remedy : null
+          : rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
           ? developmentLineageRemedy(rawCode, error.details)
           : escalationKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED_REMEDY
@@ -2114,12 +2339,21 @@ function attemptProjectLaunch(
         if (newlyDetected) {
           input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
-      } else {
+      } else if (!escalateStalledPlanningGate(db, {
+        actionKey,
+        projectSlug: input.projectSlug,
+        workItemId: transition.dispatch.context
+          ? getWorkItemByDocRef(db, `plan/${transition.dispatch.context.activePlan}#${transition.dispatch.context.action.id}`)?.id ?? null
+          : null,
+        lifecycleKind: resolvedLifecycleKind,
+        now: input.now,
+        log: input.log
+      })) {
         clearOperatorEscalation(db, actionKey);
       }
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatLaunchFailure(error);
     recordRepairAttempt(db, actionKey, message, input.now);
     recordFailedRun(db, input.projectSlug, { reason: `Launch failed for ${actionKey}: ${message}`, actionKey });
     input.log(`Launch attempt failed for ${actionKey}: ${message}`);
@@ -2140,6 +2374,126 @@ function attemptProjectLaunch(
       });
     }
     return { attempted: true, outcome: "failed", reason: message, actionKey };
+  }
+}
+
+/**
+ * What a Session's exit costs and whether it hit an environment wall. Tokens
+ * are recorded per attempt next to the Action for every exit. A Session that
+ * ended without completing, with no diff and a wall named in its own log, is
+ * counted by the repair budget on this first occurrence -- the budget is set
+ * to its limit so the pre-launch check never relaunches it -- and raises one
+ * named `environment_wall` escalation. Idempotent per Session.
+ */
+export function recordSessionExitAccounting(
+  db: Database.Database,
+  input: {
+    workspace: string;
+    projectSlug: string;
+    session: { id: string; action_id: string | null; worktree_path: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
+    outcome: string;
+    candidateRevision: string | null;
+    now: Date;
+    log: (message: string) => void;
+  }
+): void {
+  if (!input.session.action_id) return;
+  const actionKey = `${input.projectSlug}/${input.session.action_id}`;
+  let text: string | null = null;
+  try {
+    text = readFileSync(sessionLogPath(input.workspace, input.session.id), "utf8");
+  } catch { /* an interactive Session has no headless log */ }
+  const tokens = sessionTokensFromLog(text);
+  if (tokens) {
+    db.prepare(
+      `INSERT OR REPLACE INTO production_attempt_tokens (action_key, session_id, input_tokens, cached_input_tokens, output_tokens, outcome, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
+  }
+  // The Session's own first-step probe is the only truthful capability evidence,
+  // matched by this Session's recorded nonce. A passing probe is logged with its
+  // recorded budget here rather than on the reconcile receipt: that receipt is
+  // written by session reconciliation before this accounting runs.
+  const probe = parseSessionProbe(text, readSessionProbeNonce(input.workspace, input.session.id));
+  if (probe?.ok && probe.checks.every((check) => check.ok)) {
+    input.log(`Session probe passed for ${actionKey} in ${probe.ms ?? "?"} ms (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
+  }
+  if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
+  // A failed check ends the attempt even though the Session never got to edit.
+  const probeWalls = sessionProbeWalls(probe);
+  const walls = [...probeWalls, ...detectEnvironmentWalls(text).filter((wall) => !probeWalls.some((hit) => hit.wallClass === wall.wallClass))];
+  const breach = tokens
+    ? decideTokenCeilingBreach(tokens, resolveSessionTokenCeiling(db, {
+        workspace: input.workspace, session: { provider: input.session.provider ?? "", model: input.session.model ?? "" }
+      }).ceiling)
+    : null;
+  if (breach) {
+    // Over the platform ceiling: one named blocker, the budget set to its limit
+    // so the pre-launch check never relaunches, whether or not a wall is also named.
+    const named = describeBudgetExhausted(actionKey, breach, walls.map((wall) => wall.wallClass));
+    const at = input.now.toISOString();
+    const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+    db.prepare(
+      `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at)
+         VALUES (@action_key, @attempts, @last_error, @at, @at)
+       ON CONFLICT(action_key) DO UPDATE SET
+         attempts = @attempts, last_error = @last_error, last_attempt_at = @at, updated_at = @at`
+    ).run({ action_key: actionKey, attempts, last_error: named.message, at });
+    const newlyDetected = recordOperatorEscalation(db, {
+      actionKey, kind: BUDGET_EXHAUSTED_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
+    });
+    if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${BUDGET_EXHAUSTED_ESCALATION_KIND}): ${named.message}`);
+    return;
+  }
+  if (walls.length === 0) return;
+  const startRevision = input.session.launch_revision ?? input.session.base_revision;
+  const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
+  if (!noDiff && probeWalls.length === 0) return;
+  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
+  const at = input.now.toISOString();
+  const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+  db.prepare(
+    `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at)
+       VALUES (@action_key, @attempts, @last_error, @at, @at)
+     ON CONFLICT(action_key) DO UPDATE SET
+       attempts = @attempts, last_error = @last_error, last_attempt_at = @at, updated_at = @at`
+  ).run({ action_key: actionKey, attempts, last_error: named.message, at });
+  const newlyDetected = recordOperatorEscalation(db, {
+    actionKey, kind: ENVIRONMENT_WALL_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
+  });
+  if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${ENVIRONMENT_WALL_ESCALATION_KIND}): ${named.message}`);
+}
+
+export interface ProductionAttemptTokens {
+  actionKey: string;
+  sessionId: string;
+  /** Uncached input tokens. */
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  outcome: string | null;
+  recordedAt: string;
+}
+
+/** Tokens recorded per Session attempt, oldest first; empty when none or the table predates this feature. */
+export function listProductionAttemptTokens(db: Database.Database, actionKey?: string): ProductionAttemptTokens[] {
+  try {
+    const rows = db
+      .prepare(
+        `SELECT action_key, session_id, input_tokens, cached_input_tokens, output_tokens, outcome, recorded_at
+           FROM production_attempt_tokens ${actionKey ? "WHERE action_key = ?" : ""} ORDER BY recorded_at ASC`
+      )
+      .all(...(actionKey ? [actionKey] : [])) as Array<{
+        action_key: string; session_id: string; input_tokens: number; cached_input_tokens: number; output_tokens: number;
+        outcome: string | null; recorded_at: string;
+      }>;
+    return rows.map((row) => ({
+      actionKey: row.action_key, sessionId: row.session_id, inputTokens: row.input_tokens, cachedInputTokens: row.cached_input_tokens,
+      outputTokens: row.output_tokens, outcome: row.outcome, recordedAt: row.recorded_at
+    }));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("no such table")) return [];
+    throw error;
   }
 }
 
@@ -2183,6 +2537,32 @@ export function getProductionRepairAttempts(db: Database.Database, actionKey: st
   return getRepairAttempts(db, actionKey);
 }
 
+/** The kind of the escalation currently recorded against an Action, or null when it has none. */
+export function getProductionOperatorEscalationKind(db: Database.Database, actionKey: string): string | null {
+  ensureProductionTickTables(db);
+  const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  return row?.kind ?? null;
+}
+
+/**
+ * Every escalation kind this module can record, assembled from the constants the recording sites use, so
+ * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
+ */
+export const EMITTED_ESCALATION_KINDS: readonly string[] = [
+  ENVIRONMENT_WALL_ESCALATION_KIND,
+  BUDGET_EXHAUSTED_ESCALATION_KIND,
+  "repair_budget_exhausted",
+  "dependency_unresolved",
+  "no_validation_commands",
+  OPERATOR_GATE_ESCALATION,
+  TERMINAL_CANDIDATE_ESCALATION,
+  PLANNER_ATTEMPTS_EXHAUSTED,
+  ...ATTEMPT_LINEAGE_ESCALATIONS,
+  ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,
+  ...VERDICT_WAIT_ESCALATIONS,
+  ...Object.values(STALLED_PLANNING_GATES).map((gate) => gate.kind)
+];
+
 /**
  * Reset a repository's exhausted repair budget after an operator has fixed
  * the underlying problem, so the next tick attempts admission again rather
@@ -2202,7 +2582,7 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
     | { kind: string }
     | undefined;
-  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
+  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
     clearOperatorEscalation(db, actionKey);
   }
   return { reviewStepsCleared };
@@ -2387,6 +2767,36 @@ export function listRecentBaseBranchAdvances(db: Database.Database, limit = 10):
     });
   }
   return records;
+}
+
+/** The launch-blocker code a provider sign-in failure exit records; it doubles as the hold marker. */
+const PROVIDER_SIGN_IN_FAILED_CODE = "provider_sign_in_failed";
+
+/**
+ * The durable, operator-readable reason for a sign-in failure exit: names the
+ * provider, the Session, when it happened, the remedy and when the hold ends.
+ * The receipt reason already carries the Claude Code remedy; a provider whose
+ * receipt does not gets a generic one rather than none.
+ */
+function providerSignInFailureBlockerReason(input: { sessionId: string; provider: string; at: Date; holdEnd: Date; receiptReason: string }): string {
+  const remedy = input.receiptReason.includes("Sign in to ")
+    ? ""
+    : ` Sign in to ${input.provider} again on this worker host${input.provider.startsWith("codex") ? ' (run "codex login")' : ""}, then retry.`;
+  return `Session ${input.sessionId} (${input.provider}) exited on a sign-in failure at ${input.at.toISOString()}. ${input.receiptReason}${remedy} `
+    + `Launches for this Project are held until ${input.holdEnd.toISOString()}, then retried once; a further sign-in failure renews the hold.`;
+}
+
+/** The Project's sign-in failure hold if it is still running at `now`; null when none or lapsed. */
+function activeSignInFailureHold(db: Database.Database, projectSlug: string, now: Date): { until: Date; observedAt: string } | null {
+  ensureProductionLaunchBlockersTable(db);
+  const row = db
+    .prepare("SELECT code, observed_at FROM production_launch_blockers WHERE project_slug = ?")
+    .get(projectSlug) as { code: string; observed_at: string } | undefined;
+  if (!row || row.code !== PROVIDER_SIGN_IN_FAILED_CODE) return null;
+  const observed = Date.parse(row.observed_at);
+  if (!Number.isFinite(observed)) return null;
+  const until = observed + SIGN_IN_FAILURE_HOLD_MS;
+  return now.getTime() < until ? { until: new Date(until), observedAt: row.observed_at } : null;
 }
 
 export interface LaunchBlockerRecord {

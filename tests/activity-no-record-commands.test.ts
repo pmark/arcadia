@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildProgram } from "../src/cli.js";
 import { withDatabase } from "../src/db/connection.js";
+import { runQaEffectivenessCommand } from "../src/commands/qa.js";
 import { COMMAND_CLASSIFICATION, listActionCommands, recordsActivity } from "../src/workspace/experimentGuard.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
@@ -92,6 +93,9 @@ function invocations(): Record<string, string[][]> {
     "workspace leak-check": [["workspace", "leak-check", "--live-repo", repo]],
     "workspace guard": [["workspace", "guard", "services.restart"], ["workspace", "guard", "no.such-operation"]],
     "identity resolve": [["identity", "resolve", "--agent", "claude", "--tier", "heavy"], ["identity", "resolve", "--agent", "nobody"]],
+    roles: [["roles"], ["roles", "--workspace", path.join(root, "missing-config")]],
+    "roles show": [["roles", "show", "researcher"], ["roles", "show", "nobody"]],
+    "role brief": [["role", "brief", "--role", "researcher", "--agent", "codex", "--tier", "light"], ["role", "brief", "--role", "researcher", "--agent", "codex", "--tier", "light", "--action", "missing#missing", "--repo", repo]],
     "identity roster": [["identity", "roster"]],
     "agent-ask contract": [["agent-ask", "contract"]],
     "pr code-review": [["pr", "code-review", "0", "--repo", repo]],
@@ -100,6 +104,7 @@ function invocations(): Record<string, string[][]> {
     triggers: [["triggers", "--repo", repo]],
     docket: [["docket", "--repo", repo]],
     plans: [["plans", "--repo", repo]],
+    "plan close-out": [["plan", "close-out", "no-such-plan", "--repo", repo], ["plan", "close-out", "../x", "--repo", repo]],
     "operator-task list": [["operator-task", "list", "--repo", repo]],
     "operator-task show": [["operator-task", "show", "no-such-task", "--repo", repo]],
     "operator-task raise": [["operator-task", "raise", "Approve the fixture", "--because", "Only the operator can", "--repo", repo]],
@@ -141,6 +146,15 @@ async function observe(args: string[]): Promise<{ liveOpens: Array<{ readonly: b
 }
 
 describe("commands that read no workspace state record no activity", () => {
+  it("opens qa effectiveness through the read-only database path", () => {
+    tracking.opened.length = 0;
+    const result = runQaEffectivenessCommand({ workspace: live });
+    const liveOpens = tracking.opened.filter((open) => path.resolve(open.file) === liveDatabase);
+    expect(result.data.report.groups).toEqual([]);
+    expect(liveOpens.length).toBeGreaterThan(0);
+    expect(liveOpens.every((open) => open.readonly)).toBe(true);
+  });
+
   it("draws the no-record set from the classification table the CLI uses, and covers every no-record command", () => {
     const commands = listActionCommands(buildProgram());
     const noRecord = commands.filter((key) => !recordsActivity(key)).sort();
@@ -159,6 +173,41 @@ describe("commands that read no workspace state record no activity", () => {
     const { recorded } = await observe(["status"]);
     expect(recorded).toEqual(["status"]);
     expect(liveActivityRows()).toBe(1);
+  });
+
+  it("renders roles show JSON even when the parent command consumes the flag", async () => {
+    tracking.opened.length = 0; tracking.recorded.length = 0;
+    let output = "";
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((value) => { output += String(value); return true; });
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await buildProgram().parseAsync(["node", "arcadia", "roles", "show", "researcher", "--json"]);
+      expect(JSON.parse(output)).toMatchObject({ ok: true, data: { roles: [{ id: "researcher", may_delegate: false }] } });
+      expect(tracking.opened).toEqual([]); expect(tracking.recorded).toEqual([]);
+    } finally { out.mockRestore(); err.mockRestore(); }
+  });
+
+  it("validates native role requester/depth through CLI without workspace writes", async () => {
+    const base = ["role", "brief", "--role", "researcher", "--agent", "codex", "--tier", "light", "--json"];
+    async function invoke(flags: string[]) {
+      tracking.opened.length = 0; tracking.recorded.length = 0;
+      const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      process.exitCode = undefined;
+      try {
+        await buildProgram().parseAsync(["node", "arcadia", ...base, ...flags]);
+        return process.exitCode;
+      } finally {
+        out.mockRestore(); err.mockRestore(); process.exitCode = undefined;
+      }
+    }
+    expect(await invoke(["--requested-by", "lead", "--depth", "0"])).toBeUndefined();
+    for (const flags of [["--requested-by", "lead"], ["--depth", "0"], ...["", " ", "oops", "0.5", "1", "-1"].map((depth) => ["--requested-by", "lead", "--depth", depth])]) {
+      expect(await invoke(flags), JSON.stringify(flags)).toBe(2);
+      expect(tracking.opened).toEqual([]);
+      expect(tracking.recorded).toEqual([]);
+    }
+    expect(liveActivityRows()).toBe(0);
   });
 
   it("runs each no-record command uninlined without recording, or opening the default workspace's database", async () => {

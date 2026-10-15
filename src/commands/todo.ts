@@ -18,17 +18,20 @@ import {
   listProjects
 } from "../db/repositories.js";
 import { resolveDispatch, resolveReadySet, type ReadySetResolution } from "../docs/dispatch.js";
-import { discoverDocs } from "../docs/discover.js";
+import { discoverDocs, withDocsSnapshot } from "../docs/discover.js";
 import { listOperatorTasks, type OperatorTask } from "../docs/operatorTasks.js";
 import { listOperatorEscalations, type OperatorEscalation } from "../production/tick.js";
+import { listOpenRedAlerts } from "../production/redAlerts.js";
+import { blockerRemedyFor } from "../production/blockerRemedies.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary } from "../domain/types.js";
 import { ACTION_CLARIFICATION_INTENT } from "./review.js";
 import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGate.js";
-import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
+import { findCommittedSettlement, listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
 import { askQuestionOrigin, type AskOrigin } from "../ask/askQuestion.js";
+import { listProjectRunEvidence, type RunEvidence } from "./runEvidence.js";
 
 type UnsettledAsk = ReturnType<typeof listUnsettledAgentAskProposals>[number];
 
@@ -174,6 +177,8 @@ export interface TodoData {
   items: TodoItem[];
   /** In-flight agent work: listed only with `--agents`; the default view counts it in `counts.agentsDoing`. */
   agentWork: AgentWorkItem[];
+  /** Same Run evidence projection used by Ask show, scoped to selected Projects. */
+  runs: RunEvidence[];
   /** Non-null when no workspace was readable: Ask questions and Ask-origin tasks are then unavailable, not zero. */
   askUnavailable: string | null;
   /** One line per source this run could not read. Empty means every source was read. */
@@ -246,6 +251,8 @@ interface ProjectEvidence {
   dispatching: boolean;
   /** Plan slug -> its `updated` date: a Plan Action carries no creation time of its own. */
   planUpdated: Map<string, string>;
+  /** The managed document this Ask's own earlier apply already wrote (its receipt went unrecorded), or null. */
+  committedBy: (requestId: string) => string | null;
 }
 
 function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvidence {
@@ -273,12 +280,15 @@ function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvid
   const activePlan = projectDoc?.type === "project" && projectDoc.activePlan ? projectDoc.activePlan.toLowerCase() : null;
   const plan = docs.find((doc) => doc.type === "plan" && doc.project.toLowerCase() === wanted && doc.slug.toLowerCase() === activePlan);
   const dispatching = projectDoc?.type === "project" && projectDoc.status === "active" && plan?.type === "plan" && plan.status === "active";
-  return { actions, decisionActions, decisionDocs, dispatching: Boolean(dispatching), planUpdated };
+  // The same durable check settlement applies before writing (exact request id, Issue #1236).
+  const committedBy = (requestId: string): string | null => findCommittedSettlement(docs, projectSlug, requestId);
+  return { actions, decisionActions, decisionDocs, dispatching: Boolean(dispatching), planUpdated, committedBy };
 }
 
 /** The Agent Ask facts staleness reads, taken from the stored proposal. */
 interface AskFacts {
   intent: string;
+  requestId: string;
   /** Actions reached through a target_ref. */
   targets: string[];
   /** Actions the Ask proposes to create (an `actions[].id` with no target_ref). */
@@ -293,6 +303,7 @@ function askFactsOf(rows: UnsettledAsk[]): Map<string, AskFacts> {
         row.id,
         {
           intent: normalized.intent,
+          requestId: normalized.requestId,
           targets: targetedActionIds(normalized),
           proposed: normalized.actions.flatMap((action) => (action.id && !action.targetRef ? [action.id] : []))
         }
@@ -421,6 +432,9 @@ function staleReasonOf(item: OperatorGateItem, context: StaleContext): string | 
   const superseder = context.superseded.get(item.id);
   if (superseder) return `superseded by Agent Ask ${superseder} (explicit Supersedes line in its rationale)`;
   const facts = context.askFacts.get(item.id);
+  // Its documents are committed, so settlement refuses to apply it again: it no longer waits on the operator (#1236).
+  const committed = facts && evidence?.committedBy(facts.requestId);
+  if (committed) return `its documents are already committed (${committed}); only its settlement receipt was never recorded`;
   if (!facts || !["complete", "split", "action"].includes(facts.intent) || facts.targets.length === 0 || !evidence) return undefined;
   // An Ask that also proposes new Actions is only stale once those exist in a Plan too.
   if (facts.proposed.some((id) => !evidence.actions.has(id))) return undefined;
@@ -635,6 +649,15 @@ function gateDecisionIdOf(message: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * The review item a stalled planning gate names (`Launch of <key> is held by pending review item <id>: ...`,
+ * src/production/tick.ts), anchored at the start: that item carries the one-click button, so it is shown once, blocking.
+ */
+function gateReviewItemIdOf(message: string): string | null {
+  const match = /^Launch of \S+ is held by pending review item ([A-Za-z0-9][A-Za-z0-9_.-]*?):\s/.exec(message);
+  return match ? match[1] : null;
+}
+
 /** Which Project a `production_operator_escalations.action_key` (`<project>/<action>`) belongs to; the rest is the Action. */
 function splitActionKey(actionKey: string): { project: string; actionId: string } {
   const slash = actionKey.indexOf("/");
@@ -650,12 +673,18 @@ function splitActionKey(actionKey: string): { project: string; actionId: string 
 function withEscalations(found: TodoItem[], rows: OperatorEscalation[], projectSlug: string): TodoItem[] {
   if (rows.length === 0) return found;
   const decisions = listedIds(found, "decision");
+  const reviews = listedIds(found, "review_item");
   const promoted = new Set<string>();
   const added: TodoItem[] = [];
   for (const row of rows) {
     const gate = gateDecisionIdOf(row.message);
     if (gate !== null && decisions.has(gate)) {
       promoted.add(`decision:${projectSlug || "unknown"}/${gate}`);
+      continue;
+    }
+    const reviewGate = gateReviewItemIdOf(row.message);
+    if (reviewGate !== null && reviews.has(reviewGate)) {
+      promoted.add(`review_item:${projectSlug || "unknown"}/${reviewGate}`);
       continue;
     }
     added.push({
@@ -898,6 +927,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   let noRepoPath: TodoCounts["noRepoPath"] = { projects: 0, items: 0 };
   let agentFlaggedHidden = 0;
   let agentWork: AgentWorkItem[] | null = null;
+  let runs: RunEvidence[] = [];
   let backBurner: TodoBackBurnerCounts | null = null;
   let workspacePath: string | null = null;
 
@@ -911,12 +941,14 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
 
   if (resolved) {
     try {
-      const read = readWithWorkspace(resolved, options, unavailable);
+      // One walk per repository for the whole read: it is read-only, and re-walking was nearly all of its time.
+      const read = withDocsSnapshot(() => readWithWorkspace(resolved, options, unavailable));
       items = read.items;
       fixture = read.fixture;
       noRepoPath = read.noRepoPath;
       agentFlaggedHidden = read.agentFlaggedHidden;
       agentWork = read.agentWork;
+      runs = read.runs;
       backBurner = read.backBurner;
       workspacePath = resolved;
     } catch (error) {
@@ -925,6 +957,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       // Decisions in the checkout in hand are still read below.
       unavailable.push(`workspace sources unavailable: ${workspaceRemedy(error)}`);
       items = [];
+      runs = [];
       agentFlaggedHidden = 0;
     }
   }
@@ -985,6 +1018,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
       },
       items: shown,
       agentWork: view === "agents" ? (agentWork ?? []) : [],
+      runs,
       askUnavailable: workspacePath ? null : "Ask questions and Ask-origin tasks are unavailable: no workspace could be read.",
       unavailable
     }
@@ -1001,11 +1035,21 @@ function readWithWorkspace(
   noRepoPath: TodoCounts["noRepoPath"];
   agentFlaggedHidden: number;
   agentWork: AgentWorkItem[] | null;
+  runs: RunEvidence[];
   backBurner: TodoBackBurnerCounts | null;
 } {
   const roots = options.fixtureRoots ?? defaultFixtureRoots();
   return withReadOnlyDatabase(workspacePath, (db) => {
-    let projects = listProjects(db).filter((project) => project.status !== "completed");
+    const allProjects = listProjects(db);
+    // A completed (retired) Project is positive evidence its leftovers no longer wait on the operator: production
+    // never ticks it again, so its escalations cannot clear themselves, and no gate resolves for its Asks or review items.
+    const completedSlugs = new Map(
+      allProjects.filter((project) => project.status === "completed").map((project) => [project.slug.toLowerCase(), project.slug])
+    );
+    const completedIds = new Map(allProjects.filter((project) => project.status === "completed").map((project) => [project.id, project.slug]));
+    const retired = (found: TodoItem[], slug: string): TodoItem[] =>
+      found.map((item) => (item.staleReason ? item : { ...item, staleReason: `its Project ${slug} is completed` }));
+    let projects = allProjects.filter((project) => project.status !== "completed");
     if (options.project) {
       const wanted = getProject(db, options.project) ?? getProjectBySlug(db, options.project);
       if (!wanted) throw projectNotFound(options.project);
@@ -1028,7 +1072,19 @@ function readWithWorkspace(
       evidence: new Map()
     };
 
-    const escalations = listOperatorEscalations(db);
+    // The two platform-raised scope stops are blockers like any escalation: listed with the registry's existing control
+    // (Turn production Off on /production). Keyed `<project>/<alert id>`; they are never an Action's escalation row.
+    const scopeAlerts: OperatorEscalation[] = listOpenRedAlerts(db)
+      .filter((alert) => alert.trigger === "scope_successor_held" || alert.trigger === "scope_pointer_mismatch")
+      .map((alert) => ({
+        actionKey: `${alert.projectSlug}/${alert.id}`,
+        kind: alert.trigger,
+        message: alert.detail,
+        remedy: blockerRemedyFor(alert.trigger)?.consequence ?? null,
+        firstDetectedAt: alert.firstSeenAt,
+        lastSeenAt: alert.lastSeenAt
+      }));
+    const escalations = [...listOperatorEscalations(db), ...scopeAlerts];
     const escalationsOf = (slug: string): OperatorEscalation[] =>
       escalations.filter((row) => splitActionKey(row.actionKey).project.toLowerCase() === slug.toLowerCase());
 
@@ -1041,8 +1097,10 @@ function readWithWorkspace(
     // Project; only the non-blocking items of a collapsed Project become a count.
     const take = (slug: string, collapse: false | "fixture" | "noRepoPath", found: TodoItem[]): void => {
       // An Ask question is never collapsed into a count because its Project has no repo_path: that is how an Ask vanishes.
+      // A stale item is never collapsed: it is listed with its evidence (hidden by the default view anyway), so a
+      // reader of the full list, such as the dashboard's /todo, can tell it is done rather than seeing it unmatched.
       const collapsed = collapse
-        ? found.filter((item) => !((item.blocking || (item.askQuestion && collapse === "noRepoPath")) && !item.staleReason))
+        ? found.filter((item) => !item.staleReason && !(item.blocking || (item.askQuestion && collapse === "noRepoPath")))
         : [];
       items.push(...found.filter((item) => !collapsed.includes(item)));
       if (collapse === "fixture") {
@@ -1073,7 +1131,8 @@ function readWithWorkspace(
           ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null, askOrigins),
           ...clarifyItems(db, project.id, project.slug)
         ];
-        take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+        const withRows = withEscalations(found, escalationsOf(project.slug), project.slug);
+        take(project.slug, collapse, project.status === "completed" ? retired(withRows, project.slug) : withRows);
         continue;
       }
 
@@ -1110,7 +1169,9 @@ function readWithWorkspace(
       if (readySet) {
         found.push(...planActionItems(project.slug, readySet, evidence, selected, found, reviewedActionRefs(db, reviewRowsOf(project.id))));
       }
-      take(project.slug, collapse, withEscalations(found, escalationsOf(project.slug), project.slug));
+      found = withEscalations(found, escalationsOf(project.slug), project.slug);
+      // Only reachable through --project: a completed Project's items are stale here too, as in the full view.
+      take(project.slug, collapse, project.status === "completed" ? retired(found, project.slug) : found);
     }
 
     // Agent Asks and escalations naming a Project outside this list are still the operator's.
@@ -1122,7 +1183,9 @@ function readWithWorkspace(
         proposals.map((row) => row.proposal.normalized.project).filter((slug) => !known.has(slug.toLowerCase()))
       );
       for (const slug of strays) {
-        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, collect(classifyAsksOnly(proposals, slug), context));
+        const found = collect(classifyAsksOnly(proposals, slug), context);
+        const completed = completedSlugs.get(slug.toLowerCase());
+        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, completed ? retired(found, completed) : found);
       }
       const strayEscalations = new Map<string, OperatorEscalation[]>();
       for (const row of escalations) {
@@ -1130,15 +1193,30 @@ function readWithWorkspace(
         if (!known.has(slug.toLowerCase())) strayEscalations.set(slug, [...(strayEscalations.get(slug) ?? []), row]);
       }
       for (const [slug, rows] of strayEscalations) {
-        take(slug || "unknown", isFixtureProject(slug, undefined, roots) ? "fixture" : false, withEscalations([], rows, slug || "unknown"));
+        const found = withEscalations([], rows, slug || "unknown");
+        const completed = completedSlugs.get(slug.toLowerCase());
+        take(slug || "unknown", isFixtureProject(slug, undefined, roots) ? "fixture" : false, completed ? retired(found, completed) : found);
       }
-      // A review_item with no Project, or whose Project is completed or not listed, is still the operator's;
-      // it has no gate to block, so it is an alert in the `unknown` bucket rather than dropped.
+      // A review_item of a completed Project is listed under that Project as stale (see `retired`).
       const listedProjectIds = new Set(projects.map((project) => project.id));
+      for (const [projectId, slug] of completedIds) {
+        const rows = reviewRows.filter((row) => row.project_id === projectId);
+        if (rows.length === 0) continue;
+        take(slug, isFixtureProject(slug, undefined, roots) ? "fixture" : false, retired(reviewTodoItems(db, rows, slug, undefined, null, askOrigins), slug));
+      }
+      // A review_item with no Project, or whose Project is not listed, is still the operator's;
+      // it has no gate to block, so it is an alert in the `unknown` bucket rather than dropped.
       take(
         "unknown",
         false,
-        reviewTodoItems(db, reviewRows.filter((row) => !row.project_id || !listedProjectIds.has(row.project_id)), "unknown", undefined, null, askOrigins)
+        reviewTodoItems(
+          db,
+          reviewRows.filter((row) => !row.project_id || (!listedProjectIds.has(row.project_id) && !completedIds.has(row.project_id))),
+          "unknown",
+          undefined,
+          null,
+          askOrigins
+        )
       );
     }
     return {
@@ -1147,6 +1225,7 @@ function readWithWorkspace(
       noRepoPath: { projects: noRepoProjects.size, items: noRepoItems },
       agentFlaggedHidden,
       agentWork: readAgentWork(db, options.project ? projects.map((project) => project.slug) : null, unavailable),
+      runs: listProjectRunEvidence(db, projects.map((project) => project.slug)),
       backBurner: readBackBurnerCounts(db, options.now ?? new Date(), unavailable)
     };
   });
@@ -1299,13 +1378,18 @@ function describeAgentWork(work: AgentWorkItem): string {
   return `${work.kind} ${work.id} — ${work.project}${work.action ? `/${work.action}` : ""} · ${work.status} · ${work.agent} · since ${work.since}`;
 }
 
+function describeRunEvidence(run: RunEvidence): string {
+  return `${run.id} · ${run.status}${run.waitingReason ? ` · ${run.waitingReason}` : ""}${run.artifacts.length ? ` · artifacts ${run.artifacts.map((artifact) => `${artifact.status}:${artifact.evidenceReference}`).join(", ")}` : ""}`;
+}
+
 export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] {
-  const { counts, items, unavailable, asOf, view, agentWork, askUnavailable } = response.data;
+  const { counts, items, unavailable, asOf, view, agentWork, runs, askUnavailable } = response.data;
   if (view === "agents") {
     const lines = [
       `Agents are doing: ${counts.agentsDoing ?? "unavailable"} in flight (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
     ];
     if (agentWork.length > 0) lines.push("", ...agentWork.map((work) => `  ${describeAgentWork(work)}`));
+    if (runs.length > 0) lines.push("", "Run evidence:", ...runs.map((run) => `  ${describeRunEvidence(run)}`));
     else if (counts.agentsDoing === 0) lines.push("", "No Session is prepared or running and no managed Run is pending or running.");
     if (unavailable.length > 0) lines.push("", ...unavailable);
     return lines;
@@ -1318,6 +1402,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
       (counts.agentFlaggedHidden > 0 ? ` · agent-flagged hidden: ${counts.agentFlaggedHidden}` : "") +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
+  if (runs.length > 0) lines.push("", "Project Runs:", ...runs.map((run) => `  ${describeRunEvidence(run)}`));
 
   const stale = items.filter((item) => item.staleReason);
   const blocking = items.filter((item) => item.blocking && !item.staleReason);

@@ -60,14 +60,26 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 
-# The operator-installed implementation. Kept in one place so its location is a
-# single line to change rather than a search.
-IMPL="${ARCADIA_RESTART_SCRIPT:-$HOME/.codex/skills/restart-arcadia-services/scripts/restart-services.sh}"
+# The restart implementation is versioned here (scripts/restart-services-impl.sh,
+# vendored from the restart-arcadia-services skill so its readiness probe can be
+# fixed and tested). ARCADIA_RESTART_SCRIPT still overrides it.
+IMPL="${ARCADIA_RESTART_SCRIPT:-$REPO/scripts/restart-services-impl.sh}"
 
 if [[ ! -x "$IMPL" ]]; then
   echo "Service control script not found or not executable: $IMPL" >&2
-  echo "Set ARCADIA_RESTART_SCRIPT to its location, or install the restart-arcadia-services skill." >&2
+  echo "Set ARCADIA_RESTART_SCRIPT to a restart implementation, or restore scripts/restart-services-impl.sh." >&2
   exit 2
+fi
+
+# A caller that pinned the implementation it reviewed (the rehearsal-chain
+# terminal-Off action does) passes that pin here, so what was verified is what
+# runs: a different file refuses instead of running.
+if [[ -n "${ARCADIA_RESTART_IMPL_SHA256:-}" ]]; then
+  if command -v shasum >/dev/null; then IMPL_SHA="$(shasum -a 256 "$IMPL" | cut -d' ' -f1)"; else IMPL_SHA="$(sha256sum "$IMPL" | cut -d' ' -f1)"; fi
+  if [[ "$IMPL_SHA" != "$ARCADIA_RESTART_IMPL_SHA256" ]]; then
+    echo "Refused: the restart implementation $IMPL (sha256 $IMPL_SHA) is not the pinned one ($ARCADIA_RESTART_IMPL_SHA256)." >&2
+    exit 3
+  fi
 fi
 
 # Rehearsal freeze window (docs/agent-guidance/rehearsal-freeze-window.md):
@@ -117,12 +129,11 @@ if [[ "$ACTION" != "restart" ]]; then
   exec "$IMPL" "$ACTION" "$REPO"
 fi
 
-# The implementation's final readiness probes use a single 2s curl, and when one
-# times out on a cold start it rolls the whole restart back and leaves every
-# service stopped, although an immediate second restart succeeds (Issue #430).
-# That script lives outside this repo, so the adapter bounds the damage: a
-# failed restart is retried, up to ARCADIA_RESTART_ATTEMPTS attempts in total
-# (default 2), instead of stopping at a full outage on one slow probe.
+# A failed restart rolls every service back. The implementation's readiness
+# probes now wait for a slow service (scripts/lib/ready-probe.sh), which removes
+# the single-slow-probe failure of Issue #430; as a second guard a failed
+# restart is still retried, up to ARCADIA_RESTART_ATTEMPTS attempts in total
+# (default 2), instead of stopping at a full outage.
 ATTEMPTS="${ARCADIA_RESTART_ATTEMPTS:-2}"
 # Reject anything but a plain decimal 1-10 (a leading zero would read as octal
 # in the comparison below and silently defeat the limit).
@@ -131,7 +142,7 @@ if [[ ! "$ATTEMPTS" =~ ^([1-9]|10)$ ]]; then
   exit 2
 fi
 attempt=1
-until "$IMPL" "$ACTION" "$REPO"; do
+until "$IMPL" "$ACTION" "$REPO" | sed 's/^Arcadia services are ready for /Arcadia services passed health checks for /'; do
   status=$?
   if [[ "$attempt" -ge "$ATTEMPTS" ]]; then
     echo "Restart failed after $attempt attempt(s)." >&2
@@ -142,9 +153,23 @@ until "$IMPL" "$ACTION" "$REPO"; do
   sleep "${ARCADIA_RESTART_RETRY_DELAY:-3}"
 done
 
+# The restart is not complete until the operator's PR routes are compiled.
+# Health gates remain in the implementation. Optional warming fails softly,
+# never rolling back healthy services or waiting for a missing cache's scan.
+if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
+  DASHBOARD_URL="${ARCADIA_DASHBOARD_URL:-http://127.0.0.1:3020}"
+  if (source "$REPO/scripts/lib/ready-probe.sh"; warm_pull_request_routes "$DASHBOARD_URL" "$READY_DEADLINE"); then
+    echo "Arcadia services are ready for $REPO (PR routes warmed; inventory may still be refreshing)."
+  else
+    echo "Arcadia services are ready for $REPO (PR route warmup incomplete; see warning)."
+  fi
+else
+  echo "Arcadia services are ready for $REPO (PR route warmup disabled)."
+fi
+
 # Warm the development dashboard's slowest reads so the operator's first visit
 # after a restart is not a cold page compile plus a cold CLI projection (the
-# /production queue took 14 s cold). Detached and bounded: it never delays or
+# /production queue took 14 s cold, /api/plans up to 50 s). Detached and bounded: it never delays or
 # fails the restart. ARCADIA_DASHBOARD_WARM=0 turns it off.
 if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
   DASHBOARD_URL="${ARCADIA_DASHBOARD_URL:-http://127.0.0.1:3020}"
@@ -154,7 +179,7 @@ if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
       curl -fsS -o /dev/null --max-time 5 "$DASHBOARD_URL/" && break
       sleep 2
     done
-    for path in /production "/api/production-console?part=core" "/api/production-console?part=queue"; do
+    for path in /production "/api/production-console?part=core" "/api/production-console?part=queue" /plans /api/plans; do
       curl -fsS -o /dev/null --max-time 90 "$DASHBOARD_URL$path" || true
     done
   ) </dev/null >/dev/null 2>&1 &

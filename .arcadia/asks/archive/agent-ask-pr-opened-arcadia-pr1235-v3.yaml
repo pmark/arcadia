@@ -1,0 +1,5 @@
+agent_ask: v1
+request_id: pr-opened-arcadia-pr1235-v3
+project: arcadia
+intent: log
+desired_result: "Notes-only PR 1235 is open: it adds the arcadia tidy remedy for a go handoff that launches no session to the brief-deadline notes entry. https://github.com/pmark/arcadia/pull/1235"

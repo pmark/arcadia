@@ -27,11 +27,12 @@
     "dist/src/intelligence/types.d.ts",
     "dist/src/intelligence/types.js.map",
     "dist/src/intelligence/types.d.ts.map",
-    "README.md"
+    "README.md",
+    "dist/src/intelligence/text"
   ],
   "scripts": {
     "postinstall": "mise exec -- pnpm rebuild better-sqlite3",
-    "build": "pnpm lint && tsc -p tsconfig.json && mkdir -p dist/scripts/browser-audit-image && cp scripts/browser-audit-image/identity.json dist/scripts/browser-audit-image/ && cp scripts/fixture-coding-agent.mjs scripts/record-session-exit.mjs scripts/host-browser-audit-worker.mjs dist/scripts/ && pnpm --filter arcadia-discord-bot build",
+    "build": "pnpm lint && tsc -p tsconfig.json && mkdir -p dist/scripts/browser-audit-image && cp scripts/browser-audit-image/identity.json dist/scripts/browser-audit-image/ && cp scripts/fixture-coding-agent.mjs scripts/record-session-exit.mjs scripts/host-browser-audit-worker.mjs scripts/session-capability-probe.mjs dist/scripts/ && pnpm --filter arcadia-discord-bot build",
     "test": "vitest run",
     "test:grader-contract": "vitest run tests/clarifyGraderContract.test.ts",
     "lint": "eslint src test tests scripts apps/dashboard apps/discord-bot",
@@ -45,6 +46,10 @@
     "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs",
     "bridge:worktree": "node scripts/bridge-worktree-deps.mjs",
     "check:operator-scripts": "node --import tsx scripts/check-operator-scripts.ts",
+    "check:session-ledger": "node --import tsx scripts/check-session-ledger.ts",
+    "ledger:tail": "node --import tsx scripts/ledger-tail.ts",
+    "check:frozen-records": "node --import tsx scripts/check-frozen-records.ts",
+    "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
     "fast-rehearsal": "node scripts/fast-rehearsal.mjs"
   },

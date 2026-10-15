@@ -10,6 +10,34 @@
 Read before preparing a bounded operator choice or publishing its /runs action.
 The compact bootstrap and CONSTITUTION.md still bind; a button grants no authority.
 
+### The host is offsite
+
+Operator direction, 2026-10-11: every rehearsal and supervised run must behave
+increasingly like the way sessions are ultimately meant to proceed, and the
+operator (and soon alpha testers) must never need to act directly on the host
+machine. Design and report as if the host were permanently offsite.
+
+- Never hand the operator a terminal command, a file to edit, a service restart,
+  a checkout fast-forward or an install as the way forward. Offer only
+  remote-reachable surfaces: an `/actions`, `/review` or `/production` button, a
+  Discord reply, or a PR merge (the operator's merge only where Decision
+  0060/0080 leaves it to the operator). If none exists for a needed step, that
+  missing surface is the blocker: say so plainly.
+- Until a remote surface replaces them, existing descriptors, runbooks and the
+  `/runs` script library that name the Terminal panel or `/runs` as a fallback
+  (for example G8) stay valid and are not removed or refused. Treat each as a
+  defect to record under the next bullet; for any new step offer only the
+  remote surfaces above.
+- Every host-touching step you find (reinstalling the broker after main moves,
+  restarting services to load merged code, approving a Decision by CLI,
+  reading a path on disk to learn why something refused) is a defect: record
+  it as an Issue (a defect) or an Agent Ask proposal (a missing capability)
+  naming the remote surface that should replace it.
+- Prefer designs that self-heal or fail with a remote-visible reason and a
+  one-press remedy, never a shell command or a path on disk.
+- Agents may use the host for their own work; the operator's progress must not
+  depend on it.
+
 ### Make operator steps executable
 
 Whenever the operator must provide input or perform one or more steps after an
@@ -61,6 +89,12 @@ it is one-shot, pins its policy revision, names its scope and expiry, refuses
 precondition drift before mutation, records a receipt, and states what it
 never does. Do not use the tag for ordinary preparation, observation, or
 deterministic completion evidence.
+
+An operator script that settles Agent Asks declares the exact scope it may
+settle: `agentAsk` (one proposal), `planAmendment` (the shared runner), or, for
+an accepted bulk cleanup, a one-shot `agentAskRejections` block naming the
+reviewed list (`manifest`, `sha256`) and every proposal id it may reject. The
+settlement guard then admits only disposition `rejected` for those ids.
 
 One-shot actions (`repeatable: false`) never delete themselves: `/runs` keeps
 their disabled succeeded state and receipt as the durable audit trail. Keep a
@@ -145,9 +179,10 @@ arcadia ping "Added a Retry button to the Actions page" --kind look --link http:
   to the default channel or a configured alias. That authority covers nothing
   else; a later Decision can revoke it, so re-read the Decision if in doubt.
 - **It is read-only and grants nothing.** Never use it to ask for a Decision,
-  approval, credential, spend or merge, and never as a substitute for the Agent
-  Ask or PR notifications above; those keep their own paths. If you need an
-  answer, stop at a Decision or picker instead.
+  approval, credential, spend or merge, and never as a substitute for an Agent
+  Ask; the PR-opened and PR-ready notifications are themselves pings (see
+  `pull-requests.md`, "PR lifecycle notifications"), while CI-blocked stays an
+  Ask. If you need an answer, stop at a Decision or picker instead.
 - Success means *queued*; the Discord bot delivers on its next poll. A non-zero
   exit means it was not queued: say so in the handoff rather than assuming the
   operator was told. Report a ping you could not send under the notification

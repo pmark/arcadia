@@ -1,6 +1,6 @@
 import { boundedExec as bounded, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
@@ -122,7 +122,24 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
   removeStaleScratchIndexes(common);
   const scratch = mkdtempSync(path.join(common, "arcadia-index-"));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
-  const git = (args: string[], input?: Buffer | string) => bounded("git", args, { cwd: root, env, input, maxBuffer: 64 * 1024 * 1024 });
+  const git = (args: string[], input?: Buffer | string) => {
+    const options = { cwd: root, env, maxBuffer: 64 * 1024 * 1024 };
+    if (input === undefined) return bounded("git", args, options);
+    // A finite regular file reaches EOF without a synchronous pipe handoff.
+    // Keep captured bytes in the existing private scratch, open read-only and
+    // unlink before spawning: no input path or bytes reach Git's arguments.
+    const inputPath = path.join(scratch, "stdin");
+    writeFileSync(inputPath, input, { flag: "wx", mode: 0o600 });
+    let fd: number | undefined;
+    try {
+      fd = openSync(inputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      unlinkSync(inputPath);
+      return bounded("git", args, { ...options, stdio: [fd, "pipe", "pipe"] });
+    } finally {
+      if (fd !== undefined) closeSync(fd);
+      rmSync(inputPath, { force: true });
+    }
+  };
   try {
     const tracked = bounded("git", ["ls-files", "-z"], { cwd: root }).toString().split("\0");
     if (tracked.includes(PRESERVATION_REQUEST_FILE)) throw validationError("The preservation transport file must not be tracked.");

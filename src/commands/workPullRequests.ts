@@ -14,11 +14,13 @@ export interface WorkPullRequestsCommandData {
 
 export function runWorkPullRequestsCommand(options: {
   workspace: string;
+  lightweight?: boolean;
+  repositoriesOnly?: boolean;
 }): CommandSuccess<WorkPullRequestsCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openDatabase(workspacePath);
   try {
-    const snapshot = listOutstandingPullRequests(listMonitoredProjects(db, { includeInactive: true }));
+    const snapshot = listOutstandingPullRequests(listMonitoredProjects(db, { includeInactive: true }), options);
     return createSuccess({
       command: "work.pull-requests",
       workspace: workspacePath,
