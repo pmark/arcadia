@@ -1,5 +1,12 @@
 # Arcadia conversational workspace UX design specification
 
+## Verified delivery status — 2026-10-15
+
+The [routing and React sky scaffold](https://github.com/pmark/arcadia/pull/1427) is merged, following independent current-head review and seven passing CI jobs. It provides `/workspace`, Project/Plan/Action routes, readable scope navigation, and responsive extension regions. It does **not** yet submit Ask requests or supply conversation history. The [Ask API scenario suite](https://github.com/pmark/arcadia/pull/1422) is also merged; its disposable-workspace evidence does not prove deployed latency or worker execution.
+
+The imagery below consists of design concepts, not screenshots of shipped features. Actual scaffold captures are [phone](../../assets/arcadia-conversational-workspace/workspace-shell-phone.png) and [desktop](../../assets/arcadia-conversational-workspace/workspace-shell-desktop.png). Shared services were not restarted and no deployment is claimed. The [next integration handoff](../reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md) records the remaining contract, tests and coordination hold.
+
+
 Status: working design draft, 14 October 2026.
 
 This is the living design deliverable for the session. It brings the conversation, visual explorations, operator feedback, and proposed interaction rules into one place. It will develop into the specification for a prototype as the design becomes more concrete.

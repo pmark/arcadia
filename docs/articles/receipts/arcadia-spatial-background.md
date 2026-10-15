@@ -39,3 +39,7 @@ A source-backed Astra researcher investigation informed the smallest working exp
 The operator clarified that the bottom input must genuinely integrate Arcadia Ask, its routines, related active work/processes and available artifacts. Brief Dot-like replies connecting the parts are essential, at least truthful summaries. This supersedes the notebook-only MVP recommendation. Root inspected both Ask HTTP routes, AskResponse at apps/dashboard/lib/types.ts:252 and AskTrailResponse at lib/arcadia-cli.ts:52. Existing summary/receipt/trail offer reuse; context routing, resource coverage, refresh and retry behavior remain unproven integration work. No implementation ran.
 
 The sky source is now located and pinned; see docs/design/mission-control-sky-react-reuse.md. The article reflects the operator's requirement for verbatim renderer reuse with a React lifecycle adaptation. No implementation or live deployment parity is claimed.
+
+## Delivery update — 2026-10-15
+
+The routing/React sky scaffold subsequently merged in PR1427; Ask API scenarios merged in PR1422. This article remains a draft of the broader product vision. Concept images are distinct from actual scaffold screenshots. No site/RSS publication, shared-service restart, full Ask UI integration, or deployment is claimed. Earlier research entries above are historical. Legacy image duplicates were verified byte-identical and references now use root assets.

@@ -24,7 +24,7 @@ In the foreground, the experience should feel as familiar as texting: write a me
 
 The workspace should welcome any bespoke creation, from a story or a service to software or a garden on a moon of Mars. Our Moon garden sketches are one example of that freedom. The aim is a calm place where an idea can take shape without requiring a tour of menus first.
 
-The visual direction uses Mission Control's existing day and night sky verbatim, with its renderer adapted from Astro to React. Research located its two-canvas implementation and phase helpers in the public site repository; the port itself remains to be done. Conversation surfaces should remain readable as daylight gives way to stars. The lowercase arcadia wordmark stays approachable; a simpler, friendlier symbol will replace the orbit mark explored in the first concepts. The sky can carry the wonder while the identity stays quiet.
+The visual direction uses Mission Control's existing day and night sky verbatim, with its renderer adapted from Astro to React. Research located its two-canvas implementation and phase helpers in the public site repository; the React scaffold is now merged, with source parity and phone performance still requiring measurement. Conversation surfaces should remain readable as daylight gives way to stars. The lowercase arcadia wordmark stays approachable; a simpler, friendlier symbol will replace the orbit mark explored in the first concepts. The sky can carry the wonder while the identity stays quiet.
 
 ## Follow an idea into organized work
 

@@ -1,5 +1,7 @@
 # Design evidence for Arcadia conversational workspace
 
+Delivery update: the React sky and routing scaffold subsequently merged in [PR #1427](https://github.com/pmark/arcadia/pull/1427). Earlier entries below retain their original research-time limits. See [current design status](arcadia-conversational-workspace.md) and the [next integration handoff](../reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md).
+
 - Specification: docs/design/arcadia-conversational-workspace.md.
 - Source: the operator's requests and feedback in this session, beginning with the spatial hierarchy and continuing through conversational UI, concept generation, Mission Control sky integration, identity feedback, and the request for a final session design document.
 - Destination: the operator clarified that the design specification belongs in docs/design and the companion article belongs in docs/articles.

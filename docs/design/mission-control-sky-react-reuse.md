@@ -1,5 +1,7 @@
 # Mission Control sky reuse in React
 
+Delivery update: the React sky and routing scaffold subsequently merged in [PR #1427](https://github.com/pmark/arcadia/pull/1427). Earlier entries below retain their original research-time limits. See [current design status](arcadia-conversational-workspace.md) and the [next integration handoff](../reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md).
+
 Status: source research completed, 15 October 2026. No port, build, service change or deployment performed.
 
 **Operator direction: use the existing Mission Control animated sky verbatim. Adapt the Astro integration to React; do not redesign or approximate the renderer.**
