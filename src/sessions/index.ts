@@ -36,6 +36,7 @@ import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 import { formatLaunchFailure } from "./launchFailure.js";
+import { guardPrimaryCheckoutLaunch } from "./primaryCheckoutSandbox.js";
 
 export type ProjectTransitionKind =
   | "launch"
@@ -791,6 +792,22 @@ export function launchPreparedSession(
   let launch: { command: string; args: string[] };
   try {
     launch = buildSessionLaunch(db, session, registry, workspace, headless);
+    if (session.provider !== FIXTURE_PROVIDER) {
+      // Codex's workspace-write sandbox is another macOS Seatbelt sandbox.
+      // Nesting it under the host guard fails during sandbox_apply, so refuse
+      // before tmux can mark a broken Session running rather than pretending
+      // that an outer guard protects it.
+      if (session.provider === "codex-cli") {
+        throw validationError("Protected Codex Session launch is unavailable because its nested macOS sandbox cannot initialize under the primary-checkout guard.", {
+          code: "primary_checkout_guard_provider_unsupported", provider: session.provider
+        });
+      }
+      launch = guardPrimaryCheckoutLaunch({
+        repositoryPath: session.repository_path,
+        worktreePath: session.worktree_path,
+        launch
+      });
+    }
   } catch (error) {
     // An unresolvable agent identity is a launch refusal, not a silent fall
     // back to the operator's Git identity: mark the prepared Session failed so

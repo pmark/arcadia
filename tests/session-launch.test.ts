@@ -1860,8 +1860,9 @@ describe("launch preflight and headless permission posture", () => {
 
     const ready = preparedFixture(selection);
     const readyTmux = new FakeTmux();
-    expect(doLaunch(ready, readyTmux, preview1(ready).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: {} })).session.status).toBe("running");
-    expect(readyTmux.launches[0].args).toEqual(expect.arrayContaining(["exec", "--json", "--sandbox", "workspace-write"]));
+    const guarded = refusal(() => doLaunch(ready, readyTmux, preview1(ready).previewFingerprint, "req-1", undefined, undefined, stubProviders({ codex: {} })));
+    expect(guarded.details).toMatchObject({ code: "primary_checkout_guard_provider_unsupported", provider: "codex-cli" });
+    expectNothingReserved(ready, readyTmux);
   });
 
   it("launches a ready Claude headless: the argv carries stream-json with --verbose and the per-Session settings file", () => {
@@ -1871,6 +1872,10 @@ describe("launch preflight and headless permission posture", () => {
     const result = doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, stubProviders({ claude: {} }));
 
     const args = tmux.launches[0].args;
+    expect(tmux.launches[0].command).toBe("/usr/bin/sandbox-exec");
+    expect(args[0]).toBe("-p");
+    expect(args[1]).toContain("deny file-write*");
+    expect(args[1]).toContain(fixture.repo);
     const claude = args.indexOf("claude");
     const settingsFile = sessionSettingsPath(fixture.workspace, result.session.id);
     // `--setting-sources ""` keeps the operator's user settings and the worktree's own

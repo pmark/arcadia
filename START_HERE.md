@@ -37,7 +37,11 @@ to existing Codex `spawn_agent` or Claude `Agent`. Native dispatch requires host
 authorization and records its own launch evidence; this command launches nothing.
 Governed capacity admission remains unavailable. Use installed `arcadia` and the
 installed role skill in adopting Projects; missing skills stop dispatch until
-installed. Lead and implementer never write concurrently.
+installed. One writer owns each candidate worktree. Separate candidates for
+separate tasks may progress concurrently, while same-file changes are
+coordinated and shared governance writers, main integration, and controller
+operations remain serialized. Ordinary agents do not edit the primary checkout;
+concurrency grants no extra spend, capacity, claims, installation, or authority.
 
 A [Behavior](docs/arcadia-semantics.md#behavior) is a named procedural contract
 followed by an existing Role; mode describes its active operating state.
