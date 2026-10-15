@@ -1,3 +1,4 @@
+import type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -49,20 +50,8 @@ export interface MissionControlReplyResponse {
   applied: boolean;
 }
 
-export interface AskTrailResponse {
-  capture: { id: string; requestId: string; originalText: string; ingressSource: string; capturedAt: string } | null;
-  asks: Array<{
-    id: string;
-    resolvedIntent: string;
-    outputKind: string;
-    status: string;
-    createdAt: string;
-    executionPath: string | null;
-    reason: string | null;
-    projectName: string | null;
-    outcomes: Array<{ kind: string; id: string; status: string | null; summary: string | null; projectName: string | null }>;
-  }>;
-}
+// Keep the dashboard contract aligned with the read-only CLI projection.
+export type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
 
 const execFileAsync = promisify(execFile);
 
