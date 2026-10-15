@@ -212,6 +212,12 @@ agent code changes on `main`, and never point two live coding sessions at the
 same working directory. A session title is not an isolation boundary; a
 worktree is.
 
+Separate, fresh candidate worktrees may progress concurrently when they serve
+separate tasks. Coordinate before touching the same source file; keep the
+primary checkout out of ordinary agent edits; and serialize shared-governance
+writers, main integration, and host-controller operations. Concurrency grants
+no additional spend, capacity, claim, installation, or approval authority.
+
 Sequential sessions for the same governed Action may continue in that Action's
 candidate worktree and branch once the previous session is proven terminal and
 the repository lease is handed over (Decision 0051). Arcadia prepares, resumes,
