@@ -4,14 +4,23 @@
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
   "action_id": "operator-directed:#1444",
-  "pr": null,
+  "pr": 1446,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "scope isolation; repair awaiting R2",
+      "caught_by": "independent code-reviewer R1"
+    },
+    {
+      "class": "capture guidance accuracy; repair awaiting R2",
+      "caught_by": "independent code-reviewer R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -22,7 +31,7 @@
     }
   ],
   "outcome": "split",
-  "notes": "Direct operator follow-up #1444 pending review/CI; PR unknown. Earlier merged #1435 was a prior phase.",
-  "candidate_head": "40712ac107468433797775362dee4504f5d6f17c",
+  "notes": "PR1446: R1 repairs delivered; final exact-head review/build/CI on PR. Rollout1447 separate. Earlier1435 prior phase; candidate_head is initial source snapshot.",
+  "candidate_head": "12230f4a138a3b3441b64601d36c08f4fb4f7379",
   "evidence_source": "docs/reports/handoffs/20261015T1718Z-01a1405f-ebaa-7850-8083-88f871e17d45.md"
 }

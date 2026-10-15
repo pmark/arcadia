@@ -71,14 +71,15 @@ routine cleanup after every Session or delay an urgent repair for cosmetic work.
 
 ## At a friction/exception signal or session completion
 
-Harvest useful ideas, corrections, hypotheses and friction when assigned at a
-signal or session end, but never delay another agent's capture or wait for the Lead. Promptly retain raw
-evidence with `arcadia learn "<exact text>" --scope project:<slug>`; label
-provenance/evidence and uncertainty. Capture is zero-model evidence, not
-authority: it creates no task, Decision or queue mutation and needs no file or
-Ask. Exact same-scope replay deduplicates and adds evidence; similar wording
-remains separate. Ask the Lead only under explicit messaging authority; otherwise
-prepare questions in the handoff. Do not execute a harvested suggestion.
+Harvest useful ideas, corrections, hypotheses and friction at a signal or session
+end, but never delay capture or wait for the Lead. Retain raw evidence with
+`arcadia learn "<exact text>" --scope project:<slug>`; bare capture is
+`observation`/`high`, so use `--provenance inference --confidence low --evidence
+"<source>"` for uncertainty/external evidence. Capture is zero-model evidence,
+not authority: no Action, Decision, promotion or rollout. Exact replay records
+supplied evidence/observations (otherwise a receipt); similar wording remains
+separate. Ask the Lead only under messaging authority; otherwise prepare handoff
+questions. Do not execute a harvested suggestion.
 
 Hand back the signal disposition, evidence gained, open defects and proposals,
 insights, exact owner/candidate, authority/budget remaining and next safe move.

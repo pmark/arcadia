@@ -1,6 +1,6 @@
 # Fresh-context Learn discovery probe — 2026-10-15
 
-Separate read-only Codex researcher process, actual model `gpt-5.6-terra`, medium effort, standard tier. The prompt supplied a supervisor scenario and asked how to preserve a workaround, uncertain idea and possibly duplicate observation. It did not name Learn or provide the command. The ordinary repository instructions were loaded; no parent conversation was supplied. No capture or repository mutation was authorized or performed. Process exited 0.
+Initial source head `12230f4a138a3b3441b64601d36c08f4fb4f7379` (before review repairs). Separate read-only Codex researcher process, actual model `gpt-5.6-terra`, medium effort, standard tier. The prompt supplied a supervisor scenario and asked how to preserve a workaround, uncertain idea and possibly duplicate observation. It did not name Learn or provide the command. The ordinary repository instructions were loaded; no parent conversation was supplied. No capture or repository mutation was authorized or performed. Process exited 0.
 
 Observed usage: 288,999 input tokens (238,848 cached) and 1,911 output tokens; 290,910 total processed. This is validation inference, separate from zero-model learning intake. One fresh session demonstrates discovery; it cannot guarantee every agent complies or reloads stale guidance.
 

@@ -1630,7 +1630,22 @@ function ensureLessonTables(db: Database.Database): void {
   `);
   const columns = new Set((db.prepare("PRAGMA table_info(lessons)").all() as Array<{ name: string }>).map((column) => column.name));
   if (!columns.has("source_back_burner_item_id")) db.prepare("ALTER TABLE lessons ADD COLUMN source_back_burner_item_id TEXT").run();
-  db.prepare("UPDATE lessons SET source_back_burner_item_id = back_burner_item_id WHERE source_back_burner_item_id IS NULL").run();
+  db.prepare("UPDATE lessons SET source_back_burner_item_id = back_burner_item_id WHERE source_back_burner_item_id IS NULL AND back_burner_item_id IS NOT NULL").run();
+  // Lessons are exact scoped evidence. Their historical Back Burner projections
+  // predate scope-safe Learn intake, so bind known Projects then redact every
+  // projection; a Project deletion can otherwise expose raw text again.
+  db.prepare(`UPDATE back_burner_items
+    SET project_id = (SELECT p.id FROM projects p WHERE p.slug = substr(l.scope_key, 9))
+    FROM lessons l
+    WHERE back_burner_items.id = l.back_burner_item_id
+      AND l.scope_key GLOB 'project:*'
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.slug = substr(l.scope_key, 9) AND p.id IS NOT back_burner_items.project_id)`).run();
+  db.prepare(`UPDATE back_burner_items
+    SET original_input = '[Scoped Learn lesson retained in the scoped lesson store.]',
+        reason = 'Historical Learn projection redacted; search the scoped lesson store.',
+        suggested_next_step = 'Search or correct the scoped lesson before acting.'
+    WHERE id IN (SELECT back_burner_item_id FROM lessons WHERE scope_key GLOB 'project:*' AND back_burner_item_id IS NOT NULL)
+      AND original_input <> '[Scoped Learn lesson retained in the scoped lesson store.]'`).run();
 }
 
 /**

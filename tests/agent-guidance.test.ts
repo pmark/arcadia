@@ -75,7 +75,7 @@ describe("compact Way instruction delivery", () => {
   it("keeps authority, governance, preservation, learning and identity rules in the visible bootstrap", () => {
     const loaded = Buffer.from(file(canonicalRoot, "AGENTS.md")).subarray(0, 32768).toString();
     for (const rule of ["independent review of the current head", "A push resets proof", "never hand-edit pointers", "edit SQLite directly", "never on main", "docs/notes-to-self.md", "targeted `rg`", "arcadia identity resolve", "never rewrite Git config", "docs/agent-guidance/index.json", "arcadia learn \"<exact text>\" --scope project:<slug>", "No novelty search, model call, file or Ask is required"]) expect(loaded).toContain(rule);
-    expect(loaded).toMatch(/no semantic\s+merge/);
+    expect(loaded).toContain("similar wording stays separate (no semantic merge)");
     const adoptedRoot = adopted();
     expect(file(adoptedRoot, "AGENTS.md")).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
     expect(file(adoptedRoot, "docs/agent-guidance/learning.md")).toContain("arcadia learn");
@@ -89,6 +89,19 @@ describe("compact Way instruction delivery", () => {
     expect(() => setupArcadiaProjectContext({ repoPath: root })).toThrow(/adoption refused/);
     expect(file(root, "AGENTS.md")).toBe(own);
     const small = adopted(); expect(audit(small, small, "G".repeat(32768)).problems).toContainEqual(expect.stringContaining("Combined guidance exceeds"));
+  });
+
+  it("keeps a near-limit adopter's local rules while delivering Learn discovery", () => {
+    const root = adopted();
+    const existing = file(root, "AGENTS.md");
+    const local = `# Local obligations\n\n${"Keep this local rule.\n".repeat(Math.floor((INSTRUCTION_BUDGET.root - Buffer.byteLength(existing) - 64) / 22))}`;
+    put(root, "AGENTS.md", `${local}\n${existing}`);
+    setupArcadiaProjectContext({ repoPath: root });
+    const installed = file(root, "AGENTS.md");
+    expect(Buffer.byteLength(installed)).toBeLessThanOrEqual(INSTRUCTION_BUDGET.root);
+    expect(installed).toContain("Keep this local rule.");
+    expect(installed).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
+    expect(computeWayPropagationPlan(root).changes).toEqual([]);
   });
 
   it("fails a regression that buries the late identity rule beyond the provider limit", () => {

@@ -73,5 +73,688 @@
     },
     "artifacts": [],
     "warnings": []
-  }
+  },
+  "initial_propagation_plans": [
+    {
+      "project": "Mission Control Site",
+      "hasGoverningChanges": true,
+      "unmanageable": [],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "CONSTITUTION.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-asks.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/operator-actions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/proposals.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/principles.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/pull-requests.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/git-identity.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/managed-documents.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/planning-process.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-peer-watch.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-comms.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/operator-directed-work.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/standard-harness.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/ask-todo-scout.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/session-roles-and-briefs.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/hacker-recovery.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/code-simplification.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/scout/CONTINUE.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "write"
+        }
+      ],
+      "bootstrapContainsLearn": true
+    },
+    {
+      "project": "Private Practice Now",
+      "hasGoverningChanges": false,
+      "unmanageable": [
+        {
+          "path": "AGENTS.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        }
+      ],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        }
+      ],
+      "bootstrapContainsLearn": false
+    },
+    {
+      "project": "Rebuster",
+      "hasGoverningChanges": false,
+      "unmanageable": [
+        {
+          "path": "AGENTS.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "CONSTITUTION.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/agent-asks.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/operator-actions.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/principles.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/pull-requests.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/managed-documents.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/planning-process.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/ask-todo-scout.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/session-roles-and-briefs.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/hacker-recovery.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/code-simplification.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/scout/CONTINUE.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "reason": "Root instructions exceed 12288 bytes."
+        }
+      ],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "CONSTITUTION.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/agent-asks.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/operator-actions.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/principles.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/pull-requests.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/managed-documents.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/planning-process.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/ask-todo-scout.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/session-roles-and-briefs.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/hacker-recovery.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/code-simplification.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/scout/CONTINUE.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "unmanageable"
+        }
+      ],
+      "bootstrapContainsLearn": false
+    }
+  ],
+  "repaired_propagation_plans": [
+    {
+      "project": "Mission Control Site",
+      "rootBytes": 9554,
+      "hasGoverningChanges": true,
+      "unmanageable": [],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "CONSTITUTION.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-asks.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/operator-actions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/proposals.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/principles.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/pull-requests.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/git-identity.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/managed-documents.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/planning-process.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-peer-watch.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-comms.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/operator-directed-work.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/standard-harness.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/ask-todo-scout.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/session-roles-and-briefs.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/hacker-recovery.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/code-simplification.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/scout/CONTINUE.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "write"
+        }
+      ],
+      "bootstrapContainsLearn": true
+    },
+    {
+      "project": "Private Practice Now",
+      "rootBytes": 12099,
+      "hasGoverningChanges": true,
+      "unmanageable": [],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "write"
+        }
+      ],
+      "bootstrapContainsLearn": true
+    },
+    {
+      "project": "Rebuster",
+      "rootBytes": 12006,
+      "hasGoverningChanges": true,
+      "unmanageable": [],
+      "changes": [
+        {
+          "path": "AGENTS.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "CONSTITUTION.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/index.json",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/continuation.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/agent-asks.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/operator-actions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/principles.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/pull-requests.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/learning.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/managed-documents.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/planning-process.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/working-copy-safety.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/ask-todo-scout.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/session-roles-and-briefs.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/native-app-sessions.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/hacker-recovery.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/code-simplification.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/scout/CONTINUE.md",
+          "tier": "governing",
+          "action": "write"
+        },
+        {
+          "path": "docs/agent-guidance/chat-titles.md",
+          "tier": "governing",
+          "action": "write"
+        }
+      ],
+      "bootstrapContainsLearn": true
+    }
+  ],
+  "rollout_issue": "https://github.com/pmark/arcadia/issues/1447",
+  "apply_boundary": "Current way propagate apply changes configured base checkouts. Do not use it under the operator fresh-worktree instruction; prepare isolated candidates and review governing drift first."
 }

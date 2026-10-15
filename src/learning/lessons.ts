@@ -159,13 +159,13 @@ export function captureLesson(db: Database.Database, input: CaptureLessonInput):
   }
   const createdAt = now();
   const id = `lesson_${fingerprint.slice(0, 20)}`;
-  const backBurner = createBackBurnerItem(db, {
+  const backBurner = scope === "arcadia" ? createBackBurnerItem(db, {
     originalInput: text, ingressSource: "cli.learn", classification: "IncubatingThought", confidence: 1,
     reason: "Captured as a durable lesson through `arcadia learn`.",
     suggestedNextStep: "Search or correct this lesson before acting on it."
-  });
+  }) : null;
   db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, source_back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)")
-    .run(id, scope, fingerprint, backBurner.id, backBurner.id, createdAt, createdAt);
+    .run(id, scope, fingerprint, backBurner?.id ?? null, backBurner?.id ?? null, createdAt, createdAt);
   const versionId = `lessonVersion_${randomUUID()}`;
   db.prepare(`INSERT INTO lesson_versions (id, lesson_id, version, text, text_hash, keywords_json, provenance_kind, confidence, freshness, repository_revision, source_ref, supersedes_version_id, created_at)
     VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
@@ -243,16 +243,12 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
       throw validationError("Lesson export version failed exact-content validation.", { lessonId: lesson.id, versionId: version.id });
     }
   }
-  const backBurner = createBackBurnerItem(db, {
-    originalInput: lesson.current.text,
-    ingressSource: "cli.learn.restore",
-    classification: "IncubatingThought",
-    confidence: 1,
-    reason: "Restored durable lesson intake linkage.",
-    suggestedNextStep: "Search or correct this lesson before acting on it."
-  });
+  const backBurner = scope === "arcadia" ? createBackBurnerItem(db, {
+    originalInput: lesson.current.text, ingressSource: "cli.learn.restore", classification: "IncubatingThought", confidence: 1,
+    reason: "Restored durable lesson intake linkage.", suggestedNextStep: "Search or correct this lesson before acting on it."
+  }) : null;
   db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, source_back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(lesson.id, scope, lesson.fingerprint, backBurner.id, lesson.source_back_burner_item_id ?? lesson.back_burner_item_id, lesson.current_version_id, lesson.created_at, lesson.updated_at);
+    .run(lesson.id, scope, lesson.fingerprint, backBurner?.id ?? null, lesson.source_back_burner_item_id ?? lesson.back_burner_item_id, lesson.current_version_id, lesson.created_at, lesson.updated_at);
   for (const version of ordered) {
     db.prepare(`INSERT INTO lesson_versions (id, lesson_id, version, text, text_hash, keywords_json, provenance_kind, confidence, freshness, repository_revision, source_ref, supersedes_version_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
