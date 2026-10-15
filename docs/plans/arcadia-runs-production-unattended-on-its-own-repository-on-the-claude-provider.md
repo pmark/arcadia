@@ -7,14 +7,14 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-14
+updated: 2026-10-15
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
+    next_action: Completed via Agent Ask complete-launch-failure-keeps-cause-20261014; no further action.
     expected_artifact: Evidence satisfying Agent Ask launch-failure-keeps-cause
     clarification: clarified
     confidence: high
@@ -158,7 +158,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: launch-failure-keeps-cause
+current_action: claude-worker-launch-replay
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
