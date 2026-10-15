@@ -9,6 +9,8 @@ import {
   runLearnShowCommand
 } from "../src/commands/learn.js";
 import { withDatabase } from "../src/db/connection.js";
+import { applyInitialSchema } from "../src/db/schema.js";
+import { createBackBurnerItem, upsertProject } from "../src/db/repositories.js";
 import { exactTextHash } from "../src/learning/lessons.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { parseJson, runCli } from "./cli-response-fixture.js";
@@ -32,6 +34,40 @@ describe("arcadia learn", () => {
     expect(runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "whitespace 0" }).data.lessons).toHaveLength(1);
     expect(first.data.lesson.current?.text_hash).toBe(exactTextHash("## Lesson 0\nkeys: lesson-0\nKeep   exact whitespace 0."));
     expect(first.data.lesson.current?.evidence).toEqual(["evidence 0", "extra evidence"]);
+  });
+
+  it("keeps scoped lesson text out of Back Burner, including restore and legacy projections", () => {
+    const ws = workspace();
+    const global = runLearnCaptureCommand({ workspace: ws, scope: "arcadia", text: "global intake stays linked" }).data.lesson;
+    expect(global.back_burner_item_id).toBeTruthy();
+    const globalExport = runLearnExportCommand({ workspace: ws, scope: "arcadia" }).data;
+    const globalTarget = workspace();
+    runLearnRestoreCommand({ workspace: globalTarget, scope: "arcadia", payload: globalExport });
+    const restoredGlobal = runLearnShowCommand({ workspace: globalTarget, scope: "arcadia", id: global.id }).data.lesson;
+    expect(restoredGlobal.back_burner_item_id).toBeTruthy();
+    expect(restoredGlobal.source_back_burner_item_id).toBe(global.back_burner_item_id);
+    const registered = withDatabase(ws, (db) => upsertProject(db, { name: "Registered", mission: "Protect scoped lessons.", status: "active" }));
+    const text = "registered private lesson";
+    const captured = runLearnCaptureCommand({ workspace: ws, scope: `project:${registered.slug}`, text }).data.lesson;
+    const unknown = runLearnCaptureCommand({ workspace: ws, scope: "project:unknown", text: "unknown private lesson" }).data.lesson;
+    expect(captured.back_burner_item_id).toBeNull();
+    expect(unknown.back_burner_item_id).toBeNull();
+    const exported = runLearnExportCommand({ workspace: ws, scope: `project:${registered.slug}` }).data;
+    const target = workspace();
+    expect(runLearnRestoreCommand({ workspace: target, scope: `project:${registered.slug}`, payload: exported }).data.restored).toBe(1);
+    expect(runLearnShowCommand({ workspace: target, scope: `project:${registered.slug}`, id: captured.id }).data.lesson.back_burner_item_id).toBeNull();
+
+    withDatabase(ws, (db) => {
+      const legacy = createBackBurnerItem(db, { originalInput: text, ingressSource: "legacy.learn", classification: "IncubatingThought", confidence: 1, reason: "Legacy copy", projectId: registered.id });
+      db.prepare("UPDATE lessons SET back_burner_item_id = ?, source_back_burner_item_id = ? WHERE id = ?").run(legacy.id, legacy.id, captured.id);
+      applyInitialSchema(db);
+      expect(db.prepare("SELECT project_id, original_input FROM back_burner_items WHERE id = ?").get(legacy.id)).toEqual({ project_id: registered.id, original_input: "[Scoped Learn lesson retained in the scoped lesson store.]" });
+      expect(db.prepare("SELECT source_back_burner_item_id FROM lessons WHERE id = ?").get(captured.id)).toEqual({ source_back_burner_item_id: legacy.id });
+      db.prepare("DELETE FROM projects WHERE id = ?").run(registered.id);
+      applyInitialSchema(db);
+      expect(db.prepare("SELECT project_id, original_input FROM back_burner_items WHERE id = ?").get(legacy.id)).toEqual({ project_id: null, original_input: "[Scoped Learn lesson retained in the scoped lesson store.]" });
+      expect((db.prepare("SELECT text FROM lesson_versions WHERE lesson_id = ?").get(captured.id) as { text: string }).text).toBe(text);
+    });
   });
 
   it("preserves a correction chain, retired search, and scope isolation", () => {
@@ -60,13 +96,13 @@ describe("arcadia learn", () => {
     const restored = runLearnShowCommand({ workspace: target, scope: "project:one", id: changed.id }).data.lesson;
     expect(restored.versions?.map((version) => version.id)).toEqual(changed.versions?.map((version) => version.id));
     expect(restored.receipts).toEqual(source.receipts);
-    expect(restored.source_back_burner_item_id).toBe(source.back_burner_item_id);
-    expect(restored.back_burner_item_id).not.toBe(source.back_burner_item_id);
+    expect(restored.source_back_burner_item_id).toBe(source.source_back_burner_item_id);
+    expect(restored.back_burner_item_id).toBeNull();
     const repeated = workspace();
     const reexported = runLearnExportCommand({ workspace: target, scope: "project:one" }).data;
     runLearnRestoreCommand({ workspace: repeated, scope: "project:one", payload: reexported });
     const restoredAgain = runLearnShowCommand({ workspace: repeated, scope: "project:one", id: changed.id }).data.lesson;
-    expect(restoredAgain.source_back_burner_item_id).toBe(source.back_burner_item_id);
+    expect(restoredAgain.source_back_burner_item_id).toBe(source.source_back_burner_item_id);
     expect(restoredAgain.receipts).toEqual(source.receipts);
     expect(changed.receipts?.some((receipt) => receipt.operation === "correct")).toBe(true);
   });

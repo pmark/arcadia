@@ -41,6 +41,14 @@ prove that a supervisor Session is assigned or running.
 
 ## Perform the specialist work
 
+Any agent may promptly retain useful discovery with `arcadia learn "<exact text>"
+--scope project:<slug>`. Bare capture is `observation`/`high`; for uncertainty or
+external evidence use `--provenance inference --confidence low --evidence "<source>"`.
+It is zero-model evidence, never authority or a required precondition: no Action,
+Decision, promotion or rollout. Exact replay records supplied evidence/observations
+(otherwise a receipt); similar wording remains separate. Supervisors harvest when
+assigned, without becoming a dependency.
+
 Load procedures by operation from the index, rather than copying them here:
 
 - Lead: integrate evidence and keep scope governed. Decision 0112 allows routine

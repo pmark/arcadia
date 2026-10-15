@@ -3460,6 +3460,14 @@ project additions outside generated regions. Agents read indexed procedures
 before their operation and search the Project's Notes To Self before commands
 or new failures. No procedural manual is automatically imported.
 
+Any agent can promptly capture useful discovery with
+`arcadia learn "<exact text>" --scope project:<slug>`. Bare capture is
+`observation`/`high`; use `--provenance inference --confidence low --evidence
+"<source>"` for uncertainty or external evidence. This is zero-model evidence,
+not authority: no Action, Decision, promotion or rollout. Exact replay records
+supplied evidence/observations (otherwise a receipt); similar wording remains
+separate. Lessons are retrieved on demand; Notes stays the bounded hot cache.
+
 When a hot Notes To Self cache reaches its limit, retain the exact entry with
 `arcadia learn` in the invoking Project scope before removing it. `learn show`
 and `learn search` expose current and retired advice with provenance and

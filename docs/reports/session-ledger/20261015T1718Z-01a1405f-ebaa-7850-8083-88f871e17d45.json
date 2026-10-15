@@ -3,15 +3,24 @@
   "role": "lead",
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
-  "action_id": "operator-directed:#1432",
-  "pr": 1435,
+  "action_id": "operator-directed:#1444",
+  "pr": 1446,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "scope isolation (fixed in6130bf75e)",
+      "caught_by": "independent code-reviewer R1"
+    },
+    {
+      "class": "capture guidance accuracy (fixed in6130bf75e)",
+      "caught_by": "independent code-reviewer R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -22,7 +31,7 @@
     }
   ],
   "outcome": "split",
-  "notes": "PR1435 draft; build passed. Round1 repair batch pending independent round2 review, QA, CI, and delivery.",
-  "candidate_head": "40712ac107468433797775362dee4504f5d6f17c",
-  "evidence_source": "docs/reports/handoffs/20261015T1718Z-learn-implementer.md"
+  "notes": "PR1446 product accepted by R2 and fresh QA on6130bf75e; final CI/record review on PR. Split: live rollout tracked1447. Earlier1435 was prior phase.",
+  "candidate_head": "6130bf75e48bdb409f8fb8dde88cb6baec3ecd31",
+  "evidence_source": "docs/reports/handoffs/20261015T1718Z-01a1405f-ebaa-7850-8083-88f871e17d45.md"
 }

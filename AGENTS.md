@@ -16,43 +16,46 @@ and other consequential approval boundaries retain their existing gates.
 ## Arcadia Context
 
 <!-- arcadia-bootstrap-v1 -->
-Arcadia maintains momentum across Projects with minimal operator attention.
-Checked-in records govern work; the database, queue, Issues and dashboards are
-projections or signals, never competing authority. Prefer deterministic local
-scripts, then local AI, then frontier models; use a coding agent for code work.
-Name the Milestone, next Action, Responsibility and required Artifacts.
+Arcadia maintains momentum with minimal operator attention. Checked-in records
+govern; database, queue, Issues and dashboards are projections or signals.
+Prefer deterministic local scripts, then local AI, then frontier models; use a
+coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
 ### Ask freely; execution stays governed
 
-Any agent may submit an honest proposal, question, concern or request for help
-through `arcadia agent-ask preview` with `intent: proposal` and
-`requested_authority: propose`, without approval to ask or an executable Action.
-Requesting something outside current authority is not executing it. Preview
-records receipts, changes no Project documents or queue, and grants no authority.
-Use the configured workspace and ordinary host permission path for receipt writes;
-never bypass a denial. One successful preview completes submission; inline input
-needs no file, and temporary/ignored file input is disposable after registration.
-Confirm the receipt; an unregistered local draft alone is not submitted.
-Read `docs/agent-guidance/agent-asks.md` for inline submission and durable fallback.
+Any agent may submit an honest proposal, question, concern or help request through
+`arcadia agent-ask preview` with `intent: proposal` and `requested_authority: propose`,
+without approval or an executable Action. This is not execution: preview records a receipt,
+changes no Project document or queue, and grants no authority. Use the configured workspace
+and ordinary host permission path; never bypass denial. A successful preview submits; inline
+needs no file. Confirm its receipt; an unregistered draft is not submitted. Read
+`docs/agent-guidance/agent-asks.md` for the durable path.
 Continue authorized work unless the request exposes a genuine blocker.
 
 ### Mandatory retrieval — before the operation
 
-Read `CONSTITUTION.md`, `PROJECT.md` and the active Plan's exact current Action
-at session start. Before broad discovery read `.arcadia/AGENT_CONTEXT_POLICY.md`,
+At start read `CONSTITUTION.md`, `PROJECT.md` and the active Plan's exact current Action.
+Before broad discovery read `.arcadia/AGENT_CONTEXT_POLICY.md`,
 `.arcadia/repo-context.md` and `.arcadia/context-policy.json`; honor denied paths
-and bounded targeted searches. For continuation, resolve `active_plan` and
-`current_action`; never choose from an unordered backlog or infer authority
-from an Issue. An Action must exist once, be unfinished, clarified, agent or
-autonomous owned, and have a concrete next verb and observable acceptance.
-If those fail, repair the control documents through their governed path.
+and bounded searches. For continuation resolve `active_plan` and `current_action`;
+never choose an unordered backlog or infer authority from an Issue. An Action exists
+once, is unfinished/clarified/agent or autonomous-owned, and has a concrete next verb and
+observable acceptance; otherwise repair control documents through their governed path.
 
-**Before implementation, repair, validation or handoff**, search the Project's
-`docs/notes-to-self.md` with targeted `rg` for commands, subsystem and symptoms;
-read matches and evidence first. Repeat on each new failure. Report a missing
-notes file. Preserve failed receipts, correct verified remedies and convert
-recurring friction into source fixes or meaningful guards; do not create a
-second memory store or treat an inference as operator preference.
+**Before implementation, repair, validation or handoff**, targeted `rg` the
+Project's `docs/notes-to-self.md` for commands, subsystem and symptoms; read
+matches/evidence and repeat on new failure. Report a missing file. Preserve failed
+receipts, correct verified remedies, and turn recurring friction into source fixes
+or guards; never make a second memory store or inference operator preference.
+
+Any agent promptly captures useful observation, idea, correction, hypothesis or friction:
+`arcadia learn "<exact text>" --scope project:<slug>`. Bare capture is `observation`/`high`;
+for uncertainty or external evidence use `--provenance inference --confidence low --evidence
+"<source>"`. No novelty search, model call, file or Ask is required. Capture is evidence, not
+authority: no Action, Decision, promotion or rollout; host, privacy and scope gates apply.
+Exact same-scope replay deduplicates and records supplied evidence/observations (otherwise a
+receipt); similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
+Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
 **Read `docs/agent-guidance/index.json` now.** It names task/failure triggers,
 exact authoritative paths and when each read is required. Match your next
@@ -66,30 +69,24 @@ stop the affected operation, preserve work and report the exact remedy.
 ### Essential constraints — always loaded
 
 - **Authority:** `CONSTITUTION.md` outranks convenience. Deployment, publication,
-  deletion, spending, credentials, production and messaging require an explicit
-  Decision. Capability, urgency, proposals and review findings grant nothing.
-  Merge only under Decision 0060 as amended by Decision 0080: an
-  independent review of the current head has no unresolved blocking finding,
-  all required checks on that head pass, and the merge state is clean. Important
-  Decisions and authority changes wait for the operator. A push resets proof, except the
-  governed-record commits and conflict-free base merges the PR procedure lists.
-- **Governance:** never hand-edit pointers, Action status/result, Decision
-  answers, Outcomes, Milestones or queues. Use an Agent Ask; previews never
-  approve themselves. Document hygiene may be edited when it claims neither
-  work nor a decision. Resolve the configured workspace; never guess a path,
-  substitute a dogfood workspace, bypass a refusal or edit SQLite directly.
-  Preserve a validated Ask when its workspace preview is blocked. The one
-  bounded exception is an experiment workspace (`init --profile experiment`)
-  holding only disposable fixtures: address it inline on each command
-  (`--workspace` or `ARCADIA_WORKSPACE=`), never export it or make it default.
-  Decision 0082 allows it until 2026-10-18 and stops it at any leak-check
-  change or experiment-caused write to the live workspace.
-- **Preservation:** run `arcadia work monitor --no-pull-requests` before code
-  edits. Work in a clean isolated candidate, never on main or in another live
-  Session's checkout. Use the host's prepared/resumed worktree and preservation
-  path where governed. Preserve histories; never reset away unique work.
-  Before stopping, push committed work and open/update its PR, including any
-  settlement commits; report an exact external boundary when that is blocked.
+  deletion, spending, credentials, production and messaging require an explicit Decision.
+  Capability, urgency, proposals and review findings grant nothing. Merge only under
+  Decisions 0060/0080: independent review of the current head has no unresolved blocking
+  finding, its required checks pass, and merge is clean. Important Decisions/authority
+  changes wait for the operator. A push resets proof except listed governed-record/base merges.
+- **Governance:** never hand-edit pointers, Action status/result, Decision answers,
+  Outcomes, Milestones or queues. Use an Agent Ask; previews never approve themselves.
+  Document hygiene may claim neither work nor a decision. Resolve the configured workspace:
+  never guess a path, use a dogfood workspace, bypass refusal or edit SQLite directly.
+  Preserve a blocked validated Ask. Only disposable fixtures may use inline experiment
+  workspaces (`init --profile experiment`, `--workspace`/`ARCADIA_WORKSPACE=`), never as
+  default. Decision 0082 allows this until 2026-10-18 and stops it at any leak-check change
+  or experiment-caused write to the live workspace.
+- **Preservation:** run `arcadia work monitor --no-pull-requests` before edits. Work in a
+  clean isolated candidate, never on main or another live Session's checkout. Use the
+  prepared/resumed worktree where governed; preserve history and never reset unique work.
+  Before stopping push committed work and open/update its PR, including settlement commits;
+  report the exact external boundary when blocked.
 - **Identity:** before every agent commit or posted comment resolve
   `arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>`
   for the current model (critic role for critique). Apply its author/committer
@@ -105,13 +102,11 @@ stop the affected operation, preserve work and report the exact remedy.
   `/runs` library for bounded operator-only authority, verify live publication,
   pin scope/preconditions and keep receipts. Buttons are not for deterministic
   completion evidence and never grant authority merely by being generated.
-- **Review:** read the indexed PR procedure before opening or pushing a PR;
-  include executable operator/end-user QA steps and truthful reachability.
-  Launch an independent read-only review of every PR at creation (max three
-  rounds unless significant defects recur; bots such as CodeRabbit are advisory
-  and never awaited) and watch required checks on each pushed head. Repair
-  valid findings, CI failures and base conflicts within authority; preserve
-  unresolved blockers. Never weaken gates, tests or branch protection.
+- **Review:** read the indexed PR procedure before opening/pushing; include executable
+  operator/end-user QA and truthful reachability. Launch independent read-only review at PR
+  creation (max three rounds unless significant defects recur; CodeRabbit is advisory), watch
+  required checks on each pushed head, repair valid findings/CI/base conflicts within
+  authority, preserve blockers, and never weaken gates, tests or branch protection.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,
   avoid speculative abstractions. Record defects in their owning repository's
   Issues, signals through Agent Asks, and missing capabilities as proposals.

@@ -69,14 +69,17 @@ Route a concrete maintainability finding through the Project's indexed
 responsibilities. Keep one writer and the remaining allowance. Do not commission
 routine cleanup after every Session or delay an urgent repair for cosmetic work.
 
-## At session completion
+## At a friction/exception signal or session completion
 
-Under explicit messaging authority ask the Lead for ideas, opportunities, key
-insights and preventable friction; otherwise prepare the questions in the
-handoff. Read the resulting evidence, identify verified remedies versus
-hypotheses, and record useful improvements through Notes To Self or Agent Asks
-as their procedures require. Do not execute a suggestion because it was
-harvested. Record coverage gaps if the Lead cannot be reached.
+Harvest useful ideas, corrections, hypotheses and friction at a signal or session
+end, but never delay capture or wait for the Lead. Retain raw evidence with
+`arcadia learn "<exact text>" --scope project:<slug>`; bare capture is
+`observation`/`high`, so use `--provenance inference --confidence low --evidence
+"<source>"` for uncertainty/external evidence. Capture is zero-model evidence,
+not authority: no Action, Decision, promotion or rollout. Exact replay records
+supplied evidence/observations (otherwise a receipt); similar wording remains
+separate. Ask the Lead only under messaging authority; otherwise prepare handoff
+questions. Do not execute a harvested suggestion.
 
 Hand back the signal disposition, evidence gained, open defects and proposals,
 insights, exact owner/candidate, authority/budget remaining and next safe move.

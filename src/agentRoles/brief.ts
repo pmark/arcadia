@@ -34,6 +34,7 @@ export function renderRoleBlock(role: GovernedRole): string[] {
     "Governed delegation admission is not live yet. Explicitly authorized native dispatch uses the existing harness tools; otherwise request help through an Agent Ask (intent: proposal, requested_authority: propose). A preview grants no execution authority.",
     ROLE_AUTHORITY_NOTICE,
     "Do not merge, deploy, publish, change governed state or cross approval boundaries because a role brief permits an operation.",
+    "Capture discovery with `arcadia learn \"<exact text>\" --scope project:<slug>`; bare capture is observation/high, and uncertainty uses `--provenance inference --confidence low --evidence \"<source>\"`. It is zero-model evidence only: no Action, Decision, promotion or rollout.",
     "Canonical registry: config/defaults/agent-roles.json (read with arcadia roles). Execution skill: .agents/skills/arcadia-role/SKILL.md; read it before work. Supervision skill, when assigned: .agents/skills/arcadia-supervisor/SKILL.md.",
     "Canonical Lead may do routine development (Decision 0112); native-app Lead/Driver conventions constrain sessions that use that procedure. Lead and implementer never write concurrently."
   ];

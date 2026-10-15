@@ -80,6 +80,7 @@ describe("specialist brief", () => {
     expect(brief.start.model).toBe(BUNDLED_MODEL_TIERS.tiers.standard[agent as "codex"]!.model);
     expect(brief.start.effort).toBe("e3_deep");
     expect(brief.text).toContain("Independent Session required: yes");
+    expect(brief.text).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
     expect(brief.text).toContain("Governed delegation admission is not live yet");
     expect(brief.text).toContain("grants no authority, claim, admission or second writer");
   });
