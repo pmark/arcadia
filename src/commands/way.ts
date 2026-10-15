@@ -4,6 +4,8 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { reportWayDrift, type WayDriftReport } from "../projects/wayDrift.js";
 import { runWayPropagation, type WayPropagationSummary } from "../projects/wayPropagate.js";
+import { agentIdentityEnvironment, resolveAgentIdentity } from "../codingAgents/agentIdentity.js";
+import { validationError } from "../cli/errors.js";
 
 export interface WayStatusCommandData {
   projects: WayDriftReport[];
@@ -87,10 +89,17 @@ export function runWayPropagateCommand(options: {
   workspace: string;
   project?: string;
   dryRun?: boolean;
+  learningOnly?: boolean;
+  agent?: string;
+  tier?: string;
 }): CommandSuccess<WayPropagateCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (!options.dryRun && (!options.agent || !options.tier)) {
+    throw validationError("Way propagation apply requires --agent and --tier so commits never inherit the operator identity.");
+  }
+  const gitEnv = options.dryRun ? undefined : agentIdentityEnvironment(resolveAgentIdentity(options.agent!, options.tier!, "builder"));
   const summary = withDatabase(workspacePath, (db) =>
-    runWayPropagation({ db, projectIdentifier: options.project, dryRun: options.dryRun })
+    runWayPropagation({ db, projectIdentifier: options.project, dryRun: options.dryRun, learningOnly: options.learningOnly, gitEnv })
   );
 
   return createSuccess({
@@ -111,6 +120,7 @@ export function renderWayPropagateSuccess(response: CommandSuccess<WayPropagateC
     lines.push(`${result.projectName}  [${result.status}]`);
     lines.push(`  ${result.detail}`);
     if (result.pullRequestUrl) lines.push(`  Pull request: ${result.pullRequestUrl}`);
+    if (result.candidatePath) lines.push(`  Candidate: ${result.candidatePath} (${result.candidateBranch ?? "detached"} @ ${result.candidateHead ?? "unresolved"})`);
     if (result.filesChanged.length > 0) lines.push(`  Files: ${result.filesChanged.join(", ")}`);
     if (result.unmanageable.length > 0) lines.push(`  Unmanageable: ${result.unmanageable.join(", ")}`);
   }

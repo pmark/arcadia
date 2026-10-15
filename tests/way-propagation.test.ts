@@ -1,4 +1,4 @@
-import { setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
+import { AGENTS_SECTION_END, AGENTS_SECTION_START, readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runWayPropagation, type CommandResult, type CommandRunner } from "../src/projects/wayPropagate.js";
+import { guidanceFingerprint } from "../src/projects/agentGuidance.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalConstitution = readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8");
@@ -99,6 +100,110 @@ describe("computeWayPropagationPlan", () => {
     ]);
     expect(plan.changes.some((change) => change.path === "CLAUDE.md" && change.action === "write")).toBe(false);
   });
+
+  it("limits learning-only adoption to the existing Learn bootstrap and retrieval resources", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const agentsPath = path.join(repo, "AGENTS.md");
+    const indexPath = path.join(repo, "docs/agent-guidance/index.json");
+    const old = [
+      "**Before implementation, repair, validation or handoff**, search the Project's",
+      "`docs/notes-to-self.md` with targeted `rg` for commands, subsystem and symptoms;",
+      "read matches and evidence first. Repeat on each new failure. Report a missing",
+      "notes file. Preserve failed receipts, correct verified remedies and convert",
+      "recurring friction into source fixes or meaningful guards; do not create a",
+      "second memory store or treat an inference as operator preference."
+    ].join("\n");
+    const legacyContext = readAgentsContextBlock()
+      .replace(/\*\*Before implementation, repair, validation or handoff\*\*[\s\S]*?Retrieve lessons on demand; Notes is the bounded verified hot cache\./, old);
+    writeFileSync(agentsPath, ["# AGENTS", "", AGENTS_SECTION_START, legacyContext, AGENTS_SECTION_END, ""].join("\n"), "utf8");
+    writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace(/("id": "learning",[\s\S]*?"sha256": )"[a-f0-9]{64}"/, '$1"0000000000000000000000000000000000000000000000000000000000000000"'), "utf8");
+    rmSync(path.join(repo, "docs/agent-guidance/learning.md"));
+
+    const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
+
+    expect(plan.changes.map((change) => change.path).sort()).toEqual(["AGENTS.md", "docs/agent-guidance/index.json", "docs/agent-guidance/learning.md"]);
+    expect(plan.unmanageable).toEqual([]);
+  });
+
+  it("keeps a fresh current adoption unchanged and remains current on repeat", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const before = readFileSync(path.join(repo, "AGENTS.md"), "utf8");
+
+    const first = computeWayPropagationPlan(repo, null, { learningOnly: true });
+    const second = computeWayPropagationPlan(repo, null, { learningOnly: true });
+
+    expect(first.unmanageable).toEqual([]);
+    expect(first.changes).toEqual([]);
+    expect(second.unmanageable).toEqual([]);
+    expect(second.changes).toEqual([]);
+    expect(readFileSync(path.join(repo, "AGENTS.md"), "utf8")).toBe(before);
+  });
+
+  it("replaces only the old Notes retrieval paragraph in an existing compact bootstrap", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const agentsPath = path.join(repo, "AGENTS.md");
+    const old = [
+      "**Before implementation, repair, validation or handoff**, search the Project's",
+      "`docs/notes-to-self.md` with targeted `rg` for commands, subsystem and symptoms;",
+      "read matches and evidence first. Repeat on each new failure. Report a missing",
+      "notes file. Preserve failed receipts, correct verified remedies and convert",
+      "recurring friction into source fixes or meaningful guards; do not create a",
+      "second memory store or treat an inference as operator preference."
+    ].join("\n");
+    const agents = readFileSync(agentsPath, "utf8")
+      .replace(/\*\*Before implementation, repair, validation or handoff\*\*[\s\S]*?Retrieve lessons on demand; Notes is the bounded verified hot cache\./, old)
+      .replace("<!-- ARCADIA_CONTEXT_END -->", "Local deployment instruction.\n<!-- ARCADIA_CONTEXT_END -->");
+    writeFileSync(agentsPath, agents, "utf8");
+
+    const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
+
+    const agentsChange = plan.changes.find((change) => change.path === "AGENTS.md");
+    expect(agentsChange).toMatchObject({ action: "write" });
+    expect(agentsChange?.content).toContain("Local deployment instruction.");
+    expect(agentsChange?.content).toContain("arcadia learn");
+  });
+
+  it("does not introduce Hacker recovery into an older Learn-only adopter", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const oldBootstrap = [
+      "**Before implementation, repair, validation or handoff**, search the Project's",
+      "`docs/notes-to-self.md` with targeted `rg` for commands, subsystem and symptoms;",
+      "read matches and evidence first. Repeat on each new failure. Report a missing",
+      "notes file. Preserve failed receipts, correct verified remedies and convert",
+      "recurring friction into source fixes or meaningful guards; do not create a",
+      "second memory store or treat an inference as operator preference."
+    ].join("\n");
+    const legacyContext = readAgentsContextBlock()
+      .replace(/\*\*Before implementation, repair, validation or handoff\*\*[\s\S]*?Retrieve lessons on demand; Notes is the bounded verified hot cache\./, oldBootstrap);
+    writeFileSync(path.join(repo, "AGENTS.md"), ["# AGENTS", "", AGENTS_SECTION_START, legacyContext, AGENTS_SECTION_END, ""].join("\n"), "utf8");
+    const learningPath = path.join(repo, "docs/agent-guidance/learning.md");
+    const oldRebusterLearning = readFileSync(learningPath, "utf8")
+      .replace(/\nTwo unchanged workflow refusals without new evidence require\n\[Hacker recovery\]\(hacker-recovery\.md\) before another attempt\. Explicit\nstop-the-line requests activate it immediately\. This changes diagnostic strategy,\nnot authority, admission or budget\. Supervisors must recognize the pattern\.\n/, "\n")
+      .replace("<!-- ARCADIA_CONTEXT_END -->", "<!-- ARCADIA_CONTEXT_END -->\n\nLocal retained learning note.\n");
+    writeFileSync(learningPath, oldRebusterLearning, "utf8");
+    rmSync(path.join(repo, "docs/agent-guidance/hacker-recovery.md"));
+    const indexPath = path.join(repo, "docs/agent-guidance/index.json");
+    const index = JSON.parse(readFileSync(indexPath, "utf8")) as { entries: Array<{ id: string }> };
+    index.entries = index.entries.filter((entry) => entry.id !== "hacker-recovery");
+    writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+
+    const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
+    const learning = plan.changes.find((change) => change.path === "docs/agent-guidance/learning.md");
+    const plannedIndex = plan.changes.find((change) => change.path === "docs/agent-guidance/index.json");
+
+    expect(plan.unmanageable).toEqual([]);
+    expect(learning).toMatchObject({ action: "write" });
+    expect(learning?.content).toContain("Local retained learning note.");
+    expect(learning?.content).not.toContain("hacker-recovery.md");
+    expect(plannedIndex?.content).not.toContain("hacker-recovery");
+    const selectedEntry = JSON.parse(plannedIndex?.content ?? "{}")
+      .entries.find((entry: { id: string }) => entry.id === "learning");
+    expect(selectedEntry.sha256).toBe(guidanceFingerprint(learning?.content ?? ""));
+  });
 });
 
 describe("upgrade policy", () => {
@@ -158,6 +263,7 @@ function initGitRepo(): { repo: string; remote: string } {
 function fakeGhRunner(calls: Array<{ command: string; args: string[] }>): CommandRunner {
   return (cwd, command, args): CommandResult => {
     calls.push({ command, args });
+    if (command === "git" && args[0] === "fetch") return { ok: true, stdout: "", stderr: "" };
     if (command === "gh") {
       if (args[0] === "pr" && args[1] === "create") {
         return { ok: true, stdout: "https://github.com/example/repo/pull/1\n", stderr: "" };
@@ -193,83 +299,175 @@ function tempWorkspace(): string {
 }
 
 describe("runWayPropagation", () => {
-  it("opens nothing for a repository that would produce byte-identical files", () => {
+  it("leaves no candidate worktree or branch after repeated no-op applies", () => {
     const { repo } = initGitRepo();
     const workspace = tempWorkspace();
     seedProject(workspace, repo);
     const calls: Array<{ command: string; args: string[] }> = [];
 
-    const summary = withDatabase(workspace, (db) =>
+    const first = withDatabase(workspace, (db) =>
+      runWayPropagation({ db, runCommand: fakeGhRunner(calls) })
+    );
+    const second = withDatabase(workspace, (db) =>
       runWayPropagation({ db, runCommand: fakeGhRunner(calls) })
     );
 
-    expect(summary.results).toHaveLength(1);
-    expect(summary.results[0].status).toBe("current");
+    expect(first.results).toHaveLength(1);
+    expect(first.results[0]).toMatchObject({ status: "current", candidatePath: null, candidateBranch: null, candidateHead: null });
+    expect(second.results[0]).toMatchObject({ status: "current", candidatePath: null, candidateBranch: null, candidateHead: null });
+    expect(git(repo, ["branch", "--list", "arcadia-way/propagate-*"])).toBe("");
+    expect(git(repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-way-propagate-");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
   });
 
-  it("refuses a feature checkout whose current library masks missing resources on base", () => {
+  it("preserves the untouched no-op candidate when cleanup fails", () => {
     const { repo } = initGitRepo();
-    rmSync(path.join(repo, "docs/agent-guidance/index.json"));
-    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "missing library on base"]);
-    git(repo, ["checkout", "-b", "feature/current-library"]);
-    writeCurrentAdoption(repo);
-    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "repair feature only"]);
-    expect(computeWayPropagationPlan(repo).changes).toEqual([]);
-    const workspace = tempWorkspace(); seedProject(workspace, repo);
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, runCommand: fakeGhRunner(calls) }));
-    expect(summary.results[0].status).toBe("error");
-    expect(summary.results[0].detail).toContain("requires the base checkout on main");
-    expect(git(repo, ["branch", "--show-current"]).trim()).toBe("feature/current-library");
-    expect(calls.some((call) => call.command === "gh" || call.args[0] === "checkout")).toBe(false);
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "worktree" && args[1] === "remove") {
+          return { ok: false, stdout: "", stderr: "cleanup refused" };
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/) });
+    expect(result.candidatePath).not.toBeNull();
+    expect(result.candidateHead).not.toBeNull();
+    expect(existsSync(result.candidatePath!)).toBe(true);
+    expect(git(repo, ["show-ref", "--verify", `refs/heads/${result.candidateBranch}`])).toContain(result.candidateHead);
   });
 
-  it("refuses destination ownership drift after checkout without overwriting or publishing it", () => {
+  it("reports a retained advanced branch after cleanup races a clean candidate commit", () => {
+    const { repo } = initGitRepo();
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+    let advancedHead = "";
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "worktree" && args[1] === "remove") {
+          const candidate = args[2];
+          const agents = path.join(candidate, "AGENTS.md");
+          writeFileSync(agents, `${readFileSync(agents, "utf8")}\nConcurrent clean candidate commit.\n`, "utf8");
+          git(candidate, ["add", "AGENTS.md"]);
+          git(candidate, ["commit", "-m", "concurrent no-op candidate advance"]);
+          advancedHead = git(candidate, ["rev-parse", "HEAD"]).trim();
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidatePath: null, candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/), candidateHead: advancedHead });
+    expect(existsSync(result.candidatePath ?? "")).toBe(false);
+    expect(git(repo, ["show-ref", "--verify", `refs/heads/${result.candidateBranch}`])).toContain(advancedHead);
+    expect(result.detail).toContain(`git worktree add <new-path> ${result.candidateBranch}`);
+  });
+
+  it("reports uncertain cleanup state without a stale candidate head", () => {
+    const { repo } = initGitRepo();
+    const workspace = tempWorkspace();
+    seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+    let candidateHeadReads = 0;
+
+    const summary = withDatabase(workspace, (db) => runWayPropagation({
+      db,
+      runCommand: (cwd, command, args) => {
+        if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD" && cwd !== repo) {
+          candidateHeadReads += 1;
+          if (candidateHeadReads > 1) return { ok: false, stdout: "", stderr: "candidate unavailable" };
+        }
+        return runner(cwd, command, args);
+      }
+    }));
+    const result = summary.results[0];
+
+    expect(result).toMatchObject({ status: "error", candidatePath: expect.any(String), candidateBranch: expect.stringMatching(/^arcadia-way\/propagate-/) });
+    expect(result.candidateHead).toBe(git(repo, ["rev-parse", "--verify", `refs/heads/${result.candidateBranch}`]).trim());
+    expect(result.detail).toContain("could not confirm the candidate worktree and branch state");
+    expect(result.detail).not.toContain("advanced after planning");
+  });
+
+  it("keeps a dirty primary checkout and its HEAD reflog untouched while publishing from a candidate", () => {
     const { repo } = initGitRepo();
     writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n");
     git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "bootstrap drift"]);
+    git(repo, ["push", "origin", "main"]);
+    writeFileSync(path.join(repo, "operator-draft.txt"), "do not touch\n");
+    const before = {
+      branch: git(repo, ["branch", "--show-current"]),
+      head: git(repo, ["rev-parse", "HEAD"]),
+      agents: readFileSync(path.join(repo, "AGENTS.md"), "utf8"),
+      reflog: git(repo, ["reflog", "show", "--format=%H %gs", "-1"]),
+      status: git(repo, ["status", "--porcelain"])
+    };
     const workspace = tempWorkspace(); seedProject(workspace, repo);
     const calls: Array<{ command: string; args: string[] }> = [];
-    const runner = fakeGhRunner(calls);
-    const foreign = '{"schema":"project-owned"}';
-    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, now: () => "20260101000000", runCommand: (cwd, command, args) => {
-      const result = runner(cwd, command, args);
-      if (command === "git" && args[0] === "checkout" && args[1] === "-b") writeFileSync(path.join(repo, "docs/agent-guidance/index.json"), foreign);
-      return result;
-    } }));
-    expect(summary.results[0].status).toBe("error");
-    expect(summary.results[0].detail).toContain("adoption changed after checkout");
-    expect(readFileSync(path.join(repo, "docs/agent-guidance/index.json"), "utf8")).toBe(foreign);
-    expect(readFileSync(path.join(repo, "AGENTS.md"), "utf8")).toBe("# AGENTS\n\nstale\n");
-    expect(calls.some((call) => call.command === "gh" || call.args[0] === "push" || call.args[0] === "commit")).toBe(false);
-  });
-
-  it("merges a mechanical-only change without leaving it for review", () => {
-    const { repo, remote } = initGitRepo();
-    writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n", "utf8");
-    git(repo, ["add", "-A"]);
-    git(repo, ["commit", "-m", "drift AGENTS.md"]);
-    const workspace = tempWorkspace();
-    seedProject(workspace, repo);
-    const calls: Array<{ command: string; args: string[] }> = [];
-
-    const summary = withDatabase(workspace, (db) =>
-      runWayPropagation({ db, runCommand: fakeGhRunner(calls), now: () => "20260101000000" })
-    );
-
-    expect(summary.results[0].status).toBe("merged");
+    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, now: () => "20260101000000", runCommand: fakeGhRunner(calls) }));
+    expect(summary.results[0].status).toBe("opened");
     expect(summary.results[0].pullRequestUrl).toBe("https://github.com/example/repo/pull/1");
     expect(summary.results[0].filesChanged).toEqual(["AGENTS.md"]);
-    expect(calls.some((call) => call.command === "gh" && call.args[1] === "merge")).toBe(true);
+    expect(summary.results[0].candidatePath).not.toBeNull();
+    expect(summary.results[0].candidateHead).not.toBe(before.head.trim());
+    expect(existsSync(summary.results[0].candidatePath!)).toBe(true);
+    expect(calls.some((call) => call.command === "gh" && call.args[1] === "merge")).toBe(false);
+    expect(calls.some((call) => call.args[0] === "checkout")).toBe(false);
+    expect(git(repo, ["branch", "--show-current"])).toBe(before.branch);
+    expect(git(repo, ["rev-parse", "HEAD"])).toBe(before.head);
+    expect(readFileSync(path.join(repo, "AGENTS.md"), "utf8")).toBe(before.agents);
+    expect(git(repo, ["reflog", "show", "--format=%H %gs", "-1"])).toBe(before.reflog);
+    expect(git(repo, ["status", "--porcelain"])).toBe(before.status);
+  });
 
-    // The branch reached the remote with the regenerated content, and the
-    // repository was left back on its base branch rather than the propagation branch.
-    // The remote is itself the bare repository, so its own branch list (not
-    // `-r`, which lists remote-tracking refs of a *non-bare* clone) is what a push landed.
-    const remoteBranches = execFileSync("git", ["branch"], { cwd: remote, encoding: "utf8" });
-    expect(remoteBranches).toContain("arcadia-way/propagate-20260101000000");
-    expect(git(repo, ["branch", "--show-current"]).trim()).toBe("main");
+  it.each(["push", "pr"])("preserves a recoverable candidate when %s publication fails", (failure) => {
+    const { repo } = initGitRepo();
+    writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n");
+    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "bootstrap drift"]); git(repo, ["push", "origin", "main"]);
+    const beforeHead = git(repo, ["rev-parse", "HEAD"]);
+    const beforeBranch = git(repo, ["branch", "--show-current"]);
+    const workspace = tempWorkspace(); seedProject(workspace, repo);
+    const runner = fakeGhRunner([]);
+    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, now: () => "20260101000000", runCommand: (cwd, command, args) => {
+      if (failure === "push" && command === "git" && args[0] === "push") return { ok: false, stdout: "", stderr: "push refused" };
+      if (failure === "pr" && command === "gh" && args[0] === "pr" && args[1] === "create") return { ok: false, stdout: "", stderr: "PR refused" };
+      return runner(cwd, command, args);
+    } }));
+    const result = summary.results[0];
+
+    expect(result.status).toBe("error");
+    expect(result.candidatePath).not.toBeNull();
+    expect(result.candidateBranch).not.toBeNull();
+    expect(result.candidateHead).not.toBeNull();
+    expect(existsSync(result.candidatePath!)).toBe(true);
+    expect(git(result.candidatePath!, ["rev-parse", "HEAD"]).trim()).toBe(result.candidateHead);
+    expect(git(repo, ["rev-parse", "HEAD"])).toBe(beforeHead);
+    expect(git(repo, ["branch", "--show-current"])).toBe(beforeBranch);
+  });
+
+  it("reports a branch collision without modifying the primary or removing the candidate path", () => {
+    const { repo } = initGitRepo();
+    writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n");
+    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "bootstrap drift"]); git(repo, ["push", "origin", "main"]);
+    const branch = "arcadia-way/propagate-collision";
+    git(repo, ["branch", branch]);
+    const candidate = mkdtempSync(path.join(tmpdir(), "arcadia-way-collision-")); roots.push(candidate);
+    const head = git(repo, ["rev-parse", "HEAD"]);
+    const workspace = tempWorkspace(); seedProject(workspace, repo);
+    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, runCommand: fakeGhRunner([]), branchName: () => branch, candidateDirectory: () => candidate }));
+
+    expect(summary.results[0]).toMatchObject({ status: "error", candidatePath: candidate, candidateBranch: branch, candidateHead: null });
+    expect(existsSync(candidate)).toBe(true);
+    expect(git(repo, ["rev-parse", "HEAD"])).toBe(head);
   });
 
   it("opens a governing-tier change and never merges it, even alongside a mechanical change", () => {
@@ -278,6 +476,7 @@ describe("runWayPropagation", () => {
     writeFileSync(path.join(repo, "CONSTITUTION.md"), "stale constitution\n", "utf8");
     git(repo, ["add", "-A"]);
     git(repo, ["commit", "-m", "drift both tiers"]);
+    git(repo, ["push", "origin", "main"]);
     const workspace = tempWorkspace();
     seedProject(workspace, repo);
     const calls: Array<{ command: string; args: string[] }> = [];
@@ -286,7 +485,7 @@ describe("runWayPropagation", () => {
       runWayPropagation({ db, runCommand: fakeGhRunner(calls), now: () => "20260101000000" })
     );
 
-    expect(summary.results[0].status).toBe("opened-governing");
+    expect(summary.results[0].status).toBe("opened");
     expect(summary.results[0].filesChanged.sort()).toEqual(["AGENTS.md", "CONSTITUTION.md"]);
     expect(calls.some((call) => call.command === "gh" && call.args[1] === "merge")).toBe(false);
   });

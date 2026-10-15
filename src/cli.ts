@@ -4439,18 +4439,18 @@ Origin: every item has "origin" (a string from a field its source records, else 
   addJsonOption(
     way
       .command("propagate")
-      .description(
-        "Open one pull request per adopting repository with Way changes -- auto-merging a mechanical-tier " +
-          "change, leaving a governing-tier change (Constitution, continuation protocol) open for a human"
-      )
+      .description("Prepare one isolated candidate and open one reviewable pull request per adopting repository with Way changes")
       .argument("[project-id]", "Restrict to one project id or name; every adopting project otherwise")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--dry-run", "Report what would happen without writing, committing, or pushing anything")
-  ).action((projectId: string | undefined, options: { workspace: string; dryRun?: boolean; json?: boolean }) =>
+      .option("--learning-only", "Install only the Learn retrieval bootstrap and learning guidance in already compact adoptions")
+      .option("--agent <agent>", "Commit identity agent (required for apply: codex, claude, or opencode)")
+      .option("--tier <tier>", "Commit identity tier (required for apply: light, standard, or heavy)")
+  ).action((projectId: string | undefined, options: { workspace: string; dryRun?: boolean; learningOnly?: boolean; agent?: string; tier?: string; json?: boolean }) =>
     runCliAction(
       "way.propagate",
       options,
-      () => runWayPropagateCommand({ workspace: options.workspace, project: projectId, dryRun: options.dryRun }),
+      () => runWayPropagateCommand({ workspace: options.workspace, project: projectId, dryRun: options.dryRun, learningOnly: options.learningOnly, agent: options.agent, tier: options.tier }),
       renderWayPropagateSuccess
     )
   );

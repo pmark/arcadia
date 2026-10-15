@@ -1,0 +1,265 @@
+{
+  "request": "Perform the rollout.",
+  "date": "2026-10-15",
+  "issue": 1447,
+  "governedAction": null,
+  "authority": "Direct operator request; no Plan, Action, pointer, queue or Decision changed. Deployment gates retained.",
+  "source": {
+    "pr": 1452,
+    "reviewedR1Head": "dae0c47f2f373ccc1585a122dc440d8c06021bbf",
+    "reviewR1": "BLOCK; repaired before second review. Seven R1 CI jobs passed.",
+    "ciR1": "all seven jobs passed",
+    "basePublishedElsewhereDuringWork": "50b3ca7256f5565a2909c6ce482e73b400c0644e",
+    "repair": "No-op apply removes its untouched candidate using non-forced worktree removal; repeated actual apply regression verifies no leftover worktrees/branches. Final independent delta review and CI are recorded on PR1452.",
+    "integratedBase": "185aa2397667d4c347443ddd586a75c1ec8cef5f",
+    "repairValidation": [
+      {
+        "check": "focused",
+        "exitCode": 0
+      },
+      {
+        "check": "lint",
+        "exitCode": 0
+      }
+    ],
+    "reviewR2": "BLOCK on d1d5d9083: concurrent clean commit during partial no-op cleanup preserves branch but stale error fields can claim removed worktree. Repaired before R3; final verdict and required checks recorded on PR1452."
+  },
+  "adopters": [
+    {
+      "project": "mission-control-site",
+      "pr": 84,
+      "head": "bebd3434ae20904e14f16ce9079541acdcfbf07a",
+      "review": "R2 PASS",
+      "freshDiscoveryQA": "PASS unchanged bootstrap at13bebd57",
+      "rootUtf8Bytes": 10235,
+      "status": "OPEN; wider instruction migration and production deployment await operator approval"
+    },
+    {
+      "project": "private-practice-now",
+      "pr": 302,
+      "head": "97f1a6a59a2cd26e4641e0ac86eeb8cd11f24e10",
+      "review": "PASS",
+      "freshDiscoveryQA": "PASS",
+      "rootUtf8Bytes": 12276,
+      "status": "OPEN; automatic approval review rejected merge due to automatic production deployment without explicit authorization"
+    },
+    {
+      "project": "rebuster",
+      "pr": 28,
+      "head": "121af1695c63574f1b34f5355e12df39a755830b",
+      "review": "PASS",
+      "freshDiscoveryQA": "PASS",
+      "rootUtf8Bytes": 12183,
+      "status": "MERGED",
+      "mergeCommit": "6d99b376ad6112225bbdf31650fe4eb71884d435",
+      "mergedAt": "2026-10-15T22:46:02Z"
+    }
+  ],
+  "installedSkills": [
+    {
+      "skill": "arcadia-role",
+      "before": "9b06c6813e7b94476c5f968b5501982c6b91a8b21b1e703a506f6ced02be5055",
+      "after": "d24686ffea1b0f8668b7548a7f5261d2f6950000218ac09c26dc0456f60492f8",
+      "source": "5cec1ce3ae1840379dedc0aea68827b91b1e7ee1",
+      "operation": "Learn sections only; unrelated installed content preserved"
+    },
+    {
+      "skill": "arcadia-supervisor",
+      "before": "b01b09c1a12b4f4dcf0a5d522820bde2f3c546751124ec18306303e722997aeb",
+      "after": "ef2d431d4e4f3fbb4e09690e9a0758fe96ece82e71bb108b775f0627cca2f766",
+      "source": "5cec1ce3ae1840379dedc0aea68827b91b1e7ee1",
+      "operation": "Learn sections only; unrelated installed content preserved"
+    }
+  ],
+  "captureProof": [
+    {
+      "project": "mission-control-site",
+      "lessonId": "lesson_e649304df1d1f05b8b46",
+      "firstCreated": true,
+      "retryCreated": false,
+      "backBurnerItemId": null,
+      "versions": 1,
+      "receipts": 1
+    },
+    {
+      "project": "private-practice-now",
+      "lessonId": "lesson_f4917cfa50627b653fac",
+      "firstCreated": true,
+      "retryCreated": false,
+      "backBurnerItemId": null,
+      "versions": 1,
+      "receipts": 1
+    },
+    {
+      "project": "rebuster",
+      "lessonId": "lesson_74f8401a93d776cc9d20",
+      "firstCreated": true,
+      "retryCreated": false,
+      "backBurnerItemId": null,
+      "versions": 1,
+      "receipts": 1
+    }
+  ],
+  "primaryPreservation": [
+    {
+      "project": "site",
+      "checks": {
+        "head": true,
+        "branch": true,
+        "status": true,
+        "reflog": true,
+        "instructionFiles": true
+      }
+    },
+    {
+      "project": "ppn",
+      "checks": {
+        "head": true,
+        "branch": true,
+        "status": true,
+        "reflog": true,
+        "instructionFiles": true
+      }
+    },
+    {
+      "project": "rebuster",
+      "checks": {
+        "head": true,
+        "branch": true,
+        "status": true,
+        "reflog": true,
+        "instructionFiles": true
+      }
+    },
+    {
+      "project": "arcadia",
+      "checks": {
+        "primaryReflog": false
+      }
+    }
+  ],
+  "primaryObservation": "All three adopter primary checkouts preserved. Arcadia primary advanced externally from5cec1ce to50b3ca7; this session performed no primary checkout mutation. Primary later advanced externally to185aa239 (#1451).",
+  "instructionRetrieval": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 10100
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 3320
+    },
+    {
+      "path": "PROJECT.md",
+      "bytes": 31677
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "bytes": 539
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "bytes": 703
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "bytes": 870
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "bytes": 9449
+    },
+    {
+      "path": "docs/agent-guidance/operator-directed-work.md",
+      "bytes": 4494
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "bytes": 2458
+    },
+    {
+      "path": "docs/working-copy-safety.md",
+      "bytes": 16202
+    },
+    {
+      "path": "docs/agent-guidance/native-app-sessions.md",
+      "bytes": 9061
+    },
+    {
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "bytes": 6152
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "bytes": 17585
+    },
+    {
+      "path": "docs/agent-guidance/git-identity.md",
+      "bytes": 5248
+    },
+    {
+      "path": "docs/agent-guidance/standard-harness.md",
+      "bytes": 5569
+    },
+    {
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "bytes": 4690
+    },
+    {
+      "path": "docs/agent-guidance/arcadia-repository.md",
+      "bytes": 30174
+    },
+    {
+      "path": ".agents/skills/arcadia-role/SKILL.md",
+      "bytes": 9080
+    },
+    {
+      "path": ".agents/skills/arcadia-supervisor/SKILL.md",
+      "bytes": 5733
+    },
+    {
+      "path": ".agents/skills/arcadia-guardrail/SKILL.md",
+      "bytes": 5565
+    }
+  ],
+  "retrievedSections": [
+    "Exact active Plan/current Action read to rule out overlap",
+    "Notes: Learn, propagation, preservation, UTF-8 failures",
+    "Arcadia repository: Orientation, Semantics, PR QA/Working-Copy Safety",
+    "Freeze window: live availability and shared-host boundaries",
+    "PR procedure: independent review, rounds, CI, merge, notifications, metadata",
+    "Identity: semantic agent identity before every commit/comment"
+  ],
+  "deferrals": [
+    {
+      "issue": 1450,
+      "title": "Full adopted guidance retains unreachable Arcadia source references",
+      "revival": "Before the next full library adoption; current Mission Control candidate pins verified links."
+    }
+  ],
+  "limitations": [
+    "No running-session reload claimed",
+    "Fresh discovery proves three sampled Codex sessions, not universal agent compliance",
+    "No production deployment or shared-service restart performed",
+    "Learn capture invokes no model; review and implementation sessions do use models",
+    "Actual native implementer model binding is unexposed; gpt-5.6-terra was requested"
+  ],
+  "notifications": [
+    {
+      "project": "ppn",
+      "receipt": "ping_2a296cadd88c478d8a",
+      "statusAtQueue": "pending"
+    },
+    {
+      "project": "site",
+      "receipt": "ping_e5fd34ff7a7b471486",
+      "statusAtQueue": "pending"
+    }
+  ],
+  "productionFreeze": {
+    "state": "Inactive \u00b7 Idle",
+    "revision": 47,
+    "epoch": 28,
+    "liveAdmissions": 0,
+    "observedAt": "2026-10-15T22:50:02.255Z"
+  }
+}
