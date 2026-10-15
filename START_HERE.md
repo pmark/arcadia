@@ -3476,7 +3476,7 @@ and bounded `learn import-history` retain cache text and available file history
 without a model call. `learn cache-maintain --file docs/notes-to-self.md --scope project:<slug> --evict <lesson-id> --apply` only
 shortens Notes after the exact retained content has a receipt.
 
-`arcadia way` reports missing/stale resources and instruction delivery problems.
+`arcadia way` reports missing/stale resources and instruction delivery problems. `arcadia way propagate --learning-only` prepares a reviewable isolated candidate containing only the Learn retrieval bootstrap and learning guidance for an already compact adoption; it never rewrites an oversized or legacy managed region.
 `pnpm check:agent-guidance` in Arcadia checks canonical bytes and defaults at
 root and every checked-in nested instruction directory. The generated bootstrap
 has an 8 KiB limit, root 12 KiB, project chain 24 KiB and conservative combined

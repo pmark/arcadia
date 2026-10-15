@@ -1,20 +1,21 @@
-import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { getProject } from "../db/repositories.js";
 import { listMonitoredProjects } from "../commands/workMonitor.js";
-import { parseGithubSlug, resolveBaseBranch, uncommittedChanges } from "../git/worktrees.js";
+import { parseGithubSlug, resolveBaseBranch, sharesRepository } from "../git/worktrees.js";
 import { assertGuidanceTarget } from "./agentGuidance.js";
 import { arcadiaRepoRoot } from "./contextSetup.js";
 import { computeWayPropagationPlan, declinesAutomaticUpgrades, readUpgradePolicy, type WayPropagationPlan } from "./wayPropagation.js";
 
 /**
  * Delivers Way changes to every adopting project as a pull request, per
- * Decision 0024: a mechanical-tier change opens a pull request and merges it
- * without review; a governing-tier change (the Constitution, the
- * continuation protocol) always leaves the pull request open for a human,
- * even when the same run also touches the mechanical tier.
+ * Every apply starts from a fresh isolated worktree. It never switches or
+ * writes the registered primary checkout, and every pull request remains open
+ * for the repository's normal review and merge gates.
  *
  * Git and `gh` are run through an injectable `runCommand` -- exactly the
  * pattern `workMonitoring/pullRequests.ts` already uses -- so this can be
@@ -31,8 +32,7 @@ export const WAY_PROPAGATION_STATUSES = [
   "dirty-working-tree",
   "no-github-remote",
   "dry-run",
-  "merged",
-  "opened-governing",
+  "opened",
   "error"
 ] as const;
 export type WayPropagationStatus = (typeof WAY_PROPAGATION_STATUSES)[number];
@@ -46,6 +46,9 @@ export interface WayPropagationResult {
   pullRequestUrl: string | null;
   filesChanged: string[];
   unmanageable: string[];
+  candidatePath: string | null;
+  candidateBranch: string | null;
+  candidateHead: string | null;
 }
 
 export interface WayPropagationSummary {
@@ -69,12 +72,19 @@ export interface RunWayPropagationOptions {
   projectIdentifier?: string;
   /** Compute and report what would happen without writing, committing, or pushing anything. */
   dryRun?: boolean;
+  /** Restrict the plan to the Learn retrieval bootstrap and its resources. */
+  learningOnly?: boolean;
   now?: () => string;
+  /** Test seams; production uses collision-resistant names under the system temp directory. */
+  branchName?: () => string;
+  candidateDirectory?: () => string;
+  /** Resolved agent identity for the propagation commit. Required by the CLI for apply. */
+  gitEnv?: Record<string, string>;
   runCommand?: CommandRunner;
 }
 
 export function runWayPropagation(options: RunWayPropagationOptions): WayPropagationSummary {
-  const runCommand = options.runCommand ?? defaultRunCommand;
+  const runCommand = options.runCommand ?? defaultRunCommand(options.gitEnv);
   const dryRun = options.dryRun === true;
   const now = options.now ?? defaultBranchStamp;
   const arcadiaRoot = safeRealpath(arcadiaRepoRoot());
@@ -88,7 +98,7 @@ export function runWayPropagation(options: RunWayPropagationOptions): WayPropaga
     const slug = getProject(options.db, project.id)?.slug ?? null;
     return propagateOneProject(
       { id: project.id, name: project.name, repositoryPath: project.repositoryPath, slug },
-      { dryRun, now, runCommand, arcadiaRoot }
+      { dryRun, learningOnly: options.learningOnly === true, now, branchName: options.branchName, candidateDirectory: options.candidateDirectory, runCommand, arcadiaRoot }
     );
   });
 
@@ -103,7 +113,7 @@ export function runWayPropagation(options: RunWayPropagationOptions): WayPropaga
 
 function propagateOneProject(
   project: { id: string; name: string; repositoryPath: string | null; slug: string | null },
-  context: { dryRun: boolean; now: () => string; runCommand: CommandRunner; arcadiaRoot: string | null }
+  context: { dryRun: boolean; learningOnly: boolean; now: () => string; branchName?: () => string; candidateDirectory?: () => string; runCommand: CommandRunner; arcadiaRoot: string | null }
 ): WayPropagationResult {
   const base: Omit<WayPropagationResult, "status" | "detail"> = {
     projectId: project.id,
@@ -111,7 +121,10 @@ function propagateOneProject(
     repoPath: project.repositoryPath,
     pullRequestUrl: null,
     filesChanged: [],
-    unmanageable: []
+    unmanageable: [],
+    candidatePath: null,
+    candidateBranch: null,
+    candidateHead: null
   };
 
   if (!project.repositoryPath) {
@@ -124,7 +137,7 @@ function propagateOneProject(
   if (!context.runCommand(repoPath, "git", ["rev-parse", "--is-inside-work-tree"]).ok) {
     return { ...base, repoPath, status: "unreachable-repo", detail: `Not a Git working copy: ${repoPath}` };
   }
-  if (context.arcadiaRoot && repoPath === context.arcadiaRoot) {
+  if (context.arcadiaRoot && sharesRepository(repoPath, context.arcadiaRoot)) {
     return { ...base, repoPath, status: "self", detail: "Arcadia does not propagate the Way to itself." };
   }
 
@@ -141,60 +154,38 @@ function propagateOneProject(
   let baseBranch: string;
   try { baseBranch = resolveBaseBranch(repoPath); }
   catch (error) { return { ...base, repoPath, status: "error", detail: error instanceof Error ? error.message : String(error) }; }
-  const currentBranch = tryRunCommand(context.runCommand, repoPath, "git", ["branch", "--show-current"]);
-  if (currentBranch !== baseBranch) {
-    return { ...base, repoPath, status: "error", detail: `Guidance propagation requires the base checkout on ${baseBranch}; found ${currentBranch || "detached or unreadable HEAD"}. Preserve this checkout and use the authorized base checkout; propagation will not switch another branch.` };
-  }
-
-  const plan = computeWayPropagationPlan(repoPath, project.slug);
-  const writable = plan.changes.filter((change) => change.action === "write");
-  const unmanageable = plan.unmanageable.map((change) => change.path);
-
-  if (writable.length === 0 && plan.unmanageable.some((change) => change.path !== "CLAUDE.md")) {
-    return { ...base, repoPath, status: "error", detail: `Guidance delivery is blocked: ${plan.unmanageable.map((change) => `${change.path}: ${change.reason}`).join(" ")}`, unmanageable };
-  }
-  if (writable.length === 0) {
-    return { ...base, repoPath, status: "current", detail: "Already current.", unmanageable };
-  }
-
   if (context.dryRun) {
+    const plan = computeWayPropagationPlan(repoPath, project.slug, { learningOnly: context.learningOnly });
+    const writable = plan.changes.filter((change) => change.action === "write");
+    const unmanageable = plan.unmanageable.map((change) => change.path);
+    if (writable.length === 0 && plan.unmanageable.some((change) => change.path !== "CLAUDE.md")) {
+      return { ...base, repoPath, status: "error", detail: `Guidance delivery is blocked: ${plan.unmanageable.map((change) => `${change.path}: ${change.reason}`).join(" ")}`, unmanageable };
+    }
+    if (writable.length === 0) return { ...base, repoPath, status: "current", detail: "Already current.", unmanageable };
     const tiers = [plan.hasMechanicalChanges ? "mechanical" : null, plan.hasGoverningChanges ? "governing" : null]
       .filter(Boolean)
       .join(" and ");
-    const willMerge = plan.hasMechanicalChanges && !plan.hasGoverningChanges;
     return {
       ...base,
       repoPath,
       status: "dry-run",
-      detail: `Would open a pull request touching the ${tiers} tier${willMerge ? " and auto-merge it" : "; it would stay open for review"}.`,
+      detail: `Would prepare an isolated candidate and open a pull request touching the ${tiers} tier; it would stay open for review.`,
       filesChanged: writable.map((change) => change.path),
       unmanageable
     };
   }
 
-  return applyPropagation(repoPath, plan, writable, unmanageable, context, base, project.slug);
+  return applyPropagation(repoPath, baseBranch, context, base, project.slug);
 }
 
 function applyPropagation(
   repoPath: string,
-  plan: WayPropagationPlan,
-  writable: WayPropagationPlan["changes"],
-  unmanageable: string[],
-  context: { now: () => string; runCommand: CommandRunner },
+  baseBranch: string,
+  context: { now: () => string; branchName?: () => string; candidateDirectory?: () => string; runCommand: CommandRunner; learningOnly: boolean },
   base: Omit<WayPropagationResult, "status" | "detail">,
   projectSlug: string | null
 ): WayPropagationResult {
-  const dirty = uncommittedChanges(repoPath);
-  if (dirty.length > 0) {
-    return {
-      ...base,
-      repoPath,
-      status: "dirty-working-tree",
-      detail: "The repository has uncommitted changes; propagation will not mix them into a Way commit.",
-      unmanageable
-    };
-  }
-
+  let unmanageable: string[] = [];
   const remoteUrl = tryRunCommand(context.runCommand, repoPath, "git", ["remote", "get-url", "origin"]);
   const slug = remoteUrl ? parseGithubSlug(remoteUrl) : null;
   if (!slug) {
@@ -207,31 +198,46 @@ function applyPropagation(
     };
   }
 
-  const baseBranch = resolveBaseBranch(repoPath);
-  const branch = `arcadia-way/propagate-${context.now()}`;
+  const branch = context.branchName?.() ?? `arcadia-way/propagate-${context.now()}-${randomUUID().slice(0, 8)}`;
+  const candidatePath = context.candidateDirectory?.() ?? mkdtempSync(path.join(tmpdir(), "arcadia-way-propagate-"));
+  const candidateBase = `refs/remotes/origin/${baseBranch}`;
+  const candidate: Pick<WayPropagationResult, "candidatePath" | "candidateBranch" | "candidateHead"> = {
+    candidatePath,
+    candidateBranch: branch,
+    candidateHead: null
+  };
 
   try {
-    runOrThrow(context.runCommand, repoPath, "git", ["checkout", baseBranch]);
-    runOrThrow(context.runCommand, repoPath, "git", ["checkout", "-b", branch]);
-
-    const destinationPlan = computeWayPropagationPlan(repoPath, projectSlug);
-    if (JSON.stringify(destinationPlan.changes) !== JSON.stringify(plan.changes)) {
-      throw new Error("Guidance adoption changed after checkout; preserve the destination and rerun planning before any publication.");
+    runOrThrow(context.runCommand, repoPath, "git", ["fetch", "origin", baseBranch]);
+    runOrThrow(context.runCommand, repoPath, "git", ["rev-parse", "--verify", candidateBase]);
+    if (tryRunCommand(context.runCommand, repoPath, "git", ["show-ref", "--verify", `refs/heads/${branch}`])) {
+      throw new Error(`Candidate branch collision: ${branch}. The existing branch and its worktree were preserved.`);
     }
-    for (const change of writable) assertGuidanceTarget(repoPath, change.path);
+    runOrThrow(context.runCommand, repoPath, "git", ["worktree", "add", "-b", branch, candidatePath, candidateBase]);
+    candidate.candidateHead = tryRunCommand(context.runCommand, candidatePath, "git", ["rev-parse", "HEAD"]);
+
+    const plan = computeWayPropagationPlan(candidatePath, projectSlug, { learningOnly: context.learningOnly });
+    const writable = plan.changes.filter((change) => change.action === "write");
+    unmanageable = plan.unmanageable.map((change) => change.path);
+    if (writable.length === 0 && plan.unmanageable.some((change) => change.path !== "CLAUDE.md")) {
+      return { ...base, repoPath, ...candidate, status: "error", detail: `Guidance delivery is blocked on the pinned candidate base: ${plan.unmanageable.map((change) => `${change.path}: ${change.reason}`).join(" ")}`, unmanageable };
+    }
+    if (writable.length === 0) return { ...base, repoPath, ...candidate, status: "current", detail: "Already current on the pinned candidate base.", unmanageable };
+    for (const change of writable) assertGuidanceTarget(candidatePath, change.path);
     for (const change of writable) {
-      const target = path.join(repoPath, change.path);
+      const target = path.join(candidatePath, change.path);
       mkdirSync(path.dirname(target), { recursive: true });
       writeFileSync(target, change.content ?? "", "utf8");
     }
 
-    runOrThrow(context.runCommand, repoPath, "git", ["add", ...writable.map((change) => change.path)]);
-    runOrThrow(context.runCommand, repoPath, "git", ["commit", "-m", commitMessage(plan)]);
-    runOrThrow(context.runCommand, repoPath, "git", ["push", "-u", "origin", branch]);
+    runOrThrow(context.runCommand, candidatePath, "git", ["add", ...writable.map((change) => change.path)]);
+    runOrThrow(context.runCommand, candidatePath, "git", ["commit", "-m", commitMessage(plan)]);
+    candidate.candidateHead = tryRunCommand(context.runCommand, candidatePath, "git", ["rev-parse", "HEAD"]);
+    runOrThrow(context.runCommand, candidatePath, "git", ["push", "-u", "origin", branch]);
 
     const title = "Arcadia Way: propagate updates";
     const body = pullRequestBody(plan, writable);
-    const createResult = runOrThrow(context.runCommand, repoPath, "gh", [
+    const createResult = runOrThrow(context.runCommand, candidatePath, "gh", [
       "pr",
       "create",
       "--repo",
@@ -247,25 +253,12 @@ function applyPropagation(
     ]);
     const pullRequestUrl = createResult.stdout.trim().split("\n").pop() ?? null;
 
-    const willAutoMerge = plan.hasMechanicalChanges && !plan.hasGoverningChanges;
-    if (willAutoMerge) {
-      runOrThrow(context.runCommand, repoPath, "gh", ["pr", "merge", branch, "--repo", slug, "--squash", "--delete-branch"]);
-      return {
-        ...base,
-        repoPath,
-        status: "merged",
-        detail: "Mechanical-tier change merged without review.",
-        pullRequestUrl,
-        filesChanged: writable.map((change) => change.path),
-        unmanageable
-      };
-    }
-
     return {
       ...base,
       repoPath,
-      status: "opened-governing",
-      detail: "A governing-tier change is included; the pull request stays open for a human to merge.",
+      ...candidate,
+      status: "opened",
+      detail: "An isolated candidate was pushed and its pull request remains open for independent review and required checks.",
       pullRequestUrl,
       filesChanged: writable.map((change) => change.path),
       unmanageable
@@ -274,15 +267,11 @@ function applyPropagation(
     return {
       ...base,
       repoPath,
+      ...candidate,
       status: "error",
       detail: error instanceof Error ? error.message : String(error),
       unmanageable
     };
-  } finally {
-    // Always return the repository to its starting branch; the propagation
-    // branch itself is left for the opened pull request to reference, or is
-    // already deleted remotely (and locally, by `--delete-branch`) once merged.
-    context.runCommand(repoPath, "git", ["checkout", baseBranch]);
   }
 }
 
@@ -331,9 +320,11 @@ function defaultBranchStamp(): string {
   return new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
 }
 
-function defaultRunCommand(cwd: string, command: string, args: string[]): CommandResult {
+function defaultRunCommand(gitEnv?: Record<string, string>): CommandRunner {
+  return (cwd, command, args) => {
   const result = spawnSync(command, args, {
     cwd,
+    env: command === "git" && args[0] === "commit" ? { ...process.env, ...gitEnv } : process.env,
     encoding: "utf8",
     timeout: 30_000,
     maxBuffer: 8 * 1024 * 1024,
@@ -343,5 +334,6 @@ function defaultRunCommand(cwd: string, command: string, args: string[]): Comman
     ok: !result.error && result.status === 0,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? result.error?.message ?? ""
+  };
   };
 }
