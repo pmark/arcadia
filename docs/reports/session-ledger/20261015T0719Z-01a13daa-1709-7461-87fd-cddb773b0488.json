@@ -1,0 +1,38 @@
+{
+  "session_id": "01a13daa-1709-7461-87fd-cddb773b0488",
+  "role": "lead",
+  "model": "unavailable (native parent runtime variant not exposed)",
+  "effort": null,
+  "action_id": "operator-directed:#1423",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "early-stop-consolidation-dependency",
+      "caught_by": "independent plan-critic"
+    },
+    {
+      "class": "missing-assignment-routing-guidance",
+      "caught_by": "independent plan-critic"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "luna-lead-trial-recovery",
+      "cost_min": null,
+      "fix_ref": "docs/lead-session-trials/README.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Planning/docs snapshot after plan critique; proposal registered, not settled or activated. Trial delivery and broker observations are separate evidence; usage unmeasured.",
+  "evidence_source": "docs/reports/frictions/20261015-luna-lead-trial-recovery.md",
+  "task_class": "operator-directed trial-learning documentation and Plan proposal"
+}
