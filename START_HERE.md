@@ -3477,3 +3477,14 @@ When adoption seeds a Plan, every Action receives either its supplied conditions
 a condition derived from its expected Artifact, or a requirement for a recorded
 clarification answer. Missing product criteria remain an open question and do not
 authorize implementation.
+
+## Reading coding-agent chat titles
+
+Talk to the workstream coordinator whose title has no arrow. A leading `↳` marks
+a background helper that reports through its coordinator. Orange (🟠) means a
+concrete question or approval needs an answer; red (🔴) means externally blocked.
+The title names the actual need, such as `approve pilot budget` or
+`blocked: host permission`. Green (🟢) means evidenced completion; ⏸ means a
+deliberately parked or superseded contact. Older titles may not yet follow this
+convention. See [chat titles and attention signals](docs/agent-guidance/chat-titles.md)
+for all states and examples. Titles never release ownership or grant authority.

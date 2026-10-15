@@ -1,0 +1,23 @@
+{
+  "session_id": "01a13fbd-df4e-7951-9c50-2a7449adaf99",
+  "role": "lead",
+  "model": "GPT-6 (exact host model ID unavailable)",
+  "effort": null,
+  "action_id": "operator-directed-chat-title-signals",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "complete",
+  "task_class": "documentation",
+  "evidence_source": "https://github.com/pmark/arcadia/issues/1428",
+  "notes": "Operator-requested display guidance authored; PR and review not assigned at capture. No governed Action, runtime change, enrollment or ownership transfer."
+}

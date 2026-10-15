@@ -51,6 +51,8 @@ not admission to the registered code-reviewer or qa role and proves no governed
 attempt lineage. Requests for those registered roles still require separate
 independent Sessions under Decision 0114; native role dispatch refuses them.
 
+Read [chat titles and attention signals](chat-titles.md) when naming or retitling the Lead and its helpers; record each helper's actual parent in its brief or handoff.
+
 ## 3. Start protocol
 
 1. Name the app and surface (iOS thin client, Mac with host) in the first reply.

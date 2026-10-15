@@ -6,7 +6,7 @@
       "trigger": "start, continue, go, pointer, title, handoff, stop",
       "path": "docs/agent-guidance/continuation.md",
       "read_before": "Before starting or handing off any Action.",
-      "sha256": "8c5a3080c0b542f859fd2479db35d539edaa947c2ca395c0271ad8aeb6085f49"
+      "sha256": "2aff933e46ecf27aea494044dd087c799b9ad6857aa6f4293920bbefec3c88dd"
     },
     {
       "id": "agent-asks",
@@ -132,7 +132,7 @@
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "7714fe57a72d607763eb851f2b964543da1c1def3b9d472133818693ad8bb232"
+      "sha256": "626d725cce8c6d2df255f4b216a8d8d13da163e751195eb683386672cba57731"
     },
     {
       "id": "hacker-recovery",
@@ -154,6 +154,13 @@
       "path": "docs/scout/CONTINUE.md",
       "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
       "sha256": "45a48b5fe893e47d14d44f1bea6aeee5132e5048aac18db39be8a4bd33e887c3"
+    },
+    {
+      "id": "chat-titles",
+      "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
+      "path": "docs/agent-guidance/chat-titles.md",
+      "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
+      "sha256": "2f3b490b15c77d9139b003b8a4b978dd8a808489622a1a980d44f5c7606a8c7d"
     }
   ]
 }

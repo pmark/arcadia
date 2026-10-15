@@ -31,7 +31,9 @@ conversation, title it so it stays distinguishable when a session list cuts it
 to its first ~20 characters: `<kind><state> <PLAN> <current_action>` (e.g.
 `🔨🔵 WD stop-dumping-rationale-into-recommendation`), never a generic label
 like "Arcadia Go". The arcadia-go brief broker returns every state's title in
-`data.sessionTitles`; use those verbatim. Composing one by hand:
+`data.sessionTitles`; use those as the base titles, preserving kind, state, Plan
+and Action wording when applying the relationship and attention convention below.
+Composing a base title by hand:
 
 - **kind** — 🔨 build an Action, 🔍 review or critique, 🧭 plan, 🩹 repair
   control documents;
@@ -50,12 +52,27 @@ changes (pushing a PR, the review finishing so checks start, stopping at a
 picker, hitting a blocker, finishing), never batched for later and never
 skipped because the change felt minor. It is cheap: reuse the `sessionTitles`
 map already returned by the current brief and call the title tool with the
-matching key, with no recomputation. The map names only the Action that
+matching key as the base, then restore any verified helper prefix or specific
+attention suffix. The map names only the Action that
 brief resolved: when the session moves on to a different Action, rerun the
 brief launcher and retitle from its fresh `data.sessionTitles` instead of
 reusing the old map. Skip retitling only in a coding-agent runtime
 that exposes no session-naming capability at all — never skip it merely
 because the session is mid-task.
+
+### Chat relationships and attention
+
+Read [chat titles and attention signals](chat-titles.md) before choosing or
+updating a title. A leading `↳` identifies a helper reporting to a known parent;
+the direct operator contact has no arrow. Retain the generated base title and
+append the specific question or blocker. Use 🟠 for concrete input or approval
+needed, 🔴 for an external blocker, and ⏸ only for a deliberately parked or
+superseded contact. A helper waiting on its coordinator says `parent input`;
+operator decisions continue through that coordinator and their canonical records.
+
+Titles reflect actual assignments and evidence. An idle flag or ended turn
+never proves released custody, completion or a hold. The display marker does
+not change native lineage, review independence, role eligibility or authority.
 
 Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a
