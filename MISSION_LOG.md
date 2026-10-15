@@ -2512,3 +2512,17 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Direct operator judgment on2026-10-14 in Codex thread01a13c30-6123-7aa1-8d85-8c55fd16befe: 1 behavior should be canonical. The selected option was Behavior as the canonical supporting term; preserve mode for an active operating state and acts as for descriptive composition. A Role determines governed responsibility, lineage and eligibility. A Behavior specifies a reusable procedure, including its trigger or assignment, duties, scope, required evidence and bounded stop condition, within existing authority. Supervision is a Behavior whose Supervisor remains an assigned relationship and duty; Hacker recovery is a Behavior performed in recovery mode by existing eligible roles. No additional role, behavior runtime registry, identity, permission, delegation eligibility, admission, model default or allowance is created. Compatible Behaviors may apply together; all existing authority, custody and one-writer constraints remain. Retire naming proposal agentask_af04b72a0100dc530c as answered by the human, not as rejection of Behavior. Update canonical semantics and directly relevant source guidance; installed adoption and automatic invocation remain separate and unproved. No Project pointer, queue, PPN Action completion, production or service change.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-opened-arcadia-pr1208
+
+- **Did:** The production benchmark is saved with Astra's findings integrated: website economics, quality, maintenance and deeper application recovery now have explicit criteria. https://github.com/pmark/arcadia/pull/1208
+- **Result:** Standing PR lifecycle notification from docs/agent-guidance/pull-requests.md; records PR opening only, not benchmark acceptance or execution.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-10 — Agent Ask pr-ready-arcadia-pr1208-adoption-choice-2026-10-10
+
+- **Did:** The production benchmark is ready for your review: Astra cleared the revised design and required CI passed. Adopting the experiment and its proposed budget is your choice; this PR defines the protocol and makes no execution grant. https://github.com/pmark/arcadia/pull/1208
+- **Result:** Prepare the standing PR handoff log notification from docs/agent-guidance/pull-requests.md; apply only after independent review and all required checks are clear.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
