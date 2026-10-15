@@ -74,7 +74,11 @@ describe("compact Way instruction delivery", () => {
 
   it("keeps authority, governance, preservation, learning and identity rules in the visible bootstrap", () => {
     const loaded = Buffer.from(file(canonicalRoot, "AGENTS.md")).subarray(0, 32768).toString();
-    for (const rule of ["independent review of the current head", "A push resets proof", "never hand-edit pointers", "edit SQLite directly", "never on main", "docs/notes-to-self.md", "targeted `rg`", "arcadia identity resolve", "never rewrite Git config", "docs/agent-guidance/index.json"]) expect(loaded).toContain(rule);
+    for (const rule of ["independent review of the current head", "A push resets proof", "never hand-edit pointers", "edit SQLite directly", "never on main", "docs/notes-to-self.md", "targeted `rg`", "arcadia identity resolve", "never rewrite Git config", "docs/agent-guidance/index.json", "arcadia learn \"<exact text>\" --scope project:<slug>", "No novelty search, model call, file or Ask is required"]) expect(loaded).toContain(rule);
+    expect(loaded).toMatch(/no semantic\s+merge/);
+    const adoptedRoot = adopted();
+    expect(file(adoptedRoot, "AGENTS.md")).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
+    expect(file(adoptedRoot, "docs/agent-guidance/learning.md")).toContain("arcadia learn");
     const entries = guidanceEntries(file(canonicalRoot, GUIDANCE_INDEX));
     for (const entry of entries) { expect(existsSync(path.join(canonicalRoot, entry.path))).toBe(true); expect(entry.trigger).toBeTruthy(); expect(entry.read_before).toBeTruthy(); }
   });
@@ -167,6 +171,7 @@ describe("compact Way instruction delivery", () => {
     const brief = renderActionBrief({ repoRoot: root, projectSlug: "sample", planSlug: "fix", actionId: "repair", worktreePath: root, branch: "codex/proof", agent: "codex", baseRevision });
     expect(brief).toContain("Action: repair");
     expect(brief).toContain("Mandatory guidance retrieval before the next operation");
+    expect(brief).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
     expect(brief).not.toContain("### Three shapes");
     expect(brief).toContain("sha256");
     rmSync(path.join(root, identity.path));
@@ -246,5 +251,18 @@ describe("compact Way instruction delivery", () => {
     expect(plan.changes.find((change) => change.path === "AGENTS.md")?.tier).toBe("governing");
     expect(plan.changes.find((change) => change.path === GUIDANCE_INDEX)?.tier).toBe("governing");
     expect(file(canonicalRoot, "AGENTS.md")).toContain(BOOTSTRAP_MARKER);
+  });
+
+  it("plans a stale adopter bootstrap rewrite without mutating that adopter", () => {
+    const root = adopted(); const local = "# Local obligations\n\nPreserve this text.\n";
+    put(root, "AGENTS.md", `${local}\n${file(root, "AGENTS.md")}`);
+    const stale = file(root, "AGENTS.md").replace("arcadia learn \"<exact text>\" --scope project:<slug>", "learn later");
+    put(root, "AGENTS.md", stale);
+    const plan = computeWayPropagationPlan(root);
+    const change = plan.changes.find((item) => item.path === "AGENTS.md");
+    expect(change).toMatchObject({ tier: "mechanical", action: "write" });
+    expect(change?.content).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
+    expect(change?.content).toContain("Preserve this text.");
+    expect(file(root, "AGENTS.md")).toBe(stale);
   });
 });

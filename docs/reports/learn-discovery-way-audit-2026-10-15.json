@@ -1,0 +1,77 @@
+{
+  "purpose": "Read-only registered Project guidance audit before source rollout; no propagation performed.",
+  "revival_trigger": "After this source PR is merged, prepare existing Way propagation plans and review adopter-specific changes before rollout. Existing unrelated governing drift must not be silently applied.",
+  "result": {
+    "ok": true,
+    "command": "way",
+    "workspace": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover",
+    "data": {
+      "projects": [
+        {
+          "projectId": "proj_60eb2fc435734f17b0",
+          "projectName": "Mission Control Site",
+          "repoPath": "/Users/pmark/Dev/MR/Arcadia/mission-control-site",
+          "status": "stale",
+          "files": {
+            "constitution": "differs",
+            "agentsRegion": "differs",
+            "continuationProtocol": "match",
+            "guidanceResources": "missing",
+            "instructionBudget": "differs"
+          },
+          "upgradePolicy": null
+        },
+        {
+          "projectId": "proj_f1f85fc842514638bd",
+          "projectName": "Private Practice Now",
+          "repoPath": "/Users/pmark/Dev/PrivatePracticeNow/platform",
+          "status": "stale",
+          "files": {
+            "constitution": "match",
+            "agentsRegion": "match",
+            "continuationProtocol": "match",
+            "guidanceResources": "missing",
+            "instructionBudget": "match"
+          },
+          "upgradePolicy": "auto"
+        },
+        {
+          "projectId": "proj_ccdbfb22a7e4415ca7",
+          "projectName": "Arcadia",
+          "repoPath": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+          "status": "stale",
+          "files": {
+            "constitution": "match",
+            "agentsRegion": "match",
+            "continuationProtocol": "match",
+            "guidanceResources": "differs",
+            "instructionBudget": "match"
+          },
+          "upgradePolicy": null
+        },
+        {
+          "projectId": "proj_bfe29e0038994a36ae",
+          "projectName": "Rebuster",
+          "repoPath": "/Users/pmark/Dev/MR/tools/Rebuster",
+          "status": "stale",
+          "files": {
+            "constitution": "differs",
+            "agentsRegion": "match",
+            "continuationProtocol": "match",
+            "guidanceResources": "missing",
+            "instructionBudget": "match"
+          },
+          "upgradePolicy": null
+        }
+      ],
+      "totals": {
+        "projects": 4,
+        "current": 0,
+        "stale": 4,
+        "unknown": 0
+      }
+    },
+    "artifacts": [],
+    "warnings": []
+  }
+}

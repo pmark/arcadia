@@ -41,6 +41,12 @@ prove that a supervisor Session is assigned or running.
 
 ## Perform the specialist work
 
+Any agent may promptly retain useful discovery with `arcadia learn "<exact text>"
+--scope project:<slug>`. It is zero-model evidence, never authority or a required
+precondition: no file, Ask, task, Decision or queue mutation. Label provenance,
+evidence and uncertainty. Exact same-scope replay deduplicates; similar wording
+remains separate. Supervisors harvest when assigned, without becoming a dependency.
+
 Load procedures by operation from the index, rather than copying them here:
 
 - Lead: integrate evidence and keep scope governed. Decision 0112 allows routine

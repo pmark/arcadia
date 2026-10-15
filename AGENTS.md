@@ -16,24 +16,21 @@ and other consequential approval boundaries retain their existing gates.
 ## Arcadia Context
 
 <!-- arcadia-bootstrap-v1 -->
-Arcadia maintains momentum across Projects with minimal operator attention.
-Checked-in records govern work; the database, queue, Issues and dashboards are
+Arcadia maintains momentum with minimal operator attention.
+Checked-in records govern work; database, queue, Issues and dashboards are
 projections or signals, never competing authority. Prefer deterministic local
 scripts, then local AI, then frontier models; use a coding agent for code work.
-Name the Milestone, next Action, Responsibility and required Artifacts.
+Name the Milestone, next Action, Responsibility and Artifacts.
 
 ### Ask freely; execution stays governed
 
-Any agent may submit an honest proposal, question, concern or request for help
-through `arcadia agent-ask preview` with `intent: proposal` and
-`requested_authority: propose`, without approval to ask or an executable Action.
-Requesting something outside current authority is not executing it. Preview
-records receipts, changes no Project documents or queue, and grants no authority.
-Use the configured workspace and ordinary host permission path for receipt writes;
-never bypass a denial. One successful preview completes submission; inline input
-needs no file, and temporary/ignored file input is disposable after registration.
-Confirm the receipt; an unregistered local draft alone is not submitted.
-Read `docs/agent-guidance/agent-asks.md` for inline submission and durable fallback.
+Any agent may submit an honest proposal, question, concern or help request through
+`arcadia agent-ask preview` with `intent: proposal` and `requested_authority: propose`,
+without approval or an executable Action. It is not execution: preview records receipts,
+changes no Project document or queue, and grants no authority. Use the configured workspace
+and ordinary host permission path; never bypass denial. One success submits; inline needs no
+file. Confirm its receipt; an unregistered draft is not submitted. Read
+`docs/agent-guidance/agent-asks.md` for the durable path.
 Continue authorized work unless the request exposes a genuine blocker.
 
 ### Mandatory retrieval — before the operation
@@ -53,6 +50,14 @@ read matches and evidence first. Repeat on each new failure. Report a missing
 notes file. Preserve failed receipts, correct verified remedies and convert
 recurring friction into source fixes or meaningful guards; do not create a
 second memory store or treat an inference as operator preference.
+
+Any agent promptly captures useful observation, idea, correction, hypothesis or friction:
+`arcadia learn "<exact text>" --scope project:<slug>`. Label provenance/evidence and
+uncertainty. No novelty search, model call, file or Ask is required. Capture is evidence,
+not authority: no task/Decision/queue mutation; host, privacy and scope gates apply. Exact
+same-scope replay deduplicates and adds evidence; similar wording stays separate (no semantic
+merge). Supervisors harvest when assigned; nobody waits for one. Retrieve lessons on demand;
+Notes is the bounded verified hot cache.
 
 **Read `docs/agent-guidance/index.json` now.** It names task/failure triggers,
 exact authoritative paths and when each read is required. Match your next

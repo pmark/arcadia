@@ -222,6 +222,7 @@ export function renderGuidanceRetrieval(repoRoot: string, agent: "codex" | "clau
     `Read ${GUIDANCE_INDEX}; match the task/failure trigger and read its authoritative procedure before acting.`,
     ...relevant.map((entry) => `  Read ${entry.path}: ${entry.read_before}`),
     "First search docs/notes-to-self.md with targeted rg for this Action's commands, subsystem and symptoms; read matching evidence.",
+    "Capture useful observation, idea, correction, hypothesis or friction promptly with `arcadia learn \"<exact text>\" --scope project:<slug>`; it is evidence, not authority, and makes no model call. Exact same-scope replay deduplicates; similar wording remains separate.",
     "Record retrieved paths/sections and failed receipts. Before a commit/comment, read the indexed Git identity procedure and resolve the current model's identity.",
     `Default instruction delivery (${agent ?? "repository only; provider global guidance not selected"}): project ${delivery.projectBytes}/${INSTRUCTION_BUDGET.project} bytes; combined ${delivery.combinedBytes}/${INSTRUCTION_BUDGET.combined} bytes.`,
     ...delivery.sources.map((source) => `  ${source.path}: ${source.bytes} bytes, sha256 ${source.sha256}`),
