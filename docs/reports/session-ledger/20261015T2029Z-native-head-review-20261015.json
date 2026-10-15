@@ -1,0 +1,23 @@
+{
+  "session_id": "native-head-review-20261015",
+  "role": "reviewer",
+  "model": "inherited-native-runtime-unmeasured",
+  "effort": null,
+  "action_id": "operator-directed:#1443",
+  "pr": 1445,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "complete",
+  "notes": "Generic read-only PR verification R1 by /root/head_review; task-derived ID, no UUID exposed. No registered-role admission. No tests or CI run.",
+  "candidate_head": "7d6ab3fc6216ec01789d7077336480181666f24a",
+  "evidence_source": "docs/reports/handoffs/20261015T2029Z-01a14132-66b8-77f1-afe9-4f69754e330b.md"
+}

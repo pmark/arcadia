@@ -2689,30 +2689,31 @@ export function updateExecutionRunStep(
 
 export function claimNextPendingRun(
   db: Database.Database,
-  pid: number
+  pid: number,
+  selectedRunId?: string
 ): ExecutionRunSummary | null {
-  const row = db
-    .prepare(
+  let candidateId: string;
+  if (selectedRunId !== undefined) {
+    if (selectedRunId.trim() === "") return null;
+    candidateId = selectedRunId;
+  } else {
+    const candidate = db.prepare(
       "SELECT id FROM execution_runs WHERE status = 'pending_execution' ORDER BY created_at ASC LIMIT 1"
-    )
-    .get() as { id: string } | undefined;
-
-  if (!row) {
-    return null;
+    ).get() as { id: string } | undefined;
+    if (!candidate) return null;
+    candidateId = candidate.id;
   }
 
   const timestamp = nowIso();
-  const affected = db
-    .prepare(
-      "UPDATE execution_runs SET status = 'running', pid = ?, updated_at = ? WHERE id = ? AND status = 'pending_execution'"
-    )
-    .run(pid, timestamp, row.id);
+  const affected = db.prepare(
+    "UPDATE execution_runs SET status = 'running', pid = ?, updated_at = ? WHERE id = ? AND status = 'pending_execution'"
+  ).run(pid, timestamp, candidateId);
 
   if (affected.changes === 0) {
     return null;
   }
 
-  return getExecutionRun(db, row.id);
+  return getExecutionRun(db, candidateId);
 }
 
 export function updateExecutionRunStatus(
