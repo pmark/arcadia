@@ -5,11 +5,13 @@ import path from "node:path";
 import type { AllPlansResponse, PlanDetailResponse } from "../../apps/dashboard/lib/plans-types";
 import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 
+type SavedExchange = { id: string; target: { projectId?: string; context: string }; lookupOnly?: boolean };
+
 const plan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: { open: 1, in_progress: 0, done: 0, blocked: 0 }, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
 const detail: PlanDetailResponse = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }], note: "Fixture records" } };
 
-test("workspace navigation preserves its sky, scope, and honest extension states", async ({ page }, testInfo) => {
+test("workspace navigation preserves its sky, scope, and Ask receipt recovery", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
   const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-shell-"));
@@ -20,8 +22,30 @@ test("workspace navigation preserves its sky, scope, and honest extension states
   page.on("pageerror", error => errors.push(error.message));
   let state: "ready" | "error" | "empty" = "ready";
   let detailRefused = false;
-  await page.route("**/api/**", route => {
+  const posts: Array<{ request: string; requestId: string; projectId?: string }> = [];
+  let postMode: "success" | "lost" | "delayed" = "success";
+  let releasePost: (() => void) | undefined;
+  let readMode: "ready" | "failed" | "missing" = "ready";
+  let captureStatus = "processed";
+  let runStatus = "pending_execution";
+  let noRuns = false;
+  let readCount = 0;
+  await page.route("**/api/**", async route => {
     const endpoint = new URL(route.request().url()).pathname;
+    if (endpoint === "/api/ask") {
+      const body = route.request().postDataJSON() as typeof posts[number]; posts.push(body);
+      if (posts.length === 1) expect(await page.evaluate(() => JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!).exchange.id)).toBe(body.requestId);
+      if (postMode === "lost") return route.abort("failed");
+      if (postMode === "delayed") await new Promise<void>(resolve => { releasePost = resolve; });
+      return route.fulfill({ json: { message: "Recorded your garden request.", result: { result: { status: "captured", summary: "Recorded your garden request." } } } });
+    }
+    if (endpoint === "/api/ask/show") {
+      ++readCount;
+      if (readMode !== "ready") return route.fulfill({ status: readMode === "failed" ? 503 : 400, json: { error: readMode === "failed" ? "Fixture receipt unavailable" : "No Ask capture, request, or ask matches this id." } });
+      const id = new URL(route.request().url()).searchParams.get("id");
+      const original = posts.find(post => post.requestId === id);
+      return route.fulfill({ json: { capture: { id: "capture-garden", requestId: id, originalText: original?.request ?? "Recovered garden request", ingressSource: "dashboard.ask", capturedAt: "2030-01-01", status: captureStatus, relatedReviewId: null, outcomes: [] }, asks: [{ id: "ask-garden", status: "captured", projectName: "Moon garden", executionPath: "Plan First", outputKind: "plan", reason: "Fixture reason for planning", outcomes: [{ kind: "decision", id: "review-garden", status: "pending", summary: "Choose the garden layout", projectName: "Moon garden" }], supersededBy: [], supersedes: null, runs: noRuns ? [] : [{ id: "run-garden", status: runStatus, summary: "Garden work", waitingReason: "Fixture waiting reason", artifacts: [{ id: "artifact-garden", kind: "file", status: "ready", path: "/absolute/garden.md", evidenceReference: "/absolute/garden.md" }, { id: "artifact-pathless", kind: "file", status: "drafted", path: null, evidenceReference: "artifact:artifact-pathless" }] }] }] } });
+    }
     if (endpoint === "/api/plans") return route.fulfill({ status: state === "error" ? 503 : 200, json: state === "error" ? { error: "Fixture read refused" } : state === "empty" ? { ...portfolio, projects: [] } : portfolio });
     if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ status: detailRefused ? 404 : 200, json: detailRefused ? { error: "Fixture present Plan refused" } : detail });
     if (endpoint === "/api/plans/moon-garden/absent-plan") return route.fulfill({ status: 404, json: { error: "Fixture Plan not found" } });
@@ -43,9 +67,9 @@ test("workspace navigation preserves its sky, scope, and honest extension states
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/workspace\/projects\/moon-garden\/plans\/first-website\/actions\/review-phone$/);
     await expect(page.locator(".workspace-sky")).toHaveAttribute("data-persistent-proof", "original");
-    await expect(page.getByRole("textbox")).toHaveCount(0);
-    await page.getByText("History", { exact: true }).click();
-    await expect(page.getByText(/Conversation history is not connected/)).toBeVisible();
+    await expect(page.getByRole("textbox")).toBeEnabled();
+    await page.getByText("History & recovery", { exact: true }).click();
+    await expect(page.getByText(/One exchange is shown at a time/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.goBack();
     await expect(page.getByRole("heading", { name: "first-website", exact: true })).toBeVisible();
@@ -64,7 +88,131 @@ test("workspace navigation preserves its sky, scope, and honest extension states
     await page.screenshot({ path: testInfo.outputPath("workspace-shell-desktop.png"), fullPage: false });
     await testInfo.attach("phone", { path: testInfo.outputPath("workspace-shell-phone.png"), contentType: "image/png" });
     await testInfo.attach("desktop", { path: testInfo.outputPath("workspace-shell-desktop.png"), contentType: "image/png" });
+    // Draft target and in-flight operation survive navigation; requests use database ID, not slug.
+    await page.getByRole("textbox").fill("Improve the Arcadia dashboard despite selected garden.");
+    await page.getByRole("textbox").press("Tab");
+    await expect(page.getByRole("button", { name: "Send new Ask", exact: true })).toBeFocused();
+    await page.getByRole("link", { name: "Portfolio", exact: true }).click();
+    await expect(page.getByRole("textbox")).toHaveValue("Improve the Arcadia dashboard despite selected garden.");
+    await expect(page.getByText(/Your unsent draft keeps its original target/)).toBeVisible();
+    postMode = "delayed";
+    await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
+    await expect.poll(() => posts.length).toBe(1);
+    await expect(page.getByText(/Sending — durable capture/)).toBeVisible();
+    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+    await expect(page.getByRole("button", { name: "Sending…", exact: true })).toBeDisabled();
+    releasePost?.();
+    await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();
+    expect(posts[0].projectId).toBe("garden");
+    await expect(page.getByText(/Sent context:/)).toContainText("Review the page on a phone");
+    await expect(page.getByRole("region", { name: "Current Ask evidence" })).toContainText("pending_execution");
+    await page.getByText("Routing & provenance", { exact: true }).click();
+    await expect(page.getByText(/Fixture reason for planning/)).toBeVisible();
+    await page.getByText("Artifact evidence", { exact: true }).first().click();
+    await expect(page.getByRole("link", { name: /artifact/ })).toHaveCount(0);
+    await expect(page.getByText(/Evidence reference:/).first()).toContainText("/absolute/garden.md");
+    await page.getByText("Routing & provenance", { exact: true }).click();
+    await page.getByText("Artifact evidence", { exact: true }).first().click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath("workspace-ask-phone-top.png"), fullPage: false });
+    await page.locator(".workspace-ask-receipt").evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 24));
+    await page.screenshot({ path: testInfo.outputPath("workspace-ask-phone.png"), fullPage: false });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath("workspace-ask-desktop-top.png"), fullPage: false });
+    await page.locator(".workspace-ask-receipt").evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 24));
+    await page.screenshot({ path: testInfo.outputPath("workspace-ask-desktop.png"), fullPage: false });
+    await testInfo.attach("acknowledged-phone", { path: testInfo.outputPath("workspace-ask-phone.png"), contentType: "image/png" });
+    await testInfo.attach("acknowledged-desktop", { path: testInfo.outputPath("workspace-ask-desktop.png"), contentType: "image/png" });
+    for (const status of ["running", "requires_review", "failed"]) {
+      runStatus = status;
+      await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Current Ask evidence" })).toContainText(status);
+    }
+    noRuns = true; captureStatus = "partial";
+    await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
+    await expect(page.getByText(/Partial capture:/)).toBeVisible();
+    await expect(page.getByText(/No Runs are linked/)).toBeVisible();
+    readMode = "failed";
+    await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Receipt read failed" })).toContainText("acknowledgment is retained");
+    await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();
+    const beforeReload = readCount;
+    await page.reload();
+    await expect.poll(() => readCount).toBeGreaterThan(beforeReload);
+    expect(posts).toHaveLength(1);
+    readMode = "ready"; noRuns = false; captureStatus = "processed";
+    // Uncertain POST first inspects by the already stored ID; only a missing receipt permits unchanged retry.
+    await page.getByRole("textbox").fill("A second garden request");
+    postMode = "lost"; readMode = "missing";
+    await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Retry original unchanged Ask" })).toBeVisible();
+    const uncertainId = posts[1].requestId;
+    expect(uncertainId).not.toBe(posts[0].requestId);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!).exchange.id)).toBe(uncertainId);
+    await page.getByRole("textbox").fill("Changed draft after uncertainty");
+    postMode = "success"; readMode = "ready";
+    await page.getByRole("button", { name: "Retry original unchanged Ask" }).click();
+    await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();
+    expect(posts[2]).toEqual(posts[1]);
+    await expect(page.getByRole("textbox")).toHaveValue("Changed draft after uncertainty");
+    await page.getByRole("button", { name: "Send new Ask", exact: true }).dblclick();
+    await expect.poll(() => posts.length).toBe(4);
+    expect(posts[3].requestId).not.toBe(uncertainId);
+    // Receipt persistence/read must finish before this fixture deliberately corrupts storage.
+    await expect(page.getByRole("button", { name: "Sending…", exact: true })).toHaveCount(0);
+    // Opening saved receipt B must retain uncertain A and restore B's original context.
+    const receiptA = posts[1];
+    const receiptB = posts[0];
+    const recoverySeed = await page.evaluate(({ aId, bId }) => {
+      const saved = JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { exchange: SavedExchange; history: SavedExchange[] };
+      const all = [saved.exchange, ...saved.history];
+      const a = all.find(item => item.id === aId);
+      const b = all.find(item => item.id === bId);
+      if (!a || !b) throw new Error("Expected both original receipt payloads in the fixture history.");
+      localStorage.setItem("arcadia.workspace.ask.v1", JSON.stringify({ draft: "Draft retained across receipt links", target: a.target, exchange: { ...a, phase: "uncertain" }, history: [b, b] }));
+      return { receipt: b, target: a.target };
+    }, { aId: receiptA.requestId, bId: receiptB.requestId });
+    await page.goto(`${url}/workspace?receipt=${encodeURIComponent(receiptB.requestId)}`);
+    await expect(page.getByRole("textbox")).toHaveValue("Draft retained across receipt links");
+    await expect(page.getByText(/Sent context:/)).toContainText(recoverySeed.receipt.target.context);
+    const afterLink = await page.evaluate(() => JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { exchange: SavedExchange; history: SavedExchange[]; target: SavedExchange["target"] | null });
+    expect(afterLink.exchange).toEqual(recoverySeed.receipt);
+    expect(afterLink.exchange.lookupOnly).not.toBe(true);
+    expect(afterLink.history.map(item => item.id)).toEqual([receiptA.requestId]);
+    expect(afterLink.target).toEqual(recoverySeed.target);
+    expect(posts).toHaveLength(4);
+    readMode = "missing";
+    await page.getByText("History & recovery", { exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(receiptA.requestId) }).click();
+    await expect(page.getByRole("button", { name: "Retry original unchanged Ask" })).toBeVisible();
+    expect(posts).toHaveLength(4);
+    postMode = "success"; readMode = "ready";
+    await page.getByRole("button", { name: "Retry original unchanged Ask" }).click();
+    await expect.poll(() => posts.length).toBe(5);
+    await expect(page.getByRole("button", { name: "Sending…", exact: true })).toHaveCount(0);
+    expect(posts[4]).toEqual(receiptA);
+    await expect(page.getByRole("textbox")).toHaveValue("Draft retained across receipt links");
+    // Malformed but valid JSON is visible and stays untouched by recovery reads.
+    await page.evaluate(() => localStorage.setItem("arcadia.workspace.ask.v1", JSON.stringify({ draft: 42 })));
+    await page.reload();
+    await expect(page.getByRole("alert").filter({ hasText: "Saved Ask recovery data is invalid" })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("arcadia.workspace.ask.v1"))).toBe('{"draft":42}');
+    expect(posts).toHaveLength(5);
+    // Storage failures and insecure-context UUID availability remain visible and usable.
+    await page.evaluate(() => { Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true }); Storage.prototype.setItem = () => { throw new Error("Fixture storage refused"); }; });
+    postMode = "lost"; readMode = "ready";
+    await page.getByRole("textbox").fill("No storage request");
+    await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
+    await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
+    await expect.poll(() => posts.length).toBe(6);
+    await expect(page.getByText("Submission acknowledged via receipt.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.goto(`${url}/workspace/projects/unknown`);
+    await expect(page.getByRole("textbox")).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();
     await page.goto(`${url}/workspace/projects/moon-garden/plans/absent-plan`);
     await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();

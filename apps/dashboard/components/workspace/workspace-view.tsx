@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WorkspaceAsk } from "./workspace-ask";
 import { useEffect, useState } from "react";
 import type { AllPlansResponse, PlanDetailResponse } from "../../lib/plans-types";
 import { parseWorkspaceScope, workspaceActionId, workspaceHref } from "../../lib/workspace-scope";
@@ -55,13 +56,9 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
           <p className="workspace-eyebrow">Selected context · {level}</p><h1 id="workspace-title">{title}</h1>
           {scope?.project && <Link href={workspaceHref(up)} className="workspace-up">← Up to {scope.action ? "Plan" : scope.plan ? "Project" : "portfolio"}</Link>}
         </div>
-        <div className="workspace-conversation-slot" aria-label="Conversation extension region">
-          <span className="workspace-spark" aria-hidden="true">✦</span>
-          <h2>A little room to think.</h2>
-          <p>This is where the conversation will live, alongside the work you select.</p>
-          <p className="workspace-muted">Conversation capture is not connected yet. Explore the records here, or <Link href="/capture">open Capture</Link> to use Arcadia Ask.</p>
+        <div className="workspace-conversation-slot">
+          <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
         </div>
-        <details className="workspace-history"><summary>History</summary><p>Conversation history is not connected to this workspace yet. Selecting work does not create a new conversation.</p></details>
       </section>
       <aside className="workspace-context-panel workspace-panel" aria-label="Work overview">
         <div className="workspace-section-heading"><h2>In this {level.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>
@@ -71,7 +68,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
           {level === "Plan" && detail.kind === "ready" && <>{plan?.milestone && <p>{plan.milestone}</p>}{detail.data.progress.actions.length ? <ul className="workspace-entities">{detail.data.progress.actions.map(a => <li key={a.key}><Link href={workspaceHref({ ...scope, action: workspaceActionId(a.key) })}><span className="workspace-entity-kind">Action · {a.status}</span><strong>{a.title}</strong></Link></li>)}</ul> : <p>No Actions are recorded in this Plan.</p>}</>}
           {level === "Action" && action && <dl className="workspace-facts"><dt>Recorded status</dt><dd>{action.status}</dd><dt>Dependencies</dt><dd>{action.dependsOn.length ? action.dependsOn.join(", ") : "None recorded"}</dd></dl>}
         </>}
-        <section className="workspace-result-slot" aria-label="Results extension region"><h3>Results & previews</h3><p>Artifact previews and Ask result cards will appear here when connected to their records.</p></section>
+
       </aside>
     </div>
     <footer className="workspace-footer">Explore the context. Keep the thread.</footer>

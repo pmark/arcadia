@@ -46,11 +46,25 @@
 @media(max-width:760px){.workspace-header{padding:16px 20px;gap:12px;}.workspace-header>span{display:none;}.workspace-header>a:last-child{margin-left:auto;}.workspace-main{padding:12px 16px 24px;}.workspace-grid{grid-template-columns:minmax(0,1fr);gap:16px;}.workspace-conversation{min-height:430px;}.workspace-context{padding:20px;}.workspace-conversation-slot{padding:28px 24px;}.workspace-context-panel{padding:20px;}.workspace-breadcrumbs{font-size:12px;}.workspace-history{padding:10px 20px;}}
 @media(prefers-reduced-motion:reduce){.workspace-entities a{transition:none;}}
 
-/* Until conversation capture is connected, phone navigation takes precedence. */
-@media(max-width:760px){
- .workspace-conversation{display:contents;}
- .workspace-context{grid-row:1;background:rgb(12 18 36 / .88);border:1px solid rgb(236 226 211 / .24);border-radius:18px;}
- .workspace-context-panel{grid-row:2;}
- .workspace-conversation-slot{grid-row:3;max-width:none;background:rgb(12 18 36 / .88);border:1px solid rgb(236 226 211 / .24);border-radius:18px;}
- .workspace-history{grid-row:4;background:rgb(12 18 36 / .88);border:1px solid rgb(236 226 211 / .24);border-radius:18px;}
-}
+
+.workspace-conversation-slot {padding:24px 30px;max-width:none;}
+.workspace-ask {min-width:0;}
+.workspace-ask form {display:grid;gap:12px;margin:20px 0;}
+.workspace-ask label {font-size:14px;}
+.workspace-ask textarea {width:100%;min-width:0;resize:vertical;background:#101d35;color:inherit;border:1px solid #7e8ba5;border-radius:12px;padding:14px;font:inherit;line-height:1.5;}
+.workspace-ask button {min-height:44px;padding:10px 14px;border:1px solid #8290a9;border-radius:12px;background:#273d61;color:inherit;font:inherit;font-size:13px;cursor:pointer;}
+.workspace-ask button:disabled {opacity:.55;cursor:default;}
+.workspace-ask :is(button,textarea):focus-visible {outline:2px solid #ffd9aa;outline-offset:3px;}
+.workspace-ask .workspace-muted {font-size:12px;color:#c6cbd9;}
+.workspace-ask-receipt {border-top:1px solid #59647b;margin-top:24px;padding-top:16px;}
+.workspace-ask-receipt h2 {font-size:20px;}
+.workspace-ask-receipt :is(h3,h4) {font-size:14px;font-weight:500;}
+.workspace-ask-receipt article {border:1px solid #59647b;border-radius:12px;padding:12px;margin:12px 0;}
+.workspace-ask code {font-size:12px;overflow-wrap:anywhere;white-space:pre-wrap;}
+.workspace-ask-receipt>p:first-of-type {white-space:pre-wrap;}
+.workspace-ask .workspace-history {padding:16px 0;margin-top:20px;}
+@media(max-width:760px){.workspace-conversation-slot{padding:20px;}.workspace-main{padding-bottom:calc(24px + env(safe-area-inset-bottom));}}
+
+/* The sky can be pale at any hour; navigation keeps its own readable surface. */
+.workspace-header {background:rgb(12 18 36 / .82);border-radius:0 0 18px 18px;}
+.workspace-breadcrumbs {background:rgb(12 18 36 / .82);border-radius:12px;padding:10px 14px;width:fit-content;}

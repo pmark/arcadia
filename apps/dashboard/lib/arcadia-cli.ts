@@ -1093,7 +1093,28 @@ export async function captureIngressFiles(input: {
 export async function runAsk(input: {
   request: string;
   requestId?: string;
+  projectId?: string;
 }): Promise<ArcadiaJsonSuccess<AskResponse>> {
+  // Exact database identity only: never let aliases or classifier fallback retarget a scoped Ask.
+  if (input.projectId !== undefined) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(input.projectId)) throw new ArcadiaCliError("Invalid Project ID.", 400);
+    // Keep the core workspace/session graph out of unrelated bridge consumers.
+    const [{ ArcadiaError }, { resolveReadyWorkspace }, { withReadOnlyDatabase }, { getProject }] = await Promise.all([
+      import("../../../src/cli/errors.js"),
+      import("../../../src/cli/workspace.js"),
+      import("../../../src/db/connection.js"),
+      import("../../../src/db/repositories.js")
+    ]);
+    const projectId = input.projectId;
+    try {
+      const { workspacePath } = resolveReadyWorkspace();
+      const project = withReadOnlyDatabase(workspacePath, db => getProject(db, projectId));
+      if (!project) throw new ArcadiaCliError("The selected Project is no longer available. Refresh the context.", 400);
+    } catch (error) {
+      if (error instanceof ArcadiaError) throw new ArcadiaCliError(`${error.code}: ${error.message}`, statusForArcadiaError(error.code, error.details), error.details);
+      throw error;
+    }
+  }
   const args = [
     "ask",
     input.request,
@@ -1102,6 +1123,7 @@ export async function runAsk(input: {
     "--run-safe"
   ];
   if (input.requestId?.trim()) args.push("--request-id", input.requestId.trim());
+  if (input.projectId !== undefined) args.push("--project", input.projectId);
   return runArcadiaCliJson<AskResponse>(args);
 }
 

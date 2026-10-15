@@ -7,9 +7,15 @@ For testing Arcadia as different kinds of people, read [behavioral testing with 
 Start the dashboard with `pnpm dashboard`, then open <http://127.0.0.1:3020/workspace>.
 This opt-in shell leaves the normal landing page unchanged. Follow Project → Plan →
 Action links, or use the scope breadcrumbs and browser Back to return. Records
-come from the existing read-only Plans API. History, conversation capture and
-result previews are labeled extension regions; use the normal dashboard for Ask.
-See [the shell handoff](docs/design/conversational-ui-shell.md) for routes and seams.
+come from the existing read-only Plans API. The composer submits a real Arcadia
+Ask to the selected Project and shows its brief reply, current work and receipt.
+Drafts keep their original target through navigation. Receipt links and reload
+read existing records; uncertain submissions offer inspection before retry.
+History keeps up to five earlier receipt identities in this browser. Plan/Action
+selection does not automatically amend those records. Artifact evidence is
+inspectable; file downloads are not connected yet.
+See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
+[the shell routes](docs/design/conversational-ui-shell.md).
 
 ## Governed specialist roles
 

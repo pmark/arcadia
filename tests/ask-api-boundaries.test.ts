@@ -18,6 +18,16 @@ afterEach(() => vi.restoreAllMocks());
 // Fault/concurrency tests deliberately replace only the subprocess boundary.
 // Real success payloads and database projection are exercised in ask-api-scenarios.
 describe("Ask API validation and independent reads", () => {
+  it.each([null, "", " ", 42, [], {}, "project/path", "-flag", "a".repeat(201)])("rejects malformed Project identity before intake: %j", async projectId => {
+    const response = await post({ request: "Capture this idea", projectId });
+    expect(response.status).toBe(400);
+    expect(boundary.runAsk).not.toHaveBeenCalled();
+  });
+  it("forwards the exact selected Project ID without rewriting request text", async () => {
+    boundary.runAsk.mockResolvedValue({ data: { result: { summary: "Captured" } } });
+    expect((await post({ request: "Work on another project", requestId: "stable", projectId: "project_123" })).status).toBe(200);
+    expect(boundary.runAsk).toHaveBeenCalledWith({ request: "Work on another project", requestId: "stable", projectId: "project_123" });
+  });
   it.each([{}, { request: "   " }, { request: 17 }])("rejects an empty or non-text request before starting the CLI: %j", async (body) => {
     const response = await post(body);
     expect(response.status).toBe(400);
