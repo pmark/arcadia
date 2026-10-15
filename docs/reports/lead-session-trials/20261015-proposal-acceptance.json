@@ -1,0 +1,74 @@
+{
+  "kind": "proposal-acceptance-evidence-not-launch-authority",
+  "operatorInstruction": "Help me accept the proposal by giving me a canonical Proposal Acceptance experience. If it can be automatically accepted then even better.",
+  "initialProposal": "plan-lead-session-trial-learning-20261015",
+  "acceptedRevision": "plan-lead-session-trial-learning-20261015-r2",
+  "acceptanceReadinessFailures": [
+    {
+      "message": "Creating Actions in a draft Plan requires --responsibility autonomous or agent.",
+      "remedy": "Use --responsibility agent consistently on preview/apply."
+    },
+    {
+      "message": "Acceptance criterion has no observable assertion.",
+      "actions": [
+        "run-lead-trial-01",
+        "run-lead-trial-02"
+      ],
+      "index": 0,
+      "remedy": "Preserve original and revise to saved brief records with explicit independent-review proof; canonical validation of every Action then reports zero problems."
+    }
+  ],
+  "planPath": "docs/plans/reduce-lead-friction-through-ten-bounded-session-trials.md",
+  "scope": "Inactive draft only; no activation, launch, new budget or queue placement.",
+  "accepted": {
+    "id": "asksettle_20eda4ea27544b8c9b",
+    "proposalId": "agentask_72c3dd34f86a13b075",
+    "proposalRequestId": "plan-lead-session-trial-learning-20261015-r2",
+    "settlementRequestId": "accept-lead-session-trial-learning-20261015-r2",
+    "disposition": "accepted",
+    "intent": "plan",
+    "effects": [
+      "Created draft Plan reduce-lead-friction-through-ten-bounded-session-trials with 5 governed Actions: arcadia/prepare-lead-trial-baseline, arcadia/run-lead-trial-01, arcadia/run-lead-trial-02, arcadia/assess-first-two-lead-trials, arcadia/consolidate-lead-trial-findings.",
+      "Kept the draft inactive; active Plan, Project pointer, dispatch authority, and execution queue are unchanged.",
+      "Archived the settled Ask file to .arcadia/asks/archive/agent-ask-plan-lead-session-trial-learning-20261015-r2.yaml."
+    ],
+    "previewFingerprint": "cf0c5c51ada4f331bbbf80bd8f62b56c4dcda25855c069cff44a828ed67ca054",
+    "queueRevision": 261,
+    "queueActionKeys": [],
+    "nextActionKey": "arcadia/launch-failure-keeps-cause",
+    "applied": true,
+    "authority": {
+      "kind": "operator_acceptance",
+      "requestedAuthority": "propose",
+      "boundedPolicyDecision": null
+    },
+    "notificationStatus": "pending",
+    "createdAt": "2026-10-15T07:41:10.531Z",
+    "recovery": null
+  },
+  "supersededOriginal": {
+    "id": "asksettle_1818bffd4e1542d0bf",
+    "proposalId": "agentask_393754da66d93667b9",
+    "proposalRequestId": "plan-lead-session-trial-learning-20261015",
+    "settlementRequestId": "supersede-lead-session-trial-learning-20261015",
+    "disposition": "rejected",
+    "intent": "plan",
+    "effects": [
+      "Preserved the proposal and created no Project or queue changes.",
+      "Archived the settled Ask file to .arcadia/asks/archive/agent-ask-plan-lead-session-trial-learning-20261015.yaml."
+    ],
+    "previewFingerprint": "9d4a5a1c567ef1913ba015ad6634a344c24540826bd68d7c9f3d1b8a5a2e224a",
+    "queueRevision": 261,
+    "queueActionKeys": [],
+    "nextActionKey": "arcadia/launch-failure-keeps-cause",
+    "applied": true,
+    "authority": {
+      "kind": "operator_acceptance",
+      "requestedAuthority": "propose",
+      "boundedPolicyDecision": null
+    },
+    "notificationStatus": "pending",
+    "createdAt": "2026-10-15T07:42:03.266Z",
+    "recovery": null
+  }
+}

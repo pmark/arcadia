@@ -64,6 +64,29 @@ researcher at depth 1. Delegates return help requests to the Lead and never spaw
 children. Code-reviewer and QA need separate independent Sessions, never native
 children. Decisions 0112/0114 govern these limits.
 
+## Simplification within existing roles
+
+For an assigned simplification or a concrete complexity finding, read the
+Project's indexed `docs/agent-guidance/code-simplification.md`. Planner scopes,
+critics assess read-only, and the sole implementer changes code. This adds no
+Simplifier role, automatic review stage, dispatch or permission. Keep bug repair
+and behavior-preserving cleanup distinguishable; hand back evidence and benefit.
+
+## Recovery behavior across roles
+
+Behavior is the canonical term for a named procedural contract followed by an
+existing Role within assigned authority. Mode describes its active operating
+state; neither term changes the role's responsibility or lineage.
+
+For repeated unchanged workflow refusals or a stop-the-line request load
+[arcadia-hacker](../arcadia-hacker/SKILL.md) before another attempt. Supervisors
+must trigger its bounded diagnosis instead of sending the same failure to a new
+agent. Hacker recovery is a bounded Behavior followed in recovery mode by
+existing Lead and implementer roles, not a registered role or a pending
+registration prerequisite. Keep the assigned role's
+lineage, permissions, ownership and remaining allowance.
+No role name or prepared brief proves the actual runtime model/effort binding.
+
 ## Prepare and dispatch authorized native help
 
 Use the standard harness unmodified. Native dispatch requires explicit operator

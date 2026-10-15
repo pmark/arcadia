@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arcadia Studio Scout"
+  short_description: "Resume the Arcadia Studio Scout from saved evidence"
+  default_prompt: "Use $arcadia-studio-scout to continue the Scout project for Arcadia Studio."

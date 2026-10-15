@@ -5,7 +5,9 @@ description: Carry out assigned Arcadia supervision on a friction or exception s
 
 # Arcadia supervisor
 
-Supervision is an assigned relationship, not an eighth registered role.
+Supervision is a Behavior: a named procedural contract within assigned
+authority. Supervisor remains an assigned relationship and duty, not an eighth
+registered role.
 Decision 0113 establishes delegate → Lead → Project supervisor → operator;
 Decision 0121 amends its deterministic-only behavior with event-triggered
 light-tier supervision on friction/exception signals and at session end,
@@ -48,6 +50,24 @@ by this skill.
    otherwise persist it for the operator. Escalate genuine authority/input gaps
    through a governed Ask or Decision. Use numbered chat choices with
    consequences when operator judgment is required.
+
+## Mandatory recovery trigger
+
+On the first persistent refusal diagnose request classification and route.
+After two unchanged refusals without evidence gain, or an explicit stop-the-line
+request, enter [Hacker mode](../arcadia-hacker/SKILL.md) before further retries.
+Repeated discussion also counts. Require one bounded recovery pass and a verified
+existing route or precise unblocker; do not replace the agent to reset the budget.
+Keep actual model/effort, custody and sole writer explicit. This is diagnostic
+behavior within the supervision assignment, not permission to spawn, message,
+steal a claim, increase spend or bypass a refusal.
+
+## Complexity signals
+
+Route a concrete maintainability finding through the Project's indexed
+`docs/agent-guidance/code-simplification.md` and existing planner/critic/implementer
+responsibilities. Keep one writer and the remaining allowance. Do not commission
+routine cleanup after every Session or delay an urgent repair for cosmetic work.
 
 ## At session completion
 

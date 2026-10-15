@@ -5,10 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildProgram } from "../src/cli.js";
 import { runAskCommand } from "../src/commands/ask.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "../src/commands/askTrail.js";
+import { captureAskEnvelope } from "../src/ask/captureEnvelope.js";
 import { runBackBurnerPromoteCommand } from "../src/commands/backBurner.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createExecutionPlan, createProjectWithInitialWork, createWorkItemWithOptionalArtifact, upsertProjectMetadata } from "../src/db/repositories.js";
 import { backfillAskTraceLinks } from "../src/db/schema.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -131,6 +132,46 @@ describe("Arcadia Ask traceability", () => {
     const trail = runAskTrailCommand({ workspace, id: asked.data.captureEnvelope.id });
     expect(trail.data.asks).toEqual([]);
     expect(renderAskTrailSuccess(trail).join("\n")).toContain("predates Ask tracing");
+  });
+
+  it("shows a partial pre-Ask checkpoint with original-intent recovery guidance", () => {
+    const { workspace } = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Maybe a partial capture could matter someday." });
+    withDatabase(workspace, (db) => db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ?").run(asked.data.captureEnvelope.id));
+    const trail = runAskShowCommand({ workspace, id: asked.data.captureEnvelope.requestId });
+    const rendered = renderAskTrailSuccess(trail).join("\n");
+    expect(trail.data.capture).toMatchObject({ status: "partial", outcomes: [expect.objectContaining({ kind: "back_burner_item" })] });
+    expect(rendered).toContain("do not retry automatically");
+    expect(rendered).toContain("inspect the listed durable effects and original reply");
+    expect(rendered).toContain("Continue the original approval, rejection, deferral, or answer intent");
+  });
+
+  it("shows capture-linked Action and Plan effects even when the process died before the Ask receipt", () => {
+    const { workspace } = workspaceWithArcadia();
+    const envelope = withDatabase(workspace, (db) => captureAskEnvelope(db, {
+      requestId: "partial-before-receipt",
+      originalText: "Prepare a focused follow-up",
+      ingressSource: "ask"
+    }));
+    withDatabase(workspace, (db) => {
+      const action = createWorkItemWithOptionalArtifact(db, {
+        captureId: envelope.id,
+        title: "Focused follow-up",
+        rawInput: "Prepare a focused follow-up",
+        queue: "inbox",
+        workClassification: "agent",
+        nextAction: "Clarify the acceptance criteria"
+      }).workItem;
+      createExecutionPlan(db, { workItemId: action.id, captureId: envelope.id, summary: "Follow-up plan", steps: [] });
+      db.prepare("UPDATE ask_capture_envelopes SET status = 'partial' WHERE id = ?").run(envelope.id);
+    });
+    const trail = runAskShowCommand({ workspace, id: envelope.requestId });
+    expect(trail.data.asks).toEqual([]);
+    expect(trail.data.capture?.outcomes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "action", summary: "Focused follow-up" }),
+      expect.objectContaining({ kind: "plan", summary: "Follow-up plan" })
+    ]));
+    expect(renderAskTrailSuccess(trail).join("\n")).toContain("inspect the recovery effects above");
   });
 
   it("refuses an id that matches nothing, naming the ids it accepts", () => {

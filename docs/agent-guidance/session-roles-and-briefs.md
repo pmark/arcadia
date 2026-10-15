@@ -27,6 +27,18 @@ to request planner, plan-critic, implementer or researcher at depth 1. Delegates
 never delegate. Code-reviewer and qa are separate independent Sessions, never
 in-process children. A plan-critic is independent of the planner it judges.
 
+## Recovery specialization
+
+Read [Hacker recovery](hacker-recovery.md) for repeated refusals and red alerts.
+Behavior is the canonical term for a named procedural contract within existing
+authority; mode is its active operating state. Hacker recovery is a bounded
+Behavior of existing roles, not a registered role ID.
+An assigned Lead diagnoses; the authorized implementer remains the sole writer.
+The mode changes neither dispatch eligibility nor admission, and supplies no
+new permissions, model default or allowance. Supervision is a Behavior attached
+to a Supervisor's assigned relationship and duty; requiring recovery does not
+create a new role. See [canonical semantics](../arcadia-semantics.md#behavior).
+
 ## Native dispatch and model selection
 
 Read role defaults from the registry and resolve the authorized model/identity

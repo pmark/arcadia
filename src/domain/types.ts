@@ -663,6 +663,8 @@ export interface AssociateCodexTaskInput {
 
 export interface CreateWorkItemInput {
   projectId?: string | null;
+  /** Capture provenance when the Action is created before its Ask receipt. */
+  captureId?: string | null;
   milestoneId?: string | null;
   title: string;
   rawInput: string;

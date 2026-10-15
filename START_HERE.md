@@ -1,5 +1,7 @@
 # Arcadia: Start Here
 
+For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
+
 ## Governed specialist roles
 
 Read the seven canonical roles and render a bounded brief from the repository:
@@ -27,6 +29,17 @@ authorization and records its own launch evidence; this command launches nothing
 Governed capacity admission remains unavailable. Use installed `arcadia` and the
 installed role skill in adopting Projects; missing skills stop dispatch until
 installed. Lead and implementer never write concurrently.
+
+A [Behavior](docs/arcadia-semantics.md#behavior) is a named procedural contract
+followed by an existing Role; mode describes its active operating state.
+Supervision is a Behavior attached to a Supervisor's assigned relationship.
+Hacker recovery is a bounded Behavior followed in recovery mode, not an eighth
+role: the Lead diagnoses and the authorized implementer repairs. Supervisors
+require
+the [recovery procedure](docs/agent-guidance/hacker-recovery.md) after two
+unchanged refusals without evidence gain, or immediately for an explicit
+stop-the-line request. The mode adds no authority or allowance; installing the
+guidance and wiring automatic invocation remain separate work.
 
 The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 `config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
@@ -1306,6 +1319,8 @@ cannot reach, falls back to the default channel, so nothing is lost.
 
 ## Managed production: the standing authorization
 
+For a concise orientation to the live records, readiness evidence and operator decision points, see the [autonomous production operator guide](docs/autonomous-production-operator-guide.md).
+
 Managed production is the switch that lets Arcadia admit and advance approved
 work without a new chat or a manual Session launch between Actions. It is a
 *permission*, not an activity: **Active** means Arcadia may admit work,
@@ -2421,8 +2436,21 @@ To find out what any Ask became, pass the `capture_…` id from its receipt (or
 its request id, or an `ask_…` id) to `pnpm arcadia ask-trail <id>`. It prints
 the capture, how the Ask was classified and why, the Project it routed to, and
 every Action, Decision, or Back Burner item it produced, including the Action a
-shelved item was later promoted to. It only reads. Asks recorded before this
+shelved item was later promoted to. It also shows Runs correlated through the
+Ask's Action or Review, with current status, waiting reason and linked Artifact
+evidence. `todo --project <slug> --json` exposes the same Run evidence for that
+Project. Approval receipts report a queued Run id and status; neither approval
+nor queueing proves completion. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
+If a capture is marked `partial`, `ask show <request-id>` lists any capture-linked
+Actions, Plans, Decisions, or Back Burner items and explains that automatic retry
+is unsafe. For a partial capture linked to a Review, inspect its Decision, original
+reply, Action, Plan, approval claim, and Run outcomes. If a Run is listed, do not
+submit another approval. Otherwise inspect the original reply and all recorded
+effects, including any existing claim, before continuing that reply's approval,
+rejection, deferral, or answer intent. The claim preserves its Action and Plan for a
+later valid approval, but the capture link alone does not identify the reply's intent.
+Never treat a partial receipt as proof that nothing happened.
 
 To see how much of your input actually reaches Arcadia through Ask or Ingress,
 run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is

@@ -1,0 +1,137 @@
+{
+  "base": "f6de70becab5be70d38c9e20df9a0d674804cbb2",
+  "instructions": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 10118,
+      "sha256": "4e49283e782af52e815a4506880efe6581fa3a89ad190aaf2288fb61f830142e",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 3320,
+      "sha256": "984897f9445ec2332e9bc7352b7f413b89961b198e2b6eb93694f9ad71d816a8",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "PROJECT.md",
+      "bytes": 31676,
+      "sha256": "815c03f157c63bd6ad4c2627623494b8002c17f822edb52f78dfc6b5db763731",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "bytes": 539,
+      "sha256": "80968f45ffd52d50d1bf0695ff9191638e720ab9e4c9c1e5e33b8f8f6b9ec182",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "bytes": 703,
+      "sha256": "783d7108cc76ab9843b8c15f6697b08484ad8ea390933a8d71733d313a00df50",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "bytes": 870,
+      "sha256": "9b52b6a15adad198e6cfea6ac49bea0662a21415bc84b920817bb88c4360d0e6",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "bytes": 9014,
+      "sha256": "97f4cac0cfd10c3af0a9a59253da9558a0bf447b5e44568eaef67f33bc355eb0",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/arcadia-repository.md",
+      "bytes": 30174,
+      "sha256": "cf66e9092cecaf88125b28d4a13207230f48685cebfb3c882a64e9789826f9ed",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/operator-directed-work.md",
+      "bytes": 4494,
+      "sha256": "9c7c88bb7015eb36c7c04a595807fab42b18b7972102d4f13955033f53995744",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/agent-asks.md",
+      "bytes": 22884,
+      "sha256": "ca296b30b2073b58f223aa10b411af63fb12d7cab0f22fb057ff3b425bc74c07",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "bytes": 17585,
+      "sha256": "f9d4323c1b1a4b1ba6451a87090ddeec606764c650005876735f7370f9a48855",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/git-identity.md",
+      "bytes": 5248,
+      "sha256": "b613888f440a9c5a61af3195ae978e179899beb26e967224d88990d1123d924a",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/operator-actions.md",
+      "bytes": 11477,
+      "sha256": "9cb30d477249d3a3328d5b22296d16a65cac08833f4369426243def2e344f1e3",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/continuation.md",
+      "bytes": 6239,
+      "sha256": "c1013830f7b9ced1bcaa3f4ae326f95f4b8c73b3b8e5d7b48ed5d0842a044935",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "bytes": 1927,
+      "sha256": "7fe343c6632b83c6d42acbe2c9c7f40aea5fb358dd243467f3904271bcea24f9",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/standard-harness.md",
+      "bytes": 5569,
+      "sha256": "1a8c9d1d23068fe036e83e9b9acc6e550c13f5dc650e5ca9ae529e3f39f5c7e6",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/native-app-sessions.md",
+      "bytes": 8892,
+      "sha256": "ba79f21c3f006f312e971f66182761cc2ce9ee532f6b132b3c299ed11f9a0130",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/agent-guidance/hacker-recovery.md",
+      "bytes": 7943,
+      "sha256": "2a8a57a063a53f8fe0ac4d39fa6bc6faa9f4ff9caca68194c23161ca054eec58",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/managed-documents.md",
+      "bytes": 17446,
+      "sha256": "0a2280cba30f03b7c95880d6f8b02d0829d55e9ed7e1c4ea30225c8fa43c0501",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/arcadia-semantics.md",
+      "bytes": 15647,
+      "sha256": "ca8ade28e573a4521567866e528d94c8526d740a3164c1e5b97eb6c177969031",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/AGENT_ORIENTATION.md",
+      "bytes": 13594,
+      "sha256": "e9e6d5ad3a12946281275bf59645fc712404bc921ecaa847e84830bcd9bdcc91",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    },
+    {
+      "path": "docs/notes-to-self.md",
+      "bytes": 35751,
+      "sha256": "e49a2a9ee0ca2efd2e6c1e5414fa328b91a12578058b1ccd8b3669bc35a1a10b",
+      "retrieval": "Task-matching sections and targeted searches; current Action read to rule out overlap, not selected for execution."
+    }
+  ]
+}
