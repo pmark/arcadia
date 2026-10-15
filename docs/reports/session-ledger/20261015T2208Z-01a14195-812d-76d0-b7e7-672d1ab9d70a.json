@@ -1,0 +1,29 @@
+{
+  "session_id": "01a14195-812d-76d0-b7e7-672d1ab9d70a",
+  "role": "lead",
+  "model": "GPT-6 (exact runtime model ID unavailable)",
+  "effort": null,
+  "action_id": "operator-directed:#1441",
+  "pr": 1448,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "ancestor symlink race at original head; repair awaiting independent delta verdict",
+      "caught_by": "independent review round 1"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "split",
+  "candidate_head": "2f8ea643aa8d7ac9099e8deaa9e86bec710aab5b",
+  "evidence_source": "docs/design/workspace-artifact-opening.md",
+  "task_class": "workspace-artifact-opening",
+  "notes": "Operator authorized Hacker repair. Fresh isolated candidate preserves original. Native macOS regression passes; current-head independent review and Linux CI pending."
+}

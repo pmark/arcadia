@@ -12,10 +12,13 @@ Ask to the selected Project and shows its brief reply, current work and receipt.
 Drafts keep their original target through navigation. Receipt links and reload
 read existing records; uncertain submissions offer inspection before retry.
 History keeps up to five earlier receipt identities in this browser. Plan/Action
-selection does not automatically amend those records. Artifact evidence is
-inspectable; file downloads are not connected yet.
+selection does not automatically amend those records. Select **Open Artifact**
+on a linked output card to view SVG, PNG, JPEG, WebP or supported plain text
+(up to 4 MiB). Close or Escape returns to the same draft, receipt and context.
+Missing or unsupported files show a clear error in the viewer.
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
-[the shell routes](docs/design/conversational-ui-shell.md).
+[the shell routes](docs/design/conversational-ui-shell.md), and
+[opening Artifacts](docs/design/workspace-artifact-opening.md).
 
 ## Governed specialist roles
 
