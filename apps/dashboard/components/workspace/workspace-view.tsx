@@ -36,7 +36,11 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
   const title = scope?.action ? action?.title ?? scope.action : scope?.plan ? plan?.slug ?? scope.plan : scope?.project ? project?.name ?? scope.project : "Your work, in view";
   const failure = portfolio.kind === "error" ? portfolio.message : scope?.plan && detail.kind === "error" ? detail.message : project?.error;
   const loading = portfolio.kind === "loading" || Boolean(scope?.plan && detail.kind === "loading");
-  const missing = !scope ? "This workspace address is not recognized." : !loading && !failure && scope.project && !project ? "This Project is not in the workspace." : !loading && !failure && scope.plan && !plan ? "This Plan is not in the selected Project." : !loading && !failure && scope.action && !action ? "This Action is not in the selected Plan." : null;
+  // Successful parent membership is decisive even if the concurrent detail read refuses.
+  const missing = !scope ? "This workspace address is not recognized."
+    : portfolio.kind === "ready" && scope.project && !project ? "This Project is not in the workspace."
+    : portfolio.kind === "ready" && scope.plan && project?.plans && !project.error && !plan ? "This Plan is not in the selected Project."
+    : !loading && !failure && scope.action && !action ? "This Action is not in the selected Plan." : null;
   const up = scope?.action ? { project: scope.project, plan: scope.plan } : scope?.plan ? { project: scope.project } : {};
   return <main className="workspace-main">
     <nav aria-label="Selected context" className="workspace-breadcrumbs">

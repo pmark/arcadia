@@ -15,19 +15,25 @@ test("workspace navigation preserves its sky, scope, and honest extension states
   const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-shell-"));
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
-  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "dev", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
+  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   let state: "ready" | "error" | "empty" = "ready";
+  let detailRefused = false;
   await page.route("**/api/**", route => {
     const endpoint = new URL(route.request().url()).pathname;
     if (endpoint === "/api/plans") return route.fulfill({ status: state === "error" ? 503 : 200, json: state === "error" ? { error: "Fixture read refused" } : state === "empty" ? { ...portfolio, projects: [] } : portfolio });
-    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: detail });
+    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ status: detailRefused ? 404 : 200, json: detailRefused ? { error: "Fixture present Plan refused" } : detail });
+    if (endpoint === "/api/plans/moon-garden/absent-plan") return route.fulfill({ status: 404, json: { error: "Fixture Plan not found" } });
     return route.abort();
   });
   try {
     await waitForHttp(`${url}/workspace`, server);
     await page.clock.setFixedTime(new Date("2030-01-01T00:00:00.000Z"));
+    await page.goto(`${url}/workspace#constructor`);
+    await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
+    await expect.poll(() => page.locator(".workspace-sky").evaluate(canvas => (canvas as HTMLCanvasElement).getContext("2d")?.getImageData(0, 0, 1, 1).data[3])).toBe(255);
+    expect(errors).toEqual([]);
     await page.goto(`${url}/workspace#dusk`);
     await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
     await page.locator(".workspace-sky").evaluate(canvas => canvas.setAttribute("data-persistent-proof", "original"));
@@ -60,6 +66,13 @@ test("workspace navigation preserves its sky, scope, and honest extension states
     await testInfo.attach("desktop", { path: testInfo.outputPath("workspace-shell-desktop.png"), contentType: "image/png" });
     await page.goto(`${url}/workspace/projects/unknown`);
     await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();
+    await page.goto(`${url}/workspace/projects/moon-garden/plans/absent-plan`);
+    await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();
+    await expect(page.getByText("This Plan is not in the selected Project.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Return to portfolio" })).toBeVisible();
+    detailRefused = true;
+    await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website`);
+    await expect(page.getByRole("alert").filter({ hasText: "Context unavailable" })).toContainText("Fixture present Plan refused");
     await page.goto(`${url}/workspace/invalid`);
     await expect(page.getByText("This workspace address is not recognized.")).toBeVisible();
     await page.goto(`${url}/workspace`);

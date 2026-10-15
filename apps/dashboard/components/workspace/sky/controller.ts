@@ -22,7 +22,10 @@ export function mountSky(surface: HTMLElement, sky: HTMLCanvasElement, starField
 		if (saved > 0 && saved <= started) started = saved;
 		sessionStorage.setItem('sol-start', String(started));
 	} catch {}
-	const frozen = () => FROZEN_PHASES[location.hash.slice(1)];
+	const frozen = () => {
+		const name = location.hash.slice(1);
+		return Object.hasOwn(FROZEN_PHASES, name) ? FROZEN_PHASES[name] : undefined;
+	};
 	const phase = () => frozen() ?? phaseSince(Date.now() - started, reduceMotion.matches);
 
 	let W = 0;

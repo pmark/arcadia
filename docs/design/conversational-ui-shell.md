@@ -50,7 +50,8 @@ The source footer identifies MPL 2.0; original source comments are retained.
   hidden-tab behavior, debounce, and reduced-motion behavior.
 - React supplies canvas refs and a workspace element instead of global queries.
   Cleanup cancels rAF, interval and debounce, removes all event listeners and
-  disconnects the theme observer. An unused drawing parameter was removed.
+  disconnects the theme observer. An unused drawing parameter was removed. Frozen-phase hash lookup accepts only
+  own keys, preventing prototype names such as `#constructor` from becoming phases.
 - Saved theme and the five saved sky properties restore on the scoped element
   before renderer initialization. The source fallback gradients and fixed
   canvas positioning are scoped here. The global dashboard theme is untouched.
@@ -66,8 +67,10 @@ measured live-site equivalence.
 ## QA
 
 Focused URL tests live in `apps/dashboard/lib/workspace-scope.test.ts`.
-`tests/e2e/workspace-shell.spec.ts` runs a dedicated Next preview with intercepted
+`tests/e2e/workspace-shell.spec.ts` runs a dedicated Next production preview (`next start`) with intercepted
 fixture APIs, an unconfigured temporary workspace and no live portfolio data.
+Build the dashboard first with `pnpm dashboard:build`, as for the existing E2E
+harness; this test reads the shared production build and never runs a dev compiler.
 It checks hierarchy navigation, persistence of the same sky canvas, deep-link
 reload, Back/Forward, 390px and desktop overflow, explicit missing/error/empty
 states, History and the absence of a fake input.
