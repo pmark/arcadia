@@ -1,5 +1,5 @@
-import { open } from "node:fs/promises";
-import { mkdtempSync, writeFileSync, symlinkSync, mkdirSync, rmSync } from "node:fs";
+import { open, realpath } from "node:fs/promises";
+import { mkdtempSync, writeFileSync, symlinkSync, mkdirSync, rmSync, renameSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,10 +12,16 @@ import { svg, workspaceArtifactFixture } from "./helpers/workspace-artifact-fixt
 
 vi.mock("node:fs/promises", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, open: vi.fn(actual.open) };
+  return { ...actual, open: vi.fn(actual.open), realpath: vi.fn(actual.realpath) };
 });
 let fixture: ReturnType<typeof workspaceArtifactFixture>;
-beforeEach(() => { fixture = workspaceArtifactFixture(mkdtempSync(path.join(tmpdir(), "artifact-route-"))); vi.stubEnv("ARCADIA_WORKSPACE", fixture.workspace); });
+beforeEach(async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  vi.mocked(open).mockReset().mockImplementation(actual.open);
+  vi.mocked(realpath).mockReset().mockImplementation(actual.realpath);
+  fixture = workspaceArtifactFixture(mkdtempSync(path.join(tmpdir(), "artifact-route-")));
+  vi.stubEnv("ARCADIA_WORKSPACE", fixture.workspace);
+});
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); if (fixture) rmSync(fixture.root, { recursive: true, force: true }); });
 function get(id = fixture.svgId, query = `receipt=${fixture.receipt}`) { return GET(new Request(`http://localhost/api/workspace/artifacts/${id}?${query}`), { params: Promise.resolve({ id }) }); }
 function add(file: string, projectId = fixture.projectId, linked = true) { return withDatabase(fixture.workspace, db => { const artifact = createArtifactRecord(db, { projectId, title: "Boundary", artifactType: "file", path: file }); if (linked) attachArtifactToExecutionRun(db, fixture.runId, artifact.id); return artifact.id; }); }
@@ -61,8 +67,9 @@ describe("workspace domain Artifact byte route", () => {
   it("bounds a file that grows after its first stat", async () => {
     const file = path.join(fixture.repo, "growing.txt"); writeFileSync(file, "small");
     const original = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    vi.mocked(open).mockImplementationOnce(async (...args) => {
+    vi.mocked(open).mockImplementation(async (...args) => {
       const handle = await original.open(...args);
+      if (!String(args[0]).endsWith("/growing.txt")) return handle;
       const stat = handle.stat.bind(handle);
       vi.spyOn(handle, "stat").mockImplementationOnce(async () => {
         const snapshot = await stat(); writeFileSync(file, Buffer.alloc(MAX_ARTIFACT_BYTES + 1, 65)); return snapshot;
@@ -74,4 +81,56 @@ describe("workspace domain Artifact byte route", () => {
   it("accepts PNG, JPEG and WebP signatures with their image MIME", async () => {
     for (const [name, bytes, type] of [["one.png", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=", "base64"),"image/png"], ["one.jpg", Buffer.from([255,216,255,217]), "image/jpeg"], ["one.webp", Buffer.from("RIFF0000WEBP"), "image/webp"]] as const) { const file = path.join(fixture.repo, name); writeFileSync(file, bytes); const response = await get(add(file)); expect(response.status).toBe(200); expect(response.headers.get("content-type")).toBe(type); }
   });
+});
+
+// Deterministic adversarial interleaving: only schedule real directory swaps;
+// every path resolution, file open and inode stat is the actual OS operation.
+it.each([false, true])("rejects ancestor symlink swaps (configured root: %s) without disclosing outside bytes", async swapRoot => {
+  const directory = swapRoot ? fixture.repo : path.join(fixture.repo, "race");
+  const parked = path.join(fixture.root, "race-parked");
+  const outside = path.join(fixture.root, "private");
+  if (!swapRoot) mkdirSync(directory);
+  mkdirSync(outside);
+  writeFileSync(path.join(directory, "file.txt"), "allowed output");
+  writeFileSync(path.join(outside, "file.txt"), "PRIVATE OUTSIDE ROOTS");
+  const file = path.join(directory, "file.txt");
+  const id = add(file);
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  let candidateChecks = 0;
+  const escape = () => { renameSync(directory, parked); symlinkSync(outside, directory); };
+  const restore = () => { unlinkSync(directory); renameSync(parked, directory); };
+  vi.mocked(realpath).mockImplementation(async (...args) => {
+    const resolved = await actual.realpath(...args);
+    if (String(args[0]) === file) { candidateChecks++; escape(); }
+    return resolved;
+  });
+  vi.mocked(open).mockImplementation(async (...args) => {
+    const handle = await actual.open(...args);
+    if (candidateChecks === 1 && String(args[0]).endsWith("/file.txt")) restore();
+    return handle;
+  });
+  const response = await get(id);
+  expect([403, 409]).toContain(response.status);
+  expect(await response.text()).not.toContain("PRIVATE OUTSIDE ROOTS");
+});
+
+// Linux CI must exercise the real procfs traversal, not a mocked platform.
+it.skipIf(process.platform !== "linux")("keeps Linux directory descriptors pinned after a parent rename", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const directory = path.join(fixture.repo, "pinned");
+  const outside = path.join(fixture.root, "private");
+  mkdirSync(directory); mkdirSync(outside);
+  writeFileSync(path.join(directory, "file.txt"), "allowed output");
+  writeFileSync(path.join(outside, "file.txt"), "PRIVATE OUTSIDE ROOTS");
+  vi.mocked(open).mockImplementation(async (...args) => {
+    const handle = await actual.open(...args);
+    if (String(args[0]).endsWith("/pinned")) {
+      renameSync(directory, path.join(fixture.repo, "parked"));
+      symlinkSync(outside, directory);
+    }
+    return handle;
+  });
+  const response = await get(add(path.join(directory, "file.txt")));
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe("allowed output");
 });

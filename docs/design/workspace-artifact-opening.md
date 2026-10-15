@@ -34,8 +34,10 @@ Persisted relative paths resolve from the workspace, matching
 are supported. Only canonical workspace `artifacts/` and the owning Project's
 configured `repo_path` are allowed roots. Root mappings of `/`, relative mappings,
 missing mappings, paths outside these roots, missing/pathless records, symlink
-escapes and nonfiles grant no fallback. Read-only/nonblocking/nofollow opens plus
-canonical path and inode checks detect certain changes during opening. A bounded read of
+escapes and nonfiles grant no fallback. Darwin uses the kernel all-component `O_NOFOLLOW_ANY` flag; Linux opens each
+component through a pinned directory descriptor with `O_NOFOLLOW`. These opens
+reject ancestor symlink substitution without a pathname recheck race. Other
+platforms refuse the read; Linux requires procfs and has no unsafe fallback. A bounded read of
 at most 4 MiB plus one byte and a final stat enforce the cap even after growth.
 UTF-8 is decoded strictly; binary text, invalid image signatures, unsupported
 extensions and SVG DTD/entity declarations are refused.
@@ -216,3 +218,58 @@ not new concept artwork or live operator output:
 ![Phone SVG viewer](../../assets/arcadia-conversational-workspace/implementation-artifact-phone.png)
 ![Desktop SVG viewer](../../assets/arcadia-conversational-workspace/implementation-artifact-desktop.png)
 ![Phone file error](../../assets/arcadia-conversational-workspace/implementation-artifact-error-phone.png)
+
+## PR #1448 Hacker repair, 2026-10-15
+
+The operator authorized one bounded repair after independent review failed head
+`2f8ea643aa8d7ac9099e8deaa9e86bec710aab5b`: a real directory-swap interleaving
+returned outside-root bytes. The failing-before rejection regression returned
+HTTP 200 (`/tmp/artifact-repair-regression-before.log`). The fix replaces repeated
+pathname/inode checks with native all-component opening. Tests cover nested and
+configured-root swaps, ordinary supported output, FIFO, growth and byte limits;
+a Linux-only case proves an opened directory stays pinned after its name changes.
+
+The host created `codex/artifact-race-repair` at that exact head in a fresh
+candidate. Original candidate, main and shared services are preserved. One
+native implementer at depth one owned product writes, then froze and returned
+custody to the Lead. Actual model/effort was inherited; no switch is claimed.
+No governed Action, pointer, queue, production launch or installation is implied.
+
+Native macOS route checks: 11 pass, 1 Linux-only skip, exit 0, retained at
+`/tmp/artifact-repair-focused-verified.log`. Touched lint and diff checks pass.
+Linux native CI and independent final-head review are separate required proof.
+The original browser/rehearsal evidence above remains historical until new checks
+are recorded; no live deployment or physical-phone verification is claimed.
+
+Failed intermediate receipts are retained in `/tmp/artifact-repair-focused-*.log`:
+Darwin rejects combining `O_NOFOLLOW_ANY` and `O_NOFOLLOW` with EINVAL; the fix
+uses ANY alone. Test mocks now reset before each fixture and the growth hook
+selects the final file after Linux ancestor opens. No acceptance was weakened.
+
+Primary mechanism references: [Apple open(2)](https://github.com/apple/darwin-xnu/blob/main/bsd/man/man2/open.2),
+[Darwin fcntl.h](https://github.com/apple/darwin-xnu/blob/main/bsd/sys/fcntl.h),
+[Linux open(2)](https://www.man7.org/linux/man-pages/man2/open.2).
+The local macOS SDK `sys/fcntl.h:158` and native fixture confirm the public flag.
+The regressions are the reusable prevention; no extra memory store was created.
+
+Repair instruction inventory (whole-file UTF-8 bytes; section retrieval follows the indexed operation):
+
+- `AGENTS.md`: 10118 bytes.
+- `CONSTITUTION.md`: 3320 bytes.
+- `PROJECT.md`: 31677 bytes.
+- `.arcadia/AGENT_CONTEXT_POLICY.md`: 539 bytes.
+- `.arcadia/repo-context.md`: 703 bytes.
+- `.arcadia/context-policy.json`: 870 bytes.
+- `docs/agent-guidance/index.json`: 9449 bytes.
+- `.agents/skills/arcadia-hacker/SKILL.md`: 2024 bytes.
+- `.agents/skills/arcadia-role/SKILL.md`: 8539 bytes.
+- `.agents/skills/arcadia-guardrail/SKILL.md`: 5565 bytes.
+- `docs/agent-guidance/hacker-recovery.md`: 7943 bytes.
+- `docs/agent-guidance/continuation.md`: 7256 bytes.
+- `docs/agent-guidance/learning.md`: 2458 bytes.
+- `docs/agent-guidance/operator-directed-work.md`: 4494 bytes.
+- `docs/agent-guidance/session-roles-and-briefs.md`: 6152 bytes.
+- `docs/agent-guidance/pull-requests.md`: 17585 bytes.
+- `docs/agent-guidance/git-identity.md`: 5248 bytes.
+- `docs/working-copy-safety.md`: 16202 bytes.
+- `docs/agent-guidance/native-app-sessions.md`: 9061 bytes.

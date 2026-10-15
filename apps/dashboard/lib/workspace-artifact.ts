@@ -14,6 +14,37 @@ export class ArtifactOpenError extends Error {
 const fail = (message: string, status = 422): never => { throw new ArtifactOpenError(message, status); };
 const inside = (root: string, file: string) => { const relative = path.relative(root, file); return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); };
 
+// Darwin's public sys/fcntl.h defines this flag; Node does not expose it.
+// Unlike O_NOFOLLOW, the kernel rejects symlinks in every path component.
+// https://github.com/apple/darwin-xnu/blob/main/bsd/sys/fcntl.h
+// The two flags are mutually exclusive (EINVAL); use ANY alone on Darwin.
+const DARWIN_O_NOFOLLOW_ANY = 0x20000000;
+
+async function openContainedFile(canonical: string) {
+  const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+  try {
+    if (process.platform === "darwin") return await open(canonical, constants.O_RDONLY | constants.O_NONBLOCK | DARWIN_O_NOFOLLOW_ANY);
+    if (process.platform !== "linux") return fail("Safe Artifact opening is unavailable on this platform.", 503);
+    // Node has no openat API. On Linux, procfs exposes the pinned directory
+    // descriptor. Walk from / so even ancestors of the configured root cannot
+    // be substituted with symlinks. Each next open is relative to a held inode.
+    const components = canonical.split(path.sep).filter(Boolean);
+    let directory = await open("/", constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      for (const component of components.slice(0, -1)) {
+        const next = await open(`/proc/self/fd/${directory.fd}/${component}`, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+        const previous = directory;
+        directory = next;
+        await previous.close();
+      }
+      return await open(`/proc/self/fd/${directory.fd}/${components.at(-1)!}`, flags);
+    } finally { await directory.close(); }
+  } catch (error) {
+    if (["ELOOP", "ENOTDIR", "ESTALE"].includes((error as NodeJS.ErrnoException).code ?? "")) return fail("The Artifact path changed while opening it.", 409);
+    throw error;
+  }
+}
+
 /** Domain Artifacts only. The receipt relation and configured roots are guardrails,
  * not authenticated access control: this dashboard is local and single-operator. */
 export async function readWorkspaceArtifact(id: string, receipt: string) {
@@ -44,16 +75,14 @@ export async function readWorkspaceArtifact(id: string, receipt: string) {
   const types: Record<string, string> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".txt": "text/plain", ".md": "text/plain", ".json": "text/plain", ".csv": "text/plain", ".tsv": "text/plain", ".log": "text/plain", ".yaml": "text/plain", ".yml": "text/plain" };
   const contentType = types[ext];
   if (!contentType) return fail("This file type cannot be opened here. Supported: SVG, PNG, JPEG, WebP and plain text.", 415);
-  // NONBLOCK prevents a swapped FIFO from hanging; NOFOLLOW refuses final symlinks.
-  const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  // Kernel all-component rejection (Darwin) or pinned traversal (Linux)
+  // binds the open to the checked tree. NONBLOCK keeps FIFO swaps from hanging.
+  const handle = await openContainedFile(canonical);
   let bytes: Buffer;
   try {
     const info = await handle.stat();
     if (!info.isFile()) return fail("The Artifact path is not a regular file.");
     if (info.size > MAX_ARTIFACT_BYTES) return fail("The Artifact exceeds the 4 MiB viewer limit.", 413);
-    if (await realpath(candidate) !== canonical) return fail("The Artifact path changed while opening it.", 409);
-    const current = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try { const now = await current.stat(); if (now.dev !== info.dev || now.ino !== info.ino) return fail("The Artifact file changed while opening it.", 409); } finally { await current.close(); }
     // A fixed limit plus one byte bounds even a file that grows after stat.
     const buffer = Buffer.alloc(MAX_ARTIFACT_BYTES + 1);
     let size = 0;
