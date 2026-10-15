@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AGENT_ASK_INTENTS, normalizeAgentAsk, resolveNaturalAgentAskTarget } from "../src/ask/agentAsk.js";
+import { AGENT_ASK_INTENTS, agentAskFingerprint, normalizeAgentAsk, resolveNaturalAgentAskTarget } from "../src/ask/agentAsk.js";
 import { resolveProjectReference } from "../src/ask/rules.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -20,6 +21,15 @@ describe("Agent Ask v1", () => {
     expect(normalizeAgentAsk({ request }).planMetadata).toEqual({ tokenImpact: "small", tokenBudget: "One bounded pass." });
     expect(() => normalizeAgentAsk({ request: request.replace('"intent":"plan"', '"intent":"action"') })).toThrow(/plan_metadata/);
     expect(() => normalizeAgentAsk({ request: request.replace('"token_budget":"One bounded pass."', '"unknown":"no"') })).toThrow(/unknown fields/);
+    expect(() => normalizeAgentAsk({ request: request.replace("One bounded pass.", "One\\npass.") })).toThrow(/single line/);
+  });
+  it("preserves legacy strict Ask fingerprints when plan metadata is absent", () => {
+    const request = strictAsk("legacy-fingerprint", "proposal");
+    const normalized = normalizeAgentAsk({ request });
+    expect(normalized).not.toHaveProperty("planMetadata");
+    const legacy = { ...normalized } as Record<string, unknown>;
+    const expected = createHash("sha256").update(JSON.stringify({ request, normalized: legacy }, (key, value) => key === "omittedLists" ? undefined : value)).digest("hex");
+    expect(agentAskFingerprint(request, normalized)).toBe(expected);
   });
   it("normalizes every supported Project-management contribution without Project writes", () => {
     const workspace = initializedWorkspace();

@@ -604,10 +604,9 @@ export function settleAgentAsk(db: Database.Database, input: {
               throw validationError("Plan budget metadata amendments preserve activation, Actions, and queue state.");
             }
             const { tokenImpact, tokenBudget } = proposal.normalized.planMetadata;
-            fileMutations.push({ path: targetPath, before, after: withPlanUpdated(setTopLevelFields(before, {
-              token_impact: tokenImpact,
-              token_budget: tokenBudget
-            })) });
+            fileMutations.push({ path: targetPath, before, after: withPlanUpdated(
+              replaceTopLevelField(replaceTopLevelField(before, "token_impact", tokenImpact), "token_budget", tokenBudget)
+            ) });
             effects.push(`Updated Plan ${target.slug} token impact from ${target.tokenImpact} to ${tokenImpact} and its token budget.`);
             effects.push(`Preserved Plan ${target.slug} Actions, activation, pointers, and queue position.`);
             break;

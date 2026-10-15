@@ -1403,7 +1403,9 @@ describe("Agent Ask settlement", () => {
   it("replaces explicit empty dependency and reference lists during a Plan Action amendment", () => {
     const { workspace, repo } = fixture();
     const planPath = path.join(repo, "docs/plans/demo-plan.md");
-    const before = readFileSync(planPath, "utf8");
+    const original = readFileSync(planPath, "utf8");
+    const before = original.replace("token_budget: Deterministic resolution with one implementation pass.", "token_budget: |-\n  Legacy multiline budget must not survive the replacement.");
+    writeFileSync(planPath, before);
     const finished = [
       "  - id: finished", "    title: Finished prerequisite", "    status: done",
       "    responsibility: codex", "    effort: session", "    next_action: Preserve proof.",
@@ -2062,6 +2064,7 @@ describe("Agent Ask settlement", () => {
     const after = preview.data.receipt.review!.documents.find((doc) => doc.path === "docs/plans/demo-plan.md")!.after!;
     expect(after).toContain("token_impact: small");
     expect(after).toContain("token_budget: One bounded implementation pass.");
+    expect(after).not.toContain("Legacy multiline budget must not survive the replacement.");
     expect(after).toContain("  - id: existing");
     expect(readFileSync(planPath, "utf8")).toBe(before);
     runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true });

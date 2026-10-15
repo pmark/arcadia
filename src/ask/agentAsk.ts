@@ -60,7 +60,7 @@ export interface NormalizedPlanMetadata { tokenImpact: TokenImpact; tokenBudget:
 export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[];
   /** The single Action's `why` for an `action` Ask with no `actions` list; absent otherwise (bundles carry `actions[].why`). */
   why?: string;
-  actions: NormalizedAgentAskAction[]; targetRef: string | null; planMetadata: NormalizedPlanMetadata | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+  actions: NormalizedAgentAskAction[]; targetRef: string | null; planMetadata?: NormalizedPlanMetadata; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -98,7 +98,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const strict = isRecord(parsed) && Object.hasOwn(parsed, "agent_ask");
   if (!strict) {
     const requestId = requiredText(input.requestId, "Natural Agent Ask requires --request-id.");
-    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, planMetadata: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [], gateQuestion: null };
+    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [], gateQuestion: null };
   }
   const data = parsed as Record<string, unknown>;
   const unknown = Object.keys(data).filter((key) => !STRICT_FIELDS.has(key));
@@ -180,7 +180,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, planMetadata, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, ...(planMetadata ? { planMetadata } : {}), requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 /**
@@ -329,7 +329,9 @@ function planMetadataField(value: unknown): NormalizedPlanMetadata | null {
   if (unknown.length > 0) throw validationError("Agent Ask plan_metadata contains unknown fields.", { fields: unknown.sort() });
   const tokenImpact = requiredText(value.token_impact, "Agent Ask plan_metadata.token_impact is required.") as TokenImpact;
   if (!(TOKEN_IMPACTS as readonly string[]).includes(tokenImpact)) throw validationError("Agent Ask plan_metadata.token_impact is unsupported.", { tokenImpact, supported: TOKEN_IMPACTS });
-  return { tokenImpact, tokenBudget: requiredText(value.token_budget, "Agent Ask plan_metadata.token_budget is required.") };
+  const tokenBudget = requiredText(value.token_budget, "Agent Ask plan_metadata.token_budget is required.");
+  if (/[\r\n]/.test(tokenBudget)) throw validationError("Agent Ask plan_metadata.token_budget must be a single line.");
+  return { tokenImpact, tokenBudget };
 }
 function actionList(value: unknown): NormalizedAgentAskAction[] {
   if (value === undefined || value === null) return [];
