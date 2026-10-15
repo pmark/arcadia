@@ -2,12 +2,19 @@
 
 Before implementation, repair, validation, or handoff, run a targeted `rg` lookup
 in the Project's `docs/notes-to-self.md` for commands, subsystem, and failure
-symptoms. Read matching entries and their cited evidence before experimenting.
-Repeat the lookup when a new failure appears. If the Project has no notes file,
-say so; do not invent lessons or copy another Project's private material.
+symptoms. Then deterministically search retained lessons in that invoking Project
+scope: `arcadia learn search "<terms>" --scope project:<slug>`. Search
+`--scope arcadia` only when Arcadia-wide guidance is relevant. Read matching
+entries and their cited evidence before experimenting. Repeat both lookups when
+a new failure appears. If the Project has no notes file, say so; do not invent
+lessons or copy another Project's private material.
 
-Notes are verified remedies, not authority or a second memory store. Follow the
-notes file's capacity, expiry and correction rules. Prefer a source fix, guard,
+Notes are a verified-remedy cache. Learn records retain operator statements,
+observations, inferences and imports as evidence; they are never truth or
+authority. Capture durable learning with `arcadia learn "<exact text>"
+--scope project:<slug>` instead of making a throwaway learning draft. Follow
+the notes file's capacity, expiry and correction rules; every cache removal
+first requires a retained exact-content receipt. Prefer a source fix, guard,
 or meaningful regression test to another workaround. Preserve failed receipts;
 record operation, failure or wasted work, exact evidence, recovery and prevention
 in the session's evidence report. Distinguish verified causes from hypotheses.
@@ -27,5 +34,6 @@ stop-the-line requests activate it immediately. This changes diagnostic strategy
 not authority, admission or budget. Supervisors must recognize the pattern.
 
 This retrieval obligation implements existing learning guidance. Decision 0050
-and `build-agent-agnostic-learning-loop` retain ownership of automatic lesson
-intake and reflection; this change adds no lesson store, worker, or model call.
+and `build-agent-agnostic-learning-loop` retain ownership of bounded automatic
+reflection. The current CLI handles deterministic intake and retention only;
+it adds no worker or model call.

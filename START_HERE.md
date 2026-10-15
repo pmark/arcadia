@@ -3449,6 +3449,14 @@ project additions outside generated regions. Agents read indexed procedures
 before their operation and search the Project's Notes To Self before commands
 or new failures. No procedural manual is automatically imported.
 
+When a hot Notes To Self cache reaches its limit, retain the exact entry with
+`arcadia learn` in the invoking Project scope before removing it. `learn show`
+and `learn search` expose current and retired advice with provenance and
+freshness; `learn correct` preserves the earlier version. `learn import-notes`
+and bounded `learn import-history` retain cache text and available file history
+without a model call. `learn cache-maintain --file docs/notes-to-self.md --scope project:<slug> --evict <lesson-id> --apply` only
+shortens Notes after the exact retained content has a receipt.
+
 `arcadia way` reports missing/stale resources and instruction delivery problems.
 `pnpm check:agent-guidance` in Arcadia checks canonical bytes and defaults at
 root and every checked-in nested instruction directory. The generated bootstrap

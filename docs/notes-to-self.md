@@ -13,16 +13,19 @@ explains *how the system is built*; this file answers *how do I do X right now*.
 ## How the cache works
 
 This file is a **hot cache**, not an archive. It holds only friction that is
-still live. Git history is the backing store, so an evicted entry is never lost.
+still live. Durable `arcadia learn` records are the backing store. Before every
+removal or shortening — including expiry and write-back — retain the exact entry
+text with its receipt, then confirm it can be shown by stable lesson id. Git
+history is additional provenance, never a substitute for that receipt.
 
 | Cache idea | Here |
 | --- | --- |
 | Key | The `keys:` line. Grep it. |
 | Capacity | **At most 25 entries.** `tests/notes-to-self.test.ts` enforces this. |
 | Validation | Every backticked repo path in an entry must still exist, and the same test fails when one moves. |
-| Expiry | `Expires when #NNN closes` marks a workaround. The PR that closes #NNN deletes the entry. |
-| Write-back | The best eviction fixes the friction at its source: a clearer error, a `--help` line, a command that prints the answer. Then delete the entry. |
-| Eviction | At capacity, remove an expired or written-back entry first. Next, remove the one whose friction you have not hit in the longest time. |
+| Expiry | `Expires when #NNN closes` marks a workaround. Retain it through `arcadia learn` with an exact-content receipt before the closing PR removes the cache entry. |
+| Write-back | The best eviction fixes the friction at its source: a clearer error, a `--help` line, a command that prints the answer. Retain the exact former entry and receipt before shortening the cache. |
+| Eviction | At capacity, retain every current entry first, then use explicit `learn cache-maintain --evict <lesson-id> --apply`; it refuses without an exact-content receipt. |
 
 **Rules:**
 1. **Look first.** Before searching for a path, command, flag, id, or database, grep this file.
@@ -30,9 +33,14 @@ still live. Git history is the backing store, so an evicted entry is never lost.
 3. **Fix on contact.** If an entry is wrong, correct it in the change that found out.
 4. **Prefer write-back to write-in.** If fixing the friction takes less effort than writing its entry, fix it instead.
 
-**When this outgrows a file.** Move to the indexed lesson store that the
-`build-agent-agnostic-learning-loop` Action builds (`arcadia learn`) when any
-of these first happens:
+**When this outgrows a file.** Capture the exact entry first with
+`arcadia learn "<entry>" --scope project:<slug>` (or explicit `--scope arcadia`).
+`arcadia learn import-notes --file docs/notes-to-self.md` retains current cache
+entries as stale imported evidence; `import-history` retains only available Git
+history and reports a shallow gap. `cache-maintain` imports every entry before
+an explicit receipt-verified eviction. The broader
+`build-agent-agnostic-learning-loop` Action still owns automatic reflection;
+these commands make no model call. Use them when any of these first happens:
 - the cap is hit and no entry is evictable, because all of the friction is still live;
 - a second repository needs its own notes and agents must search across them;
 - the same friction is rediscovered while its entry exists, which shows grep-on-demand

@@ -5,10 +5,11 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { Command, CommanderError, Option } from "commander";
 import {
   renderArtifactCreateSuccess,
@@ -70,6 +71,23 @@ import {
   runDefectListCommand,
   runDefectShowCommand
 } from "./commands/defect.js";
+import {
+  renderLearnCaptureSuccess,
+  renderLearnImportSuccess,
+  renderLearnRestoreSuccess,
+  renderLearnSearchSuccess,
+  renderLearnShowSuccess,
+  runLearnCacheMaintainCommand,
+  runLearnCaptureCommand,
+  runLearnCorrectCommand,
+  runLearnExportCommand,
+  runLearnImportNotesCommand,
+  runLearnImportHistoryCommand,
+  runLearnRestoreCommand,
+  runLearnSearchCommand,
+  runLearnShowCommand,
+  serializedLessonExport
+} from "./commands/learn.js";
 import {
   renderCapacityAttestSuccess,
   renderCapacityStatusSuccess,
@@ -1536,6 +1554,86 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     const merged: { workspace: string; json?: boolean } = cmd.optsWithGlobals();
     return runCliAction("defect.show", merged, () => runDefectShowCommand({ ...merged, id }), renderDefectShowSuccess);
   });
+
+  const learn = program
+    .command("learn")
+    .description("Capture and inspect durable, zero-model lessons")
+    .argument("[text]", "Exact lesson text to capture")
+    .option("--scope <scope>", "`arcadia` or `project:<slug>`; defaults to the invoking Project")
+    .option("--provenance <kind>", "operator_statement, observation, inference, or imported")
+    .option("--confidence <level>", "high, medium, or low")
+    .option("--freshness <state>", "current, stale, retracted, or superseded")
+    .option("--evidence <text>", "Evidence to retain; repeatable", collectRepeatable, [])
+    .option("--revision <sha>", "Repository revision that produced this lesson")
+    .option("--source-ref <ref>", "Stable source reference")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace());
+  addJsonOption(learn).action((text: string | undefined, options: { workspace: string; scope?: string; provenance?: string; confidence?: string; freshness?: string; evidence: string[]; revision?: string; sourceRef?: string; json?: boolean }) => {
+    if (!text) throw validationError("A lesson is required: arcadia learn \"<text>\".", {});
+    return runCliAction("learn.capture", options, () => runLearnCaptureCommand({ ...options, scope: resolveLessonScope(options.scope), text, provenance: options.provenance as Parameters<typeof runLearnCaptureCommand>[0]["provenance"], confidence: options.confidence as Parameters<typeof runLearnCaptureCommand>[0]["confidence"], freshness: options.freshness as Parameters<typeof runLearnCaptureCommand>[0]["freshness"] }), renderLearnCaptureSuccess);
+  });
+  addJsonOption(learn.command("search").argument("<query>", "Text to find in retained lessons"))
+    .action((query: string, _options: unknown, cmd: Command) => {
+      const options: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
+      return runCliAction("learn.search", options, () => runLearnSearchCommand({ ...options, scope: resolveLessonScope(options.scope), query }), renderLearnSearchSuccess);
+    });
+  addJsonOption(learn.command("show").argument("<id>", "Stable lesson id"))
+    .action((id: string, _options: unknown, cmd: Command) => {
+      const options: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
+      return runCliAction("learn.show", options, () => runLearnShowCommand({ ...options, scope: resolveLessonScope(options.scope), id }), renderLearnShowSuccess);
+    });
+  addJsonOption(learn.command("correct").argument("<id>", "Stable lesson id").argument("<text>", "Exact replacement text").option("--retract", "Mark the former advice retracted while preserving its version"))
+    .action((id: string, text: string, options: { retract?: boolean; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; scope?: string; provenance?: string; confidence?: string; freshness?: string; evidence?: string[]; revision?: string; sourceRef?: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      return runCliAction("learn.correct", merged, () => runLearnCorrectCommand({ ...merged, scope: resolveLessonScope(merged.scope), id, text, retract: merged.retract, provenance: merged.provenance as Parameters<typeof runLearnCorrectCommand>[0]["provenance"], confidence: merged.confidence as Parameters<typeof runLearnCorrectCommand>[0]["confidence"], freshness: merged.freshness as Parameters<typeof runLearnCorrectCommand>[0]["freshness"] }), renderLearnShowSuccess);
+    });
+  addJsonOption(learn.command("import-notes").requiredOption("--file <path>", "Notes To Self Markdown file"))
+    .action((options: { file: string; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; scope?: string; revision?: string; sourceRef?: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      const markdown = readFileSync(merged.file, "utf8");
+      return runCliAction("learn.import-notes", merged, () => runLearnImportNotesCommand({ ...merged, scope: resolveLessonScope(merged.scope), markdown, sourceRef: merged.sourceRef ?? merged.file }), renderLearnImportSuccess);
+    });
+  addJsonOption(learn.command("import-history").requiredOption("--file <path>", "Notes To Self file whose Git history to retain"))
+    .action((options: { file: string; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      return runCliAction("learn.import-history", merged, () => {
+        const history = readContainedLessonHistory(merged.file);
+        return runLearnImportHistoryCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), ...history });
+      }, (response) => [`Imported: ${response.data.imported}`, `Snapshots: ${response.data.snapshots}`, response.data.shallowGap ? "History gap: repository is shallow" : "History complete as locally available"]);
+    });
+  addJsonOption(learn.command("export").option("--file <path>", "Write a lossless JSON export to this path"))
+    .action((options: { file?: string; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      return runCliAction("learn.export", merged, () => {
+        const response = runLearnExportCommand({ ...merged, scope: resolveLessonScope(merged.scope) });
+        if (merged.file) writeFileSync(merged.file, serializedLessonExport(response.data), { encoding: "utf8", flag: "wx" });
+        return response;
+      }, (response) => [merged.file ? `Exported ${response.data.lessons.length} lesson(s): ${merged.file}` : serializedLessonExport(response.data)]);
+    });
+  addJsonOption(learn.command("restore").requiredOption("--file <path>", "Lossless lesson export JSON"))
+    .action((options: { file: string; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      const payload = JSON.parse(readFileSync(merged.file, "utf8"));
+      return runCliAction("learn.restore", merged, () => runLearnRestoreCommand({ workspace: merged.workspace, payload }), renderLearnRestoreSuccess);
+    });
+  addJsonOption(learn.command("cache-maintain").requiredOption("--file <path>", "Current Notes To Self file").option("--evict <lesson-id>", "Explicit retained lesson id to remove from the hot cache").option("--apply", "Write the planned cache update after a byte check"))
+    .action((options: { file: string; evict?: string; apply?: boolean; json?: boolean }, cmd: Command) => {
+      const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
+      const merged = { ...parent, ...options };
+      const source = readContainedLessonFile(merged.file);
+      return runCliAction("learn.cache-maintain", merged, () => {
+        const response = runLearnCacheMaintainCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), markdown: source, sourceRef: merged.file, evictId: merged.evict });
+        if (merged.apply && response.data.updatedMarkdown !== null) {
+          if (readContainedLessonFile(merged.file) !== source) throw validationError("Notes changed during cache maintenance; no cache deletion was written.", { file: merged.file });
+          writeFileSync(merged.file, response.data.updatedMarkdown, "utf8");
+        }
+        return response;
+      }, (response) => [`Imported: ${response.data.imported}`, `Cache entries: ${response.data.entryCount}`, response.data.evictedId ? `Evicted: ${response.data.evictedId}` : "No cache entry removed"]);
+    });
 
   const feedback = program.command("feedback").description("Record and list Decisions on Ask responses");
   addJsonOption(
@@ -5157,6 +5255,45 @@ function addJsonOption(command: Command): Command {
 
 function defaultWorkspace(): string {
   return undefined as unknown as string;
+}
+
+/** A convenient capture stays Project-scoped; Arcadia-wide guidance is explicit. */
+function resolveLessonScope(explicitScope: string | undefined): string {
+  if (explicitScope) return explicitScope;
+  const projectFile = path.join(invocationRoot(), "PROJECT.md");
+  if (!existsSync(projectFile)) {
+    throw validationError("No invoking Project was found; pass --scope arcadia or --scope project:<slug>.", {});
+  }
+  const slug = /^slug:\s*([^\s#]+)\s*$/m.exec(readFileSync(projectFile, "utf8"))?.[1];
+  if (!slug) throw validationError("Invoking PROJECT.md has no slug; pass an explicit lesson scope.", { projectFile });
+  return `project:${slug}`;
+}
+
+function readContainedLessonFile(file: string): string {
+  const root = realpathSync(invocationRoot());
+  const candidate = path.resolve(file);
+  if (lstatSync(candidate).isSymbolicLink()) throw validationError("Lesson file symlinks are refused for cache maintenance.", { file });
+  const actual = realpathSync(candidate);
+  if (actual !== root && !actual.startsWith(`${root}${path.sep}`)) throw validationError("Lesson file must stay inside the invoking repository.", { file });
+  return readFileSync(actual, "utf8");
+}
+
+function readContainedLessonHistory(file: string): { snapshots: Array<{ revision: string; markdown: string; sourceRef: string }>; shallow: boolean; unavailableRevisions: string[] } {
+  const root = realpathSync(invocationRoot());
+  const actual = realpathSync(path.resolve(file));
+  if (actual !== root && !actual.startsWith(`${root}${path.sep}`)) throw validationError("Lesson history file must stay inside the invoking repository.", { file });
+  const relative = path.relative(root, actual);
+  const revisions = spawnSync("git", ["log", "--format=%H", "--all", "--full-history", "--", relative], { cwd: root, encoding: "utf8" });
+  if (revisions.status !== 0) throw validationError("Git history could not be read for this Notes file.", { file, stderr: revisions.stderr.trim() });
+  const unavailableRevisions: string[] = [];
+  const snapshots = revisions.stdout.split("\n").filter(Boolean).flatMap((revision) => {
+    const shown = spawnSync("git", ["show", `${revision}:${relative}`], { cwd: root, encoding: "utf8" });
+    if (shown.status === 0) return [{ revision, markdown: shown.stdout, sourceRef: `git:${revision}:${relative}` }];
+    unavailableRevisions.push(revision);
+    return [];
+  });
+  const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: root, encoding: "utf8" }).stdout.trim() === "true";
+  return { snapshots, shallow, unavailableRevisions };
 }
 
 /**

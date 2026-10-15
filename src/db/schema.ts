@@ -48,6 +48,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureBackBurnerItemsTable(db);
   ensureBackBurnerSurfaceColumns(db);
   ensureDefectSignalTables(db);
+  ensureLessonTables(db);
   ensureAskRequestStewardshipColumn(db);
   ensureAskCaptureEnvelopeTables(db);
   ensureAgentAskProposalTable(db);
@@ -1561,6 +1562,70 @@ function ensureDefectSignalTables(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_defect_signals_project ON defect_signals(project_id);
+  `);
+}
+
+/**
+ * `arcadia learn` is deliberately a small, append-oriented store.  The Back
+ * Burner row keeps the existing intake surface; these tables retain the exact
+ * lesson text, versions, observations, and replay receipts after the hot Notes
+ * cache no longer has room for it.
+ */
+function ensureLessonTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lessons (
+      id TEXT PRIMARY KEY,
+      scope_key TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      back_burner_item_id TEXT UNIQUE REFERENCES back_burner_items(id) ON DELETE SET NULL,
+      current_version_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(scope_key, fingerprint)
+    );
+    CREATE TABLE IF NOT EXISTS lesson_versions (
+      id TEXT PRIMARY KEY,
+      lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE RESTRICT,
+      version INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      text_hash TEXT NOT NULL,
+      keywords_json TEXT NOT NULL,
+      provenance_kind TEXT NOT NULL CHECK (provenance_kind IN ('operator_statement', 'observation', 'inference', 'imported')),
+      confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium', 'low')),
+      freshness TEXT NOT NULL CHECK (freshness IN ('current', 'stale', 'retracted', 'superseded')),
+      repository_revision TEXT,
+      source_ref TEXT,
+      supersedes_version_id TEXT REFERENCES lesson_versions(id) ON DELETE RESTRICT,
+      created_at TEXT NOT NULL,
+      UNIQUE(lesson_id, version)
+    );
+    CREATE TABLE IF NOT EXISTS lesson_evidence (
+      id TEXT PRIMARY KEY,
+      lesson_version_id TEXT NOT NULL REFERENCES lesson_versions(id) ON DELETE RESTRICT,
+      evidence TEXT NOT NULL,
+      evidence_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(lesson_version_id, evidence_hash)
+    );
+    CREATE TABLE IF NOT EXISTS lesson_observations (
+      id TEXT PRIMARY KEY,
+      lesson_version_id TEXT NOT NULL REFERENCES lesson_versions(id) ON DELETE RESTRICT,
+      repository_revision TEXT,
+      source_ref TEXT,
+      observed_at TEXT NOT NULL,
+      UNIQUE(lesson_version_id, repository_revision, source_ref)
+    );
+    CREATE TABLE IF NOT EXISTS lesson_receipts (
+      id TEXT PRIMARY KEY,
+      lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE RESTRICT,
+      request_fingerprint TEXT NOT NULL UNIQUE,
+      operation TEXT NOT NULL CHECK (operation IN ('capture', 'correct', 'import', 'restore', 'cache-maintain')),
+      receipt_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_lessons_scope ON lessons(scope_key, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_lesson_versions_lesson ON lesson_versions(lesson_id, version DESC);
+    CREATE INDEX IF NOT EXISTS idx_lesson_versions_freshness ON lesson_versions(freshness);
   `);
 }
 
