@@ -14,7 +14,7 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [
     {
       "class": "P2 credential fragment after raw clipping",
@@ -43,9 +43,16 @@
       "id": "manager status-message auto-review rejection",
       "cost_min": null,
       "fix_ref": "manager observes read_thread/wait_threads"
+    },
+    {
+      "id": "delivery preservation binding.manual hash-object timeout",
+      "cost_min": null,
+      "fix_ref": null
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "Corrected candidate awaits manager replay and single independent delta review before completion settlement and PR delivery. Fresh session warranted after bounded safety recovery.",
-  "notes": "One original implementation pass and authorized safety correction. Production Off. Original replay superseded; no final-head PASS."
+  "notes": "Corrected code/replay/round2 PASS at4e19fd0b. Four evidence files dirty; new timeout stops delivery without retry or settlement.",
+  "candidate_head": "4e19fd0b0aded12ed64bc3f3ab4c28a354b4f50b",
+  "evidence_source": "docs/reports/launch-failure-keeps-cause-2026-10-14.md",
+  "stop_reason": "Evidence-delta protected preservation failed PRESERVATION_GIT_TIMEOUT at binding.manual (hash-object -w --stdin,90000ms). Original corrected code/replay/round2 pass preserved at4e19fd0b; no settlement or PR."
 }

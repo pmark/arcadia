@@ -66,6 +66,8 @@ A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`, `rea
 Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
 The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action (managed tick: after the host-services recovery restarts the worker). Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/preservation-index-lock.test.ts`, `tests/candidate-preservation.test.ts`.
 
+Issue #1414: an observed `hash-object -w --stdin` timeout left Git blocked reading stdin while Node waited. Root cause remains unproved; ordinary input probes passed. The candidate's private regular-file stdin mitigation has a failing-first withheld-EOF regression plus binary/empty-byte, cleanup and timeout checks; it is not installed-runtime proof. See `docs/reports/preservation-input-repair-2026-10-14.md`. Respect the current finite recovery budget before any retry; source changes do not authorize invoking or reinstalling the live broker.
+
 ## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
 
 keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries, liveness, lsof, handed out
