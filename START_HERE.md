@@ -2,6 +2,15 @@
 
 For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
 
+## Conversational workspace preview
+
+Start the dashboard with `pnpm dashboard`, then open <http://127.0.0.1:3020/workspace>.
+This opt-in shell leaves the normal landing page unchanged. Follow Project → Plan →
+Action links, or use the scope breadcrumbs and browser Back to return. Records
+come from the existing read-only Plans API. History, conversation capture and
+result previews are labeled extension regions; use the normal dashboard for Ask.
+See [the shell handoff](docs/design/conversational-ui-shell.md) for routes and seams.
+
 ## Governed specialist roles
 
 Read the seven canonical roles and render a bounded brief from the repository:

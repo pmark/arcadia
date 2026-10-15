@@ -3,7 +3,7 @@
   "role": "lead",
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
-  "action_id": "operator-directed:#1420",
+  "action_id": "operator-directed:#1426",
   "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
@@ -17,8 +17,8 @@
   "host_touches": null,
   "frictions": [],
   "outcome": "complete",
-  "candidate_head": "7bbfbed074505adc22513e7b7944cfa3974a4019",
-  "evidence_source": "tests/ask-api-scenarios.md",
-  "task_class": "API-scenario-tests",
-  "notes": "One implementer; real routes/CLI with disposable fixtures. 29 focused tests pass. Production latency unmeasured; checks/review tracked in PR."
+  "candidate_head": "e1e7d3b1907e1778a1a182d9fa0150139b58920b",
+  "evidence_source": "docs/design/conversational-ui-shell.md",
+  "task_class": "conversational-UI-scaffold",
+  "notes": "Continues design session after #1422. Native implementer gpt-6.1-sol/medium; URL tests, Ask regressions and fixture browser journey passed. No Ask integration claimed."
 }
