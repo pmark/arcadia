@@ -10,14 +10,14 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [
     {
-      "class": "scope isolation; repair awaiting R2",
+      "class": "scope isolation (fixed in6130bf75e)",
       "caught_by": "independent code-reviewer R1"
     },
     {
-      "class": "capture guidance accuracy; repair awaiting R2",
+      "class": "capture guidance accuracy (fixed in6130bf75e)",
       "caught_by": "independent code-reviewer R1"
     }
   ],
@@ -31,7 +31,7 @@
     }
   ],
   "outcome": "split",
-  "notes": "PR1446: R1 repairs delivered; final exact-head review/build/CI on PR. Rollout1447 separate. Earlier1435 prior phase; candidate_head is initial source snapshot.",
-  "candidate_head": "12230f4a138a3b3441b64601d36c08f4fb4f7379",
+  "notes": "PR1446 product accepted by R2 and fresh QA on6130bf75e; final CI/record review on PR. Split: live rollout tracked1447. Earlier1435 was prior phase.",
+  "candidate_head": "6130bf75e48bdb409f8fb8dde88cb6baec3ecd31",
   "evidence_source": "docs/reports/handoffs/20261015T1718Z-01a1405f-ebaa-7850-8083-88f871e17d45.md"
 }
