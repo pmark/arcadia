@@ -207,10 +207,10 @@ Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
 ## Arcadia CLI workspace writes fail with `SQLITE_WORKSPACE_WRITE_DENIED`
 
-keys: SQLITE_WORKSPACE_WRITE_DENIED, readonly database, workspace write denied, SQLite, sandbox, approved host execution, host permission, agent-ask preview, arcadia next, tidy, tidy --apply, work monitor, Claude Code, trust settings, TMPDIR
+keys: SQLITE_WORKSPACE_WRITE_DENIED, readonly database, workspace write denied, SQLite, sandbox, approved host execution, host permission, agent-ask preview, arcadia next, arcadia ping send, tidy, tidy --apply, work monitor, Claude Code, trust settings, TMPDIR
 
-Preserve the exact error. If the host offers its ordinary permission request or approved host execution, retry the same supported CLI command against the same configured workspace; for `agent-ask preview`, keep the exact request id and content. This covers `arcadia next`, `work monitor`, `tidy --apply`, and `agent-ask preview`, which can write workspace receipts or SQLite WAL state even when they look read-only.
-Never retry the denied write in the unchanged sandbox, disable restrictions, guess another workspace, or edit SQLite directly. If host execution is unavailable or denied, preserve any validated Ask draft and report the boundary; do not claim a receipt. A sandboxed shell may have a different `$TMPDIR`, so keep scratch-file writes and reads in the same execution mode. For Claude trust-settings copy errors, run `gh` and `git push` through the host as well.
+Preserve the exact error. If the host offers its ordinary permission request or approved host execution, request access and, only if granted, retry the same supported CLI command against the same configured workspace; for `agent-ask preview`, keep the exact request id and content. This covers `arcadia next`, `arcadia ping send`, `work monitor`, `tidy --apply`, and `agent-ask preview`, which can write workspace receipts or SQLite WAL state even when they look read-only.
+Never retry the denied write in the unchanged sandbox, disable restrictions, guess another workspace, or edit SQLite directly. If host access is unavailable or denied and no receipt was recorded, use `arcadia agent-ask draft` in an isolated checkout and preserve its validated file through the normal Git/PR handoff; report that no preview receipt exists. A sandboxed shell may have a different `$TMPDIR`, so keep scratch-file writes and reads in the same execution mode. For Claude trust-settings copy errors, run `gh` and `git push` through the host as well.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
