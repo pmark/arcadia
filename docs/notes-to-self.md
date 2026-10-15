@@ -25,7 +25,7 @@ history is additional provenance, never a substitute for that receipt.
 | Validation | Every backticked repo path in an entry must still exist, and the same test fails when one moves. |
 | Expiry | `Expires when #NNN closes` marks a workaround. Retain it through `arcadia learn` with an exact-content receipt before the closing PR removes the cache entry. |
 | Write-back | The best eviction fixes the friction at its source: a clearer error, a `--help` line, a command that prints the answer. Retain the exact former entry and receipt before shortening the cache. |
-| Eviction | At capacity, retain every current entry first, then use explicit `learn cache-maintain --evict <lesson-id> --apply`; it refuses without an exact-content receipt. |
+| Eviction | At capacity, retain every current entry first, then use explicit `learn cache-maintain --evict <lesson-id> --apply`; it moves the actual source into durable custody, verifies retention, and only exclusively installs a replacement when no concurrent writer recreated the path. |
 
 **Rules:**
 1. **Look first.** Before searching for a path, command, flag, id, or database, grep this file.

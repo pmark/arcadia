@@ -4,7 +4,7 @@
   "model": "GPT-6 (exact host model ID unavailable)",
   "effort": null,
   "action_id": "operator-directed:#1432",
-  "pr": null,
+  "pr": 1435,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
@@ -22,7 +22,7 @@
     }
   ],
   "outcome": "split",
-  "notes": "Build passed; candidate rebased by conflict-free origin/main merge. Pending independent review, QA, CI, and PR delivery.",
+  "notes": "PR1435 draft; build passed. Round1 repair batch pending independent round2 review, QA, CI, and delivery.",
   "candidate_head": "40712ac107468433797775362dee4504f5d6f17c",
   "evidence_source": "docs/reports/handoffs/20261015T1718Z-learn-implementer.md"
 }

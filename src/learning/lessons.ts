@@ -199,10 +199,15 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
   }
   const scope = normalizeLessonScope(lesson.scope_key);
   if (lesson.id !== `lesson_${lesson.fingerprint.slice(0, 20)}`) throw validationError("Lesson export id does not match its fingerprint.", { id: lesson.id });
-  const versionIds = new Set(lesson.versions.map((version) => version.id));
-  const numbers = new Set(lesson.versions.map((version) => version.version));
+  const ordered = [...lesson.versions].sort((left, right) => left.version - right.version);
+  const versionIds = new Set(ordered.map((version) => version.id));
+  const numbers = new Set(ordered.map((version) => version.version));
   const currentInGraph = lesson.versions.find((version) => version.id === lesson.current_version_id);
-  if (lesson.current_version_id !== lesson.current.id || !currentInGraph || versionIds.size !== lesson.versions.length || numbers.size !== lesson.versions.length || [...numbers].some((version) => !Number.isInteger(version) || version < 1) || [...numbers].some((version) => !numbers.has(version + 1) && version !== numbers.size)) {
+  const contiguous = ordered.every((version, index) => version.version === index + 1);
+  const chain = ordered.every((version, index) => index === 0
+    ? version.supersedes_version_id === null
+    : version.supersedes_version_id === ordered[index - 1].id);
+  if (lesson.current_version_id !== lesson.current.id || !currentInGraph || currentInGraph.id !== ordered.at(-1)?.id || versionIds.size !== ordered.length || numbers.size !== ordered.length || !contiguous || !chain) {
     throw validationError("Lesson export has an invalid current-version pointer or version sequence.", { id: lesson.id });
   }
   if (hash(JSON.stringify({ scope, text: lesson.versions.find((version) => version.version === 1)?.text })) !== lesson.fingerprint) {
@@ -228,7 +233,7 @@ export function restoreLessonGraph(db: Database.Database, lesson: Lesson): void 
   });
   db.prepare("INSERT INTO lessons (id, scope_key, fingerprint, back_burner_item_id, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .run(lesson.id, scope, lesson.fingerprint, backBurner.id, lesson.current_version_id, lesson.created_at, lesson.updated_at);
-  for (const version of [...lesson.versions].sort((left, right) => left.version - right.version)) {
+  for (const version of ordered) {
     db.prepare(`INSERT INTO lesson_versions (id, lesson_id, version, text, text_hash, keywords_json, provenance_kind, confidence, freshness, repository_revision, source_ref, supersedes_version_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(version.id, lesson.id, version.version, version.text, version.text_hash, JSON.stringify(version.keywords), version.provenance_kind, version.confidence, version.freshness, version.repository_revision, version.source_ref, version.supersedes_version_id, version.created_at);

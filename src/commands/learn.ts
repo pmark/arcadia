@@ -137,8 +137,10 @@ export function runLearnCacheMaintainCommand(options: LearnCacheMaintainOptions)
   return createSuccess({ command: "learn.cache-maintain", workspace: workspacePath, data: { imported: imported.imported, entryCount: entries.length, evictedId: evictId, updatedMarkdown: options.markdown.replace(result, "") } });
 }
 /** Restore only validates the documented export envelope; no paths are interpreted from it. */
-export function runLearnRestoreCommand(options: { workspace: string; payload: LearnExport }): CommandSuccess<{ restored: number }> {
+export function runLearnRestoreCommand(options: { workspace: string; scope?: string; payload: LearnExport }): CommandSuccess<{ restored: number }> {
   if (options.payload?.schema !== "arcadia-lessons-v1" || !Array.isArray(options.payload.lessons)) throw validationError("Lesson import payload is invalid.", {});
+  const scope = normalizeLessonScope(options.scope);
+  if (options.payload.lessons.some((lesson) => lesson.scope_key !== scope)) throw validationError("Lesson restore payload contains a different scope; no lessons were restored.", { scope });
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const result = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
     let restored = 0;

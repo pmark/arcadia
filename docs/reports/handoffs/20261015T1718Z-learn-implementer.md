@@ -21,7 +21,7 @@ Learn is the authoritative durable, scoped evidence store. `docs/notes-to-self.m
 | Existing intake primitives | Initial capture creates a linked Back Burner `IncubatingThought`; related lesson hints reuse `normalizeEvidence`, `summarySimilarity`, and the defect duplicate threshold. |
 | Lossless retention | The graph export includes stable IDs, timestamps, versions, evidence and observations. Restore validates identity/fingerprint, contiguous version sequence, pointer membership/current consistency, enum/types, hashes and supersession closure before a transaction inserts the graph. Conflicts refuse. |
 | Notes and history migration | Notes entries retain the exact heading/body as stale imported evidence. `learn import-history` runs bounded `git log --all --full-history -- <Notes file>` and reads only available file snapshots, retaining revision provenance and reporting gaps. |
-| Safe bounded cache maintenance | All current entries import before an explicit named eviction. Eviction requires an exact-text receipt and source-byte recheck before write; invalid/no-entry input leaves the cache unchanged. No automatic truncation occurs. |
+| Safe bounded cache maintenance | All current entries import before an explicit named eviction. `--apply` moves actual bytes into workspace custody, retains/verifies them, then exclusively installs a prepared replacement only when the source path remains absent. |
 | Experiment containment | `learn export --file` and `learn cache-maintain --apply` are guarded under Decision 0082 to the experiment allowed repository root; an actual isolated CLI test refuses external mutation. |
 | Agent discovery/docs | Notes cache rules, START_HERE, retained-Learn agent lookup guidance, and its index fingerprint were updated. Guidance distinguishes verified Notes remedies from unverified Learn evidence. |
 
@@ -91,9 +91,11 @@ node --import tsx "$repo_root/src/cli.ts" learn restore --file "$repo/lessons.js
 node --import tsx "$repo_root/src/cli.ts" learn search 'Original advice' --scope project:learn-qa --workspace "$restored"
 ```
 
-Expected output: import reports retained entries; cache maintenance prints `Evicted: lesson_…` only after receipt verification; history reports locally available snapshots (and any shallow/unavailable gap); export writes JSON once; restore reports its count; final search finds the retained historical version in the restored workspace. Remove the disposable directory when finished: `rm -rf "$qa_root"`.
+Expected output: import reports retained entries; cache maintenance prints `Evicted: lesson_…` after custody verification; history reports locally available snapshots (and any shallow/unavailable gap); export writes JSON once; restore reports its count; final search finds the retained historical version in the restored workspace. Remove the disposable directory when finished: `rm -rf "$qa_root"`.
 
 ## Internal review and custody
+
+Independent round-one review is preserved verbatim at `docs/reviews/2026-10-15-learn-pr1435-round1.md` for draft PR #1435. Dispositions: (1) default scope now uses `enclosingProjectRoot` plus `parseDoc`; (2) Notes file paths use `resolveInvocationPath` and contained regular-file checks; (3) restore rejects a payload outside selected scope before mutation; (4) restore requires a contiguous v1→latest predecessor chain; (5) cache application now moves actual bytes into workspace artifact custody and uses exclusive replacement, restoring custody only when the path remains absent. These repairs require independent round-two review; this record does not mark the findings passed.
 
 Internal diff review checked replay-after-correction behavior, literal `%`/`_` search semantics, restore pointer/graph closure and transaction rollback, path/symlink and source-byte protections, and experiment-root mutation guards. This is not the required independent PR review; the Lead owns the separate canonical review and QA processes.
 

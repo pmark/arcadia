@@ -5,7 +5,7 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-import { existsSync, lstatSync, realpathSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -86,6 +86,7 @@ import {
   runLearnRestoreCommand,
   runLearnSearchCommand,
   runLearnShowCommand,
+  lessonPayloadHash,
   serializedLessonExport
 } from "./commands/learn.js";
 import {
@@ -524,7 +525,8 @@ import {
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
 import { normalizeError, validationError } from "./cli/errors.js";
-import { invocationRoot, resolveInvocationPath } from "./cli/invocation.js";
+import { enclosingProjectRoot, invocationRoot, resolveInvocationPath } from "./cli/invocation.js";
+import { parseDoc } from "./docs/parse.js";
 import type { BackBurnerSurfaceCondition } from "./domain/types.js";
 import type { BackBurnerFacetTag } from "./domain/constants.js";
 import { ORIENTATION_EFFORTS, type OrientationEffort } from "./orientation/types.js";
@@ -1587,14 +1589,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       const merged = { ...parent, ...options };
       return runCliAction("learn.correct", merged, () => runLearnCorrectCommand({ ...merged, scope: resolveLessonScope(merged.scope), id, text, retract: merged.retract, provenance: merged.provenance as Parameters<typeof runLearnCorrectCommand>[0]["provenance"], confidence: merged.confidence as Parameters<typeof runLearnCorrectCommand>[0]["confidence"], freshness: merged.freshness as Parameters<typeof runLearnCorrectCommand>[0]["freshness"] }), renderLearnShowSuccess);
     });
-  addJsonOption(learn.command("import-notes").requiredOption("--file <path>", "Notes To Self Markdown file"))
+  addJsonOption(learn.command("import-notes").requiredOption("--file <path>", "Notes To Self Markdown file", resolveInvocationPath))
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; revision?: string; sourceRef?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
-      const markdown = readFileSync(merged.file, "utf8");
+      const markdown = readContainedLessonFile(merged.file);
       return runCliAction("learn.import-notes", merged, () => runLearnImportNotesCommand({ ...merged, scope: resolveLessonScope(merged.scope), markdown, sourceRef: merged.sourceRef ?? merged.file }), renderLearnImportSuccess);
     });
-  addJsonOption(learn.command("import-history").requiredOption("--file <path>", "Notes To Self file whose Git history to retain"))
+  addJsonOption(learn.command("import-history").requiredOption("--file <path>", "Notes To Self file whose Git history to retain", resolveInvocationPath))
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
@@ -1603,7 +1605,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         return runLearnImportHistoryCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), ...history });
       }, (response) => [`Imported: ${response.data.imported}`, `Snapshots: ${response.data.snapshots}`, response.data.shallowGap ? "History gap: repository is shallow" : "History complete as locally available"]);
     });
-  addJsonOption(learn.command("export").option("--file <path>", "Write a lossless JSON export to this path"))
+  addJsonOption(learn.command("export").option("--file <path>", "Write a lossless JSON export to this path", resolveInvocationPath))
     .action((options: { file?: string; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
@@ -1613,24 +1615,21 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         return response;
       }, (response) => [merged.file ? `Exported ${response.data.lessons.length} lesson(s): ${merged.file}` : serializedLessonExport(response.data)]);
     });
-  addJsonOption(learn.command("restore").requiredOption("--file <path>", "Lossless lesson export JSON"))
+  addJsonOption(learn.command("restore").requiredOption("--file <path>", "Lossless lesson export JSON", resolveInvocationPath))
     .action((options: { file: string; json?: boolean }, cmd: Command) => {
-      const parent: { workspace: string; json?: boolean } = cmd.optsWithGlobals();
+      const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
       const payload = JSON.parse(readFileSync(merged.file, "utf8"));
-      return runCliAction("learn.restore", merged, () => runLearnRestoreCommand({ workspace: merged.workspace, payload }), renderLearnRestoreSuccess);
+      return runCliAction("learn.restore", merged, () => runLearnRestoreCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), payload }), renderLearnRestoreSuccess);
     });
-  addJsonOption(learn.command("cache-maintain").requiredOption("--file <path>", "Current Notes To Self file").option("--evict <lesson-id>", "Explicit retained lesson id to remove from the hot cache").option("--apply", "Write the planned cache update after a byte check"))
+  addJsonOption(learn.command("cache-maintain").requiredOption("--file <path>", "Current Notes To Self file", resolveInvocationPath).option("--evict <lesson-id>", "Explicit retained lesson id to remove from the hot cache").option("--apply", "Write the planned cache update after a byte check"))
     .action((options: { file: string; evict?: string; apply?: boolean; json?: boolean }, cmd: Command) => {
       const parent: { workspace: string; scope?: string; json?: boolean } = cmd.optsWithGlobals();
       const merged = { ...parent, ...options };
       const source = readContainedLessonFile(merged.file);
       return runCliAction("learn.cache-maintain", merged, () => {
         const response = runLearnCacheMaintainCommand({ workspace: merged.workspace, scope: resolveLessonScope(merged.scope), markdown: source, sourceRef: merged.file, evictId: merged.evict });
-        if (merged.apply && response.data.updatedMarkdown !== null) {
-          if (readContainedLessonFile(merged.file) !== source) throw validationError("Notes changed during cache maintenance; no cache deletion was written.", { file: merged.file });
-          writeFileSync(merged.file, response.data.updatedMarkdown, "utf8");
-        }
+        if (merged.apply && response.data.updatedMarkdown !== null) installLosslessCacheReplacement(merged.workspace, merged.file, source, response.data.updatedMarkdown, merged.scope);
         return response;
       }, (response) => [`Imported: ${response.data.imported}`, `Cache entries: ${response.data.entryCount}`, response.data.evictedId ? `Evicted: ${response.data.evictedId}` : "No cache entry removed"]);
     });
@@ -5260,18 +5259,21 @@ function defaultWorkspace(): string {
 /** A convenient capture stays Project-scoped; Arcadia-wide guidance is explicit. */
 function resolveLessonScope(explicitScope: string | undefined): string {
   if (explicitScope) return explicitScope;
-  const projectFile = path.join(invocationRoot(), "PROJECT.md");
-  if (!existsSync(projectFile)) {
+  const root = enclosingProjectRoot();
+  if (!root) {
     throw validationError("No invoking Project was found; pass --scope arcadia or --scope project:<slug>.", {});
   }
-  const slug = /^slug:\s*([^\s#]+)\s*$/m.exec(readFileSync(projectFile, "utf8"))?.[1];
-  if (!slug) throw validationError("Invoking PROJECT.md has no slug; pass an explicit lesson scope.", { projectFile });
-  return `project:${slug}`;
+  const projectFile = path.join(root, "PROJECT.md");
+  const { doc, errors } = parseDoc("PROJECT.md", projectFile, readFileSync(projectFile, "utf8"));
+  if (errors.length || doc?.type !== "project") throw validationError("Invoking PROJECT.md could not be parsed as a managed Project; pass an explicit lesson scope.", { projectFile, errors });
+  return `project:${doc.slug}`;
 }
 
 function readContainedLessonFile(file: string): string {
-  const root = realpathSync(invocationRoot());
-  const candidate = path.resolve(file);
+  const projectRoot = enclosingProjectRoot();
+  if (!projectRoot) throw validationError("Notes files require an invoking Project repository.", { file });
+  const root = realpathSync(projectRoot);
+  const candidate = resolveInvocationPath(file);
   if (lstatSync(candidate).isSymbolicLink()) throw validationError("Lesson file symlinks are refused for cache maintenance.", { file });
   const actual = realpathSync(candidate);
   if (actual !== root && !actual.startsWith(`${root}${path.sep}`)) throw validationError("Lesson file must stay inside the invoking repository.", { file });
@@ -5279,8 +5281,12 @@ function readContainedLessonFile(file: string): string {
 }
 
 function readContainedLessonHistory(file: string): { snapshots: Array<{ revision: string; markdown: string; sourceRef: string }>; shallow: boolean; unavailableRevisions: string[] } {
-  const root = realpathSync(invocationRoot());
-  const actual = realpathSync(path.resolve(file));
+  const projectRoot = enclosingProjectRoot();
+  if (!projectRoot) throw validationError("Notes history requires an invoking Project repository.", { file });
+  const root = realpathSync(projectRoot);
+  const candidate = resolveInvocationPath(file);
+  if (lstatSync(candidate).isSymbolicLink()) throw validationError("Lesson history file symlinks are refused.", { file });
+  const actual = realpathSync(candidate);
   if (actual !== root && !actual.startsWith(`${root}${path.sep}`)) throw validationError("Lesson history file must stay inside the invoking repository.", { file });
   const relative = path.relative(root, actual);
   const revisions = spawnSync("git", ["log", "--format=%H", "--all", "--full-history", "--", relative], { cwd: root, encoding: "utf8" });
@@ -5294,6 +5300,53 @@ function readContainedLessonHistory(file: string): { snapshots: Array<{ revision
   });
   const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: root, encoding: "utf8" }).stdout.trim() === "true";
   return { snapshots, shallow, unavailableRevisions };
+}
+
+/**
+ * Preserve the actual source inode before installing a cache deletion. A new
+ * source path is installed only with an exclusive hard link, so a concurrent
+ * writer that recreates it wins and its bytes are never overwritten.
+ */
+function installLosslessCacheReplacement(workspace: string, file: string, planned: string, replacement: string, scope: string | undefined): void {
+  const source = resolveInvocationPath(file);
+  const custodyDir = path.join(getWorkspacePaths(workspace).artifacts, "learn-cache-custody");
+  mkdirSync(custodyDir, { recursive: true });
+  const operation = randomUUID();
+  const mode = lstatSync(source).mode & 0o777;
+  const custody = path.join(custodyDir, `${operation}.notes.md`);
+  const intent = path.join(custodyDir, `${operation}.intent.json`);
+  writeFileSync(intent, JSON.stringify({ source, plannedHash: lessonPayloadHash(planned), createdAt: new Date().toISOString() }), { encoding: "utf8", flag: "wx" });
+  try {
+    renameSync(source, custody);
+  } catch (error) {
+    throw validationError("Notes cache could not be moved into durable custody; no cache deletion was written.", { file, custody, error: error instanceof Error ? error.message : String(error) });
+  }
+  const actual = readFileSync(custody, "utf8");
+  try {
+    runLearnImportNotesCommand({ workspace, scope: resolveLessonScope(scope), markdown: actual, sourceRef: `custody:${custody}` });
+  } catch (error) {
+    restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Actual Notes bytes were retained in custody but durable capture failed; cache replacement was refused.", { file, custody, error: error instanceof Error ? error.message : String(error) });
+  }
+  if (actual !== planned) {
+    restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Notes changed before custody transfer; actual bytes were retained and restored without applying a stale eviction.", { file, custody, recovery: custody });
+  }
+  const temporary = path.join(path.dirname(source), `.${path.basename(source)}.${operation}.learn-next`);
+  try {
+    writeFileSync(temporary, replacement, { encoding: "utf8", flag: "wx", mode });
+    chmodSync(temporary, mode);
+    linkSync(temporary, source);
+    unlinkSync(temporary);
+  } catch (error) {
+    try { unlinkSync(temporary); } catch {}
+    restoreCustodyOnlyIfAbsent(custody, source);
+    throw validationError("Notes changed concurrently; original bytes remain in custody and the new source was not overwritten.", { file, custody, recovery: custody, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function restoreCustodyOnlyIfAbsent(custody: string, source: string): void {
+  try { linkSync(custody, source); } catch {}
 }
 
 /**

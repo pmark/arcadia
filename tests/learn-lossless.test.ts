@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -54,7 +54,7 @@ describe("arcadia learn", () => {
     const changed = runLearnCorrectCommand({ workspace: ws, scope: "project:one", id: lesson.id, text: "Fresh replacement" }).data.lesson;
     const exported = runLearnExportCommand({ workspace: ws, scope: "project:one" }).data;
     const target = workspace();
-    expect(runLearnRestoreCommand({ workspace: target, payload: exported }).data.restored).toBe(1);
+    expect(runLearnRestoreCommand({ workspace: target, scope: "project:one", payload: exported }).data.restored).toBe(1);
     const restored = runLearnShowCommand({ workspace: target, scope: "project:one", id: changed.id }).data.lesson;
     expect(restored.versions?.map((version) => version.id)).toEqual(changed.versions?.map((version) => version.id));
     withDatabase(target, (db) => expect((db.prepare("SELECT COUNT(*) AS count FROM lesson_receipts").get() as { count: number }).count).toBeGreaterThan(0));
@@ -83,14 +83,23 @@ describe("arcadia learn", () => {
     const retained = runLearnSearchCommand({ workspace: ws, scope: "project:one", query: "old text" }).data.lessons[0];
     expect(retained.current?.observations).toHaveLength(2);
     const invalid = { schema: "arcadia-lessons-v1" as const, lessons: [{ ...retained, current_version_id: "lessonVersion_outside" }] };
-    expect(() => runLearnRestoreCommand({ workspace: workspace(), payload: invalid })).toThrow(/current-version/i);
+    expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:one", payload: invalid })).toThrow(/current-version/i);
     const mismatchedCurrent = {
       schema: "arcadia-lessons-v1" as const,
       lessons: [{ ...retained, current: { ...retained.current!, text: "untrusted replacement" } }]
     };
     const target = workspace();
-    expect(() => runLearnRestoreCommand({ workspace: target, payload: mismatchedCurrent })).toThrow(/current version/i);
+    expect(() => runLearnRestoreCommand({ workspace: target, scope: "project:one", payload: mismatchedCurrent })).toThrow(/current version/i);
     expect(runLearnExportCommand({ workspace: target, scope: "project:one" }).data.lessons).toHaveLength(0);
+    const cyclic = {
+      schema: "arcadia-lessons-v1" as const,
+      lessons: [{ ...retained, versions: retained.versions!.map((version) => ({
+        ...version,
+        supersedes_version_id: version.id
+      })) }]
+    };
+    expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:one", payload: cyclic })).toThrow(/current-version|exact-content/i);
+    expect(() => runLearnRestoreCommand({ workspace: workspace(), scope: "project:two", payload: { schema: "arcadia-lessons-v1", lessons: [retained] } })).toThrow(/different scope/i);
   });
 
   it("exercises CLI parsing, Project-scope inference, and invalid enum refusal in a disposable repository", () => {
@@ -98,12 +107,22 @@ describe("arcadia learn", () => {
     const repo = mkdtempSync(path.join(tmpdir(), "arcadia-learn-cli-"));
     workspaces.push(repo);
     mkdirSync(path.join(repo, "docs"), { recursive: true });
-    writeFileSync(path.join(repo, "PROJECT.md"), "---\narcadia: v1\ntype: project\nslug: fixture\nname: Fixture\nstatus: active\ngoal: Test\nupdated: 2026-10-15\n---\n", "utf8");
-    const captured = runCli(["learn", "CLI keeps exact text", "--workspace", ws, "--json"], {}, { cwd: repo });
+    writeFileSync(path.join(repo, "PROJECT.md"), "---\narcadia: v1\ntype: project\nslug: \"fixture\"\nname: Fixture\nstatus: active\ngoal: Test\nupdated: 2026-10-15\n---\n", "utf8");
+    mkdirSync(path.join(repo, "nested"), { recursive: true });
+    const notesPath = path.join(repo, "docs", "notes-to-self.md");
+    const notes = "## Cache race fixture\nkeys: cache race\nDo not overwrite concurrent bytes.\n";
+    writeFileSync(notesPath, notes, "utf8");
+    const captured = runCli(["learn", "CLI keeps exact text", "--workspace", ws, "--json"], {}, { cwd: path.join(repo, "nested") });
     expect(captured.status).toBe(0);
     expect(parseJson(captured.stdout).data.lesson.scope_key).toBe("project:fixture");
     const invalid = runCli(["learn", "bad enum", "--workspace", ws, "--provenance", "unknown", "--json"], {}, { cwd: repo });
     expect(invalid.status).toBe(2);
+    const imported = runCli(["learn", "import-notes", "--file", "../docs/notes-to-self.md", "--workspace", ws, "--json"], {}, { cwd: path.join(repo, "nested") });
+    expect(imported.status).toBe(0);
+    const cacheId = parseJson(imported.stdout).data.lessonIds[0];
+    const applied = runCli(["learn", "cache-maintain", "--file", "../docs/notes-to-self.md", "--evict", cacheId, "--apply", "--workspace", ws, "--json"], {}, { cwd: path.join(repo, "nested") });
+    expect(applied.status, applied.stderr).toBe(0);
+    expect(readFileSync(notesPath, "utf8")).not.toBe(notes);
   });
 
   it("imports available Notes Git history through the CLI in a disposable repository", () => {
