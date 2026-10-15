@@ -30,6 +30,17 @@ Governed capacity admission remains unavailable. Use installed `arcadia` and the
 installed role skill in adopting Projects; missing skills stop dispatch until
 installed. Lead and implementer never write concurrently.
 
+A [Behavior](docs/arcadia-semantics.md#behavior) is a named procedural contract
+followed by an existing Role; mode describes its active operating state.
+Supervision is a Behavior attached to a Supervisor's assigned relationship.
+Hacker recovery is a bounded Behavior followed in recovery mode, not an eighth
+role: the Lead diagnoses and the authorized implementer repairs. Supervisors
+require
+the [recovery procedure](docs/agent-guidance/hacker-recovery.md) after two
+unchanged refusals without evidence gain, or immediately for an explicit
+stop-the-line request. The mode adds no authority or allowance; installing the
+guidance and wiring automatic invocation remain separate work.
+
 The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 `config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
 `roles` object keyed by registered ID, with only `default_tier` and

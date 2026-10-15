@@ -125,21 +125,21 @@
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "730e1dfa0c20f968e0be2e02456a0e6e8d53763d62268e4fd1bb3176a0a178b3"
+      "sha256": "67c9170da196a91dd53622f9a9bcb6aeaa5b79a985fd528582d713e5e923c01f"
     },
     {
       "id": "native-app-sessions",
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "628087e9f5720ea8829b01ee533904cd4d7a93b8f2c52bbb91c25d118c4eddfe"
+      "sha256": "7714fe57a72d607763eb851f2b964543da1c1def3b9d472133818693ad8bb232"
     },
     {
       "id": "hacker-recovery",
       "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
       "path": "docs/agent-guidance/hacker-recovery.md",
       "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
-      "sha256": "2dc006fc3c4bdbf895db75f4bfb48d2acc69cb4a37a79558b7c5f7eaf53b79cd"
+      "sha256": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e"
     },
     {
       "id": "code-simplification",

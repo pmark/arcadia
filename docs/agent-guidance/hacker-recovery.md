@@ -1,37 +1,38 @@
 # Hacker recovery: change the diagnosis, preserve the boundaries
 
-Hacker mode is bounded recovery from procedural fixation: challenge an assumed
+Hacker recovery is a Behavior, a named procedural contract followed by existing
+roles within assigned authority. In recovery mode, challenge an assumed
 route, find the smallest existing authorized path, prove it works, then resume
 the task. It is not a model, permission switch, security bypass or new runner.
-The proposed **Hacker** specialist owns this recovery assignment. Its registered
-role is pending the Agent Ask in this branch; Decision 0100 still defines seven
-roles. Until ratified and implemented, use an existing Lead for diagnosis and
-an authorized implementer as the sole writer. Do not pass `--role hacker` to a
-CLI that does not list it.
+The operator selected recovery as a specialization of existing roles, recorded
+in [the Project Log](../../MISSION_LOG.md) by Agent Ask
+`record-hacker-existing-role-choice-20261014`. Decision 0100's seven-role
+taxonomy stays unchanged. An assigned Lead diagnoses; an authorized implementer
+is the sole repair writer. The Behavior adds no registered role ID: do not
+pass `--role hacker` to the CLI.
 
-## Proposed registered contract (not active)
+## Behavior contract
 
-- ID `hacker`; responsibility: turn a stuck authorized repair into a verified
-  recovery path and bounded repair, or an exact actionable blocker.
-- Existing attempt lineage `development`, identity `builder`, sole-writer
-  eligibility only in the assigned candidate. Supervisor: assigned Lead.
-- No delegation, no independent-review requests, no implicit launch/admission.
-  Lead may request Hacker at depth 1 only after Decision 0114 is amended and
-  the registry/brief/lineage implementation proves eligibility. Never two writers.
-- Proposed default: standard tier / `e2_standard`; initial read-only diagnosis
-  may use light when sufficient and authorized. Actual provider/model/effort
-  comes from the runtime binding; unknown values remain unknown.
+- Responsibility: turn a stuck authorized repair into a verified recovery path
+  and bounded repair, or an exact actionable blocker.
+- Keep the assigned role, identity, attempt lineage, supervision and candidate
+  custody. The mode adds no delegation or independent-review eligibility and
+  never launches or admits a Session. A separately authorized helper uses an
+  existing eligible role under Decision 0114; never two writers.
+- Keep the assignment's authorized model, effort and remaining allowance. Use
+  light-tier read-only diagnosis when sufficient and authorized. Actual
+  provider/model/effort comes from the runtime binding; unknown values remain
+  unknown. The mode supplies no independent model default or spend allowance.
 - Required artifacts: failed receipt and hypothesis, verified route or blocker,
   preservation/custody evidence, regressions and repair when authorized, final
   head's independent review/checks, reusable prevention in the owning procedure.
 - Activation ends at verified continuation or the finite pass deadline. Return
   help to the Lead; never self-renew an allowance or manufacture a successor.
 
-The taxonomy Ask offers registration through a justified planned Action or
-retaining recovery as an existing-role specialization. It records no answer.
-Acceptance for registration must cover canonical IDs/schema, role briefs,
-lineage and native-dispatch refusal/eligibility, single-writer enforcement and
-adoption of installed skills; these are pending work, not proof from this PR.
+The original taxonomy proposal is archived after the operator's choice; it is
+not an outstanding registration prerequisite. Source guidance, installed skill
+adoption and automatic invocation remain separate. No automatic trigger wiring
+or new executor is established by this contract.
 
 ## Activation: agents and supervisors must change strategy
 
@@ -124,5 +125,5 @@ and trigger before repeating the failure; capture missing capabilities through
 Agent Asks. No second memory store, watcher, automatic launch or service install.
 
 For assignment protocol use [arcadia-hacker](../../.agents/skills/arcadia-hacker/SKILL.md).
-Role registration, model selection, launch/admission and permissions remain
-separate facts; a proposed title proves none of them.
+Mode assignment, model selection, launch/admission and permissions remain
+separate facts; the Hacker label proves none of them.

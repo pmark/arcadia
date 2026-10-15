@@ -5,13 +5,14 @@ description: Recover from repeated workflow refusals, procedural fixation or an 
 
 # Arcadia Hacker
 
-Hacker is a proposed recovery specialist; it is not yet an eighth registered
-role. Read the assigned Project's indexed
+Hacker recovery is a Behavior: a bounded procedural contract followed by
+existing roles. Entering recovery mode activates that Behavior, not an eighth
+registered role or a new executor. Read the assigned Project's indexed
 `docs/agent-guidance/hacker-recovery.md` and the installed `arcadia-role` skill.
 If either is unavailable, preserve the assignment and report the missing
 adoption. Do not invent registry admission.
-Until the taxonomy Decision is ratified and implemented, diagnosis uses an
-assigned Lead and code changes use one authorized implementer.
+Diagnosis uses an assigned Lead and code changes use one authorized implementer.
+Keep that role's lineage, supervision and permissions; the mode adds none.
 
 Activate immediately for a stop-the-line request, and before a third unchanged
 refusal or repeated discussion without evidence gain. Supervisors must recognize

@@ -85,7 +85,9 @@ On the first persistent refusal diagnose the route and request classification;
 after two unchanged refusals, or an explicit red alert, follow
 [hacker-recovery.md](hacker-recovery.md) before another attempt. The Lead must
 stop commissioning unchanged retries, preserve ownership and keep one writer.
-Use the existing implementer until the proposed Hacker role is registered.
+Hacker recovery is a Behavior, a named procedural contract within assigned
+authority. Recovery mode is its active operating state: the Lead diagnoses and
+the authorized implementer repairs. No Hacker role registration is required.
 Actual model/effort must come from launch evidence, not a role label or brief.
 
 ## 5. Per-app notes

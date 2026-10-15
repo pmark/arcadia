@@ -5,7 +5,9 @@ description: Carry out assigned Arcadia supervision on a friction or exception s
 
 # Arcadia supervisor
 
-Supervision is an assigned relationship, not an eighth registered role.
+Supervision is a Behavior: a named procedural contract within assigned
+authority. Supervisor remains an assigned relationship and duty, not an eighth
+registered role.
 Decision 0113 establishes delegate → Lead → Project supervisor → operator;
 Decision 0121 amends its deterministic-only behavior with event-triggered
 light-tier supervision on friction/exception signals and at session end,

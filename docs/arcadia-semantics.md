@@ -125,6 +125,33 @@ Log is the canonical replacement for Mission Log unless the longer phrase is int
 
 ## Supporting Properties
 
+### Behavior
+
+A **Behavior** is a named procedural contract followed by an existing eligible
+Role within its assigned authority. It states when the procedure applies, its
+scope and duties, required evidence or Artifacts, finite allowance and deadline,
+and stop or escalation conditions.
+
+Role determines responsibility, lineage and eligibility. Behavior describes how
+the assigned work is carried out. A **mode** is the active operating state while
+a Behavior is being followed; **acts as** may describe composition in prose, but
+is not the canonical noun for this concept.
+
+For example, supervision is a Behavior carried by a Supervisor's assigned
+relationship and duties (Decisions 0113 and 0121). Hacker recovery is a Behavior
+followed in recovery mode: the assigned Lead diagnoses and the authorized
+implementer repairs. Neither example creates an eighth registered role.
+
+Compatible Behaviors may apply together, but none overrides authority, custody,
+the sole-writer rule or a tighter existing bound. A Behavior grants no identity,
+permission, delegation, model binding, additional budget or runtime admission.
+It is a supporting execution concept, not a new primary work object or registry
+entry. Defining source guidance proves neither installed adoption nor automatic
+invocation; schema and runtime changes require their own justified work.
+
+Use **Behavior** as the umbrella term, **mode** for an active state, and **acts
+as** only as descriptive phrasing.
+
 ### Red Alert
 
 A managed-production failure that meets the Stop the line test in `AGENTS.md`:

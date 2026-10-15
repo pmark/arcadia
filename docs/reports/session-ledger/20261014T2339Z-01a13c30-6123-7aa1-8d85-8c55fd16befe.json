@@ -1,0 +1,33 @@
+{
+  "session_id": "01a13c30-6123-7aa1-8d85-8c55fd16befe",
+  "role": "lead",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "configured_effort": "high",
+  "effective_effort": "high",
+  "effort_source": "native turn_context receipt",
+  "action_id": "operator-directed:hacker-existing-role-choice",
+  "pr": 1413,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-git-index-host-permission",
+      "cost_min": null,
+      "fix_ref": null
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Existing-role choice and canonical Behavior approved by operator. Snapshot after completed review rounds 1 and 2; final terminology-delta review is tracked in PR1413.",
+  "candidate_head": "864758be5d463d6b1c1b21508a1212c8b1658fc3",
+  "evidence_source": "docs/reports/hacker-existing-role-choice-2026-10-14.md",
+  "task_class": "operator-directed governance documentation"
+}
