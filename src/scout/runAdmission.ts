@@ -135,7 +135,8 @@ function sameScope(left: AdmissionScope, right: AdmissionScope): boolean {
 }
 
 /** Existing stores only. There is deliberately no live initialization/reset path. */
-function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, sample: ScoutClockSample, action: (history: ScoutAdmissionHistory, witness: Witness) => T): T {
+function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, sample: ScoutClockSample, action: (history: ScoutAdmissionHistory, witness: Witness) => T,
+  custody?: (witness: Witness) => void): T {
   const ledgerPath = realpathSync(stores.ledger);
   const witnessPath = realpathSync(stores.witness);
   const root = realpathSync(fixtureRoot);
@@ -162,6 +163,7 @@ function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, sample: Sc
       if (!historyValid(history) || !witness || witness.schema !== 1 || witness.lineage !== history.lineage
         || witness.sequence !== history.sequence || witness.digest !== admissionDigest(history)
         || !/^[a-f0-9]{64}$/.test(witness.evidenceSha256)) refuse("corrupt or restored history/witness");
+      custody?.(witness);
       const clockFailure = advanceClock(history, sample);
       const clockOnly = structuredClone(history);
       let outcome: { ok: true; value: T } | { ok: false; error: unknown };
@@ -274,8 +276,8 @@ function validateEvidence(evidence: ScoutAdmissionEvidence, scope: AdmissionScop
 export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmissionEvidence, scope: AdmissionScope,
   mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): ScoutReservation {
   const sample = clockFor(mode, at, override); const now = sample.wallMs;
-  if (!finite(now) || now >= EXPIRY) refuse("authority expired or clock invalid");
-  validateEvidence(evidence, scope, now, mode);
+  if (!evidence || evidence.schema !== "arcadia-scout-admission-evidence-v1" || evidence.mode !== mode || !sameScope(evidence.scope, scope)
+    || typeof evidence.isolation?.pins?.fixtureRoot !== "string") refuse("exact-scope authority/isolation evidence is missing");
   if (mode === "live") {
     // Simulation may redirect HOME/config. A live goal cannot acquire a new
     // allowance merely by choosing a different environment/config root.
@@ -289,6 +291,8 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
     }
   }
   const reservation = withHistory(stores, evidence.isolation.pins.fixtureRoot, sample, (history, witness) => {
+    if (now >= EXPIRY) refuse("authority expired");
+    validateEvidence(evidence, scope, now, mode);
     if (witness.evidenceSha256 !== admissionDigest(evidence)) refuse("evidence is not pinned by the independent approval witness");
     if (now < history.lastClock) refuse("clock rollback");
     if (history.attempts.length >= 3 || history.repairs >= 2 || (history.firstLaunch !== null && now >= history.firstLaunch + LOOP_MS)) refuse("attempt, repair or elapsed allowance exhausted");
@@ -310,7 +314,7 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
       deadline: Math.min(now + 90_000, now + LOOP_MS - elapsed(history, sample), history.firstLaunch + LOOP_MS, EXPIRY), failure: null, failureDetail: null, retryable: false, outcome: "reserved" };
     history.attempts.push(attempt);
     return { id: attempt.id, attempt: history.attempts.length, repairs: history.repairs, firstLaunch: history.firstLaunch, deadline: attempt.deadline };
-  });
+  }, (witness) => { if (witness.evidenceSha256 !== admissionDigest(evidence)) refuse("evidence is not pinned by the independent approval witness"); });
   tokens.set(reservation, { scope: { ...scope }, mode, used: false, reservedAt: now, deadline: reservation.deadline,
     stores: { ...stores }, evidence: structuredClone(evidence), reservationId: reservation.id });
   return reservation;
@@ -320,10 +324,10 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
 export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): number {
   const sample = clockFor(mode, at, override); const now = sample.wallMs;
   const token = reservation ? tokens.get(reservation) : undefined;
-  if (!reservation || !token || token.used || token.mode !== mode || !sameScope(token.scope, scope)
-    || now < token.reservedAt || now >= token.deadline || now >= EXPIRY) refuse("valid unused exact-scope reservation is required at invocation");
-  validateEvidence(token.evidence, token.scope, now, mode);
+  if (!reservation || !token || token.used || token.mode !== mode || !sameScope(token.scope, scope)) refuse("valid unused exact-scope reservation is required at invocation");
   withHistory(token.stores, token.evidence.isolation.pins.fixtureRoot, sample, (history, witness) => {
+    if (now < token.reservedAt || now >= token.deadline || now >= EXPIRY) refuse("valid unused exact-scope reservation is required at invocation");
+    validateEvidence(token.evidence, token.scope, now, mode);
     const attempt = history.attempts.at(-1);
     if (now < history.lastClock || attempt?.id !== token.reservationId || attempt.outcome !== "reserved"
       || witness.evidenceSha256 !== admissionDigest(token.evidence)) refuse("reservation history, approval witness or clock changed before invocation");
@@ -335,7 +339,9 @@ export function consumeScoutReservation(reservation: ScoutReservation | undefine
 
 /** Failure attribution is retained; an ambiguous interruption stays reserved and cannot retry. */
 export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string, reservation: ScoutReservation, outcome: { failure: string; retryable?: boolean; classification?: ScoutExecutionFailure } | { completed: true }, at?: number, override?: ScoutClockSample) {
-  const sample = clockFor(tokens.get(reservation)?.mode ?? "live", at, override); const now = sample.wallMs;
+  const token = tokens.get(reservation);
+  if (!token) refuse("outcome requires its issued reservation capability");
+  const sample = clockFor(token.mode, at, override); const now = sample.wallMs;
   return withHistory(stores, fixtureRoot, sample, (history) => {
     const attempt = history.attempts.at(-1);
     if (now < history.lastClock || !attempt || attempt.id !== reservation.id || attempt.outcome !== "reserved") refuse("outcome does not match an unresolved reservation or clock rolled back");

@@ -137,8 +137,11 @@ describe("durable Decision 0128 admission", () => {
     expect(() => consumeScoutReservation(token, { ...f.scope, runId: "other" }, "scripted-fixture", now)).toThrow();
     expect(() => consumeScoutReservation(token, f.scope, "live", now)).toThrow();
     token.deadline += 999_999; expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 90_000)).toThrow();
-    expect(consumeScoutReservation(token, f.scope, "scripted-fixture", now + 100)).toBe(now + 90_000);
-    expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 101)).toThrow();
+    expect(f.read().lastClock).toBe(now + 90_000);
+    expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 100)).toThrow(/rollback/);
+    const fresh = fixture(); const freshToken = fresh.reserve();
+    expect(consumeScoutReservation(freshToken, fresh.scope, "scripted-fixture", now + 100)).toBe(now + 90_000);
+    expect(() => consumeScoutReservation(freshToken, fresh.scope, "scripted-fixture", now + 101)).toThrow();
     expect(admissionDigest(f.read())).toHaveLength(64);
   });
   it("rechecks restore and approval freshness after reservation but before invocation", () => {
