@@ -233,8 +233,9 @@ export function resolveActivePlan(
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  *
- * `options.actionId` resolves the same brief for a *named* Action of the active
- * plan instead of the pointer's. It exists for the one caller that already
+ * `options.actionId` resolves the same brief for a uniquely *named* Action in
+ * the Project instead of the pointer's. An optional planSlug narrows the lookup.
+ * It exists for the caller that already
  * knows which Action it is answering about because it holds that Action's
  * worktree claim: `arcadia go`'s queue-walk fallback, and the `arcadia advance`
  * run inside the worktree that fallback prepared. It reads the pointer's
@@ -244,9 +245,34 @@ export function resolveActivePlan(
 export function resolveDispatch(
   repoRoot: string,
   projectSlug?: string,
-  options?: { actionId?: string }
+  options?: { actionId?: string; planSlug?: string }
 ): DispatchResolution {
-  const { discovered, project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
+  const active = resolveActivePlan(repoRoot, projectSlug);
+  const { discovered, project, blockers } = active;
+  let plan = active.plan;
+  // Only a caller that already knows the assigned Action supplies its identifier.
+  // This reads the assigned Plan without changing the selected pointer.
+  if (options?.actionId && project) {
+    const matches = discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan"
+      && doc.project === project.slug && (!options.planSlug || doc.slug === options.planSlug)
+      && doc.actions.some(action => action.id === options.actionId));
+    if (matches.length !== 1) {
+      blockers.push({ relativePath: "docs/plans", field: "claimed_action", message: "Assigned Plan/Action is missing or ambiguous.",
+        remedy: "Resolve the existing claim against one canonical Plan before continuing." });
+      return { context: null, blockers, operatorQuestion: null };
+    }
+    plan = matches[0];
+    // A reservation identifies observed custody, never activation authority.
+    // The selected Plan's eligibility cannot stand in for this Plan's gate.
+    if (plan !== active.plan && plan.status !== "active") {
+      blockers.push({
+        relativePath: plan.relativePath,
+        field: "status",
+        message: `The assigned plan "${plan.slug}" is "${plan.status}", not active; Arcadia does not dispatch work from it.`,
+        remedy: 'Set `status: active` only when this plan is ready to govern executable work.'
+      });
+    }
+  }
 
   if (!project || !plan) {
     return { context: null, blockers, operatorQuestion: null };

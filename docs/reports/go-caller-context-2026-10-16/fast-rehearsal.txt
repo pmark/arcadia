@@ -1,0 +1,338 @@
+
+ RUN  v4.1.8 /private/tmp/arcadia-go-context-01a143a6
+
+
+ Test Files  19 passed (19)
+      Tests  72 passed | 1 expected fail (73)
+   Start at  08:25:53
+   Duration  282.73s (transform 25.76s, setup 0ms, import 58.96s, tests 1948.72s, environment 2ms)
+
+Fast rehearsal report path: /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-4U0Q30/report.json
+
+Fast rehearsal report: 34 scenario(s), 4m43s wall (vitest exit 0)
+Validator: unsandboxed. Phase times are wall seconds (worker ticks in brackets).
+
+scenario / Action                                                                                       outcome       queue  agent  valid.  git fin.     review  integr.  advance  ticks   wall
+Ask/To-do scout (/private/tmp/arcadia-go-context-01a143a6/tests/fast-rehearsal/ask-todo-scout.test.ts)                                                                                 0   1.8s
+fault-forged-settlement-a-decision (completion-faults.test.ts)                                                                                                                         4  20.4s
+  write-marker-a                                                                                        preserved   1.5 [1]    0.0     2.5  10.8 [1]    3.7 [2]        -        -
+fault-forged-settlement-the-completion (completion-faults.test.ts)                                                                                                                     4  20.5s
+  write-marker-a                                                                                        preserved   1.6 [1]    0.0     2.6  10.8 [1]    3.4 [2]        -        -
+fault-interrupted-after-settlement-commit (completion-faults.test.ts)                                                                                                                  9  35.5s
+  write-marker-a                                                                                        integrated  1.7 [1]    0.0     3.0  11.8 [1]    8.8 [2]  3.6 [1]  0.9 [1]
+  write-marker-b                                                                                        launched    1.8 [1]      -       -   1.5 [2]          -        -        -
+fault-interrupted-after-settlement-commit-operator-reconciled (completion-faults.test.ts)                                                                                              9  20.0s
+  write-marker-a                                                                                        launched    2.2 [1]    0.0     0.5  11.9 [7]          -        -        -
+  write-marker-b                                                                                        launched    2.0 [1]      -       -         -          -        -        -
+fault-interrupted-after-work-commit (completion-faults.test.ts)                                                                                                                       11  41.5s
+  write-marker-a                                                                                        integrated  2.9 [2]    0.0     4.7  13.5 [2]    8.7 [2]  4.0 [1]  0.9 [1]
+  write-marker-b                                                                                        launched    1.6 [1]      -       -   1.3 [2]          -        -        -
+fault-readiness-step-error-then-fresh-modules (completion-faults.test.ts)                                                                                                             10  36.0s
+  write-marker-a                                                                                        integrated  1.6 [1]    0.0     3.1   9.6 [1]   11.3 [3]  4.1 [1]  1.1 [1]
+  write-marker-b                                                                                        launched    1.6 [1]      -       -   1.2 [2]          -        -        -
+environment-wall-session (environment-wall-session.test.ts)                                                                                                                            9   9.6s
+  write-marker-a                                                                                        launched    1.8 [1]      -       -   5.7 [8]          -        -        -
+behaviour-n4-edit-draft-after-inline-preview (executor-behaviours.test.ts)                                                                                                             7  25.0s
+  write-marker-a                                                                                        preserved   2.0 [1]    0.0     3.3  11.3 [1]    6.4 [5]        -        -
+behaviour-run4-untracked-unarchived-draft (executor-behaviours.test.ts)                                                                                                                8  32.8s
+  write-marker-a                                                                                        integrated  1.9 [1]    0.0     2.3  10.1 [1]    8.6 [2]  4.0 [1]  0.8 [1]
+  write-marker-b                                                                                        launched    1.8 [1]      -       -   0.6 [1]          -        -        -
+fault-git-merge-fails-once (git-faults.test.ts)                                                                                                                                        9  38.5s
+  write-marker-a                                                                                        integrated  1.9 [1]    0.0     3.9  11.6 [1]   10.1 [2]  4.3 [1]  1.0 [1]
+  write-marker-b                                                                                        launched    1.8 [1]      -       -   1.2 [2]          -        -        -
+fault-remote-adapter-push-fails-once (git-faults.test.ts)                                                                                                                              9  44.6s
+  write-marker-a                                                                                        integrated  2.5 [1]    0.0     6.6  17.1 [2]    6.5 [1]  5.1 [1]  0.8 [1]
+  write-marker-b                                                                                        launched    2.7 [1]      -       -   1.4 [2]          -        -        -
+long-chain-grant-expires-after-approval (long-chain-grant-expiry.test.ts)                                                                                                             19  55.9s
+  chain-step-1                                                                                          integrated  1.1 [1]    0.0     1.7   6.6 [1]    6.7 [2]  2.8 [1]  0.6 [1]
+  chain-step-2                                                                                          integrated  1.1 [1]    0.0     1.5   5.9 [1]    4.5 [2]  2.4 [1]  0.7 [1]
+  chain-step-3                                                                                          integrated  1.2 [1]    0.0     1.8   6.4 [1]    4.9 [2]  2.1 [1]  0.5 [1]
+  chain-step-4                                                                                          launched    0.8 [1]      -       -         -          -        -        -
+long-chain-grant-expires-between-batches (long-chain-grant-expiry.test.ts)                                                                                                            22  1m28s
+  chain-step-1                                                                                          integrated  1.6 [1]    0.0     2.6  10.6 [1]    8.8 [2]  4.9 [1]  1.0 [1]
+  chain-step-2                                                                                          integrated  1.7 [1]    0.0     3.1  11.1 [1]    8.5 [2]  5.0 [1]  1.3 [1]
+  chain-step-3                                                                                          integrated  1.7 [1]    0.0     2.1   7.3 [1]    6.3 [2]  2.9 [1]  3.2 [5]
+long-chain-grant-expires-mid-action (long-chain-grant-expiry.test.ts)                                                                                                                 28  2m14s
+  chain-step-1                                                                                          integrated  1.7 [1]    0.0     2.5   9.4 [1]    9.5 [2]  4.8 [1]  1.4 [1]
+  chain-step-2                                                                                          integrated  2.1 [1]    0.0     4.1   9.9 [1]    9.4 [2]  4.4 [1]  1.0 [1]
+  chain-step-3                                                                                          integrated  1.7 [1]    0.0     2.8  10.6 [1]    9.5 [2]  4.6 [1]  1.6 [1]
+  chain-step-4                                                                                          integrated  2.0 [1]    0.0     4.0  10.0 [1]   15.9 [7]  4.8 [1]        -
+long-chain-qa-fails-step-5 (long-chain-verdict-failure.test.ts)                                                                                                                       35  2m45s
+  chain-step-1                                                                                          integrated  2.6 [1]    0.0     3.1  11.4 [1]    9.9 [2]  4.6 [1]  1.4 [1]
+  chain-step-2                                                                                          integrated  2.0 [1]    0.0     2.8  10.3 [1]    9.6 [2]  4.3 [1]  1.0 [1]
+  chain-step-3                                                                                          integrated  2.1 [1]    0.0     4.1  10.5 [1]    9.1 [2]  4.1 [1]  1.3 [1]
+  chain-step-4                                                                                          integrated  2.6 [1]    0.0     3.8  10.1 [1]    9.0 [2]  4.1 [1]  0.7 [1]
+  chain-step-5                                                                                          preserved   1.6 [1]    0.0     2.4   7.3 [1]   21.5 [9]        -        -
+long-chain-nine-actions (long-chain.test.ts)                                                                                                                                          56  4m20s
+  chain-step-1                                                                                          integrated  2.0 [1]    0.0     2.4   9.3 [1]    9.6 [2]  4.5 [1]  1.2 [1]
+  chain-step-2                                                                                          integrated  2.1 [1]    0.0     3.2  11.5 [1]    9.0 [2]  4.3 [1]  1.0 [1]
+  chain-step-3                                                                                          integrated  1.9 [1]    0.0     3.3  10.4 [1]    9.1 [2]  4.8 [1]  1.1 [1]
+  chain-step-4                                                                                          integrated  1.8 [1]    0.0     3.7  10.3 [1]    9.3 [2]  4.6 [1]  1.1 [1]
+  chain-step-5                                                                                          integrated  2.1 [1]    0.0     4.4  10.1 [1]    8.8 [2]  4.9 [1]  1.3 [1]
+  chain-step-6                                                                                          integrated  1.8 [1]    0.0     3.7   9.9 [1]   10.4 [2]  3.9 [1]  1.1 [1]
+  chain-step-7                                                                                          integrated  2.1 [1]    0.0     2.8   8.3 [1]    6.5 [2]  2.8 [1]  0.6 [1]
+  chain-step-8                                                                                          integrated  1.2 [1]    0.0     2.7   7.1 [1]    6.8 [2]  2.8 [1]  0.5 [1]
+  chain-step-9                                                                                          integrated  1.0 [1]    0.0     2.3   6.4 [1]    4.7 [2]  2.0 [1]  1.7 [3]
+serial-two-action-clean (serial-two-action.test.ts)                                                                                                                                   13  1m03s
+  write-marker-a                                                                                        integrated  1.5 [1]    0.0     2.9  10.2 [1]    9.6 [2]  4.3 [1]  1.0 [1]
+  write-marker-b                                                                                        integrated  1.7 [1]    0.0     4.5   9.1 [1]    9.6 [2]  3.4 [1]  1.4 [2]
+serial-real-finding-no-rerun (serial-verdict-variance.test.ts)                                                                                                                        10  41.1s
+  write-marker-a                                                                                        preserved   1.7 [1]    0.0     3.2  10.1 [1]   24.8 [8]        -        -
+serial-variance-then-pass (serial-verdict-variance.test.ts)                                                                                                                           14  1m07s
+  write-marker-a                                                                                        integrated  1.5 [1]    0.0     2.8   9.6 [1]   14.3 [3]  3.9 [1]  1.2 [1]
+  write-marker-b                                                                                        integrated  1.6 [1]    0.0     3.9  11.3 [1]    8.6 [2]  3.9 [1]  1.5 [2]
+serial-variance-three-times (serial-verdict-variance.test.ts)                                                                                                                         12  51.0s
+  write-marker-a                                                                                        preserved   1.5 [1]    0.0     2.8  10.2 [1]  35.1 [10]        -        -
+session-probe-wall (session-probe-wall.test.ts)                                                                                                                                        9  10.3s
+  write-marker-a                                                                                        launched    2.1 [1]      -       -   5.8 [8]          -        -        -
+behaviour-extra-commit-after-settle (settle-then-dirty.test.ts)                                                                                                                        7  24.5s
+  write-marker-a                                                                                        preserved   1.7 [1]    0.0     2.7   8.4 [1]    9.4 [5]        -        -
+behaviour-extra-commit-operator-reconciled (settle-then-dirty.test.ts)                                                                                                                 8  28.1s
+  write-marker-a                                                                                        preserved   3.0 [2]    0.0     2.8  13.2 [1]    7.3 [5]        -        -
+behaviour-extra-uncommitted-file (settle-then-dirty.test.ts)                                                                                                                           7  26.3s
+  write-marker-a                                                                                        preserved   1.6 [1]    0.0     2.8  10.2 [1]    8.1 [5]        -        -
+stacked-base-existing-pr-mismatch (stacked-base-existing-pr.test.ts)                                                                                                                  14  1m07s
+  write-marker-a                                                                                        integrated  1.6 [1]    0.0     3.6  10.4 [1]    9.2 [2]  4.0 [1]  0.8 [1]
+  write-marker-b                                                                                        integrated  1.5 [1]    0.0     3.7  20.2 [5]    6.0 [1]  3.4 [1]        -
+stacked-base-previous-pr-closed (stacked-base-github-state.test.ts)                                                                                                                   11  59.2s
+  write-marker-a                                                                                        integrated  1.8 [1]    0.0     3.3  10.0 [1]    9.0 [2]  4.1 [1]  0.8 [1]
+  write-marker-b                                                                                        integrated  2.2 [1]    0.0     3.0   9.7 [1]    8.0 [2]  2.9 [1]        -
+stacked-base-previous-pr-merged (stacked-base-github-state.test.ts)                                                                                                                   11  39.9s
+  write-marker-a                                                                                        integrated  1.3 [1]    0.0     2.1   6.2 [1]    6.2 [2]  2.9 [1]  0.6 [1]
+  write-marker-b                                                                                        integrated  1.0 [1]    0.0     2.0   7.3 [1]    5.8 [2]  2.7 [1]        -
+stacked-base-previous-branch-deleted (stacked-base-refusal.test.ts)                                                                                                                   15  1m10s
+  write-marker-a                                                                                        integrated  1.4 [1]    0.0     2.9   9.2 [1]    9.4 [2]  4.2 [1]  1.1 [1]
+  write-marker-b                                                                                        integrated  1.6 [1]    0.0     4.3  21.9 [6]    5.7 [1]  3.6 [1]        -
+stacked-base-published-base (stacked-base-refusal.test.ts)                                                                                                                            11  1m01s
+  write-marker-a                                                                                        integrated  1.5 [1]    0.0     2.8  11.2 [1]    8.9 [2]  4.2 [1]  0.8 [1]
+  write-marker-b                                                                                        integrated  1.9 [1]    0.0     4.1  10.3 [1]    9.2 [2]  3.9 [1]        -
+stacked-base-pr-retargeted (stacked-base-retarget.test.ts)                                                                                                                            14  1m11s
+  write-marker-a                                                                                        integrated  1.8 [1]    0.0     2.3  10.6 [1]    8.5 [2]  4.1 [1]  1.1 [1]
+  write-marker-b                                                                                        integrated  1.6 [1]    0.0     3.9  10.8 [1]   18.8 [5]  4.0 [1]        -
+stacked-base-tip-moved (stacked-base-retarget.test.ts)                                                                                                                                14  52.1s
+  write-marker-a                                                                                        integrated  1.4 [1]    0.0     2.8   9.4 [1]    7.3 [2]  3.2 [1]  0.5 [1]
+  write-marker-b                                                                                        integrated  1.0 [1]    0.0     1.9   6.8 [1]   12.6 [5]  2.7 [1]        -
+three-action-chain-stacked (three-action-chain.test.ts)                                                                                                                               19  1m33s
+  write-marker-a                                                                                        integrated  1.5 [1]    0.0     2.9   9.5 [1]    9.4 [2]  4.3 [1]  1.0 [1]
+  write-marker-b                                                                                        integrated  1.7 [1]    0.0     4.4   9.6 [1]    8.9 [2]  4.3 [1]  0.9 [1]
+  write-marker-c                                                                                        integrated  1.7 [1]    0.0     2.2   8.9 [1]    9.9 [2]  3.9 [1]  1.6 [2]
+token-ceiling-session (token-ceiling-session.test.ts)                                                                                                                                  9  10.5s
+  write-marker-a                                                                                        launched    1.8 [1]      -       -   6.0 [8]          -        -        -
+
+Errors: 49 recorded, 2 unexpected.
+- [UNEXPECTED] session-probe-wall: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (environment_wall): Environment wall for two-action-rehearsal-v4/write-marker-a (workspace_write) found by the session probe, run inside the Session as its first step (recorded probe budget 5000 tokens): the Session was told to stop before spending and will not be relaunched automatically. The attempt spent 1800 input tokens. workspace_write: workspace_write: EROFS: read-only file system, open 'database/.probe' | session probe {"probe":"session-capability/v1","nonce":"6c207e477df6a1bc603f3e36ad3d2941","ok":false,"ms":31,"checks":[{"name":"workspace_write","ok":false,"error":"EROFS: read-only file system, open 'database/.probe'"},{"name":"host_validation","ok":true},{"name":"preservation","ok":true}]}
+- [UNEXPECTED] session-probe-wall: lifecycle `worker tick: launch` (cwd <scenario>/fixture, exit n/a)
+    Environment wall for two-action-rehearsal-v4/write-marker-a (workspace_write) found by the session probe, run inside the Session as its first step (recorded probe budget 5000 tokens): the Session was told to stop before spending and will not be relaunched automatically. The attempt spent 1800 input tokens. workspace_write: workspace_write: EROFS: read-only file system, open 'database/.probe' | session probe {"probe":"session-capability/v1","nonce":"6c207e477df6a1bc603f3e36ad3d2941","ok":false,"ms":31,"checks":[{"name":"workspace_write","ok":false,"error":"EROFS: read-only file system, open 'database/.probe'"},{"name":"host_validation","ok":true},{"name":"preservation","ok":true}]}
+- [expected] fault-forged-settlement-a-decision: injected `scripted executor` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit n/a)
+    agent process died after the settlement commit, before the settlement was recorded
+- [expected] fault-forged-settlement-a-decision: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] fault-forged-settlement-the-completion: injected `scripted executor` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit n/a)
+    agent process died after the settlement commit, before the settlement was recorded
+- [expected] fault-forged-settlement-the-completion: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] fault-interrupted-after-settlement-commit: injected `scripted executor` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit n/a)
+    agent process died after the settlement commit, before the settlement was recorded
+- [expected] fault-interrupted-after-settlement-commit-operator-reconciled: injected `scripted executor` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit n/a)
+    agent process died after the settlement commit, before the settlement was recorded
+- [expected] fault-interrupted-after-work-commit: injected `scripted executor` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit n/a)
+    agent process died after its work commit, before drafting its completion
+- [expected] fault-interrupted-after-work-commit: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] fault-readiness-step-error-then-fresh-modules: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Reconciliation failed for two-action-rehearsal-v4: step error before gh pr ready took effect
+- [expected] environment-wall-session: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: The candidate has no commits or changes beyond its base revision.
+- [expected] environment-wall-session: lifecycle `worker tick: launch` (cwd <scenario>/fixture, exit n/a)
+    Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or over its platform ceiling of 3000000. It will not be relaunched automatically. It also hit an environment wall (workspace_write, host_validation, preservation).
+- [expected] behaviour-n4-edit-draft-after-inline-preview: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-n4-edit-draft-after-inline-preview: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_231bdabbe0c246c4b4 (claude/write-marker-a-20260926T210100000Z at 549404a36094a18ab7c0428c2e3b1bf6b8c6ce95) cannot integrate: The terminal candidate differs from its exact canonical completion settlement.
+- [expected] fault-git-merge-fails-once: injected `git merge --ff-only --quiet origin/main` (cwd <scenario>/fixture, exit 128)
+    fatal: injected fault: git merge failed once (fast-rehearsal)
+- [expected] fault-remote-adapter-push-fails-once: lifecycle `worker tick: terminal preservation` (cwd <scenario>/fixture, exit n/a)
+    Command failed: git push -q <scenario>/origin.git refs/heads/claude/write-marker-a-20260926T210100000Z:refs/heads/claude/write-marker-a-20260926T210100000Z
+    fatal: injected fault: git push failed once (fast-rehearsal)
+- [expected] fault-remote-adapter-push-fails-once: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: Command failed: git push -q <scenario>/origin.git refs/heads/claude/write-marker-a-20260926T210100000Z:refs/heads/claude/write-marker-a-20260926T210100000Z
+    fatal: injected fault: git push failed once (fast-rehearsal)
+- [expected] fault-remote-adapter-push-fails-once: injected `git push -q <scenario>/origin.git refs/heads/claude/write-marker-a-20260926T210100000Z:refs/heads/claude/write-marker-a-20260926T210100000Z` (cwd <scenario>/fixture, exit 128)
+    fatal: injected fault: git push failed once (fast-rehearsal)
+- [expected] long-chain-grant-expires-mid-action: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    The integration grant expired at 2026-09-27T09:00:00.000Z.
+- [expected] long-chain-grant-expires-mid-action: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/chain-step-4 to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_cf18dfd6f2c5451ba1 (claude/chain-step-4-20260926T224900000Z at 6c54f1ff903b297a18b6ae702d1a7b945c11389b) cannot integrate: The integration grant expired at 2026-09-27T09:00:00.000Z (Decision 0058); the preserved candidate is not readied, reviewed or integrated unattended.
+- [expected] long-chain-qa-fails-step-5: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/chain-step-5 to the operator (independent_verdict_failed): Integration waits on current independent verdicts for head 0b951c8339cf (qa: failed). The independent qa verdict on 0b951c8339cf is fail: A defect blocks this head.
+- [expected] long-chain-qa-fails-step-5: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Candidate for two-action-rehearsal-v4 preserved but not integrated: Integration waits on current independent verdicts for head 0b951c8339cf (qa: failed). Operator merge: git -C <scenario>/fixture merge --ff-only claude/chain-step-5-20260926T232500000Z   # then push main
+- [expected] serial-real-finding-no-rerun: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (independent_verdict_failed): Integration waits on current independent verdicts for head d80bdf3910f5 (code-review: failed; qa: none). The independent code-review verdict on d80bdf3910f5 is fail: A defect blocks this head.
+- [expected] serial-real-finding-no-rerun: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Candidate for two-action-rehearsal-v4 preserved but not integrated: Integration waits on current independent verdicts for head d80bdf3910f5 (code-review: failed; qa: none). Operator merge: git -C <scenario>/fixture merge --ff-only claude/write-marker-a-20260926T210100000Z   # then push main
+- [expected] serial-variance-then-pass: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Candidate for two-action-rehearsal-v4 preserved but not integrated: Integration waits on current independent verdicts for head 7b51ad8b6268 (code-review: failed; qa: none). Operator merge: git -C <scenario>/fixture merge --ff-only claude/write-marker-a-20260926T210100000Z   # then push main
+- [expected] serial-variance-three-times: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Candidate for two-action-rehearsal-v4 preserved but not integrated: Integration waits on current independent verdicts for head 8f3cb801000d (code-review: failed; qa: none). Operator merge: git -C <scenario>/fixture merge --ff-only claude/write-marker-a-20260926T210100000Z   # then push main
+- [expected] serial-variance-three-times: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (independent_verdict_failed): Integration waits on current independent verdicts for head 8f3cb801000d (code-review: failed; qa: none). The independent code-review verdict on 8f3cb801000d was not a pass on 3 of 3 attempts, each reviewer variance only (no finding and no criterion judged fail); the automatic reruns are spent and a failed verdict never integrates. Last reason: reviewer variance only (no finding, no criterion judged fail; not-checked: Tests; 0 residual risks dismissed; reviewer summary: "No defect found, but one criterion is not established.").
+- [expected] session-probe-wall: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: The candidate has no commits or changes beyond its base revision.
+- [expected] behaviour-extra-commit-after-settle: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] behaviour-extra-commit-after-settle: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-extra-commit-after-settle: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_2e5fb75bc33e40e29f (claude/write-marker-a-20260926T210100000Z at 2b065ca51d0172320bca7061cd2447347ca1ec74) cannot integrate: The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-extra-commit-operator-reconciled: command `arcadia agent-ask settle --proposal complete-write-marker-a-run-2 --request-id settle-complete-write-marker-a-run-2 --disposition accepted` (cwd <scenario>/worktrees/write-marker-a-20260926T210100000Z/fixture, exit 1)
+    Action is already done. {"actionId":"write-marker-a"}
+- [expected] behaviour-extra-commit-operator-reconciled: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] behaviour-extra-commit-operator-reconciled: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-extra-commit-operator-reconciled: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_c7fd6f6038e2434b81 (claude/write-marker-a-20260926T210100000Z at c5ca448278f6a31df962fd571bf396e3c6de1f65) cannot integrate: The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-extra-uncommitted-file: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.
+- [expected] behaviour-extra-uncommitted-file: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    The terminal candidate differs from its exact canonical completion settlement.
+- [expected] behaviour-extra-uncommitted-file: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-a to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_519713b4974248e78b (claude/write-marker-a-20260926T210100000Z at cca1b16cda7e3adcb3a6070566e45f9eb9e230b4) cannot integrate: The terminal candidate differs from its exact canonical completion settlement.
+- [expected] stacked-base-existing-pr-mismatch: lifecycle `worker tick: terminal preservation` (cwd <scenario>/fixture, exit n/a)
+    Pull request https://github.com/pmark/rehearsal/pull/8 for claude/write-marker-b-20260926T210700000Z is opened against main, but this candidate's base revision 49ebb182ecdcf4ff55aba2ca68d32c952bccdc5f selects claude/write-marker-a-20260926T210100000Z (The candidate's base revision 49ebb182ecdc is not the tip of the remote main (the remote main is at abeec4405f6c; the worker never pushes the base), and claude/write-marker-a-20260926T210100000Z is the remote candidate branch whose tip is 49ebb182ecdc, so the PR is stacked on it.); its Operator QA plan would describe a different base than the PR, so nothing is pushed. Remedy: retarget it with `gh pr edit 8 --base claude/write-marker-a-20260926T210100000Z` after checking that is right; the next preservation then updates its body.
+- [expected] stacked-base-existing-pr-mismatch: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: Pull request https://github.com/pmark/rehearsal/pull/8 for claude/write-marker-b-20260926T210700000Z is opened against main, but this candidate's base revision 49ebb182ecdcf4ff55aba2ca68d32c952bccdc5f selects claude/write-marker-a-20260926T210100000Z (The candidate's base revision 49ebb182ecdc is not the tip of the remote main (the remote main is at abeec4405f6c; the worker never pushes the base), and claude/write-marker-a-20260926T210100000Z is the remote candidate branch whose tip is 49ebb182ecdc, so the PR is stacked on it.); its Operator QA plan would describe a different base than the PR, so nothing is pushed. Remedy: retarget it with `gh pr edit 8 --base claude/write-marker-a-20260926T210100000Z` after checking that is right; the next preservation then updates its body.
+- [expected] stacked-base-existing-pr-mismatch: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Terminal validation or preservation refused: Pull request https://github.com/pmark/rehearsal/pull/8 for claude/write-marker-b-20260926T210700000Z is opened against main, but this candidate's base revision 49ebb182ecdcf4ff55aba2ca68d32c952bccdc5f selects claude/write-marker-a-20260926T210100000Z (The candidate's base revision 49ebb182ecdc is not the tip of the remote main (the remote main is at abeec4405f6c; the worker never pushes the base), and claude/write-marker-a-20260926T210100000Z is the remote candidate branch whose tip is 49ebb182ecdc, so the PR is stacked on it.); its Operator QA plan would describe a different base than the PR, so nothing is pushed. Remedy: retarget it with `gh pr edit 8 --base claude/write-marker-a-20260926T210100000Z` after checking that is right; the next preservation then updates its body.
+- [expected] stacked-base-existing-pr-mismatch: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-b to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_88da8a7a6f384928a0 (claude/write-marker-b-20260926T210700000Z at e41136244b31ab243c24032e6120049d36b9b93e) cannot integrate: Terminal validation or preservation refused: Pull request https://github.com/pmark/rehearsal/pull/8 for claude/write-marker-b-20260926T210700000Z is opened against main, but this candidate's base revision 49ebb182ecdcf4ff55aba2ca68d32c952bccdc5f selects claude/write-marker-a-20260926T210100000Z (The candidate's base revision 49ebb182ecdc is not the tip of the remote main (the remote main is at abeec4405f6c; the worker never pushes the base), and claude/write-marker-a-20260926T210100000Z is the remote candidate branch whose tip is 49ebb182ecdc, so the PR is stacked on it.); its Operator QA plan would describe a different base than the PR, so nothing is pushed. Remedy: retarget it with `gh pr edit 8 --base claude/write-marker-a-20260926T210100000Z` after checking that is right; the next preservation then updates its body.
+- [expected] stacked-base-previous-branch-deleted: lifecycle `worker tick: terminal preservation` (cwd <scenario>/fixture, exit n/a)
+    No remote branch can be this candidate's pull-request base: its base revision 13464d8f8fd4760dbcde80e798ad5a4c7090395b is not on the remote main (the remote main is at 39f77a94cada; an earlier Action integrated by local fast-forward), and no remote candidate branch has its tip there (the previous candidate's branch was deleted or never pushed). A PR on main would show the earlier Actions' changes as this one's (Issue #987), so nothing is pushed and no PR is opened; the candidate stays preserved locally on claude/write-marker-b-20260926T210700000Z. Remedy: push the previous candidate's branch again (`git -C <scenario>/fixture push origin claude/write-marker-a-20260926T210100000Z`; if the remote refuses it as a non-fast-forward, push a fresh branch at that revision instead: `git -C <scenario>/fixture push origin 13464d8f8fd4760dbcde80e798ad5a4c7090395b:refs/heads/agent/stack-base-13464d8f8fd4`), or publish the integrated base yourself (`git -C <scenario>/fixture push origin main`: an operator decision; the worker never pushes the base). The next preservation attempt then opens the PR.
+- [expected] stacked-base-previous-branch-deleted: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: No remote branch can be this candidate's pull-request base: its base revision 13464d8f8fd4760dbcde80e798ad5a4c7090395b is not on the remote main (the remote main is at 39f77a94cada; an earlier Action integrated by local fast-forward), and no remote candidate branch has its tip there (the previous candidate's branch was deleted or never pushed). A PR on main would show the earlier Actions' changes as this one's (Issue #987), so nothing is pushed and no PR is opened; the candidate stays preserved locally on claude/write-marker-b-20260926T210700000Z. Remedy: push the previous candidate's branch again (`git -C <scenario>/fixture push origin claude/write-marker-a-20260926T210100000Z`; if the remote refuses it as a non-fast-forward, push a fresh branch at that revision instead: `git -C <scenario>/fixture push origin 13464d8f8fd4760dbcde80e798ad5a4c7090395b:refs/heads/agent/stack-base-13464d8f8fd4`), or publish the integrated base yourself (`git -C <scenario>/fixture push origin main`: an operator decision; the worker never pushes the base). The next preservation attempt then opens the PR.
+- [expected] stacked-base-previous-branch-deleted: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Terminal validation or preservation refused: No remote branch can be this candidate's pull-request base: its base revision 13464d8f8fd4760dbcde80e798ad5a4c7090395b is not on the remote main (the remote main is at 39f77a94cada; an earlier Action integrated by local fast-forward), and no remote candidate branch has its tip there (the previous candidate's branch was deleted or never pushed). A PR on main would show the earlier Actions' changes as this one's (Issue #987), so nothing is pushed and no PR is opened; the candidate stays preserved locally on claude/write-marker-b-20260926T210700000Z. Remedy: push the previous candidate's branch again (`git -C <scenario>/fixture push origin claude/write-marker-a-20260926T210100000Z`; if the remote refuses it as a non-fast-forward, push a fresh branch at that revision instead: `git -C <scenario>/fixture push origin 13464d8f8fd4760dbcde80e798ad5a4c7090395b:refs/heads/agent/stack-base-13464d8f8fd4`), or publish the integrated base yourself (`git -C <scenario>/fixture push origin main`: an operator decision; the worker never pushes the base). The next preservation attempt then opens the PR.
+- [expected] stacked-base-previous-branch-deleted: lifecycle `worker tick: log` (cwd <scenario>/fixture, exit n/a)
+    Escalated two-action-rehearsal-v4/write-marker-b to the operator (terminal_candidate_not_integrable): Terminal candidate of Session session_c00c998265974d339f (claude/write-marker-b-20260926T210700000Z at 277b70a02421378c86260a70f2cf293248cbe550) cannot integrate: Terminal validation or preservation refused: No remote branch can be this candidate's pull-request base: its base revision 13464d8f8fd4760dbcde80e798ad5a4c7090395b is not on the remote main (the remote main is at 39f77a94cada; an earlier Action integrated by local fast-forward), and no remote candidate branch has its tip there (the previous candidate's branch was deleted or never pushed). A PR on main would show the earlier Actions' changes as this one's (Issue #987), so nothing is pushed and no PR is opened; the candidate stays preserved locally on claude/write-marker-b-20260926T210700000Z. Remedy: push the previous candidate's branch again (`git -C <scenario>/fixture push origin claude/write-marker-a-20260926T210100000Z`; if the remote refuses it as a non-fast-forward, push a fresh branch at that revision instead: `git -C <scenario>/fixture push origin 13464d8f8fd4760dbcde80e798ad5a4c7090395b:refs/heads/agent/stack-base-13464d8f8fd4`), or publish the integrated base yourself (`git -C <scenario>/fixture push origin main`: an operator decision; the worker never pushes the base). The next preservation attempt then opens the PR.
+- [expected] token-ceiling-session: lifecycle `worker tick: integration` (cwd <scenario>/fixture, exit n/a)
+    Integration waits on a preserved candidate: The candidate has no commits or changes beyond its base revision.
+- [expected] token-ceiling-session: lifecycle `worker tick: launch` (cwd <scenario>/fixture, exit n/a)
+    Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 9000000 input tokens (600000 uncached + 8400000 cached), at or over its platform ceiling of 3000000. It will not be relaunched automatically.
+
+Notes:
+- Ask/To-do scout: Scout runner success means the bounded journey and report completed; scout.outcome=yes is the separate product completion result.
+- fault-forged-settlement-a-decision: setup (fixture, import, sync, approval, activation): 1314 ms
+- fault-forged-settlement-the-completion: setup (fixture, import, sync, approval, activation): 1186 ms
+- fault-interrupted-after-settlement-commit: setup (fixture, import, sync, approval, activation): 1735 ms
+- fault-interrupted-after-settlement-commit-operator-reconciled: setup (fixture, import, sync, approval, activation): 1830 ms
+- fault-interrupted-after-settlement-commit-operator-reconciled: clock advanced 240 simulated minutes before tick 5
+- fault-interrupted-after-work-commit: setup (fixture, import, sync, approval, activation): 3205 ms
+- fault-readiness-step-error-then-fresh-modules: setup (fixture, import, sync, approval, activation): 1642 ms
+- fault-readiness-step-error-then-fresh-modules: worker restarted before tick 4 (fresh module graph)
+- environment-wall-session: setup (fixture, import, sync, approval, activation): 1870 ms
+- environment-wall-session: clock advanced 240 simulated minutes before tick 6
+- behaviour-n4-edit-draft-after-inline-preview: setup (fixture, import, sync, approval, activation): 1431 ms
+- behaviour-run4-untracked-unarchived-draft: setup (fixture, import, sync, approval, activation): 2410 ms
+- fault-git-merge-fails-once: setup (fixture, import, sync, approval, activation): 2075 ms
+- fault-remote-adapter-push-fails-once: setup (fixture, import, sync, approval, activation): 1288 ms
+- long-chain-grant-expires-after-approval: setup (fixture, import, sync, approval, activation): 903 ms
+- long-chain-grant-expires-after-approval: clock advanced 30 simulated minutes before tick 2
+- long-chain-grant-expires-after-approval: chain-step-1: PR on main (qa-plan-consistency consistent)
+- long-chain-grant-expires-after-approval: clock advanced 30 simulated minutes before tick 8
+- long-chain-grant-expires-after-approval: chain-step-2: PR on claude/chain-step-1-20260926T210100000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-after-approval: clock advanced 30 simulated minutes before tick 14
+- long-chain-grant-expires-after-approval: chain-step-3: PR on claude/chain-step-2-20260926T213700000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-after-approval: clock advanced 612 simulated minutes before tick 18
+- long-chain-grant-expires-between-batches: setup (fixture, import, sync, approval, activation): 1452 ms
+- long-chain-grant-expires-between-batches: clock advanced 30 simulated minutes before tick 2
+- long-chain-grant-expires-between-batches: chain-step-1: PR on main (qa-plan-consistency consistent)
+- long-chain-grant-expires-between-batches: clock advanced 30 simulated minutes before tick 8
+- long-chain-grant-expires-between-batches: chain-step-2: PR on claude/chain-step-1-20260926T210100000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-between-batches: clock advanced 30 simulated minutes before tick 14
+- long-chain-grant-expires-between-batches: chain-step-3: PR on claude/chain-step-2-20260926T213700000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-between-batches: clock advanced 614 simulated minutes before tick 18
+- long-chain-grant-expires-mid-action: setup (fixture, import, sync, approval, activation): 2336 ms
+- long-chain-grant-expires-mid-action: clock advanced 30 simulated minutes before tick 2
+- long-chain-grant-expires-mid-action: chain-step-1: PR on main (qa-plan-consistency consistent)
+- long-chain-grant-expires-mid-action: clock advanced 30 simulated minutes before tick 8
+- long-chain-grant-expires-mid-action: chain-step-2: PR on claude/chain-step-1-20260926T210100000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-mid-action: clock advanced 30 simulated minutes before tick 14
+- long-chain-grant-expires-mid-action: chain-step-3: PR on claude/chain-step-2-20260926T213700000Z (qa-plan-consistency consistent)
+- long-chain-grant-expires-mid-action: clock advanced 616 simulated minutes before tick 20
+- long-chain-grant-expires-mid-action: clock advanced 180 simulated minutes before tick 23
+- long-chain-qa-fails-step-5: setup (fixture, import, sync, approval, activation): 2995 ms
+- long-chain-qa-fails-step-5: clock advanced 30 simulated minutes before tick 2
+- long-chain-qa-fails-step-5: chain-step-1: PR on main (qa-plan-consistency consistent)
+- long-chain-qa-fails-step-5: clock advanced 30 simulated minutes before tick 8
+- long-chain-qa-fails-step-5: chain-step-2: PR on claude/chain-step-1-20260926T210100000Z (qa-plan-consistency consistent)
+- long-chain-qa-fails-step-5: clock advanced 30 simulated minutes before tick 14
+- long-chain-qa-fails-step-5: chain-step-3: PR on claude/chain-step-2-20260926T213700000Z (qa-plan-consistency consistent)
+- long-chain-qa-fails-step-5: clock advanced 30 simulated minutes before tick 20
+- long-chain-qa-fails-step-5: chain-step-4: PR on claude/chain-step-3-20260926T221300000Z (qa-plan-consistency consistent)
+- long-chain-qa-fails-step-5: clock advanced 30 simulated minutes before tick 26
+- long-chain-qa-fails-step-5: chain-step-5: PR on claude/chain-step-4-20260926T224900000Z (qa-plan-consistency consistent)
+- long-chain-qa-fails-step-5: clock advanced 180 simulated minutes before tick 33
+- long-chain-nine-actions: setup (fixture, import, sync, approval, activation): 3976 ms
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 2
+- long-chain-nine-actions: chain-step-1: PR on main (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-1: 28937 ms wall, integrated at 2026-09-26T21:35:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 8
+- long-chain-nine-actions: chain-step-2: PR on claude/chain-step-1-20260926T210100000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-2: 32555 ms wall, integrated at 2026-09-26T22:11:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 14
+- long-chain-nine-actions: chain-step-3: PR on claude/chain-step-2-20260926T213700000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-3: 31437 ms wall, integrated at 2026-09-26T22:47:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 20
+- long-chain-nine-actions: chain-step-4: PR on claude/chain-step-3-20260926T221300000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-4: 31773 ms wall, integrated at 2026-09-26T23:23:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 26
+- long-chain-nine-actions: chain-step-5: PR on claude/chain-step-4-20260926T224900000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-5: 33052 ms wall, integrated at 2026-09-26T23:59:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 32
+- long-chain-nine-actions: chain-step-6: PR on claude/chain-step-5-20260926T232500000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-6: 32046 ms wall, integrated at 2026-09-27T00:35:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 38
+- long-chain-nine-actions: chain-step-7: PR on claude/chain-step-6-20260927T000100000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-7: 24363 ms wall, integrated at 2026-09-27T01:11:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 44
+- long-chain-nine-actions: chain-step-8: PR on claude/chain-step-7-20260927T003700000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-8: 21998 ms wall, integrated at 2026-09-27T01:47:00.000Z
+- long-chain-nine-actions: clock advanced 30 simulated minutes before tick 50
+- long-chain-nine-actions: chain-step-9: PR on claude/chain-step-8-20260927T011300000Z (qa-plan-consistency consistent)
+- long-chain-nine-actions: chain-step-9: 17739 ms wall, integrated at 2026-09-27T02:23:00.000Z
+- serial-two-action-clean: setup (fixture, import, sync, approval, activation): 2148 ms
+- serial-two-action-clean: Issue #987, Action 2's PR stacked on claude/write-marker-a-20260926T210100000Z (qa-plan-consistency): consistent
+- serial-real-finding-no-rerun: setup (fixture, import, sync, approval, activation): 1119 ms
+- serial-variance-then-pass: setup (fixture, import, sync, approval, activation): 2876 ms
+- serial-variance-three-times: setup (fixture, import, sync, approval, activation): 1158 ms
+- serial-variance-three-times: clock advanced 180 simulated minutes before tick 10
+- session-probe-wall: setup (fixture, import, sync, approval, activation): 2227 ms
+- session-probe-wall: clock advanced 240 simulated minutes before tick 6
+- behaviour-extra-commit-after-settle: setup (fixture, import, sync, approval, activation): 1848 ms
+- behaviour-extra-commit-after-settle: clock advanced 240 simulated minutes before tick 5
+- behaviour-extra-commit-operator-reconciled: setup (fixture, import, sync, approval, activation): 973 ms
+- behaviour-extra-commit-operator-reconciled: clock advanced 240 simulated minutes before tick 6
+- behaviour-extra-uncommitted-file: setup (fixture, import, sync, approval, activation): 3403 ms
+- behaviour-extra-uncommitted-file: clock advanced 240 simulated minutes before tick 5
+- stacked-base-existing-pr-mismatch: setup (fixture, import, sync, approval, activation): 2006 ms
+- stacked-base-previous-pr-closed: setup (fixture, import, sync, approval, activation): 3342 ms
+- stacked-base-previous-pr-closed: Action 2's PR on claude/write-marker-a-20260926T210100000Z (qa-plan-consistency): consistent
+- stacked-base-previous-pr-merged: setup (fixture, import, sync, approval, activation): 820 ms
+- stacked-base-previous-pr-merged: Action 2's PR on main (qa-plan-consistency): consistent
+- stacked-base-previous-branch-deleted: setup (fixture, import, sync, approval, activation): 3604 ms
+- stacked-base-published-base: setup (fixture, import, sync, approval, activation): 1290 ms
+- stacked-base-published-base: Action 2's PR on main (qa-plan-consistency): consistent
+- stacked-base-pr-retargeted: setup (fixture, import, sync, approval, activation): 2758 ms
+- stacked-base-pr-retargeted: Action 2's PR on claude/write-marker-a-20260926T210100000Z (qa-plan-consistency): consistent
+- stacked-base-tip-moved: setup (fixture, import, sync, approval, activation): 1304 ms
+- stacked-base-tip-moved: Action 2's PR on claude/write-marker-a-20260926T210100000Z (qa-plan-consistency): consistent
+- three-action-chain-stacked: setup (fixture, import, sync, approval, activation): 3136 ms
+- three-action-chain-stacked: write-marker-a: PR on main (qa-plan-consistency consistent)
+- three-action-chain-stacked: write-marker-b: PR on claude/write-marker-a-20260926T210100000Z (qa-plan-consistency consistent)
+- three-action-chain-stacked: write-marker-c: PR on claude/write-marker-b-20260926T210700000Z (qa-plan-consistency consistent)
+- token-ceiling-session: setup (fixture, import, sync, approval, activation): 2455 ms
+- token-ceiling-session: clock advanced 240 simulated minutes before tick 6
+
+Full report (per-tick log, worker log): /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-4U0Q30/report.json

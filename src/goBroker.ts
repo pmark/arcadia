@@ -45,7 +45,7 @@ export function assertGoBrokerHostController(request: GoBrokerRequest, environme
 export type GoBrokerRunner = (options: GoCommandOptions) => CommandSuccess<GoCommandData>;
 export type AdvanceBrokerRunner = (options: { workspace: string; repo: string }) => CommandSuccess<AdvanceCommandData>;
 export type WorkMonitorBrokerRunner = (options: { workspace: string; includePullRequests: false; repositoryPath: string }) => CommandSuccess<WorkMonitorCommandData>;
-export type NextBrokerRunner = (options: { workspace: string; project: string }) => CommandSuccess<NextCommandData>;
+export type NextBrokerRunner = (options: { workspace: string; project: string; repo: string }) => CommandSuccess<NextCommandData>;
 export type BrokerWorkspaceResolver = (source: string) => string;
 export type BrokerProjectSlugResolver = (source: string) => string;
 
@@ -208,7 +208,7 @@ export function runGoBroker(
     const workMonitor = runBriefStage("work-monitor", () =>
       workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }), briefContext);
     const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source), briefContext);
-    const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug }));
+    const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug, repo: request.source }));
     const rendered = runBriefStage("render", () => ({
       dispatchBrief: [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
       sessionTitles: sessionTitlesByState({
