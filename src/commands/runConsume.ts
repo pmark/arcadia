@@ -13,6 +13,7 @@ import { readProductionPolicy } from "../production/policy.js";
 import { readExperimentWorkspace } from "../workspace/config.js";
 import { assertRepoPathAllowed, isInside } from "../workspace/experimentGuard.js";
 import { reserveScoutAttempt, finishScoutAttempt, type ScoutAdmissionEvidence, type ScoutReservation } from "../scout/runAdmission.js";
+import { classifyScoutFailure, type ScoutExecutionFailure } from "../scout/executionFailure.js";
 
 export interface RunConsumeOptions {
   workspace: string;
@@ -51,7 +52,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
   }
   const stores = { ledger: options.admissionLedger, witness: options.admissionWitness };
   let reservation: ScoutReservation | undefined;
-  let retryable = false;
+  let failure: ScoutExecutionFailure = classifyScoutFailure({ diagnostic: "Execution outcome is unknown." });
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return withDatabase(workspacePath, (db) => {
     // Approval, correlation and the compare-and-set claim share one immediate transaction.
@@ -87,10 +88,11 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       fixtureScript: script,
       scoutReservation: reservation,
       scoutScope: reservation ? admitted.scope : undefined,
-      observeResult: (result) => { retryable = !/login|log.?in|unauthori[sz]ed|authentica|quota|rate.?limit|isolation|protected.state|authority/i.test(`${result.error ?? ""}\n${result.finalOutput ?? ""}`); },
+      observeResult: (result) => { failure = result.scoutFailure ?? classifyScoutFailure({ diagnostic: "Execution completed; exact product is not yet verified." }); },
       acceptProduct: (result) => {
         const output = path.join(admitted.repo, "HelloWorld.txt");
         if (!lstatSync(output).isFile() || !readFileSync(output).equals(Buffer.from("Hello World!\n")) || result.changedFiles.length !== 1 || result.changedFiles[0] !== "HelloWorld.txt") {
+          failure = classifyScoutFailure({ diagnostic: "Exact fixture product was not produced; completion is refused.", product: true });
           throw validationError("Exact fixture product was not produced; completion is refused.");
         }
         const artifact = createArtifactRecord(db, { projectId: admitted.review.project_id, workItemId: admitted.run.work_item_id, title: "HelloWorld.txt", artifactType: "text", status: "ready", path: output });
@@ -98,7 +100,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       }
     });
     if (reservation) finishScoutAttempt(stores, evidence.isolation.pins.fixtureRoot, reservation,
-      run?.status === "completed" ? { completed: true } : { failure: run?.summary ?? "executor failed without terminal result", retryable });
+      run?.status === "completed" ? { completed: true } : { failure: `${run?.summary ?? "executor failed without terminal result"}\n${failure.diagnostic}`, classification: failure });
     return createSuccess({ command: "run.consume-one", workspace: workspacePath, data: { run, reservation: reservation ?? null,
       executorMode: script ? "scripted-fixture" : "bounded-codex", liveProviderAdmission: script ? "blocked" : "reserved", sourceHead: head } });
   });

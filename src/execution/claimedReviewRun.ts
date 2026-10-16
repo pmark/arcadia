@@ -46,6 +46,7 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       `Executed with ${result.executor}.`,
       result.error ? `Executor error: ${result.error}.` : "",
       result.signal ? `Executor signal: ${result.signal}.` : "",
+      result.scoutFailure ? `Admission failure [${result.scoutFailure.kind}]: ${result.scoutFailure.diagnostic}` : "",
       `${result.changedFiles.length} file(s) changed.`,
       `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
       stagingUrl ? `Live staging URL: ${stagingUrl}.` : `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`

@@ -6,10 +6,12 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { evaluateCapacityAdmission, type ProviderCapacityReceipt } from "../codingAgents/capacity.js";
+import { CAPACITY_ADMISSION_LIMITS, evaluateCapacityAdmission, type ProviderCapacityReceipt } from "../codingAgents/capacity.js";
 import { evaluateBoundedScoutIsolation } from "./isolationPreflight.js";
 import { isInside } from "../workspace/experimentGuard.js";
 import { loadUserConfig, userConfigPath } from "../workspace/config.js";
+import { captureScoutClock, fixtureScoutClock, validScoutClock, type ScoutClockSample, type ScoutClockContinuity } from "./admissionClock.js";
+import { classifyScoutFailure, type ScoutExecutionFailure } from "./executionFailure.js";
 
 // This identity is independent of source revision, Run id and disposable fixture.
 export const SCOUT_GOAL = "decision-0128:no-remote:HelloWorld.txt:48656c6c6f20576f726c64210a";
@@ -47,6 +49,7 @@ interface Attempt {
   reservedAt: number;
   deadline: number;
   failure: string | null;
+  failureDetail: ScoutExecutionFailure | null;
   retryable: boolean;
   outcome: "reserved" | "failed" | "completed";
 }
@@ -57,6 +60,8 @@ export interface ScoutAdmissionHistory {
   sequence: number;
   firstLaunch: number | null;
   lastClock: number;
+  continuity: ScoutClockContinuity;
+  stopped: string | null;
   repairs: number;
   attempts: Attempt[];
 }
@@ -93,8 +98,13 @@ function historyValid(value: ScoutAdmissionHistory): boolean {
   if (!value || value.schema !== 1 || value.goal !== SCOUT_GOAL || !value.lineage?.trim()
     || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !finite(value.lastClock)
     || !Number.isSafeInteger(value.repairs) || value.repairs < 0 || value.repairs > 2
-    || !Array.isArray(value.attempts) || value.attempts.length > 3 || value.repairs !== Math.max(0, value.attempts.length - 1)) return false;
-  if (!value.attempts.length) return value.firstLaunch === null && value.sequence === 0;
+    || !Array.isArray(value.attempts) || value.attempts.length > 3 || value.repairs !== Math.max(0, value.attempts.length - 1)
+    || !(value.stopped === null || typeof value.stopped === "string") || !value.continuity?.bootId
+    || ![value.continuity.lastMonoEndMs, value.continuity.lastUptimeMs, value.continuity.uncertaintyMs].every(finite)) return false;
+  if (!value.attempts.length) return value.firstLaunch === null && value.continuity.firstMonoMs === null && value.continuity.firstUptimeMs === null;
+  if (!finite(value.continuity.firstMonoMs) || !finite(value.continuity.firstUptimeMs)) return false;
+  if (value.continuity.firstMonoMs > value.continuity.lastMonoEndMs || value.continuity.firstUptimeMs > value.continuity.lastUptimeMs
+    || ![0, 1000].includes(value.continuity.uncertaintyMs)) return false;
   if (!finite(value.firstLaunch) || value.firstLaunch !== value.attempts[0].reservedAt || value.lastClock < value.firstLaunch) return false;
   const ids = new Set<string>();
   return value.attempts.every((attempt, index) => {
@@ -105,6 +115,11 @@ function historyValid(value: ScoutAdmissionHistory): boolean {
       || attempt.deadline > attempt.reservedAt + 90_000 || attempt.deadline > value.firstLaunch! + LOOP_MS || attempt.deadline > EXPIRY
       || !["reserved", "failed", "completed"].includes(attempt.outcome)
       || typeof attempt.retryable !== "boolean" || (attempt.outcome !== "failed" && attempt.retryable)
+      || (attempt.outcome === "failed" ? !attempt.failureDetail || !["auth_failure", "provider_limit", "isolation", "authority", "runtime", "product", "unknown"].includes(attempt.failureDetail.kind)
+        : attempt.failureDetail !== null)
+      || (attempt.failureDetail && (typeof attempt.failureDetail.diagnostic !== "string" || !attempt.failureDetail.diagnostic.trim()
+        || !Array.isArray(attempt.failureDetail.matched) || attempt.failureDetail.matched.some((item) => typeof item !== "string")
+        || attempt.failureDetail.retryable !== ["runtime", "product"].includes(attempt.failureDetail.kind) || attempt.retryable !== attempt.failureDetail.retryable))
       || (attempt.outcome === "failed" ? !attempt.failure?.trim() : attempt.failure !== null)
       || !validScope(attempt.scope)) return false;
     ids.add(attempt.id); return true;
@@ -120,7 +135,7 @@ function sameScope(left: AdmissionScope, right: AdmissionScope): boolean {
 }
 
 /** Existing stores only. There is deliberately no live initialization/reset path. */
-function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, action: (history: ScoutAdmissionHistory, witness: Witness) => T): T {
+function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, sample: ScoutClockSample, action: (history: ScoutAdmissionHistory, witness: Witness) => T): T {
   const ledgerPath = realpathSync(stores.ledger);
   const witnessPath = realpathSync(stores.witness);
   const root = realpathSync(fixtureRoot);
@@ -136,28 +151,91 @@ function withHistory<T>(stores: AdmissionStores, fixtureRoot: string, action: (h
     // which refuses all later admission; it never restores allowance.
     witnessDb.pragma("synchronous = FULL"); ledgerDb.pragma("synchronous = FULL");
     const ledger = ledgerDb;
-    return witnessDb.transaction(() => ledger.transaction(() => {
+    const result = witnessDb.transaction(() => ledger.transaction(() => {
       const read = (db: Database.Database) => {
         const row = db.prepare("SELECT body FROM scout_admission WHERE goal = ?").get(SCOUT_GOAL) as { body: string } | undefined;
         if (!row) refuse("history or independent witness is missing; remaining allowance unknown");
         return JSON.parse(row.body) as unknown;
       };
-      const history = read(ledger) as ScoutAdmissionHistory;
+      let history = read(ledger) as ScoutAdmissionHistory;
       const witness = read(witnessDb) as Witness;
       if (!historyValid(history) || !witness || witness.schema !== 1 || witness.lineage !== history.lineage
         || witness.sequence !== history.sequence || witness.digest !== admissionDigest(history)
         || !/^[a-f0-9]{64}$/.test(witness.evidenceSha256)) refuse("corrupt or restored history/witness");
-      const result = action(history, witness);
-      if (!historyValid(history)) refuse("invalid history transition");
+      const clockFailure = advanceClock(history, sample);
+      const clockOnly = structuredClone(history);
+      let outcome: { ok: true; value: T } | { ok: false; error: unknown };
+      try {
+        if (clockFailure) refuse(clockFailure);
+        const value = action(history, witness);
+        if (!historyValid(history)) refuse("invalid history transition");
+        outcome = { ok: true, value };
+      } catch (error) {
+        // Commit the observation/refusal but none of the attempted budget
+        // transition. A later wall rollback cannot undo an exhausted bound.
+        history = clockOnly; outcome = { ok: false, error };
+      }
       history.sequence += 1;
       ledger.prepare("UPDATE scout_admission SET body = ? WHERE goal = ?").run(JSON.stringify(history), SCOUT_GOAL);
       witness.sequence = history.sequence; witness.digest = admissionDigest(history);
       witnessDb.prepare("UPDATE scout_admission SET body = ? WHERE goal = ?").run(JSON.stringify(witness), SCOUT_GOAL);
-      return result;
+      return outcome;
     }).immediate()).immediate();
+    if (!result.ok) throw result.error;
+    return result.value;
   } catch (error) {
     return refuse(error instanceof Error ? error.message : "unreadable history");
   } finally { ledgerDb?.close(); witnessDb.close(); }
+}
+
+function elapsed(history: ScoutAdmissionHistory, sample: ScoutClockSample): number {
+  if (history.firstLaunch === null || history.continuity.firstMonoMs === null || history.continuity.firstUptimeMs === null) return 0;
+  return Math.max(sample.wallMs - history.firstLaunch, sample.monoEndMs - history.continuity.firstMonoMs,
+    sample.uptimeMs - history.continuity.firstUptimeMs + sample.uncertaintyMs);
+}
+
+function advanceClock(history: ScoutAdmissionHistory, sample: ScoutClockSample): string | null {
+  if (!validScoutClock(sample)) { history.stopped = "clock continuity is unknown"; return history.stopped; }
+  const prior = history.continuity;
+  if (prior.bootId !== sample.bootId || prior.uncertaintyMs !== sample.uncertaintyMs) history.stopped ??= "boot/clock continuity is unknown";
+  // The two monotonic sample endpoints bound Date.now's millisecond reading.
+  // Uptime additionally counts suspension; its one-second precision is charged
+  // conservatively against the elapsed allowance rather than granting time.
+  if (sample.wallMs < history.lastClock || sample.monoStartMs < prior.lastMonoEndMs || sample.uptimeMs < prior.lastUptimeMs
+    || sample.wallMs - history.lastClock + Math.min(2, sample.uncertaintyMs) < sample.monoStartMs - prior.lastMonoEndMs) history.stopped ??= "clock rollback or lost continuity";
+  if (elapsed(history, sample) >= LOOP_MS) history.stopped ??= "elapsed allowance exhausted";
+  history.lastClock = Math.max(history.lastClock, sample.wallMs);
+  prior.lastMonoEndMs = Math.max(prior.lastMonoEndMs, sample.monoEndMs);
+  prior.lastUptimeMs = Math.max(prior.lastUptimeMs, sample.uptimeMs);
+  return history.stopped;
+}
+
+function clockFor(mode: ScoutAdmissionEvidence["mode"], now?: number, override?: ScoutClockSample): ScoutClockSample {
+  if (mode === "live" && (now !== undefined || override)) refuse("live clock overrides are forbidden");
+  const sample = override ?? (now === undefined ? captureScoutClock() : fixtureScoutClock(now));
+  if (!validScoutClock(sample) || (now !== undefined && sample.wallMs !== now)) refuse("clock continuity is missing or invalid");
+  return sample;
+}
+
+function capacityShape(value: unknown): value is ProviderCapacityReceipt {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  const text = (v: unknown) => typeof v === "string";
+  const nullableText = (v: unknown) => v === null || text(v);
+  const date = (v: unknown) => v === null || (text(v) && Number.isFinite(Date.parse(v)));
+  const texts = (v: unknown) => Array.isArray(v) && v.every(text);
+  if (!record(value) || value.version !== 1 || !["providerId", "providerLabel", "accountScope", "usagePolicyReason", "telemetry"].every((key) => text(value[key]))
+    || !texts(value.profiles) || !texts(value.unsupported) || typeof value.unattended !== "boolean"
+    || !date(value.observedAt) || !date(value.expiresAt) || !date(value.nextResetAt)
+    || !(value.observedAgeMs === null || finite(value.observedAgeMs))
+    || !["codex_app_server", "claude_usage_snapshot", "operator_receipt", "operator_config", "none"].includes(String(value.source))
+    || !["real", "simulated"].includes(String(value.evidence)) || !["observed", "attested", "unknown"].includes(String(value.confidence))
+    || !["fresh", "stale", "unknown"].includes(String(value.freshness)) || !["included", "paid", "unknown"].includes(String(value.usagePolicy))
+    || !["available", "unknown", "usage_limited", "budget_limited"].includes(String(value.availability)) || !nullableText(value.planScope)
+    || !Array.isArray(value.windows) || !value.windows.every((window) => record(window) && text(window.label)
+      && finite(window.usedPercentage) && window.usedPercentage <= 100 && finite(window.remainingPercentage) && window.remainingPercentage <= 100 && date(window.resetsAt))
+    || !Array.isArray(value.bankedResets) || !value.bankedResets.every((reset) => record(reset) && text(reset.id) && text(reset.status) && nullableText(reset.title) && date(reset.expiresAt))) return false;
+  return value.credits === null || (record(value.credits) && typeof value.credits.hasCredits === "boolean"
+    && typeof value.credits.unlimited === "boolean" && nullableText(value.credits.balance));
 }
 
 function validateEvidence(evidence: ScoutAdmissionEvidence, scope: AdmissionScope, now: number, mode: ScoutAdmissionEvidence["mode"]) {
@@ -175,11 +253,18 @@ function validateEvidence(evidence: ScoutAdmissionEvidence, scope: AdmissionScop
     || isolation.pins.workspace !== scope.workspace || isolation.pins.fixtureRepo !== scope.repo
     || isolation.pins.nodeVersion !== process.version || !process.version.startsWith("v22.")) refuse(`missing isolation or immutable Node 22 source evidence: ${isolation.reasons.join("; ")}`);
   const capacity = evidence.capacity;
-  if (!capacity || capacity.providerId !== "codex-cli" || capacity.usagePolicy !== "included"
-    || capacity.source === "operator_config" || capacity.evidence !== (mode === "live" ? "real" : "simulated")
+  if (!capacityShape(capacity)) refuse("subscription/capacity evidence JSON is incomplete or malformed");
+  const observed = capacity?.source === "codex_app_server" && capacity.confidence === "observed" && capacity.expiresAt === null;
+  const attested = capacity?.source === "operator_receipt" && capacity.confidence === "attested" && capacity.unattended === false
+    && !!capacity.expiresAt && Number.isFinite(Date.parse(capacity.expiresAt)) && Date.parse(capacity.expiresAt) > now
+    && !!capacity.observedAt && Date.parse(capacity.expiresAt) - Date.parse(capacity.observedAt) <= CAPACITY_ADMISSION_LIMITS.operatorReceiptMaxTtlMs;
+  if (!capacity || capacity.version !== 1 || capacity.providerId !== "codex-cli" || capacity.usagePolicy !== "included"
+    || (!observed && !attested) || typeof capacity.unattended !== "boolean" || typeof capacity.accountScope !== "string" || !capacity.accountScope.trim()
+    || capacity.evidence !== (mode === "live" ? "real" : "simulated")
     || capacity.credits?.hasCredits !== false || capacity.credits.unlimited !== false
     || !capacity.observedAt || !finite(Date.parse(capacity.observedAt)) || Date.parse(capacity.observedAt) > now
-    || capacity.windows?.some((window) => !Number.isFinite(window.usedPercentage) || window.usedPercentage < 0 || window.usedPercentage > 100
+    || !Array.isArray(capacity.windows) || capacity.windows.length === 0
+    || capacity.windows.some((window) => !Number.isFinite(window.usedPercentage) || window.usedPercentage < 0 || window.usedPercentage > 100
       || window.remainingPercentage !== 100 - window.usedPercentage || !window.resetsAt || !Number.isFinite(Date.parse(window.resetsAt)))) refuse("subscription/capacity evidence is missing or invalid");
   const result = evaluateCapacityAdmission({ ...capacity, observedAgeMs: now - Date.parse(capacity.observedAt) }, new Date(now));
   if (!result.admitted || capacity.availability !== "available") refuse(result.reason);
@@ -187,7 +272,8 @@ function validateEvidence(evidence: ScoutAdmissionEvidence, scope: AdmissionScop
 
 /** Reserve durably before claim/invocation; interrupted reservations always count. */
 export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmissionEvidence, scope: AdmissionScope,
-  mode: ScoutAdmissionEvidence["mode"], now = Date.now()): ScoutReservation {
+  mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): ScoutReservation {
+  const sample = clockFor(mode, at, override); const now = sample.wallMs;
   if (!finite(now) || now >= EXPIRY) refuse("authority expired or clock invalid");
   validateEvidence(evidence, scope, now, mode);
   if (mode === "live") {
@@ -202,7 +288,7 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
       refuse("live admission must use the fixed host stores and configured protected workspace");
     }
   }
-  const reservation = withHistory(stores, evidence.isolation.pins.fixtureRoot, (history, witness) => {
+  const reservation = withHistory(stores, evidence.isolation.pins.fixtureRoot, sample, (history, witness) => {
     if (witness.evidenceSha256 !== admissionDigest(evidence)) refuse("evidence is not pinned by the independent approval witness");
     if (now < history.lastClock) refuse("clock rollback");
     if (history.attempts.length >= 3 || history.repairs >= 2 || (history.firstLaunch !== null && now >= history.firstLaunch + LOOP_MS)) refuse("attempt, repair or elapsed allowance exhausted");
@@ -218,8 +304,10 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
       history.repairs += 1;
     } else if (evidence.retry !== null) refuse("retry has no retained failed attempt");
     history.firstLaunch ??= now; history.lastClock = now;
+    history.continuity.firstMonoMs ??= sample.monoStartMs;
+    history.continuity.firstUptimeMs ??= sample.uptimeMs;
     const attempt: Attempt = { id: randomUUID(), scope: { ...scope }, reservedAt: now,
-      deadline: Math.min(now + 90_000, history.firstLaunch + LOOP_MS, EXPIRY), failure: null, retryable: false, outcome: "reserved" };
+      deadline: Math.min(now + 90_000, now + LOOP_MS - elapsed(history, sample), history.firstLaunch + LOOP_MS, EXPIRY), failure: null, failureDetail: null, retryable: false, outcome: "reserved" };
     history.attempts.push(attempt);
     return { id: attempt.id, attempt: history.attempts.length, repairs: history.repairs, firstLaunch: history.firstLaunch, deadline: attempt.deadline };
   });
@@ -229,12 +317,13 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
 }
 
 /** One-use capability; returns its private absolute deadline after durable recheck. */
-export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], now = Date.now()): number {
+export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): number {
+  const sample = clockFor(mode, at, override); const now = sample.wallMs;
   const token = reservation ? tokens.get(reservation) : undefined;
   if (!reservation || !token || token.used || token.mode !== mode || !sameScope(token.scope, scope)
     || now < token.reservedAt || now >= token.deadline || now >= EXPIRY) refuse("valid unused exact-scope reservation is required at invocation");
   validateEvidence(token.evidence, token.scope, now, mode);
-  withHistory(token.stores, token.evidence.isolation.pins.fixtureRoot, (history, witness) => {
+  withHistory(token.stores, token.evidence.isolation.pins.fixtureRoot, sample, (history, witness) => {
     const attempt = history.attempts.at(-1);
     if (now < history.lastClock || attempt?.id !== token.reservationId || attempt.outcome !== "reserved"
       || witness.evidenceSha256 !== admissionDigest(token.evidence)) refuse("reservation history, approval witness or clock changed before invocation");
@@ -245,15 +334,17 @@ export function consumeScoutReservation(reservation: ScoutReservation | undefine
 }
 
 /** Failure attribution is retained; an ambiguous interruption stays reserved and cannot retry. */
-export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string, reservation: ScoutReservation, outcome: { failure: string; retryable?: boolean } | { completed: true }, now = Date.now()) {
-  return withHistory(stores, fixtureRoot, (history) => {
+export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string, reservation: ScoutReservation, outcome: { failure: string; retryable?: boolean; classification?: ScoutExecutionFailure } | { completed: true }, at?: number, override?: ScoutClockSample) {
+  const sample = clockFor(tokens.get(reservation)?.mode ?? "live", at, override); const now = sample.wallMs;
+  return withHistory(stores, fixtureRoot, sample, (history) => {
     const attempt = history.attempts.at(-1);
     if (now < history.lastClock || !attempt || attempt.id !== reservation.id || attempt.outcome !== "reserved") refuse("outcome does not match an unresolved reservation or clock rolled back");
     if ("failure" in outcome && !outcome.failure.trim()) refuse("named failure is required");
     history.lastClock = now;
     attempt.outcome = "failure" in outcome ? "failed" : "completed";
     attempt.failure = "failure" in outcome ? outcome.failure : null;
-    attempt.retryable = "failure" in outcome && outcome.retryable === true
-      && !/login|log.?in|unauthori[sz]ed|authentica|quota|rate.?limit|isolation|protected.state|authority/i.test(outcome.failure);
+    attempt.failureDetail = "failure" in outcome ? classifyScoutFailure({ diagnostic: `${outcome.failure}\n${outcome.classification?.diagnostic ?? ""}`,
+      runtime: outcome.classification?.kind === "runtime", product: outcome.classification?.kind === "product" }) : null;
+    attempt.retryable = attempt.failureDetail?.retryable ?? false;
   });
 }

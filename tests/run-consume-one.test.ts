@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
 import { reduceExecutionOutcome } from "../src/execution/runFinalization.js";
@@ -246,6 +246,27 @@ describe("public named approved Run consumption", () => {
     for (const extra of [{ error: "spawnSync ETIMEDOUT" }, { timedOut: true }, { signal: "SIGTERM" as const }]) {
       expect(reduceExecutionOutcome({ exitStatus: 0, validation: [], ...extra })).toBe("failed");
     }
+  });
+  it.each([['Not logged in', 'auth_failure'], ["You've hit your usage limit. Try again later.", 'provider_limit']])("retains terminal public diagnostic %s and refuses re-admission", (diagnostic, kind) => {
+    const f = fixture(`console.error(${JSON.stringify(diagnostic)}); process.exit(1);`);
+    const result = runRunConsumeCommand(f.options); expect(result.data.run?.status).toBe("failed");
+    expect(result.data.run?.summary).toContain(diagnostic);
+    const history = f.admission.read(); expect(history.attempts[0].failureDetail).toMatchObject({ kind, retryable: false });
+    expect(history.attempts[0].failureDetail?.diagnostic).toContain(diagnostic); expect(history.attempts[0].retryable).toBe(false);
+    const later = history.attempts[0].deadline + 1000; const e = f.admission.evidence;
+    const changed = "b".repeat(40); e.scope.sourceHead = changed; e.assignment.scope.sourceHead = changed;
+    e.codeReview.sourceHead = changed; e.qa.sourceHead = changed; e.isolation.pins.sourceRevision = changed;
+    e.isolation.before!.takenAt = new Date(later).toISOString(); e.isolation.after!.takenAt = new Date(later).toISOString(); e.capacity.observedAt = new Date(later).toISOString();
+    e.retry = { failure: history.attempts[0].failure!, previousReservation: history.attempts[0].id, verifiedFix: "verified source fix" }; f.admission.pin();
+    const wall = vi.spyOn(Date, "now").mockReturnValue(later);
+    try { expect(() => admissionModule.reserveScoutAttempt(f.admission.stores, e, e.scope, "scripted-fixture")).toThrow(/retry requires/); }
+    finally { wall.mockRestore(); }
+    expect(f.admission.read().attempts).toHaveLength(1); expect(calls(f.workspace)).toBe(1);
+  });
+  it("retains an unknown public failure without granting a retry", () => {
+    const f = fixture('console.error("opaque fixture failure"); process.exit(7);');
+    expect(runRunConsumeCommand(f.options).data.run?.status).toBe("failed");
+    expect(f.admission.read().attempts[0].failureDetail).toMatchObject({ kind: "unknown", retryable: false });
   });
 
   it.each([

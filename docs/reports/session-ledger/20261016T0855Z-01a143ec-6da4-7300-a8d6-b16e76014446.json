@@ -14,13 +14,26 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "clock continuity and refused high-water rollback",
+      "caught_by": "code-reviewer R1"
+    },
+    {
+      "class": "terminal auth/quota retries and lost diagnostics",
+      "caught_by": "QA R1"
+    },
+    {
+      "class": "incomplete capacity provenance admitted",
+      "caught_by": "QA R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "split",
-  "notes": "Implementer: 129 tests and 34 scenarios pass. Review/QA and seven CI pending. No live attempt/repair; actual allowance unknown.",
+  "notes": "R1 clock, terminal failure and capacity P1s under repair. 67 module tests pass; public proof, R2 and new CI pending. No live attempt; allowance unknown.",
   "candidate_head": "3c6a4560e19b899859d49e02ea1c5eb6d8b96deb",
   "evidence_source": "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md"
 }

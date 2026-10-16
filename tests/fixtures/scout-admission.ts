@@ -4,9 +4,12 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { ADMISSION_STORE_SCHEMA, SCOUT_GOAL, admissionDigest, type AdmissionScope, type ScoutAdmissionEvidence, type ScoutAdmissionHistory } from "../../src/scout/runAdmission.js";
 import type { LeakSnapshot } from "../../src/workspace/leakCheck.js";
+import { captureScoutClock, fixtureScoutClock, initialScoutContinuity } from "../../src/scout/admissionClock.js";
 
 /** Explicit synthetic seed for disposable tests only; never import from runtime. */
-export function admissionFixture(scope: AdmissionScope, now = Date.now(), fixtureRoot = path.dirname(scope.workspace)) {
+export function admissionFixture(scope: AdmissionScope, at?: number, fixtureRoot = path.dirname(scope.workspace)) {
+  const clock = at === undefined ? captureScoutClock() : fixtureScoutClock(at);
+  const now = clock.wallMs;
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "scout-admission-stores-")));
   const live = path.join(root, "protected-live");
   const ledger = path.join(root, "ledger", "history.sqlite");
@@ -34,7 +37,7 @@ export function admissionFixture(scope: AdmissionScope, now = Date.now(), fixtur
     billing: { subscriptionOnly: true, incrementalPaidCeiling: 0, apiBilling: false, credits: false, resetPurchase: false, fallback: false }, retry: null
   };
   const history: ScoutAdmissionHistory = { schema: 1, goal: SCOUT_GOAL, lineage: "explicit-synthetic-fixture-lineage", sequence: 0,
-    firstLaunch: null, lastClock: now, repairs: 0, attempts: [] };
+    firstLaunch: null, lastClock: now, continuity: initialScoutContinuity(clock), stopped: null, repairs: 0, attempts: [] };
   for (const [file, body] of [[ledger, history], [witness, { schema: 1, lineage: history.lineage, sequence: 0, digest: admissionDigest(history), evidenceSha256: admissionDigest(evidence) }]] as const) {
     const db = new Database(file); db.exec(ADMISSION_STORE_SCHEMA);
     db.prepare("INSERT INTO scout_admission VALUES (?, ?)").run(SCOUT_GOAL, JSON.stringify(body)); db.close();

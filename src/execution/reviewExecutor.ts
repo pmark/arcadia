@@ -28,6 +28,7 @@ import {
 } from "./approvedReviewScope.js";
 import { assertScoutSource, consumeScoutReservation, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
 import { readProductionPolicy } from "../production/policy.js";
+import { classifyScoutFailure, type ScoutExecutionFailure } from "../scout/executionFailure.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
@@ -57,6 +58,7 @@ export interface ReviewExecutionResult {
   signal: NodeJS.Signals | null;
   error: string | null;
   timedOut: boolean;
+  scoutFailure?: ScoutExecutionFailure | null;
   changedFiles: string[];
   validation: ValidationCommandResult[];
   finalOutput: string | null;
@@ -277,7 +279,7 @@ export function executeApprovedReview(
     if (deadline.status !== 0 || !deadline.stdout?.includes("GNU coreutils")) throw validationError("Durable execution requires the existing GNU timeout utility.");
     assertApprovedReview(db, options);
     const invocationNow = Date.now();
-    const reservationDeadline = consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live", invocationNow);
+    const reservationDeadline = consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live");
     const launchNow = Date.now();
     if (launchNow < invocationNow || launchNow >= reservationDeadline) throw validationError("Reservation expired or clock rolled back before invocation.");
     executor.timeoutMs = Math.min(executor.timeoutMs, reservationDeadline - launchNow);
@@ -295,8 +297,13 @@ export function executeApprovedReview(
   const endedAt = new Date().toISOString();
   const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT")
     || (admissionRequired && (run.status === 124 || run.status === 137 || run.signal === "SIGKILL"));
-  const executionError = run.error?.message ?? (timedOut ? "ETIMEDOUT: bounded executor deadline exceeded" : null);
+  let executionError = run.error?.message ?? (timedOut ? "ETIMEDOUT: bounded executor deadline exceeded" : null);
   const output = captureOutput(executor.outputCapture, run.stdout ?? "", run.stderr ?? "");
+  const classified = admissionRequired ? classifyScoutFailure({ diagnostic: [executionError, run.stdout, run.stderr].filter(Boolean).join("\n"),
+    runtime: timedOut || run.signal !== null }) : null;
+  const terminal = classified && ["auth_failure", "provider_limit", "isolation", "authority"].includes(classified.kind);
+  const scoutFailure = admissionRequired && (run.status !== 0 || executionError || run.signal || terminal) ? classified : null;
+  if (terminal) executionError ??= `${classified.kind}: ${classified.diagnostic}`;
   const outputPath = path.join(artifactRoot, "executor-output.txt");
   writeFileSync(outputPath, output, "utf8");
 
@@ -324,6 +331,7 @@ export function executeApprovedReview(
     signal: run.signal,
     timedOut,
     error: executionError,
+    scoutFailure,
     preGitStatus: preGitStatus.stdout,
     changedFiles,
     validation,
@@ -337,7 +345,7 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? null,
     title: `Review execution ${review.slug ?? review.id}`,
     artifactType: "review_execution",
-    status: run.status === 0 && !run.error && !run.signal && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
+    status: run.status === 0 && !executionError && !run.signal && !timedOut && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
     path: toWorkspaceRelativePath(options.workspace, metadataPath)
   });
 
@@ -362,7 +370,7 @@ export function executeApprovedReview(
     planId: review.plan_id,
     projectId,
     decisionNeeded: "Review executor implementation output before completion.",
-    recommendation: run.status === 0 && !run.error && !run.signal ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
+    recommendation: run.status === 0 && !executionError && !run.signal && !timedOut ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
     sourceInput: review.source_input,
     proposedAction: buildFollowUpProposedAction(executor.name, changedFiles, validation, finalOutput, run.status),
     resolvedIntent: "ReviewExecutionResult",
@@ -402,6 +410,7 @@ export function executeApprovedReview(
     exitStatus: run.status,
     signal: run.signal,
     error: executionError,
+    scoutFailure,
     timedOut,
     changedFiles,
     validation,

@@ -5,6 +5,8 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { admissionDigest, consumeScoutReservation, finishScoutAttempt, reserveScoutAttempt, SCOUT_GOAL, type AdmissionScope } from "../src/scout/runAdmission.js";
+import { classifyScoutFailure } from "../src/scout/executionFailure.js";
+import { fixtureScoutClock } from "../src/scout/admissionClock.js";
 import { admissionFixture } from "./fixtures/scout-admission.js";
 import { repoRoot, tsxLoader } from "./cli-response-fixture.js";
 
@@ -31,7 +33,7 @@ describe("durable Decision 0128 admission", () => {
   it("retains stable goal, first launch and cumulative attempts/repairs across restart, source and fixture recreation", () => {
     const f = fixture(); const first = f.reserve();
     expect(f.read().attempts[0].id).toBe(first.id);
-    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", retryable: true }, now + 1000);
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", classification: classifyScoutFailure({diagnostic: "wrong bytes", product: true}) }, now + 1000);
     const next = now + 90_000;
     // Delete and recreate the disposable fixture. Stores are outside it.
     rmSync(f.scope.workspace, { recursive: true }); mkdirSync(f.scope.repo, { recursive: true });
@@ -48,7 +50,7 @@ describe("durable Decision 0128 admission", () => {
   it("bounds three attempts and two repairs; elapsed waits never reset", () => {
     const f = fixture(); let prior = f.reserve();
     for (let index = 1; index <= 2; index++) {
-      finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, prior, { failure: `failure-${index}`, retryable: true }, now + (index - 1) * 90_000 + 1000);
+      finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, prior, { failure: `failure-${index}`, classification: classifyScoutFailure({diagnostic: `failure-${index}`, runtime: true}) }, now + (index - 1) * 90_000 + 1000);
       refresh(f, now + index * 90_000, String(index + 1).repeat(40));
       f.evidence.retry = { failure: `failure-${index}`, previousReservation: prior.id, verifiedFix: `verified fix ${index}` }; f.pin();
       prior = f.reserve(now + index * 90_000);
@@ -120,7 +122,7 @@ describe("durable Decision 0128 admission", () => {
   });
 
   it("requires a changed source, verified fix and matching named failure for every retry", () => {
-    const f = fixture(); const first = f.reserve(); finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", retryable: true }, now + 1);
+    const f = fixture(); const first = f.reserve(); finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", classification: classifyScoutFailure({diagnostic: "wrong bytes", product: true}) }, now + 1);
     f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
     expect(() => f.reserve(now + 90_000)).toThrow(/retry requires/);
     refresh(f, now + 90_000, "b".repeat(40)); f.evidence.retry.verifiedFix = ""; f.pin();
@@ -148,7 +150,7 @@ describe("durable Decision 0128 admission", () => {
   });
   it("cannot select a new live budget by replacing the fixture or choosing another store pair", () => {
     const f = fixture(); f.evidence.mode = "live"; f.evidence.capacity.evidence = "real"; f.pin();
-    expect(() => reserveScoutAttempt(f.stores, f.evidence, f.scope, "live", now)).toThrow(/fixed host stores|trusted host configuration/);
+    expect(() => reserveScoutAttempt(f.stores, f.evidence, f.scope, "live", now)).toThrow(/fixed host stores|trusted host configuration|live clock overrides/);
     expect(f.read().attempts).toHaveLength(0);
   });
   it.each(["login refused", "quota exhausted", "isolation violation", "missing authority"])("never retries terminal refusal %s", (failure) => {
@@ -160,5 +162,58 @@ describe("durable Decision 0128 admission", () => {
   it.each([null, { hasCredits: true, unlimited: false, balance: "50" }, { hasCredits: false, unlimited: true, balance: null }])("refuses unknown or available paid credit fallback %j", (credits) => {
     const f = fixture(); f.evidence.capacity.credits = credits; f.pin();
     expect(() => f.reserve()).toThrow(/subscription\/capacity evidence/);
+  });
+  it.each(["none", "claude_usage_snapshot", "operator_config", "missing-source", "missing-version", "missing-account", "unknown-confidence", "manual-without-expiry", "manual-long-expiry"])("refuses unverified capacity provenance %s even when pinned", (failure) => {
+    const f = fixture(); const capacity = f.evidence.capacity;
+    if (["none", "claude_usage_snapshot", "operator_config"].includes(failure)) capacity.source = failure as typeof capacity.source;
+    if (failure === "missing-source") delete (capacity as Partial<typeof capacity>).source;
+    if (failure === "missing-version") delete (capacity as Partial<typeof capacity>).version;
+    if (failure === "missing-account") capacity.accountScope = "";
+    if (failure === "unknown-confidence") capacity.confidence = "unknown";
+    if (failure.startsWith("manual")) { capacity.source = "operator_receipt"; capacity.confidence = "attested"; capacity.unattended = false; }
+    if (failure === "manual-long-expiry") capacity.expiresAt = new Date(now + 5 * 60 * 60_000).toISOString();
+    f.pin(); expect(() => f.reserve()).toThrow(/subscription\/capacity evidence/); expect(f.read().attempts).toHaveLength(0);
+  });
+  it("accepts a coherent bounded operator capacity attestation as attended evidence", () => {
+    const f = fixture(); const capacity = f.evidence.capacity;
+    capacity.source = "operator_receipt"; capacity.confidence = "attested"; capacity.unattended = false;
+    capacity.expiresAt = new Date(now + 60_000).toISOString(); f.pin();
+    expect(f.reserve()).toMatchObject({ attempt: 1, repairs: 0 });
+  });
+  it.each(["version", "providerId", "providerLabel", "profiles", "accountScope", "source", "evidence", "unattended", "observedAt", "observedAgeMs", "expiresAt", "confidence", "freshness", "usagePolicy", "usagePolicyReason", "windows", "nextResetAt", "credits", "bankedResets", "planScope", "unsupported", "availability", "telemetry"])("rejects missing required capacity contract field %s", (field) => {
+    const f = fixture(); delete (f.evidence.capacity as unknown as Record<string, unknown>)[field]; f.pin();
+    expect(() => f.reserve()).toThrow(/capacity/); expect(f.read().attempts).toHaveLength(0);
+  });
+  it("persists an exhausted observation so rollback after a refused wait cannot reopen allowance", () => {
+    const f = fixture(); const first = f.reserve();
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first,
+      { failure: "wrong bytes", classification: classifyScoutFailure({ diagnostic: "wrong bytes", product: true }) }, now + 1000);
+    const late = now + 91 * 60_000; refresh(f, late, "b".repeat(40));
+    f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
+    expect(() => f.reserve(late)).toThrow(/elapsed allowance exhausted/);
+    expect(f.read().lastClock).toBe(late); expect(f.read().stopped).toContain("exhausted");
+    refresh(f, now + 120_000, "b".repeat(40)); f.pin();
+    expect(() => f.reserve(now + 120_000)).toThrow(/exhausted/); expect(f.read().attempts).toHaveLength(1);
+  });
+  it("detects partial wall rollback above the last timestamp across a restarted process", () => {
+    const f = fixture(); const first = f.reserve();
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first,
+      { failure: "wrong bytes", classification: classifyScoutFailure({ diagnostic: "wrong bytes", product: true }) }, now + 1000);
+    const at = now + 120_000; refresh(f, at, "b".repeat(40));
+    f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
+    const input = path.join(f.root, "partial-clock.json"); const script = path.join(f.root, "partial-clock.mts");
+    writeFileSync(input, JSON.stringify({ stores: f.stores, evidence: f.evidence, scope: f.scope, now: at, clock: fixtureScoutClock(at, now + 91 * 60_000) }));
+    writeFileSync(script, `import {readFileSync} from 'node:fs'; import {reserveScoutAttempt} from ${JSON.stringify(path.join(repoRoot, "src/scout/runAdmission.ts"))}; const v=JSON.parse(readFileSync(process.argv[2],'utf8')); reserveScoutAttempt(v.stores,v.evidence,v.scope,'scripted-fixture',v.now,v.clock);`);
+    expect(() => execFileSync(process.execPath, ["--import", tsxLoader, script, input], { stdio: "ignore" })).toThrow();
+    expect(f.read().stopped).toMatch(/rollback|continuity/); expect(f.read().attempts).toHaveLength(1);
+  });
+  it.each(["boot", "suspension", "missing"])("refuses unknown or exhausted %s continuity", (failure) => {
+    const f = fixture(); f.reserve(); const at = now + 120_000; refresh(f, at, "b".repeat(40)); f.pin();
+    const sample = fixtureScoutClock(at);
+    if (failure === "boot") sample.bootId = "different-boot";
+    if (failure === "suspension") sample.uptimeMs = now + 91 * 60_000;
+    if (failure === "missing") sample.bootId = "";
+    expect(() => reserveScoutAttempt(f.stores, f.evidence, f.scope, "scripted-fixture", at, sample)).toThrow(/continuity|exhausted/);
+    expect(f.read().attempts).toHaveLength(1);
   });
 });

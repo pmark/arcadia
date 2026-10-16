@@ -62,7 +62,23 @@ Routine intake Issue: [#1456](https://github.com/pmark/arcadia/issues/1456). An 
 
 Next safe moves: preserve the final source delta; run final clean-head focused proof, lint/type/build, fast rehearsal/report and derived-record checks; preserve evidence; push/open the PR and hold code for independent review/QA. No merge or live attempt. Host refusal or the assigned budget cap requires a concrete preserved blocker, not a replacement workspace or reset budget.
 
-## Final initial-pass source verification
+## Round 1 — three verified P1 repairs, acceptance still pending
+
+R1 head `389b0c5c67faa8aa68a9f5dfcc8b046a0eebc22c` passed all seven CI jobs in run `38881365617`, but independent Code-reviewer `01a14413-079b-7f60-96d7-18b5d751eb4f` and QA `01a14413-1991-7973-9bbf-dc36ac7ba53c` both requested changes. Raw receipts and original synthetic repros are retained in `docs/reports/approved-run-1457-r1-receipts.json` and `docs/reports/approved-run-1457-r1-repros.json`. They reproduce failures, not acceptance passes. The author independently reproduced the capacity `source: none` admission before changing source. No live providers were invoked.
+
+The manager assigned the same sole writer one combined finite repair pass for these named failures, capped at `2026-10-16T10:25:12Z`; this extends the initial pass without resetting it or creating a new writer. At most three attempts per failure; no new delegation, workspace, clock change, daemon, time service or harness.
+
+1. Clock reopening: bound refusals now commit their wall/monotonic/uptime high-water observation and permanent stop reason before returning an error. The attempted budget transition is rolled back independently. Kernel boot identity, system monotonic intervals and uptime persist across process restart. Elapsed admission uses the maximum of wall, monotonic and suspend-inclusive uptime, charging uptime's one-second measurement uncertainty against the allowance. Partial backwards wall shifts above the old timestamp cannot restore elapsed time. Reboot, unavailable/invalid clock evidence, inconsistent readings or lost continuity refuse; no actual host time is changed. Explicit synthetic clock arguments exist only for scripted fixture tests; the public CLI exposes none and live overrides refuse.
+2. Terminal diagnostics: the existing pure `PANE_SIGNAL_CATALOG` supplies actual auth/usage-limit wording, including `Not logged in` and `You've hit your usage limit`. Shared execution/finalization carries a structured failure class and original diagnostic into the Run summary, executor metadata and durable history. Auth, quota, isolation and authority failures never grant retry; unknown failures default to no retry. Known timeout/runtime and exact-product failures retain the reviewed-fix path. Public scripted tests verify both exact terminal messages and refusal of reservation 2 after fresh changed-source/review/QA evidence.
+3. Capacity JSON: version, account scope, recognized Codex observation or bounded operator-attestation provenance, matching confidence and required windows are checked at runtime, alongside included/no-credit/freshness constraints. Missing/null/unsupported provenance or confidence refuses even when the bundle is pinned. Attestation TTL reuses `CAPACITY_ADMISSION_LIMITS`; simulated evidence cannot become live proof.
+
+Clock trusted boundary: existing OS/kernel boot identity and monotonic/uptime interfaces must be trustworthy; no protection is claimed against privileged replacement of those interfaces and all trusted stores. The timer is independent of backwards civil time, rather than documentation narrowing the 90-minute rule. A millisecond sampling interval bounds wall comparisons; coarse uptime uncertainty is conservatively charged, never granted as extra allowance. Missing continuity remains a blocker, not permission to reset history. The macOS kernel read was denied inside the Codex sandbox; the exact read through normal host permission succeeded. Public Mac fixture verification therefore uses ordinary host execution; an unsupported/restricted runtime refuses. Linux uses the existing kernel boot UUID. No clock/configuration mutation or fallback occurs.
+
+CodeRabbit's one nonblocking historical-table correction is included: the Action 1 historical section below is restored byte-for-byte from base `31450cff`; Action 2 retrieval entries remain only in the current section. No bot re-trigger, tooling change or gate weakening.
+
+Narrow module proof before the clock/public additions: 39/39 pass. Expanded clock/capacity proof: 44/44 pass, exit 0 (`/private/tmp/admission-r1-module2.log`); final full capacity-field removal and continuity proof: **67/67 pass**, exit 0 (`/private/tmp/admission-r1-module4.log`). TypeScript and focused ESLint exit 0 (`/private/tmp/admission-r1-tsc4.log`, `/private/tmp/admission-r1-lint3.log`); ledger/guidance checks each separately exit 0. Earlier raw wording/lint correction receipts are retained in `/private/tmp/admission-r1-module3.log` and `admission-r1-lint2.log`; no assertion or gate was weakened. Final committed public proof, full build/rehearsal, R2 delta review/QA and all seven new-head CI jobs remain required. No complete Ask is drafted while findings are open. Actual allowance, provider usage/model/effort/cost remain unknown; live attempts and runtime repairs here remain zero.
+
+## Final initial-pass source verification (historical; superseded by R1 findings)
 
 Source head: `3c6a4560e19b899859d49e02ea1c5eb6d8b96deb`. Source is frozen for independent review. Subsequent initial handoff edits are docs/evidence only; verify an empty `git diff <source-head> HEAD -- src tests` before reusing these receipts. Candidate PR/review/CI receipts identify the exact final head.
 
@@ -76,7 +92,7 @@ Final docs/evidence checks: guidance and Notes tests (3/3) passed. Correction: t
 
 PR [#1457](https://github.com/pmark/arcadia/pull/1457) opened at `30c2a12472cc4c6332ced430c9831ab778831c54`; routine FYI queued as `ping_414aa35aaa8840ccac`. All seven required jobs started; initial lint failed only at the ledger notes limit after ESLint, guidance and operator scripts passed. Independent Code-reviewer/QA are manager-coordinated; no review verdict is claimed. Primary reflog before/after PR creation is byte-identical. Source remains identical to `3c6a4560e19b899859d49e02ea1c5eb6d8b96deb`.
 
-Criteria 1–6 now have deterministic source evidence. Criterion 7 remains gated on separate independent current-head Code-reviewer and QA receipts and every required CI job; no completion settlement has been prepared or applied. Action 3 is not started. Historical protected-config uncertainty remains unresolved, actual live attempts/repairs here are zero, actual remaining allowance is unknown, usage/model/effort/cost are unknown, and fixture incremental paid spend is $0. The next safe move is the pushed candidate PR with independent manager-owned review/QA; no merge or live attempt.
+Initial tests supplied source evidence for criteria 1–6, but R1 invalidated acceptance for clock continuity, terminal failures and capacity provenance. Those findings remain blocking until independently cleared. Criterion 7 remains gated on separate independent current-head Code-reviewer and QA receipts and every required CI job; no completion settlement has been prepared or applied. Action 3 is not started. Historical protected-config uncertainty remains unresolved, actual live attempts/repairs here are zero, actual remaining allowance is unknown, usage/model/effort/cost are unknown, and fixture incremental paid spend is $0. The next safe move is the pushed candidate PR with independent manager-owned review/QA; no merge or live attempt.
 
 ## Action 2 instruction retrieval receipt
 
@@ -186,10 +202,7 @@ Reference byte counts below are filesystem UTF-8 sizes, not a claim that all his
 
 | Path | Bytes | Retrieved scope |
 | --- | ---: | --- |
-| `AGENTS.md` | 10100 |
-| `docs/operator-demo-and-release-contract.md` | 6915 |
-| `.github/pull_request_template.md` | 2514 |
-| `/Users/pmark/.codex/skills/.system/openai-docs/SKILL.md` | 5437 | full; plus operator-provided preferences |
+| `AGENTS.md` | 10100 | full; plus operator-provided preferences |
 | `CONSTITUTION.md` | 3320 | full |
 | `PROJECT.md` | 31677 | frontmatter/current pointer; historical prose not relied on |
 | `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 | full |
