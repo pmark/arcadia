@@ -83,6 +83,11 @@ const LESSON_EXPORT_FILE = guarded(
   ({ options, experiment }) => typeof options.file !== "string" || isInside(experiment.allowedRepoRoot, options.file)
 );
 
+const NATIVE_MAIL_WRITE = guarded(
+  "Local addressed native-mail correlates to the live Project/Plan and canonical store; an experiment workspace's isolated database must not originate messages, acknowledgments, reports, verification attempts, or disposals read as mail from real native sessions.",
+  "Inspect pending messages read-only with `native-mail status`, or run this against the live workspace with no ARCADIA_WORKSPACE/--workspace naming the experiment."
+);
+
 const LESSON_CACHE_APPLY = guarded(
   "Applying Notes cache maintenance outside the experiment's allowed repository root can alter a live checkout.",
   "Preview without --apply, or use a disposable Notes file under the experiment's allowed repository root.",
@@ -144,6 +149,13 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "ping pending": ALLOWED,
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
+  "native-mail send": NATIVE_MAIL_WRITE,
+  "native-mail inbox": NATIVE_MAIL_WRITE,
+  "native-mail ack": NATIVE_MAIL_WRITE,
+  "native-mail report": NATIVE_MAIL_WRITE,
+  "native-mail verify": NATIVE_MAIL_WRITE,
+  "native-mail dispose": NATIVE_MAIL_WRITE,
+  "native-mail status": ALLOWED,
   capture: ALLOWED,
   learn: ALLOWED,
   "learn search": ALLOWED,
