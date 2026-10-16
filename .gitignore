@@ -1,5 +1,6 @@
 # Operating system files
 .claude/*
+!.claude/skills/
 !.claude/settings.json
 !.claude/hooks
 .DS_Store
