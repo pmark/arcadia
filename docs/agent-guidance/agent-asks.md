@@ -265,6 +265,15 @@ Action, children without it create new ones. For an amendment `dependencies`
 and `references` are replacement lists when present: an explicit empty list
 clears stale values, while an omitted list leaves the existing value unchanged.
 The settle preview's Effects list each amended Action's field-level changes.
+
+For a metadata-only amendment to one named Plan, use the strict paired
+`plan_metadata` object with both `token_impact` (`none`, `small`, `medium`,
+`large`, or `xlarge`) and a non-empty `token_budget`. It cannot be combined
+with Action changes and is refused for any other intent or target. Preview pins
+both values; settlement changes only those Plan fields and its normal
+`updated:` value. This is a canonical Agent Ask settlement path, not an
+extension of the Action-only operator-script runner.
+
 Each child may also carry `why`, one single-line sentence (at most 300
 characters) on why that Action matters; it is written to the Plan Action's
 `why`, and an amendment that omits it leaves the existing value alone. A

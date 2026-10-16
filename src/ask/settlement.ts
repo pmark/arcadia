@@ -599,6 +599,18 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (!target) throw validationError("Agent Ask Plan amendment target was not found.", { targetRef });
           const targetPath = path.join(repoRoot, target.relativePath);
           const before = readFileSync(targetPath, "utf8");
+          if (proposal.normalized.planMetadata) {
+            if (input.activate || input.placement || input.anchor || input.responsibility) {
+              throw validationError("Plan budget metadata amendments preserve activation, Actions, and queue state.");
+            }
+            const { tokenImpact, tokenBudget } = proposal.normalized.planMetadata;
+            fileMutations.push({ path: targetPath, before, after: withPlanUpdated(
+              replaceTopLevelField(replaceTopLevelField(before, "token_impact", tokenImpact), "token_budget", tokenBudget)
+            ) });
+            effects.push(`Updated Plan ${target.slug} token impact from ${target.tokenImpact} to ${tokenImpact} and its token budget.`);
+            effects.push(`Preserved Plan ${target.slug} Actions, activation, pointers, and queue position.`);
+            break;
+          }
           const proposedActions = proposal.normalized.actions;
           if (input.activate) {
             if (proposedActions.length || input.responsibility) throw validationError("Activate an existing Plan separately from Action amendments.");
