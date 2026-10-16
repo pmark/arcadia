@@ -1,0 +1,32 @@
+{
+  "session_id": "01a14252-a1fc-77e3-9f7d-10d62e50ebdf",
+  "role": "lead",
+  "model": "unknown (native parent model variant not exposed)",
+  "effort": null,
+  "action_id": "operator-directed:#1389",
+  "pr": 1453,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "missing-exact-ask-custody",
+      "caught_by": "independent generic PR verification R1"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "scout-amendment-preview-and-host-permissions",
+      "cost_min": null,
+      "fix_ref": "docs/reports/scout-governed-preparation-2026-10-15.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Preparation/settlement only; current-head independent review and CI tracked in PR. No provider trial or source implementation.",
+  "evidence_source": "docs/reports/scout-governed-preparation-2026-10-15.md"
+}

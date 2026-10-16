@@ -7,7 +7,7 @@ status: draft
 milestone: Ask queues approved work or admits bounded independent Sessions without disrupting in-flight work; first prove Codex Luna Hello World to an independently reviewed green PR with production Off.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-13
+updated: 2026-10-16
 actions:
   - id: scout-isolation-preflight
     title: Implement a deterministic Luna scout preflight and offline replay of the retained failed trial before any new model call.
@@ -73,7 +73,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-luna-scout-green-pr
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-queue-independent-luna-scout-20261013-v3
+    source: Agent Ask amend-scout-consumer-safeguards-20261016-v2
     why: "Prove the smallest complete path while managed production stays Off before building automatic side-session admission."
     acceptance_criteria:
       - Before the run, the isolation stop is resolved, disposable repository and any dedicated remote are explicitly identified/authorized, provider capacity is checked, and exact source/runtime/model pins are recorded. Never create/use a remote from a guessed destination.
@@ -82,9 +82,9 @@ actions:
       - The independent oracle verifies exact HelloWorld.txt bytes Hello World! followed by one newline, no other builder file changes, completed correlated Run and accepted Artifact. Distinguish this artifact verdict from PR delivery verdict.
       - Preserve the delivery with host-owned semantic Git identity in an isolated candidate, linked PR, independent review of the current head and all repository-required checks green. Stop before merge/deploy. A timeout, absent file, validator failure, scope leak or red review yields No with evidence and actionable logged defects, never a green claim.
       - Collect a hash manifest, sanitized receipts, prompt/argv, runtime/source/model pins, validation results, usage, bug links, Run/Artifact/PR ids, review and exact-head checks. Production remains Off and the live Plan/current Action/queue are unchanged.
-    depends_on: [scout-isolation-preflight, expose-scout-run-evidence]
+    depends_on: [scout-isolation-preflight, expose-scout-run-evidence, implement-scout-named-run-consumer, implement-scout-durable-budget-safeguards]
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320", "docs/agent-guidance/ask-todo-scout.md", "docs/agent-guidance/operator-directed-work.md", "docs/decisions/0124-decide-how-a-new-ask-is-admitted-while-a-plan-or-action-is-in-flight-preserve.md"]
+    references: ["https://github.com/pmark/arcadia/issues/1389", "docs/scout/CONTINUE.md", "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md", "https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320", "docs/agent-guidance/ask-todo-scout.md", "docs/agent-guidance/operator-directed-work.md", "docs/decisions/0124-decide-how-a-new-ask-is-admitted-while-a-plan-or-action-is-in-flight-preserve.md"]
   - id: implement-bounded-independent-admission
     title: Implement queue and independent-Session disposition using existing admission, claims and scheduling controls after the scout reaches a green PR.
     status: open
@@ -131,16 +131,59 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask bounded-luna-hello-world-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-bounded-luna-scout-loop-20261013
+    source: Agent Ask amend-scout-consumer-safeguards-20261016-v2
     why: "Operator2026-10-13 asked to close the attempt,findings,repair and retry loop rather than repeatedly drive rehearsals by hand."
     acceptance_criteria:
       - A checked-in procedure uses the unchanged standard coding harness and existing commands; Scout canonical Researcher interactions are only Ask/Ask show/To-do, with deterministic validator and canonical Supervisor/Implementer/separate code-reviewer/QA outside that persona.
       - A durable goal-scope ledger bounds all invocations/restarts/source revisions to three live Luna-low builder attempts at most90seconds each, two repair cycles and90minutes from first launch; expiry, corruption, clock rollback, unchanged failure, missing authority/evidence or isolation violations stop. Incremental paid spend is zero, with no purchased credits, API-billing/provider fallback or new infrastructure; unavailable usage/cost is unknown, never invented.
       - A real Luna attempt produces independently checked exact13byte HelloWorld.txt, correlated completed Run and ready/published Artifact for Yes, or truthful No with retained private evidence and a deduplicated bug/repair handoff; passing harness/CI or queued receipts alone cannot pass the oracle.
       - A retry follows a named bug, verified changed source and independent code-review/QA; no retry resets the same goal budget or changes live Project/pointer/queue/production, and no fixture remote/GitHub operation occurs. Source delivery and permitted host-side bug logging preserve all work.
-    depends_on: [scout-isolation-preflight, repair-scout-approved-handoff, expose-scout-run-evidence]
+    depends_on: [scout-isolation-preflight, repair-scout-approved-handoff, expose-scout-run-evidence, implement-scout-named-run-consumer, implement-scout-durable-budget-safeguards]
     decisions: []
-    references: ["docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md", "docs/agent-guidance/standard-harness.md", "docs/agent-guidance/ask-todo-scout.md", "https://github.com/pmark/arcadia/issues/1365", "https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320"]
+    references: ["https://github.com/pmark/arcadia/issues/1389", "docs/scout/CONTINUE.md", "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md", "docs/agent-guidance/standard-harness.md", "docs/agent-guidance/ask-todo-scout.md", "https://github.com/pmark/arcadia/issues/1365", "https://github.com/pmark/arcadia/issues/1356", "https://github.com/pmark/arcadia/issues/1357", "https://github.com/pmark/arcadia/issues/1320"]
+  - id: implement-scout-named-run-consumer
+    title: Implement one canonical public fixture-only consumer for an approved named Ask-linked Run using existing execution and finalization with Production Off.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement one canonical public fixture-only consumer for an approved named Ask-linked Run using existing execution and finalization with Production Off.
+    expected_artifact: Evidence satisfying Agent Ask implement-scout-named-run-consumer
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-scout-consumer-safeguards-20261016-v2
+    why: "Issue 1389 prevents the approved Ask from progressing beyond a pending_execution Run while Production remains Off."
+    acceptance_criteria:
+      - A public consume-one fixture test selects exactly one explicitly named approved Ask-linked Run, reuses existing execution and finalization, and records a completed correlated Run plus a ready or published product Artifact at HelloWorld.txt containing exactly the 13 bytes Hello World! followed by one LF newline; a scripted external executor produces the fixture output with zero live provider calls.
+      - Negative public-path tests reject omitted, blank, invalid, unrelated or already claimed Run selectors, non-fixture scope, missing or revoked approval, stale source pins and missing durable admission safeguards before executor invocation; no fallback claims another Run.
+      - A concurrent fixture test records at most one successful claim and one executor invocation for the selected Run; unrelated Runs and protected fixture state remain unchanged. Execution failure or interruption records a truthful terminal or blocked result and never reports accepted product completion without its exact file Artifact.
+      - A source-path audit and deterministic fixtures verify the consumer introduces no daemon, recurring intake, orphan recovery, production tick, global-oldest fallback, internal-worker wrapper or second orchestration harness; Production stays Off and fixture GitHub, Discord, remotes, services and live Project pointers or queues receive zero writes.
+      - A fixture test refuses live provider invocation until durable Decision 0128 reservation and restore detection return valid admission evidence; source-only tests use a scripted external executor and record zero live provider calls.
+      - Separate independent Code-reviewer and QA receipts verify the current source head with no unresolved blocking findings; all repository-required CI checks pass, focused tests, lint, TypeScript and build pass, and the PR records executable QA instructions and updates docs/scout/CONTINUE.md with source acceptance, live attempts and product outcome separately.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1389", "docs/scout/CONTINUE.md", "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md"]
+  - id: implement-scout-durable-budget-safeguards
+    title: Implement durable Decision 0128 goal-budget reservation and independent restore detection at the named-Run consumer invocation boundary.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement durable Decision 0128 goal-budget reservation and independent restore detection at the named-Run consumer invocation boundary.
+    expected_artifact: Evidence satisfying Agent Ask implement-scout-durable-budget-safeguards
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-scout-consumer-safeguards-20261016-v2
+    why: "A new source revision or restored ledger must never reset the same Scout goal allowance or admit an unreserved provider attempt."
+    acceptance_criteria:
+      - Restart, source-revision and fixture-recreation tests retain one stable goal identity, first-live-launch timestamp, cumulative attempt count and runtime repair count; none of those transitions resets the allowance.
+      - Concurrent and crash-injection tests verify transactional reservation commits before provider invocation, at most three total live builder attempts each capped at 90 seconds, at most two runtime repair cycles and at most 90 minutes elapsed from first live launch including waits; an ambiguous interrupted reservation consumes allowance and concurrent callers cannot exceed any bound.
+      - "Admission tests reject expiry at or after 2026-10-18T00:00:00Z, clock rollback, missing or corrupt history, exhausted bounds, unchanged failure, missing authority or isolation evidence before any provider call; a retry requires a named failure, changed verified source and separate independent code-review and QA evidence."
+      - An earlier-valid-snapshot restoration test restores the ledger to an older internally valid state and verifies admission fails closed using an independently retained freshness or restore witness outside that restored ledger; a ledger-local hash or timestamp alone cannot satisfy the test. The evidence records the trusted-store boundary and does not claim protection against privileged replacement of every trusted store.
+      - Integration fixtures prove the public consumer invokes the existing executor only after reservation and current exact-scope approval, clean immutable source, Node 22, Luna low with a 90-second cap, subscription and capacity evidence, Production Off and protected-state witnesses pass; missing or unknown required evidence refuses invocation. The source suite records zero live provider calls and zero live workspace, pointer, queue, service, host configuration or remote changes.
+      - The evidence report records remaining live allowance as unknown unless fresh durable history proves it, preserves historical protected-config uncertainty, reports measured usage or unknown honestly and verifies no paid credits, reset purchase, API billing or model/provider fallback is admitted; no governed Session lineage is fabricated.
+      - Separate independent Code-reviewer and QA receipts verify the current source head with no unresolved blocking findings; all repository-required CI checks pass, focused tests, lint, TypeScript and build pass, and the PR records executable QA instructions and updates docs/scout/CONTINUE.md with source acceptance, live attempts and product outcome separately.
+    depends_on: [implement-scout-named-run-consumer]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1389", "docs/scout/CONTINUE.md", "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md"]
 questions: []
 decisions: []
 ---
