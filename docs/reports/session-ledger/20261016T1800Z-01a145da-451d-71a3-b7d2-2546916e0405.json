@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,

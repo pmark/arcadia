@@ -26,6 +26,9 @@ import {
   approvedReviewScopeSha256,
   approvedRunScopeMatches
 } from "./approvedReviewScope.js";
+import { assertScoutSource, consumeScoutReservation, remainingScoutInvocationMs, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
+import { readProductionPolicy } from "../production/policy.js";
+import { classifyScoutFailure, type ScoutExecutionFailure } from "../scout/executionFailure.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
@@ -38,6 +41,8 @@ export interface ReviewExecutionOptions {
   executorName?: ExecutorName;
   runId?: string;
   fixtureScript?: string;
+  scoutReservation?: ScoutReservation;
+  scoutScope?: AdmissionScope;
 }
 
 export interface ReviewExecutionResult {
@@ -53,6 +58,7 @@ export interface ReviewExecutionResult {
   signal: NodeJS.Signals | null;
   error: string | null;
   timedOut: boolean;
+  scoutFailure?: ScoutExecutionFailure | null;
   changedFiles: string[];
   validation: ValidationCommandResult[];
   finalOutput: string | null;
@@ -145,7 +151,7 @@ function fixtureExecutor(workspace: string, review: ReviewItemSummary, db: Datab
 }
 
 /** Read-only approval check, shared by bounded admission and execution. */
-export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions) {
+export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions, inspectBoundedAdmission = false) {
   const triggerReview = getReviewItem(db, options.reviewId) ?? getReviewItemBySlug(db, options.reviewId);
   if (!triggerReview) {
     throw validationError("Requires Review Decision was not found.", { id: options.reviewId });
@@ -153,7 +159,7 @@ export function assertApprovedReview(db: Database.Database, options: ReviewExecu
   const review = executionReviewForTrigger(db, triggerReview);
   const approvalRun = options.runId ? getExecutionRun(db, options.runId) : null;
   const fixture = options.fixtureScript ? fixtureExecutor(options.workspace, review, db, options.fixtureScript) : null;
-  if (!canExecuteReview(triggerReview, review, approvalRun, fixture !== null)) {
+  if (!canExecuteReview(triggerReview, review, approvalRun, fixture !== null || inspectBoundedAdmission || options.scoutReservation !== undefined)) {
     throw validationError("Execution requires a current approved Run receipt for this Review and Action.", {
       id: triggerReview.id,
       status: triggerReview.status,
@@ -198,14 +204,31 @@ export function executeApprovedReview(
   if (isProjectProposal) {
     prepareProjectProposalRepository(repoPath, metadata, review.id);
   }
+  const boundedAsk = review.ask_request_id !== null && review.decision_note === "Approved from Ask. Execution queued.";
+  // Every caller, including the ordinary worker, reaches this boundary. A JSON
+  // receipt or widened approval inspection can never stand in for reservation.
+  const admissionRequired = !!options.scoutReservation || boundedAsk;
+  if (admissionRequired) {
+    if (!options.scoutScope || options.scoutScope.runId !== options.runId || options.scoutScope.repo !== repoPath
+      || options.scoutScope.workspace !== options.workspace || options.scoutScope.askId !== review.ask_request_id) {
+      throw validationError("Exact-scope durable Scout admission is required.");
+    }
+  }
+  const boundedExecutor = !admissionRequired || fixture ? null : normalizeExecutorConfig({
+    name: "codex", commandTemplate: "codex", args: ["exec", "--model", "gpt-6-luna", "-c", 'model_reasoning_effort="low"',
+      "-c", 'forced_login_method="chatgpt"', "-c", 'model_provider="openai"',
+      "--sandbox", "workspace-write", "--cd", "{repoPath}", "--skip-git-repo-check", "-"],
+    promptMode: "stdin", workingDirectory: "repo", outputCapture: "combined", timeoutMs: 90_000,
+    environmentAllowlist: ["PATH", "HOME", "SHELL", "TERM", "TMPDIR"]
+  });
   const executor = withProjectProposalNetwork(
-    fixture ?? resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
+    fixture ?? boundedExecutor ?? resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
     isProjectProposal
   );
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   // Scripted fixture execution uses its caller's fixed exact-product oracle.
   // Never let fixture metadata select shell commands or configured providers.
-  const validationCommands = fixture ? [] : parseStringArray(metadata?.validation_commands);
+  const validationCommands = fixture || admissionRequired ? [] : parseStringArray(metadata?.validation_commands);
 
   const runId = options.runId ?? createId("executionRun");
   const startedAt = new Date().toISOString();
@@ -241,18 +264,46 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? ""
   });
 
+  const executionCwd = cwdForExecutor(executor, repoPath, options.workspace);
+  const executionEnv = buildAllowedEnvironment(executor.environmentAllowlist);
+
+  // Consume at the last synchronous boundary, after packet preparation. The
+  // remaining reservation includes that preparation and all prior waits.
+  if (admissionRequired) {
+    if (readProductionPolicy(db).desiredState !== "inactive") throw validationError("Production must remain Off at invocation.");
+    assertScoutSource(options.scoutScope!.sourceHead);
+    // GNU timeout is an existing host utility, not a worker/harness. Its
+    // separate process survives consumer SIGKILL and kills the executor group.
+    // A missing/unsupported utility fails closed; never install one here.
+    const found = spawnSync("which", ["timeout"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
+    const timeoutPath = found.stdout?.trim() ?? "";
+    if (found.status !== 0 || !path.isAbsolute(timeoutPath)) throw validationError("Durable execution requires the existing GNU timeout utility.");
+    const deadline = spawnSync(timeoutPath, ["--version"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
+    if (deadline.status !== 0 || !deadline.stdout?.includes("GNU coreutils")) throw validationError("Durable execution requires the existing GNU timeout utility.");
+    assertApprovedReview(db, options);
+    consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live");
+    executor.timeoutMs = Math.min(executor.timeoutMs, remainingScoutInvocationMs(options.scoutReservation));
+    command.unshift(timeoutPath, "--signal=KILL", `${Math.max(1, Math.floor(executor.timeoutMs)) / 1000}s`);
+  }
   const run = spawnSync(command[0] ?? "", command.slice(1), {
-    cwd: cwdForExecutor(executor, repoPath, options.workspace),
+    cwd: executionCwd,
     input: executor.promptMode === "stdin" ? packet : undefined,
-    env: buildAllowedEnvironment(executor.environmentAllowlist),
+    env: executionEnv,
     encoding: "utf8",
-    timeout: executor.timeoutMs,
+    timeout: executor.timeoutMs + (admissionRequired ? 1000 : 0),
     killSignal: "SIGKILL",
     maxBuffer: 20 * 1024 * 1024
   });
   const endedAt = new Date().toISOString();
-  const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT");
+  const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT")
+    || (admissionRequired && (run.status === 124 || run.status === 137 || run.signal === "SIGKILL"));
+  let executionError = run.error?.message ?? (timedOut ? "ETIMEDOUT: bounded executor deadline exceeded" : null);
   const output = captureOutput(executor.outputCapture, run.stdout ?? "", run.stderr ?? "");
+  const classified = admissionRequired ? classifyScoutFailure({ diagnostic: [executionError, run.stdout, run.stderr].filter(Boolean).join("\n"),
+    runtime: timedOut || run.signal !== null }) : null;
+  const terminal = classified && ["auth_failure", "provider_limit", "isolation", "authority"].includes(classified.kind);
+  const scoutFailure = admissionRequired && (run.status !== 0 || executionError || run.signal || terminal) ? classified : null;
+  if (terminal) executionError ??= `${classified.kind}: ${classified.diagnostic}`;
   const outputPath = path.join(artifactRoot, "executor-output.txt");
   writeFileSync(outputPath, output, "utf8");
 
@@ -279,7 +330,8 @@ export function executeApprovedReview(
     exitStatus: run.status,
     signal: run.signal,
     timedOut,
-    error: run.error?.message ?? null,
+    error: executionError,
+    scoutFailure,
     preGitStatus: preGitStatus.stdout,
     changedFiles,
     validation,
@@ -293,7 +345,7 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? null,
     title: `Review execution ${review.slug ?? review.id}`,
     artifactType: "review_execution",
-    status: run.status === 0 && !run.error && !run.signal && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
+    status: run.status === 0 && !executionError && !run.signal && !timedOut && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
     path: toWorkspaceRelativePath(options.workspace, metadataPath)
   });
 
@@ -318,7 +370,7 @@ export function executeApprovedReview(
     planId: review.plan_id,
     projectId,
     decisionNeeded: "Review executor implementation output before completion.",
-    recommendation: run.status === 0 && !run.error && !run.signal ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
+    recommendation: run.status === 0 && !executionError && !run.signal && !timedOut ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
     sourceInput: review.source_input,
     proposedAction: buildFollowUpProposedAction(executor.name, changedFiles, validation, finalOutput, run.status),
     resolvedIntent: "ReviewExecutionResult",
@@ -357,7 +409,8 @@ export function executeApprovedReview(
     endedAt,
     exitStatus: run.status,
     signal: run.signal,
-    error: run.error?.message ?? null,
+    error: executionError,
+    scoutFailure,
     timedOut,
     changedFiles,
     validation,
