@@ -95,10 +95,13 @@ describe("public named approved Run consumption", () => {
     try {
       const f = fixture('setTimeout(() => writeFileSync("HelloWorld.txt", "Hello World!\\n"), 1500);');
       if (rollback) {
-        expect(() => runRunConsumeCommand(f.options)).toThrow(/launch clock rollback/);
+        const refused = runRunConsumeCommand(f.options);
+        expect(refused.data.run?.status).toBe("failed");
+        expect(refused.data.run?.summary).toMatch(/launch clock rollback/);
         expect(calls(f.workspace)).toBe(0);
         expect(existsSync(path.join(f.repo, "HelloWorld.txt"))).toBe(false);
-        expect(f.admission.read().attempts[0].outcome).toBe("reserved");
+        expect(refused.data.run?.artifacts.some((artifact) => artifact.artifact_type === "text" && artifact.status === "ready")).toBe(false);
+        expect(f.admission.read().attempts[0]).toMatchObject({ outcome: "failed", retryable: false, failureDetail: { retryable: false } });
         return;
       }
       const result = runRunConsumeCommand(f.options);
