@@ -695,3 +695,25 @@ describe("native coordination: receipt-kind collision and unconditional unverifi
     expect(status.receipts.some((receipt) => receipt.kind === "effect_receipt")).toBe(true);
   });
 });
+
+describe("native mail: round-5 review follow-ups (expired disposal, non-spoofable self-report flag)", () => {
+  it("an expired message can still be explicitly disposed, rather than becoming permanently unremovable", () => {
+    const workspacePath = workspace();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const { message } = withDatabase(workspacePath, (db) => sendMailMessage(db, baseOffer({ requestId: "req-expired-dispose", expiresAt: past })));
+    const receipt = withDatabase(workspacePath, (db) => disposeMailMessage(db, { messageId: message.id, requestId: "dispose-expired", ...SCOPE, actor: "claude-rm-1" }));
+    expect(receipt.kind).toBe("disposal");
+    expect(withDatabase(workspacePath, (db) => getMailMessage(db, message.id))?.status).toBe("disposed");
+  });
+
+  it("a self-report's selfReported flag can never be overridden by a caller-supplied result.selfReported key", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => sendMailMessage(db, baseOffer({ requestId: "req-spoofed-flag" })));
+    withDatabase(workspacePath, (db) => acknowledgeMailMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+    withDatabase(workspacePath, (db) =>
+      reportMailResult(db, { messageId: message.id, requestId: "report-spoofed", ...SCOPE, actor: "x", result: { selfReported: false, outcome: "done" } })
+    );
+    const status = withDatabase(workspacePath, (db) => mailStatus(db, message.id));
+    expect(status.selfReportedResult).toMatchObject({ selfReported: true, outcome: "done" });
+  });
+});

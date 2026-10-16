@@ -415,9 +415,16 @@ export interface RecipientScope {
  * self-report, effect receipt, disposal): wrong Plan, wrong recipient, stale
  * generation, a disposed message, and an expired (inert) message are all
  * refused the same way. `allowDisposed` lets disposal itself report a
- * clearer "already disposed" error instead of this generic one.
+ * clearer "already disposed" error instead of this generic one; `allowExpired`
+ * lets disposal exempt itself from the expiry check too — an expired message
+ * must still be disposable, or it and its requestId become permanently
+ * unremovable once past `expiresAt`.
  */
-function assertRecipientScope(message: MailMessageRow, scope: RecipientScope, options: { allowDisposed?: boolean } = {}): void {
+function assertRecipientScope(
+  message: MailMessageRow,
+  scope: RecipientScope,
+  options: { allowDisposed?: boolean; allowExpired?: boolean } = {}
+): void {
   if (message.projectSlug !== scope.projectSlug || message.planSlug !== scope.planSlug) {
     throw validationError("Refused: wrong Project/Plan scope.", {
       messageId: message.id,
@@ -438,7 +445,7 @@ function assertRecipientScope(message: MailMessageRow, scope: RecipientScope, op
   if (!options.allowDisposed && message.status === "disposed") {
     throw validationError("Refused: message was disposed.", { messageId: message.id });
   }
-  if (message.expiresAt && message.expiresAt <= nowIso()) {
+  if (!options.allowExpired && message.expiresAt && message.expiresAt <= nowIso()) {
     throw validationError("Refused: message expired and is inert.", { messageId: message.id });
   }
 }
@@ -503,7 +510,9 @@ export function reportMailResult(db: Database.Database, input: ReportMailResultI
       });
     }
 
-    const newResult = { selfReported: true, ...input.result };
+    // Force the flag last: spreading input.result first and overriding selfReported after it
+    // means a caller-supplied `result.selfReported` key can never override the forced marker.
+    const newResult = { ...input.result, selfReported: true };
     const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
     if (existing) {
       if (existing.message_id !== message.id) {
@@ -585,7 +594,7 @@ export function disposeMailMessage(db: Database.Database, input: DisposeMailMess
   return writeTransaction(db, () => {
     const message = getMailMessage(db, input.messageId);
     if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
-    assertRecipientScope(message, input, { allowDisposed: true });
+    assertRecipientScope(message, input, { allowDisposed: true, allowExpired: true });
 
     const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
     if (existing) {
