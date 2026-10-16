@@ -7,20 +7,33 @@
   "effective_effort": null,
   "effort_source": "Precise runtime binding unavailable; role recommendation is not evidence.",
   "action_id": "plan/execute-one-approved-named-run-safely-with-production-off#consume-one-approved-named-run",
-  "pr": null,
+  "pr": 1455,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "shared live-provider admission",
+      "caught_by": "code-reviewer R1"
+    },
+    {
+      "class": "timeout false completion",
+      "caught_by": "QA R1"
+    },
+    {
+      "class": "consumer interruption durable posture",
+      "caught_by": "QA R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "split",
-  "notes": "Implementer (legacy ledger role driver); source PR delivery pending independent review, QA and CI.",
+  "notes": "Implementer; R1 three blocking findings repaired with source tests; delta review, QA and current-head CI pending.",
   "candidate_head": null,
   "evidence_source": "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md"
 }

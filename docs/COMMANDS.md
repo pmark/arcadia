@@ -1429,6 +1429,10 @@ metadata shell validation are bypassed. The fixed oracle requires only
 `HelloWorld.txt`, exactly `Hello World!` followed by one LF, before linking a ready
 product Artifact and completing the Run. Missing/wrong output, extra files,
 execution failure or signal termination never establish product completion.
+The claim commits an unresolved `requires_review` posture before execution;
+consumer SIGINT/SIGTERM/SIGKILL leaves that conservative record without automatic
+recovery or retry. Only the claiming consumer can finalize it after receiving the result.
+Executor timeout uses SIGKILL and propagates its error as failure.
 
 Omitting `--fixture-script` refuses live invocation until durable Decision 0128
 reservation and independent restore detection exist. Source fixture evidence

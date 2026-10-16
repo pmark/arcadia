@@ -1,13 +1,13 @@
 import type Database from "better-sqlite3";
 import type { ExecutionRunSummary, ReviewItemSummary } from "../domain/types.js";
 import { attachArtifactToExecutionRun, getExecutionRun, updateWorkItem } from "../db/repositories.js";
-import { executeApprovedReview, type ExecutorAdapterConfig, type ReviewExecutionResult } from "./reviewExecutor.js";
+import { executeApprovedReview, type ReviewExecutionResult } from "./reviewExecutor.js";
 import { reduceExecutionOutcome, finalizeGenericRun, finalizeWorkerFailure } from "./runFinalization.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 
 /** Execute an already claimed approved Run; no scheduling, recovery or intake. */
 export function executeClaimedReviewRun(db: Database.Database, workspacePath: string, run: ExecutionRunSummary, decision: ReviewItemSummary, options: {
-  fixtureAdapter?: ExecutorAdapterConfig;
+  fixtureScript?: string;
   acceptProduct?: (result: ReviewExecutionResult) => void;
   log?: (message: string) => void;
 } = {}) {
@@ -17,7 +17,7 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       reviewId: decision.id,
       executorName: run.executor_name ?? undefined,
       runId: run.id,
-      fixtureAdapter: options.fixtureAdapter
+      fixtureScript: options.fixtureScript
     });
     const status = reduceExecutionOutcome(result);
     attachArtifactToExecutionRun(db, run.id, result.artifact.id);
@@ -37,10 +37,12 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
     }
     const summary = [
       `Executed with ${result.executor}.`,
+      result.error ? `Executor error: ${result.error}.` : "",
+      result.signal ? `Executor signal: ${result.signal}.` : "",
       `${result.changedFiles.length} file(s) changed.`,
       `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
       stagingUrl ? `Live staging URL: ${stagingUrl}.` : `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`
-    ].join(" ");
+    ].filter(Boolean).join(" ");
     finalizeGenericRun(db, workspacePath, run.id, status, summary, result.artifact.path ?? result.metadataPath);
     if (stagingUrl && result.workItemId) {
       updateWorkItem(db, result.workItemId, {

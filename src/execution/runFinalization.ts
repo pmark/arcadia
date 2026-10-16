@@ -7,8 +7,11 @@ import { createId } from "../utils/id.js";
 export function reduceExecutionOutcome(input: {
   exitStatus: number | null;
   validation: Array<{ exitStatus: number | null }>;
+  error?: string | null;
+  timedOut?: boolean;
+  signal?: NodeJS.Signals | null;
 }): "completed" | "requires_review" | "failed" {
-  if (input.exitStatus !== 0) {
+  if (input.exitStatus !== 0 || input.error || input.timedOut || input.signal) {
     return "failed";
   }
   if (input.validation.some((validation) => validation.exitStatus !== 0)) {
@@ -69,4 +72,3 @@ export function finalizeWorkerFailure(
 ): void {
   finalizeGenericRun(db, workspace, runId, "failed", `Execution failed: ${message}`, "Diagnostic evidence retained.");
 }
-

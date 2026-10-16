@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
+import { runWorkerIteration } from "../src/commands/worker.js";
+import { reduceExecutionOutcome } from "../src/execution/runFinalization.js";
+import { executeApprovedReview } from "../src/execution/reviewExecutor.js";
 import { runAskShowCommand } from "../src/commands/askTrail.js";
 import { runRunConsumeCommand, type RunConsumeOptions } from "../src/commands/runConsume.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -107,6 +110,66 @@ describe("public named approved Run consumption", () => {
     expect(() => runRunConsumeCommand(options)).toThrow(); expect(calls(f.workspace)).toBe(0);
     expect(f.protectedState()).toEqual(before);
     expect(withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!)?.status)).toBe("pending_execution");
+  });
+
+  it("keeps approved Ask receipts unavailable to default providers and the ordinary worker", () => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => {
+      for (const executorName of ["codex", "claude-code", "gemini"]) {
+        expect(() => executeApprovedReview(db, { workspace: f.workspace, reviewId: f.reviewId, runId: f.options.runId, executorName })).toThrow(/current approved Run receipt/);
+      }
+      const run = runWorkerIteration(db, f.workspace);
+      expect(run?.id).toBe(f.options.runId);
+      expect(run?.status).toBe("failed");
+      expect(run?.summary).toContain("current approved Run receipt");
+    });
+    expect(calls(f.workspace)).toBe(0);
+    expect(isolation?.guardCalls()).toEqual([]);
+  });
+
+  it("never reduces a zero exit with a spawn error, timeout or signal to completion", () => {
+    for (const extra of [{ error: "spawnSync ETIMEDOUT" }, { timedOut: true }, { signal: "SIGTERM" as const }]) {
+      expect(reduceExecutionOutcome({ exitStatus: 0, validation: [], ...extra })).toBe("failed");
+    }
+  });
+
+  it.each([
+    'process.on("SIGTERM", () => process.exit(0));',
+    'process.on("SIGTERM", () => {});'
+  ])("hard-bounds a timed-out child even with %s", (handler) => {
+    const f = fixture(`writeFileSync("HelloWorld.txt", "Hello World!\\n"); ${handler} setInterval(() => {}, 1000);`);
+    const start = performance.now();
+    const result = runRunConsumeCommand(f.options);
+    expect(performance.now() - start).toBeLessThan(10000);
+    expect(result.data.run?.status).toBe("failed");
+    expect(result.data.run?.artifacts.some((a) => a.artifact_type === "text" && a.status === "ready")).toBe(false);
+    const metadata = JSON.parse(readFileSync(path.join(f.workspace, "artifacts", "review-executions", f.options.runId!, "metadata.json"), "utf8"));
+    expect(metadata).toMatchObject({ timedOut: true });
+    expect(metadata.error).toContain("ETIMEDOUT");
+    expect(readFileSync(path.join(f.repo, "HelloWorld.txt"))).toEqual(Buffer.from("Hello World!\n"));
+  });
+
+  it.each(["SIGINT", "SIGTERM", "SIGKILL"] as const)("retains an unresolved durable posture if the consumer receives %s", async (signal) => {
+    const f = fixture('writeFileSync("HelloWorld.txt", "Hello World!\\n"); setTimeout(() => process.exit(0), 1500);');
+    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: process.env, stdio: "ignore" });
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    try {
+      const deadline = Date.now() + 10000;
+      while (calls(f.workspace) === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(calls(f.workspace)).toBe(1);
+      expect(withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!)?.status)).toBe("requires_review");
+      child.kill(signal);
+      await exited;
+      await new Promise((resolve) => setTimeout(resolve, 1600));
+      const run = withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!));
+      expect(run?.status).toBe("requires_review");
+      expect(run?.summary).toContain("unresolved");
+      expect(readFileSync(path.join(f.repo, "HelloWorld.txt"))).toEqual(Buffer.from("Hello World!\n"));
+      expect(run?.artifacts.some((a) => a.artifact_type === "text" && a.status === "ready")).toBe(false);
+      expect(() => runRunConsumeCommand(f.options)).toThrow(/already claimed/);
+      expect(calls(f.workspace)).toBe(1);
+      expect(f.protectedState()).toEqual(f.before);
+    } finally { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }
   });
 
   it.each(['process.exit(0);', 'setInterval(() => {}, 1000);', 'process.exit(7);', 'process.kill(process.pid, "SIGTERM");', 'writeFileSync("HelloWorld.txt", "wrong");', 'writeFileSync("HelloWorld.txt", "Hello World!\\n"); writeFileSync("extra.txt", "extra");'])("retains truthful failure for %s", (body) => {

@@ -6,8 +6,8 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
-import { attachArtifactToExecutionRun, claimNextPendingRun, createArtifactRecord, getAskRequest, getExecutionRun, getProjectMetadata } from "../db/repositories.js";
-import { assertApprovedReview } from "../execution/reviewExecutor.js";
+import { attachArtifactToExecutionRun, claimNextPendingRun, createArtifactRecord, getAskRequest, getExecutionRun, getProjectMetadata, updateExecutionRunStatus } from "../db/repositories.js";
+import { assertApprovedReview, SCRIPTED_FIXTURE_PENDING_SUMMARY } from "../execution/reviewExecutor.js";
 import { executeClaimedReviewRun } from "../execution/claimedReviewRun.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { readExperimentWorkspace } from "../workspace/config.js";
@@ -50,7 +50,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       if (!run || run.status !== "pending_execution" || !run.review_item_id || !run.work_item_id) {
         throw validationError("Named Run is absent, unrelated or already claimed.");
       }
-      const { review, triggerReview } = assertApprovedReview(db, { workspace: workspacePath, reviewId: run.review_item_id, runId: run.id });
+      const { review, triggerReview } = assertApprovedReview(db, { workspace: workspacePath, reviewId: run.review_item_id, runId: run.id, fixtureScript: script });
       const ask = getAskRequest(db, options.askId);
       const approvedAsk = review.resulting_ask_request_id ? getAskRequest(db, review.resulting_ask_request_id) : null;
       if (!ask || ask.id !== review.ask_request_id || approvedAsk?.work_item_id !== run.work_item_id || review.resolved_intent === "ProjectProposalApproval") {
@@ -65,10 +65,13 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       if (execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).trim()) throw validationError("Fixture repository must start clean.");
       const claimed = claimNextPendingRun(db, process.pid, run.id);
       if (!claimed) throw validationError("Named Run was already claimed.");
-      return { run: claimed, review, triggerReview, repo };
+      // Commit a conservative posture with the claim itself. Parent SIGKILL
+      // cannot leave a running/completed claim or require a recovery daemon.
+      updateExecutionRunStatus(db, claimed.id, "requires_review", { pid: process.pid, summary: SCRIPTED_FIXTURE_PENDING_SUMMARY });
+      return { run: getExecutionRun(db, claimed.id)!, review, triggerReview, repo };
     }).immediate();
     const run = executeClaimedReviewRun(db, workspacePath, admitted.run, admitted.triggerReview, {
-      fixtureAdapter: { name: "scripted-fixture", commandTemplate: process.execPath, args: [script], promptMode: "stdin", workingDirectory: "repo", timeoutMs: 5000, environmentAllowlist: [], outputCapture: "combined" },
+      fixtureScript: script,
       acceptProduct: (result) => {
         const output = path.join(admitted.repo, "HelloWorld.txt");
         if (!lstatSync(output).isFile() || !readFileSync(output).equals(Buffer.from("Hello World!\n")) || result.changedFiles.length !== 1 || result.changedFiles[0] !== "HelloWorld.txt") {

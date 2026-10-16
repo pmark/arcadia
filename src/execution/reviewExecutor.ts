@@ -18,6 +18,8 @@ import {
 import type { Artifact, ProjectMetadata, ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
+import { readExperimentWorkspace } from "../workspace/config.js";
+import { isInside, assertRepoPathAllowed } from "../workspace/experimentGuard.js";
 import { cloudflareWorkerName } from "../projects/stagingDeployment.js";
 import {
   APPROVED_SCOPE_CONTEXT_KEY,
@@ -35,7 +37,7 @@ export interface ReviewExecutionOptions {
   reviewId: string;
   executorName?: ExecutorName;
   runId?: string;
-  fixtureAdapter?: ExecutorAdapterConfig;
+  fixtureScript?: string;
 }
 
 export interface ReviewExecutionResult {
@@ -49,6 +51,8 @@ export interface ReviewExecutionResult {
   endedAt: string;
   exitStatus: number | null;
   signal: NodeJS.Signals | null;
+  error: string | null;
+  timedOut: boolean;
   changedFiles: string[];
   validation: ValidationCommandResult[];
   finalOutput: string | null;
@@ -126,6 +130,20 @@ const BUILT_IN_EXECUTORS: Record<string, ResolvedExecutorAdapter> = {
   }
 };
 
+export const SCRIPTED_FIXTURE_PENDING_SUMMARY = "Scripted fixture claim is unresolved; review execution evidence before any retry. No product completion is accepted.";
+
+function fixtureExecutor(workspace: string, review: ReviewItemSummary, db: Database.Database, scriptPath: string): ResolvedExecutorAdapter {
+  const experiment = readExperimentWorkspace(workspace);
+  const script = realpathSync(scriptPath);
+  const metadata = review.project_id ? getProjectMetadata(db, review.project_id) : null;
+  if (!experiment || !metadata?.repo_path || !isInside(experiment.workspacePath, script) || !script.endsWith(".mjs") || !statSync(script).isFile()) {
+    throw validationError("Scripted execution requires a fixture script and repository in an experiment workspace.");
+  }
+  assertRepoPathAllowed(workspace, metadata.repo_path);
+  if (!isInside(experiment.allowedRepoRoot, realpathSync(metadata.repo_path))) throw validationError("Non-fixture repository refused.");
+  return normalizeExecutorConfig({ name: "scripted-fixture", commandTemplate: process.execPath, args: [script], promptMode: "stdin", workingDirectory: "repo", timeoutMs: 5000, environmentAllowlist: [], outputCapture: "combined" });
+}
+
 /** Read-only approval check, shared by bounded admission and execution. */
 export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions) {
   const triggerReview = getReviewItem(db, options.reviewId) ?? getReviewItemBySlug(db, options.reviewId);
@@ -134,7 +152,8 @@ export function assertApprovedReview(db: Database.Database, options: ReviewExecu
   }
   const review = executionReviewForTrigger(db, triggerReview);
   const approvalRun = options.runId ? getExecutionRun(db, options.runId) : null;
-  if (!canExecuteReview(triggerReview, review, approvalRun)) {
+  const fixture = options.fixtureScript ? fixtureExecutor(options.workspace, review, db, options.fixtureScript) : null;
+  if (!canExecuteReview(triggerReview, review, approvalRun, fixture !== null)) {
     throw validationError("Execution requires a current approved Run receipt for this Review and Action.", {
       id: triggerReview.id,
       status: triggerReview.status,
@@ -156,14 +175,14 @@ export function assertApprovedReview(db: Database.Database, options: ReviewExecu
     });
   }
 
-  return { review, approvalRun, triggerReview };
+  return { review, approvalRun, triggerReview, fixture };
 }
 
 export function executeApprovedReview(
   db: Database.Database,
   options: ReviewExecutionOptions
 ): ReviewExecutionResult {
-  const { review, approvalRun, triggerReview } = assertApprovedReview(db, options);
+  const { review, approvalRun, triggerReview, fixture } = assertApprovedReview(db, options);
   const workItem = review.work_item_id ? getWorkItem(db, review.work_item_id) : null;
   const isProjectProposal = review.resolved_intent === "ProjectProposalApproval";
   if (!isProjectProposal && !workItem) {
@@ -180,13 +199,13 @@ export function executeApprovedReview(
     prepareProjectProposalRepository(repoPath, metadata, review.id);
   }
   const executor = withProjectProposalNetwork(
-    options.fixtureAdapter ? normalizeExecutorConfig(options.fixtureAdapter) : resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
+    fixture ?? resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
     isProjectProposal
   );
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   // Scripted fixture execution uses its caller's fixed exact-product oracle.
   // Never let fixture metadata select shell commands or configured providers.
-  const validationCommands = options.fixtureAdapter ? [] : parseStringArray(metadata?.validation_commands);
+  const validationCommands = fixture ? [] : parseStringArray(metadata?.validation_commands);
 
   const runId = options.runId ?? createId("executionRun");
   const startedAt = new Date().toISOString();
@@ -228,9 +247,11 @@ export function executeApprovedReview(
     env: buildAllowedEnvironment(executor.environmentAllowlist),
     encoding: "utf8",
     timeout: executor.timeoutMs,
+    killSignal: "SIGKILL",
     maxBuffer: 20 * 1024 * 1024
   });
   const endedAt = new Date().toISOString();
+  const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT");
   const output = captureOutput(executor.outputCapture, run.stdout ?? "", run.stderr ?? "");
   const outputPath = path.join(artifactRoot, "executor-output.txt");
   writeFileSync(outputPath, output, "utf8");
@@ -257,7 +278,7 @@ export function executeApprovedReview(
     endedAt,
     exitStatus: run.status,
     signal: run.signal,
-    timedOut: Boolean(run.error && run.error.message.includes("ETIMEDOUT")),
+    timedOut,
     error: run.error?.message ?? null,
     preGitStatus: preGitStatus.stdout,
     changedFiles,
@@ -272,7 +293,7 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? null,
     title: `Review execution ${review.slug ?? review.id}`,
     artifactType: "review_execution",
-    status: run.status === 0 && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
+    status: run.status === 0 && !run.error && !run.signal && validation.every((result) => result.exitStatus === 0) ? "ready" : "drafted",
     path: toWorkspaceRelativePath(options.workspace, metadataPath)
   });
 
@@ -297,7 +318,7 @@ export function executeApprovedReview(
     planId: review.plan_id,
     projectId,
     decisionNeeded: "Review executor implementation output before completion.",
-    recommendation: run.status === 0 ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
+    recommendation: run.status === 0 && !run.error && !run.signal ? "Inspect changed files and validation output before accepting." : "Review the failed executor run and decide the next action.",
     sourceInput: review.source_input,
     proposedAction: buildFollowUpProposedAction(executor.name, changedFiles, validation, finalOutput, run.status),
     resolvedIntent: "ReviewExecutionResult",
@@ -336,6 +357,8 @@ export function executeApprovedReview(
     endedAt,
     exitStatus: run.status,
     signal: run.signal,
+    error: run.error?.message ?? null,
+    timedOut,
     changedFiles,
     validation,
     finalOutput,
@@ -364,14 +387,17 @@ function executionReviewForTrigger(db: Database.Database, triggerReview: ReviewI
 function canExecuteReview(
   triggerReview: ReviewItemSummary,
   executionReview: ReviewItemSummary,
-  run: ReturnType<typeof getExecutionRun>
+  run: ReturnType<typeof getExecutionRun>,
+  scriptedFixture: boolean
 ): boolean {
-  if (!run || !run.review_item_id || !["pending_execution", "running"].includes(run.status)) return false;
+  if (!run || !run.review_item_id) return false;
+  const unresolvedOwnedFixture = scriptedFixture && run.status === "requires_review" && run.pid === process.pid && run.summary === SCRIPTED_FIXTURE_PENDING_SUMMARY;
+  if (!["pending_execution", "running"].includes(run.status) && !unresolvedOwnedFixture) return false;
   if (run.review_item_id !== triggerReview.id || run.work_item_id !== executionReview.work_item_id || run.plan_id !== executionReview.plan_id) return false;
   const projectProposalPending = triggerReview.resolved_intent === "ProjectProposalApproval"
     && triggerReview.status === "approved"
     && /execution pending/i.test(triggerReview.decision_note ?? "");
-  const askQueued = triggerReview.id === executionReview.id
+  const askQueued = scriptedFixture && triggerReview.id === executionReview.id
     && triggerReview.status === "approved"
     && triggerReview.ask_request_id !== null
     && triggerReview.resulting_ask_request_id !== null
