@@ -1,0 +1,356 @@
+
+ RUN  v4.1.8 /private/tmp/arcadia-go-context-01a143a6
+
+The governed pointer was written but could not be committed: Git command failed: git commit -m chore(arcadia): point at migrate
+
+- PROJECT.md: current_action ship-it → migrate
+- docs/plans/queue-plan.md: current_action → migrate
+
+Written by `arcadia advance queue make-next --apply` (qpointer_8935a8ca414149d59c). -- PROJECT.md docs/plans/queue-plan.md: fatal: empty ident name (for <>) not allowed
+ ❯ tests/brief-supervisor.test.ts (11 tests | 1 failed) 55537ms
+     × returns the literal dispatch brief, writes nothing, and repeats cleanly across a worker restart 12810ms
+ ❯ tests/go.test.ts (84 tests | 15 failed) 267027ms
+     × does not refuse a zero-commit branch whose slug merely prefixes a different Action's slug 1889ms
+     × does not refuse when the same session's branch made progress commits, even though its Action is still open 2602ms
+     × does not refuse a zero-commit branch whose Action was already completed by a different session 4212ms
+     × does not refuse a bare 'what's next' call where the source is already the base branch 1961ms
+     × re-resolves the pointer Action from the fetched base when no worktree sits on it, instead of a stale already-integrated checkout 3020ms
+     × uses the plan's recommended_model and recommended_reasoning_effort when no override is given 1326ms
+     × starts on the plan's own model when the workspace sets sessionStartTier to plan 1364ms
+     × an explicit --model/--effort overrides the plan's recommendation 1147ms
+     × builds the codex launch command with -m and the reasoning-effort TOML override 1147ms
+     × omits the effort flag entirely when only a model resolves 948ms
+     × falls back to the agent's standard tier when the plan names another provider's model 1011ms
+     × resolves a logical tier for every agent from the bundled registry 964ms
+     × resolves an opencode model for a plan pinned to Claude, the #282 case 885ms
+     × trusts an explicit --model even when it does not look like a Claude Code model 789ms
+     × does not apply the Claude-model check for a Codex handoff 1017ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/brief-supervisor.test.ts > fixed brief entrypoint under supervision > returns the literal dispatch brief, writes nothing, and repeats cleanly across a worker restart
+AssertionError: expected 'Observed: 2026-10-16T15:26:54.787Z (m…' to be 'Project: Demo (demo) — active\nReposi…' // Object.is equality
+
+- Expected
++ Received
+
+@@ -1,5 +1,17 @@
++ Observed: 2026-10-16T15:26:54.787Z (managed-documents+canonical-workspace)
++ Repository/base checkout: /private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-brief-supervisor-aeU44B/repo
++ Base revision: 16cc12fb229c74b6a749c949dc05609ab6a7020a
++ Caller worktree: /private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-brief-supervisor-aeU44B/repo (16cc12fb229c74b6a749c949dc05609ab6a7020a)
++ Selected: sample-plan#ship-it
++ Assigned: none
++ Session: no canonical active Session evidence
++ Ongoing ownership: 0; showing 0
++ Related Plans: 1; showing 1
++   sample-plan [active] — docs/plans/sample-plan.md, updated 2026-10-02
++ Next permitted step/gate: Use the existing protected Go path to obtain an assignment before implementation.
++
+  Project: Demo (demo) — active
+  Repository: /private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-brief-supervisor-aeU44B/repo
+  Active plan: sample-plan [active] — docs/plans/sample-plan.md
+  Token impact: medium — One bounded implementation pass; tests are deterministic.
+  Milestone: First milestone
+
+ ❯ tests/brief-supervisor.test.ts:317:45
+    315|
+    316|     const first = runBriefLauncher(repo, { ARCADIA_WORKSPACE: workspac…
+    317|     expect(first.status, first.stdout + first.stderr).toBe(0);
+       |                                             ^
+    318|     const firstReceipt = JSON.parse(first.stdout);
+    319|     expect(firstReceipt.command).toBe("brief-broker");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — refuses a stale session on an unchanged Action > does not refuse a zero-commit branch whose slug merely prefixes a different Action's slug
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T152739357Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:552:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — refuses a stale session on an unchanged Action > does not refuse when the same session's branch made progress commits, even though its Action is still open
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T152741774Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:567:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — refuses a stale session on an unchanged Action > does not refuse a zero-commit branch whose Action was already completed by a different session
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/dispatch-next-20261016T152744341Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:583:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — refuses a stale session on an unchanged Action > does not refuse a bare 'what's next' call where the source is already the base branch
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T152748382Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:598:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — base branch remote sync > re-resolves the pointer Action from the fetched base when no worktree sits on it, instead of a stale already-integrated checkout
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/dispatch-next-20261016T152941046Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1113:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > uses the plan's recommended_model and recommended_reasoning_effort when no override is given
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153034832Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1733:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > starts on the plan's own model when the workspace sets sessionStartTier to plan
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153036097Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1749:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > an explicit --model/--effort overrides the plan's recommendation
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153037416Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1760:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > builds the codex launch command with -m and the reasoning-effort TOML override
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.codex/worktrees/define-contract-20261016T153038552Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1785:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > omits the effort flag entirely when only a model resolves
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153039555Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1797:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > falls back to the agent's standard tier when the plan names another provider's model
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153040559Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1810:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > resolves a logical tier for every agent from the bundled registry
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.codex/worktrees/define-contract-20261016T153041595Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1828:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > resolves an opencode model for a plan pinned to Claude, the #282 case
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.opencode/worktrees/define-contract-20261016T153042432Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1838:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > trusts an explicit --model even when it does not look like a Claude Code model
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.claude/worktrees/define-contract-20261016T153043291Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1851:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/16]⎯
+
+ FAIL  tests/go.test.ts > arcadia go — next-session model resolution > does not apply the Claude-model check for a Codex handoff
+Error: EPERM: operation not permitted, mkdir '/Users/pmark/.codex/worktrees/define-contract-20261016T153044211Z'
+ ❯ prepareAgentWorktree src/sessions/worktreePreparation.ts:71:3
+     69|   };
+     70|   input.beforeCreate?.(candidate);
+     71|   mkdirSync(path.dirname(worktreePath), { recursive: true });
+       |   ^
+     72|   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktr…
+     73|   try {
+ ❯ Function.<anonymous> src/commands/go.ts:883:29
+ ❯ Function.sqliteTransaction ../../../Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/better-sqlite3@12.11.1/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ writeTransaction src/db/connection.ts:49:35
+ ❯ src/commands/go.ts:747:58
+ ❯ withDatabase src/db/connection.ts:56:12
+ ❯ runGoCommand src/commands/go.ts:747:22
+ ❯ tests/go.test.ts:1867:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/16]⎯
+
+
+ Test Files  2 failed | 7 passed (9)
+      Tests  16 failed | 229 passed (245)
+   Start at  08:26:03
+   Duration  281.27s (transform 84.03s, setup 0ms, import 102.66s, tests 405.80s, environment 33ms)
+

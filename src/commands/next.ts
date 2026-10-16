@@ -24,12 +24,20 @@ import {
   type DispatchJournalSummary
 } from "../docs/journal.js";
 import { operatorGateBlockers, renderOperatorAlerts, type OperatorGateItem } from "../docs/operatorGate.js";
+import type { PlanDoc } from "../docs/types.js";
+import { discoverDocs } from "../docs/discover.js";
+import { existingDirectory, parseWorktrees, tryGit } from "../git/worktrees.js";
+import { canonicalPath, getActiveWorktreeReservation, hasWorktreeReservationTable, listActiveAgentSessions } from "../sessions/index.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
 
 export interface NextCommandOptions {
   workspace: string;
   /** Project id or slug. Omitted means the single active Project, if there is one. */
   project?: string;
+  /** Read-only caller orientation; never an assignment or an authority override. */
+  repo?: string;
+  /** Pins observation time for deterministic consumers. */
+  now?: Date;
 }
 
 export interface NextCommandData extends DispatchResolution {
@@ -39,6 +47,7 @@ export interface NextCommandData extends DispatchResolution {
   firedBackBurnerCount?: number;
   /** Pending operator items scoped to this Project that are not blocking dispatch. */
   operatorAlerts: OperatorGateItem[];
+  orientation?: CallerOrientation;
 }
 
 /**
@@ -70,7 +79,104 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
 
 /** Sandbox handoff: the same dispatch and operator gates, without host journal writes. */
 export function runNextReadOnlyCommand(options: NextCommandOptions): CommandSuccess<NextCommandData> {
-  return resolveNextCommand(options, withReadOnlyDatabase).response;
+  return options.repo ? resolveCallerNext(options) : resolveNextCommand(options, withReadOnlyDatabase).response;
+}
+
+export interface CallerOrientation {
+  source: "managed-documents+canonical-workspace";
+  observedAt: string;
+  repository: string;
+  worktree: string;
+  baseRevision: string | null;
+  callerRevision: string | null;
+  selected: DispatchResolution;
+  assigned: { plan: string; action: string; claimId: string; generation: string | null } | null;
+  session: { id: string; status: string } | null;
+  ongoing: Array<{ source: "claim" | "session"; id: string; action: string | null; status: string }>;
+  ongoingTotal: number;
+  relatedPlans: Array<{ slug: string; status: string; source: string; updated: string }>;
+  relatedPlanTotal: number;
+  nextStep: string;
+}
+
+/** Observe one caller through existing dispatch/readiness and operator gates.
+ * Only canonical reservation rows can bind the caller to an assigned Action.
+ */
+function resolveCallerNext(options: NextCommandOptions): CommandSuccess<NextCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const worktree = canonicalPath(existingDirectory(options.repo!, "repository"));
+  const listing = tryGit(worktree, ["worktree", "list", "--porcelain"]);
+  const repository = listing ? parseWorktrees(listing)[0]?.path : null;
+  if (!repository) throw validationError("Caller repository could not be resolved.", { remedy: "Run the brief inside a registered Project checkout." });
+  const registered = withReadOnlyDatabase(workspacePath, db => resolveProjectAndRepo(db, options));
+  const registeredListing = tryGit(registered.repoRoot, ["worktree", "list", "--porcelain"]);
+  const registeredRepository = registeredListing ? parseWorktrees(registeredListing)[0]?.path : null;
+  if (!registeredRepository || canonicalPath(repository) !== canonicalPath(registeredRepository)) {
+    throw validationError("Caller repository does not match the registered Project repository.", { project: registered.project.slug });
+  }
+  const discovered = discoverDocs(worktree);
+  const projects = discovered.docs.filter(doc => doc.type === "project");
+  if (projects.length !== 1 || projects[0].slug !== registered.project.slug) {
+    throw validationError("Caller Project is missing, ambiguous or different from the registered Project.");
+  }
+  const selected = resolveDispatch(worktree, registered.project.slug);
+  const evidence = withReadOnlyDatabase(workspacePath, db => {
+    const claim = getActiveWorktreeReservation(db, repository, worktree, now);
+    const claims = hasWorktreeReservationTable(db) ? db.prepare(`SELECT id, project, action_id, worktree_path, expires_at
+      FROM agent_worktree_reservations WHERE repository_path = ? ORDER BY created_at, id`)
+      .all(canonicalPath(repository)) as Array<{ id: string; project: string | null; action_id: string | null; worktree_path: string; expires_at: string }> : [];
+    const sessions = listActiveAgentSessions(db).filter(row => row.repository_path === canonicalPath(repository));
+    return { claim, claims, sessions };
+  });
+  const refusal = (message: string) => ({ relativePath: "canonical-workspace", field: "claimed_action", message,
+    remedy: "Resolve the existing ownership evidence through the governed claim path before continuing." });
+  const claim = evidence.claim;
+  let resolution = selected;
+  let assigned: CallerOrientation["assigned"] = null;
+  let ownershipBlocker: ReturnType<typeof refusal> | null = null;
+  const ownRows = evidence.claims.filter(row => canonicalPath(row.worktree_path) === worktree);
+  if (ownRows.length > 1) ownershipBlocker = refusal("Caller has conflicting reservation evidence.");
+  else if (!claim && ownRows.length) ownershipBlocker = refusal("Caller reservation is stale; no current assignment was inferred.");
+  else if (claim?.action_id) {
+    const branch = tryGit(worktree, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    const plans = discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === registered.project.slug
+      && doc.actions.some(action => action.id === claim.action_id));
+    if (!claim.claim_generation || claim.branch !== branch?.trim()) ownershipBlocker = refusal("Caller claim identity or branch fence does not match the candidate.");
+    else if (claim.project !== registered.project.slug) ownershipBlocker = refusal("Caller claim belongs to another Project.");
+    else if (plans.length !== 1) ownershipBlocker = refusal("Claimed Action is missing or ambiguous across Project Plans.");
+    else {
+      const plan = plans[0];
+      assigned = { plan: plan.slug, action: claim.action_id, claimId: claim.id, generation: claim.claim_generation };
+      resolution = resolveDispatch(worktree, registered.project.slug, { actionId: claim.action_id, planSlug: plan.slug });
+    }
+  }
+  const actualSessions = evidence.sessions.filter(row => canonicalPath(row.worktree_path) === worktree);
+  const actualSession = actualSessions.length === 1 ? actualSessions[0] : null;
+  if (actualSessions.length > 1 || (actualSession && (!assigned || actualSession.project_slug !== registered.project.slug
+    || actualSession.plan_slug !== assigned.plan || actualSession.action_id !== assigned.action))) {
+    ownershipBlocker = refusal("Caller Session and claim evidence conflict.");
+  }
+  const readySet = resolveReadySet(worktree, registered.project.slug);
+  const gate = withReadOnlyDatabase(workspacePath, db => resolveOperatorGate({ db, repoRoot: worktree,
+    projectSlug: registered.project.slug, selectedActionId: resolution.context?.action.id ?? null, readySetCandidates: readySet.candidates }));
+  const blockers = [...resolution.blockers, ...operatorGateBlockers(gate.blocking), ...(ownershipBlocker ? [ownershipBlocker] : [])];
+  const dispatchable = isDispatchable({ ...resolution, blockers });
+  const ongoing: CallerOrientation["ongoing"] = [
+    ...evidence.sessions.filter(row => row.project_slug === registered.project.slug).map(row => ({ source: "session" as const,
+      id: row.id, action: row.action_id, status: row.status })),
+    ...evidence.claims.filter(row => row.project === registered.project.slug && row.expires_at > now.toISOString())
+      .map(row => ({ source: "claim" as const, id: row.id, action: row.action_id, status: "reserved" }))
+  ];
+  const related = discovered.docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === registered.project.slug
+    && (doc.slug === assigned?.plan || doc.slug === selected.context?.activePlan)).map(doc => ({ slug: doc.slug,
+      status: doc.status, source: doc.relativePath, updated: doc.updated })).sort((a, b) => a.slug.localeCompare(b.slug));
+  const nextStep = blockers[0]?.remedy ?? (dispatchable ? (assigned ? "Continue the caller-owned Action within existing authority." : "Use the existing protected Go path to obtain an assignment before implementation.") : "Resolve the existing Action gate before continuing.");
+  return createSuccess({ command: "next", workspace: workspacePath, data: { ...resolution, blockers, dispatchable,
+    projectId: registered.project.id, repoRoot: worktree, operatorAlerts: gate.alerts,
+    orientation: { source: "managed-documents+canonical-workspace", observedAt: now.toISOString(), repository: canonicalPath(repository),
+      worktree, baseRevision: tryGit(repository, ["rev-parse", "HEAD"])?.trim() ?? null, callerRevision: tryGit(worktree, ["rev-parse", "HEAD"])?.trim() ?? null, selected, assigned, session: actualSession ? { id: actualSession.id, status: actualSession.status } : null,
+      ongoing: ongoing.slice(0, 5), ongoingTotal: ongoing.length, relatedPlans: related.slice(0, 2), relatedPlanTotal: related.length, nextStep } } });
 }
 
 function resolveNextCommand(
@@ -321,6 +427,22 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
 
 export function renderNextSuccess(response: CommandSuccess<NextCommandData>): string[] {
   const lines = renderDispatchResolution(response.data);
+  const orientation = response.data.orientation;
+  if (orientation) lines.unshift(
+    `Observed: ${orientation.observedAt} (${orientation.source})`,
+    `Repository/base checkout: ${orientation.repository}`,
+    `Base revision: ${orientation.baseRevision ?? "unavailable"}`,
+    `Caller worktree: ${orientation.worktree} (${orientation.callerRevision ?? "revision unavailable"})`,
+    `Selected: ${orientation.selected.context ? `${orientation.selected.context.activePlan}#${orientation.selected.context.action.id}` : "unresolved (see selected evidence)"}`,
+    ...orientation.selected.blockers.slice(0, 3).map(blocker => `Selected gate: ${blocker.field}: ${blocker.message}`),
+    `Assigned: ${orientation.assigned ? `${orientation.assigned.plan}#${orientation.assigned.action} (claim ${orientation.assigned.claimId})` : "none"}`,
+    `Session: ${orientation.session ? `${orientation.session.id} [${orientation.session.status}] (stored observation)` : "no canonical active Session evidence"}`,
+    `Ongoing ownership: ${orientation.ongoingTotal}; showing ${orientation.ongoing.length}`,
+    ...orientation.ongoing.map(row => `  ${row.source} ${row.id}: ${row.action ?? "no Action"} [${row.status}]`),
+    `Related Plans: ${orientation.relatedPlanTotal}; showing ${orientation.relatedPlans.length}`,
+    ...orientation.relatedPlans.map(plan => `  ${plan.slug} [${plan.status}] — ${plan.source}, updated ${plan.updated}`),
+    `Next permitted step/gate: ${orientation.nextStep}`, ""
+  );
   appendFiredBackBurnerHint(lines, response.data.firedBackBurnerCount);
   return lines;
 }

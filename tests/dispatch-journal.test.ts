@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { realpathSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -360,8 +361,11 @@ describe("sandbox-callable broker dispatch brief", () => {
         "options:", "  - label: Ship it", "    consequence: The fixture ships.", "---", "# Ship?", ""
       ].join("\n"));
     }
+    execFileSync("git", ["init", "-b", "main", repo]);
     const workspace = workspaceFor(repo);
     const canonical = runNextCommand({ workspace, project: "demo" });
+    canonical.data.repoRoot = realpathSync(repo);
+    if (canonical.data.context) canonical.data.context.repoRoot = realpathSync(repo);
     const eventsBefore = withDatabase(workspace, (db) => listDispatchEvents(db));
     const writable = vi.spyOn(connection, "withDatabase").mockImplementation((target, callback) =>
       connection.withReadOnlyDatabase(target, callback));
@@ -375,10 +379,12 @@ describe("sandbox-callable broker dispatch brief", () => {
         () => workspace
       );
       const data = result.data as BriefCommandData;
-      expect(data.next).toEqual(canonical.data);
+      const { orientation, ...dispatch } = data.next;
+      expect(dispatch).toEqual(canonical.data);
+      expect(orientation?.assigned).toBeNull();
       expect(data.next.dispatchable).toBe(!blocked);
       expect(data.dispatchBrief).toBe(
-        [...renderNextSuccess(canonical), "", ...renderBriefIdentity(canonical.data, "codex", workspace, repo)].join("\n")
+        [...renderNextSuccess({ ...canonical, data: data.next }), "", ...renderBriefIdentity(canonical.data, "codex", workspace, repo)].join("\n")
       );
       // The Plan recommends gpt-5.6-terra, Codex's standard binding.
       expect(data.dispatchBrief).toContain("You are Cody Mason <cody.mason@agents.arcadia.local> (codex, standard, builder);");

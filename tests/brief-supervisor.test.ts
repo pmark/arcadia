@@ -303,9 +303,12 @@ describe("fixed brief entrypoint under supervision", () => {
 
   it("returns the literal dispatch brief, writes nothing, and repeats cleanly across a worker restart", () => {
     const { repo, workspace } = candidateFixture();
-    const next = runNextReadOnlyCommand({ workspace, project: "demo" });
-    // The literal `next` brief, then the requesting agent's Identity block.
-    const canonical = [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, "codex", workspace, repo)].join("\n");
+    // Pin the observation time recorded by each actual launcher receipt.
+    // Every remaining input and rendered byte must agree with direct next.
+    const canonicalAt = (observedAt: string) => {
+      const next = runNextReadOnlyCommand({ workspace, project: "demo", repo, now: new Date(observedAt) });
+      return [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, "codex", workspace, repo)].join("\n");
+    };
     const statusBefore = git(repo, ["status", "--porcelain=v1", "--untracked-files=all"]);
     const headBefore = git(repo, ["rev-parse", "HEAD"]);
     const before = databaseSnapshot(workspace);
@@ -314,6 +317,7 @@ describe("fixed brief entrypoint under supervision", () => {
     expect(first.status, first.stdout + first.stderr).toBe(0);
     const firstReceipt = JSON.parse(first.stdout);
     expect(firstReceipt.command).toBe("brief-broker");
+    const canonical = canonicalAt(firstReceipt.data.next.orientation.observedAt);
     expect(firstReceipt.data.dispatchBrief).toBe(canonical);
     expect(sha256(firstReceipt.data.dispatchBrief)).toBe(sha256(canonical));
     expect(firstReceipt.data.dispatchBrief).toContain("Capability never grants authority.");
@@ -328,7 +332,8 @@ describe("fixed brief entrypoint under supervision", () => {
     const second = runBriefLauncher(repo, { ARCADIA_WORKSPACE: workspace });
     expect(second.status, second.stdout + second.stderr).toBe(0);
     const secondReceipt = JSON.parse(second.stdout);
-    expect(sha256(secondReceipt.data.dispatchBrief)).toBe(sha256(canonical));
+    expect(sha256(secondReceipt.data.dispatchBrief)).toBe(sha256(canonicalAt(secondReceipt.data.next.orientation.observedAt)));
+    expect(secondReceipt.data.dispatchBrief.replace(/^Observed:.*\n/, "")).toBe(firstReceipt.data.dispatchBrief.replace(/^Observed:.*\n/, ""));
     expect(firstReceipt.data.correlationId).toMatch(UUID);
     expect(secondReceipt.data.correlationId).toMatch(UUID);
     expect(secondReceipt.data.correlationId).not.toBe(firstReceipt.data.correlationId);

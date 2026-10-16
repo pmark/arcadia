@@ -1,0 +1,42 @@
+
+ RUN  v4.1.8 /private/tmp/arcadia-go-context-01a143a6
+
+ ❯ tests/go-broker.test.ts (30 tests | 1 failed | 29 skipped) 12ms
+       × runs advance, work-monitor, and next once each and returns their combined data plus the rendered brief 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-broker.test.ts > protected Arcadia go broker > the combined brief operation > runs advance, work-monitor, and next once each and returns their combined data plus the rendered brief
+AssertionError: expected "vi.fn()" to be called once with arguments: [ { …(3) } ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+    {
+      "project": "arcadia",
+-     "repo": "/tmp/prepared",
+      "workspace": "/tmp/arcadia-workspace",
+    },
+  ]
+
+
+Number of calls: 1
+
+ ❯ tests/go-broker.test.ts:253:26
+    251|       expect(workMonitorRunner).toHaveBeenCalledExactlyOnceWith({ work…
+    252|       expect(resolveProjectSlug).toHaveBeenCalledExactlyOnceWith("/tmp…
+    253|       expect(nextRunner).toHaveBeenCalledExactlyOnceWith({ workspace: …
+       |                          ^
+    254|       expect(result.command).toBe("brief-broker");
+    255|       expect(result.data).toEqual({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 29 skipped (30)
+   Start at  08:20:57
+   Duration  1.77s (transform 1.32s, setup 0ms, import 1.62s, tests 12ms, environment 0ms)
+

@@ -1946,6 +1946,18 @@ on-request. The combined `arcadia-brief-broker-<provider>` launcher resolves
 dispatch through read-only SQLite connections. It retains operator gates and
 the full Constitution brief without schema initialization or dispatch-journal
 writes; the host's ordinary `next` command retains its existing journal.
+The source brief now binds its read-only orientation to the caller checkout.
+It labels selected work separately from an existing caller-owned Action claim,
+including when that Action belongs to another Plan; titles and acceptance use
+the assigned Action. It reports canonical stored Session evidence separately
+from a claim, with bounded related-Plan/ownership observations and a next gate.
+Missing, stale, foreign or ambiguous ownership never creates an assignment.
+Source QA (operator and end-user procedure are the same): run
+`pnpm exec vitest run tests/go-caller-context.test.ts tests/go-broker.test.ts tests/dispatch-journal.test.ts`
+from the candidate. Fixtures must keep selected A and assigned B separate,
+retain B when A moves to C, and refuse invalid ownership without workspace or
+Git mutation. These are local deterministic fixtures; installed behavior needs
+the separately reviewed broker reinstall, and no live-provider proof is claimed.
 Workspace database and shared Git metadata writes stay on their host paths.
 An older installed brief that fails at stage `next` with
 `SQLITE_WORKSPACE_WRITE_DENIED` needs the reviewed broker update and reinstall,
