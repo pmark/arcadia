@@ -11,10 +11,10 @@ updated: 2026-10-16
 actions:
   - id: consume-one-approved-named-run
     title: Implement bounded public consumption of one approved named Run with Production Off (role implementer; standard tier; size M; operator gate none).
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement bounded public consumption of one approved named Run with Production Off (role implementer; standard tier; size M; operator gate none).
+    next_action: Completed via Agent Ask complete-consume-one-approved-named-run-20261016-pr1455; no further action.
     expected_artifact: Evidence satisfying Agent Ask consume-one-approved-named-run
     clarification: clarified
     confidence: high
