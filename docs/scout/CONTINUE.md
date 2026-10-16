@@ -30,6 +30,14 @@ The exact builder-owned output is one file, `HelloWorld.txt`, containing **13 by
 
 The operator-directed #1443 replacement delivered the selector correction in merged PR #1445. The fresh 2026-10-15 rehearsal still stops at a queued `pending_execution` Run, with no product file or accepted completion Artifact. The next source gate is the canonical bounded consumer in open Issue #1389, followed by durable Decision0128 reservation and restore-detection safeguards. No live Scout attempt has occurred; the live-attempt allowance ledger has not been freshly verified, so do not assume three attempts remain available.
 
+## Infrastructure-first disposition — 2026-10-16
+
+The operator directed that the live Scout trial wait for basic execution infrastructure. Candidate settlement `asksettle_164173ad642942a9b1` creates the separate draft [Approved Run infrastructure Plan](../plans/execute-one-approved-named-run-safely-with-production-off.md): named-Run consumption, durable admission safeguards, then deterministic completion proof. This is candidate state until its reviewed PR lands. [Planning evidence and exact scope](../reports/approved-run-infrastructure-plan-2026-10-16.md) preserve the operator direction and request.
+
+This replaces the proposed placement of source work inside Scout in unmerged PR #1453; preserve #1453 as superseded draft history and do not merge both alternatives. The existing Scout Plan's statuses remain unchanged. Source work has not been implemented, and the infrastructure Plan is inactive; scheduling against `claude-worker-launch-replay` needs a separate explicit choice without silently moving pointers or queues.
+
+**Live Scout is parked.** Resume consideration only when the infrastructure milestone has independently reviewed, CI-passing deterministic proof of the exact file, completed correlated Run and accepted product Artifact. Then require fresh trial authority, Production Off, durable allowance, subscription/capacity and protected-state witnesses. No live attempt was made in this planning; remaining allowance is unknown and Decision 0128 expiry is unchanged. Do not run another live Scout or unchanged rehearsal merely to rediscover the pending-execution blocker.
+
 ## First useful work in a new session
 
 1. Read repository AGENTS.md, CONSTITUTION.md, PROJECT.md, its **current** active Plan/Action, the context policy and guidance index. Then read this guide, targeted Notes To Self (`scout`, `ingress`, `claim`, `budget`, `preflight`) and the indexed procedures needed for the next operation. The current Project Action may be an unrelated production track; this operator-directed Scout request does not activate the inactive Scout Plan or move pointers/queues.
