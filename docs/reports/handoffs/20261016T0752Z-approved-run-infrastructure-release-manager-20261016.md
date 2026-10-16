@@ -62,6 +62,20 @@ Routine intake Issue: [#1456](https://github.com/pmark/arcadia/issues/1456). An 
 
 Next safe moves: preserve the final source delta; run final clean-head focused proof, lint/type/build, fast rehearsal/report and derived-record checks; preserve evidence; push/open the PR and hold code for independent review/QA. No merge or live attempt. Host refusal or the assigned budget cap requires a concrete preserved blocker, not a replacement workspace or reset budget.
 
+## Final initial-pass source verification
+
+Source head: `3c6a4560e19b899859d49e02ea1c5eb6d8b96deb`. Source is frozen for independent review. Subsequent initial handoff edits are docs/evidence only; verify an empty `git diff <source-head> HEAD -- src tests` before reusing these receipts. Candidate PR/review/CI receipts identify the exact final head.
+
+- `pnpm exec vitest run tests/run-consume-one.test.ts tests/scout-run-admission.test.ts tests/scout-isolation-preflight.test.ts`: **129/129 passed, exit 0**. Raw `/private/tmp/admission-focused-final.log`. This includes public CLI omission of the entire admission bundle; null/empty/malformed evidence leaves the Run unclaimed; pre-invocation restore/approval-pin changes refuse; direct shared-entry/copied-token/stale-source tests; parent SIGKILL with an independently surviving deadline; all retained Action 1 timeout/provider/worker/parent-interruption regressions.
+- `node scripts/fast-rehearsal.mjs`: **exit 0**, 19 files / 72 passed + 1 expected failure / 34 scenarios, 3m08s. Report `/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-0Y6tBJ/report.json`; raw `/private/tmp/admission-fast-source-final.log`. Existing injected `session-probe-wall` EROFS lifecycle logs are retained and not suppressed.
+- `pnpm exec tsc --noEmit -p tsconfig.json`: exit 0 after the final source boundary changes, raw `/private/tmp/admission-tsc13.log`.
+- Focused ESLint: exit 0, raw `/private/tmp/admission-lint10.log`. Full repository lint/core TypeScript/Discord build: **exit 0**, raw `/private/tmp/admission-build-source-final.log`.
+- Existing worker/approval/CLI/experiment suites passed 132/132, exit 0 (`/private/tmp/admission-regression1.log`); the final recheck changes were additionally exercised by the focused public proof and full fast rehearsal above.
+
+Final docs/evidence checks: `pnpm check:session-ledger`, `pnpm check:agent-guidance` and `pnpm exec vitest run tests/notes-to-self.test.ts` (3/3) all exit 0; raw `/private/tmp/admission-handoff-checks.log`. The reusable prevention cache now points to the full synthetic admission proof and independent deadline boundary without adding an entry or seeding live allowance. `git diff --check` is clean.
+
+Criteria 1–6 now have deterministic source evidence. Criterion 7 remains gated on separate independent current-head Code-reviewer and QA receipts and every required CI job; no completion settlement has been prepared or applied. Action 3 is not started. Historical protected-config uncertainty remains unresolved, actual live attempts/repairs here are zero, actual remaining allowance is unknown, usage/model/effort/cost are unknown, and fixture incremental paid spend is $0. The next safe move is the pushed candidate PR with independent manager-owned review/QA; no merge or live attempt.
+
 ## Action 2 instruction retrieval receipt
 
 Byte counts are filesystem UTF-8 sizes, not token counts or claims that historical prose was all loaded. Project frontmatter/current active Action, exact seven Action 2 criteria and full Decision 0128 were retrieved. Procedures: startup/isolation/identity/review/CI/handoff; repository Orientation, semantics, operator guide, PR QA, working-copy and experiment boundaries. Notes: worktree dependencies, SQLite permission refusal, single-file Vitest and fast-rehearsal prior remedies. Skills: role/guardrail in full and OpenAI Docs for fixed login/provider settings. Initial combined reads were truncated; relevant active Action and procedure sections were retrieved separately. No mandatory reference was missing. Scoped retained lessons and cited R1 checkpoint evidence are named above; historical source config uncertainty was preserved.
@@ -69,6 +83,9 @@ Byte counts are filesystem UTF-8 sizes, not token counts or claims that historic
 | Loaded instruction/reference | Bytes |
 | --- | ---: |
 | `AGENTS.md` | 10100 |
+| `docs/operator-demo-and-release-contract.md` | 6915 |
+| `.github/pull_request_template.md` | 2514 |
+| `/Users/pmark/.codex/skills/.system/openai-docs/SKILL.md` | 5437 |
 | `CONSTITUTION.md` | 3320 |
 | `PROJECT.md` | 31677 |
 | `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 |
@@ -167,7 +184,10 @@ Reference byte counts below are filesystem UTF-8 sizes, not a claim that all his
 
 | Path | Bytes | Retrieved scope |
 | --- | ---: | --- |
-| `AGENTS.md` | 10100 | full; plus operator-provided preferences |
+| `AGENTS.md` | 10100 |
+| `docs/operator-demo-and-release-contract.md` | 6915 |
+| `.github/pull_request_template.md` | 2514 |
+| `/Users/pmark/.codex/skills/.system/openai-docs/SKILL.md` | 5437 | full; plus operator-provided preferences |
 | `CONSTITUTION.md` | 3320 | full |
 | `PROJECT.md` | 31677 | frontmatter/current pointer; historical prose not relied on |
 | `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 | full |

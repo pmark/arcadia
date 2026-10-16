@@ -4,7 +4,7 @@ Say **“Continue the Scout project for Arcadia Studio.”** The entrypoint skil
 
 ## Purpose and scope
 
-**Checkpoint refreshed:** 2026-10-15 after PR #1445 merged. This records the selector correction and a deterministic current-main rehearsal baseline; it does not launch or complete the live Scout.
+**Checkpoint refreshed:** 2026-10-16 after Action 1 merged in PR #1455 and Action 2 source validation. The infrastructure disposition below is current; the 2026-10-15 table is retained historical evidence. No live Scout was launched or completed.
 
 The Scout initiative is the first bounded probe in Arcadia’s [operator-persona behavioral testing approach](../behavioral-testing.md). Personas simulate people using Arcadia; model/effort settings are separate from their knowledge and attention. This guide owns Scout continuation state; the broader document owns that testing concept. The approved live Luna customer and its bounds remain unchanged.
 
@@ -12,7 +12,7 @@ Prove that a customer can ask Arcadia for `HelloWorld.txt` through **Ask / Ask s
 
 The exact builder-owned output is one file, `HelloWorld.txt`, containing **13 bytes**: `Hello World!` followed by one LF newline (`Hello World!\n`). Setup, approval transport, bounded Run consumption, validation and the independent oracle belong to the Lead/Supervisor or harness, outside the customer persona.
 
-## Current checkpoint — 2026-10-15
+## Historical checkpoint — 2026-10-15
 
 | Track | Verified state | Meaning for continuation |
 | --- | --- | --- |
