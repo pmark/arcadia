@@ -11,10 +11,10 @@ updated: 2026-10-16
 actions:
   - id: resolve-go-caller-context
     title: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    next_action: Completed via Agent Ask complete-go-caller-context-20261016-01a143a6; no further action.
     expected_artifact: Evidence satisfying Agent Ask resolve-go-caller-context
     clarification: clarified
     confidence: high
