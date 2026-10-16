@@ -20,6 +20,17 @@ See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
 [opening Artifacts](docs/design/workspace-artifact-opening.md).
 
+## Independent pull-request review
+
+Use one independent reviewer from Codex, Claude Code or OpenCode by default;
+choose another perspective for a named risk or disagreement. Keep one signed
+report on the PR, identifying the reviewed commit and checks. The responsible
+agent reads comments, submitted reviews and inline feedback before repairs and
+before handoff or merge, and records each finding's disposition. Authorized direct
+messages carry the report link, not another copy of its findings. Follow the
+[full review procedure](docs/agent-guidance/pull-requests.md#runtime-selection-and-feedback-delivery)
+for independent Session requirements, permissions, freshness and review limits.
+
 ## Governed specialist roles
 
 Read the seven canonical roles and render a bounded brief from the repository:

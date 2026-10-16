@@ -63,8 +63,16 @@ Use existing Codex `spawn_agent` or Claude `Agent` with the complete generated
 brief and the assignment template below. Require skill retrieval, target role,
 depth 1 and no further delegation in the child's prompt. Preserve candidate
 ownership and raw evidence. If an implementer writes, the Lead pauses its edits.
-OpenCode's native path is unverified; unavailable tools or skills require a
-preserved brief and authorized relaunch/installation, never a replacement runner.
+OpenCode's in-process native delegation path remains unverified. A separately
+launched top-level OpenCode Session can perform independent review using the
+same contract as Codex or Claude Code: the operator-authorized PR #1469 review
+[posted an exact-head signed report](https://github.com/pmark/arcadia/pull/1469#issuecomment-6225541027)
+from OpenCode 1.16.2 with `opencode-go/deepseek-v4.1-flash`. This is evidence of
+that host launch and GitHub post, not governed admission, reviewer independence
+for another assignment, or blanket permission to launch or message. Use the
+[PR procedure's runtime and feedback contract](pull-requests.md#runtime-selection-and-feedback-delivery)
+for all three systems. Unavailable tools or skills require a preserved brief and
+authorized relaunch/installation, never a replacement runner.
 
 Governed capacity admission is not live. Native launch evidence is recorded
 separately and does not claim, enroll or reserve an Arcadia Session. Without

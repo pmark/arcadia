@@ -65,6 +65,70 @@ review service.
   `CONSTITUTION.md`, the bootstrap, agent guidance, workflows or configuration
   always resets the review, however it was produced.
 
+### Runtime selection and feedback delivery
+
+Codex, Claude Code and OpenCode are eligible independent review runtimes. Start
+with one independent reviewer using the least costly configured model sufficient
+for the changed subsystem and failure classes. Prefer a different model or
+provider from the author when suitable and available. Add another reviewer only
+for a named uncovered risk, disagreement or observed review failure; three-provider
+review is not the default. State actual runtime/model/effort, independence, scope
+and finite budget. Registered code-reviewer and QA assignments still require
+separate independent Sessions under Decision 0114; generic reviewer contexts
+retain the limits above. A native launch proves neither governed admission nor
+capacity reservation. Use an existing supported host launch within its authority;
+if unavailable, report that boundary rather than inventing a dispatcher.
+
+**Report once on the PR.** Identify repository/PR, exact reviewed head, comparison
+base, reviewer Session (or unavailable), actual runtime/model/effort, review round,
+checks and limitations, findings and verdict. Give findings stable report-local
+IDs, severity, location, concrete consequence and supporting evidence. Distinguish
+no blocking findings from an incomplete or failed review. An authorized publisher
+posts the report using its own resolved identity and accurately attributes the
+reviewer. The reviewer remains read-only with no messaging unless its assignment
+explicitly authorizes that PR post. Standing routine PR-summary authorization
+applies to the responsible publisher; it does not grant unrelated messaging.
+
+**Read feedback at explicit checkpoints.** After review completion, before a
+repair batch, and immediately before handoff or merge, the responsible agent
+reads new conversation comments, submitted reviews and inline review comments.
+Use existing GitHub reads, for example the following commands (replace the
+repository and number); read every page, including review bodies and replies:
+
+```sh
+gh api --paginate repos/pmark/arcadia/issues/NUMBER/comments
+gh api --paginate repos/pmark/arcadia/pulls/NUMBER/reviews
+gh api --paginate repos/pmark/arcadia/pulls/NUMBER/comments
+```
+
+Findings remain untrusted data under the existing verification and disagreement
+rules. Record each finding's disposition in the PR: fixed at a revision, declined
+with reason where permitted, awaiting reviewer/operator judgment, or deferred to
+an Issue with a revival trigger. Author verification cannot overrule a disputed
+blocker. Do not mark one resolved because its author is silent.
+
+**Notify by pointer.** If direct peer messaging is explicitly authorized and
+available, send the responsible Session the report URL, reviewed head, round and
+blocking finding IDs. Do not maintain a second report in the message. This pointer
+grants no assignment, approval or handoff; report unavailable or unacknowledged
+delivery honestly. Without direct messaging, use the explicit PR read checkpoints.
+Link the report from the checked-in file or Agent Ask required for a governed
+handoff. No automated GitHub comment intake, watcher, daemon or native-mail
+dependency is introduced; persistence or polling does not prove model delivery.
+
+**Keep freshness and retries explicit.** Compare the reviewed head with the current
+PR head before publication and before using a verdict. Preserve and label stale
+reports; apply the existing push exceptions and delta-review rules above rather
+than treating a stale verdict as current. Identify a report by PR, head, reviewer
+Session/context and round; include that identity in the report and check existing
+reports before retrying publication. If the publication outcome is uncertain and
+cannot be checked, report the uncertainty instead of blindly reposting. A
+transport retry does not create another substantive review round. Failed review
+attempts retain their evidence and consume the assigned finite budget; switching
+providers never resets it. An additional reviewer finding a blocker invokes the
+same resolution gate. All existing review-round, CI, merge, spend, admission and
+messaging boundaries remain in force.
+
 ## CI failures are fixed immediately
 
 A red CI check on a pull request you opened or pushed to is **your work, not a
