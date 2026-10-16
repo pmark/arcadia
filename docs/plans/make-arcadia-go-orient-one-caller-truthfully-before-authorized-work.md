@@ -1,0 +1,74 @@
+---
+arcadia: v1
+type: plan
+slug: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
+project: arcadia
+status: draft
+milestone: Make Arcadia Go orient one caller truthfully before authorized work.
+token_impact: medium
+token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
+updated: 2026-10-16
+actions:
+  - id: resolve-go-caller-context
+    title: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    expected_artifact: Evidence satisfying Agent Ask resolve-go-caller-context
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-go-truthful-orientation-20261016-01a143a6-r2
+    why: "A useful Go brief must describe the caller’s actual assignment without hiding the separately selected pointer."
+    acceptance_criteria:
+      - "Requirement REQ-001. Given a registered Project whose pointer names Action A and a caller candidate with a valid own claim for Action B, the existing read-only orientation resolves repository/base and caller worktree, Project, active Plan and selected Action A, assigned Plan/Action B and claim identity separately; actual Session id/status is present only when canonical Session evidence exists. Expected proof: hermetic distinct-A/B fixture through advance and next/combined-brief consumers; titles and acceptance refer to B when assigned, never silently A. Center this correction on src/goBroker.ts brief integration: advance currently receives request.source while nextRunner receives only workspace/project; reuse current dispatch/gate resolution rather than inventing a second resolver."
+      - "Requirement REQ-002. Given no own claim, another caller’s claim, a stale/conflicting claim, an unknown repository or missing/ambiguous Project/Plan/Action record, orientation shows selected work separately and either no assignment or one exact existing refusal; it never steals/rebinds a claim, invents a Session or authorizes work. Expected proof: focused fixtures for each case including cross-Project/cross-Plan and secret-redaction assertions."
+      - "Requirement REQ-003. Rendering orientation reports observed ongoing ownership and related Plans with source/time and a bounded summary, plus the next permitted step or exact gate. Identical pinned inputs produce identical output. Expected proof: read-only adapter spies and before/after snapshots prove zero Project/queue/claim/admission/Git/worktree mutations and zero provider calls; malformed/missing evidence remains visible."
+      - Focused context/advance/next/brief tests, TypeScript, lint and build pass; retain failed-first evidence for any reproduced caller-versus-registered-path defect. Read-only orientation does not implement orchestrator replacement or modify the existing live control/admission policy.
+    depends_on: []
+    decisions: []
+    references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "src/commands/advance.ts", "src/commands/next.ts", "src/briefSupervisor.ts", "src/sessions/hostEnrollment.ts", "tests/brief-supervisor.test.ts", "tests/go-broker.test.ts", "docs/agent-guidance/continuation.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers", "src/goBroker.ts"]
+  - id: reuse-go-context-through-authorized-continuation
+    title: "Use the caller-bound orientation in the existing protected Go continuation while preserving stable replay and all host authority gates. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Use the caller-bound orientation in the existing protected Go continuation while preserving stable replay and all host authority gates. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    expected_artifact: Evidence satisfying Agent Ask reuse-go-context-through-authorized-continuation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-go-truthful-orientation-20261016-01a143a6-r2
+    why: "Orientation and actual continuation must name the same work and avoid duplicated effects on retry."
+    acceptance_criteria:
+      - "Requirement REQ-004. The existing protected entry path emits or returns read-only orientation before optional preparation and binds authorized continuation to caller, Project/Plan/Action and current evidence. Initial preparation revalidates the selected snapshot. An already-assigned caller retains B if unrelated selected pointer A advances to C while its own claim remains valid; it refuses revoked/stale B ownership, incompatible packet or authority/policy evidence, dirty or occupied candidate, foreign custody or missing required permission before an unauthorized effect. Expected proof: A-to-C/B-still-owned and revoked-B fixtures plus changed initial snapshot cases, retaining every existing approval, cleanliness, custody, preservation and production check."
+      - Requirement REQ-005. Integration fixtures invoke the existing fixed arcadia-go-broker-codex/claude/opencode request entry (scripts/arcadia-go-broker.ts) and the supported requestId-bearing enrollment receipt boundary, not merely the enrollment unit helper. Exact caller/request/input replay or recovery after interruption returns the same supported enrollment/preparation identity and candidate, or the existing in-progress/refused state; changed input under that identity refuses. Concurrent repeats produce at most one claim/candidate/Session. Reuse stable enrollment semantics and existing host-observable identity; no second identity transport or enrollment wrapper. If an ordinary Go entry cannot retain/recover its identity within existing host mechanisms, retain that exact integration gap as a governed follow-up instead of silently expanding this Action or fabricating native-adopt support.
+      - Go/brief orientation does not invoke Tidy, retire/delete/reset worktrees or remove unique work. Monitor/brief retain the existing 25-second bounded supervisor/error contract and every safety check; a metadata-heavy deterministic fixture verifies bounded initial rendering and exact timeout stage without claiming a live performance guarantee. Optimization beyond that is deferred until profiling proves a remaining bottleneck.
+      - Existing Go, enrollment, protected broker, preservation and fast-rehearsal regressions pass with zero live provider calls or host installation. Source, installed adoption and live proof are recorded as separate stages.
+    depends_on: [resolve-go-caller-context]
+    decisions: []
+    references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "src/commands/go.ts", "src/sessions/enrollment.ts", "src/sessions/hostEnrollment.ts", "src/briefSupervisor.ts", "tests/go.test.ts", "tests/session-enrollment.test.ts", "tests/host-enrollment-managed.test.ts", "tests/brief-supervisor.test.ts", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers", "src/goBroker.ts", "scripts/arcadia-go-broker.ts", "tests/enrollment-request-executor.test.ts", "tests/go-request-transport.test.ts"]
+  - id: project-go-context-as-compact-state-signals
+    title: "Project Go context into existing title guidance and compact truthful acknowledgment/state changes across the three native agent paths. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Project Go context into existing title guidance and compact truthful acknowledgment/state changes across the three native agent paths. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    expected_artifact: Evidence satisfying Agent Ask project-go-context-as-compact-state-signals
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-go-truthful-orientation-20261016-01a143a6-r2
+    why: "The operator needs to see whose work is active and what needs attention without a context dump."
+    acceptance_criteria:
+      - "Requirement REQ-006. Existing sessionTitles generation and shared native instructions preserve canonical kind/state, distinguishing Plan/Action or workstream identifiers early, and a helper marker only for a verified parent. Observed state transitions update supported host titles; idle/end-of-turn alone cannot imply pause, done or custody release. Expected proof: deterministic title fixtures for selected A/assigned B, no Session, working, PR/review, checks, needs-input, external-blocked, completed and deliberate hold states; no new role or independent title truth store."
+      - "Requirement REQ-007. Existing brief/instructions specify an immediate compact acknowledgment of the actual observed state and subsequent state-change updates, with detail available on demand. The no-worker example must not claim an active team; native activity must not claim governed Session admission; a missing title tool must be disclosed rather than asserted as updated. Expected proof: checked-in rendered examples/fixtures for Codex, Claude Code and OpenCode; identify any unverified runtime support explicitly."
+      - Shared guidance remains one authoritative source delivered by existing generators; regenerate affected managed regions and run canonical guidance/budget checks plus focused title/brief tests, TypeScript, lint, build and fast-rehearsal. Update START_HERE.md for any changed user-visible Go behavior with executable QA steps that keep local fixtures and live-provider acceptance distinct.
+    depends_on: [resolve-go-caller-context, reuse-go-context-through-authorized-continuation]
+    decisions: []
+    references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "docs/agent-guidance/continuation.md", "docs/agents-context.md", "src/sessions/actionBrief.ts", "tests/action-brief.test.ts", "START_HERE.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers"]
+questions: []
+decisions: []
+---
+
+# Make Arcadia Go orient one caller truthfully before authorized work.
+
+Created as an inactive draft from accepted Agent Ask plan-go-truthful-orientation-20261016-01a143a6-r2; creation changed no pointer. Current activation is recorded in frontmatter.
