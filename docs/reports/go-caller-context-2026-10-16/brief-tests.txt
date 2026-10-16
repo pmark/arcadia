@@ -1,0 +1,9 @@
+
+ RUN  v4.1.8 /private/tmp/arcadia-go-context-01a143a6
+
+
+ Test Files  2 passed (2)
+      Tests  26 passed (26)
+   Start at  08:28:22
+   Duration  63.28s (transform 26.56s, setup 0ms, import 30.39s, tests 70.74s, environment 0ms)
+

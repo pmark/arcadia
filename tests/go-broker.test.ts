@@ -250,7 +250,7 @@ describe("protected Arcadia go broker", () => {
       expect(advanceRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", repo: "/tmp/prepared" });
       expect(workMonitorRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", includePullRequests: false, repositoryPath: "/tmp/prepared" });
       expect(resolveProjectSlug).toHaveBeenCalledExactlyOnceWith("/tmp/prepared");
-      expect(nextRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", project: "arcadia" });
+      expect(nextRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", project: "arcadia", repo: "/tmp/prepared" });
       expect(result.command).toBe("brief-broker");
       expect(result.data).toEqual({
         advance: advanceResponse.data,

@@ -1,0 +1,34 @@
+{
+  "session_id": "01a143a6-51ee-720c-b93d-86a3dcff50eb",
+  "role": "lead",
+  "model": "host-default-unverified",
+  "effort": null,
+  "action_id": "plan/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work#resolve-go-caller-context",
+  "pr": 1459,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 2,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "assigned-plan-eligibility-gate",
+      "caught_by": "independent-review-round1"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "assigned-plan-eligibility-gate",
+      "cost_min": null,
+      "fix_ref": "06f70ac5f0f2ee9c5f459727a452acbae5375e74"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Source Action settled; final records review and CI pending. Native coordinator, no managed admission. No merge, installation, production activation or cleanup.",
+  "candidate_head": "06f70ac5f0f2ee9c5f459727a452acbae5375e74",
+  "evidence_source": "docs/reports/go-caller-context-2026-10-16.md"
+}

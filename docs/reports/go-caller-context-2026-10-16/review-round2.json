@@ -1,0 +1,36 @@
+{
+  "pr": "https://github.com/pmark/arcadia/pull/1459",
+  "reviewedHead": "06f70ac5f0f2ee9c5f459727a452acbae5375e74",
+  "previousReviewedHead": "08760077bf9576120c06b1ccf19f107992e25b9c",
+  "reviewRound": 2,
+  "reviewType": "Generic independent read-only current-head delta review; no registered code-reviewer/QA admission or governed Session assertion",
+  "verdict": "no_unresolved_blocking_findings",
+  "blockingFindings": [],
+  "nonblockingFindings": [],
+  "resolvedFindings": [
+    {
+      "id": "R1-001",
+      "status": "resolved",
+      "path": "src/docs/dispatch.ts",
+      "line": 267,
+      "evidence": "A uniquely matched cross-Plan Action retains its context, but assigned Plan status must be active or a status blocker is appended. Selected Plan checks are preserved. isDispatchable rejects the resulting blockers. The code does not activate any Plan, change a pointer, infer an approval from custody, or read a new authority store.",
+      "verifiedCases": "Checked-in table covers canonical draft/active/complete/superseded plus malformed deferred/completed/blocked Plan states. Draft/complete/superseded keep assigned B and refuse executable dispatch; active B remains permitted under existing gates; invalid states retain parse refusals. Each canonical case verifies ordinary pointer-only next still resolves selected A, and nonactive cases verify advance is not launch.",
+      "independentProbe": "Extracted exact head, appended a disposable test using selected A/claimed B in draft assigned Plan through actual combined brief. B remains context.action and title suffix; selected A remains separately visible; dispatchable=false. Passed."
+    }
+  ],
+  "verification": {
+    "sourceDelta": "10 added lines in src/docs/dispatch.ts; 26 added test lines for seven status cases. Other changed paths are evidence/report records. No Project/Plan pointers or governance policy changed in the delta.",
+    "extraction": "git archive exact reviewedHead into /tmp/arcadia-review-1459-r2; existing dependency installation symlinked",
+    "command": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node node_modules/vitest/vitest.mjs run tests/go-caller-context.test.ts",
+    "result": "23 passed: 22 checked-in focused tests plus one independent disposable combined-brief/title probe. Exit 0; duration 38.96s under concurrent host load; not a live latency claim.",
+    "crossProjectScope": "Existing filters remain project-scoped before replacement; optional Plan narrowing does not bypass Project identity. This delta changes no claim, branch, repository, Session, operator gate or readiness validation.",
+    "preservation": "Read-only live Git access only; no checkout/stash/reset/worktree edits or creation, services, broker operations on live state, commits, pushes, settlement, policy changes or provider calls. Direct combined broker invocation was only inside disposable hermetic fixtures. Candidate status stayed clean and reflog -3 stayed unchanged during the pass.",
+    "instructions": "Applied previously read AGENTS, Constitution, context policy, current/assigned Actions and docs/agent-guidance/pull-requests.md delta-review procedure; no new failure requiring broader retrieval."
+  },
+  "remainingEvidenceLimits": [
+    "This is source delta approval only. Parent must preserve final build/rehearsal results and required green CI for the exact pushed code head. Neither is established by this bounded review.",
+    "Generic review is not Action completion settlement, production acceptance, installation, activation or merge authority. No merge is authorized by the delegated task.",
+    "Parent retains separate primary-checkout reflog verification."
+  ],
+  "modelIdentity": "Inherited runtime; registry identity not asserted; tokens unknown"
+}
