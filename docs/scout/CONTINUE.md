@@ -30,6 +30,14 @@ The exact builder-owned output is one file, `HelloWorld.txt`, containing **13 by
 
 The operator-directed #1443 replacement delivered the selector correction in merged PR #1445. The fresh 2026-10-15 rehearsal still stops at a queued `pending_execution` Run, with no product file or accepted completion Artifact. The next source gate is the canonical bounded consumer in open Issue #1389, followed by durable Decision0128 reservation and restore-detection safeguards. No live Scout attempt has occurred; the live-attempt allowance ledger has not been freshly verified, so do not assume three attempts remain available.
 
+## Governed source preparation — 2026-10-15
+
+The operator approved exact Plan amendment `amend-scout-consumer-safeguards-20261016-v2` in the continuation chat. Settlement `asksettle_281b28ae65db4e93ad` records two source-only Actions in the existing **draft** Scout Plan: `implement-scout-named-run-consumer`, followed by `implement-scout-durable-budget-safeguards`. Both existing live Scout Actions now depend on both source Actions. Existing launch acceptance criteria and references are retained; the amendment adds related evidence links and updates provenance.
+
+This checkpoint accompanies the candidate settlement; the reviewed PR must land before main contains these records. It does not activate Scout or authorize source execution by itself. The Project remains on `claude-worker-launch-replay`; the live queue, production policy and preserved draft #1402 were not changed. No live provider attempt occurred in this preparation. Remaining live allowance is **unknown**, not freshly verified. Decision 0128 safeguards, protected-state attribution and all fresh admission gates remain unproven; its expiry is unchanged.
+
+Next: obtain a bounded source-only assignment through the governed path for the named-Run consumer, reusing existing execution/finalization with no daemon or second harness. Source tests use a scripted external executor and zero live provider calls; the live path must refuse until durable admission safeguards pass. Then implement and independently verify reservation and earlier-valid-ledger restore detection. Separate independent review/QA and all required CI remain acceptance gates for each resulting source PR. Neither source success nor this amendment proves actual Hello World completion. See the [preparation evidence](../reports/scout-governed-preparation-2026-10-15.md).
+
 ## First useful work in a new session
 
 1. Read repository AGENTS.md, CONSTITUTION.md, PROJECT.md, its **current** active Plan/Action, the context policy and guidance index. Then read this guide, targeted Notes To Self (`scout`, `ingress`, `claim`, `budget`, `preflight`) and the indexed procedures needed for the next operation. The current Project Action may be an unrelated production track; this operator-directed Scout request does not activate the inactive Scout Plan or move pointers/queues.
