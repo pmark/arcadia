@@ -1180,7 +1180,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("native-rm.report", options, () => runNativeCoordinationReportCommand(options), () => [])
   );
   addJsonOption(nativeRm.command("effect")
-    .description("Record an independently checked correlated effect receipt by re-deriving the claimed value from the configured store (closed allowlist: work_items.status) and comparing it; a mismatch fails closed. The only thing that may stand for an applied canonical effect. Fences the same Plan/recipient/generation scope as ack")
+    .description("Record an independently checked correlated effect receipt. NOT YET SUPPORTED: always refuses, because no genuine canonical writer receipt exists yet to correlate against; observing a row's current state is not proof an effect was applied by this coordination, so this never fakes a verified label. Fences the same Plan/recipient/generation scope as ack")
     .requiredOption("--message-id <id>", "Coordination message id")
     .requiredOption("--request-id <id>", "Idempotency key for this effect receipt")
     .requiredOption("--actor <identity>", "Resolved agent identity recording the check")
@@ -1188,10 +1188,6 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--plan-slug <slug>", "Plan slug")
     .requiredOption("--recipient-incarnation <id>", "This native session's incarnation id")
     .requiredOption("--recipient-generation <id>", "This native session's generation")
-    .option("--checked-table <table>", "Canonical table to re-derive from (only work_items is supported)", "work_items")
-    .requiredOption("--checked-id <id>", "Row id to re-read, e.g. a work_items Action id")
-    .option("--checked-field <field>", "Column to re-derive (only status is supported)", "status")
-    .requiredOption("--expected-value <value>", "Value the re-derived column must equal for the effect to be recorded as checked")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: NativeCoordinationEffectOptions & { json?: boolean }) =>
     runCliAction("native-rm.effect", options, () => runNativeCoordinationEffectCommand(options), () => [])

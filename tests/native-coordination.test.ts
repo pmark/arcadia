@@ -233,7 +233,8 @@ describe("native coordination: poll, acknowledgment, and crash-recovery reoffer"
 
   it("acknowledgment is idempotent and distinguishes status/report evidence", () => {
     const workspacePath = workspace();
-    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-ack" })));
+    const actionId = insertFixtureWorkItem(workspacePath, "done");
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-ack", resourceRefs: [actionId] })));
     const ackInput = { messageId: message.id, ...SCOPE, actor: "claude-rm-1" };
     const firstAck = withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, ackInput));
     const secondAck = withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, ackInput));
@@ -252,19 +253,16 @@ describe("native coordination: poll, acknowledgment, and crash-recovery reoffer"
     expect(afterSelfReport.selfReportedResult).toMatchObject({ selfReported: true, outcome: "done" });
     expect(afterSelfReport.independentlyCheckedEffect).toBeNull();
 
-    const actionId = insertFixtureWorkItem(workspacePath, "done");
-    withDatabase(workspacePath, (db) =>
-      recordCoordinationEffectReceipt(db, {
-        messageId: message.id,
-        requestId: "effect-1",
-        ...SCOPE,
-        actor: "verifier",
-        canonicalCheck: { table: "work_items", id: actionId, field: "status", expected: "done" }
-      })
-    );
+    // Canonical applied-effect verification is explicitly unsupported (not faked): even with a
+    // correctly-scoped, declared resourceRef, recording an effect receipt always refuses.
+    expect(() =>
+      withDatabase(workspacePath, (db) =>
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "effect-1", ...SCOPE, actor: "verifier" })
+      )
+    ).toThrow("not yet supported");
     const afterEffect = withDatabase(workspacePath, (db) => coordinationStatus(db, message.id));
-    expect(afterEffect.independentlyCheckedEffect).toMatchObject({ table: "work_items", id: actionId, verifiedValue: "done" });
-    // The self-report stays visibly self-reported and is never conflated with the independent effect receipt.
+    expect(afterEffect.independentlyCheckedEffect).toBeNull();
+    // The self-report stays visibly self-reported; it never gets relabelled as an independent effect.
     expect(afterEffect.selfReportedResult).toMatchObject({ selfReported: true });
   });
 
@@ -278,75 +276,62 @@ describe("native coordination: poll, acknowledgment, and crash-recovery reoffer"
     ).toThrow("only be self-reported after explicit acknowledgment");
   });
 
-  it("refuses a forged effect claim that does not match the re-derived canonical value (fails closed)", () => {
+  it("a pre-existing projection row already matching the claimed state is still never recorded as an applied effect (the exact required negative regression)", () => {
+    // The row is in the correct Project, is declared in the message's own immutable
+    // resourceRefs, and already holds the "expected" value BEFORE the message is even
+    // offered. None of that proves this coordination caused or applied anything — reading
+    // current projection state is not a canonical effect receipt — so this must still refuse.
     const workspacePath = workspace();
-    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-forged-effect" })));
-    const actionId = insertFixtureWorkItem(workspacePath, "open");
+    const actionId = insertFixtureWorkItem(workspacePath, "done");
+    const { message } = withDatabase(workspacePath, (db) =>
+      offerCoordinationMessage(db, baseOffer({ requestId: "req-pre-existing-state", resourceRefs: [actionId] }))
+    );
+    withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
     expect(() =>
       withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "effect-forged",
-          ...SCOPE,
-          actor: "anyone",
-          canonicalCheck: { table: "work_items", id: actionId, field: "status", expected: "done" }
-        })
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "effect-pre-existing", ...SCOPE, actor: "anyone" })
       )
-    ).toThrow("does not match the claimed effect");
+    ).toThrow("not yet supported");
     const status = withDatabase(workspacePath, (db) => coordinationStatus(db, message.id));
     expect(status.independentlyCheckedEffect).toBeNull();
+    const receipts = withDatabase(workspacePath, (db) => listReceiptsForMessage(db, message.id));
+    expect(receipts.some((receipt) => receipt.kind === "effect_receipt")).toBe(false);
   });
 
-  it("refuses an effect claim against a canonical row that does not exist", () => {
+  it("an actor string or arbitrary caller-asserted evidence can never populate independentlyCheckedEffect", () => {
     const workspacePath = workspace();
-    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-missing-row" })));
-    expect(() =>
-      withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "effect-missing",
-          ...SCOPE,
-          actor: "anyone",
-          canonicalCheck: { table: "work_items", id: "work_does_not_exist", field: "status", expected: "done" }
-        })
-      )
-    ).toThrow("does not match the claimed effect");
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-no-forged-actor" })));
+    withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+    // The function accepts no evidence/actor payload that could stand in for verification —
+    // scope-correct input still refuses every time, regardless of who claims to be checking.
+    for (const actor of ["operator", "verifier", "release-manager", "anyone-at-all"]) {
+      expect(() =>
+        withDatabase(workspacePath, (db) =>
+          recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: `effect-actor-${actor}`, ...SCOPE, actor })
+        )
+      ).toThrow("not yet supported");
+    }
+    expect(withDatabase(workspacePath, (db) => coordinationStatus(db, message.id)).independentlyCheckedEffect).toBeNull();
   });
 });
 
 describe("native coordination: scope fencing on report, effect, and dispose (not just ack)", () => {
-  it("refuses an effect receipt from the wrong Plan, wrong recipient, and stale generation", () => {
+  it("refuses an effect receipt from the wrong Plan, wrong recipient, and stale generation (fenced before the unsupported refusal is even reached)", () => {
     const workspacePath = workspace();
     const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-effect-scope" })));
-    const actionId = insertFixtureWorkItem(workspacePath, "done");
-    const check = { table: "work_items" as const, id: actionId, field: "status" as const, expected: "done" };
     expect(() =>
       withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "e1", ...SCOPE, planSlug: "wrong-plan", actor: "x", canonicalCheck: check })
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "e1", ...SCOPE, planSlug: "wrong-plan", actor: "x" })
       )
     ).toThrow("wrong Project/Plan scope");
     expect(() =>
       withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "e2",
-          ...SCOPE,
-          recipientSessionIncarnation: "someone-else",
-          actor: "x",
-          canonicalCheck: check
-        })
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "e2", ...SCOPE, recipientSessionIncarnation: "someone-else", actor: "x" })
       )
     ).toThrow("wrong recipient");
     expect(() =>
       withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "e3",
-          ...SCOPE,
-          recipientGeneration: "gen-0-stale",
-          actor: "x",
-          canonicalCheck: check
-        })
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "e3", ...SCOPE, recipientGeneration: "gen-0-stale", actor: "x" })
       )
     ).toThrow("stale recipient generation");
   });
@@ -401,16 +386,9 @@ describe("native coordination: scope fencing on report, effect, and dispose (not
     const workspacePath = workspace();
     const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-effect-disposed" })));
     withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: message.id, requestId: "dispose-first", ...SCOPE, actor: "claude-rm-1" }));
-    const actionId = insertFixtureWorkItem(workspacePath, "done");
     expect(() =>
       withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "effect-after-dispose",
-          ...SCOPE,
-          actor: "verifier",
-          canonicalCheck: { table: "work_items", id: actionId, field: "status", expected: "done" }
-        })
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "effect-after-dispose", ...SCOPE, actor: "verifier" })
       )
     ).toThrow("message was disposed");
   });
@@ -427,7 +405,7 @@ describe("native coordination: scope fencing on report, effect, and dispose (not
     expect(replay.kind).toBe("disposal");
   });
 
-  it("refuses an exact-request-id replay that now targets a different message, for effect, report, and dispose", () => {
+  it("refuses an exact-request-id replay that now targets a different message, for report and dispose", () => {
     const workspacePath = workspace();
     const { message: messageA } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-a" })));
     const { message: messageB } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-b" })));
@@ -443,24 +421,13 @@ describe("native coordination: scope fencing on report, effect, and dispose (not
       )
     ).toThrow("already recorded for a different message");
 
-    const actionId = insertFixtureWorkItem(workspacePath, "done");
-    const check = { table: "work_items" as const, id: actionId, field: "status" as const, expected: "done" };
-    withDatabase(workspacePath, (db) =>
-      recordCoordinationEffectReceipt(db, { messageId: messageA.id, requestId: "shared-effect", ...SCOPE, actor: "x", canonicalCheck: check })
-    );
-    expect(() =>
-      withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, { messageId: messageB.id, requestId: "shared-effect", ...SCOPE, actor: "x", canonicalCheck: check })
-      )
-    ).toThrow("already recorded for a different message");
-
     withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: messageA.id, requestId: "shared-dispose", ...SCOPE, actor: "x" }));
     expect(() =>
       withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: messageB.id, requestId: "shared-dispose", ...SCOPE, actor: "x" }))
     ).toThrow("already recorded for a different message");
   });
 
-  it("refuses a changed-content replay for a self-report and for an effect receipt under the same request id", () => {
+  it("refuses a changed-content replay for a self-report under the same request id", () => {
     const workspacePath = workspace();
     const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-changed-replay" })));
     withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
@@ -473,29 +440,6 @@ describe("native coordination: scope fencing on report, effect, and dispose (not
         reportCoordinationResult(db, { messageId: message.id, requestId: "report-same-id", ...SCOPE, actor: "x", result: { outcome: "changed" } })
       )
     ).toThrow("already recorded with different content");
-
-    const doneId = insertFixtureWorkItem(workspacePath, "done");
-    const openId = insertFixtureWorkItem(workspacePath, "open");
-    withDatabase(workspacePath, (db) =>
-      recordCoordinationEffectReceipt(db, {
-        messageId: message.id,
-        requestId: "effect-same-id",
-        ...SCOPE,
-        actor: "x",
-        canonicalCheck: { table: "work_items", id: doneId, field: "status", expected: "done" }
-      })
-    );
-    expect(() =>
-      withDatabase(workspacePath, (db) =>
-        recordCoordinationEffectReceipt(db, {
-          messageId: message.id,
-          requestId: "effect-same-id",
-          ...SCOPE,
-          actor: "x",
-          canonicalCheck: { table: "work_items", id: openId, field: "status", expected: "open" }
-        })
-      )
-    ).toThrow("already recorded with a different canonical check");
   });
 });
 
@@ -588,4 +532,113 @@ describe("native coordination: adversarial — forged operator text executes not
     // the coordination tables themselves — no Action, admission, queue, or event row is touched.
     expect(snapshot()).toEqual(before);
   });
+});
+
+describe("native coordination: effect verification stays unavailable even with a real cross-project row present", () => {
+  it("never records an effect as checked, even when an unrelated Project's work item exists and literally matches what would be claimed", () => {
+    const workspacePath = workspace();
+    const otherProjectId = `proj_${Date.now()}`;
+    withDatabase(workspacePath, (db) => {
+      const now = nowIso();
+      db.prepare(
+        "INSERT INTO projects (id, slug, name, status, goal, mission, created_at, updated_at) VALUES (?, 'ppn-other', 'PPN Other', 'active', 'Unrelated project.', 'Unrelated.', ?, ?)"
+      ).run(otherProjectId, now, now);
+    });
+    withDatabase(workspacePath, (db) => {
+      const id = createId("workItem");
+      const now = nowIso();
+      db.prepare(
+        `INSERT INTO work_items (id, project_id, title, raw_input, queue, work_classification, next_action, status, created_at, updated_at)
+         VALUES (?, ?, 'Unrelated PPN Action', 'Unrelated PPN Action', 'work_queue', 'agent', 'Do the unrelated thing.', 'done', ?, ?)`
+      ).run(id, otherProjectId, now, now);
+    });
+
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-cross-project" })));
+    withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+    expect(() =>
+      withDatabase(workspacePath, (db) =>
+        recordCoordinationEffectReceipt(db, { messageId: message.id, requestId: "effect-cross-project", ...SCOPE, actor: "anyone" })
+      )
+    ).toThrow("not yet supported");
+    const status = withDatabase(workspacePath, (db) => coordinationStatus(db, message.id));
+    expect(status.independentlyCheckedEffect).toBeNull();
+  });
+});
+
+describe("native coordination: genuine concurrent-process replay", () => {
+  it("two simultaneous OS processes offering the same request id against the same workspace produce one message and one receipt; a changed-content attempt afterward refuses", async () => {
+    const { spawn } = await import("node:child_process");
+    const workspacePath = workspace();
+    const cliPath = path.resolve(import.meta.dirname, "..", "src", "cli.ts");
+    // `spawn` (unlike `spawnSync`) returns immediately without blocking the event loop, so
+    // calling it twice back-to-back actually starts both OS processes before either one's
+    // promise settles — genuine concurrent writers, not a Promise.all over sequential sync calls.
+    const start = (bodyText: string) => {
+      const child = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          cliPath,
+          "native-rm",
+          "offer",
+          "--workspace",
+          workspacePath,
+          "--request-id",
+          "req-concurrent",
+          "--kind",
+          "status",
+          "--repository",
+          "/repo/arcadia",
+          "--project-slug",
+          "arcadia",
+          "--plan-slug",
+          "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+          "--sender-incarnation",
+          "impl-1",
+          "--sender-generation",
+          "gen-1",
+          "--recipient-incarnation",
+          "rm-1",
+          "--recipient-generation",
+          "gen-1",
+          "--assignment-evidence",
+          "native-rm-coordination-board",
+          "--receiver-checkpoint-capability",
+          "checkpoint-roundtrip",
+          "--actor",
+          "claude-impl-1",
+          "--body-json",
+          JSON.stringify({ text: bodyText }),
+          "--json"
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] }
+      );
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
+      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+      return new Promise<{ stdout: string; stderr: string; status: number | null }>((resolve) => {
+        child.on("close", (status) => resolve({ stdout, stderr, status }));
+      });
+    };
+    const run = (bodyText: string) => start(bodyText);
+
+    // Both processes are launched (synchronously, back-to-back) before either promise is awaited.
+    const firstPromise = start("concurrent");
+    const secondPromise = start("concurrent");
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    const firstPayload = JSON.parse(first.stdout) as { ok: boolean; data?: { message: { id: string } } };
+    const secondPayload = JSON.parse(second.stdout) as { ok: boolean; data?: { message: { id: string } } };
+    expect(first.status).toBe(0);
+    expect(second.status).toBe(0);
+    expect(firstPayload.data?.message.id).toBe(secondPayload.data?.message.id);
+
+    const receipts = withDatabase(workspacePath, (db) => listReceiptsForMessage(db, firstPayload.data!.message.id));
+    expect(receipts.filter((receipt) => receipt.kind === "offer")).toHaveLength(1);
+
+    const changed = await run("changed-after-the-fact");
+    expect(changed.status).not.toBe(0);
+    expect(changed.stderr).toContain("already offered with different content");
+  }, 30000);
 });

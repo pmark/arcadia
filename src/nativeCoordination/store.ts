@@ -526,92 +526,35 @@ export function reportCoordinationResult(db: Database.Database, input: ReportCoo
   });
 }
 
-/**
- * The only canonical sources this bounded capability knows how to re-derive
- * and compare against. Deliberately a closed allowlist, never a
- * caller-supplied table/column: widening it means adding a case here, not
- * trusting new caller input.
- */
-export type CanonicalEffectCheck = {
-  table: "work_items";
-  id: string;
-  field: "status";
-  expected: string;
-};
-
-function reDeriveCanonicalValue(db: Database.Database, check: CanonicalEffectCheck): string | null {
-  if (check.table === "work_items" && check.field === "status") {
-    const row = db.prepare("SELECT status FROM work_items WHERE id = ?").get(check.id) as { status: string } | undefined;
-    return row?.status ?? null;
-  }
-  throw validationError(`Unsupported canonical effect check: ${check.table}.${check.field}.`, { table: check.table, field: check.field });
-}
-
 export interface RecordCoordinationEffectReceiptInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
-  /**
-   * What canonical value to re-read from the configured store and compare
-   * against. This is the only route to an effect receipt: the claim is
-   * independently re-derived here, never trusted verbatim from the caller,
-   * and a mismatch fails closed rather than recording an unverified effect
-   * as checked.
-   */
-  canonicalCheck: CanonicalEffectCheck;
 }
 
 /**
- * An independently checked correlated effect receipt — the only thing that
- * may stand for an applied canonical effect. Fences the same Plan/recipient/
- * generation/expiry/disposal scope as acknowledgment, re-derives the claimed
- * value from the live database itself (never from caller-supplied evidence),
- * and refuses a replayed request id that now names a different message or a
- * different canonical check.
+ * Canonical applied-effect verification is not yet supported, and is kept
+ * explicitly unavailable rather than faked. A row's current state (even one
+ * re-derived live from the configured store and scoped to the right Project)
+ * only ever proves what that row holds *now* — it cannot distinguish "this
+ * effect was just applied because of this message" from "this row already
+ * held that value before the message existed." Manufacturing an
+ * "independently checked" label from an observation like that is exactly the
+ * forged-verification failure this capability must not produce. Until a
+ * genuine canonical writer/receipt this message can correlate against
+ * exists (a settlement row with `applied: true` bound to this exact request),
+ * this always refuses: `coordinationStatus.independentlyCheckedEffect` stays
+ * permanently null, and no caller input can change that.
  */
 export function recordCoordinationEffectReceipt(db: Database.Database, input: RecordCoordinationEffectReceiptInput): CoordinationReceiptRow {
   return writeTransaction(db, () => {
     const message = getCoordinationMessage(db, input.messageId);
     if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input);
-
-    const claim = {
-      table: input.canonicalCheck.table,
-      id: input.canonicalCheck.id,
-      field: input.canonicalCheck.field,
-      expected: input.canonicalCheck.expected
-    };
-    const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
-    if (existing) {
-      if (existing.message_id !== message.id) {
-        throw validationError(`Effect receipt request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
-      }
-      const existingEvidence = existing.effect_evidence_json ? (JSON.parse(existing.effect_evidence_json) as Record<string, unknown>) : {};
-      const existingClaim = { table: existingEvidence.table, id: existingEvidence.id, field: existingEvidence.field, expected: existingEvidence.expected };
-      if (JSON.stringify(existingClaim) !== JSON.stringify(claim)) {
-        throw validationError(`Effect receipt request id ${input.requestId} was already recorded with a different canonical check.`, {
-          requestId: input.requestId
-        });
-      }
-      return toReceiptRow(existing);
-    }
-
-    const observed = reDeriveCanonicalValue(db, input.canonicalCheck);
-    if (observed === null || observed !== input.canonicalCheck.expected) {
-      throw validationError(
-        "Canonical effect check failed: the value re-derived from the configured store does not match the claimed effect; refusing to record an unverified effect as independently checked.",
-        { ...claim, observed }
-      );
-    }
-
-    const now = nowIso();
-    const resolvedReceiptId = createId("nativeCoordinationReceipt");
-    const effectEvidence = { ...claim, verifiedValue: observed, verifiedAt: now };
-    db.prepare(
-      `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, effect_evidence_json, created_at)
-       VALUES (?, ?, ?, 'effect_receipt', ?, ?, ?)`
-    ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify(effectEvidence), now);
-    return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
+    throw validationError(
+      "Canonical effect verification is not yet supported: no genuine correlated canonical writer receipt exists to confirm an applied effect for this message. Observing a row's current state is not proof it was applied by this coordination, so independently checked effect receipts remain explicitly unavailable rather than recorded from an unverified observation.",
+      { messageId: input.messageId }
+    );
   });
 }
 

@@ -177,22 +177,14 @@ export interface NativeCoordinationEffectOptions {
   planSlug: string;
   recipientIncarnation: string;
   recipientGeneration: string;
-  /** Closed allowlist today: only "work_items". */
-  checkedTable: string;
-  checkedId: string;
-  /** Closed allowlist today: only "status". */
-  checkedField: string;
-  expectedValue: string;
 }
 
-function assertSupportedCanonicalCheck(table: string, field: string): asserts table is "work_items" {
-  if (table !== "work_items" || field !== "status") {
-    throw validationError(`Unsupported canonical effect check: ${table}.${field}. Only work_items.status is supported.`, { table, field });
-  }
-}
-
+/**
+ * Canonical applied-effect verification is not yet supported (see
+ * `recordCoordinationEffectReceipt`); this command always refuses rather
+ * than recording an unverified observation as independently checked.
+ */
 export function runNativeCoordinationEffectCommand(options: NativeCoordinationEffectOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
-  assertSupportedCanonicalCheck(options.checkedTable, options.checkedField);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
     recordCoordinationEffectReceipt(db, {
@@ -202,8 +194,7 @@ export function runNativeCoordinationEffectCommand(options: NativeCoordinationEf
       projectSlug: options.projectSlug,
       planSlug: options.planSlug,
       recipientSessionIncarnation: options.recipientIncarnation,
-      recipientGeneration: options.recipientGeneration,
-      canonicalCheck: { table: "work_items", id: options.checkedId, field: "status", expected: options.expectedValue }
+      recipientGeneration: options.recipientGeneration
     })
   );
   return createSuccess({ command: "native-rm.effect", workspace: workspacePath, data: { receipt } });
