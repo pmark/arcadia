@@ -298,6 +298,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "run list": ALLOWED,
   "run show": ALLOWED,
   "run retry": ALLOWED,
+  "run consume-one": ALLOWED,
   "log create": ALLOWED,
   "milestone list": ALLOWED,
   "milestone create": ALLOWED,

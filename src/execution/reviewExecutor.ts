@@ -35,6 +35,7 @@ export interface ReviewExecutionOptions {
   reviewId: string;
   executorName?: ExecutorName;
   runId?: string;
+  fixtureAdapter?: ExecutorAdapterConfig;
 }
 
 export interface ReviewExecutionResult {
@@ -125,10 +126,8 @@ const BUILT_IN_EXECUTORS: Record<string, ResolvedExecutorAdapter> = {
   }
 };
 
-export function executeApprovedReview(
-  db: Database.Database,
-  options: ReviewExecutionOptions
-): ReviewExecutionResult {
+/** Read-only approval check, shared by bounded admission and execution. */
+export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions) {
   const triggerReview = getReviewItem(db, options.reviewId) ?? getReviewItemBySlug(db, options.reviewId);
   if (!triggerReview) {
     throw validationError("Requires Review Decision was not found.", { id: options.reviewId });
@@ -157,6 +156,14 @@ export function executeApprovedReview(
     });
   }
 
+  return { review, approvalRun, triggerReview };
+}
+
+export function executeApprovedReview(
+  db: Database.Database,
+  options: ReviewExecutionOptions
+): ReviewExecutionResult {
+  const { review, approvalRun, triggerReview } = assertApprovedReview(db, options);
   const workItem = review.work_item_id ? getWorkItem(db, review.work_item_id) : null;
   const isProjectProposal = review.resolved_intent === "ProjectProposalApproval";
   if (!isProjectProposal && !workItem) {
@@ -173,11 +180,13 @@ export function executeApprovedReview(
     prepareProjectProposalRepository(repoPath, metadata, review.id);
   }
   const executor = withProjectProposalNetwork(
-    resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
+    options.fixtureAdapter ? normalizeExecutorConfig(options.fixtureAdapter) : resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
     isProjectProposal
   );
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
-  const validationCommands = parseStringArray(metadata?.validation_commands);
+  // Scripted fixture execution uses its caller's fixed exact-product oracle.
+  // Never let fixture metadata select shell commands or configured providers.
+  const validationCommands = options.fixtureAdapter ? [] : parseStringArray(metadata?.validation_commands);
 
   const runId = options.runId ?? createId("executionRun");
   const startedAt = new Date().toISOString();
@@ -362,9 +371,14 @@ function canExecuteReview(
   const projectProposalPending = triggerReview.resolved_intent === "ProjectProposalApproval"
     && triggerReview.status === "approved"
     && /execution pending/i.test(triggerReview.decision_note ?? "");
-  if (triggerReview.status !== "open" && triggerReview.status !== "deferred" && !projectProposalPending) return false;
+  const askQueued = triggerReview.id === executionReview.id
+    && triggerReview.status === "approved"
+    && triggerReview.ask_request_id !== null
+    && triggerReview.resulting_ask_request_id !== null
+    && triggerReview.decision_note === "Approved from Ask. Execution queued.";
+  if (triggerReview.status !== "open" && triggerReview.status !== "deferred" && !projectProposalPending && !askQueued) return false;
   if (triggerReview.id === executionReview.id) {
-    if (projectProposalPending) return true;
+    if (projectProposalPending || askQueued) return true;
     return executionReview.status === "open" || executionReview.status === "deferred";
   }
   return executionReview.status === "approved" && /execution pending/i.test(executionReview.decision_note ?? "");

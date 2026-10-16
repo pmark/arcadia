@@ -3518,3 +3518,9 @@ The title names the actual need, such as `approve pilot budget` or
 deliberately parked or superseded contact. Older titles may not yet follow this
 convention. See [chat titles and attention signals](docs/agent-guidance/chat-titles.md)
 for all states and examples. Titles never release ownership or grant authority.
+
+### Consume one approved fixture Run
+
+For source acceptance with Production Off, `arcadia run consume-one --workspace <experiment> --run-id <Run-id> --ask-id <original-Ask-id> --source-head <source-HEAD> --fixture-script <fixture.mjs> --json` consumes only that approved Ask-linked Run. The repository must be clean, inside the experiment's allowed repository root, and have no remotes. There is no fallback selection or worker daemon. The explicitly supplied script is trusted fixture code, runs through the existing review executor, and must produce only `HelloWorld.txt` with exactly `Hello World!` and one LF. Its fixed product oracle replaces metadata shell validation; configured provider adapters are never selected. The result includes the completed correlated Run and a ready file Artifact, or a truthful failed result. This is a local CLI test surface; no web/phone demo is published.
+
+Live provider execution is refused while durable Decision 0128 reservation and independent restore detection are unavailable. A scripted fixture result does not establish live Scout success or renew trial authority. Run `pnpm exec vitest run tests/run-consume-one.test.ts` for the disposable public-path proof, including concurrent callers and refusal cases.

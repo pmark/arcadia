@@ -1,3 +1,4 @@
+import { finalizeWorkerFailure } from "../execution/runFinalization.js";
 import { tickRecurringSchedules } from "../recurring/scheduler.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -10,33 +11,22 @@ import { validationError } from "../cli/errors.js";
 import { miseLeadingPath, miseNodeArgv, resolveMiseExecutable } from "../runtime/mise.js";
 import { openDatabase } from "../db/connection.js";
 import {
-  attachArtifactToExecutionRun,
-  attachMissionLogToExecutionRun,
   claimNextPendingRun,
-  createMissionLog,
   getCodexInvocation,
   getExecutionPlan,
   getExecutionRun,
-  getMilestone,
-  getProject,
   getReviewItem,
-  getWorkItem,
   listOrphanedRuns,
   updateExecutionRunStatus,
   updateExecutionRunStep,
-  updateWorkItem
 } from "../db/repositories.js";
-import { executeApprovedReview } from "../execution/reviewExecutor.js";
+import { executeClaimedReviewRun } from "../execution/claimedReviewRun.js";
 import { executePlan } from "../execution/runner.js";
 import { isPlanningApprovalDecision } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
-import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
-import { renderRunSummary } from "../markdown/executionArtifacts.js";
-import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 import { runManagedProductionTick } from "../production/tick.js";
 import { probeWorkerCapability } from "../production/sessionCapability.js";
 import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagnosis.js";
-import { createId } from "../utils/id.js";
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
 import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
@@ -987,19 +977,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
   return undefined as never;
 }
 
-export function reduceExecutionOutcome(input: {
-  exitStatus: number | null;
-  validation: Array<{ exitStatus: number | null }>;
-}): "completed" | "requires_review" | "failed" {
-  if (input.exitStatus !== 0) {
-    return "failed";
-  }
-  if (input.validation.some((validation) => validation.exitStatus !== 0)) {
-    return "requires_review";
-  }
-  return "completed";
-}
-
+export { reduceExecutionOutcome } from "../execution/runFinalization.js";
 const recurringIntakeFailures = new Map<string, { message: string; count: number }>();
 function logRecurringIntakeFailure(workspacePath: string, logfile: string, message: string): void {
   const previous = recurringIntakeFailures.get(workspacePath);
@@ -1084,48 +1062,7 @@ export function runWorkerIteration(
     }
   }
 
-  try {
-    const result = executeApprovedReview(db, {
-      workspace: workspacePath,
-      reviewId: run.review_item_id,
-      executorName: run.executor_name ?? undefined,
-      runId: run.id
-    });
-    const status = reduceExecutionOutcome(result);
-    attachArtifactToExecutionRun(db, run.id, result.artifact.id);
-    let stagingUrl: string | null = null;
-    if (decision.resolved_intent === "ProjectProposalApproval" && status === "completed") {
-      if (!decision.project_id) {
-        throw new Error("Approved Project proposal is missing its Project id.");
-      }
-      const deployment = deployApprovedProjectProposal(db, {
-        projectId: decision.project_id,
-        workItemId: result.workItemId,
-        repoPath: result.repoPath
-      });
-      stagingUrl = deployment.url;
-      attachArtifactToExecutionRun(db, run.id, deployment.artifact.id);
-    }
-    const summary = [
-      `Executed with ${result.executor}.`,
-      `${result.changedFiles.length} file(s) changed.`,
-      `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
-      stagingUrl ? `Live staging URL: ${stagingUrl}.` : `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`
-    ].join(" ");
-    finalizeGenericRun(db, workspacePath, run.id, status, summary, result.artifact.path ?? result.metadataPath);
-    if (stagingUrl && result.workItemId) {
-      updateWorkItem(db, result.workItemId, {
-        queue: "work_queue",
-        workClassification: "agent",
-        status: "done",
-        nextAction: `Review the live staging site at ${stagingUrl}.`
-      });
-    }
-    log(logfile, `Run ${run.id} ${status} (exit: ${result.exitStatus})`);
-  } catch (error) {
-    finalizeWorkerFailure(db, workspacePath, run.id, error instanceof Error ? error.message : String(error));
-  }
-  return getExecutionRun(db, run.id);
+  return executeClaimedReviewRun(db, workspacePath, run, decision, { log: (message) => log(logfile, message) });
 }
 
 /**
@@ -1174,59 +1111,6 @@ export function runManagedProductionIteration(
   } catch (error) {
     log(logfile, `[managed-production] Tick error: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-function finalizeGenericRun(
-  db: ReturnType<typeof openDatabase>,
-  workspace: string,
-  runId: string,
-  status: "completed" | "requires_review" | "failed",
-  summary: string,
-  artifactImpact: string
-): void {
-  const run = getExecutionRun(db, runId);
-  if (!run) {
-    return;
-  }
-  const workItem = run.work_item_id ? getWorkItem(db, run.work_item_id) : null;
-  const project = workItem?.project_id ? getProject(db, workItem.project_id) : null;
-  const milestone = workItem?.milestone_id ? getMilestone(db, workItem.milestone_id) : null;
-  const logId = createId("missionLog");
-  const markdownPath = buildMissionLogRelativePath(workspace, project?.name ?? "execution", logId);
-  const missionLog = createMissionLog(db, {
-    id: logId,
-    projectId: workItem?.project_id,
-    milestoneId: workItem?.milestone_id,
-    workPerformed: renderRunSummary(run),
-    result: summary,
-    blockers: status === "completed" ? "" : summary,
-    nextAction: status === "completed"
-      ? "Review the execution evidence and follow-up Decision."
-      : status === "requires_review"
-        ? "Review failed Validation and decide how to revise."
-        : "Inspect diagnostics and request a new attempt.",
-    artifactImpact,
-    markdownPath
-  });
-  writeMissionLogMarkdown(workspace, { missionLog, project, milestone });
-  attachMissionLogToExecutionRun(db, runId, missionLog.id);
-  updateExecutionRunStatus(db, runId, status, { pid: null, summary });
-  if (workItem) {
-    updateWorkItem(db, workItem.id, status === "failed"
-      ? { queue: "blocked", workClassification: "blocked", status: "blocked", nextAction: "Inspect the failed Run and request retry." }
-      : status === "requires_review"
-        ? { queue: "requires_review", workClassification: "requires_review", status: "in_progress", nextAction: "Review failed Validation." }
-        : { queue: "requires_review", workClassification: "requires_review", status: "in_progress", nextAction: "Review the executor result." });
-  }
-}
-
-function finalizeWorkerFailure(
-  db: ReturnType<typeof openDatabase>,
-  workspace: string,
-  runId: string,
-  message: string
-): void {
-  finalizeGenericRun(db, workspace, runId, "failed", `Execution failed: ${message}`, "Diagnostic evidence retained.");
 }
 
 export function runWorkerStatusCommand(options: WorkerOptions): void {
