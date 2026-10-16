@@ -13,12 +13,12 @@ import { repoRoot, tsxLoader } from "./cli-response-fixture.js";
 const roots: string[] = [];
 const now = Date.parse("2026-10-16T09:00:00Z");
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture() {
+function fixture(initialAt = now) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "scout-admission-scope-"))); roots.push(root);
   const workspace = path.join(root, "fixture", "workspace"); const repo = path.join(workspace, "repo"); mkdirSync(repo, { recursive: true });
   const scope: AdmissionScope = { runId: "fixture-run-1", askId: "fixture-ask-1", workspace, repo, sourceHead: "a".repeat(40) };
-  const f = admissionFixture(scope, now); roots.push(f.root);
-  return { ...f, scope, root, reserve: (at = now) => reserveScoutAttempt(f.stores, f.evidence, scope, "scripted-fixture", at) };
+  const f = admissionFixture(scope, initialAt); roots.push(f.root);
+  return { ...f, scope, root, reserve: (at = initialAt) => reserveScoutAttempt(f.stores, f.evidence, scope, "scripted-fixture", at) };
 }
 function refresh(f: ReturnType<typeof fixture>, at: number, revision: string) {
   f.scope.sourceHead = revision;
@@ -30,6 +30,26 @@ function refresh(f: ReturnType<typeof fixture>, at: number, revision: string) {
 }
 
 describe("durable Decision 0128 admission", () => {
+  it("caps the effective executor deadline to current suspend-inclusive loop remainder", () => {
+    const f = fixture(); const first = f.reserve();
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first,
+      { failure: "wrong bytes", classification: classifyScoutFailure({ diagnostic: "wrong bytes", product: true }) }, now + 1000);
+    const at = now + 89 * 60_000; refresh(f, at, "b".repeat(40));
+    f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
+    const second = f.reserve(at); const original = second.deadline;
+    const sample = fixtureScoutClock(at + 100); sample.uptimeMs = at + 30_100;
+    const effective = consumeScoutReservation(second, f.scope, "scripted-fixture", sample.wallMs, sample);
+    expect(effective - sample.wallMs).toBe(29_900);
+    expect(effective).toBeLessThanOrEqual(original);
+    expect(f.read().attempts).toHaveLength(2); expect(f.read().repairs).toBe(1);
+  });
+  it.each(["attempt", "expiry"])("caps the effective executor deadline to current %s remainder", (bound) => {
+    const at = bound === "expiry" ? Date.parse("2026-10-18T00:00:00Z") - 50_000 : now;
+    const f = fixture(at); const token = f.reserve(); const original = token.deadline;
+    const sample = fixtureScoutClock(at + 100); sample.uptimeMs = at + (bound === "expiry" ? 40_000 : 80_000);
+    const effective = consumeScoutReservation(token, f.scope, "scripted-fixture", sample.wallMs, sample);
+    expect(effective - sample.wallMs).toBe(10_000); expect(effective).toBeLessThanOrEqual(original);
+  });
   it("retains stable goal, first launch and cumulative attempts/repairs across restart, source and fixture recreation", () => {
     const f = fixture(); const first = f.reserve();
     expect(f.read().attempts[0].id).toBe(first.id);

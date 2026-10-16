@@ -76,6 +76,21 @@ function admittedFixture() {
 }
 
 describe("public named approved Run consumption", () => {
+  it("accepts the exact public product with harmless approval stdout", () => {
+    const f = fixture('writeFileSync("HelloWorld.txt", "Hello World!\\n"); console.log("No approval required");');
+    const result = runRunConsumeCommand(f.options);
+    expect(result.data.run?.status).toBe("completed");
+    expect(f.admission.read().attempts[0].outcome).toBe("completed");
+    expect(f.admission.read().attempts[0].failureDetail).toBeNull();
+    expect(readFileSync(path.join(f.repo, "HelloWorld.txt"))).toEqual(Buffer.from("Hello World!\n"));
+  });
+  it.each([["Execution approval is revoked.", "authority"], ["Isolation violation", "isolation"]])("refuses a genuine public terminal diagnostic %s even with exact output and exit zero", (diagnostic, kind) => {
+    const f = fixture(`writeFileSync("HelloWorld.txt", "Hello World!\\n"); console.error(${JSON.stringify(diagnostic)});`);
+    const result = runRunConsumeCommand(f.options);
+    expect(result.data.run?.status).toBe("failed");
+    expect(f.admission.read().attempts[0].failureDetail).toMatchObject({ kind, retryable: false });
+    expect(result.data.run?.artifacts.some((artifact) => artifact.artifact_type === "text" && artifact.status === "ready")).toBe(false);
+  });
   it("reserves before the existing scripted executor and retains the exact completed product", () => {
     const f = admittedFixture();
     // Inspect independently durable history inside the external executor, before

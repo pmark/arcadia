@@ -14,7 +14,7 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [
     {
       "class": "clock continuity and refused high-water rollback",
@@ -27,13 +27,17 @@
     {
       "class": "incomplete capacity provenance admitted",
       "caught_by": "QA R1"
+    },
+    {
+      "class": "stale invocation deadline after suspend-inclusive elapsed",
+      "caught_by": "code-reviewer R2"
     }
   ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "split",
-  "notes": "R1 repairs: 170 tests, build, 34 scenarios and source CI pass. Independent R2 blocked by manager follow-up authorization. No completion/live trial; allowance unknown.",
+  "notes": "R2 P1/P2 repaired; 70 module tests, types/lint pass. Frozen public/build/rehearsal and independent R3/current CI pending. No completion/live trial; allowance unknown.",
   "candidate_head": "35f4f0fb245aac2c6bbbf38313462d1b02e4a9e1",
   "evidence_source": "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md"
 }
