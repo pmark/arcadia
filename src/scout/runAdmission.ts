@@ -82,7 +82,7 @@ export function liveScoutAdmissionStores(): AdmissionStores {
 }
 export interface ScoutReservation { id: string; attempt: number; repairs: number; firstLaunch: number; deadline: number }
 const tokens = new WeakMap<ScoutReservation, { scope: AdmissionScope; mode: ScoutAdmissionEvidence["mode"]; used: boolean; reservedAt: number; deadline: number;
-  reservedMonoMs: number; reservedUptimeMs: number; stores: AdmissionStores; evidence: ScoutAdmissionEvidence; reservationId: string }>();
+  reservedMonoMs: number; reservedUptimeMs: number; invocation?: { sample: ScoutClockSample; remainingMs: number }; stores: AdmissionStores; evidence: ScoutAdmissionEvidence; reservationId: string }>();
 export const admissionDigest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function refuse(reason: string): never { throw validationError(`Durable Scout admission refused: ${reason}`); }
 
@@ -321,8 +321,8 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
   return reservation;
 }
 
-/** One-use capability; returns its private absolute deadline after durable recheck. */
-export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): number {
+/** One-use capability; retains a private duration and clock basis after durable recheck. */
+export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], at?: number, override?: ScoutClockSample): void {
   const sample = clockFor(mode, at, override); const now = sample.wallMs;
   const token = reservation ? tokens.get(reservation) : undefined;
   if (!reservation || !token || token.used || token.mode !== mode || !sameScope(token.scope, scope)) refuse("valid unused exact-scope reservation is required at invocation");
@@ -341,7 +341,24 @@ export function consumeScoutReservation(reservation: ScoutReservation | undefine
     return deadline;
   });
   token.used = true;
-  return effectiveDeadline;
+  // Retain a duration and its pre-transaction clock basis privately. Durable
+  // writes/lock waits are charged at launch; civil time cannot recreate time.
+  token.invocation = { sample: { ...sample }, remainingMs: effectiveDeadline - now };
+}
+
+/** Last launch-boundary observation; never reconstruct duration from a wall deadline. */
+export function remainingScoutInvocationMs(reservation: ScoutReservation | undefined, at?: number, override?: ScoutClockSample): number {
+  const token = reservation ? tokens.get(reservation) : undefined;
+  if (!token?.used || !token.invocation) refuse("consumed exact-scope reservation is required at launch");
+  const current = clockFor(token.mode, at, override); const { sample, remainingMs } = token.invocation;
+  if (current.kind !== sample.kind || current.bootId !== sample.bootId || current.uncertaintyMs !== sample.uncertaintyMs
+    || current.wallMs < sample.wallMs || current.monoStartMs < sample.monoEndMs || current.uptimeMs < sample.uptimeMs
+    || current.wallMs - sample.wallMs + Math.min(2, current.uncertaintyMs) < current.monoStartMs - sample.monoEndMs) refuse("launch clock rollback or continuity is unknown");
+  const spent = Math.max(0, current.wallMs - sample.wallMs, current.monoEndMs - sample.monoStartMs,
+    current.uptimeMs - sample.uptimeMs + current.uncertaintyMs);
+  const remaining = Math.floor(remainingMs - spent);
+  if (remaining < 1) refuse("invocation allowance exhausted during durable recheck or launch preparation");
+  return remaining;
 }
 
 /** Failure attribution is retained; an ambiguous interruption stays reserved and cannot retry. */

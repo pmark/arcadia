@@ -16,6 +16,7 @@ import { isolateProcess, type IsolatedProcess } from "./fast-rehearsal/helpers/e
 import { repoRoot, tsxLoader, runCli } from "./cli-response-fixture.js";
 import { admissionFixture } from "./fixtures/scout-admission.js";
 import * as admissionModule from "../src/scout/runAdmission.js";
+import * as admissionClock from "../src/scout/admissionClock.js";
 
 const roots: string[] = [];
 let isolation: IsolatedProcess | undefined;
@@ -76,6 +77,40 @@ function admittedFixture() {
 }
 
 describe("public named approved Run consumption", () => {
+  it.each([[0, false], [750, false], [0, true]] as const)("keeps the actual executor within the admitted second with %i ms preparation (rollback: %s)", (prelaunchMs, rollback) => {
+    const base = Date.now(); let wall = base; let samples = 0;
+    const clock = vi.spyOn(admissionClock, "captureScoutClock").mockImplementation(() => {
+      samples += 1;
+      const atConsume = samples === 3; const atLaunch = samples === 4; const after = samples >= 5;
+      wall = base + (atConsume ? 10_000 : atLaunch ? (rollback ? 100 : 10_000 + prelaunchMs) : after ? 12_000 : 0);
+      const sample = admissionClock.fixtureScoutClock(wall, base + (atConsume ? 10_000 : atLaunch ? 10_000 + prelaunchMs : after ? 12_000 : 0));
+      sample.uptimeMs = base + (atConsume ? 89_000 : atLaunch ? 89_000 + prelaunchMs : after ? 91_000 : 0);
+      return sample;
+    });
+    const civil = vi.spyOn(Date, "now").mockImplementation(() => wall);
+    const original = admissionModule.consumeScoutReservation;
+    const consume = vi.spyOn(admissionModule, "consumeScoutReservation").mockImplementation((...args) => {
+      const result = original(...args); wall = base + 100; return result;
+    });
+    try {
+      const f = fixture('setTimeout(() => writeFileSync("HelloWorld.txt", "Hello World!\\n"), 1500);');
+      if (rollback) {
+        expect(() => runRunConsumeCommand(f.options)).toThrow(/launch clock rollback/);
+        expect(calls(f.workspace)).toBe(0);
+        expect(existsSync(path.join(f.repo, "HelloWorld.txt"))).toBe(false);
+        expect(f.admission.read().attempts[0].outcome).toBe("reserved");
+        return;
+      }
+      const result = runRunConsumeCommand(f.options);
+      const metadata = JSON.parse(readFileSync(path.join(f.workspace, "artifacts", "review-executions", f.options.runId!, "metadata.json"), "utf8"));
+      expect(metadata.command.slice(0, 2)).toEqual([expect.stringMatching(/timeout$/), "--signal=KILL"]);
+      expect(metadata.command[2]).toBe(`${(1000 - prelaunchMs) / 1000}s`);
+      expect(result.data.run?.status).toBe("failed");
+      expect(existsSync(path.join(f.repo, "HelloWorld.txt"))).toBe(false);
+      expect(f.admission.read().attempts[0].outcome).toBe("failed");
+      expect(samples).toBe(5);
+    } finally { consume.mockRestore(); civil.mockRestore(); clock.mockRestore(); }
+  });
   it("accepts the exact public product with harmless approval stdout", () => {
     const f = fixture('writeFileSync("HelloWorld.txt", "Hello World!\\n"); console.log("No approval required");');
     const result = runRunConsumeCommand(f.options);

@@ -26,7 +26,7 @@ import {
   approvedReviewScopeSha256,
   approvedRunScopeMatches
 } from "./approvedReviewScope.js";
-import { assertScoutSource, consumeScoutReservation, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
+import { assertScoutSource, consumeScoutReservation, remainingScoutInvocationMs, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { classifyScoutFailure, type ScoutExecutionFailure } from "../scout/executionFailure.js";
 
@@ -264,6 +264,9 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? ""
   });
 
+  const executionCwd = cwdForExecutor(executor, repoPath, options.workspace);
+  const executionEnv = buildAllowedEnvironment(executor.environmentAllowlist);
+
   // Consume at the last synchronous boundary, after packet preparation. The
   // remaining reservation includes that preparation and all prior waits.
   if (admissionRequired) {
@@ -278,17 +281,14 @@ export function executeApprovedReview(
     const deadline = spawnSync(timeoutPath, ["--version"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
     if (deadline.status !== 0 || !deadline.stdout?.includes("GNU coreutils")) throw validationError("Durable execution requires the existing GNU timeout utility.");
     assertApprovedReview(db, options);
-    const invocationNow = Date.now();
-    const reservationDeadline = consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live");
-    const launchNow = Date.now();
-    if (launchNow < invocationNow || launchNow >= reservationDeadline) throw validationError("Reservation expired or clock rolled back before invocation.");
-    executor.timeoutMs = Math.min(executor.timeoutMs, reservationDeadline - launchNow);
+    consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live");
+    executor.timeoutMs = Math.min(executor.timeoutMs, remainingScoutInvocationMs(options.scoutReservation));
     command.unshift(timeoutPath, "--signal=KILL", `${Math.max(1, Math.floor(executor.timeoutMs)) / 1000}s`);
   }
   const run = spawnSync(command[0] ?? "", command.slice(1), {
-    cwd: cwdForExecutor(executor, repoPath, options.workspace),
+    cwd: executionCwd,
     input: executor.promptMode === "stdin" ? packet : undefined,
-    env: buildAllowedEnvironment(executor.environmentAllowlist),
+    env: executionEnv,
     encoding: "utf8",
     timeout: executor.timeoutMs + (admissionRequired ? 1000 : 0),
     killSignal: "SIGKILL",

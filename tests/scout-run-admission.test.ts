@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
-import { admissionDigest, consumeScoutReservation, finishScoutAttempt, reserveScoutAttempt, SCOUT_GOAL, type AdmissionScope } from "../src/scout/runAdmission.js";
+import { admissionDigest, consumeScoutReservation, remainingScoutInvocationMs, finishScoutAttempt, reserveScoutAttempt, SCOUT_GOAL, type AdmissionScope } from "../src/scout/runAdmission.js";
 import { classifyScoutFailure } from "../src/scout/executionFailure.js";
 import { fixtureScoutClock } from "../src/scout/admissionClock.js";
 import { admissionFixture } from "./fixtures/scout-admission.js";
@@ -38,7 +38,8 @@ describe("durable Decision 0128 admission", () => {
     f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
     const second = f.reserve(at); const original = second.deadline;
     const sample = fixtureScoutClock(at + 100); sample.uptimeMs = at + 30_100;
-    const effective = consumeScoutReservation(second, f.scope, "scripted-fixture", sample.wallMs, sample);
+    consumeScoutReservation(second, f.scope, "scripted-fixture", sample.wallMs, sample);
+    const effective = sample.wallMs + remainingScoutInvocationMs(second, sample.wallMs, sample);
     expect(effective - sample.wallMs).toBe(29_900);
     expect(effective).toBeLessThanOrEqual(original);
     expect(f.read().attempts).toHaveLength(2); expect(f.read().repairs).toBe(1);
@@ -47,8 +48,41 @@ describe("durable Decision 0128 admission", () => {
     const at = bound === "expiry" ? Date.parse("2026-10-18T00:00:00Z") - 50_000 : now;
     const f = fixture(at); const token = f.reserve(); const original = token.deadline;
     const sample = fixtureScoutClock(at + 100); sample.uptimeMs = at + (bound === "expiry" ? 40_000 : 80_000);
-    const effective = consumeScoutReservation(token, f.scope, "scripted-fixture", sample.wallMs, sample);
+    consumeScoutReservation(token, f.scope, "scripted-fixture", sample.wallMs, sample);
+    const effective = sample.wallMs + remainingScoutInvocationMs(token, sample.wallMs, sample);
     expect(effective - sample.wallMs).toBe(10_000); expect(effective).toBeLessThanOrEqual(original);
+  });
+  it.each(["loop", "attempt", "expiry"])("charges durable recheck and prelaunch work against the %s remainder", (bound) => {
+    const at = bound === "expiry" ? Date.parse("2026-10-18T00:00:00Z") - 50_000 : now;
+    const f = fixture(at); let token = f.reserve(); let reservedAt = at;
+    if (bound === "loop") {
+      finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, token,
+        { failure: "wrong bytes", classification: classifyScoutFailure({ diagnostic: "wrong bytes", product: true }) }, at + 1000);
+      reservedAt = at + 89 * 60_000; refresh(f, reservedAt, "b".repeat(40));
+      f.evidence.retry = { failure: "wrong bytes", previousReservation: token.id, verifiedFix: "verified fix" }; f.pin(); token = f.reserve(reservedAt);
+    }
+    const consumed = fixtureScoutClock(reservedAt + 100);
+    consumed.uptimeMs = reservedAt + (bound === "loop" ? 59_000 : bound === "expiry" ? 49_000 : 89_000);
+    consumeScoutReservation(token, f.scope, "scripted-fixture", consumed.wallMs, consumed);
+    const launch = { ...consumed, wallMs: consumed.wallMs + 750, monoStartMs: consumed.monoEndMs + 750,
+      monoEndMs: consumed.monoEndMs + 750, uptimeMs: consumed.uptimeMs + 750 };
+    token.deadline += 999_999;
+    expect(remainingScoutInvocationMs(token, launch.wallMs, launch)).toBe(250);
+    expect(() => remainingScoutInvocationMs({ ...token }, launch.wallMs, launch)).toThrow(/consumed exact-scope/);
+    const exhausted = { ...launch, wallMs: consumed.wallMs + 1001, monoStartMs: consumed.monoEndMs + 1001, monoEndMs: consumed.monoEndMs + 1001, uptimeMs: consumed.uptimeMs + 1001 };
+    expect(() => remainingScoutInvocationMs(token, exhausted.wallMs, exhausted)).toThrow(/exhausted during durable recheck/);
+  });
+  it.each(["boot", "monotonic", "uptime", "uncertainty", "wall", "lost-wall-progress", "partial-wall-rollback"])("refuses unknown %s continuity at the final launch boundary", (failure) => {
+    const f = fixture(); const token = f.reserve(); consumeScoutReservation(token, f.scope, "scripted-fixture", now);
+    const launch = fixtureScoutClock(now + 100);
+    if (failure === "wall") launch.wallMs = now - 1;
+    if (failure === "lost-wall-progress") launch.wallMs = now;
+    if (failure === "partial-wall-rollback") launch.wallMs = now + 50;
+    if (failure === "boot") launch.bootId = "different-boot";
+    if (failure === "monotonic") launch.monoStartMs = launch.monoEndMs = now - 1;
+    if (failure === "uptime") launch.uptimeMs = now - 1;
+    if (failure === "uncertainty") launch.uncertaintyMs = 1000;
+    expect(() => remainingScoutInvocationMs(token, launch.wallMs, launch)).toThrow(/continuity|invalid/);
   });
   it("retains stable goal, first launch and cumulative attempts/repairs across restart, source and fixture recreation", () => {
     const f = fixture(); const first = f.reserve();
@@ -160,7 +194,8 @@ describe("durable Decision 0128 admission", () => {
     expect(f.read().lastClock).toBe(now + 90_000);
     expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 100)).toThrow(/rollback/);
     const fresh = fixture(); const freshToken = fresh.reserve();
-    expect(consumeScoutReservation(freshToken, fresh.scope, "scripted-fixture", now + 100)).toBe(now + 90_000);
+    consumeScoutReservation(freshToken, fresh.scope, "scripted-fixture", now + 100);
+    expect(remainingScoutInvocationMs(freshToken, now + 100)).toBe(89_900);
     expect(() => consumeScoutReservation(freshToken, fresh.scope, "scripted-fixture", now + 101)).toThrow();
     expect(admissionDigest(f.read())).toHaveLength(64);
   });

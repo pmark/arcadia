@@ -11,7 +11,19 @@ Authority: named source assignment relaying the actual operator message `01a143a
 
 Budget: one 75-minute initial pass, deadline `2026-10-16T10:10:00Z`; one scoped repair pass up to 20 minutes per verified named failure, at most three per same failure, with manager notification before extra allowance. No delegation. Separate independent reviewer/QA chats are manager-owned; normally at most three rounds, significant-defect exception up to five. Actual host model, effort and token usage are unknown; the configured host model was retained. Standalone standard-tier role brief `/private/tmp/durable-run-admission-role-0c59.json` is a recommendation, not runtime/model/enrollment evidence.
 
-## R2 repair submitted for R3 (current)
+## R3 deadline handoff repair submitted for R4 (current)
+
+R3 Code-reviewer reproduced a residual blocking P1 in the same deadline family: after consumption returned a 1000 ms allowance, a backward wall adjustment widened the actual GNU timeout to five seconds; a 1500 ms script produced an accepted completed Run before final clock-history refusal. R3 QA passed its delta, including the R2 P2 wording fix. Complete verbatim reports and exact actual-executor reproduction are preserved in `approved-run-1457-r3-receipts.json` and `approved-run-1457-r3-repros.json`. The latter also preserves the prior frozen 176-test/build/34-scenario pass receipt; green checks did not clear the reviewer finding.
+
+Parent authorized the second deadline-family repair attempt, one 20-minute repair/focused-validation cap ending `2026-10-16T17:19:00Z`. This significant acceptance defect justifies R4 under the indexed exception (maximum five rounds); parent owns independent R4, settlement and merge. This does not authorize live execution, service/configuration or pointer/queue changes.
+
+Consumption now returns no absolute deadline. Its existing private token retains the bounded duration and trusted sample taken before durable recheck. The shared executor prepares environment/cwd before recheck, then takes one final existing trusted clock observation and subtracts the maximum wall-forward, monotonic and suspend-inclusive elapsed time from that private duration. A backward civil correction refuses before any executor invocation; expired/unknown continuity also refuses. Forward time can only shrink the duration. Slow durable writes, locks and launch preparation consume the same duration. No new clock service or harness is added.
+
+New actual shared-executor regressions assert GNU timeout exactly one second (or 250 ms after 750 ms preparation), a 1500 ms script cannot produce accepted completion, and durable history records failure. A separate exact public rollback regression requires zero executor calls. Module tests exercise the final loop/attempt/expiry edges, exhausted preparation, forged capabilities and lost boot/monotonic/uptime/uncertainty continuity. Existing 70 admission tests remain. Full frozen public suite, type/lint/build, fast rehearsal, independent R4 and all seven current-head CI gates are required; final raw receipts stay in chat/temp after this commit to preserve the reviewed head. No completion Ask is prepared while these gates remain open.
+
+Notes Scout guidance and indexed review/identity procedures remain loaded; scoped Learn search returned no prior deadline-handoff lesson. Verified earlier deadline lesson captured as `lesson_549129794ad9f5f5e9b1`. Actual model/effort/tokens/cost and remaining live allowance remain unknown; no live provider attempt occurred.
+
+## R2 repair submitted for R3 (historical)
 
 The parent resumed coordination after the actual operator said “merge when ready”. The prior coordination block below is historical. The sole writer has one combined 20-minute repair and focused-validation pass ending `2026-10-16T17:07:00Z`; parent owns independent R3, settlement and merge. No live execution is authorized here.
 
