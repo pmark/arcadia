@@ -33,7 +33,7 @@
   "host_touches": null,
   "frictions": [],
   "outcome": "split",
-  "notes": "R1 clock, terminal failure and capacity P1s under repair. 67 module tests pass; public proof, R2 and new CI pending. No live attempt; allowance unknown.",
-  "candidate_head": "3c6a4560e19b899859d49e02ea1c5eb6d8b96deb",
+  "notes": "R1 repairs: 170 tests, build, 34 scenarios and source CI pass. Independent R2 blocked by manager follow-up authorization. No completion/live trial; allowance unknown.",
+  "candidate_head": "35f4f0fb245aac2c6bbbf38313462d1b02e4a9e1",
   "evidence_source": "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md"
 }
