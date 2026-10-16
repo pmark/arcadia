@@ -1,0 +1,37 @@
+
+ RUN  v4.1.8 /private/tmp/arcadia-go-context-01a143a6
+
+ ❯ tests/go-caller-context.test.ts (22 tests | 3 failed | 15 skipped) 2887ms
+     × separates assigned context from Plan execution eligibility (draft) 618ms
+     × separates assigned context from Plan execution eligibility (complete) 406ms
+     × separates assigned context from Plan execution eligibility (superseded) 317ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-caller-context.test.ts > caller-bound read-only Go orientation > separates assigned context from Plan execution eligibility (draft)
+ FAIL  tests/go-caller-context.test.ts > caller-bound read-only Go orientation > separates assigned context from Plan execution eligibility (complete)
+ FAIL  tests/go-caller-context.test.ts > caller-bound read-only Go orientation > separates assigned context from Plan execution eligibility (superseded)
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/go-caller-context.test.ts:88:40
+     86|     const response = f.read();
+     87|     const valid = ["draft", "active", "complete", "superseded"].includ…
+     88|     expect(response.data.dispatchable).toBe(status === "active");
+       |                                        ^
+     89|     if (valid) {
+     90|       expect(response.data.context?.action.id).toBe("b");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 4 passed | 15 skipped (22)
+   Start at  08:36:14
+   Duration  5.73s (transform 2.23s, setup 0ms, import 2.65s, tests 2.89s, environment 0ms)
+

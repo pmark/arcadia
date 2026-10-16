@@ -69,3 +69,15 @@ Review attention: ownership is a bounded observation of canonical reservation an
 The broad Go fixture refusals are `EPERM: operation not permitted, mkdir` for `/Users/pmark/.claude/worktrees/...`, `/Users/pmark/.codex/worktrees/...` and `/Users/pmark/.opencode/worktrees/...`. No real directory or worktree was created through those denied paths. The fixtures' source code was not changed to bypass host boundaries. All newly added caller-context fixtures are hermetic under disposable temporary roots.
 
 Root instruction-file sizes (UTF-8 bytes, retrieved as indexed sections where noted): AGENTS 10100; context policy 539 + repo context 703 + context-policy JSON 870; Constitution 3320; guidance index 9449; continuation 7256; learning 2458; working-copy safety 16202 (relevant sections); PR guidance 17585 (relevant sections); session-role guidance 6152; repository procedure 30174 (targeted sections). Project/current-Action and Notes retrieval was targeted; file size is not a claim to have loaded their full narrative bodies.
+
+## Independent review round 1: R1-001 repair
+
+Independent review of `08760077bf9576120c06b1ccf19f107992e25b9c` found a blocking eligibility regression: cross-Plan lookup validated the selected Plan A, then substituted claimed Plan B without checking B's status. Thus a fenced reservation alone made a draft B appear executable. The earlier source-proof statement about preserving every Plan gate was incomplete; review, rather than the initial active-only cross-Plan fixtures, exposed it.
+
+The bounded repair adds the existing active-Plan status boundary to the newly selected assigned Plan. B remains the observed assigned context and title identity, while non-active B receives a status blocker and cannot be dispatched or returned as an advance launch. The repair does not activate a Plan or infer the current separately approved source assignment as a general grant.
+
+Seven-state hermetic regression covers canonical `draft`, `active`, `complete`, `superseded`, and noncanonical `deferred`, `completed`, `blocked` labels. Canonical non-active B remains visible but not executable; `active` B passes existing gates; invalid labels retain parser refusals. Default pointer-only next still resolves selected A. A reservation cannot substitute for activation authority.
+
+Failed-first proof: the newly added seven-state test failed for draft, complete and superseded (actual dispatchable=true), while active and invalid-label refusals passed. Raw evidence: `go-caller-context-2026-10-16/review-failed-first.txt`; independent finding: `review-round1.json`.
+
+Repair validation: focused caller-context/broker/journal/dispatch suites passed, **118 tests, exit 0** (`review-repair-tests.txt`). Full `pnpm build` including repository lint/TypeScript and a fresh fast rehearsal are running at this checkpoint. Product-code delta is frozen at this narrow repair; final results will be appended without further source edits. Previous broad Go-fixture host limitations remain unchanged.

@@ -262,6 +262,16 @@ export function resolveDispatch(
       return { context: null, blockers, operatorQuestion: null };
     }
     plan = matches[0];
+    // A reservation identifies observed custody, never activation authority.
+    // The selected Plan's eligibility cannot stand in for this Plan's gate.
+    if (plan !== active.plan && plan.status !== "active") {
+      blockers.push({
+        relativePath: plan.relativePath,
+        field: "status",
+        message: `The assigned plan "${plan.slug}" is "${plan.status}", not active; Arcadia does not dispatch work from it.`,
+        remedy: 'Set `status: active` only when this plan is ready to govern executable work.'
+      });
+    }
   }
 
   if (!project || !plan) {

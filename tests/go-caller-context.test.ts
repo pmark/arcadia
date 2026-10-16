@@ -80,6 +80,32 @@ describe("caller-bound read-only Go orientation", () => {
     expect(response.data.orientation?.selected.context?.action.id).toBe("a");
     if (!["none", "foreign"].includes(kind)) { expect(response.data.dispatchable).toBe(false); expect(response.data.blockers.some(b => b.field === "claimed_action")).toBe(true); }
   });
+  it.each(["draft", "active", "complete", "superseded", "deferred", "completed", "blocked"])("separates assigned context from Plan execution eligibility (%s)", status => {
+    const f = fixture(true); f.claim();
+    doc(f.caller, "docs/plans/assigned.md", plan("assigned", ["b"]).replace("status: active", `status: ${status}`));
+    const response = f.read();
+    const valid = ["draft", "active", "complete", "superseded"].includes(status);
+    expect(response.data.dispatchable).toBe(status === "active");
+    if (valid) {
+      expect(response.data.context?.action.id).toBe("b");
+      expect(response.data.context?.planStatus).toBe(status);
+      expect(response.data.orientation?.assigned?.action).toBe("b");
+      const selected = runNextReadOnlyCommand({ workspace: f.workspace, project: "demo" });
+      expect(selected.data.context?.action.id).toBe("a");
+      expect(selected.data.dispatchable).toBe(true);
+      if (status !== "active") {
+        expect(response.data.blockers.some(blocker => blocker.relativePath === "docs/plans/assigned.md" && blocker.field === "status")).toBe(true);
+        expect(response.data.orientation?.nextStep).not.toContain("Continue");
+        const advance = runAdvanceCommand({ workspace: f.workspace, repo: f.caller });
+        expect(advance.data.transition?.dispatch.context?.action.id).toBe("b");
+        expect(advance.data.transition?.kind).not.toBe("launch");
+      }
+    } else {
+      // These are not canonical Plan states: keep the existing parse refusal.
+      expect(response.data.blockers.some(blocker => blocker.field === "status")).toBe(true);
+      expect(response.data.orientation?.assigned).toBeNull();
+    }
+  });
   it.each([false, true])("reports only actual canonical Session adapter evidence (conflict: %s)", conflict => {
     const f = fixture(); f.claim();
     vi.spyOn(sessions, "listActiveAgentSessions").mockReturnValue([{ id: "session-known", status: "running",

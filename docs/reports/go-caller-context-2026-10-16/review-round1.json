@@ -1,0 +1,67 @@
+{
+  "pr": "https://github.com/pmark/arcadia/pull/1459",
+  "reviewedHead": "08760077bf9576120c06b1ccf19f107992e25b9c",
+  "reviewRound": 1,
+  "reviewType": "Generic independent read-only current-head PR review; no registered role admission or governed Session claim",
+  "verdict": "changes_required",
+  "blockingFindings": [
+    {
+      "id": "R1-001",
+      "priority": "P1",
+      "title": "Preserve assigned-Plan eligibility before treating cross-Plan context as dispatchable",
+      "path": "src/docs/dispatch.ts",
+      "line": 264,
+      "lines": [
+        255,
+        264
+      ],
+      "counterexample": "Selected Plan selected is active with pointer Action a. The caller owns a live reservation for Action b with matching Project, branch and claim generation. Put b in an otherwise valid Plan assigned with status:draft. The new cross-Plan branch replaces the already-validated selected Plan with assigned but never checks assigned eligibility or an explicit source-assignment authority record. runNextReadOnlyCommand returns context.planStatus=draft, blockers=[], dispatchable=true and Continue the caller-owned Action within existing authority. resolveProjectTransition/advance use this same newly broadened resolveDispatch path.",
+      "impact": "A claim alone now makes unfinished work in an unactivated Plan appear executable. The preexisting active-Plan gate was evaluated against a different Plan, and shared dispatch behavior is widened outside the bounded read-only orientation correction. The operator accepted an inactive Plan and a specifically bounded source assignment, not blanket execution authority for arbitrary claimed draft Plans.",
+      "criterion": "REQ-002 and final criterion: preserve existing authority/readiness gates; observation must not authorize work or modify live control/admission policy.",
+      "recommendation": "Keep assigned B visible separately from selected A; retain the existing canonical eligibility/authority boundary for executable dispatch. If separately assigned inactive source work is supported, verify that supported explicit scoped authority rather than treating any reservation as that grant. Do not activate the Plan or change production pointers to repair the reader.",
+      "reproduction": "Extract exact head with git archive to /tmp/arcadia-review-1459-r1. Append a test using fixture(true), f.claim(), then write assigned.md using plan(assigned,[b]).replace(status: active,status: draft). Assert returned planStatus is draft and dispatchable is false. The second assertion fails: actual true. This only changes disposable fixtures.",
+      "proof": "Focused independent run: 15 existing caller-context tests passed; new inactive-Plan eligibility probe failed. Existing other three focused suites: 96 tests passed."
+    }
+  ],
+  "nonblockingFindings": [],
+  "criterionGaps": [
+    "Draft/non-executable assigned-Plan eligibility is absent from the checked-in fixtures; both Plan variants in the cross-Plan fixture use status:active. This is covered by R1-001.",
+    "Broad legacy Go suite has 15 documented host-root EPERM failures. These are not established as source regressions by this review; safe CI/fixture rerun remains necessary evidence. No permission bypass was attempted.",
+    "All required CI jobs were pending when parent supplied status; this reviewer has not independently established green current-head CI."
+  ],
+  "verification": {
+    "extraction": "git archive 08760077bf9576120c06b1ccf19f107992e25b9c into /tmp/arcadia-review-1459-r1; dependencies linked to existing installed node_modules",
+    "runtime": "/Users/pmark/.local/share/mise/installs/node/22.23.1/bin/node",
+    "tests": [
+      {
+        "command": "node node_modules/vitest/vitest.mjs run tests/go-caller-context.test.ts",
+        "result": "15 original tests passed; one added review-only eligibility probe failed; total 16"
+      },
+      {
+        "command": "node node_modules/vitest/vitest.mjs run tests/go-broker.test.ts tests/dispatch-journal.test.ts tests/dispatch.test.ts",
+        "result": "96 passed, 3 files passed"
+      }
+    ],
+    "checkedInEvidence": "Inspected exact-head report, build.txt and targeted fast-rehearsal tail; final successful build/rehearsal evidence is present at this head. Did not reinterpret host-limited broad tests as passing.",
+    "preservation": "No live checkout edits/checkouts/stashes/resets/worktree additions, commits, pushes, settlement, host brokers, policy changes or provider calls. Candidate git status remained clean and reflog -3 unchanged across review. Parent remains responsible for its separate primary-checkout reflog confirmation.",
+    "scope": "Code review centered on src/commands/next.ts, src/docs/dispatch.ts, src/goBroker.ts, relevant tests and shared dispatch/claim/Session/operator-gate consumers; no Action2/3 implementation assessed."
+  },
+  "retrievedInstructions": [
+    "AGENTS.md",
+    "CONSTITUTION.md",
+    "PROJECT.md frontmatter/current production Action",
+    ".arcadia/AGENT_CONTEXT_POLICY.md",
+    ".arcadia/repo-context.md",
+    ".arcadia/context-policy.json",
+    "docs/agent-guidance/index.json",
+    "docs/agent-guidance/pull-requests.md",
+    "docs/agent-guidance/arcadia-repository.md relevant Orientation sections",
+    "docs/agent-guidance/continuation.md relevant orientation/title sections",
+    "docs/AGENT_ORIENTATION.md authoritative stores/schema sections",
+    "docs/notes-to-self.md targeted next/caller/brief/goBroker/dispatch/ownership matches",
+    "docs/plans/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work.md exact assigned Action",
+    "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md current Action"
+  ],
+  "modelIdentity": "Inherited native runtime; registry identity not asserted; tokens unknown",
+  "remainingBoundary": "Parent must verify/fix blocker, preserve failure evidence, and request delta review on the changed head. No merge authorized."
+}
