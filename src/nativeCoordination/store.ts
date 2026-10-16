@@ -509,6 +509,12 @@ export function reportCoordinationResult(db: Database.Database, input: ReportCoo
       if (existing.message_id !== message.id) {
         throw validationError(`Self-report request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
       }
+      if (existing.kind !== "self_report") {
+        throw validationError(`Self-report request id ${input.requestId} was already recorded as a different operation (${existing.kind}).`, {
+          requestId: input.requestId,
+          existingKind: existing.kind
+        });
+      }
       const existingResult = existing.self_reported_result_json ? (JSON.parse(existing.self_reported_result_json) as Record<string, unknown>) : {};
       if (JSON.stringify(existingResult) !== JSON.stringify(newResult)) {
         throw validationError(`Self-report request id ${input.requestId} was already recorded with different content.`, { requestId: input.requestId });
@@ -586,6 +592,12 @@ export function disposeCoordinationMessage(db: Database.Database, input: Dispose
       if (existing.message_id !== message.id) {
         throw validationError(`Disposal request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
       }
+      if (existing.kind !== "disposal") {
+        throw validationError(`Disposal request id ${input.requestId} was already recorded as a different operation (${existing.kind}); refusing to return it as a disposal.`, {
+          requestId: input.requestId,
+          existingKind: existing.kind
+        });
+      }
       return toReceiptRow(existing);
     }
     if (message.status === "disposed") {
@@ -617,13 +629,20 @@ export interface CoordinationStatusView {
  * it has been explicitly acknowledged by its receiver; and any reported
  * result is labelled by whether it is self-reported or an independently
  * checked effect receipt.
+ *
+ * `independentlyCheckedEffect` is unconditionally null. Canonical
+ * applied-effect verification is not yet supported (see
+ * `recordCoordinationEffectReceipt`, which always refuses), so this is not a
+ * data-dependent read — an `effect_receipt` row from before that refusal
+ * existed, or written by any other means, is never surfaced as "independently
+ * checked" here. Unverified persisted data stays visibly unverified; it is
+ * never promoted to "applied" by rendering.
  */
 export function coordinationStatus(db: Database.Database, messageId: string): CoordinationStatusView {
   const message = getCoordinationMessage(db, messageId);
   if (!message) throw validationError(`Coordination message ${messageId} does not exist.`, { messageId });
   const receipts = listReceiptsForMessage(db, messageId);
   const selfReport = receipts.filter((receipt) => receipt.kind === "self_report").at(-1) ?? null;
-  const effectReceipt = receipts.filter((receipt) => receipt.kind === "effect_receipt").at(-1) ?? null;
   return {
     message,
     receipts,
@@ -631,6 +650,6 @@ export function coordinationStatus(db: Database.Database, messageId: string): Co
     exposedByPoll: message.exposedAt !== null,
     explicitlyAcknowledged: message.acknowledgedAt !== null,
     selfReportedResult: selfReport?.selfReportedResult ?? null,
-    independentlyCheckedEffect: effectReceipt?.effectEvidence ?? null
+    independentlyCheckedEffect: null
   };
 }

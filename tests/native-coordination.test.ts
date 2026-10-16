@@ -642,3 +642,56 @@ describe("native coordination: genuine concurrent-process replay", () => {
     expect(changed.stderr).toContain("already offered with different content");
   }, 30000);
 });
+
+describe("native coordination: receipt-kind collision and unconditional unverified-effect rendering", () => {
+  it("refuses dispose when the request id was already recorded as a different kind of receipt (self-report), rather than returning that receipt as a disposal", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-kind-collision" })));
+    withDatabase(workspacePath, (db) => acknowledgeCoordinationMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+    withDatabase(workspacePath, (db) =>
+      reportCoordinationResult(db, { messageId: message.id, requestId: "shared-id", ...SCOPE, actor: "x", result: { outcome: "x" } })
+    );
+    expect(() =>
+      withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: message.id, requestId: "shared-id", ...SCOPE, actor: "x" }))
+    ).toThrow("already recorded as a different operation");
+    // The message itself was never disposed by the collision attempt.
+    expect(withDatabase(workspacePath, (db) => getCoordinationMessage(db, message.id))?.status).toBe("acknowledged");
+
+    // A genuine disposal under its own request id still works, and replays safely.
+    const first = withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: message.id, requestId: "dispose-own-id", ...SCOPE, actor: "x" }));
+    const replay = withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: message.id, requestId: "dispose-own-id", ...SCOPE, actor: "x" }));
+    expect(replay.id).toBe(first.id);
+  });
+
+  it("refuses a self-report when the request id was already recorded as a different kind of receipt (disposal)", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-kind-collision-2" })));
+    withDatabase(workspacePath, (db) => disposeCoordinationMessage(db, { messageId: message.id, requestId: "shared-id-2", ...SCOPE, actor: "x" }));
+    // A disposed message also fails the acknowledgment-required precondition first in practice,
+    // but the kind-collision check must refuse regardless of which guard would otherwise fire.
+    expect(() =>
+      withDatabase(workspacePath, (db) =>
+        reportCoordinationResult(db, { messageId: message.id, requestId: "shared-id-2", ...SCOPE, actor: "x", result: {} })
+      )
+    ).toThrow(/already recorded as a different operation|message was disposed/);
+  });
+
+  it("coordinationStatus and the CLI never claim an independently checked applied effect, even for a preexisting unverified effect_receipt row written outside the supported API", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => offerCoordinationMessage(db, baseOffer({ requestId: "req-legacy-effect-row" })));
+    // Simulate a legacy/forged row: something wrote an effect_receipt directly, bypassing
+    // recordCoordinationEffectReceipt (which always refuses and never inserts one itself).
+    withDatabase(workspacePath, (db) => {
+      db.prepare(
+        `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, effect_evidence_json, created_at)
+         VALUES (?, ?, ?, 'effect_receipt', ?, ?, ?)`
+      ).run(createId("nativeCoordinationReceipt"), message.id, "legacy-effect-request", "unknown", JSON.stringify({ applied: true, table: "work_items" }), nowIso());
+    });
+
+    const status = withDatabase(workspacePath, (db) => coordinationStatus(db, message.id));
+    // Rendering never promotes unverified persisted data to "independently checked",
+    // regardless of what is actually sitting in the receipts table.
+    expect(status.independentlyCheckedEffect).toBeNull();
+    expect(status.receipts.some((receipt) => receipt.kind === "effect_receipt")).toBe(true);
+  });
+});
