@@ -1,6 +1,6 @@
 ---
 name: arcadia-go
-description: Safely finish a completed coding-agent worktree, fast-forward it into the local base branch, retire only clean merged agent state, prepare a fresh isolated Codex or Claude Code worktree, and continue the repository-governed Arcadia action. Use when the user says "arcadia go" or "arcadia advance", asks to finish or clean up the current task and start the next one, encounters a branch-already-used-by-worktree error, or wants a reliable cross-agent continuation handoff.
+description: Safely finish a completed coding-agent worktree, fast-forward it into the local base branch, retire only clean merged agent state, prepare a fresh isolated Codex, Claude Code or OpenCode worktree, and continue the repository-governed Arcadia action. Use when the user says "arcadia go" or "arcadia advance", asks to finish or clean up the current task and start the next one, encounters a branch-already-used-by-worktree error, or wants a reliable cross-agent continuation handoff.
 ---
 
 # Arcadia Go
@@ -9,7 +9,7 @@ description: Safely finish a completed coding-agent worktree, fast-forward it in
 
 Arcadia Go reconciliation is a **host-controller** operation. It fetches,
 updates shared Git metadata, and creates or retires worktrees, so it must never
-run inside a Codex or Claude Code sandbox. Do not reproduce its Git logic by
+run inside a coding-agent sandbox. Do not reproduce its Git logic by
 hand or invoke the mutable `arcadia go` launcher from this task. For every
 provider, the fixed `go` launcher always submits a request to the host worker; it
 does not run Git mutation in the sandbox.
@@ -71,7 +71,7 @@ work has happened — running it right after `go` is a guaranteed
    # opencode uses: __ARCADIA_OPENCODE_GO_BROKER__
    ```
 
-   This submits only a host-worker request for either provider. The host worker derives
+   This submits only a host-worker request for the current provider. The host worker derives
    the source from its heartbeat and runs the canonical preview/apply outside
    the sandbox. Never pass arguments, run mutable `arcadia go` directly, or
    recreate the Git logic by hand. If the worker is unavailable, the refusal is
@@ -255,4 +255,4 @@ and its merged agent branch. It never stages arbitrary files, force-merges,
 resets, pushes, opens a pull request, deploys, launches a coding-agent process,
 or discards work. Every launcher accepts no public arguments. `advance`,
 `work-monitor`, and `brief` emit read-only results. `go` and `preserve` submit
-fixed requests for either provider and read only host-protected responses.
+fixed requests for the current provider and read only host-protected responses.

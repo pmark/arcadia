@@ -150,3 +150,11 @@ managed region; preserve all adopter-owned material outside its markers.
 ## Scout project continuation
 
 For “continue the Scout project for Arcadia Studio” or a Scout continuation/handoff request, read `docs/scout/CONTINUE.md` before choosing work. It records the preserved candidate, current gates and evidence; revalidate current authority and expiry before any live attempt. This is separate from an unrelated active Project Action.
+
+## Arcadia skill compatibility
+
+Every new or modified Arcadia skill must support Codex, Claude Code and
+OpenCode. Before creating, editing or installing one, read
+`docs/agent-guidance/skills.md`; preserve one source and verify discovery for
+all three systems. Provider-specific tools must have an explicit capability
+boundary and supported fallback.

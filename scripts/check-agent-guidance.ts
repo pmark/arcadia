@@ -1,3 +1,4 @@
+import { inspectAgentSkills } from "./check-agent-skills.js";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { inspectGuidanceDelivery, assertBootstrapBudget } from "../src/projects/agentGuidance.js";
@@ -12,3 +13,9 @@ const evidence = directories.flatMap((cwd) => (["codex", "claude", "opencode"] a
 })));
 process.stdout.write(`${JSON.stringify({ schema: "arcadia-guidance-delivery-evidence-v1", evidence }, null, 2)}\n`);
 if (evidence.some((entry) => entry.problems.length)) process.exitCode = 1;
+
+const skillProblems = inspectAgentSkills(repoRoot);
+if (skillProblems.length) {
+  process.stderr.write(`${skillProblems.join("\n")}\n`);
+  process.exitCode = 1;
+}

@@ -1,0 +1,37 @@
+{
+  "session_id": "01a145da-451d-71a3-b7d2-2546916e0405",
+  "role": "lead",
+  "model": "GPT-6 (runtime)",
+  "effort": null,
+  "action_id": "operator-directed:#1464",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "trimmed-guidance-fingerprint",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    },
+    {
+      "id": "ignored-claude-aliases",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    },
+    {
+      "id": "python-yaml-dependency",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Implementation and focused checks complete; independent review and CI tracked in PR. No managed Action or production change.",
+  "evidence_source": "docs/reports/three-agent-skills-2026-10-16.md"
+}

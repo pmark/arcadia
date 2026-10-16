@@ -161,6 +161,13 @@
       "path": "docs/agent-guidance/chat-titles.md",
       "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
       "sha256": "2f3b490b15c77d9139b003b8a4b978dd8a808489622a1a980d44f5c7606a8c7d"
+    },
+    {
+      "id": "skills",
+      "trigger": "skill, skills, skill creation, skill modification, skill installation, provider portability",
+      "path": "docs/agent-guidance/skills.md",
+      "read_before": "Before creating, modifying or installing any Arcadia skill; support Codex, Claude Code and OpenCode together.",
+      "sha256": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01"
     }
   ]
 }

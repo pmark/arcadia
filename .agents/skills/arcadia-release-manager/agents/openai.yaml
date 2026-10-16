@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arcadia Release Manager"
+  short_description: "Advance milestones and unblock coding sessions"
+  default_prompt: "Use $arcadia-release-manager to establish the current milestone gap, advance authorized work, and prepare the smallest operator unblocker."
