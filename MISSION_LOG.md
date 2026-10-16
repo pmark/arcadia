@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # Mission Log: Arcadia
@@ -2526,3 +2526,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Prepare the standing PR handoff log notification from docs/agent-guidance/pull-requests.md; apply only after independent review and all required checks are clear.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-16 — Completed arcadia/consume-one-approved-named-run
+
+- **Did:** Completed Action arcadia/consume-one-approved-named-run from accepted evidence (Candidate 028398f3e3f0987169f08342a172493536be25de).
+- **Result:** Every declared acceptance criterion was accepted as met: "A public consume-one fixture test selects exactly one explicitly named approved Ask-linked Run, reuses existing execution and finalization, and records a completed correlated Run plus a ready or published product Artifact at HelloWorld.txt containing exactly the 13 bytes Hello World! followed by one LF newline; a scripted external executor produces the fixture output with zero live provider calls."; "Negative public-path tests reject omitted, blank, invalid, unrelated or already claimed Run selectors, non-fixture scope, missing or revoked approval, stale source pins and missing durable admission safeguards before executor invocation; no fallback claims another Run."; "A concurrent fixture test records at most one successful claim and one executor invocation for the selected Run; unrelated Runs and protected fixture state remain unchanged. Execution failure or interruption records a truthful terminal or blocked result and never reports accepted product completion without its exact file Artifact."; "A source-path audit and deterministic fixtures verify the consumer introduces no daemon, recurring intake, orphan recovery, production tick, global-oldest fallback, internal-worker wrapper or second orchestration harness; Production stays Off and fixture GitHub, Discord, remotes, services and live Project pointers or queues receive zero writes."; "A fixture test refuses live provider invocation until durable Decision 0128 reservation and restore detection return valid admission evidence; source-only tests use a scripted external executor and record zero live provider calls."; "Separate independent Code-reviewer and QA receipts verify the current source head with no unresolved blocking findings; all repository-required CI checks pass, focused tests, lint, TypeScript and build pass, and the PR records executable QA instructions and updates docs/scout/CONTINUE.md with source acceptance, live attempts and product outcome separately.".
+- **Next:** Next ready Action in this inactive Plan: enforce-durable-run-admission.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-consume-one-approved-named-run-20261016-pr1455).

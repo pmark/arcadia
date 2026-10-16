@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runRunConsumeCommand } from "./commands/runConsume.js";
 import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
 import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
 import * as dotenv from "dotenv";
@@ -3399,6 +3400,16 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
 
   const run = program.command("run").description("Run commands");
+  addJsonOption(run.command("consume-one")
+    .description("Consume one named approved Ask-linked fixture Run with Production Off")
+    .requiredOption("--run-id <id>", "Exact Run id; no fallback")
+    .requiredOption("--ask-id <id>", "Original Ask id")
+    .requiredOption("--source-head <sha>", "Pinned source HEAD")
+    .option("--fixture-script <path>", "Scripted external .mjs fixture executor; live providers remain blocked")
+    .option("--workspace <path>", "Experiment workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; runId: string; askId: string; sourceHead: string; fixtureScript?: string; json?: boolean }) =>
+    runCliAction("run.consume-one", options, () => runRunConsumeCommand(options), (result) => [JSON.stringify(result.data)])
+  );
   addJsonOption(
     run
       .command("list")

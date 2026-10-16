@@ -1412,6 +1412,34 @@ pnpm arcadia run show run_example \
 
 This includes run status, plan steps, step outcomes, mission log path, linked artifacts, and the compact `needsOperator` compatibility list.
 
+## Consume One Approved Fixture Run
+
+```sh
+pnpm arcadia run consume-one --workspace <experiment-workspace> \
+  --run-id <exact-approved-Run-id> --ask-id <original-Ask-id> \
+  --source-head <source-HEAD-sha> --fixture-script <experiment-local-script.mjs> --json
+```
+
+This is a single named-Run operation with Production Off: no omitted selector,
+FIFO fallback, daemon or production tick. It accepts only an approved Ask-linked
+Run in a clean experiment repository under its allowed root, with no remotes.
+The explicit script is trusted fixture code executed by Node through the shared
+review executor; it is not a security sandbox. Configured provider adapters and
+metadata shell validation are bypassed. The fixed oracle requires only
+`HelloWorld.txt`, exactly `Hello World!` followed by one LF, before linking a ready
+product Artifact and completing the Run. Missing/wrong output, extra files,
+execution failure or signal termination never establish product completion.
+The claim commits an unresolved `requires_review` posture before execution;
+consumer SIGINT/SIGTERM/SIGKILL leaves that conservative record without automatic
+recovery or retry. Only the claiming consumer can finalize it after receiving the result.
+Executor timeout uses SIGKILL and propagates its error as failure.
+
+Omitting `--fixture-script` refuses live invocation until durable Decision 0128
+reservation and independent restore detection exist. Source fixture evidence
+never establishes a live Scout attempt or product outcome. The CLI is local-only;
+`pnpm exec vitest run tests/run-consume-one.test.ts` exercises the disposable
+public path without a running service.
+
 ## Common Execution Loop
 
 ```sh
