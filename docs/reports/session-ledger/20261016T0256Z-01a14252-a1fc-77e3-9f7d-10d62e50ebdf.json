@@ -4,14 +4,19 @@
   "model": "unknown (native parent model variant not exposed)",
   "effort": null,
   "action_id": "operator-directed:#1389",
-  "pr": null,
+  "pr": 1453,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "missing-exact-ask-custody",
+      "caught_by": "independent generic PR verification R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [

@@ -4,7 +4,7 @@ Scope: operator-approved settlement and reviewed PR delivery of `amend-scout-con
 
 ## Authority and Artifact
 
-Operator selected preparation, then explicitly selected “Approve this exact amendment for governed settlement and reviewed PR delivery.” Proposal `agentask_5512b93edcbe2a1aa9`; applied candidate settlement `asksettle_281b28ae65db4e93ad`. The archived Ask and Plan are durable artifacts. Important authority changes and source execution remain separate gates; no merge is claimed here.
+Operator selected preparation, then explicitly selected “Approve this exact amendment for governed settlement and reviewed PR delivery.” Proposal `agentask_5512b93edcbe2a1aa9`; applied candidate settlement `asksettle_281b28ae65db4e93ad`. The [retained exact Ask input](scout-governed-preparation-2026-10-15-ask.json) and Plan are durable artifacts. The supporting JSON is already settled evidence, not pending intake. Its proposal fingerprint is `5512b93edcbe2a1aa94fe49c2ef0686c9bf66cc416a856936f5217ade34025a095` (verified below before commit). Important authority changes and source execution remain separate gates; no merge is claimed here.
 
 Before apply, the candidate settlement preview matched the reviewed before/after documents. It added two agent-owned source Actions, preserved existing launch acceptance and references, added both source dependencies to both launch Actions, retained draft Plan status and left the queue unchanged. Apply used the freshly resolved Cody Atlas author/committer environment. PROJECT.md was not edited. The settlement is isolated from main and requires reviewed PR delivery.
 
@@ -25,11 +25,13 @@ Token usage is unavailable, recorded as null/unknown. Elapsed preparation was ab
 
 - The first guidance check rejected a raw-file continuation hash. Recomputing through the canonical `guidanceFingerprint` helper (trimmed guidance bytes) fixed the index; guidance delivery, session ledger, managed Plan parsing and diff whitespace checks then passed.
 
+- R1 independent review found that the input had not been autoarchived from temporary proposal input, contradicting this report. The original exact input is now retained as already-settled supporting JSON and bound to its proposal fingerprint; archive claims are corrected. Regression prevention: compare `git ls-tree` custody with every claimed artifact before handoff.
+
 The prevention rules are indexed Agent Ask preview/apply and permission recovery, candidate isolation, guidance fingerprint verification, and exact-head independent PR review. No new runtime machinery was introduced.
 
 ## Retrieved guidance
 
-Loaded CONSTITUTION.md; PROJECT.md and exact production current Action; context policy and guidance index; Scout continuation; Agent Ask, learning, continuation, operator-directed work, working-copy safety, PR/identity, native-session, session-role and standard-harness procedures; managed documents; Arcadia repository Orientation, Plan-amendment operator actions and PR QA/Working-Copy Safety; operator-plan-amendments.md. Notes and retained lessons were searched for Scout, amendment, workspace, identity and failure symptoms. Instruction byte counts are retained in the earlier session evidence at `/private/tmp/scout-governed-preparation-20261016-evidence.json`; private scratch receipts are diagnostic copies, not the sole custody of the archived Ask or settlement.
+Loaded CONSTITUTION.md; PROJECT.md and exact production current Action; context policy and guidance index; Scout continuation; Agent Ask, learning, continuation, operator-directed work, working-copy safety, PR/identity, native-session, session-role and standard-harness procedures; managed documents; Arcadia repository Orientation, Plan-amendment operator actions and PR QA/Working-Copy Safety; operator-plan-amendments.md. Notes and retained lessons were searched for Scout, amendment, workspace, identity and failure symptoms. Instruction byte counts are retained in the earlier session evidence at `/private/tmp/scout-governed-preparation-20261016-evidence.json`; private scratch receipts are diagnostic copies; the retained exact Ask input, Plan and settlement commit preserve durable custody.
 
 ## Next governed boundary
 
