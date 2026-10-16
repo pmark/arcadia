@@ -14,9 +14,9 @@ import { nowIso } from "../utils/time.js";
  * enable-bounded-local-native-release-manager-coordination-with-durable-addressed.md.
  */
 
-export type CoordinationMessageKind = "status" | "report" | "request" | "reply";
-export type CoordinationMessageStatus = "offered" | "exposed" | "acknowledged" | "disposed";
-export type CoordinationReceiptKind =
+export type MailMessageKind = "status" | "report" | "request" | "reply";
+export type MailMessageStatus = "offered" | "exposed" | "acknowledged" | "disposed";
+export type MailReceiptKind =
   | "offer"
   | "exposure"
   | "acknowledgment"
@@ -24,7 +24,7 @@ export type CoordinationReceiptKind =
   | "effect_receipt"
   | "disposal";
 
-export interface CoordinationParticipant {
+export interface MailParticipant {
   /** Repository path or identifier this coordination is scoped to. */
   repository: string;
   projectSlug: string;
@@ -35,11 +35,11 @@ export interface CoordinationParticipant {
   generation: string;
 }
 
-export interface OfferCoordinationMessageInput {
+export interface SendMailMessageInput {
   requestId: string;
-  kind: CoordinationMessageKind;
-  sender: CoordinationParticipant;
-  recipient: Pick<CoordinationParticipant, "sessionIncarnation" | "generation">;
+  kind: MailMessageKind;
+  sender: MailParticipant;
+  recipient: Pick<MailParticipant, "sessionIncarnation" | "generation">;
   /** Non-binding evidence that the sender is actually assigned this Action (an Action id, Ask id). */
   assignmentEvidence: string;
   /** Optional canonical Session row reference; relationship/provenance only. */
@@ -56,11 +56,11 @@ export interface OfferCoordinationMessageInput {
   actor: string;
 }
 
-export interface CoordinationMessageRow {
+export interface MailMessageRow {
   id: string;
   requestId: string;
   contentFingerprint: string;
-  kind: CoordinationMessageKind;
+  kind: MailMessageKind;
   repository: string;
   projectSlug: string;
   planSlug: string;
@@ -75,7 +75,7 @@ export interface CoordinationMessageRow {
   resourceRefs: string[];
   body: Record<string, unknown>;
   expiresAt: string | null;
-  status: CoordinationMessageStatus;
+  status: MailMessageStatus;
   exposedAt: string | null;
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
@@ -84,20 +84,20 @@ export interface CoordinationMessageRow {
   updatedAt: string;
 }
 
-export interface CoordinationReceiptRow {
+export interface MailReceiptRow {
   id: string;
   messageId: string;
   requestId: string;
-  kind: CoordinationReceiptKind;
+  kind: MailReceiptKind;
   actor: string;
   selfReportedResult: Record<string, unknown> | null;
   effectEvidence: Record<string, unknown> | null;
   createdAt: string;
 }
 
-export function ensureNativeCoordinationTables(db: Database.Database): void {
+export function ensureNativeMailTables(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS native_coordination_messages (
+    CREATE TABLE IF NOT EXISTS native_mail_messages (
       id TEXT PRIMARY KEY,
       request_id TEXT NOT NULL UNIQUE,
       content_fingerprint TEXT NOT NULL,
@@ -112,7 +112,7 @@ export function ensureNativeCoordinationTables(db: Database.Database): void {
       recipient_session_incarnation TEXT NOT NULL,
       recipient_generation TEXT NOT NULL,
       receiver_checkpoint_capability TEXT NOT NULL,
-      reply_to_id TEXT REFERENCES native_coordination_messages(id) ON DELETE SET NULL,
+      reply_to_id TEXT REFERENCES native_mail_messages(id) ON DELETE SET NULL,
       resource_refs_json TEXT NOT NULL DEFAULT '[]',
       body_json TEXT NOT NULL,
       expires_at TEXT,
@@ -124,12 +124,12 @@ export function ensureNativeCoordinationTables(db: Database.Database): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_native_coordination_messages_recipient
-      ON native_coordination_messages(project_slug, plan_slug, recipient_session_incarnation, recipient_generation, status);
+    CREATE INDEX IF NOT EXISTS idx_native_mail_messages_recipient
+      ON native_mail_messages(project_slug, plan_slug, recipient_session_incarnation, recipient_generation, status);
 
-    CREATE TABLE IF NOT EXISTS native_coordination_receipts (
+    CREATE TABLE IF NOT EXISTS native_mail_receipts (
       id TEXT PRIMARY KEY,
-      message_id TEXT NOT NULL REFERENCES native_coordination_messages(id) ON DELETE CASCADE,
+      message_id TEXT NOT NULL REFERENCES native_mail_messages(id) ON DELETE CASCADE,
       request_id TEXT NOT NULL UNIQUE,
       kind TEXT NOT NULL CHECK (kind IN ('offer', 'exposure', 'acknowledgment', 'self_report', 'effect_receipt', 'disposal')),
       actor TEXT NOT NULL,
@@ -137,12 +137,12 @@ export function ensureNativeCoordinationTables(db: Database.Database): void {
       effect_evidence_json TEXT,
       created_at TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_native_coordination_receipts_message
-      ON native_coordination_receipts(message_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_native_mail_receipts_message
+      ON native_mail_receipts(message_id, created_at);
   `);
 }
 
-function fingerprintOf(input: OfferCoordinationMessageInput): string {
+function fingerprintOf(input: SendMailMessageInput): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -161,12 +161,12 @@ function fingerprintOf(input: OfferCoordinationMessageInput): string {
     .digest("hex");
 }
 
-function toMessageRow(row: RawMessageRow): CoordinationMessageRow {
+function toMessageRow(row: RawMessageRow): MailMessageRow {
   return {
     id: row.id,
     requestId: row.request_id,
     contentFingerprint: row.content_fingerprint,
-    kind: row.kind as CoordinationMessageKind,
+    kind: row.kind as MailMessageKind,
     repository: row.repository,
     projectSlug: row.project_slug,
     planSlug: row.plan_slug,
@@ -181,7 +181,7 @@ function toMessageRow(row: RawMessageRow): CoordinationMessageRow {
     resourceRefs: JSON.parse(row.resource_refs_json) as string[],
     body: JSON.parse(row.body_json) as Record<string, unknown>,
     expiresAt: row.expires_at,
-    status: row.status as CoordinationMessageStatus,
+    status: row.status as MailMessageStatus,
     exposedAt: row.exposed_at,
     acknowledgedAt: row.acknowledged_at,
     acknowledgedBy: row.acknowledged_by,
@@ -219,12 +219,12 @@ interface RawMessageRow {
   updated_at: string;
 }
 
-function toReceiptRow(row: RawReceiptRow): CoordinationReceiptRow {
+function toReceiptRow(row: RawReceiptRow): MailReceiptRow {
   return {
     id: row.id,
     messageId: row.message_id,
     requestId: row.request_id,
-    kind: row.kind as CoordinationReceiptKind,
+    kind: row.kind as MailReceiptKind,
     actor: row.actor,
     selfReportedResult: row.self_reported_result_json ? (JSON.parse(row.self_reported_result_json) as Record<string, unknown>) : null,
     effectEvidence: row.effect_evidence_json ? (JSON.parse(row.effect_evidence_json) as Record<string, unknown>) : null,
@@ -243,18 +243,18 @@ interface RawReceiptRow {
   created_at: string;
 }
 
-function getMessageByRequestId(db: Database.Database, requestId: string): CoordinationMessageRow | undefined {
-  const row = db.prepare("SELECT * FROM native_coordination_messages WHERE request_id = ?").get(requestId) as RawMessageRow | undefined;
+function getMessageByRequestId(db: Database.Database, requestId: string): MailMessageRow | undefined {
+  const row = db.prepare("SELECT * FROM native_mail_messages WHERE request_id = ?").get(requestId) as RawMessageRow | undefined;
   return row ? toMessageRow(row) : undefined;
 }
 
-export function getCoordinationMessage(db: Database.Database, id: string): CoordinationMessageRow | undefined {
-  const row = db.prepare("SELECT * FROM native_coordination_messages WHERE id = ?").get(id) as RawMessageRow | undefined;
+export function getMailMessage(db: Database.Database, id: string): MailMessageRow | undefined {
+  const row = db.prepare("SELECT * FROM native_mail_messages WHERE id = ?").get(id) as RawMessageRow | undefined;
   return row ? toMessageRow(row) : undefined;
 }
 
-export function listReceiptsForMessage(db: Database.Database, messageId: string): CoordinationReceiptRow[] {
-  return (db.prepare("SELECT * FROM native_coordination_receipts WHERE message_id = ? ORDER BY created_at").all(messageId) as RawReceiptRow[]).map(toReceiptRow);
+export function listMailReceipts(db: Database.Database, messageId: string): MailReceiptRow[] {
+  return (db.prepare("SELECT * FROM native_mail_receipts WHERE message_id = ? ORDER BY created_at").all(messageId) as RawReceiptRow[]).map(toReceiptRow);
 }
 
 /**
@@ -263,38 +263,38 @@ export function listReceiptsForMessage(db: Database.Database, messageId: string)
  * different content refuses. A disposed message's `requestId` can never be
  * reoffered — explicit disposal is terminal for that identity.
  */
-export function offerCoordinationMessage(
+export function sendMailMessage(
   db: Database.Database,
-  input: OfferCoordinationMessageInput
-): { message: CoordinationMessageRow; receipt: CoordinationReceiptRow } {
+  input: SendMailMessageInput
+): { message: MailMessageRow; receipt: MailReceiptRow } {
   const fingerprint = fingerprintOf(input);
   return writeTransaction(db, () => {
     const existing = getMessageByRequestId(db, input.requestId);
     if (existing) {
       if (existing.contentFingerprint !== fingerprint) {
-        throw validationError(`Coordination message ${input.requestId} was already offered with different content.`, {
+        throw validationError(`Mail message ${input.requestId} was already offered with different content.`, {
           requestId: input.requestId
         });
       }
       if (existing.status === "disposed") {
-        throw validationError(`Coordination message ${input.requestId} was disposed and cannot be reoffered under the same request id.`, {
+        throw validationError(`Mail message ${input.requestId} was disposed and cannot be reoffered under the same request id.`, {
           requestId: input.requestId,
           messageId: existing.id
         });
       }
-      const receipt = db.prepare("SELECT * FROM native_coordination_receipts WHERE message_id = ? AND kind = 'offer'").get(existing.id) as RawReceiptRow;
+      const receipt = db.prepare("SELECT * FROM native_mail_receipts WHERE message_id = ? AND kind = 'offer'").get(existing.id) as RawReceiptRow;
       return { message: existing, receipt: toReceiptRow(receipt) };
     }
 
     if (!input.sender.sessionIncarnation.trim() || !input.sender.generation.trim()) {
-      throw validationError("Coordination message sender must carry a non-empty session incarnation and generation.");
+      throw validationError("Mail message sender must carry a non-empty session incarnation and generation.");
     }
     if (!input.recipient.sessionIncarnation.trim() || !input.recipient.generation.trim()) {
-      throw validationError("Coordination message recipient must carry a non-empty session incarnation and generation.");
+      throw validationError("Mail message recipient must carry a non-empty session incarnation and generation.");
     }
 
     if (input.replyToId) {
-      const parent = getCoordinationMessage(db, input.replyToId);
+      const parent = getMailMessage(db, input.replyToId);
       if (!parent) throw validationError(`Reply correlates to unknown message ${input.replyToId}.`, { replyToId: input.replyToId });
       if (parent.projectSlug !== input.sender.projectSlug || parent.planSlug !== input.sender.planSlug) {
         throw validationError("Reply must stay within the same Project/Plan scope as the message it answers.", {
@@ -304,9 +304,9 @@ export function offerCoordinationMessage(
     }
 
     const now = nowIso();
-    const resolvedId = createId("nativeCoordinationMessage");
+    const resolvedId = createId("nativeMailMessage");
     db.prepare(
-      `INSERT INTO native_coordination_messages
+      `INSERT INTO native_mail_messages
         (id, request_id, content_fingerprint, kind, repository, project_slug, plan_slug,
          sender_session_incarnation, sender_generation, assignment_evidence, canonical_session_ref,
          recipient_session_incarnation, recipient_generation, receiver_checkpoint_capability,
@@ -338,19 +338,19 @@ export function offerCoordinationMessage(
       updated_at: now
     });
 
-    const resolvedReceiptId = createId("nativeCoordinationReceipt");
+    const resolvedReceiptId = createId("nativeMailReceipt");
     db.prepare(
-      `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, created_at)
+      `INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, created_at)
        VALUES (?, ?, ?, 'offer', ?, ?)`
     ).run(resolvedReceiptId, resolvedId, `${input.requestId}:offer`, input.actor, now);
 
-    const message = getCoordinationMessage(db, resolvedId)!;
-    const receipt = listReceiptsForMessage(db, resolvedId)[0];
+    const message = getMailMessage(db, resolvedId)!;
+    const receipt = listMailReceipts(db, resolvedId)[0];
     return { message, receipt };
   });
 }
 
-export interface PollCoordinationMessagesInput {
+export interface ListMailInboxInput {
   projectSlug: string;
   planSlug: string;
   recipientSessionIncarnation: string;
@@ -366,12 +366,12 @@ export interface PollCoordinationMessagesInput {
  * poll/heartbeat freshness never implies acknowledgment, model read, or
  * applied effect.
  */
-export function pollCoordinationMessages(db: Database.Database, input: PollCoordinationMessagesInput): CoordinationMessageRow[] {
+export function listMailInbox(db: Database.Database, input: ListMailInboxInput): MailMessageRow[] {
   return writeTransaction(db, () => {
     const now = nowIso();
     const rows = db
       .prepare(
-        `SELECT * FROM native_coordination_messages
+        `SELECT * FROM native_mail_messages
          WHERE project_slug = ? AND plan_slug = ? AND recipient_session_incarnation = ? AND recipient_generation = ?
            AND status != 'disposed'
            AND (expires_at IS NULL OR expires_at > ?)
@@ -381,10 +381,10 @@ export function pollCoordinationMessages(db: Database.Database, input: PollCoord
 
     for (const row of rows) {
       if (row.status === "offered") {
-        db.prepare("UPDATE native_coordination_messages SET status = 'exposed', exposed_at = ?, updated_at = ? WHERE id = ? AND status = 'offered'")
+        db.prepare("UPDATE native_mail_messages SET status = 'exposed', exposed_at = ?, updated_at = ? WHERE id = ? AND status = 'offered'")
           .run(now, now, row.id);
-        const resolvedReceiptId = createId("nativeCoordinationReceipt");
-        db.prepare(`INSERT OR IGNORE INTO native_coordination_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'exposure', ?, ?)`)
+        const resolvedReceiptId = createId("nativeMailReceipt");
+        db.prepare(`INSERT OR IGNORE INTO native_mail_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'exposure', ?, ?)`)
           .run(resolvedReceiptId, row.id, `${row.id}:exposure`, input.actor, now);
       }
     }
@@ -392,7 +392,7 @@ export function pollCoordinationMessages(db: Database.Database, input: PollCoord
     return (
       db
         .prepare(
-          `SELECT * FROM native_coordination_messages
+          `SELECT * FROM native_mail_messages
            WHERE project_slug = ? AND plan_slug = ? AND recipient_session_incarnation = ? AND recipient_generation = ?
              AND status != 'disposed'
              AND (expires_at IS NULL OR expires_at > ?)
@@ -417,7 +417,7 @@ export interface RecipientScope {
  * refused the same way. `allowDisposed` lets disposal itself report a
  * clearer "already disposed" error instead of this generic one.
  */
-function assertRecipientScope(message: CoordinationMessageRow, scope: RecipientScope, options: { allowDisposed?: boolean } = {}): void {
+function assertRecipientScope(message: MailMessageRow, scope: RecipientScope, options: { allowDisposed?: boolean } = {}): void {
   if (message.projectSlug !== scope.projectSlug || message.planSlug !== scope.planSlug) {
     throw validationError("Refused: wrong Project/Plan scope.", {
       messageId: message.id,
@@ -443,7 +443,7 @@ function assertRecipientScope(message: CoordinationMessageRow, scope: RecipientS
   }
 }
 
-export interface AcknowledgeCoordinationMessageInput extends RecipientScope {
+export interface AcknowledgeMailMessageInput extends RecipientScope {
   messageId: string;
   actor: string;
 }
@@ -454,28 +454,28 @@ export interface AcknowledgeCoordinationMessageInput extends RecipientScope {
  * message. Idempotent: an already-acknowledged message returns its existing
  * acknowledgment receipt rather than creating a second one.
  */
-export function acknowledgeCoordinationMessage(db: Database.Database, input: AcknowledgeCoordinationMessageInput): CoordinationReceiptRow {
+export function acknowledgeMailMessage(db: Database.Database, input: AcknowledgeMailMessageInput): MailReceiptRow {
   return writeTransaction(db, () => {
-    const message = getCoordinationMessage(db, input.messageId);
-    if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input);
 
-    const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE message_id = ? AND kind = 'acknowledgment'").get(message.id) as
+    const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE message_id = ? AND kind = 'acknowledgment'").get(message.id) as
       | RawReceiptRow
       | undefined;
     if (existing) return toReceiptRow(existing);
 
     const now = nowIso();
-    db.prepare("UPDATE native_coordination_messages SET status = 'acknowledged', acknowledged_at = ?, acknowledged_by = ?, updated_at = ? WHERE id = ?")
+    db.prepare("UPDATE native_mail_messages SET status = 'acknowledged', acknowledged_at = ?, acknowledged_by = ?, updated_at = ? WHERE id = ?")
       .run(now, input.actor, now, message.id);
-    const resolvedReceiptId = createId("nativeCoordinationReceipt");
-    db.prepare("INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'acknowledgment', ?, ?)")
+    const resolvedReceiptId = createId("nativeMailReceipt");
+    db.prepare("INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'acknowledgment', ?, ?)")
       .run(resolvedReceiptId, message.id, `${message.id}:acknowledgment`, input.actor, now);
-    return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
+    return toReceiptRow(db.prepare("SELECT * FROM native_mail_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }
 
-export interface ReportCoordinationResultInput extends RecipientScope {
+export interface ReportMailResultInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
@@ -485,16 +485,16 @@ export interface ReportCoordinationResultInput extends RecipientScope {
 
 /**
  * A receiver's self-reported outcome. Visibly self-reported: distinct from,
- * and never a substitute for, `recordCoordinationEffectReceipt`'s
+ * and never a substitute for, `verifyMailEffect`'s
  * independently checked correlated effect receipt. Requires the message to
  * already be acknowledged, fences the same Plan/recipient/generation scope
  * as acknowledgment, and refuses a replayed request id that now names a
  * different message or carries different reported content.
  */
-export function reportCoordinationResult(db: Database.Database, input: ReportCoordinationResultInput): CoordinationReceiptRow {
+export function reportMailResult(db: Database.Database, input: ReportMailResultInput): MailReceiptRow {
   return writeTransaction(db, () => {
-    const message = getCoordinationMessage(db, input.messageId);
-    if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input);
     if (message.status !== "acknowledged") {
       throw validationError("A result can only be self-reported after explicit acknowledgment.", {
@@ -504,7 +504,7 @@ export function reportCoordinationResult(db: Database.Database, input: ReportCoo
     }
 
     const newResult = { selfReported: true, ...input.result };
-    const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
+    const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
     if (existing) {
       if (existing.message_id !== message.id) {
         throw validationError(`Self-report request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
@@ -523,16 +523,16 @@ export function reportCoordinationResult(db: Database.Database, input: ReportCoo
     }
 
     const now = nowIso();
-    const resolvedReceiptId = createId("nativeCoordinationReceipt");
+    const resolvedReceiptId = createId("nativeMailReceipt");
     db.prepare(
-      `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, self_reported_result_json, created_at)
+      `INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, self_reported_result_json, created_at)
        VALUES (?, ?, ?, 'self_report', ?, ?, ?)`
     ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify(newResult), now);
-    return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
+    return toReceiptRow(db.prepare("SELECT * FROM native_mail_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }
 
-export interface RecordCoordinationEffectReceiptInput extends RecipientScope {
+export interface VerifyMailEffectInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
@@ -549,13 +549,13 @@ export interface RecordCoordinationEffectReceiptInput extends RecipientScope {
  * forged-verification failure this capability must not produce. Until a
  * genuine canonical writer/receipt this message can correlate against
  * exists (a settlement row with `applied: true` bound to this exact request),
- * this always refuses: `coordinationStatus.independentlyCheckedEffect` stays
+ * this always refuses: `mailStatus.independentlyCheckedEffect` stays
  * permanently null, and no caller input can change that.
  */
-export function recordCoordinationEffectReceipt(db: Database.Database, input: RecordCoordinationEffectReceiptInput): CoordinationReceiptRow {
+export function verifyMailEffect(db: Database.Database, input: VerifyMailEffectInput): MailReceiptRow {
   return writeTransaction(db, () => {
-    const message = getCoordinationMessage(db, input.messageId);
-    if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input);
     throw validationError(
       "Canonical effect verification is not yet supported: no genuine correlated canonical writer receipt exists to confirm an applied effect for this message. Observing a row's current state is not proof it was applied by this coordination, so independently checked effect receipts remain explicitly unavailable rather than recorded from an unverified observation.",
@@ -564,7 +564,7 @@ export function recordCoordinationEffectReceipt(db: Database.Database, input: Re
   });
 }
 
-export interface DisposeCoordinationMessageInput extends RecipientScope {
+export interface DisposeMailMessageInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
@@ -581,13 +581,13 @@ export interface DisposeCoordinationMessageInput extends RecipientScope {
  * second disposal attempt under a new request id on an already-disposed
  * message refuses rather than silently no-opping.
  */
-export function disposeCoordinationMessage(db: Database.Database, input: DisposeCoordinationMessageInput): CoordinationReceiptRow {
+export function disposeMailMessage(db: Database.Database, input: DisposeMailMessageInput): MailReceiptRow {
   return writeTransaction(db, () => {
-    const message = getCoordinationMessage(db, input.messageId);
-    if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input, { allowDisposed: true });
 
-    const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
+    const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
     if (existing) {
       if (existing.message_id !== message.id) {
         throw validationError(`Disposal request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
@@ -605,19 +605,19 @@ export function disposeCoordinationMessage(db: Database.Database, input: Dispose
     }
 
     const now = nowIso();
-    db.prepare("UPDATE native_coordination_messages SET status = 'disposed', disposed_at = ?, updated_at = ? WHERE id = ?").run(now, now, message.id);
-    const resolvedReceiptId = createId("nativeCoordinationReceipt");
-    db.prepare("INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'disposal', ?, ?)")
+    db.prepare("UPDATE native_mail_messages SET status = 'disposed', disposed_at = ?, updated_at = ? WHERE id = ?").run(now, now, message.id);
+    const resolvedReceiptId = createId("nativeMailReceipt");
+    db.prepare("INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'disposal', ?, ?)")
       .run(resolvedReceiptId, message.id, input.requestId, input.actor, now);
-    return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
+    return toReceiptRow(db.prepare("SELECT * FROM native_mail_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }
 
-export interface CoordinationStatusView {
-  message: CoordinationMessageRow;
-  receipts: CoordinationReceiptRow[];
+export interface MailStatusView {
+  message: MailMessageRow;
+  receipts: MailReceiptRow[];
   persisted: true;
-  exposedByPoll: boolean;
+  exposedByInboxRead: boolean;
   explicitlyAcknowledged: boolean;
   selfReportedResult: Record<string, unknown> | null;
   independentlyCheckedEffect: Record<string, unknown> | null;
@@ -632,22 +632,22 @@ export interface CoordinationStatusView {
  *
  * `independentlyCheckedEffect` is unconditionally null. Canonical
  * applied-effect verification is not yet supported (see
- * `recordCoordinationEffectReceipt`, which always refuses), so this is not a
+ * `verifyMailEffect`, which always refuses), so this is not a
  * data-dependent read — an `effect_receipt` row from before that refusal
  * existed, or written by any other means, is never surfaced as "independently
  * checked" here. Unverified persisted data stays visibly unverified; it is
  * never promoted to "applied" by rendering.
  */
-export function coordinationStatus(db: Database.Database, messageId: string): CoordinationStatusView {
-  const message = getCoordinationMessage(db, messageId);
-  if (!message) throw validationError(`Coordination message ${messageId} does not exist.`, { messageId });
-  const receipts = listReceiptsForMessage(db, messageId);
+export function mailStatus(db: Database.Database, messageId: string): MailStatusView {
+  const message = getMailMessage(db, messageId);
+  if (!message) throw validationError(`Mail message ${messageId} does not exist.`, { messageId });
+  const receipts = listMailReceipts(db, messageId);
   const selfReport = receipts.filter((receipt) => receipt.kind === "self_report").at(-1) ?? null;
   return {
     message,
     receipts,
     persisted: true,
-    exposedByPoll: message.exposedAt !== null,
+    exposedByInboxRead: message.exposedAt !== null,
     explicitlyAcknowledged: message.acknowledgedAt !== null,
     selfReportedResult: selfReport?.selfReportedResult ?? null,
     independentlyCheckedEffect: null

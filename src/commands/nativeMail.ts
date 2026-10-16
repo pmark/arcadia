@@ -5,18 +5,18 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
-  acknowledgeCoordinationMessage,
-  coordinationStatus,
-  disposeCoordinationMessage,
-  offerCoordinationMessage,
-  pollCoordinationMessages,
-  recordCoordinationEffectReceipt,
-  reportCoordinationResult,
-  type CoordinationMessageKind,
-  type CoordinationMessageRow,
-  type CoordinationReceiptRow,
-  type CoordinationStatusView
-} from "../nativeCoordination/store.js";
+  acknowledgeMailMessage,
+  mailStatus,
+  disposeMailMessage,
+  sendMailMessage,
+  listMailInbox,
+  verifyMailEffect,
+  reportMailResult,
+  type MailMessageKind,
+  type MailMessageRow,
+  type MailReceiptRow,
+  type MailStatusView
+} from "../nativeMail/store.js";
 
 function parseJsonOption(label: string, raw: string | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -31,7 +31,7 @@ function parseJsonOption(label: string, raw: string | undefined): Record<string,
   }
 }
 
-export interface NativeCoordinationOfferOptions {
+export interface NativeMailSendOptions {
   workspace: string;
   requestId: string;
   kind: string;
@@ -52,22 +52,22 @@ export interface NativeCoordinationOfferOptions {
   actor: string;
 }
 
-const MESSAGE_KINDS: CoordinationMessageKind[] = ["status", "report", "request", "reply"];
+const MESSAGE_KINDS: MailMessageKind[] = ["status", "report", "request", "reply"];
 
-function assertKind(kind: string): CoordinationMessageKind {
-  if (!MESSAGE_KINDS.includes(kind as CoordinationMessageKind)) {
+function assertKind(kind: string): MailMessageKind {
+  if (!MESSAGE_KINDS.includes(kind as MailMessageKind)) {
     throw validationError(`Unknown coordination message kind "${kind}".`, { allowed: MESSAGE_KINDS });
   }
-  return kind as CoordinationMessageKind;
+  return kind as MailMessageKind;
 }
 
-export function runNativeCoordinationOfferCommand(options: NativeCoordinationOfferOptions): CommandSuccess<{
-  message: CoordinationMessageRow;
-  receipt: CoordinationReceiptRow;
+export function runNativeMailSendCommand(options: NativeMailSendOptions): CommandSuccess<{
+  message: MailMessageRow;
+  receipt: MailReceiptRow;
 }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const data = withDatabase(workspacePath, (db: Database.Database) =>
-    offerCoordinationMessage(db, {
+    sendMailMessage(db, {
       requestId: options.requestId,
       kind: assertKind(options.kind),
       sender: {
@@ -88,10 +88,10 @@ export function runNativeCoordinationOfferCommand(options: NativeCoordinationOff
       actor: options.actor
     })
   );
-  return createSuccess({ command: "native-rm.offer", workspace: workspacePath, data });
+  return createSuccess({ command: "native-mail.send", workspace: workspacePath, data });
 }
 
-export interface NativeCoordinationPollOptions {
+export interface NativeMailInboxOptions {
   workspace: string;
   projectSlug: string;
   planSlug: string;
@@ -100,10 +100,10 @@ export interface NativeCoordinationPollOptions {
   actor: string;
 }
 
-export function runNativeCoordinationPollCommand(options: NativeCoordinationPollOptions): CommandSuccess<{ messages: CoordinationMessageRow[] }> {
+export function runNativeMailInboxCommand(options: NativeMailInboxOptions): CommandSuccess<{ messages: MailMessageRow[] }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const messages = withDatabase(workspacePath, (db: Database.Database) =>
-    pollCoordinationMessages(db, {
+    listMailInbox(db, {
       projectSlug: options.projectSlug,
       planSlug: options.planSlug,
       recipientSessionIncarnation: options.recipientIncarnation,
@@ -111,10 +111,10 @@ export function runNativeCoordinationPollCommand(options: NativeCoordinationPoll
       actor: options.actor
     })
   );
-  return createSuccess({ command: "native-rm.poll", workspace: workspacePath, data: { messages } });
+  return createSuccess({ command: "native-mail.inbox", workspace: workspacePath, data: { messages } });
 }
 
-export interface NativeCoordinationAckOptions {
+export interface NativeMailAckOptions {
   workspace: string;
   messageId: string;
   projectSlug: string;
@@ -124,10 +124,10 @@ export interface NativeCoordinationAckOptions {
   actor: string;
 }
 
-export function runNativeCoordinationAckCommand(options: NativeCoordinationAckOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
+export function runNativeMailAckCommand(options: NativeMailAckOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    acknowledgeCoordinationMessage(db, {
+    acknowledgeMailMessage(db, {
       messageId: options.messageId,
       projectSlug: options.projectSlug,
       planSlug: options.planSlug,
@@ -136,10 +136,10 @@ export function runNativeCoordinationAckCommand(options: NativeCoordinationAckOp
       actor: options.actor
     })
   );
-  return createSuccess({ command: "native-rm.ack", workspace: workspacePath, data: { receipt } });
+  return createSuccess({ command: "native-mail.ack", workspace: workspacePath, data: { receipt } });
 }
 
-export interface NativeCoordinationReportOptions {
+export interface NativeMailReportOptions {
   workspace: string;
   messageId: string;
   requestId: string;
@@ -151,10 +151,10 @@ export interface NativeCoordinationReportOptions {
   resultJson?: string;
 }
 
-export function runNativeCoordinationReportCommand(options: NativeCoordinationReportOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
+export function runNativeMailReportCommand(options: NativeMailReportOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    reportCoordinationResult(db, {
+    reportMailResult(db, {
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
@@ -165,10 +165,10 @@ export function runNativeCoordinationReportCommand(options: NativeCoordinationRe
       result: parseJsonOption("--result-json", options.resultJson)
     })
   );
-  return createSuccess({ command: "native-rm.report", workspace: workspacePath, data: { receipt } });
+  return createSuccess({ command: "native-mail.report", workspace: workspacePath, data: { receipt } });
 }
 
-export interface NativeCoordinationEffectOptions {
+export interface NativeMailVerifyOptions {
   workspace: string;
   messageId: string;
   requestId: string;
@@ -181,13 +181,13 @@ export interface NativeCoordinationEffectOptions {
 
 /**
  * Canonical applied-effect verification is not yet supported (see
- * `recordCoordinationEffectReceipt`); this command always refuses rather
+ * `verifyMailEffect`); this command always refuses rather
  * than recording an unverified observation as independently checked.
  */
-export function runNativeCoordinationEffectCommand(options: NativeCoordinationEffectOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
+export function runNativeMailVerifyCommand(options: NativeMailVerifyOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    recordCoordinationEffectReceipt(db, {
+    verifyMailEffect(db, {
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
@@ -197,10 +197,10 @@ export function runNativeCoordinationEffectCommand(options: NativeCoordinationEf
       recipientGeneration: options.recipientGeneration
     })
   );
-  return createSuccess({ command: "native-rm.effect", workspace: workspacePath, data: { receipt } });
+  return createSuccess({ command: "native-mail.verify", workspace: workspacePath, data: { receipt } });
 }
 
-export interface NativeCoordinationDisposeOptions {
+export interface NativeMailDisposeOptions {
   workspace: string;
   messageId: string;
   requestId: string;
@@ -211,10 +211,10 @@ export interface NativeCoordinationDisposeOptions {
   recipientGeneration: string;
 }
 
-export function runNativeCoordinationDisposeCommand(options: NativeCoordinationDisposeOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
+export function runNativeMailDisposeCommand(options: NativeMailDisposeOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    disposeCoordinationMessage(db, {
+    disposeMailMessage(db, {
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
@@ -224,26 +224,26 @@ export function runNativeCoordinationDisposeCommand(options: NativeCoordinationD
       recipientGeneration: options.recipientGeneration
     })
   );
-  return createSuccess({ command: "native-rm.dispose", workspace: workspacePath, data: { receipt } });
+  return createSuccess({ command: "native-mail.dispose", workspace: workspacePath, data: { receipt } });
 }
 
-export interface NativeCoordinationStatusOptions {
+export interface NativeMailStatusOptions {
   workspace: string;
   messageId: string;
 }
 
-export function runNativeCoordinationStatusCommand(options: NativeCoordinationStatusOptions): CommandSuccess<CoordinationStatusView> {
+export function runNativeMailStatusCommand(options: NativeMailStatusOptions): CommandSuccess<MailStatusView> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withReadOnlyDatabase(workspacePath, (db: Database.Database) => coordinationStatus(db, options.messageId));
-  return createSuccess({ command: "native-rm.status", workspace: workspacePath, data });
+  const data = withReadOnlyDatabase(workspacePath, (db: Database.Database) => mailStatus(db, options.messageId));
+  return createSuccess({ command: "native-mail.status", workspace: workspacePath, data });
 }
 
-export function renderNativeCoordinationStatusSuccess(response: CommandSuccess<CoordinationStatusView>): string[] {
-  const { message, exposedByPoll, explicitlyAcknowledged, selfReportedResult, independentlyCheckedEffect } = response.data;
+export function renderNativeMailStatusSuccess(response: CommandSuccess<MailStatusView>): string[] {
+  const { message, exposedByInboxRead, explicitlyAcknowledged, selfReportedResult, independentlyCheckedEffect } = response.data;
   return [
-    `Coordination message ${message.id} (${message.kind}) — persisted: true`,
+    `Mail message ${message.id} (${message.kind}) — persisted: true`,
     `Status: ${message.status}`,
-    `Exposed by poll: ${exposedByPoll}${message.exposedAt ? ` (${message.exposedAt})` : ""}`,
+    `Exposed by inbox read: ${exposedByInboxRead}${message.exposedAt ? ` (${message.exposedAt})` : ""}`,
     `Explicitly acknowledged: ${explicitlyAcknowledged}${message.acknowledgedAt ? ` by ${message.acknowledgedBy} at ${message.acknowledgedAt}` : ""}`,
     `Self-reported result: ${selfReportedResult ? JSON.stringify(selfReportedResult) : "none"}`,
     `Independently checked effect receipt: ${independentlyCheckedEffect ? JSON.stringify(independentlyCheckedEffect) : "none"}`

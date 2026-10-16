@@ -12,7 +12,7 @@ import { ensureManualPreservationTable } from "../sessions/manualPreservation.js
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
 import { ensureSchedulingTables } from "../scheduling/store.js";
-import { ensureNativeCoordinationTables } from "../nativeCoordination/store.js";
+import { ensureNativeMailTables } from "../nativeMail/store.js";
 
 export function getSchemaPath(): string {
   const fromCwd = path.resolve("database", "schema.sql");
@@ -112,7 +112,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureRecurringScheduleTables(db);
   ensureProductionOperatorEscalationsTable(db);
   ensureRedAlertTables(db);
-  ensureNativeCoordinationTables(db);
+  ensureNativeMailTables(db);
   applyCapabilityMigrations(db);
 }
 

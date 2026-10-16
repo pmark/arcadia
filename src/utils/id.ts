@@ -44,8 +44,8 @@ const PREFIXES = {
   preservationReceipt: "presv",
   sessionExitReceipt: "exit",
   operatorLaunchAuthorization: "olauth",
-  nativeCoordinationMessage: "ncmsg",
-  nativeCoordinationReceipt: "ncrcpt"
+  nativeMailMessage: "nmail",
+  nativeMailReceipt: "nmrcpt"
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

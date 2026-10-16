@@ -28,22 +28,22 @@ import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askC
 import { renderAskReportSuccess, runAskReportCommand } from "./commands/askReport.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import {
-  renderNativeCoordinationStatusSuccess,
-  runNativeCoordinationAckCommand,
-  runNativeCoordinationDisposeCommand,
-  runNativeCoordinationEffectCommand,
-  runNativeCoordinationOfferCommand,
-  runNativeCoordinationPollCommand,
-  runNativeCoordinationReportCommand,
-  runNativeCoordinationStatusCommand,
-  type NativeCoordinationAckOptions,
-  type NativeCoordinationDisposeOptions,
-  type NativeCoordinationEffectOptions,
-  type NativeCoordinationOfferOptions,
-  type NativeCoordinationPollOptions,
-  type NativeCoordinationReportOptions,
-  type NativeCoordinationStatusOptions
-} from "./commands/nativeCoordination.js";
+  renderNativeMailStatusSuccess,
+  runNativeMailAckCommand,
+  runNativeMailDisposeCommand,
+  runNativeMailVerifyCommand,
+  runNativeMailSendCommand,
+  runNativeMailInboxCommand,
+  runNativeMailReportCommand,
+  runNativeMailStatusCommand,
+  type NativeMailAckOptions,
+  type NativeMailDisposeOptions,
+  type NativeMailVerifyOptions,
+  type NativeMailSendOptions,
+  type NativeMailInboxOptions,
+  type NativeMailReportOptions,
+  type NativeMailStatusOptions
+} from "./commands/nativeMail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
@@ -1118,8 +1118,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("ping.sent", options, () => runPingSentCommand(options), renderPingSentSuccess)
   );
 
-  const nativeRm = program.command("native-rm").description("Local addressed coordination between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");
-  addJsonOption(nativeRm.command("offer")
+  const nativeMail = program.command("native-mail").description("Local addressed mail between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");
+  addJsonOption(nativeMail.command("send")
     .description("Persist an immutable addressed status/report/request/reply message. Exact request-id replay returns the same message; changed-content replay refuses")
     .requiredOption("--request-id <id>", "Idempotency key for this exact message")
     .requiredOption("--kind <kind>", "status | report | request | reply")
@@ -1139,10 +1139,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--body-json <json>", "Untrusted body as a JSON object; never executed or interpreted as a command")
     .requiredOption("--actor <identity>", "Resolved agent identity sending this message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationOfferOptions & { json?: boolean; resourceRef: string[] }) =>
-    runCliAction("native-rm.offer", options, () => runNativeCoordinationOfferCommand({ ...options, resourceRefs: options.resourceRef }), () => [])
+  ).action((options: NativeMailSendOptions & { json?: boolean; resourceRef: string[] }) =>
+    runCliAction("native-mail.send", options, () => runNativeMailSendCommand({ ...options, resourceRefs: options.resourceRef }), () => [])
   );
-  addJsonOption(nativeRm.command("poll")
+  addJsonOption(nativeMail.command("inbox")
     .description("Read-only exposure of messages addressed to this exact recipient generation within this Plan scope. Excludes disposed and expired messages")
     .requiredOption("--project-slug <slug>", "Project slug")
     .requiredOption("--plan-slug <slug>", "Plan slug")
@@ -1150,24 +1150,24 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .requiredOption("--actor <identity>", "Resolved agent identity polling")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationPollOptions & { json?: boolean }) =>
-    runCliAction("native-rm.poll", options, () => runNativeCoordinationPollCommand(options), () => [])
+  ).action((options: NativeMailInboxOptions & { json?: boolean }) =>
+    runCliAction("native-mail.inbox", options, () => runNativeMailInboxCommand(options), () => [])
   );
-  addJsonOption(nativeRm.command("ack")
+  addJsonOption(nativeMail.command("ack")
     .description("Explicit receiver acknowledgment. Refuses wrong Plan, wrong recipient, stale generation, disposed, or expired")
-    .requiredOption("--message-id <id>", "Coordination message id")
+    .requiredOption("--message-id <id>", "Mail message id")
     .requiredOption("--project-slug <slug>", "Project slug")
     .requiredOption("--plan-slug <slug>", "Plan slug")
     .requiredOption("--recipient-incarnation <id>", "This native session's incarnation id")
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .requiredOption("--actor <identity>", "Resolved agent identity acknowledging")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationAckOptions & { json?: boolean }) =>
-    runCliAction("native-rm.ack", options, () => runNativeCoordinationAckCommand(options), () => [])
+  ).action((options: NativeMailAckOptions & { json?: boolean }) =>
+    runCliAction("native-mail.ack", options, () => runNativeMailAckCommand(options), () => [])
   );
-  addJsonOption(nativeRm.command("report")
-    .description("Self-report a result on an already-acknowledged message. Visibly self-reported; never a substitute for an independently checked effect receipt. Fences the same Plan/recipient/generation scope as ack")
-    .requiredOption("--message-id <id>", "Coordination message id")
+  addJsonOption(nativeMail.command("report")
+    .description("Self-report a result on an already-acknowledged message. Visibly self-reported; never a substitute for an independently checked verification receipt. Fences the same Plan/recipient/generation scope as ack")
+    .requiredOption("--message-id <id>", "Mail message id")
     .requiredOption("--request-id <id>", "Idempotency key for this report")
     .requiredOption("--actor <identity>", "Resolved agent identity reporting")
     .requiredOption("--project-slug <slug>", "Project slug")
@@ -1176,25 +1176,25 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .option("--result-json <json>", "Reported result as a JSON object")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationReportOptions & { json?: boolean }) =>
-    runCliAction("native-rm.report", options, () => runNativeCoordinationReportCommand(options), () => [])
+  ).action((options: NativeMailReportOptions & { json?: boolean }) =>
+    runCliAction("native-mail.report", options, () => runNativeMailReportCommand(options), () => [])
   );
-  addJsonOption(nativeRm.command("effect")
-    .description("Record an independently checked correlated effect receipt. NOT YET SUPPORTED: always refuses, because no genuine canonical writer receipt exists yet to correlate against; observing a row's current state is not proof an effect was applied by this coordination, so this never fakes a verified label. Fences the same Plan/recipient/generation scope as ack")
-    .requiredOption("--message-id <id>", "Coordination message id")
-    .requiredOption("--request-id <id>", "Idempotency key for this effect receipt")
+  addJsonOption(nativeMail.command("verify")
+    .description("Record an independently checked correlated effect-verification receipt. NOT YET SUPPORTED: always refuses, because no genuine canonical writer receipt exists yet to correlate against; observing a row's current state is not proof an effect was applied by this mail, so this never fakes a verified label. Fences the same Plan/recipient/generation scope as ack")
+    .requiredOption("--message-id <id>", "Mail message id")
+    .requiredOption("--request-id <id>", "Idempotency key for this verification attempt")
     .requiredOption("--actor <identity>", "Resolved agent identity recording the check")
     .requiredOption("--project-slug <slug>", "Project slug")
     .requiredOption("--plan-slug <slug>", "Plan slug")
     .requiredOption("--recipient-incarnation <id>", "This native session's incarnation id")
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationEffectOptions & { json?: boolean }) =>
-    runCliAction("native-rm.effect", options, () => runNativeCoordinationEffectCommand(options), () => [])
+  ).action((options: NativeMailVerifyOptions & { json?: boolean }) =>
+    runCliAction("native-mail.verify", options, () => runNativeMailVerifyCommand(options), () => [])
   );
-  addJsonOption(nativeRm.command("dispose")
-    .description("Explicitly dispose a message. Before this, a crash between offer and acknowledgment leaves it eligible for reoffer under its original request id. Fences the same Plan/recipient/generation scope as ack")
-    .requiredOption("--message-id <id>", "Coordination message id")
+  addJsonOption(nativeMail.command("dispose")
+    .description("Explicitly dispose a message. Before this, a crash between send and acknowledgment leaves it eligible for resend under its original request id. Fences the same Plan/recipient/generation scope as ack")
+    .requiredOption("--message-id <id>", "Mail message id")
     .requiredOption("--request-id <id>", "Idempotency key for this disposal")
     .requiredOption("--actor <identity>", "Resolved agent identity disposing")
     .requiredOption("--project-slug <slug>", "Project slug")
@@ -1202,15 +1202,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--recipient-incarnation <id>", "This native session's incarnation id")
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationDisposeOptions & { json?: boolean }) =>
-    runCliAction("native-rm.dispose", options, () => runNativeCoordinationDisposeCommand(options), () => [])
+  ).action((options: NativeMailDisposeOptions & { json?: boolean }) =>
+    runCliAction("native-mail.dispose", options, () => runNativeMailDisposeCommand(options), () => [])
   );
-  addJsonOption(nativeRm.command("status")
-    .description("Distinguish persistence, exposure by poll, explicit receiver acknowledgment, and reported result (self-reported vs. independently checked effect)")
-    .requiredOption("--message-id <id>", "Coordination message id")
+  addJsonOption(nativeMail.command("status")
+    .description("Distinguish persistence, exposure by inbox read, explicit receiver acknowledgment, and reported result (self-reported vs. independently checked effect verification)")
+    .requiredOption("--message-id <id>", "Mail message id")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: NativeCoordinationStatusOptions & { json?: boolean }) =>
-    runCliAction("native-rm.status", options, () => runNativeCoordinationStatusCommand(options), renderNativeCoordinationStatusSuccess)
+  ).action((options: NativeMailStatusOptions & { json?: boolean }) =>
+    runCliAction("native-mail.status", options, () => runNativeMailStatusCommand(options), renderNativeMailStatusSuccess)
   );
 
   const action = program.command("action").description("Operate on governed Actions");

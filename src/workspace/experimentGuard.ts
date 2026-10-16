@@ -83,9 +83,9 @@ const LESSON_EXPORT_FILE = guarded(
   ({ options, experiment }) => typeof options.file !== "string" || isInside(experiment.allowedRepoRoot, options.file)
 );
 
-const NATIVE_COORDINATION_WRITE = guarded(
-  "Local addressed native-RM coordination correlates to the live Project/Plan and canonical store; an experiment workspace's isolated database must not originate messages, acknowledgments, reports, effect receipts, or disposals read as coordination with real native sessions.",
-  "Inspect pending messages read-only with `native-rm status`, or run this against the live workspace with no ARCADIA_WORKSPACE/--workspace naming the experiment."
+const NATIVE_MAIL_WRITE = guarded(
+  "Local addressed native-mail correlates to the live Project/Plan and canonical store; an experiment workspace's isolated database must not originate messages, acknowledgments, reports, verification attempts, or disposals read as mail from real native sessions.",
+  "Inspect pending messages read-only with `native-mail status`, or run this against the live workspace with no ARCADIA_WORKSPACE/--workspace naming the experiment."
 );
 
 const LESSON_CACHE_APPLY = guarded(
@@ -149,13 +149,13 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "ping pending": ALLOWED,
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
-  "native-rm offer": NATIVE_COORDINATION_WRITE,
-  "native-rm poll": NATIVE_COORDINATION_WRITE,
-  "native-rm ack": NATIVE_COORDINATION_WRITE,
-  "native-rm report": NATIVE_COORDINATION_WRITE,
-  "native-rm effect": NATIVE_COORDINATION_WRITE,
-  "native-rm dispose": NATIVE_COORDINATION_WRITE,
-  "native-rm status": ALLOWED,
+  "native-mail send": NATIVE_MAIL_WRITE,
+  "native-mail inbox": NATIVE_MAIL_WRITE,
+  "native-mail ack": NATIVE_MAIL_WRITE,
+  "native-mail report": NATIVE_MAIL_WRITE,
+  "native-mail verify": NATIVE_MAIL_WRITE,
+  "native-mail dispose": NATIVE_MAIL_WRITE,
+  "native-mail status": ALLOWED,
   capture: ALLOWED,
   learn: ALLOWED,
   "learn search": ALLOWED,
