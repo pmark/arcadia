@@ -197,6 +197,41 @@ describe("public named approved Run consumption", () => {
     expect(isolation?.guardCalls()).toEqual([]);
   });
 
+  it("refuses shared scripted entry without a real reservation or with a copied token", () => {
+    const f = fixture(); const scope = f.admission.evidence.scope;
+    withDatabase(f.workspace, (db) => {
+      expect(() => executeApprovedReview(db, { workspace: f.workspace, reviewId: f.reviewId, runId: f.options.runId, fixtureScript: f.options.fixtureScript })).toThrow(/Exact-scope durable/);
+      const token = admissionModule.reserveScoutAttempt(f.admission.stores, f.admission.evidence, scope, "scripted-fixture");
+      expect(() => executeApprovedReview(db, { workspace: f.workspace, reviewId: f.reviewId, runId: f.options.runId, fixtureScript: f.options.fixtureScript,
+        scoutScope: scope, scoutReservation: { ...token } })).toThrow(/unused exact-scope reservation/);
+    });
+    expect(calls(f.workspace)).toBe(0);
+  });
+
+  it("refuses a reserved stale source through the shared invocation boundary", () => {
+    const f = fixture(); const e = f.admission.evidence; const stale = "0".repeat(40);
+    e.scope.sourceHead = stale; e.assignment.scope.sourceHead = stale; e.codeReview.sourceHead = stale; e.qa.sourceHead = stale; e.isolation.pins.sourceRevision = stale; f.admission.pin();
+    const token = admissionModule.reserveScoutAttempt(f.admission.stores, e, e.scope, "scripted-fixture");
+    withDatabase(f.workspace, (db) => expect(() => executeApprovedReview(db, { workspace: f.workspace, reviewId: f.reviewId, runId: f.options.runId, fixtureScript: f.options.fixtureScript,
+      scoutScope: e.scope, scoutReservation: token })).toThrow(/immutable current source/));
+    expect(calls(f.workspace)).toBe(0);
+  });
+
+  it("keeps the independent executor deadline after consumer-parent SIGKILL", async () => {
+    const f = fixture('setTimeout(() => writeFileSync("late-output", "deadline lost"), 7000); setInterval(() => {}, 1000);');
+    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: process.env, stdio: "ignore" });
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    try {
+      const deadline = Date.now() + 10000;
+      while (calls(f.workspace) === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(calls(f.workspace)).toBe(1); child.kill("SIGKILL"); await exited;
+      await new Promise((resolve) => setTimeout(resolve, 7500));
+      expect(existsSync(path.join(f.repo, "late-output"))).toBe(false);
+      expect(f.admission.read().attempts[0].outcome).toBe("reserved");
+      expect(withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!)?.status)).toBe("requires_review");
+    } finally { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }
+  }, 20000);
+
   it("never reduces a zero exit with a spawn error, timeout or signal to completion", () => {
     for (const extra of [{ error: "spawnSync ETIMEDOUT" }, { timedOut: true }, { signal: "SIGTERM" as const }]) {
       expect(reduceExecutionOutcome({ exitStatus: 0, validation: [], ...extra })).toBe("failed");

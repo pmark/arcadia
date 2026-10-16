@@ -26,7 +26,7 @@ import {
   approvedReviewScopeSha256,
   approvedRunScopeMatches
 } from "./approvedReviewScope.js";
-import { consumeScoutReservation, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
+import { assertScoutSource, consumeScoutReservation, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
 import { readProductionPolicy } from "../production/policy.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
@@ -205,7 +205,7 @@ export function executeApprovedReview(
   const boundedAsk = review.ask_request_id !== null && review.decision_note === "Approved from Ask. Execution queued.";
   // Every caller, including the ordinary worker, reaches this boundary. A JSON
   // receipt or widened approval inspection can never stand in for reservation.
-  const admissionRequired = !!options.scoutReservation || (boundedAsk && !fixture);
+  const admissionRequired = !!options.scoutReservation || boundedAsk;
   if (admissionRequired) {
     if (!options.scoutScope || options.scoutScope.runId !== options.runId || options.scoutScope.repo !== repoPath
       || options.scoutScope.workspace !== options.workspace || options.scoutScope.askId !== review.ask_request_id) {
@@ -266,6 +266,7 @@ export function executeApprovedReview(
   // remaining reservation includes that preparation and all prior waits.
   if (admissionRequired) {
     if (readProductionPolicy(db).desiredState !== "inactive") throw validationError("Production must remain Off at invocation.");
+    assertScoutSource(options.scoutScope!.sourceHead);
     // GNU timeout is an existing host utility, not a worker/harness. Its
     // separate process survives consumer SIGKILL and kills the executor group.
     // A missing/unsupported utility fails closed; never install one here.

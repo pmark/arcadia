@@ -11,6 +11,7 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
   fixtureScript?: string;
   scoutReservation?: ScoutReservation;
   scoutScope?: AdmissionScope;
+  observeResult?: (result: ReviewExecutionResult) => void;
   acceptProduct?: (result: ReviewExecutionResult) => void;
   log?: (message: string) => void;
 } = {}) {
@@ -25,6 +26,7 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       scoutScope: options.scoutScope
     });
     const status = reduceExecutionOutcome(result);
+    options.observeResult?.(result);
     attachArtifactToExecutionRun(db, run.id, result.artifact.id);
     if (status === "completed") options.acceptProduct?.(result);
     let stagingUrl: string | null = null;

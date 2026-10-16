@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { evaluateCapacityAdmission, type ProviderCapacityReceipt } from "../codingAgents/capacity.js";
@@ -45,6 +47,7 @@ interface Attempt {
   reservedAt: number;
   deadline: number;
   failure: string | null;
+  retryable: boolean;
   outcome: "reserved" | "failed" | "completed";
 }
 export interface ScoutAdmissionHistory {
@@ -77,6 +80,13 @@ const tokens = new WeakMap<ScoutReservation, { scope: AdmissionScope; mode: Scou
 export const admissionDigest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function refuse(reason: string): never { throw validationError(`Durable Scout admission refused: ${reason}`); }
 
+export function assertScoutSource(sourceHead: string) {
+  const root = fileURLToPath(new URL("../..", import.meta.url));
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  if (head !== sourceHead || execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim()
+    || !process.version.startsWith("v22.")) refuse("clean immutable current source and Node 22 are required at invocation");
+}
+
 function finite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) && value >= 0; }
 function historyValid(value: ScoutAdmissionHistory): boolean {
   if (!value || value.schema !== 1 || value.goal !== SCOUT_GOAL || !value.lineage?.trim()
@@ -93,6 +103,7 @@ function historyValid(value: ScoutAdmissionHistory): boolean {
       || !finite(attempt.deadline) || attempt.deadline <= attempt.reservedAt
       || attempt.deadline > attempt.reservedAt + 90_000 || attempt.deadline > value.firstLaunch! + LOOP_MS || attempt.deadline > EXPIRY
       || !["reserved", "failed", "completed"].includes(attempt.outcome)
+      || typeof attempt.retryable !== "boolean" || (attempt.outcome !== "failed" && attempt.retryable)
       || (attempt.outcome === "failed" ? !attempt.failure?.trim() : attempt.failure !== null)
       || !validScope(attempt.scope)) return false;
     ids.add(attempt.id); return true;
@@ -165,6 +176,7 @@ function validateEvidence(evidence: ScoutAdmissionEvidence, scope: AdmissionScop
   const capacity = evidence.capacity;
   if (!capacity || capacity.providerId !== "codex-cli" || capacity.usagePolicy !== "included"
     || capacity.source === "operator_config" || capacity.evidence !== (mode === "live" ? "real" : "simulated")
+    || capacity.credits?.hasCredits !== false || capacity.credits.unlimited !== false
     || !capacity.observedAt || !finite(Date.parse(capacity.observedAt)) || Date.parse(capacity.observedAt) > now
     || capacity.windows?.some((window) => !Number.isFinite(window.usedPercentage) || window.usedPercentage < 0 || window.usedPercentage > 100
       || window.remainingPercentage !== 100 - window.usedPercentage || !window.resetsAt || !Number.isFinite(Date.parse(window.resetsAt)))) refuse("subscription/capacity evidence is missing or invalid");
@@ -200,13 +212,13 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
       if (now < previous.deadline) refuse("previous reservation is still active");
       const retry = evidence.retry;
       if (!retry?.failure?.trim() || retry.previousReservation !== previous.id || !retry.verifiedFix?.trim()
-        || previous.scope.sourceHead === scope.sourceHead || previous.outcome !== "failed" || previous.failure !== retry.failure
+        || previous.scope.sourceHead === scope.sourceHead || previous.outcome !== "failed" || !previous.retryable || previous.failure !== retry.failure
         || history.attempts.some((attempt) => attempt !== previous && attempt.failure === retry.failure)) refuse("retry requires a named new failure, changed verified fix, separate review and QA");
       history.repairs += 1;
     } else if (evidence.retry !== null) refuse("retry has no retained failed attempt");
     history.firstLaunch ??= now; history.lastClock = now;
     const attempt: Attempt = { id: randomUUID(), scope: { ...scope }, reservedAt: now,
-      deadline: Math.min(now + 90_000, history.firstLaunch + LOOP_MS, EXPIRY), failure: null, outcome: "reserved" };
+      deadline: Math.min(now + 90_000, history.firstLaunch + LOOP_MS, EXPIRY), failure: null, retryable: false, outcome: "reserved" };
     history.attempts.push(attempt);
     return { id: attempt.id, attempt: history.attempts.length, repairs: history.repairs, firstLaunch: history.firstLaunch, deadline: attempt.deadline };
   });
@@ -224,7 +236,7 @@ export function consumeScoutReservation(reservation: ScoutReservation | undefine
 }
 
 /** Failure attribution is retained; an ambiguous interruption stays reserved and cannot retry. */
-export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string, reservation: ScoutReservation, outcome: { failure: string } | { completed: true }, now = Date.now()) {
+export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string, reservation: ScoutReservation, outcome: { failure: string; retryable?: boolean } | { completed: true }, now = Date.now()) {
   return withHistory(stores, fixtureRoot, (history) => {
     const attempt = history.attempts.at(-1);
     if (now < history.lastClock || !attempt || attempt.id !== reservation.id || attempt.outcome !== "reserved") refuse("outcome does not match an unresolved reservation or clock rolled back");
@@ -232,5 +244,7 @@ export function finishScoutAttempt(stores: AdmissionStores, fixtureRoot: string,
     history.lastClock = now;
     attempt.outcome = "failure" in outcome ? "failed" : "completed";
     attempt.failure = "failure" in outcome ? outcome.failure : null;
+    attempt.retryable = "failure" in outcome && outcome.retryable === true
+      && !/login|log.?in|unauthori[sz]ed|authentica|quota|rate.?limit|isolation|protected.state|authority/i.test(outcome.failure);
   });
 }

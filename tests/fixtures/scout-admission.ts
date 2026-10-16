@@ -30,7 +30,7 @@ export function admissionFixture(scope: AdmissionScope, now = Date.now(), fixtur
       source: "codex_app_server", evidence: "simulated", unattended: true, observedAt: stamp, observedAgeMs: 0, expiresAt: null,
       confidence: "observed", freshness: "fresh", usagePolicy: "included", usagePolicyReason: "explicit fixture",
       windows: [{ label: "fixture window", usedPercentage: 1, remainingPercentage: 99, resetsAt: new Date(now + 24 * 60 * 60_000).toISOString() }],
-      nextResetAt: null, credits: null, bankedResets: [], planScope: "fixture", unsupported: [], availability: "available", telemetry: "synthetic fixture only" },
+      nextResetAt: null, credits: { hasCredits: false, unlimited: false, balance: "0" }, bankedResets: [], planScope: "fixture", unsupported: [], availability: "available", telemetry: "synthetic fixture only" },
     billing: { subscriptionOnly: true, incrementalPaidCeiling: 0, apiBilling: false, credits: false, resetPurchase: false, fallback: false }, retry: null
   };
   const history: ScoutAdmissionHistory = { schema: 1, goal: SCOUT_GOAL, lineage: "explicit-synthetic-fixture-lineage", sequence: 0,

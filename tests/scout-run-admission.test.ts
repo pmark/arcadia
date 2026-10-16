@@ -31,7 +31,7 @@ describe("durable Decision 0128 admission", () => {
   it("retains stable goal, first launch and cumulative attempts/repairs across restart, source and fixture recreation", () => {
     const f = fixture(); const first = f.reserve();
     expect(f.read().attempts[0].id).toBe(first.id);
-    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes" }, now + 1000);
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", retryable: true }, now + 1000);
     const next = now + 90_000;
     // Delete and recreate the disposable fixture. Stores are outside it.
     rmSync(f.scope.workspace, { recursive: true }); mkdirSync(f.scope.repo, { recursive: true });
@@ -48,7 +48,7 @@ describe("durable Decision 0128 admission", () => {
   it("bounds three attempts and two repairs; elapsed waits never reset", () => {
     const f = fixture(); let prior = f.reserve();
     for (let index = 1; index <= 2; index++) {
-      finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, prior, { failure: `failure-${index}` }, now + (index - 1) * 90_000 + 1000);
+      finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, prior, { failure: `failure-${index}`, retryable: true }, now + (index - 1) * 90_000 + 1000);
       refresh(f, now + index * 90_000, String(index + 1).repeat(40));
       f.evidence.retry = { failure: `failure-${index}`, previousReservation: prior.id, verifiedFix: `verified fix ${index}` }; f.pin();
       prior = f.reserve(now + index * 90_000);
@@ -120,7 +120,7 @@ describe("durable Decision 0128 admission", () => {
   });
 
   it("requires a changed source, verified fix and matching named failure for every retry", () => {
-    const f = fixture(); const first = f.reserve(); finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes" }, now + 1);
+    const f = fixture(); const first = f.reserve(); finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", retryable: true }, now + 1);
     f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();
     expect(() => f.reserve(now + 90_000)).toThrow(/retry requires/);
     refresh(f, now + 90_000, "b".repeat(40)); f.evidence.retry.verifiedFix = ""; f.pin();
@@ -141,7 +141,17 @@ describe("durable Decision 0128 admission", () => {
   });
   it("cannot select a new live budget by replacing the fixture or choosing another store pair", () => {
     const f = fixture(); f.evidence.mode = "live"; f.evidence.capacity.evidence = "real"; f.pin();
-    expect(() => reserveScoutAttempt(f.stores, f.evidence, f.scope, "live", now)).toThrow(/fixed host stores/);
+    expect(() => reserveScoutAttempt(f.stores, f.evidence, f.scope, "live", now)).toThrow(/fixed host stores|trusted host configuration/);
     expect(f.read().attempts).toHaveLength(0);
+  });
+  it.each(["login refused", "quota exhausted", "isolation violation", "missing authority"])("never retries terminal refusal %s", (failure) => {
+    const f = fixture(); const first = f.reserve();
+    finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure, retryable: true }, now + 1);
+    refresh(f, now + 90_000, "b".repeat(40)); f.evidence.retry = { failure, previousReservation: first.id, verifiedFix: "changed candidate" }; f.pin();
+    expect(() => f.reserve(now + 90_000)).toThrow(/retry requires/);
+  });
+  it.each([null, { hasCredits: true, unlimited: false, balance: "50" }, { hasCredits: false, unlimited: true, balance: null }])("refuses unknown or available paid credit fallback %j", (credits) => {
+    const f = fixture(); f.evidence.capacity.credits = credits; f.pin();
+    expect(() => f.reserve()).toThrow(/subscription\/capacity evidence/);
   });
 });

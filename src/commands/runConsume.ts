@@ -51,6 +51,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
   }
   const stores = options.admissionLedger && options.admissionWitness ? { ledger: options.admissionLedger, witness: options.admissionWitness } : null;
   let reservation: ScoutReservation | undefined;
+  let retryable = false;
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return withDatabase(workspacePath, (db) => {
     // Approval, correlation and the compare-and-set claim share one immediate transaction.
@@ -86,6 +87,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       fixtureScript: script,
       scoutReservation: reservation,
       scoutScope: reservation ? admitted.scope : undefined,
+      observeResult: (result) => { retryable = !/login|log.?in|unauthori[sz]ed|authentica|quota|rate.?limit|isolation|protected.state|authority/i.test(`${result.error ?? ""}\n${result.finalOutput ?? ""}`); },
       acceptProduct: (result) => {
         const output = path.join(admitted.repo, "HelloWorld.txt");
         if (!lstatSync(output).isFile() || !readFileSync(output).equals(Buffer.from("Hello World!\n")) || result.changedFiles.length !== 1 || result.changedFiles[0] !== "HelloWorld.txt") {
@@ -96,7 +98,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       }
     });
     if (reservation && evidence && stores) finishScoutAttempt(stores, evidence.isolation.pins.fixtureRoot, reservation,
-      run?.status === "completed" ? { completed: true } : { failure: run?.summary ?? "executor failed without terminal result" });
+      run?.status === "completed" ? { completed: true } : { failure: run?.summary ?? "executor failed without terminal result", retryable });
     return createSuccess({ command: "run.consume-one", workspace: workspacePath, data: { run, reservation: reservation ?? null,
       executorMode: script ? "scripted-fixture" : "bounded-codex", liveProviderAdmission: script ? "blocked" : "reserved", sourceHead: head } });
   });
