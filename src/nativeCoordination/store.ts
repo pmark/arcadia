@@ -403,12 +403,48 @@ export function pollCoordinationMessages(db: Database.Database, input: PollCoord
   });
 }
 
-export interface AcknowledgeCoordinationMessageInput {
-  messageId: string;
+export interface RecipientScope {
   projectSlug: string;
   planSlug: string;
   recipientSessionIncarnation: string;
   recipientGeneration: string;
+}
+
+/**
+ * The fencing invariant every receiver-side mutation shares (acknowledgment,
+ * self-report, effect receipt, disposal): wrong Plan, wrong recipient, stale
+ * generation, a disposed message, and an expired (inert) message are all
+ * refused the same way. `allowDisposed` lets disposal itself report a
+ * clearer "already disposed" error instead of this generic one.
+ */
+function assertRecipientScope(message: CoordinationMessageRow, scope: RecipientScope, options: { allowDisposed?: boolean } = {}): void {
+  if (message.projectSlug !== scope.projectSlug || message.planSlug !== scope.planSlug) {
+    throw validationError("Refused: wrong Project/Plan scope.", {
+      messageId: message.id,
+      expected: { projectSlug: message.projectSlug, planSlug: message.planSlug },
+      got: { projectSlug: scope.projectSlug, planSlug: scope.planSlug }
+    });
+  }
+  if (message.recipientSessionIncarnation !== scope.recipientSessionIncarnation) {
+    throw validationError("Refused: wrong recipient.", { messageId: message.id });
+  }
+  if (message.recipientGeneration !== scope.recipientGeneration) {
+    throw validationError("Refused: stale recipient generation.", {
+      messageId: message.id,
+      expectedGeneration: message.recipientGeneration,
+      gotGeneration: scope.recipientGeneration
+    });
+  }
+  if (!options.allowDisposed && message.status === "disposed") {
+    throw validationError("Refused: message was disposed.", { messageId: message.id });
+  }
+  if (message.expiresAt && message.expiresAt <= nowIso()) {
+    throw validationError("Refused: message expired and is inert.", { messageId: message.id });
+  }
+}
+
+export interface AcknowledgeCoordinationMessageInput extends RecipientScope {
+  messageId: string;
   actor: string;
 }
 
@@ -422,29 +458,7 @@ export function acknowledgeCoordinationMessage(db: Database.Database, input: Ack
   return writeTransaction(db, () => {
     const message = getCoordinationMessage(db, input.messageId);
     if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
-    if (message.projectSlug !== input.projectSlug || message.planSlug !== input.planSlug) {
-      throw validationError("Acknowledgment refused: wrong Project/Plan scope.", {
-        messageId: input.messageId,
-        expected: { projectSlug: message.projectSlug, planSlug: message.planSlug },
-        got: { projectSlug: input.projectSlug, planSlug: input.planSlug }
-      });
-    }
-    if (message.recipientSessionIncarnation !== input.recipientSessionIncarnation) {
-      throw validationError("Acknowledgment refused: wrong recipient.", { messageId: input.messageId });
-    }
-    if (message.recipientGeneration !== input.recipientGeneration) {
-      throw validationError("Acknowledgment refused: stale recipient generation.", {
-        messageId: input.messageId,
-        expectedGeneration: message.recipientGeneration,
-        gotGeneration: input.recipientGeneration
-      });
-    }
-    if (message.status === "disposed") {
-      throw validationError("Acknowledgment refused: message was disposed.", { messageId: input.messageId });
-    }
-    if (message.expiresAt && message.expiresAt <= nowIso()) {
-      throw validationError("Acknowledgment refused: message expired and is inert.", { messageId: input.messageId });
-    }
+    assertRecipientScope(message, input);
 
     const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE message_id = ? AND kind = 'acknowledgment'").get(message.id) as
       | RawReceiptRow
@@ -461,7 +475,7 @@ export function acknowledgeCoordinationMessage(db: Database.Database, input: Ack
   });
 }
 
-export interface ReportCoordinationResultInput {
+export interface ReportCoordinationResultInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
@@ -473,58 +487,135 @@ export interface ReportCoordinationResultInput {
  * A receiver's self-reported outcome. Visibly self-reported: distinct from,
  * and never a substitute for, `recordCoordinationEffectReceipt`'s
  * independently checked correlated effect receipt. Requires the message to
- * already be acknowledged.
+ * already be acknowledged, fences the same Plan/recipient/generation scope
+ * as acknowledgment, and refuses a replayed request id that now names a
+ * different message or carries different reported content.
  */
 export function reportCoordinationResult(db: Database.Database, input: ReportCoordinationResultInput): CoordinationReceiptRow {
   return writeTransaction(db, () => {
     const message = getCoordinationMessage(db, input.messageId);
     if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    assertRecipientScope(message, input);
     if (message.status !== "acknowledged") {
       throw validationError("A result can only be self-reported after explicit acknowledgment.", {
         messageId: input.messageId,
         status: message.status
       });
     }
+
+    const newResult = { selfReported: true, ...input.result };
     const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
-    if (existing) return toReceiptRow(existing);
+    if (existing) {
+      if (existing.message_id !== message.id) {
+        throw validationError(`Self-report request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
+      }
+      const existingResult = existing.self_reported_result_json ? (JSON.parse(existing.self_reported_result_json) as Record<string, unknown>) : {};
+      if (JSON.stringify(existingResult) !== JSON.stringify(newResult)) {
+        throw validationError(`Self-report request id ${input.requestId} was already recorded with different content.`, { requestId: input.requestId });
+      }
+      return toReceiptRow(existing);
+    }
 
     const now = nowIso();
     const resolvedReceiptId = createId("nativeCoordinationReceipt");
     db.prepare(
       `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, self_reported_result_json, created_at)
        VALUES (?, ?, ?, 'self_report', ?, ?, ?)`
-    ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify({ selfReported: true, ...input.result }), now);
+    ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify(newResult), now);
     return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }
 
-export interface RecordCoordinationEffectReceiptInput {
+/**
+ * The only canonical sources this bounded capability knows how to re-derive
+ * and compare against. Deliberately a closed allowlist, never a
+ * caller-supplied table/column: widening it means adding a case here, not
+ * trusting new caller input.
+ */
+export type CanonicalEffectCheck = {
+  table: "work_items";
+  id: string;
+  field: "status";
+  expected: string;
+};
+
+function reDeriveCanonicalValue(db: Database.Database, check: CanonicalEffectCheck): string | null {
+  if (check.table === "work_items" && check.field === "status") {
+    const row = db.prepare("SELECT status FROM work_items WHERE id = ?").get(check.id) as { status: string } | undefined;
+    return row?.status ?? null;
+  }
+  throw validationError(`Unsupported canonical effect check: ${check.table}.${check.field}.`, { table: check.table, field: check.field });
+}
+
+export interface RecordCoordinationEffectReceiptInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
-  /** Independently checked evidence that a canonical effect actually applied (not the self-report). */
-  effectEvidence: Record<string, unknown>;
+  /**
+   * What canonical value to re-read from the configured store and compare
+   * against. This is the only route to an effect receipt: the claim is
+   * independently re-derived here, never trusted verbatim from the caller,
+   * and a mismatch fails closed rather than recording an unverified effect
+   * as checked.
+   */
+  canonicalCheck: CanonicalEffectCheck;
 }
 
-/** An independently checked correlated effect receipt; the only thing that may stand for an applied canonical effect. */
+/**
+ * An independently checked correlated effect receipt — the only thing that
+ * may stand for an applied canonical effect. Fences the same Plan/recipient/
+ * generation/expiry/disposal scope as acknowledgment, re-derives the claimed
+ * value from the live database itself (never from caller-supplied evidence),
+ * and refuses a replayed request id that now names a different message or a
+ * different canonical check.
+ */
 export function recordCoordinationEffectReceipt(db: Database.Database, input: RecordCoordinationEffectReceiptInput): CoordinationReceiptRow {
   return writeTransaction(db, () => {
     const message = getCoordinationMessage(db, input.messageId);
     if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    assertRecipientScope(message, input);
+
+    const claim = {
+      table: input.canonicalCheck.table,
+      id: input.canonicalCheck.id,
+      field: input.canonicalCheck.field,
+      expected: input.canonicalCheck.expected
+    };
     const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
-    if (existing) return toReceiptRow(existing);
+    if (existing) {
+      if (existing.message_id !== message.id) {
+        throw validationError(`Effect receipt request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
+      }
+      const existingEvidence = existing.effect_evidence_json ? (JSON.parse(existing.effect_evidence_json) as Record<string, unknown>) : {};
+      const existingClaim = { table: existingEvidence.table, id: existingEvidence.id, field: existingEvidence.field, expected: existingEvidence.expected };
+      if (JSON.stringify(existingClaim) !== JSON.stringify(claim)) {
+        throw validationError(`Effect receipt request id ${input.requestId} was already recorded with a different canonical check.`, {
+          requestId: input.requestId
+        });
+      }
+      return toReceiptRow(existing);
+    }
+
+    const observed = reDeriveCanonicalValue(db, input.canonicalCheck);
+    if (observed === null || observed !== input.canonicalCheck.expected) {
+      throw validationError(
+        "Canonical effect check failed: the value re-derived from the configured store does not match the claimed effect; refusing to record an unverified effect as independently checked.",
+        { ...claim, observed }
+      );
+    }
 
     const now = nowIso();
     const resolvedReceiptId = createId("nativeCoordinationReceipt");
+    const effectEvidence = { ...claim, verifiedValue: observed, verifiedAt: now };
     db.prepare(
       `INSERT INTO native_coordination_receipts (id, message_id, request_id, kind, actor, effect_evidence_json, created_at)
        VALUES (?, ?, ?, 'effect_receipt', ?, ?, ?)`
-    ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify(input.effectEvidence), now);
+    ).run(resolvedReceiptId, message.id, input.requestId, input.actor, JSON.stringify(effectEvidence), now);
     return toReceiptRow(db.prepare("SELECT * FROM native_coordination_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }
 
-export interface DisposeCoordinationMessageInput {
+export interface DisposeCoordinationMessageInput extends RecipientScope {
   messageId: string;
   requestId: string;
   actor: string;
@@ -534,14 +625,29 @@ export interface DisposeCoordinationMessageInput {
  * Explicitly dispose a message. Before this, a crash between offer and
  * acknowledgment leaves the message sitting in `offered`/`exposed`, still
  * returned by poll and still eligible for its original `requestId` to be
- * replayed safely; only disposal ends that eligibility.
+ * replayed safely; only disposal ends that eligibility. Fences the same
+ * Plan/recipient/generation scope as acknowledgment (expiry does not block
+ * disposal — an expired message may still be disposed); a disposal replay
+ * under a request id that now names a different message refuses, and a
+ * second disposal attempt under a new request id on an already-disposed
+ * message refuses rather than silently no-opping.
  */
 export function disposeCoordinationMessage(db: Database.Database, input: DisposeCoordinationMessageInput): CoordinationReceiptRow {
   return writeTransaction(db, () => {
     const message = getCoordinationMessage(db, input.messageId);
     if (!message) throw validationError(`Coordination message ${input.messageId} does not exist.`, { messageId: input.messageId });
+    assertRecipientScope(message, input, { allowDisposed: true });
+
     const existing = db.prepare("SELECT * FROM native_coordination_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
-    if (existing) return toReceiptRow(existing);
+    if (existing) {
+      if (existing.message_id !== message.id) {
+        throw validationError(`Disposal request id ${input.requestId} was already recorded for a different message.`, { requestId: input.requestId });
+      }
+      return toReceiptRow(existing);
+    }
+    if (message.status === "disposed") {
+      throw validationError("Message was already disposed under a different request id.", { messageId: message.id });
+    }
 
     const now = nowIso();
     db.prepare("UPDATE native_coordination_messages SET status = 'disposed', disposed_at = ?, updated_at = ? WHERE id = ?").run(now, now, message.id);

@@ -144,6 +144,10 @@ export interface NativeCoordinationReportOptions {
   messageId: string;
   requestId: string;
   actor: string;
+  projectSlug: string;
+  planSlug: string;
+  recipientIncarnation: string;
+  recipientGeneration: string;
   resultJson?: string;
 }
 
@@ -154,6 +158,10 @@ export function runNativeCoordinationReportCommand(options: NativeCoordinationRe
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
+      projectSlug: options.projectSlug,
+      planSlug: options.planSlug,
+      recipientSessionIncarnation: options.recipientIncarnation,
+      recipientGeneration: options.recipientGeneration,
       result: parseJsonOption("--result-json", options.resultJson)
     })
   );
@@ -165,17 +173,37 @@ export interface NativeCoordinationEffectOptions {
   messageId: string;
   requestId: string;
   actor: string;
-  effectEvidenceJson?: string;
+  projectSlug: string;
+  planSlug: string;
+  recipientIncarnation: string;
+  recipientGeneration: string;
+  /** Closed allowlist today: only "work_items". */
+  checkedTable: string;
+  checkedId: string;
+  /** Closed allowlist today: only "status". */
+  checkedField: string;
+  expectedValue: string;
+}
+
+function assertSupportedCanonicalCheck(table: string, field: string): asserts table is "work_items" {
+  if (table !== "work_items" || field !== "status") {
+    throw validationError(`Unsupported canonical effect check: ${table}.${field}. Only work_items.status is supported.`, { table, field });
+  }
 }
 
 export function runNativeCoordinationEffectCommand(options: NativeCoordinationEffectOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
+  assertSupportedCanonicalCheck(options.checkedTable, options.checkedField);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
     recordCoordinationEffectReceipt(db, {
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
-      effectEvidence: parseJsonOption("--effect-evidence-json", options.effectEvidenceJson)
+      projectSlug: options.projectSlug,
+      planSlug: options.planSlug,
+      recipientSessionIncarnation: options.recipientIncarnation,
+      recipientGeneration: options.recipientGeneration,
+      canonicalCheck: { table: "work_items", id: options.checkedId, field: "status", expected: options.expectedValue }
     })
   );
   return createSuccess({ command: "native-rm.effect", workspace: workspacePath, data: { receipt } });
@@ -186,12 +214,24 @@ export interface NativeCoordinationDisposeOptions {
   messageId: string;
   requestId: string;
   actor: string;
+  projectSlug: string;
+  planSlug: string;
+  recipientIncarnation: string;
+  recipientGeneration: string;
 }
 
 export function runNativeCoordinationDisposeCommand(options: NativeCoordinationDisposeOptions): CommandSuccess<{ receipt: CoordinationReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    disposeCoordinationMessage(db, { messageId: options.messageId, requestId: options.requestId, actor: options.actor })
+    disposeCoordinationMessage(db, {
+      messageId: options.messageId,
+      requestId: options.requestId,
+      actor: options.actor,
+      projectSlug: options.projectSlug,
+      planSlug: options.planSlug,
+      recipientSessionIncarnation: options.recipientIncarnation,
+      recipientGeneration: options.recipientGeneration
+    })
   );
   return createSuccess({ command: "native-rm.dispose", workspace: workspacePath, data: { receipt } });
 }
