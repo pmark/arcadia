@@ -1,0 +1,3 @@
+$ pnpm lint && tsc -p tsconfig.json && mkdir -p dist/scripts/browser-audit-image && cp scripts/browser-audit-image/identity.json dist/scripts/browser-audit-image/ && cp scripts/fixture-coding-agent.mjs scripts/record-session-exit.mjs scripts/host-browser-audit-worker.mjs scripts/session-capability-probe.mjs dist/scripts/ && pnpm --filter arcadia-discord-bot build
+$ eslint src test tests scripts apps/dashboard apps/discord-bot
+$ tsc -p tsconfig.json
