@@ -1,0 +1,82 @@
+{
+  "headRefOid": "35f4f0fb245aac2c6bbbf38313462d1b02e4a9e1",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:11:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921679052",
+      "name": "lint",
+      "startedAt": "2026-10-16T10:09:41Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:17:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921678918",
+      "name": "unit-1",
+      "startedAt": "2026-10-16T10:09:40Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:19:41Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921678971",
+      "name": "unit-2",
+      "startedAt": "2026-10-16T10:09:41Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:18:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921679032",
+      "name": "unit-3",
+      "startedAt": "2026-10-16T10:09:41Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:14:40Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921678872",
+      "name": "unit-4",
+      "startedAt": "2026-10-16T10:09:40Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:12:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921678602",
+      "name": "dashboard",
+      "startedAt": "2026-10-16T10:09:40Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-16T10:15:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/38885362534/job/116921679202",
+      "name": "e2e",
+      "startedAt": "2026-10-16T10:09:41Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-16T10:09:48Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    }
+  ]
+}

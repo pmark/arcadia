@@ -3405,7 +3405,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--run-id <id>", "Exact Run id; no fallback")
     .requiredOption("--ask-id <id>", "Original Ask id")
     .requiredOption("--source-head <sha>", "Pinned source HEAD")
-    .option("--fixture-script <path>", "Scripted external .mjs fixture executor; live providers remain blocked")
+    .option("--fixture-script <path>", "Scripted external .mjs fixture executor; no live provider")
+    .option("--admission-evidence <path>", "Exact-scope Decision 0128 evidence pinned by the independent witness")
+    .option("--admission-ledger <path>", "Existing durable goal history; never initialized or reset")
+    .option("--admission-witness <path>", "Existing independent protected approval/freshness witness")
     .option("--workspace <path>", "Experiment workspace path", defaultWorkspace())
   ).action((options: { workspace: string; runId: string; askId: string; sourceHead: string; fixtureScript?: string; json?: boolean }) =>
     runCliAction("run.consume-one", options, () => runRunConsumeCommand(options), (result) => [JSON.stringify(result.data)])

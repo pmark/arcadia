@@ -32,10 +32,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1389", "https://github.com/pmark/arcadia/pull/1453", "docs/planning-process.md", "docs/scout/CONTINUE.md", "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md"]
   - id: enforce-durable-run-admission
     title: Implement durable Run admission reservations, limits and independent restore detection (role implementer; standard tier; size M; operator gate none).
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement durable Run admission reservations, limits and independent restore detection (role implementer; standard tier; size M; operator gate none).
+    next_action: Completed via Agent Ask complete-enforce-durable-run-admission-20261016-pr1457; no further action.
     expected_artifact: Evidence satisfying Agent Ask enforce-durable-run-admission
     clarification: clarified
     confidence: high

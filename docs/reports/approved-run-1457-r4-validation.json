@@ -1,0 +1,27 @@
+{
+  "head": "ee046b7476239337f5e783a08657aca983fdb53e",
+  "focusedExit": 1,
+  "passed": 187,
+  "failed": 2,
+  "parentKillIsolatedExit": 0,
+  "bug": "https://github.com/pmark/arcadia/issues/1462",
+  "fastRehearsal": {
+    "exit": 0,
+    "scenarios": 34,
+    "report": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-YuuOz0/report.json"
+  },
+  "artifacts": [
+    {
+      "path": "/private/tmp/admission-r4-frozen-focused.log",
+      "content": "\n RUN  v4.1.8 /Users/pmark/.codex/worktrees/0c59/arcadia\n\n2026-10-16T17:05:44.345Z [managed-production] Base branch observation failed for named-run-fixture: Arcadia could not determine the local base branch.\n2026-10-16T17:05:44.369Z Executing run run_e9dfdca2b6de4396be (Decision: R1, executor: codex)\n \u276f tests/run-consume-one.test.ts (70 tests | 2 failed) 212483ms\n     \u00d7 keeps the actual executor within the admitted second with 0 ms preparation (rollback: true) 2213ms\n     \u00d7 keeps the independent executor deadline after consumer-parent SIGKILL 12282ms\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af Failed Tests 2 \u23af\u23af\u23af\u23af\u23af\u23af\u23af\n\n FAIL  tests/run-consume-one.test.ts > public named approved Run consumption > keeps the actual executor within the admitted second with 0 ms preparation (rollback: true)\nAssertionError: expected [Function] to throw an error\n\n- Expected:\nnull\n\n+ Received:\nundefined\n\n \u276f tests/run-consume-one.test.ts:98:55\n     96|       const f = fixture('setTimeout(() => writeFileSync(\"HelloWorld.tx\u2026\n     97|       if (rollback) {\n     98|         expect(() => runRunConsumeCommand(f.options)).toThrow(/launch \u2026\n       |                                                       ^\n     99|         expect(calls(f.workspace)).toBe(0);\n    100|         expect(existsSync(path.join(f.repo, \"HelloWorld.txt\"))).toBe(f\u2026\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[1/2]\u23af\n\n FAIL  tests/run-consume-one.test.ts > public named approved Run consumption > keeps the independent executor deadline after consumer-parent SIGKILL\nAssertionError: expected +0 to be 1 // Object.is equality\n\n- Expected\n+ Received\n\n- 1\n+ 0\n\n \u276f tests/run-consume-one.test.ts:287:34\n    285|       const deadline = Date.now() + 10000;\n    286|       while (calls(f.workspace) === 0 && Date.now() < deadline) await \u2026\n    287|       expect(calls(f.workspace)).toBe(1); child.kill(\"SIGKILL\"); await\u2026\n       |                                  ^\n    288|       await new Promise((resolve) => setTimeout(resolve, 7500));\n    289|       expect(existsSync(path.join(f.repo, \"late-output\"))).toBe(false);\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[2/2]\u23af\n\n\n Test Files  1 failed | 2 passed (3)\n      Tests  2 failed | 187 passed (189)\n   Start at  10:03:42\n   Duration  218.90s (transform 8.50s, setup 0ms, import 10.46s, tests 221.65s, environment 0ms)\n\n"
+    },
+    {
+      "path": "/private/tmp/admission-r4-parentkill-rerun.log",
+      "content": "\n RUN  v4.1.8 /Users/pmark/.codex/worktrees/0c59/arcadia\n\n\n Test Files  1 passed (1)\n      Tests  1 passed | 69 skipped (70)\n   Start at  10:08:49\n   Duration  13.76s (transform 3.54s, setup 0ms, import 4.22s, tests 9.33s, environment 0ms)\n\n"
+    },
+    {
+      "path": "/private/tmp/admission-r4-module-freeze.log",
+      "content": "\n RUN  v4.1.8 /Users/pmark/.codex/worktrees/0c59/arcadia\n\n\n Test Files  1 passed (1)\n      Tests  80 passed (80)\n   Start at  10:03:12\n   Duration  5.69s (transform 1.26s, setup 0ms, import 1.54s, tests 4.02s, environment 0ms)\n\n"
+    }
+  ]
+}

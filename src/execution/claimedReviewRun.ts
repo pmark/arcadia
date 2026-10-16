@@ -4,10 +4,14 @@ import { attachArtifactToExecutionRun, getExecutionRun, updateWorkItem } from ".
 import { executeApprovedReview, type ReviewExecutionResult } from "./reviewExecutor.js";
 import { reduceExecutionOutcome, finalizeGenericRun, finalizeWorkerFailure } from "./runFinalization.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
+import type { ScoutReservation, AdmissionScope } from "../scout/runAdmission.js";
 
 /** Execute an already claimed approved Run; no scheduling, recovery or intake. */
 export function executeClaimedReviewRun(db: Database.Database, workspacePath: string, run: ExecutionRunSummary, decision: ReviewItemSummary, options: {
   fixtureScript?: string;
+  scoutReservation?: ScoutReservation;
+  scoutScope?: AdmissionScope;
+  observeResult?: (result: ReviewExecutionResult) => void;
   acceptProduct?: (result: ReviewExecutionResult) => void;
   log?: (message: string) => void;
 } = {}) {
@@ -17,9 +21,12 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       reviewId: decision.id,
       executorName: run.executor_name ?? undefined,
       runId: run.id,
-      fixtureScript: options.fixtureScript
+      fixtureScript: options.fixtureScript,
+      scoutReservation: options.scoutReservation,
+      scoutScope: options.scoutScope
     });
     const status = reduceExecutionOutcome(result);
+    options.observeResult?.(result);
     attachArtifactToExecutionRun(db, run.id, result.artifact.id);
     if (status === "completed") options.acceptProduct?.(result);
     let stagingUrl: string | null = null;
@@ -39,6 +46,7 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       `Executed with ${result.executor}.`,
       result.error ? `Executor error: ${result.error}.` : "",
       result.signal ? `Executor signal: ${result.signal}.` : "",
+      result.scoutFailure ? `Admission failure [${result.scoutFailure.kind}]: ${result.scoutFailure.diagnostic}` : "",
       `${result.changedFiles.length} file(s) changed.`,
       `Validation: ${status === "completed" ? "passed" : status === "requires_review" ? "failed" : "not run"}.`,
       stagingUrl ? `Live staging URL: ${stagingUrl}.` : `Follow-up Decision: ${result.followUpReview.slug ?? result.followUpReview.id}.`

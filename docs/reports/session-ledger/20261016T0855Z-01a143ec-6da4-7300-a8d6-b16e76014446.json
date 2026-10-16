@@ -1,0 +1,51 @@
+{
+  "session_id": "01a143ec-6da4-7300-a8d6-b16e76014446",
+  "role": "driver",
+  "model": "unknown",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": "Actual runtime binding unobserved; standard role recommendation is not a binding.",
+  "action_id": "plan/execute-one-approved-named-run-safely-with-production-off#enforce-durable-run-admission",
+  "pr": 1457,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 4,
+  "blocking_findings": [
+    {
+      "class": "clock continuity and refused high-water rollback",
+      "caught_by": "code-reviewer R1"
+    },
+    {
+      "class": "terminal auth/quota retries and lost diagnostics",
+      "caught_by": "QA R1"
+    },
+    {
+      "class": "incomplete capacity provenance admitted",
+      "caught_by": "QA R1"
+    },
+    {
+      "class": "stale invocation deadline after suspend-inclusive elapsed",
+      "caught_by": "code-reviewer R2"
+    },
+    {
+      "class": "post-consumption civil-time shift enlarged actual executor timeout",
+      "caught_by": "code-reviewer R3"
+    },
+    {
+      "class": "public rollback regression expected throw instead of failed-Run contract",
+      "caught_by": "frozen local validation R4"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "split",
+  "notes": "R4 187/189: assertion contract corrected; unchanged parent-kill rerun passes, bug1462. Runtime unchanged; final frozen proof/R5/current CI pending. No completion/live trial; allowance unknown.",
+  "candidate_head": "35f4f0fb245aac2c6bbbf38313462d1b02e4a9e1",
+  "evidence_source": "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md"
+}
