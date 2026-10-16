@@ -100,8 +100,15 @@ describe("public named approved Run consumption", () => {
     expect(() => runRunConsumeCommand(f.options)).toThrow(/reservation, evidence and independent restore detection/);
     expect(calls(f.workspace)).toBe(0); expect(f.admission.read().attempts).toHaveLength(0);
   });
+  it("refuses all omitted admission flags through the real public CLI", () => {
+    const f = fixture(); const args = cliArgs(f.options);
+    for (const flag of ["--admission-evidence", "--admission-ledger", "--admission-witness"]) args.splice(args.indexOf(flag), 2);
+    const result = runCli(args); expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("durable Decision 0128 reservation");
+    expect(calls(f.workspace)).toBe(0); expect(f.admission.read().attempts).toHaveLength(0);
+  });
 
-  it.each(["authority", "isolation", "node", "model", "timeout-profile", "review", "qa", "paid", "capacity", "scope", "missing-history", "restored-history", "revoked", "source", "missing-witness"])("refuses admission integration %s before the executor", (failure) => {
+  it.each(["authority", "isolation", "node", "model", "timeout-profile", "review", "qa", "paid", "capacity", "scope", "missing-history", "restored-history", "revoked", "source", "missing-witness", "null-evidence", "empty-evidence", "malformed-evidence"])("refuses admission integration %s before the executor", (failure) => {
     const f = admittedFixture();
     if (failure === "authority") f.admission.evidence.assignment.approved = false as true;
     if (failure === "isolation") f.admission.evidence.isolation.after = null;
@@ -116,6 +123,9 @@ describe("public named approved Run consumption", () => {
     if (failure === "revoked") withDatabase(f.workspace, (db) => db.prepare("UPDATE review_items SET status = 'rejected' WHERE id = ?").run(f.reviewId));
     if (failure === "source") f.options.sourceHead = "0".repeat(40);
     f.save();
+    if (failure === "null-evidence") writeFileSync(f.options.admissionEvidence, "null");
+    if (failure === "empty-evidence") writeFileSync(f.options.admissionEvidence, "{}");
+    if (failure === "malformed-evidence") writeFileSync(f.options.admissionEvidence, "not JSON");
     if (failure === "missing-history") rmSync(f.options.admissionLedger);
     if (failure === "missing-witness") rmSync(f.options.admissionWitness);
     if (failure === "restored-history") {

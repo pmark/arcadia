@@ -45,11 +45,11 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
   if (script && (!isInside(experiment.workspacePath, script) || !script.endsWith(".mjs") || !lstatSync(script).isFile())) {
     throw validationError("The scripted fixture executor must be an .mjs file inside the experiment workspace.");
   }
-  const evidence = options.admissionEvidence ? JSON.parse(readFileSync(options.admissionEvidence, "utf8")) as ScoutAdmissionEvidence : null;
-  if (evidence && execFileSync("git", ["status", "--porcelain"], { cwd: sourceRoot, encoding: "utf8" }).trim()) {
+  const evidence = JSON.parse(readFileSync(options.admissionEvidence, "utf8")) as ScoutAdmissionEvidence;
+  if (execFileSync("git", ["status", "--porcelain"], { cwd: sourceRoot, encoding: "utf8" }).trim()) {
     throw validationError("Durable admission requires a clean immutable source checkout.");
   }
-  const stores = options.admissionLedger && options.admissionWitness ? { ledger: options.admissionLedger, witness: options.admissionWitness } : null;
+  const stores = { ledger: options.admissionLedger, witness: options.admissionWitness };
   let reservation: ScoutReservation | undefined;
   let retryable = false;
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -61,7 +61,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       if (!run || run.status !== "pending_execution" || !run.review_item_id || !run.work_item_id) {
         throw validationError("Named Run is absent, unrelated or already claimed.");
       }
-      const { review, triggerReview } = assertApprovedReview(db, { workspace: workspacePath, reviewId: run.review_item_id, runId: run.id, fixtureScript: script }, evidence !== null);
+      const { review, triggerReview } = assertApprovedReview(db, { workspace: workspacePath, reviewId: run.review_item_id, runId: run.id, fixtureScript: script }, true);
       const ask = getAskRequest(db, options.askId);
       const approvedAsk = review.resulting_ask_request_id ? getAskRequest(db, review.resulting_ask_request_id) : null;
       if (!ask || ask.id !== review.ask_request_id || approvedAsk?.work_item_id !== run.work_item_id || review.resolved_intent === "ProjectProposalApproval") {
@@ -75,7 +75,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
       if (execFileSync("git", ["remote"], { cwd: repo, encoding: "utf8" }).trim()) throw validationError("Fixture repository must have no remotes.");
       if (execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).trim()) throw validationError("Fixture repository must start clean.");
       const scope = { runId: run.id, askId: ask.id, workspace: workspacePath, repo, sourceHead: head };
-      if (evidence && stores) reservation = reserveScoutAttempt(stores, evidence, scope, script ? "scripted-fixture" : "live");
+      reservation = reserveScoutAttempt(stores, evidence, scope, script ? "scripted-fixture" : "live");
       const claimed = claimNextPendingRun(db, process.pid, run.id);
       if (!claimed) throw validationError("Named Run was already claimed.");
       // Commit a conservative posture with the claim itself. Parent SIGKILL
@@ -97,7 +97,7 @@ export function runRunConsumeCommand(options: RunConsumeOptions) {
         attachArtifactToExecutionRun(db, admitted.run.id, artifact.id);
       }
     });
-    if (reservation && evidence && stores) finishScoutAttempt(stores, evidence.isolation.pins.fixtureRoot, reservation,
+    if (reservation) finishScoutAttempt(stores, evidence.isolation.pins.fixtureRoot, reservation,
       run?.status === "completed" ? { completed: true } : { failure: run?.summary ?? "executor failed without terminal result", retryable });
     return createSuccess({ command: "run.consume-one", workspace: workspacePath, data: { run, reservation: reservation ?? null,
       executorMode: script ? "scripted-fixture" : "bounded-codex", liveProviderAdmission: script ? "blocked" : "reserved", sourceHead: head } });

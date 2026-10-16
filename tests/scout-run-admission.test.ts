@@ -135,9 +135,16 @@ describe("durable Decision 0128 admission", () => {
     expect(() => consumeScoutReservation(token, { ...f.scope, runId: "other" }, "scripted-fixture", now)).toThrow();
     expect(() => consumeScoutReservation(token, f.scope, "live", now)).toThrow();
     token.deadline += 999_999; expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 90_000)).toThrow();
-    expect(consumeScoutReservation(token, f.scope, "scripted-fixture", now + 100)).toBe(89_900);
+    expect(consumeScoutReservation(token, f.scope, "scripted-fixture", now + 100)).toBe(now + 90_000);
     expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 101)).toThrow();
     expect(admissionDigest(f.read())).toHaveLength(64);
+  });
+  it("rechecks restore and approval freshness after reservation but before invocation", () => {
+    const f = fixture(); const old = path.join(f.root, "old-before-reservation.sqlite"); copyFileSync(f.stores.ledger, old);
+    const token = f.reserve(); copyFileSync(old, f.stores.ledger);
+    expect(() => consumeScoutReservation(token, f.scope, "scripted-fixture", now + 1)).toThrow(/restored history/);
+    const changed = fixture(); const other = changed.reserve(); changed.evidence.assignment.implementer = "revoked replacement"; changed.pin();
+    expect(() => consumeScoutReservation(other, changed.scope, "scripted-fixture", now + 1)).toThrow(/approval witness/);
   });
   it("cannot select a new live budget by replacing the fixture or choosing another store pair", () => {
     const f = fixture(); f.evidence.mode = "live"; f.evidence.capacity.evidence = "real"; f.pin();

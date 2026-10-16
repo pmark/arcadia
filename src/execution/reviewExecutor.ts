@@ -275,7 +275,12 @@ export function executeApprovedReview(
     if (found.status !== 0 || !path.isAbsolute(timeoutPath)) throw validationError("Durable execution requires the existing GNU timeout utility.");
     const deadline = spawnSync(timeoutPath, ["--version"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
     if (deadline.status !== 0 || !deadline.stdout?.includes("GNU coreutils")) throw validationError("Durable execution requires the existing GNU timeout utility.");
-    executor.timeoutMs = Math.min(executor.timeoutMs, consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live"));
+    assertApprovedReview(db, options);
+    const invocationNow = Date.now();
+    const reservationDeadline = consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live", invocationNow);
+    const launchNow = Date.now();
+    if (launchNow < invocationNow || launchNow >= reservationDeadline) throw validationError("Reservation expired or clock rolled back before invocation.");
+    executor.timeoutMs = Math.min(executor.timeoutMs, reservationDeadline - launchNow);
     command.unshift(timeoutPath, "--signal=KILL", `${Math.max(1, Math.floor(executor.timeoutMs)) / 1000}s`);
   }
   const run = spawnSync(command[0] ?? "", command.slice(1), {

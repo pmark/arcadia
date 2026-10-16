@@ -76,7 +76,8 @@ export function liveScoutAdmissionStores(): AdmissionStores {
     witness: path.join(configRoot, "scout-admission-witness", "decision-0128.sqlite") };
 }
 export interface ScoutReservation { id: string; attempt: number; repairs: number; firstLaunch: number; deadline: number }
-const tokens = new WeakMap<ScoutReservation, { scope: AdmissionScope; mode: ScoutAdmissionEvidence["mode"]; used: boolean; reservedAt: number; deadline: number }>();
+const tokens = new WeakMap<ScoutReservation, { scope: AdmissionScope; mode: ScoutAdmissionEvidence["mode"]; used: boolean; reservedAt: number; deadline: number;
+  stores: AdmissionStores; evidence: ScoutAdmissionEvidence; reservationId: string }>();
 export const admissionDigest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function refuse(reason: string): never { throw validationError(`Durable Scout admission refused: ${reason}`); }
 
@@ -222,17 +223,25 @@ export function reserveScoutAttempt(stores: AdmissionStores, evidence: ScoutAdmi
     history.attempts.push(attempt);
     return { id: attempt.id, attempt: history.attempts.length, repairs: history.repairs, firstLaunch: history.firstLaunch, deadline: attempt.deadline };
   });
-  tokens.set(reservation, { scope: { ...scope }, mode, used: false, reservedAt: now, deadline: reservation.deadline });
+  tokens.set(reservation, { scope: { ...scope }, mode, used: false, reservedAt: now, deadline: reservation.deadline,
+    stores: { ...stores }, evidence: structuredClone(evidence), reservationId: reservation.id });
   return reservation;
 }
 
-/** In-process capability, never a user-supplied JSON receipt. One invocation only. */
+/** One-use capability; returns its private absolute deadline after durable recheck. */
 export function consumeScoutReservation(reservation: ScoutReservation | undefined, scope: AdmissionScope, mode: ScoutAdmissionEvidence["mode"], now = Date.now()): number {
   const token = reservation ? tokens.get(reservation) : undefined;
   if (!reservation || !token || token.used || token.mode !== mode || !sameScope(token.scope, scope)
     || now < token.reservedAt || now >= token.deadline || now >= EXPIRY) refuse("valid unused exact-scope reservation is required at invocation");
+  validateEvidence(token.evidence, token.scope, now, mode);
+  withHistory(token.stores, token.evidence.isolation.pins.fixtureRoot, (history, witness) => {
+    const attempt = history.attempts.at(-1);
+    if (now < history.lastClock || attempt?.id !== token.reservationId || attempt.outcome !== "reserved"
+      || witness.evidenceSha256 !== admissionDigest(token.evidence)) refuse("reservation history, approval witness or clock changed before invocation");
+    history.lastClock = now;
+  });
   token.used = true;
-  return Math.min(90_000, token.deadline - now);
+  return token.deadline;
 }
 
 /** Failure attribution is retained; an ambiguous interruption stays reserved and cannot retry. */
