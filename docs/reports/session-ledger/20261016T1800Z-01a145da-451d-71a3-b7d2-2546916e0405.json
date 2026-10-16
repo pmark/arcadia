@@ -15,9 +15,21 @@
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
-    "New guidance hash required trimmed bytes",
-    "New Claude aliases hidden by existing ignore rule",
-    "Standalone Python validator missing PyYAML"
+    {
+      "id": "trimmed-guidance-fingerprint",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    },
+    {
+      "id": "ignored-claude-aliases",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    },
+    {
+      "id": "python-yaml-dependency",
+      "cost_min": null,
+      "fix_ref": "docs/reports/three-agent-skills-2026-10-16.md"
+    }
   ],
   "outcome": "complete",
   "notes": "Implementation and focused checks complete; independent review and CI tracked in PR. No managed Action or production change.",
