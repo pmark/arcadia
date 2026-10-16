@@ -1417,7 +1417,9 @@ This includes run status, plan steps, step outcomes, mission log path, linked ar
 ```sh
 pnpm arcadia run consume-one --workspace <experiment-workspace> \
   --run-id <exact-approved-Run-id> --ask-id <original-Ask-id> \
-  --source-head <source-HEAD-sha> --fixture-script <experiment-local-script.mjs> --json
+  --source-head <source-HEAD-sha> --fixture-script <experiment-local-script.mjs> \
+  --admission-evidence <pinned-evidence.json> --admission-ledger <existing-history.sqlite> \
+  --admission-witness <independent-witness.sqlite> --json
 ```
 
 This is a single named-Run operation with Production Off: no omitted selector,
@@ -1434,11 +1436,13 @@ consumer SIGINT/SIGTERM/SIGKILL leaves that conservative record without automati
 recovery or retry. Only the claiming consumer can finalize it after receiving the result.
 Executor timeout uses SIGKILL and propagates its error as failure.
 
-Omitting `--fixture-script` refuses live invocation until durable Decision 0128
-reservation and independent restore detection exist. Source fixture evidence
-never establishes a live Scout attempt or product outcome. The CLI is local-only;
-`pnpm exec vitest run tests/run-consume-one.test.ts` exercises the disposable
-public path without a running service.
+Admission is mandatory in both modes: omitting any or all admission arguments refuses invocation. Evidence is exact-scope JSON (`ScoutAdmissionEvidence` in `src/scout/runAdmission.ts`), pinned by a separate protected witness. It includes canonical Decision 0128 isolation inputs, current source review/QA, approved assignment, included subscription/capacity and zero-spend policy. A copied or fabricated reservation JSON cannot invoke the shared executor. Production stays Off and the source checkout must be clean at the pinned HEAD.
+
+Both existing SQLite stores contain one `scout_admission` goal row; the runtime creates no schema or seed. Live stores have fixed paths in the normal user config directory: `scout-admission/decision-0128.sqlite` and sibling `scout-admission-witness/decision-0128.sqlite`. They must be outside the fixture and each other's restore directory. The witness retains sequence, lineage, full-history digest and the approved evidence SHA-256. Source/fixture recreation and alternate CLI paths cannot reset live allowance. A newer retained witness detects an older internally valid ledger. The trusted host custodian must preserve the witness independently; privileged replacement of all trusted stores/anchors is outside this guarantee. Missing authentic history stays **remaining allowance unknown**. Do not initialize an empty live ledger or hand-edit history to pass this command. This change provides no live seed/reset or approval-pin update operation.
+
+Every reservation counts even after interruption; ambiguous attribution refuses retry. A retry needs a retained named failure, changed verified source and separate current-source code-review/QA pinned by the independent witness. Three attempts, two repairs, 90 seconds per attempt, 90 minutes including waits, clock rollback and Decision expiry are enforced. The existing GNU `timeout` utility kills the executor process group even after consumer-parent death; missing utility fails closed without installing infrastructure. Omitting `--fixture-script` additionally requires real evidence, fixed host stores and the configured protected workspace. The adapter pins Codex/Luna low, ChatGPT login and OpenAI provider, with no paid key/fallback or metadata shell-command route.
+
+No live history or trial is initialized by this source change. Historical protected-config uncertainty remains unresolved. A scripted fixture result proves source behavior only. From a clean committed checkout, `pnpm exec vitest run tests/run-consume-one.test.ts tests/scout-run-admission.test.ts` runs explicit synthetic stores and the public path with only the external executor scripted. The CLI is local-only; no service or phone/web demo is published. Operator and end-user verification are the same command; expect passing tests, zero live providers and no live workspace/service/remote changes.
 
 ## Common Execution Loop
 

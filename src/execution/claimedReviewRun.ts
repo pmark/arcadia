@@ -4,10 +4,13 @@ import { attachArtifactToExecutionRun, getExecutionRun, updateWorkItem } from ".
 import { executeApprovedReview, type ReviewExecutionResult } from "./reviewExecutor.js";
 import { reduceExecutionOutcome, finalizeGenericRun, finalizeWorkerFailure } from "./runFinalization.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
+import type { ScoutReservation, AdmissionScope } from "../scout/runAdmission.js";
 
 /** Execute an already claimed approved Run; no scheduling, recovery or intake. */
 export function executeClaimedReviewRun(db: Database.Database, workspacePath: string, run: ExecutionRunSummary, decision: ReviewItemSummary, options: {
   fixtureScript?: string;
+  scoutReservation?: ScoutReservation;
+  scoutScope?: AdmissionScope;
   acceptProduct?: (result: ReviewExecutionResult) => void;
   log?: (message: string) => void;
 } = {}) {
@@ -17,7 +20,9 @@ export function executeClaimedReviewRun(db: Database.Database, workspacePath: st
       reviewId: decision.id,
       executorName: run.executor_name ?? undefined,
       runId: run.id,
-      fixtureScript: options.fixtureScript
+      fixtureScript: options.fixtureScript,
+      scoutReservation: options.scoutReservation,
+      scoutScope: options.scoutScope
     });
     const status = reduceExecutionOutcome(result);
     attachArtifactToExecutionRun(db, run.id, result.artifact.id);

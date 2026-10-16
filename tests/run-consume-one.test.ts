@@ -14,6 +14,8 @@ import { createProjectWithInitialWork, createReviewExecutionRun, createReviewIte
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { isolateProcess, type IsolatedProcess } from "./fast-rehearsal/helpers/environment.js";
 import { repoRoot, tsxLoader, runCli } from "./cli-response-fixture.js";
+import { admissionFixture } from "./fixtures/scout-admission.js";
+import * as admissionModule from "../src/scout/runAdmission.js";
 
 const roots: string[] = [];
 let isolation: IsolatedProcess | undefined;
@@ -21,7 +23,8 @@ afterEach(() => { expect(isolation?.guardCalls() ?? []).toEqual([]); isolation?.
 const sourceHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 function fixture(scriptBody = 'writeFileSync("HelloWorld.txt", "Hello World!\\n");') {
   isolation = isolateProcess();
-  const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-consume-one-"))); roots.push(workspace);
+  const fixtureRoot = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-consume-one-"))); roots.push(fixtureRoot);
+  const workspace = path.join(fixtureRoot, "workspace"); mkdirSync(workspace);
   initWorkspace(workspace, { experiment: { enabled: true, allowedRepoRoot: "projects" } });
   const repo = path.join(workspace, "projects", "hello"); mkdirSync(repo, { recursive: true });
   execFileSync("git", ["init", "-q"], { cwd: repo });
@@ -53,12 +56,79 @@ function fixture(scriptBody = 'writeFileSync("HelloWorld.txt", "Hello World!\\n"
     unrelated: getExecutionRun(db, otherId)
   }));
   const before = protectedState();
-  return { workspace, repo, reviewId, options, other, protectedState, before };
+  const admission = admissionFixture({ runId: options.runId!, askId: options.askId, workspace, repo, sourceHead }); roots.push(admission.root);
+  const evidenceFile = path.join(admission.root, "evidence.json");
+  writeFileSync(evidenceFile, JSON.stringify(admission.evidence));
+  options.admissionEvidence = evidenceFile; options.admissionLedger = admission.stores.ledger; options.admissionWitness = admission.stores.witness;
+  return { workspace, repo, reviewId, options, other, protectedState, before, admission };
 }
 function calls(workspace: string) { const file = path.join(workspace, "invocations"); return existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").length : 0; }
-function cliArgs(options: RunConsumeOptions) { return ["run", "consume-one", "--workspace", options.workspace, "--run-id", options.runId!, "--ask-id", options.askId, "--source-head", options.sourceHead, "--fixture-script", options.fixtureScript!, "--json"]; }
+function cliArgs(options: RunConsumeOptions) { return ["run", "consume-one", "--workspace", options.workspace, "--run-id", options.runId!, "--ask-id", options.askId, "--source-head", options.sourceHead, "--fixture-script", options.fixtureScript!,
+  "--admission-evidence", options.admissionEvidence!, "--admission-ledger", options.admissionLedger!, "--admission-witness", options.admissionWitness!, "--json"]; }
+function admittedFixture() {
+  const f = fixture();
+  const admission = f.admission;
+  const evidenceFile = path.join(admission.root, "evidence.json");
+  const save = () => { admission.pin(); writeFileSync(evidenceFile, JSON.stringify(admission.evidence)); };
+  save();
+  const options = { ...f.options, admissionEvidence: evidenceFile, admissionLedger: admission.stores.ledger, admissionWitness: admission.stores.witness };
+  return { ...f, admission, options, save };
+}
 
 describe("public named approved Run consumption", () => {
+  it("reserves before the existing scripted executor and retains the exact completed product", () => {
+    const f = admittedFixture();
+    // Inspect independently durable history inside the external executor, before
+    // producing any output. This is the only scripted execution boundary.
+    writeFileSync(f.options.fixtureScript!, `import Database from ${JSON.stringify(path.join(repoRoot, "node_modules/better-sqlite3/lib/index.js"))}; import {writeFileSync} from 'node:fs';
+      const db=new Database(${JSON.stringify(f.admission.stores.ledger)},{readonly:true}); const h=JSON.parse(db.prepare('SELECT body FROM scout_admission').get().body); db.close();
+      if(h.attempts.length!==1 || h.attempts[0].scope.runId!==${JSON.stringify(f.options.runId)} || h.attempts[0].outcome!=='reserved') process.exit(19);
+      writeFileSync('HelloWorld.txt','Hello World!\\n');`);
+    const result = runCli(cliArgs(f.options)); expect(result.status, result.stderr + result.stdout).toBe(0);
+    const data = JSON.parse(result.stdout).data;
+    expect(data.run.status).toBe("completed"); expect(data.reservation.attempt).toBe(1);
+    expect(f.admission.read().attempts[0].outcome).toBe("completed");
+    expect(readFileSync(path.join(f.repo, "HelloWorld.txt"))).toEqual(Buffer.from("Hello World!\n"));
+    expect(f.protectedState()).toEqual(f.before);
+  });
+
+  it.each(["all", "evidence", "ledger", "witness"])("refuses omission of %s admission arguments, including scripted mode", (missing) => {
+    const f = fixture();
+    if (missing === "all" || missing === "evidence") delete f.options.admissionEvidence;
+    if (missing === "all" || missing === "ledger") delete f.options.admissionLedger;
+    if (missing === "all" || missing === "witness") delete f.options.admissionWitness;
+    expect(() => runRunConsumeCommand(f.options)).toThrow(/reservation, evidence and independent restore detection/);
+    expect(calls(f.workspace)).toBe(0); expect(f.admission.read().attempts).toHaveLength(0);
+  });
+
+  it.each(["authority", "isolation", "node", "model", "timeout-profile", "review", "qa", "paid", "capacity", "scope", "missing-history", "restored-history", "revoked", "source", "missing-witness"])("refuses admission integration %s before the executor", (failure) => {
+    const f = admittedFixture();
+    if (failure === "authority") f.admission.evidence.assignment.approved = false as true;
+    if (failure === "isolation") f.admission.evidence.isolation.after = null;
+    if (failure === "node") f.admission.evidence.isolation.pins.nodeVersion = "v20.0.0";
+    if (failure === "model") f.admission.evidence.isolation.pins.model = "gpt-6";
+    if (failure === "timeout-profile") f.admission.evidence.isolation.pins.effort = "medium";
+    if (failure === "review") f.admission.evidence.codeReview.sourceHead = "0".repeat(40);
+    if (failure === "qa") f.admission.evidence.qa.session = f.admission.evidence.assignment.implementer;
+    if (failure === "paid") f.admission.evidence.billing.incrementalPaidCeiling = 1 as 0;
+    if (failure === "capacity") f.admission.evidence.capacity.usagePolicy = "unknown";
+    if (failure === "scope") f.admission.evidence.scope.runId = "other";
+    if (failure === "revoked") withDatabase(f.workspace, (db) => db.prepare("UPDATE review_items SET status = 'rejected' WHERE id = ?").run(f.reviewId));
+    if (failure === "source") f.options.sourceHead = "0".repeat(40);
+    f.save();
+    if (failure === "missing-history") rmSync(f.options.admissionLedger);
+    if (failure === "missing-witness") rmSync(f.options.admissionWitness);
+    if (failure === "restored-history") {
+      // Keep an internally valid old ledger and a newer independent witness.
+      const old = readFileSync(f.options.admissionLedger);
+      const { reserveScoutAttempt } = admissionModule;
+      reserveScoutAttempt(f.admission.stores, f.admission.evidence, f.admission.evidence.scope, "scripted-fixture");
+      writeFileSync(f.options.admissionLedger, old);
+    }
+    expect(() => runRunConsumeCommand(f.options)).toThrow();
+    expect(calls(f.workspace)).toBe(0); expect(f.protectedState()).toEqual(f.before);
+    expect(withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!)?.status)).toBe("pending_execution");
+  });
   it("completes one correlated Run and exact product Artifact via the CLI with zero providers or protected writes", () => {
     const f = fixture();
     const result = runCli(cliArgs(f.options));
@@ -102,7 +172,7 @@ describe("public named approved Run consumption", () => {
     if (failure === "other-plan") withDatabase(f.workspace, (db) => db.prepare("UPDATE execution_runs SET plan_id = NULL WHERE id = ?").run(f.options.runId));
     if (failure === "forged-receipt") withDatabase(f.workspace, (db) => db.prepare("UPDATE review_items SET decision_note = 'approved' WHERE id = ?").run(f.reviewId));
     if (failure === "source") options.sourceHead = "0".repeat(40);
-    if (failure === "live") delete options.fixtureScript;
+    if (failure === "live") { delete options.fixtureScript; delete options.admissionEvidence; }
     if (failure === "production") withDatabase(f.workspace, (db) => db.prepare("UPDATE production_policy SET desired_state = 'active'").run());
     if (failure === "nonfixture") { const configPath = path.join(f.workspace, "config", "arcadia.json"); const config = JSON.parse(readFileSync(configPath, "utf8")); delete config.experiment; writeFileSync(configPath, JSON.stringify(config)); }
     if (failure === "unrelated") options.runId = f.other!.id;

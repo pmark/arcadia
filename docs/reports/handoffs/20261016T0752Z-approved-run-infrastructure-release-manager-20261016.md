@@ -1,3 +1,94 @@
+# Approved Run infrastructure — current derived checkpoint
+
+Project: Arcadia. Milestone: Execute one approved named Run safely with Production Off.
+Current source assignment: `execute-one-approved-named-run-safely-with-production-off#enforce-durable-run-admission` (Action 2, seven acceptance criteria). The Plan remains **draft**; `PROJECT.md` still names `claude-worker-launch-replay`. This source assignment does not enroll a governed Session, activate a Plan, or move a queue.
+
+Parent/canonical Lead with assigned supervision: chat `01a143b1-15fa-70b1-86af-9866e6e74874`. Sole Action 2 writer: chat `01a143ec-6da4-7300-a8d6-b16e76014446`, candidate `/Users/pmark/.codex/worktrees/0c59/arcadia`, branch `codex/durable-run-admission-20261016`, base `31450cff4c1c18d9b6720c308abc50c87152ded2`. Current candidate head is the commit containing this checkpoint; exact pushed/reviewed hashes belong in the PR receipt. No other candidate or primary checkout was changed.
+
+Action 1 merged as [PR #1455](https://github.com/pmark/arcadia/pull/1455), merge `31450cff4c1c18d9b6720c308abc50c87152ded2`, after independent review/QA and seven CI jobs. Its governed completion is `asksettle_7f4a352b9a5545a19e`; Issue #1389 is closed. The manager verified these at assignment. The raw Action 1/R1 evidence below is retained as history, not current gate state. Action 3 remains unstarted and requires its own assignment after Action 2 delivery.
+
+Authority: named source assignment relaying the actual operator message `01a143ae-bcb4-7a53-afea-728203cf34dc` in chat `01a14252-a1fc-77e3-9f7d-10d62e50ebdf`: “It’s merged, so let’s pull main and start a new session for a release manager and their team to build the entire plan without stopping”. The manager verified actual human content. No live trial, provider invocation, merge, install or restart is authorized in this assignment. Source work may continue after the live Decision expiry; it cannot renew live authority.
+
+Budget: one 75-minute initial pass, deadline `2026-10-16T10:10:00Z`; one scoped repair pass up to 20 minutes per verified named failure, at most three per same failure, with manager notification before extra allowance. No delegation. Separate independent reviewer/QA chats are manager-owned; normally at most three rounds, significant-defect exception up to five. Actual host model, effort and token usage are unknown; the configured host model was retained. Standalone standard-tier role brief `/private/tmp/durable-run-admission-role-0c59.json` is a recommendation, not runtime/model/enrollment evidence.
+
+## Action 2 implementation and trusted-store boundary
+
+`src/scout/runAdmission.ts` uses the existing SQLite dependency and shared executor/claim/finalization path. It adds no workspace migration, daemon, scheduling, orphan recovery, FIFO selection or orchestration harness. Admission reads **existing stores only**, with one stable Decision 0128 HelloWorld goal independent of source, Run, invocation and fixture. Each immediate transaction checks retained cumulative attempts, repairs, first reservation/launch bound, last clock, and the separately retained witness. The ledger commits before the witness; a process crash between commits creates a detectable mismatch and fails closed. Full synchronous writes precede executor invocation. A reservation remains consumed after parent interruption; ambiguous attribution cannot retry automatically.
+
+The independent witness is a separate SQLite file outside the ledger's restore directory and outside the fixture. It retains lineage, sequence, full-history digest, and the SHA-256 of approved exact-scope evidence. Restoring an earlier internally valid ledger while retaining a newer witness refuses admission. A ledger-local digest is insufficient. Both stores serialize on the witness write lock; partial commits reduce availability, never restore allowance.
+
+Live mode has fixed paths relative to the supported user configuration directory: `scout-admission/decision-0128.sqlite` and sibling `scout-admission-witness/decision-0128.sqlite`. It refuses redirected HOME/config/capacity roots and verifies the protected workspace against the normal configured default. Source revision/fixture recreation or caller-supplied paths cannot choose a fresh live budget. Scripted tests explicitly seed **synthetic** stores outside their disposable fixture; those seeds are not live history. There is no runtime initialization, reset, migration, live-history fabrication or evidence-pin update command. Fresh authentic prior history and approved evidence in both trusted stores are prerequisites; absent those, remaining actual allowance is **unknown** and invocation refuses. Do not create empty live stores to make the gate pass.
+
+Trust boundary: the operator/host custodian protects the configuration root, approved evidence pin and independently retained witness from ledger/fixture restore. This detects restoration of the ledger alone, including an internally valid old snapshot. It does **not** claim protection against privileged replacement of every trusted store or its host trust anchor. Witness approval pins prove custody of supplied evidence; session labels in test receipts do not prove governed lineage. No actual Session enrollment is fabricated.
+
+The public consumer requires all three admission arguments even with `--fixture-script`; omission of the whole bundle is not a legacy bypass. Before reservation it rechecks current approved Ask/Run scope, Production Off, immutable clean source, clean allowed no-remote fixture repo, Node 22, exact Luna/low isolation and fresh protected observations, separate current-source review/QA and included subscription/capacity. The independent witness pins the entire evidence bundle. Missing, unknown, paid, fallback, stale, unrelated or restored evidence refuses invocation. Real execution cannot use simulated evidence or another store pair.
+
+An opaque in-process capability binds the successful reservation to the exact Run, Ask, source, workspace/repository and mode. The shared executor consumes it once at the invocation boundary; forged/copied JSON and the ordinary worker cannot use it. The live adapter is fixed to Codex/Luna low with ChatGPT login and OpenAI provider, without configured adapter fallback, inherited billing keys or metadata shell commands. [Official Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) documents `forced_login_method`, provider and reasoning configuration (retrieved 2026-10-16).
+
+The existing executor uses the existing host GNU `timeout` utility for its own process-group deadline, with SIGKILL, so consumer-parent death does not remove the wall timer. Missing/unsupported GNU timeout refuses execution; nothing installs it. The effective provider bound is the smaller of 90 seconds, reservation time remaining, total-loop deadline and Decision expiry; preparation counts against it. Fixture scripts retain their tighter five-second cap. The outer synchronous timeout is a final failure guard, not the durable timer. No second worker or coding harness is introduced.
+
+## Action 2 criterion evidence / current gates
+
+| Criterion | Evidence and remaining gate |
+| --- | --- |
+| 1: stable history | `tests/scout-run-admission.test.ts` restarts a real process, changes source and recreates the fixture while retaining first launch/goal/cumulative counts. |
+| 2: transactional bounds | Concurrent independent processes and crash injections prove reservation before the scripted boundary, consumed ambiguity, three-attempt/two-repair/90-second and 90-minute bounds. Public fixture checks the durable row from inside the only external executor. |
+| 3: refusals/retries | Module and public fixtures reject expiry, rollback, missing/corrupt/exhausted history, authority/isolation/Node/model/review/QA/capacity/billing failures, omitted bundle and unchanged/unattributed failure or source. Retry requires changed source, named retained failure, verified fix and independently pinned review/QA. |
+| 4: restore witness | An old valid SQLite ledger snapshot is restored after a newer committed reservation; the independently retained witness refuses it. Tests also kill the process after ledger commit but before witness commit. Trust boundary above is explicit. |
+| 5: public integration | Mandatory admission bundle, shared opaque capability, exact product oracle, and external scripted execution only. Ordinary worker/provider refusal, timeout and parent-kill regressions from Action 1 are retained. Final clean-head test receipt pending below. |
+| 6: honest allowance/spend | Actual live attempts and runtime repairs in this assignment: 0. Remaining actual allowance unknown; historical protected-config attribution unresolved. No paid credit/reset/API billing/provider fallback is admitted. Runtime usage/cost unknown; fixture incremental paid spend $0. |
+| 7: independent delivery | Separate current-head Code-reviewer/QA and all seven CI jobs await PR creation/manager coordination. Local focused tests/lint/TypeScript/build and current-head fast rehearsal required before handback. Completion Ask is prepared only after all criteria are evidenced; the manager coordinates concrete authorization-reviewed apply. |
+
+## Action 2 raw commands and friction
+
+- `arcadia work monitor --no-pull-requests`: exit 0; unrelated historical dirty worktrees preserved. This candidate was clean and isolated at the verified base.
+- `node scripts/bridge-worktree-deps.mjs`: exit 0, four dependency trees bridged through the supported script.
+- `git switch -c codex/durable-run-admission-20261016`: initial sandbox refusal on shared Git metadata; the exact branch creation through ordinary host permission succeeded, exit 0. No primary working files or main branch were changed.
+- `arcadia role brief --role implementer --agent codex --tier standard --action execute-one-approved-named-run-safely-with-production-off#enforce-durable-run-admission --repo /Users/pmark/.codex/worktrees/0c59/arcadia --json`: exit 0.
+- Scoped Learn searches retrieved `lesson_5f2612ea3b0f890ae421`, `lesson_5af0ff4ade855263638d`, and `lesson_a55f226c43c6da10e722`; evidence was read before implementation. No new provider/model calls were used by deterministic validation.
+- Initial module proof: `pnpm exec vitest run tests/scout-run-admission.test.ts`, exit 0, 20/20; expanded crash/trust-anchor proof, exit 0, 21/21. Raw receipts `/private/tmp/admission-tests1.log`, `/private/tmp/admission-tests2.log`.
+- Intermediate unchanged Action 1 + isolation + initial admission proof: `pnpm exec vitest run tests/run-consume-one.test.ts tests/scout-run-admission.test.ts tests/scout-isolation-preflight.test.ts`, exit 0, 93/93. Raw receipt `/private/tmp/admission-focused1.log`. This predates mandatory bundle integration and is not final acceptance.
+- TypeScript initially identified `never`-function narrowing and a generic catch return. Corrected with an explicit function declaration/return; subsequent TypeScript and focused ESLint passed. Failed raw receipts `/private/tmp/admission-tsc-initial.log`, `/private/tmp/admission-tsc2.log`; final receipts below supersede them. No test or gate was weakened.
+
+Next safe moves: commit initial source/tests/docs; run final clean-head focused proof, lint/type/build, fast rehearsal/report and derived-record checks; preserve evidence; push/open the PR and hold code for independent review/QA. No merge or live attempt. Host refusal or the assigned budget cap requires a concrete preserved blocker, not a replacement workspace or reset budget.
+
+## Action 2 instruction retrieval receipt
+
+Byte counts are filesystem UTF-8 sizes, not token counts or claims that historical prose was all loaded. Project frontmatter/current active Action, exact seven Action 2 criteria and full Decision 0128 were retrieved. Procedures: startup/isolation/identity/review/CI/handoff; repository Orientation, semantics, operator guide, PR QA, working-copy and experiment boundaries. Notes: worktree dependencies, SQLite permission refusal, single-file Vitest and fast-rehearsal prior remedies. Skills: role/guardrail in full and OpenAI Docs for fixed login/provider settings. Initial combined reads were truncated; relevant active Action and procedure sections were retrieved separately. No mandatory reference was missing. Scoped retained lessons and cited R1 checkpoint evidence are named above; historical source config uncertainty was preserved.
+
+| Loaded instruction/reference | Bytes |
+| --- | ---: |
+| `AGENTS.md` | 10100 |
+| `CONSTITUTION.md` | 3320 |
+| `PROJECT.md` | 31677 |
+| `.arcadia/AGENT_CONTEXT_POLICY.md` | 539 |
+| `.arcadia/repo-context.md` | 703 |
+| `.arcadia/context-policy.json` | 870 |
+| `docs/agent-guidance/index.json` | 9449 |
+| `.agents/skills/arcadia-role/SKILL.md` | 9080 |
+| `.agents/skills/arcadia-guardrail/SKILL.md` | 5565 |
+| `docs/agent-guidance/continuation.md` | 7256 |
+| `docs/agent-guidance/operator-directed-work.md` | 4494 |
+| `docs/agent-guidance/learning.md` | 2458 |
+| `docs/working-copy-safety.md` | 16202 |
+| `docs/agent-guidance/session-roles-and-briefs.md` | 6152 |
+| `docs/agent-guidance/native-app-sessions.md` | 9061 |
+| `docs/agent-guidance/standard-harness.md` | 5569 |
+| `docs/agent-guidance/chat-titles.md` | 4766 |
+| `docs/agent-guidance/agent-asks.md` | 22884 |
+| `docs/agent-guidance/git-identity.md` | 5248 |
+| `docs/agent-guidance/pull-requests.md` | 17585 |
+| `docs/agent-guidance/arcadia-repository.md` | 30174 |
+| `docs/arcadia-semantics.md` | 15647 |
+| `docs/AGENT_ORIENTATION.md` | 13594 |
+| `docs/notes-to-self.md` | 39635 |
+| `docs/plans/execute-one-approved-named-run-safely-with-production-off.md` | 10146 |
+| `docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md` | 12400 |
+| `docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md` | 7256 |
+| `docs/scout/CONTINUE.md` | 18829 |
+
+## Action 1 historical checkpoint (preserved verbatim)
+
 # Approved named Run consumer — implementer checkpoint
 
 Project: Arcadia. Milestone: Execute one approved named Run safely with Production Off.

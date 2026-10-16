@@ -26,6 +26,8 @@ import {
   approvedReviewScopeSha256,
   approvedRunScopeMatches
 } from "./approvedReviewScope.js";
+import { consumeScoutReservation, type ScoutReservation, type AdmissionScope } from "../scout/runAdmission.js";
+import { readProductionPolicy } from "../production/policy.js";
 
 export type ExecutorName = "codex" | "claude-code" | "gemini" | (string & {});
 export type PromptMode = "stdin" | "prompt-file";
@@ -38,6 +40,8 @@ export interface ReviewExecutionOptions {
   executorName?: ExecutorName;
   runId?: string;
   fixtureScript?: string;
+  scoutReservation?: ScoutReservation;
+  scoutScope?: AdmissionScope;
 }
 
 export interface ReviewExecutionResult {
@@ -145,7 +149,7 @@ function fixtureExecutor(workspace: string, review: ReviewItemSummary, db: Datab
 }
 
 /** Read-only approval check, shared by bounded admission and execution. */
-export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions) {
+export function assertApprovedReview(db: Database.Database, options: ReviewExecutionOptions, inspectBoundedAdmission = false) {
   const triggerReview = getReviewItem(db, options.reviewId) ?? getReviewItemBySlug(db, options.reviewId);
   if (!triggerReview) {
     throw validationError("Requires Review Decision was not found.", { id: options.reviewId });
@@ -153,7 +157,7 @@ export function assertApprovedReview(db: Database.Database, options: ReviewExecu
   const review = executionReviewForTrigger(db, triggerReview);
   const approvalRun = options.runId ? getExecutionRun(db, options.runId) : null;
   const fixture = options.fixtureScript ? fixtureExecutor(options.workspace, review, db, options.fixtureScript) : null;
-  if (!canExecuteReview(triggerReview, review, approvalRun, fixture !== null)) {
+  if (!canExecuteReview(triggerReview, review, approvalRun, fixture !== null || inspectBoundedAdmission || options.scoutReservation !== undefined)) {
     throw validationError("Execution requires a current approved Run receipt for this Review and Action.", {
       id: triggerReview.id,
       status: triggerReview.status,
@@ -198,14 +202,31 @@ export function executeApprovedReview(
   if (isProjectProposal) {
     prepareProjectProposalRepository(repoPath, metadata, review.id);
   }
+  const boundedAsk = review.ask_request_id !== null && review.decision_note === "Approved from Ask. Execution queued.";
+  // Every caller, including the ordinary worker, reaches this boundary. A JSON
+  // receipt or widened approval inspection can never stand in for reservation.
+  const admissionRequired = !!options.scoutReservation || (boundedAsk && !fixture);
+  if (admissionRequired) {
+    if (!options.scoutScope || options.scoutScope.runId !== options.runId || options.scoutScope.repo !== repoPath
+      || options.scoutScope.workspace !== options.workspace || options.scoutScope.askId !== review.ask_request_id) {
+      throw validationError("Exact-scope durable Scout admission is required.");
+    }
+  }
+  const boundedExecutor = !admissionRequired || fixture ? null : normalizeExecutorConfig({
+    name: "codex", commandTemplate: "codex", args: ["exec", "--model", "gpt-6-luna", "-c", 'model_reasoning_effort="low"',
+      "-c", 'forced_login_method="chatgpt"', "-c", 'model_provider="openai"',
+      "--sandbox", "workspace-write", "--cd", "{repoPath}", "--skip-git-repo-check", "-"],
+    promptMode: "stdin", workingDirectory: "repo", outputCapture: "combined", timeoutMs: 90_000,
+    environmentAllowlist: ["PATH", "HOME", "SHELL", "TERM", "TMPDIR"]
+  });
   const executor = withProjectProposalNetwork(
-    fixture ?? resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
+    fixture ?? boundedExecutor ?? resolveExecutorAdapter(options.workspace, repoPath, options.executorName ?? DEFAULT_EXECUTOR),
     isProjectProposal
   );
   const plan = review.plan_id ? getExecutionPlan(db, review.plan_id) : null;
   // Scripted fixture execution uses its caller's fixed exact-product oracle.
   // Never let fixture metadata select shell commands or configured providers.
-  const validationCommands = fixture ? [] : parseStringArray(metadata?.validation_commands);
+  const validationCommands = fixture || admissionRequired ? [] : parseStringArray(metadata?.validation_commands);
 
   const runId = options.runId ?? createId("executionRun");
   const startedAt = new Date().toISOString();
@@ -241,17 +262,34 @@ export function executeApprovedReview(
     workItemId: workItem?.id ?? ""
   });
 
+  // Consume at the last synchronous boundary, after packet preparation. The
+  // remaining reservation includes that preparation and all prior waits.
+  if (admissionRequired) {
+    if (readProductionPolicy(db).desiredState !== "inactive") throw validationError("Production must remain Off at invocation.");
+    // GNU timeout is an existing host utility, not a worker/harness. Its
+    // separate process survives consumer SIGKILL and kills the executor group.
+    // A missing/unsupported utility fails closed; never install one here.
+    const found = spawnSync("which", ["timeout"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
+    const timeoutPath = found.stdout?.trim() ?? "";
+    if (found.status !== 0 || !path.isAbsolute(timeoutPath)) throw validationError("Durable execution requires the existing GNU timeout utility.");
+    const deadline = spawnSync(timeoutPath, ["--version"], { encoding: "utf8", timeout: 1000, env: buildAllowedEnvironment(["PATH"]) });
+    if (deadline.status !== 0 || !deadline.stdout?.includes("GNU coreutils")) throw validationError("Durable execution requires the existing GNU timeout utility.");
+    executor.timeoutMs = Math.min(executor.timeoutMs, consumeScoutReservation(options.scoutReservation, options.scoutScope!, fixture ? "scripted-fixture" : "live"));
+    command.unshift(timeoutPath, "--signal=KILL", `${Math.max(1, Math.floor(executor.timeoutMs)) / 1000}s`);
+  }
   const run = spawnSync(command[0] ?? "", command.slice(1), {
     cwd: cwdForExecutor(executor, repoPath, options.workspace),
     input: executor.promptMode === "stdin" ? packet : undefined,
     env: buildAllowedEnvironment(executor.environmentAllowlist),
     encoding: "utf8",
-    timeout: executor.timeoutMs,
+    timeout: executor.timeoutMs + (admissionRequired ? 1000 : 0),
     killSignal: "SIGKILL",
     maxBuffer: 20 * 1024 * 1024
   });
   const endedAt = new Date().toISOString();
-  const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT");
+  const timedOut = Boolean(run.error && "code" in run.error && run.error.code === "ETIMEDOUT")
+    || (admissionRequired && (run.status === 124 || run.status === 137 || run.signal === "SIGKILL"));
+  const executionError = run.error?.message ?? (timedOut ? "ETIMEDOUT: bounded executor deadline exceeded" : null);
   const output = captureOutput(executor.outputCapture, run.stdout ?? "", run.stderr ?? "");
   const outputPath = path.join(artifactRoot, "executor-output.txt");
   writeFileSync(outputPath, output, "utf8");
@@ -279,7 +317,7 @@ export function executeApprovedReview(
     exitStatus: run.status,
     signal: run.signal,
     timedOut,
-    error: run.error?.message ?? null,
+    error: executionError,
     preGitStatus: preGitStatus.stdout,
     changedFiles,
     validation,
@@ -357,7 +395,7 @@ export function executeApprovedReview(
     endedAt,
     exitStatus: run.status,
     signal: run.signal,
-    error: run.error?.message ?? null,
+    error: executionError,
     timedOut,
     changedFiles,
     validation,
