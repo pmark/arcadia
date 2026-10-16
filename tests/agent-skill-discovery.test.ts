@@ -26,7 +26,15 @@ describe("three-agent shared skill discovery", () => {
     expect(inspectAgentSkills(root).join("\n")).toContain("must link to the shared source");
   });
   it("rejects a new shared skill that Claude cannot discover", () => {
-    expect(inspectAgentSkills(fixture())).length(1);
+    expect(inspectAgentSkills(fixture())).toHaveLength(1);
+  });
+  it.each([".claude", ".opencode", ".codex"])("rejects a skill created only under %s", (provider) => {
+    const root = fixture();
+    symlinkSync("../../.agents/skills/example", path.join(root, ".claude/skills/example"));
+    const isolated = path.join(root, provider, "skills/provider-only");
+    mkdirSync(isolated, { recursive: true });
+    writeFileSync(path.join(isolated, "SKILL.md"), "---\nname: provider-only\ndescription: Missing shared source\n---\n");
+    expect(inspectAgentSkills(root).join("\n")).toContain("provider entry must link to a shared skill");
   });
   it("rejects a stale alias pointing at a different skill source", () => {
     const root = fixture();

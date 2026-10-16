@@ -24,12 +24,13 @@ session start. No claim of live cross-provider behavior is made from symlinks.
 
 ## Validation
 
-- Discovery regression: 5 tests pass (valid shared source; missing Claude alias;
-  stale source; nonportable absolute alias; invalid frontmatter).
+- Discovery regression: 8 tests pass (valid shared source; missing Claude alias;
+  stale source; nonportable absolute alias; invalid frontmatter; provider-only skill in each of three directories).
 - Existing generated broker skill setup: 43 tests pass.
 - Agent instruction delivery and skill discovery checks pass for all 3 agents.
 - `pnpm build` passes, including full lint, TypeScript and Discord build.
 - `git diff --check` passes.
+- Standalone skill-creator validator passes with PyYAML isolated in a unique temporary directory.
 - Independent current-head review and CI are recorded on the PR.
 
 ## Friction and prevention
@@ -70,3 +71,12 @@ were loaded. Sections not relevant to the operation were not imported.
 | `docs/agent-guidance/rehearsal-freeze-window.md` | 4690 |
 | `/Users/pmark/.codex/skills/.system/skill-creator/SKILL.md` | 15311 |
 | `/Users/pmark/.codex/worktrees/neutral-arcadia-skills/arcadia/.agents/skills/arcadia-guardrail/SKILL.md` | 5565 |
+
+Independent review round 1 found an unconditional host-specific wait tool in
+Supervisor’s milestone reference and a provider-only discovery validation gap.
+Both are repaired, with three new provider-directory regression cases.
+
+The same concise compatibility rule was persisted in each agent’s global
+instructions (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, and
+`~/.config/opencode/AGENTS.md`) so personal skill maintenance outside this
+repository is covered too. Existing instruction text was preserved.

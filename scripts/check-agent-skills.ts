@@ -34,6 +34,21 @@ export function inspectAgentSkills(root: string): string[] {
       problems.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  for (const provider of [".claude", ".opencode", ".codex"]) {
+    const directory = path.join(root, provider, "skills");
+    if (!existsSync(directory)) continue;
+    for (const name of readdirSync(directory)) {
+      const source = path.join(shared, name);
+      const alias = path.join(directory, name);
+      try {
+        if (!lstatSync(alias).isSymbolicLink() || path.isAbsolute(readlinkSync(alias)) || realpathSync(alias) !== realpathSync(source)) {
+          problems.push(`${provider}/skills/${name}: provider entry must link to a shared skill`);
+        }
+      } catch {
+        problems.push(`${provider}/skills/${name}: missing or broken shared skill link`);
+      }
+    }
+  }
   return problems;
 }
 

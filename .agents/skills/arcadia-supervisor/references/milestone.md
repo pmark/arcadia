@@ -28,11 +28,16 @@ mandatory release gate as an unresolved scope question.
 
 ## Make each cycle useful
 
-Batch independent read-only checks. List relevant chats once, use compact
-`wait_threads` snapshots with returned cursors for known sessions, and read
+Batch independent read-only checks. List relevant chats once, use the host’s
+read-only session status/wait tools with returned cursors when available, and read
 history only for changed/new signals. Retain IDs of dispatched or pending chats
 even if they disappear from the recent list; an unknown create outcome is not
 permission to create a duplicate. Flag inaccessible hosts as a coverage gap.
+
+When the host lacks session tools, use current repository evidence and existing
+read-only Arcadia commands, retain a file handoff, and report the observation
+gap. Do not invent session state or a substitute runner; continue independent
+authorized work.
 
 Then choose the smallest move that reduces the acceptance gap:
 
