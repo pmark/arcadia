@@ -121,7 +121,9 @@ path. Require the child to read this skill, declare its role and depth 1, and
 return help requests to the Lead. When the child is its own chat session, give
 it the `↳` title from `arcadia session title --relation helper` and set that
 title yourself through the host's session-title tool when one exists; the child
-keeps the arrow when it retitles. Specialization never expands authority. If an
+keeps the arrow when it retitles. Run a child session on the operator's host
+in its own worktree unless the operator asked for a cloud or remote one.
+Specialization never expands authority. If an
 implementer writes, the Lead pauses its edits until hand-back. A plan-critic must
 be independent of the planner whose output it critiques. Other delegates are
 read-only. Follow the PR procedure for separate independent review/QA Sessions.
