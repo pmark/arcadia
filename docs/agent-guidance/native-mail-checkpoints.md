@@ -37,7 +37,9 @@ arcadia native-mail inbox --project-slug <project> --plan-slug <plan> \
   --actor "<agent/tier>" --json
 ```
 
-`inbox` records exposure, so it is a write; run it only at a checkpoint.
+`inbox` records exposure and a receipt, so it is a write (its CLI help still
+says "Read-only exposure"; the store and experiment guard treat it as a
+write). Run it only at a checkpoint.
 There is no non-mutating existence probe yet; do not invent one.
 
 ## Handling a message
@@ -48,10 +50,12 @@ There is no non-mutating existence probe yet; do not invent one.
 - `ack` only a message you will actually handle; it refuses wrong Plan, wrong
   recipient, stale generation, expired or disposed mail. A refusal is the
   answer: report it and do not retry under a different identity.
-- Reply with `send --kind reply --reply-to-id <id>`; the original message
-  already carries the sender's incarnation and generation, so no lookup is
-  needed. Use `report` for a self-reported result. `verify` always refuses
-  today; never describe a self-report as verified.
+- Reply with `send --kind reply --reply-to-id <id>`. No lookup command is
+  needed: copy the original message's sender incarnation and generation from
+  its inbox row into `--recipient-incarnation`/`--recipient-generation`, and
+  supply every other required `send` option yourself. Use `report` for a
+  self-reported result. `verify` always refuses today; never describe a
+  self-report as verified.
 - A message to a stopped or closed receiver stays queued until that
   receiver's next explicit checkpoint. Do not claim delivery to an absent model.
 

@@ -21,7 +21,7 @@ was not settled.** The three adapter Actions stay blocked on it.
 | # | Criterion (short) | Status | Evidence / blocker |
 |---|---|---|---|
 | 1 | Bridge + two isolated native managers reach the same configured workspace | **externally blocked** | No configured workspace in this container. Experiment workspaces cannot substitute: `src/workspace/experimentGuard.ts` refuses every native-mail write in them. Needs the operator host with `martianrover`. |
-| 2 | Nonce → ack → transform → reply across fresh Claude and Codex managers, plus wrong-Plan/changed-replay/closed/stale cases | **externally blocked** | Same workspace blocker, and Codex is absent here. Synthetic CLI coverage of the refusal cases already exists in `tests/native-mail.test.ts` (passes, 53/53 with the guidance tests). That is synthetic and is **not** native process proof. |
+| 2 | Nonce → ack → transform → reply across fresh Claude and Codex managers, plus wrong-Plan/changed-replay/closed/stale cases | **externally blocked** | Same workspace blocker, and Codex is absent here. Synthetic CLI coverage of the refusal cases already exists in `tests/native-mail.test.ts` (53/53 with the two guidance test files, run in this session at base `4ac57593d` plus this diff; no log is committed). That is synthetic and is **not** native process proof. |
 | 3 | One indexed checkpoint instruction | **proven (source only)** | `docs/agent-guidance/native-mail-checkpoints.md`, indexed as `native-mail-checkpoints` in `docs/agent-guidance/index.json`; `pnpm check:agent-guidance` exit 0 with no problems for codex, claude and opencode. Not installed anywhere. |
 | 4 | Roundtrip transcripts, receipts, unchanged state, leak check | **externally blocked** | Depends on 1–2. A leak check has no live workspace to compare here. The measurement transcripts below are retained. |
 | 5 | Measured per-provider empty-inbox hook-check token cost | **Claude Code: measured. Codex: blocked. OpenCode: blocked** | See below. No adapter code ships. |
@@ -51,8 +51,9 @@ per distinct API request (`summary.json`, reproduced by `summarize.cjs`):
 | control ×2 | 2 per run | 19099, 19099 | 19462, 19498 | 363, 399 |
 
 Result: on Claude Code 2.1.302 headless, an empty-output SessionStart plus
-PostToolUse hook pair added **0 prompt tokens** at session start and 0 after
-a tool call, compared with the no-hook baseline. The positive control added
+PostToolUse hook pair added **no measurable prompt tokens**: identical to the
+baseline at session start (19050) and within baseline run-to-run noise (119 vs
+119–123) after a tool call. Sample: n=3, one trivial prompt, one model. The positive control added
 49 tokens at session start and visibly more after the tool call, so a
 non-empty hook is detected. Hook events appear in the stream-json transport
 but not in the model's prompt. Total measured spend: about $0.008 (8 runs).
@@ -60,10 +61,10 @@ but not in the model's prompt. Total measured spend: about $0.008 (8 runs).
 Limits, stated rather than assumed:
 
 - **Headless `--print` only.** The interactive TUI and desktop app were not
-  measured. This remote harness surfaces SessionStart output to the model as
-  a `SessionStart:startup hook success: <stdout>` line, so a surface whose
-  hook *prints* anything costs tokens. The measured claim is limited to
-  zero-byte output.
+  measured. Unverified observation, not in the committed data: the parent
+  cloud session showed its own SessionStart hook output to the model as a
+  `SessionStart:startup hook success: <stdout>` line. Any hook that prints
+  costs tokens; the measured claim is limited to zero-byte output.
 - The hook here is a stand-in, not the real two-tier script. The
   `build-claude-code-native-mail-hook` Action must re-verify this against its
   exact built hook (its criterion 1 already requires that).

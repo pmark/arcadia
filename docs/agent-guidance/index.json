@@ -174,7 +174,7 @@
       "trigger": "native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge",
       "path": "docs/agent-guidance/native-mail-checkpoints.md",
       "read_before": "Before checking, acknowledging or replying to native-mail, or briefing a native manager to; explicit checkpoints only, no polling or hooks. Grants no authority.",
-      "sha256": "d50e47f1028d9c120721750055b6d24aa6ddcd6c75164c3839833cf9e1e15b6e"
+      "sha256": "1d43d43362b2e8803c98c4b4b18c010f0ff329c68132d9107a91d888b5da4141"
     }
   ]
 }
