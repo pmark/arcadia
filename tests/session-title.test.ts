@@ -32,7 +32,8 @@ describe("session titles", () => {
       ci: "🔍🟡 WD tidy-docs",
       waiting: "🔍🟠 WD tidy-docs",
       blocked: "🔍🔴 WD tidy-docs",
-      done: "🔍🟢 WD tidy-docs"
+      done: "🔍🟢 WD tidy-docs",
+      parked: "🔍⏸ WD tidy-docs"
     });
   });
 
@@ -42,5 +43,29 @@ describe("session titles", () => {
 
   it("falls back to the session kind when no Plan or Action resolved", () => {
     expect(formatSessionTitle({ kind: "repair", state: "waiting", plan: null, action: null })).toBe("🩹🟠 repair");
+  });
+
+  it("leads a coordinator with the stoplight and a helper with the arrow (chat-titles.md)", () => {
+    expect(formatSessionTitle({
+      kind: "build", state: "waiting", plan: null, action: null, relation: "coordinator",
+      workstream: "Lead trials", details: ["approve pilot budget"]
+    })).toBe("🚦🟠 Lead trials · approve pilot budget");
+    expect(formatSessionTitle({
+      kind: "plan", state: "working", plan: null, action: null, relation: "helper",
+      workstream: "Lead trials", details: ["planner"]
+    })).toBe("↳ 🧭🔵 Lead trials · planner");
+    expect(formatSessionTitle({
+      kind: "build", state: "blocked", plan: null, action: null, relation: "helper",
+      workstream: "Production", details: ["implementer", "blocked: host permission"]
+    })).toBe("↳ 🔨🔴 Production · implementer · blocked: host permission");
+    expect(formatSessionTitle({
+      kind: "build", state: "parked", plan: null, action: null, relation: "coordinator",
+      workstream: "Lead trials", details: ["former coordinator"]
+    })).toBe("🚦⏸ Lead trials · former coordinator");
+  });
+
+  it("keeps the Plan acronym and Action for a helper without a workstream label", () => {
+    expect(formatSessionTitle({ kind: "review", state: "pr", plan: "way-delivery", action: "tidy-docs", relation: "helper" }))
+      .toBe("↳ 🔍🟣 WD tidy-docs");
   });
 });

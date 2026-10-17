@@ -38,6 +38,8 @@ Keep the arrow, kind and state first. Put a recognizable shared workstream name 
 - `🚦⏸ Lead trials · former coordinator`
 - `🚦🟢 Production · merged #1416`
 
+Compose titles with `arcadia session title --kind <kind> --state <state> [--relation coordinator|helper] --workstream <label> [--detail <role or need>]...`, which prints the exact title and reads no workspace. The parent sets each helper session's title itself with the host's session-title tool immediately after starting it, and repeats that title in the helper's brief, so the arrow never depends on the helper remembering it. A helper that retitles keeps the `↳` prefix.
+
 Use a stable short workstream label across the parent and its helpers. Record the exact parent chat link or ID in the helper's brief or handoff; a shared label alone does not prove parentage.
 
 ## Keep the signals truthful

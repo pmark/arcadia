@@ -12,7 +12,7 @@
 export const SESSION_TITLE_KINDS = ["build", "review", "plan", "repair"] as const;
 export type SessionTitleKind = (typeof SESSION_TITLE_KINDS)[number];
 
-export const SESSION_TITLE_STATES = ["working", "pr", "ci", "waiting", "blocked", "done"] as const;
+export const SESSION_TITLE_STATES = ["working", "pr", "ci", "waiting", "blocked", "done", "parked"] as const;
 export type SessionTitleState = (typeof SESSION_TITLE_STATES)[number];
 
 /** Single-code-point emoji only: variation-selector glyphs render at uneven widths. */
@@ -30,8 +30,21 @@ export const SESSION_TITLE_STATE_GLYPHS: Record<SessionTitleState, string> = {
   ci: "🟡",
   waiting: "🟠",
   blocked: "🔴",
-  done: "🟢"
+  done: "🟢",
+  parked: "⏸"
 };
+
+/**
+ * Who the operator should talk to (docs/agent-guidance/chat-titles.md):
+ * `direct` is a contact for its own work, `coordinator` is the one
+ * operator-facing manager of a workstream (🚦 replaces the kind glyph) and
+ * `helper` reports to a named parent coordinator (a leading `↳ `).
+ */
+export const SESSION_TITLE_RELATIONS = ["direct", "coordinator", "helper"] as const;
+export type SessionTitleRelation = (typeof SESSION_TITLE_RELATIONS)[number];
+
+export const COORDINATOR_TITLE_GLYPH = "🚦";
+export const HELPER_TITLE_PREFIX = "↳ ";
 
 const ACRONYM_STOPWORDS = new Set(["a", "an", "and", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"]);
 const MAX_ACRONYM_LENGTH = 4;
@@ -58,6 +71,12 @@ export interface SessionTitleInput {
   plan: string | null;
   /** The current Action id; null when no Action resolved. */
   action: string | null;
+  /** Reporting relationship; defaults to `direct`. */
+  relation?: SessionTitleRelation;
+  /** Short workstream label shared by a coordinator and its helpers; replaces the Plan acronym. */
+  workstream?: string | null;
+  /** Role or task and the specific need, each appended after ` · `. */
+  details?: readonly string[];
 }
 
 /**
@@ -66,9 +85,15 @@ export interface SessionTitleInput {
  * characters go to the part that tells sessions apart.
  */
 export function formatSessionTitle(input: SessionTitleInput): string {
-  const glyphs = `${SESSION_TITLE_KIND_GLYPHS[input.kind]}${SESSION_TITLE_STATE_GLYPHS[input.state]}`;
-  const scope = [input.plan ? planAcronym(input.plan) : "", input.action ?? input.kind].filter(Boolean).join(" ");
-  return `${glyphs} ${scope}`;
+  const relation = input.relation ?? "direct";
+  const kindGlyph = relation === "coordinator" ? COORDINATOR_TITLE_GLYPH : SESSION_TITLE_KIND_GLYPHS[input.kind];
+  const glyphs = `${relation === "helper" ? HELPER_TITLE_PREFIX : ""}${kindGlyph}${SESSION_TITLE_STATE_GLYPHS[input.state]}`;
+  const workstream = input.workstream?.trim();
+  const scope = workstream
+    ? [workstream, input.action ?? ""].filter(Boolean).join(" · ")
+    : [input.plan ? planAcronym(input.plan) : "", input.action ?? input.kind].filter(Boolean).join(" ");
+  const details = (input.details ?? []).map((part) => part.trim()).filter(Boolean);
+  return [`${glyphs} ${scope}`, ...details].join(" · ");
 }
 
 /** Every state's title for one session, so an agent retitles by lookup rather than recomposing. */
