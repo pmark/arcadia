@@ -1,0 +1,117 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-production-claude-plan-20261017",
+  "title": "Activate the production Claude Plan at claude-worker-launch-replay",
+  "script": "activate-production-claude-plan-20261017.sh",
+  "repeatable": false,
+  "problem": "PROJECT.md points at Plan enable-bounded-local-native-release-manager-coordination-with-durable-addressed, whose current Action native-rm-checkpoint-roundtrip is host-only and blocked, so no agent can advance the Project. The critical-path Plan arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider is draft with its first ready Action claude-worker-launch-replay, and no phone path could re-point the Project until now.",
+  "desired_effect": "Accept Agent Ask activate-production-claude-plan-20261017 with --activate --action claude-worker-launch-replay --model standard --effort medium --top: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider becomes the active Plan at claude-worker-launch-replay (standard / medium, as its recommended_model and PR #1406 chose), enable-bounded-local-native-release-manager-coordination-with-durable-addressed returns to draft with every Action and completion state preserved, and this Project's queue segment moves to the top. Revival trigger for the parked native-mail Plan: first-unattended-run is done, or the native coordination gap blocks a production run.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-production-claude-plan-20261017.sh run",
+  "authority": {
+    "does": [
+      "Runs the shared Plan runner's canonical preview, refuses any drift from the pinned before-images or any effect outside the pinned after-images, then applies with identical flags.",
+      "Sets PROJECT.md active_plan, current_action and milestone; sets the activated Plan's status, current_action, recommended_model and recommended_reasoning_effort; returns the previous Plan to draft and clears its current_action; appends one MISSION_LOG.md entry; archives the pinned Ask.",
+      "Replaces this Project's queue segment at the top with the activated Plan's unfinished Actions in dependency order; every other Project keeps its relative order.",
+      "Publishes the one settlement commit with a normal push to origin main and keeps a durable receipt."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, Grant, production run, service restart or merge.",
+      "Never changes any Action's title, status, criteria, dependencies or responsibility in either Plan, including the native-mail Actions.",
+      "Never settles a different Ask, a changed Ask, or a second time; a repeat click verifies and replays the existing settlement.",
+      "Never force-pushes or publishes unrelated local commits."
+    ]
+  },
+  "success": {
+    "effect": "Project arcadia points at arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider / claude-worker-launch-replay; the native-mail Plan is draft; the settlement commit is on origin main.",
+    "next": "The next production tick or Lead dispatch picks up claude-worker-launch-replay from the queue top. Keep the receipt."
+  },
+  "failure": {
+    "effect": "The runner refused before mutation (or, after a local commit, before publication) and recorded the exact reason in its receipt and failure handoff.",
+    "next": "Read the receipt reason: drift or a running Session means re-ask with fresh pins or reconcile the Session; a publication failure is retried by pressing again, which publishes the existing settlement without applying twice."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "9062495af152d0c78ab24ae92da2ea6543085f91"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-production-claude-plan-20261017.yaml",
+      "sha256": "d798bf74ebbcd61e408879165a8e6f5e2daf47b796319387709a12550a156ccd",
+      "proposal": "activate-production-claude-plan-20261017"
+    },
+    "settlement": {
+      "requestId": "activate-production-claude-plan-20261017",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "claude-worker-launch-replay",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+      "previousPlan": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+      "action": "claude-worker-launch-replay",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+        "current_action": "native-rm-checkpoint-roundtrip",
+        "milestone": "Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff."
+      },
+      "projectAfter": {
+        "active_plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "current_action": "claude-worker-launch-replay",
+        "milestone": "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+      },
+      "planBefore": {
+        "slug": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "claude-worker-launch-replay",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "native-rm-checkpoint-roundtrip"
+      },
+      "previousPlanAfter": {
+        "status": "draft",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "claude-worker-launch-replay",
+        "title": "Replay one production tick launch on the claude-code provider and fix whatever stops it reaching a running Session and a draft PR.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/claude-worker-launch-replay",
+        "arcadia/claude-capacity-evidence",
+        "arcadia/first-supervised-claude-run",
+        "arcadia/worker-review-and-merge",
+        "arcadia/production-spend-budget",
+        "arcadia/credential-preflight",
+        "arcadia/first-unattended-run"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}

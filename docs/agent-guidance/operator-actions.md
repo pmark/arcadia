@@ -91,7 +91,7 @@ never does. Do not use the tag for ordinary preparation, observation, or
 deterministic completion evidence.
 
 An operator script that settles Agent Asks declares the exact scope it may
-settle: `agentAsk` (one proposal), `planAmendment` (the shared runner), or, for
+settle: `agentAsk` (one proposal), `planAmendment` or `planActivation` (the shared runner), or, for
 an accepted bulk cleanup, a one-shot `agentAskRejections` block naming the
 reviewed list (`manifest`, `sha256`) and every proposal id it may reject. The
 settlement guard then admits only disposition `rejected` for those ids.

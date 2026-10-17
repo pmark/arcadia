@@ -15,7 +15,9 @@ envelope in `planAmendment`; generate the executable with
 Do not embed settlement commands, parsing, preview fingerprints, extra commands,
 or retry logic. Do not clear or forge operator execution context to bypass a
 refusal. Broader amendments that the runner cannot represent need a capability
-proposal, not a bespoke operator script.
+proposal, not a bespoke operator script. Activating a draft Plan uses the
+same runner and launcher with a pinned `planActivation`
+(`arcadia-plan-activation-v1`) envelope instead.
 
 Run `mise exec -- pnpm check:operator-scripts` before publishing any library
 entry. CI and `/runs` share that contract check, and the canonical settlement
