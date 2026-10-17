@@ -89,8 +89,8 @@ function validateActivationDocuments(input: PlanActivationInput, documents: Docu
   for (const [file, pinnedBefore, pinnedAfter, label] of managed) {
     const changes = documents.filter((change) => change.path === file);
     if (changes.length !== 1 || !changes[0].before || !changes[0].after) refuse("UNEXPECTED_EFFECTS", `Preview must change ${label} ${file} exactly once.`);
-    const before = documentState(changes[0].before!);
-    const after = documentState(changes[0].after!);
+    const before = documentState(changes[0].before);
+    const after = documentState(changes[0].after);
     pinnedFieldsMatch(before.fields, pinnedBefore, `${label} before`);
     const expected = structuredClone(before);
     for (const [key, value] of Object.entries(pinnedAfter)) {
@@ -108,8 +108,8 @@ function validateActivationDocuments(input: PlanActivationInput, documents: Docu
   const logs = documents.filter((change) => change.path === e.log);
   if (logs.length !== 1 || logs[0].after === null) refuse("UNEXPECTED_EFFECTS", `Preview must append exactly one ${e.log} entry.`);
   const logBefore = logs[0].before ?? "";
-  const appended = logs[0].after!.slice(logBefore.length);
-  if (!logs[0].after!.startsWith(logBefore) || !appended.includes(`Agent Ask ${input.ask.proposal}`) || !appended.includes(`Activated ${e.plan} at ${e.action}.`)) {
+  const appended = logs[0].after.slice(logBefore.length);
+  if (!logs[0].after.startsWith(logBefore) || !appended.includes(`Agent Ask ${input.ask.proposal}`) || !appended.includes(`Activated ${e.plan} at ${e.action}.`)) {
     refuse("UNEXPECTED_EFFECTS", `${e.log} must only append this activation's entry.`);
   }
   const pinnedPaths = new Set([...managed.map(([file]) => file), e.log]);

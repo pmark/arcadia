@@ -78,6 +78,28 @@ with an ownership recheck before removal; live claims
 refuse duplicate clicks. An invocation that dies before recording its result
 gets a launcher failure receipt and preserves any existing canonical receipt.
 
+## Plan activation
+
+`arcadia-plan-activation-v1` is the second pinned shape of the same runner: a
+descriptor's `planActivation` settles one accepted `intent: plan` Ask that
+targets a draft Plan and carries no Actions, with exactly
+`--activate --action <id> --model <id> --effort <level> --top`. It uses the same
+launcher, lock, receipts, canonical preview/apply with identical flags, write
+fence, replay and normal push. Besides the checkout, Ask and settlement pins,
+its envelope pins the `PROJECT.md` before-image (`slug`, `active_plan`,
+`current_action`, `milestone`) and after-image, both Plans' before-images and
+after-images (`status`, `current_action`; the activated Plan also its
+`recommended_model` and `recommended_reasoning_effort`), the first Action's
+identity, status, responsibility and clarification, the Mission Log path, and
+the Project queue segment in dependency order. In images, `null` means absent.
+The contract refuses after-images that do not follow from the before-images and
+flags. The only allowed effects are those images plus each document's update
+date, one appended Mission Log entry, the Ask archival, and this Project's queue
+segment at the top with every other Project's order preserved. The canonical
+settlement still refuses a running Session or Run and an Active production
+scope covering the current Plan. `tests/plan-activation-runner.test.ts` covers
+it.
+
 Validate candidate descriptors before publishing their buttons:
 
 ```sh
