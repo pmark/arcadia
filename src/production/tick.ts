@@ -20,7 +20,7 @@ import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBran
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { activeActionScopeGate, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -2054,6 +2054,26 @@ function attemptProjectLaunch(
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
     transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
+  }
+  // Issue #1512: an Action-scoped Active policy selects only Actions it names.
+  // The scheduling pass already points at the first ready in-scope queued
+  // Action; when it could not (no in-scope Action is ready, or the pointer
+  // move was held), the pointer still names an out-of-scope Action, which is
+  // never auto-settled, packet-prepared, launched or escalated here. Its
+  // per-Action bookkeeping is pruned like any other Action that is not current.
+  const selected = transition.dispatch.context;
+  if (selected) {
+    const inScope = activeActionScopeGate(db, input.projectSlug, selected.activePlan);
+    const selectedKey = `${input.projectSlug}/${selected.action.id}`;
+    if (inScope && !inScope(selectedKey)) {
+      pruneStaleOperatorEscalations(db, input.projectSlug, null);
+      return {
+        attempted: false,
+        outcome: "skipped",
+        reason: `The pointer names ${selectedKey}, which is outside the Active production scope; production waits for an in-scope Action to become current.`,
+        actionKey: null
+      };
+    }
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
     // `dispatch` is resolved before the lease/competing-run check that

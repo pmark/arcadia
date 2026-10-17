@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { getProjectBySlug, listActionableReviewItems, updateReviewItemStatus } from "../src/db/repositories.js";
 import { loadActionOrder } from "../src/dispatch/order.js";
+import { activateProduction, deactivateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
@@ -442,6 +443,61 @@ describe("scheduling pass", () => {
       expect(attempts).toBe(3);
       expect(recovered.projects[0]?.reconcileError).toBeNull();
       expect(recovered.projects[0]?.reconcile).not.toBeNull();
+    });
+  });
+
+  it("points at the first ready in-scope queued Action while an Action-scoped policy is Active, and at the queue head once it is Off (Issue #1512)", () => {
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }, { id: "c" }] }]);
+    const at = (minute: number) => new Date(`2026-10-17T10:0${minute}:00.000Z`);
+    const activate = (db: Parameters<typeof activateProduction>[0], requestId: string, actions: string[]) => {
+      const scope = normalizeProductionScope({
+        intent: "Run only the scoped Action.", projects: ["alpha"], plans: ["alpha/alpha-plan"], actions,
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: ["pointer"]
+      });
+      activateProduction(db, { requestId, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    };
+    withDatabase(fx.workspace, (db) => {
+      // Queue [a (ready, out of scope), b (ready, in scope), c]: the scheduler
+      // points at b, never back at the queue head a.
+      activate(db, "grant-scoped-b", ["alpha/b"]);
+      expect(buildProjectSchedule(db, getProjectBySlug(db, "alpha")!)).toMatchObject({ next: "alpha/b", actionScoped: true });
+      const first = runSchedulingPass(db, { now: at(0) });
+      expect(first.projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
+      expect(first.selection).toEqual({ projectSlug: "alpha", actionKey: "alpha/b" });
+      const again = runSchedulingPass(db, { now: at(1) });
+      expect(again.projects[0]?.pointer).toMatchObject({ moved: false, to: "b" });
+    });
+    expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: b");
+    expect(git(fx.repos.alpha, ["log", "-1", "--format=%s"]).trim()).toBe("chore(arcadia): point at b");
+
+    withDatabase(fx.workspace, (db) => {
+      // A scope naming no Action of this Project leaves the pointer alone
+      // rather than re-pointing at an out-of-scope head.
+      activate(db, "grant-elsewhere", ["alpha/not-in-plan"]);
+      const held = runSchedulingPass(db, { now: at(2) });
+      expect(held.projects[0]?.next).toBeNull();
+      expect(held.projects[0]?.pointer).toMatchObject({ moved: false, from: "b", to: "b" });
+      expect(held.projects[0]?.pointer.reason).toContain("inside the Active production scope");
+
+      // Off: no Action scope applies, so today's queue-head behavior returns.
+      deactivateProduction(db, { requestId: "off-1" });
+      expect(buildProjectSchedule(db, getProjectBySlug(db, "alpha")!)).toMatchObject({ next: "alpha/a", actionScoped: false });
+      const off = runSchedulingPass(db, { now: at(3) });
+      expect(off.projects[0]?.pointer).toMatchObject({ moved: true, from: "b", to: "a" });
+    });
+    expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+  });
+
+  it("keeps queue-head selection under an Active policy whose scope lists no Actions", () => {
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
+    withDatabase(fx.workspace, (db) => {
+      const scope = normalizeProductionScope({
+        intent: "Run the whole Plan.", projects: ["alpha"], plans: ["alpha/alpha-plan"], actions: [],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: ["pointer"]
+      });
+      activateProduction(db, { requestId: "grant-whole-plan", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+      expect(buildProjectSchedule(db, getProjectBySlug(db, "alpha")!)).toMatchObject({ next: "alpha/a", actionScoped: false });
+      expect(runSchedulingPass(db, { now: new Date("2026-10-17T11:00:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
     });
   });
 

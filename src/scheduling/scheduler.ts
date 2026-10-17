@@ -279,7 +279,10 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
 
 /**
  * Move the governed pointer to the canonical next Action when it names
- * something else that is not running. Uses the same preview-then-apply
+ * something else that is not running. While an Active policy scopes the
+ * Project by Action, that is the first ready queued in-scope Action
+ * (`ProjectSchedule.next`, Issue #1512), so a governed `make-next` to it is
+ * not undone by a re-point to an out-of-scope queue head. Uses the same preview-then-apply
  * transition `advance queue make-next` uses, so the documents and the commit
  * are identical to what an operator would have produced by hand.
  */
@@ -289,7 +292,11 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const actionId = actionKey ? actionKey.slice(schedule.projectSlug.length + 1) : null;
   const unchanged = (reason: string) => ({ moved: false, from, to: from, reason });
   if (schedule.pausedReason) return unchanged(`Project is paused: ${schedule.pausedReason}`);
-  if (!actionKey || !actionId) return unchanged("No runnable Action in the canonical queue.");
+  if (!actionKey || !actionId) {
+    return unchanged(schedule.actionScoped
+      ? "No ready queued Action is inside the Active production scope; the pointer is left where it is."
+      : "No runnable Action in the canonical queue.");
+  }
   if (from === actionId) return unchanged("The governed pointer already names the canonical next Action.");
   if (!schedule.repositoryRoot) return unchanged("No repository to write the pointer in.");
   const current = schedule.actions.find((action) => action.actionId === from);
@@ -341,7 +348,12 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
       next: { currentAction: actionId, receipt: applied.id }
     });
     log(`Scheduler pointed ${schedule.projectSlug} at ${actionId} (was ${from ?? "none"}).`);
-    return { moved: true, from, to: actionId, reason: "Canonical queue selected a different next Action." };
+    return {
+      moved: true, from, to: actionId,
+      reason: schedule.actionScoped
+        ? "The first ready queued Action inside the Active production scope differs from the pointer."
+        : "Canonical queue selected a different next Action."
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`Scheduler could not move the pointer for ${schedule.projectSlug}: ${message}`);
