@@ -258,6 +258,15 @@ import { assertPreparedDispatchAdmission } from "./sessions/dispatchAdmission.js
 import { resolveReadyWorkspace } from "./cli/workspace.js";
 import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import {
+  formatSessionTitle,
+  SESSION_TITLE_KINDS,
+  SESSION_TITLE_RELATIONS,
+  SESSION_TITLE_STATES,
+  type SessionTitleKind,
+  type SessionTitleRelation,
+  type SessionTitleState
+} from "./sessions/sessionTitle.js";
+import {
   renderGoBrokerEnsureSuccess,
   renderGoBrokerInstallSuccess,
   renderGoBrokerStatusSuccess,
@@ -2252,6 +2261,19 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string | undefined, options: { workspace: string; json?: boolean }) =>
     runCliAction("session.show", options, () => runSessionShowCommand({ workspace: options.workspace, id }), renderSessionShowSuccess)
+  );
+  addJsonOption(
+    session.command("title")
+      .description("Format a chat title by the chat-title convention (docs/agent-guidance/chat-titles.md): 🚦 for the coordinator, a leading ↳ for a helper; reads no workspace")
+      .requiredOption("--kind <kind>", `Session kind: ${SESSION_TITLE_KINDS.join(", ")}`)
+      .requiredOption("--state <state>", `State: ${SESSION_TITLE_STATES.join(", ")}`)
+      .option("--relation <relation>", `Reporting relationship: ${SESSION_TITLE_RELATIONS.join(", ")}`, "direct")
+      .option("--workstream <label>", "Short workstream label shared with the coordinator")
+      .option("--plan <slug>", "Active Plan slug, abbreviated when no workstream is given")
+      .option("--action <id>", "Current Action id")
+      .option("--detail <text>", "Role, task or specific need; repeatable, each joined with ' · '", (value: string, previous: string[]) => [...previous, value], [] as string[])
+  ).action((options: { kind: string; state: string; relation: string; workstream?: string; plan?: string; action?: string; detail: string[]; json?: boolean }) =>
+    runCliAction("session.title", options, () => runSessionTitleCommand(options), (response) => [response.data.title])
   );
   addJsonOption(
     session.command("preview-launch")
@@ -5925,4 +5947,21 @@ function renderWorkspaceResolveSuccess(response: CommandSuccess<WorkspaceResolve
       ? [`Refused fallback: ${response.data.refused.source} ${response.data.refused.workspacePath ?? ""}`.trimEnd(), `Fix: ${response.data.refused.remedy}`]
       : [])
   ];
+}
+
+function runSessionTitleCommand(options: { kind: string; state: string; relation: string; workstream?: string; plan?: string; action?: string; detail: string[] }) {
+  const oneOf = <T extends string>(name: string, value: string, allowed: readonly T[]): T => {
+    if ((allowed as readonly string[]).includes(value)) return value as T;
+    throw validationError(`--${name} must be one of: ${allowed.join(", ")}.`, { [name]: value });
+  };
+  const title = formatSessionTitle({
+    kind: oneOf<SessionTitleKind>("kind", options.kind, SESSION_TITLE_KINDS),
+    state: oneOf<SessionTitleState>("state", options.state, SESSION_TITLE_STATES),
+    relation: oneOf<SessionTitleRelation>("relation", options.relation, SESSION_TITLE_RELATIONS),
+    workstream: options.workstream ?? null,
+    plan: options.plan ?? null,
+    action: options.action ?? null,
+    details: options.detail
+  });
+  return { ok: true as const, command: "session.title", data: { title }, artifacts: [], warnings: [] };
 }

@@ -13,6 +13,8 @@ Decision 0121 amends its deterministic-only behavior with event-triggered
 light-tier supervision on friction/exception signals and at session end,
 possibly covering several Sessions. Read those exact approved Decisions and
 [the shared role protocol](../arcadia-role/SKILL.md) before acting.
+An operator-facing supervisor chat titles itself with 🚦 and each helper chat it
+starts with `↳`, using `arcadia session title` as that protocol describes.
 
 ## Enter or resume
 

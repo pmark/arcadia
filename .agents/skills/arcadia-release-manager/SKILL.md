@@ -55,8 +55,13 @@ or a claim that managed production is running.
 
 Use one operator-facing release manager per Project. Keep coding and review
 owners in the background, aggregate their evidence and unblockers, and avoid
-requiring the operator to relay between chats. Use the operator's requested
-stoplight title and update it when the actual state changes.
+requiring the operator to relay between chats. Title this chat as the
+coordinator (`🚦<state> <workstream> · <need>`) and every helper session you
+start as `↳ <kind><state> <workstream> · <role>`, both from `arcadia session
+title` (docs/agent-guidance/chat-titles.md). Set a helper's title yourself with
+the host's session-title tool right after starting it, and put that title and
+your chat ID in its brief. Retitle on each real state change. Without a title
+tool, record the exact titles in the handoff and report that capability gap.
 
 Record the direct operator instruction's coordination and dispatch scope once,
 with the existing attempt, time, capacity and spend limits. Reuse it for routine

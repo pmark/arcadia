@@ -267,7 +267,8 @@ describe("protected Arcadia go broker", () => {
           ci: "🩹🟡 repair",
           waiting: "🩹🟠 repair",
           blocked: "🩹🔴 repair",
-          done: "🩹🟢 repair"
+          done: "🩹🟢 repair",
+          parked: "🩹⏸ repair"
         }
       });
     });

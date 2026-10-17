@@ -82,7 +82,9 @@ stop the affected operation, preserve work and report the exact remedy.
   completion from a partial proof. The only stopping terminals are a PR or a
   plainly labelled actionable numbered picker; each live choice states its
   consequence, session end/restart and sufficient model/effort. Retitle on
-  every state change using the brief's `sessionTitles` when available.
+  every state change from the brief's `sessionTitles` or `arcadia session
+  title`: coordinators lead with 🚦, helpers with `↳`; a parent titles each
+  helper session it starts.
 - **Operator steps:** use a validated script/descriptor in the main checkout's
   `/runs` library for bounded operator-only authority, verify live publication,
   pin scope/preconditions and keep receipts. Buttons are not for deterministic

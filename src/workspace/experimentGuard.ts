@@ -231,6 +231,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "advance queue undo": ALLOWED,
   "session show": ALLOWED,
   "session preview-launch": ALLOWED,
+  "session title": exempt("Formats a chat title from its arguments; reads no workspace."),
   "session launch": ALLOWED,
   "session reconcile": ALLOWED,
   "pr assess-blast-radius": ALLOWED,
