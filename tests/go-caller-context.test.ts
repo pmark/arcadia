@@ -14,7 +14,8 @@ import * as sessions from "../src/sessions/index.js";
 import { canonicalPath, reserveAgentWorktree } from "../src/sessions/index.js";
 
 const roots: string[] = [];
-const now = new Date("2026-10-16T12:00:00.000Z");
+// Real time: reservations expire 24 h after `now` and some read paths check the wall clock.
+const now = new Date();
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function git(repo: string, ...args: string[]) { return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(); }
 function doc(root: string, name: string, text: string) { mkdirSync(path.dirname(path.join(root, name)), { recursive: true }); writeFileSync(path.join(root, name), text); }
