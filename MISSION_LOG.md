@@ -2568,3 +2568,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan enable-bounded-local-native-release-manager-coordination-with-durable-addressed remains draft with completion state preserved. Operator handoff 2026-10-17 to the Release Manager: reach the milestone 'Arcadia runs production unattended on its own repository on the Claude provider' as fast as possible; reactivate the production Plan at claude-worker-launch-replay, either by the team's card or a host settle with --activate. The current Plan's native-rm-checkpoint-roundtrip is deferred until first-unattended-run is done or the coordination gap blocks a production run; its Action state is preserved. No Action content changes.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-17 — Completed arcadia/claude-worker-launch-replay
+
+- **Did:** Completed Action arcadia/claude-worker-launch-replay from accepted evidence (Candidate 75a6438782fb9c24fde469a5a5847a04c739c99d).
+- **Result:** Every declared acceptance criterion was accepted as met: "A replay test drives the real worker tick launch path on the claude-code provider in an experiment workspace (Decision 0082) or the fast-rehearsal harness, with only external services faked, and asserts the Session row reaches status running and a draft PR is recorded."; "Every defect the replay finds is fixed with a test that fails before the fix, and the replay is kept as a regression scenario."; "The replay names whether the 2026-10-11 tmux failure reproduces on claude-code, with its retained cause, or records it as not reproduced."; "Focused tests, lint, tsc and pnpm build pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-claude-worker-launch-replay-20261017-r2).
