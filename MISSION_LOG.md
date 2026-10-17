@@ -2589,3 +2589,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The preflight refuses a launch whose provider credential is expired or unrefreshable, names the provider and the remedy card, and pings the operator once."; "Hermetic tests cover a valid credential, an expired one and an unreadable state treated as unknown."; "No host credential configuration is modified by the code or its tests.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-credential-preflight-20261017).
+
+## 2026-10-17 — Completed arcadia/production-spend-budget
+
+- **Did:** Completed Action arcadia/production-spend-budget from accepted evidence (Candidate cb1226e0043295f1f09fe5e203bfa114f6d26dcf).
+- **Result:** Every declared acceptance criterion was accepted as met: "Admission refuses a launch that would breach the budget or the operator reserve set by Decisions 0103 and 0111, with the refusal shown in production status on the same tick."; "Hermetic tests cover under-budget admission, budget refusal, reserve refusal and an unreadable usage reading treated as unknown, never as admitted."; "A test asserts the workspace config file hash is unchanged after the suite, and the suite makes zero live provider calls.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-production-spend-budget-20261017).
