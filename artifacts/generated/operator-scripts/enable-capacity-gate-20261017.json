@@ -1,0 +1,39 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "enable-capacity-gate-20261017",
+  "title": "Turn the capacity gate on for the martianrover workspace",
+  "script": "enable-capacity-gate-20261017.sh",
+  "repeatable": false,
+  "problem": "The live workspace config sets codingAgent.capacityGateEnabled: false, so every provider reads \"unmetered by config\". Decision 0130's read-only Claude usage check with its 80% cap, and the pre-admission usage refresh from PR #1492, therefore never apply. Decision 0123 makes removing that flag operator-owned, and the operator never runs host commands.",
+  "desired_effect": "Turns the capacity gate on: Claude launches are then admitted only on a fresh read-only usage reading; Codex/OpenCode without fresh readings are refused. Mechanically: while managed production reads Inactive, removes exactly the key capacityGateEnabled (pinned value false) from the codingAgent object of /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/config/arcadia.json, leaving every other field and value unchanged, and writes a receipt with the before and after sha256.",
+  "operator_command": "artifacts/generated/operator-scripts/enable-capacity-gate-20261017.sh run",
+  "authority": {
+    "does": [
+      "Resolves the workspace the ordinary way and refuses unless it is exactly the pinned /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover.",
+      "Refuses unless the config is canonical JSON and codingAgent.capacityGateEnabled reads exactly false (drift refusal; absent means the gate is already on).",
+      "Refuses while managed production is Active, and fails closed when production state cannot be read.",
+      "Removes that one key with an atomic rewrite, re-reads it through the real config loader to prove the gate is enforced for every provider, and records before/after sha256 and both images in the run directory."
+    ],
+    "never_does": [
+      "Never changes any other config field, the database, production policy, a Plan, a Decision, a Grant or a service.",
+      "Never starts, restarts or stops a Session, worker or service; already-running work is untouched (production must be Off anyway).",
+      "Never runs twice: a recorded success refuses every later press, and the inverse (adding capacityGateEnabled: false back) is not built as a card.",
+      "Never calls a provider or reads a credential."
+    ]
+  },
+  "success": {
+    "effect": "codingAgent.capacityGateEnabled is absent from the martianrover config, so the capacity gate is on for every provider. The receipt records the before/after sha256.",
+    "next": "Claude launches are admitted only on a fresh read-only usage reading (Decision 0130, 80% cap); Codex/OpenCode without fresh readings are refused. To undo, the operator decides separately to add \"capacityGateEnabled\": false back inside codingAgent while production is Off."
+  },
+  "failure": {
+    "effect": "Nothing was changed. The receipt names the refusal: PRODUCTION_ACTIVE_FREEZE, PRECONDITION_DRIFT, WORKSPACE_DRIFT, NONCANONICAL_CONFIG, ALREADY_APPLIED or PRODUCTION_FREEZE_UNVERIFIED.",
+    "next": "PRODUCTION_ACTIVE_FREEZE: turn production Off on /production, then press again. PRECONDITION_DRIFT showing the field absent: the gate is already on, nothing to do. Any other drift: ask for a freshly pinned card."
+  },
+  "workspaceConfigEdit": {
+    "schema": "arcadia-workspace-config-edit-v1",
+    "workspace": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover",
+    "operation": "remove",
+    "field": "codingAgent.capacityGateEnabled",
+    "expected": false
+  }
+}
