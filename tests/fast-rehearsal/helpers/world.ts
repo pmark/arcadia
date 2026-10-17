@@ -107,10 +107,11 @@ export class FastRehearsal extends Rehearsal {
   private lastIntegrated: string | null = null;
   private expecting: string | null = null;
 
-  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean; longChain?: boolean } = {}) {
+  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean; longChain?: boolean; workerMerge?: boolean } = {}) {
     super({
       independentReviewers: "tick",
       ...(options.thirdAction ? { thirdAction: true } : {}),
+      ...(options.workerMerge ? { workerMerge: true } : {}),
       ...(options.longChain ? { fixturePlan: longChainFixture(), validationCommand: CHAIN_VALIDATION } : {})
     });
     process.env.ARCADIA_WORKSPACE = this.workspace;

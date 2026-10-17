@@ -62,7 +62,9 @@ launch; reconciliation of the exited Session; terminal preservation (commit,
 validation, push to a real bare remote, draft PR body with the host-rendered
 Operator QA plan); the tick's PR readiness, checks wait and both host review
 commands (`qa code-review`, `qa pr`) with their deterministic checks;
-integration by local fast-forward; the completion Agent Ask (`agent-ask
+integration by local fast-forward (or, in `worker-merge.test.ts`, the worker's
+GitHub merge with `--match-head-commit` under the grant's opt-in, Decision
+0097); the completion Agent Ask (`agent-ask
 draft`, `preview`, `settle` in the candidate) and with it Plan, pointer and
 queue advancement; operator escalations and `production status`.
 

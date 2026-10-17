@@ -1422,6 +1422,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
+      .option("--integration-grant-merge-pull-request", "Opt in (default off): the worker merges a covered candidate's PR on GitHub at its exact independently reviewed head when checks are green and it is not authority-adjacent (Decision 0097); needs the grant and --remote-preservation")
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
       .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
   ).action((options: ProductionCliOptions) =>
@@ -1443,6 +1444,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
+      .option("--integration-grant-merge-pull-request", "Opt in (default off): the worker merges a covered candidate's PR on GitHub at its exact independently reviewed head when checks are green and it is not authority-adjacent (Decision 0097); needs the grant and --remote-preservation")
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
       .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
       .requiredOption("--request-id <id>", "Idempotency key for this grant")
@@ -5391,6 +5393,7 @@ interface ProductionCliOptions {
   integrationGrantDecision?: string;
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];
+  integrationGrantMergePullRequest?: boolean;
   rehearsalExceptionExpiresAt?: string;
   packetApprovalExpiresAt?: string;
   json?: boolean;

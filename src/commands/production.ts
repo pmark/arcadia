@@ -36,6 +36,7 @@ import {
   reactivateProduction,
   type ProductionReactivationPreview
 } from "../production/reactivation.js";
+import { listWorkerMerges, operatorMergeQueue, type OperatorMergeQueueEntry, type WorkerMergeRecord } from "../production/workerMerge.js";
 import {
   getProductionOperatorEscalationKind,
   getProductionRepairAttempts,
@@ -83,6 +84,12 @@ export interface ProductionPreviewOptions {
   integrationGrantDecision?: string;
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];
+  /**
+   * From `--integration-grant-merge-pull-request`: the worker merges a covered
+   * candidate's PR on GitHub at its exact reviewed head (Decision 0097) instead
+   * of the local fast-forward. Default off; needs the grant and remote preservation.
+   */
+  integrationGrantMergePullRequest?: boolean;
   /** Expiring rehearsal exception that raises the concurrency gate's cap for the ready-set-admission proof. */
   rehearsalExceptionExpiresAt?: string;
   /** Expiry of the packet_approval delegation; required when it is named (Decision 0072). */
@@ -140,6 +147,10 @@ export interface ProductionStatusData {
   launchBlockers: LaunchBlockerRecord[];
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: OperatorEscalation[];
+  /** The worker's recorded pull-request merge outcomes (Decision 0097), newest first. */
+  workerMerges?: WorkerMergeRecord[];
+  /** Authority-adjacent PRs the worker refused to merge; they wait for the operator's batch-merge card. */
+  operatorMergeQueue?: OperatorMergeQueueEntry[];
   /** Tokens recorded per Session attempt, next to each Action, oldest first. */
   attemptTokens?: ProductionAttemptTokens[];
   /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
@@ -202,6 +213,8 @@ export function runProductionStatusCommand(
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
+      workerMerges: listWorkerMerges(db, 10),
+      operatorMergeQueue: operatorMergeQueue(db),
       attemptTokens: listProductionAttemptTokens(db),
       redAlerts: listOpenRedAlerts(db),
       redAlertDiagnoses: listRedAlertDiagnoses(db),
@@ -553,6 +566,7 @@ export function renderProductionStatusSuccess(
       if (policy.scope.packetApprovalExpiresAt) lines.push(`  Packet approval expires: ${policy.scope.packetApprovalExpiresAt}`);
       lines.push(`  Remote preservation: ${describeRemotePreservation(policy.scope.remotePreservation)}`);
       lines.push(`  Candidate integration grant: ${describeIntegrationGrant(policy.scope.integrationGrant)}`);
+      lines.push(`  Worker pull-request merge: ${describeWorkerPullRequestMerge(policy.scope.integrationGrant)}`);
     }
     if (policy.authority) {
       lines.push(`  Authority: ${policy.authority.grantedBy} at ${policy.authority.grantedAt}`);
@@ -601,6 +615,19 @@ export function renderProductionStatusSuccess(
     }
   }
 
+  const mergeQueue = response.data.operatorMergeQueue ?? [];
+  if (mergeQueue.length > 0) {
+    lines.push(`  Awaiting the operator's batch-merge card (authority-adjacent, never merged by the worker) (${mergeQueue.length}):`);
+    for (const entry of mergeQueue) lines.push(`    ${entry.pullRequestUrl} at ${entry.headSha.slice(0, 12)}: ${entry.why}`);
+  }
+  const workerMerges = response.data.workerMerges ?? [];
+  if (workerMerges.length > 0) {
+    lines.push(`  Worker merges (latest ${workerMerges.length}):`);
+    for (const row of workerMerges) {
+      lines.push(`    ${row.action_key} ${row.head.slice(0, 12)} ${row.outcome}${row.code ? ` [${row.code}]` : ""} at ${row.updated_at}: ${row.reason}`);
+    }
+  }
+
   const attemptTokens = response.data.attemptTokens ?? [];
   if (attemptTokens.length > 0) {
     lines.push(`  Tokens per attempt (${attemptTokens.length}):`);
@@ -632,6 +659,7 @@ export function renderProductionPreviewSuccess(
     ...(preview.scope.packetApprovalExpiresAt ? [`  Packet approval expires: ${preview.scope.packetApprovalExpiresAt}`] : []),
     `  Remote preservation: ${describeRemotePreservation(preview.scope.remotePreservation)}`,
     `  Candidate integration grant: ${describeIntegrationGrant(preview.scope.integrationGrant)}`,
+    `  Worker pull-request merge: ${describeWorkerPullRequestMerge(preview.scope.integrationGrant)}`,
     `  Scope fingerprint: ${preview.scopeFingerprint}`,
     `  Expected revision: ${preview.expectedRevision ?? "unknown"}`,
     `  Ordered Action scope (${preview.orderedActions.length}):`
@@ -800,14 +828,24 @@ function previewInput(options: ProductionPreviewOptions, workspacePath: string) 
 function parseIntegrationGrant(options: ProductionPreviewOptions) {
   const decisionRef = options.integrationGrantDecision?.trim();
   const expiresAt = options.integrationGrantExpiresAt?.trim();
-  if (!decisionRef && !expiresAt) return null;
+  if (!decisionRef && !expiresAt) {
+    if (options.integrationGrantMergePullRequest === true) {
+      throw validationError("--integration-grant-merge-pull-request needs a candidate-integration grant (--integration-grant-decision and --integration-grant-expires-at).", {});
+    }
+    return null;
+  }
   if (!decisionRef || !expiresAt) {
     throw validationError(
       "A candidate-integration grant needs both --integration-grant-decision and --integration-grant-expires-at.",
       { decision: decisionRef ?? null, expiresAt: expiresAt ?? null }
     );
   }
-  return { decisionRef, expiresAt, actions: options.integrationGrantAction ?? [] };
+  return {
+    decisionRef,
+    expiresAt,
+    actions: options.integrationGrantAction ?? [],
+    ...(options.integrationGrantMergePullRequest === true ? { mergeThroughPullRequest: true } : {})
+  };
 }
 
 /**
@@ -831,6 +869,13 @@ function describeIntegrationGrant(grant: ProductionIntegrationGrant | undefined)
   if (!grant) return "none (preservation only; a merge stays an operator step)";
   const scope = grant.actions.length > 0 ? grant.actions.join(", ") : "the scope's own Actions";
   return `Decision ${grant.decisionRef}, expires ${grant.expiresAt}, covers ${scope}`;
+}
+
+/** The worker pull-request merge opt-in (Decision 0097), always shown so its state is never implied. */
+export function describeWorkerPullRequestMerge(grant: ProductionIntegrationGrant | undefined): string {
+  return grant?.mergeThroughPullRequest === true
+    ? "ON — the worker merges a covered candidate's PR on GitHub only at its exact independently reviewed head, with every check green, merge state CLEAN and a blast radius that is not authority-adjacent; authority-adjacent PRs wait for the operator's batch-merge card"
+    : "off — the worker never merges a pull request (grant with --integration-grant-merge-pull-request)";
 }
 
 function parseTransitions(raw?: string): MechanicalTransition[] {

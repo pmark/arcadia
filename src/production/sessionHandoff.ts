@@ -10,6 +10,7 @@ import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBas
 import { policyAuthorizesRemotePreservation, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 import { findOperatorLaunchAuthorization, operatorLaunchAuthorityFor } from "../sessions/operatorLaunch.js";
+import { mergeCandidatePullRequest, type WorkerMergeDeps, type WorkerMergeRefusalCode } from "./workerMerge.js";
 
 /**
  * The A-to-B seam the plan's critical path leaves open: a managed-production
@@ -34,7 +35,7 @@ export type PreservationStep =
 export type IntegrationStep =
   | { kind: "integrated"; baseBranch: string; commits: number }
   | { kind: "already_integrated"; baseBranch: string }
-  | { kind: "refused"; reason: string; operatorMergeCommand: string | null };
+  | { kind: "refused"; reason: string; operatorMergeCommand: string | null; code?: WorkerMergeRefusalCode };
 
 export interface SessionHandoffResult {
   preservation: PreservationStep;
@@ -53,6 +54,11 @@ export interface PreserveSessionDeps {
 export interface IntegrateSessionDeps {
   /** Injected for deterministic fixtures; defaults to a real `git merge --ff-only`. */
   fastForward?: (input: { repoRoot: string; branch: string; commitSha: string }) => void;
+  /**
+   * The worker pull-request merge's `gh` runner and base sync (Decision 0097),
+   * used only when the grant opts in with `mergeThroughPullRequest`.
+   */
+  workerMerge?: WorkerMergeDeps;
 }
 
 export interface SessionHandoffInput {
@@ -354,6 +360,17 @@ function integrationAuthority(db: Database.Database, session: AgentSession, at: 
   return { ok: true, policy };
 }
 
+/** The host-created PR of this Session's worker preservation, when one exists. */
+function workerPullRequestUrl(db: Database.Database, session: AgentSession): string | null {
+  try {
+    const row = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+      .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
+    return row ? (JSON.parse(row.receipt_json) as { pullRequestUrl?: string | null }).pullRequestUrl ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
 function refusal(reason: string, merge: string | null): IntegrationStep {
   return { kind: "refused", reason, operatorMergeCommand: merge };
 }
@@ -428,10 +445,22 @@ export function integrateSessionCandidate(
 
   // Only a real fast-forward writes the base, so only it needs the verdicts:
   // the exact head both current independent verdicts bind, nothing newer.
+  // Under the worker pull-request merge opt-in (Decision 0097) the same gate
+  // decides, and the PR is merged on GitHub instead of fast-forwarded here.
+  const mergeThroughPullRequest = policy.scope?.integrationGrant?.mergeThroughPullRequest === true;
+  if (mergeThroughPullRequest && !input.verdictGate) {
+    return { kind: "refused", reason: "Worker merge refused (review_missing): no independent verdict gate was consulted for this candidate.", operatorMergeCommand: merge, code: "review_missing" };
+  }
   let candidateHead = expectedCandidateHead;
+  let reviewed: VerdictGate | null = null;
   if (input.verdictGate) {
     const gate = input.verdictGate();
-    if (!gate.satisfied) return refusal(gate.reason, merge);
+    if (!gate.satisfied) {
+      return mergeThroughPullRequest
+        ? { kind: "refused", reason: `Worker merge refused (review_missing): ${gate.reason}`, operatorMergeCommand: merge, code: "review_missing" }
+        : refusal(gate.reason, merge);
+    }
+    reviewed = gate;
     // The gate may have run a reviewer for minutes: Off, a new epoch, a
     // narrowed scope or a grant that expired in the meantime (checked against
     // a fresh clock) withholds the fast-forward, before any write. The
@@ -450,6 +479,28 @@ export function integrateSessionCandidate(
 
   const commitSha = candidateHead ?? branch;
   const commits = countCommits(repoRoot, baseBranch, commitSha);
+  if (mergeThroughPullRequest) {
+    if (!candidateHead || !reviewed) {
+      return { kind: "refused", reason: "Worker merge refused (review_missing): no exact reviewed head is known for this candidate.", operatorMergeCommand: merge, code: "review_missing" };
+    }
+    const merged = mergeCandidatePullRequest({
+      db, repoRoot, baseBranch, sessionId: session.id, actionKey: actionKey(session), head: candidateHead,
+      // The terminal guards verified this head is the candidate's own governed completion settlement.
+      settlementCommit: expectedCandidateHead ?? null,
+      pullRequestUrl: workerPullRequestUrl(db, session),
+      review: reviewed,
+      now,
+      authorityChanged: () => {
+        const current = integrationAuthority(db, session, (input.clock ?? (() => now))());
+        if (!current.ok) return current.reason;
+        if (current.policy.epoch !== policy.epoch) return `the production epoch changed (${policy.epoch} -> ${current.policy.epoch})`;
+        return current.policy.scope?.integrationGrant?.mergeThroughPullRequest === true ? null : "the worker pull-request merge opt-in was withdrawn";
+      }
+    }, deps.workerMerge ?? {});
+    if (merged.kind === "merged") return { kind: "integrated", baseBranch, commits };
+    if (merged.kind === "withheld") return refusal(merged.reason, merge);
+    return { kind: "refused", reason: merged.reason, operatorMergeCommand: merged.operatorMergeCommand, code: merged.code };
+  }
   try {
     if (deps.fastForward) deps.fastForward({ repoRoot, branch, commitSha });
     else git(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", commitSha]);
