@@ -297,13 +297,18 @@ describe("unattended admission refuses what it cannot prove", () => {
     expect(decision.reason).toContain("7d");
   });
 
-  it("refuses unreadable usage, never admits it", () => {
-    const unreadable = decisionFor("codex-cli", {
-      rateLimits: [{ label: "5h", usedPercentage: Number.NaN, resetsAt: "2026-09-06T15:00:00.000Z" }]
-    });
-    const none = decisionFor("codex-cli", { rateLimits: [] });
-    expect(unreadable.admitted).toBe(false);
-    expect(none).toMatchObject({ admitted: false, code: "capacity_unknown" });
+  it.each([["NaN", Number.NaN], ["negative", -5], ["Infinity", Number.POSITIVE_INFINITY], ["-Infinity", Number.NEGATIVE_INFINITY]])(
+    "refuses unreadable usage (%s), never admits it",
+    (_name, usedPercentage) => {
+      const decision = decisionFor("codex-cli", {
+        rateLimits: [{ label: "5h", usedPercentage, resetsAt: "2026-09-06T15:00:00.000Z" }]
+      });
+      expect(decision).toMatchObject({ admitted: false, code: "capacity_unknown" });
+    }
+  );
+
+  it("refuses when no window is reported", () => {
+    expect(decisionFor("codex-cli", { rateLimits: [] })).toMatchObject({ admitted: false, code: "capacity_unknown" });
   });
 });
 
