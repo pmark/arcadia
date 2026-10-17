@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildBatchMergeCard, type BatchPrFacts } from "../src/decisions/batchMerge.js";
 import {
   evaluateWorkerMerge,
+  isWorkerMergeSafePath,
   listWorkerMerges,
   mergeCandidatePullRequest,
   operatorMergeQueue,
@@ -308,7 +309,17 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     "Constitution.md",
     "docs/reports/AGENTS.md",
     "Tests/helpers/rehearsalHarness.ts",
-    "docs/.hidden/x.md"
+    "docs/.hidden/x.md",
+    // Round 3 hardening: procedure documents, the hot cache, entry documents and test fixtures/setup.
+    "docs/notes-to-self.md",
+    "docs/working-copy-safety.md",
+    "docs/planning-process.md",
+    "docs/managed-documents.md",
+    "START_HERE.md",
+    "INSTALL_WITH_A_CODING_AGENT.md",
+    "tests/e2e/global-setup.ts",
+    "tests/e2e/fixtures/workspace.json",
+    "tests/fixtures/plan.md"
   ])("refuses %s as authority_adjacent and never calls merge", (file) => {
     candidate({ [file]: "changed\n" });
     const outcome = merge();
@@ -365,6 +376,21 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     const outcome = merge({ syncFails: true });
     expect(outcome).toMatchObject({ kind: "refused", code: "base_not_synced", operatorMergeCommand: null });
     expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
+  });
+});
+
+describe("the worker-merge allowlist and the agent-guidance index", () => {
+  it("refuses every procedure target the index lists, so a new one cannot slip in", () => {
+    const index = JSON.parse(readFileSync(path.join(import.meta.dirname, "..", "docs", "agent-guidance", "index.json"), "utf8")) as unknown;
+    const targets = new Set<string>();
+    JSON.stringify(index, (_key, value: unknown) => {
+      if (typeof value === "string" && /^[\w./-]+\.[a-z]+(?:#.*)?$/i.test(value) && value.includes("/")) targets.add(value.split("#")[0]);
+      return value;
+    });
+    expect(targets.size).toBeGreaterThan(10);
+    for (const target of ["docs/working-copy-safety.md", "docs/planning-process.md", "docs/managed-documents.md"]) expect(targets).toContain(target);
+    const allowed = [...targets].filter((target) => isWorkerMergeSafePath(target) || isWorkerMergeSafePath(target.toUpperCase()));
+    expect(allowed).toEqual([]);
   });
 });
 

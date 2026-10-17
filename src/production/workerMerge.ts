@@ -183,12 +183,26 @@ export function evaluateWorkerMerge(facts: WorkerMergeFacts): WorkerMergeEvaluat
  * assessment still apply on top, and renames count both paths.
  */
 const WORKER_MERGE_SAFE_PATHS: readonly RegExp[] = [
-  /^tests\/(?!helpers\/|fast-rehearsal\/helpers\/|setup)[^\0]+$/,
+  /^tests\/(?!helpers\/|fast-rehearsal\/helpers\/|setup|e2e\/global-setup|e2e\/fixtures\/|fixtures\/)[^\0]+$/,
   /^docs\/(?!decisions\/|agent-guidance\/|plans\/|scout\/|agents-context\.md$|managed-production-readiness\.md$)[^\0]+\.md$/,
   /^[a-z0-9_-]+\.md$/
 ];
 const GOVERNANCE_FILE_NAMES = new Set([
   "agents.md", "claude.md", "project.md", "constitution.md", "north_star.md", "operator_context.md", "mission_log.md", "codeowners"
+]);
+/**
+ * Documents agents load as working procedure, lowercased: every procedure
+ * target `docs/agent-guidance/index.json` lists outside `docs/agent-guidance/`
+ * (a test asserts that every index target is refused), the verified hot
+ * cache, and the operator's entry documents.
+ */
+export const WORKER_MERGE_EXCLUDED_DOCUMENTS: ReadonlySet<string> = new Set([
+  "docs/notes-to-self.md",
+  "docs/working-copy-safety.md",
+  "docs/planning-process.md",
+  "docs/managed-documents.md",
+  "start_here.md",
+  "install_with_a_coding_agent.md"
 ]);
 
 /** Whether one agent-changed path is on the worker-merge allowlist (case-insensitively, fail closed). */
@@ -198,6 +212,7 @@ export function isWorkerMergeSafePath(path: string): boolean {
   const segments = lower.split("/");
   if (segments.some((segment) => segment === "" || segment.startsWith(".") || segment !== segment.trim())) return false;
   if (GOVERNANCE_FILE_NAMES.has(segments[segments.length - 1])) return false;
+  if (WORKER_MERGE_EXCLUDED_DOCUMENTS.has(lower)) return false;
   return WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(lower));
 }
 
