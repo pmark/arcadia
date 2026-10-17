@@ -6,7 +6,63 @@ Produced by a Release Manager session (Claude Code 2.1.302, cloud container
 `claude.ai/code`). **This is partial evidence. The Action is not complete and
 was not settled.** The three adapter Actions stay blocked on it.
 
-## Environment observed (LOCAL ONLY: cloud container, not the operator host)
+## Second attempt (2026-10-17, base `cec7132`): still blocked, not settled
+
+The operator asked a second cloud session to finish criteria 1, 2 and 4, to
+measure Codex and OpenCode like Claude Code, to capture the existence-probe
+gap as a proposal, and to settle the Action. The operator approved the live
+model calls and the access these need. That approval cannot supply access
+that this container does not have. The observations below are what changed.
+**Nothing here is a simulated pass.**
+
+| Item | Observed in session 2 |
+|---|---|
+| Arcadia workspace | Unchanged: `workspace resolve --json` → `source: missing`; `work monitor --no-pull-requests` → `USAGE_ERROR` workspace not configured. No peer session or Remote Control host was reachable (`ListAgents`: none). The only environment is `anthropic_cloud` "Default". |
+| Codex | Installed `@openai/codex@0.163.0` in a scratch prefix with a scratch `CODEX_HOME`. `codex --version` → `codex-cli 0.163.0`. `codex features list` → `hooks stable true` (`plugin_hooks removed`). The binary contains `SessionStart`, `PostToolUse`, `PreToolUse` and `UserPromptSubmit` event names, and `codex exec --help` lists `--dangerously-bypass-hook-trust` ("run enabled hooks without requiring persisted hook trust"). Hook support exists in this version, and it needs **persisted hook trust** before it runs. `codex login status` → `Not logged in`. The egress proxy returned **403 policy denial** on CONNECT to `api.openai.com`, `auth.openai.com` and `chatgpt.com`. No token was measured. |
+| OpenCode | Installed `opencode-ai@1.19.3` in a scratch prefix with isolated XDG config/data/cache/state. `opencode models` lists free `opencode/*` Zen models, which need no credential. A control run (`opencode-hook-cost/raw/out-control-0.jsonl`) loaded the project plugin. `session.created` fired once and `experimental.chat.system.transform` twice (`raw/hook-fired-control-0.log`); `tool.execute.after` never fired because the model call failed: `APIError 403 ... no rule or allowlist entry allows host "opencode.ai"`. Plugin activation is verified. No token was measured. |
+| Model credential for OpenCode/Codex | None. The only credential here is Claude Code's own OAuth session. Lifting it into another client would be credential misuse, so this was not done. |
+
+Criterion status after session 2:
+
+- **1, 2, 4: still externally blocked, for the same root cause.** No
+  configured coordination workspace exists here. The guard refuses
+  native-mail writes in experiment workspaces, and AGENTS.md forbids a
+  self-made dogfood workspace. Two "isolated test managers" against any
+  other database would not be the same configured workspace. The remedy is
+  unchanged: run on the operator host with `martianrover` resolved. Codex
+  also needs a logged-in host.
+- **5, Codex: blocked** by network policy (`api.openai.com`,
+  `auth.openai.com`, `chatgpt.com`) and by the missing OpenAI login.
+  Progress: hook support and the trust requirement are verified in the
+  installed 0.163.0, not assumed. The adapter Action must decide how hook
+  trust is activated. `--dangerously-bypass-hook-trust` is not an
+  acceptable default.
+- **5, OpenCode: blocked** by network policy (`opencode.ai`). A provider key
+  for an allowed host would also work. Progress: the plugin loads and its
+  hooks fire on 1.19.3. Fixture: `opencode-hook-cost/` (baseline / empty /
+  control, the same prompt as the Claude fixture). On a host that allows
+  `opencode.ai`, run `OPENCODE=<bin> ./run.sh <variant> <rep>` from a copy,
+  then compare `step_finish` token counts.
+- **Finding for `build-opencode-native-mail-hook`:** in 1.19.3 the `event`
+  hook (where `session.created` arrives) returns `void`, so it cannot put
+  anything into context. Session-start surfacing needs
+  `experimental.chat.system.transform` (an experimental API) or
+  `chat.message`. `tool.execute.after` can append to `output.output`. The
+  control plugin uses exactly these channels.
+- **Existence-probe gap: captured as a proposal** in
+  `.arcadia/asks/agent-ask-proposal-native-mail-readonly-existence-probe-20261017.yaml`
+  (`agent-ask draft` → validated, `workspaceStatus: not_available`). It is
+  submitted only once a host with the workspace runs
+  `arcadia agent-ask preview --file <that path> --json`.
+- **Not settled.** Settlement needs both the workspace and complete proof.
+  Neither exists here.
+
+Leak check (container only): Codex used a scratch `CODEX_HOME`, OpenCode used
+scratch XDG directories, and both were installed under the session scratchpad.
+No repository, `~/.codex`, `~/.config/opencode` or workspace file was
+written. The npm cache under `/root/.npm` belongs to this container.
+
+## Environment observed in session 1 (LOCAL ONLY: cloud container, not the operator host)
 
 | Item | Observed |
 |---|---|
@@ -24,7 +80,7 @@ was not settled.** The three adapter Actions stay blocked on it.
 | 2 | Nonce → ack → transform → reply across fresh Claude and Codex managers, plus wrong-Plan/changed-replay/closed/stale cases | **externally blocked** | Same workspace blocker, and Codex is absent here. Synthetic CLI coverage of the refusal cases already exists in `tests/native-mail.test.ts` (53/53 with the two guidance test files, run in this session at base `4ac57593d` plus this diff; no log is committed). That is synthetic and is **not** native process proof. |
 | 3 | One indexed checkpoint instruction | **proven (source only)** | `docs/agent-guidance/native-mail-checkpoints.md`, indexed as `native-mail-checkpoints` in `docs/agent-guidance/index.json`; `pnpm check:agent-guidance` exit 0 with no problems for codex, claude and opencode. Not installed anywhere. |
 | 4 | Roundtrip transcripts, receipts, unchanged state, leak check | **externally blocked** | Depends on 1–2. A leak check has no live workspace to compare here. The measurement transcripts below are retained. |
-| 5 | Measured per-provider empty-inbox hook-check token cost | **Claude Code: measured. Codex: blocked. OpenCode: blocked** | See below. No adapter code ships. |
+| 5 | Measured per-provider empty-inbox hook-check token cost | **Claude Code: measured. Codex: blocked. OpenCode: blocked** | See below, and the session-2 section above (network-policy blockers; hook support verified). No adapter code ships. |
 
 ## Criterion 5: Claude Code measurement (measured, not assumed)
 
@@ -72,7 +128,7 @@ Limits, stated rather than assumed:
   stream). It ran with `--setting-sources ""` in a scratch directory and
   touched no repository or workspace.
 
-## Criterion 5: Codex and OpenCode blockers (precise, per provider)
+## Criterion 5: Codex and OpenCode blockers in session 1 (precise, per provider)
 
 - **Codex**: blocked. The CLI is not installed in this container and no OpenAI
   credential exists. Installing it without a credential cannot produce a real
@@ -101,9 +157,9 @@ Limits, stated rather than assumed:
 ## Not done here, and why
 
 - No Agent Ask, `arcadia learn` capture or settlement: each needs the
-  configured workspace, which is missing in this container. On the host,
-  capture the existence-probe gap with
-  `arcadia agent-ask preview` (`intent: proposal`).
+  configured workspace, which is missing in this container. Session 2
+  drafted the existence-probe proposal as a validated Ask file. A host with
+  the workspace must still preview it (see above).
 - No adapter dispatch: the adapters depend on this unfinished Action.
 - No live roundtrip: needs the operator host, `martianrover`, and an explicit
   live-call/access gate, as the Action title says.
