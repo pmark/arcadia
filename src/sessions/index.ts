@@ -36,6 +36,9 @@ import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 import { formatLaunchFailure } from "./launchFailure.js";
+import { tmuxNewSessionArgs, writeSessionLauncher } from "./tmuxLauncher.js";
+
+export { tmuxNewSessionArgs } from "./tmuxLauncher.js";
 
 export type ProjectTransitionKind =
   | "launch"
@@ -242,7 +245,15 @@ export interface TmuxAdapter {
    * it (a test double) simply runs the command; an interactive TUI launch
    * carries none, because piping a TUI's output would break it.
    */
-  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }): void;
+  launch(input: {
+    name: string; cwd: string; command: string; args: string[]; record?: SessionRecording;
+    /**
+     * Where the real adapter writes the private launcher that holds the
+     * provider argv (`tmuxLauncher.ts`). Defaults to the recorded Session's
+     * run directory (beside its log), else a private temporary directory.
+     */
+    launcherDirectory?: string;
+  }): void;
   /**
    * The pane's full scrollback (not just the currently visible screen), used
    * only as a progress signal (see `src/production/stallDetection.ts`) --
@@ -304,13 +315,17 @@ export const systemTmux: TmuxAdapter = {
   },
   launch(input) {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
-    const result = spawnSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
+    // Never hand tmux the provider argv: it carries the whole brief, and tmux
+    // refuses an over-long command ("command too long"). See `tmuxLauncher.ts`.
+    const launcher = writeSessionLauncher(run, input.launcherDirectory ?? (input.record ? path.dirname(input.record.logFile) : undefined));
+    const result = spawnSync("tmux", tmuxNewSessionArgs(input.name, input.cwd, launcher.file), {
       stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",
       maxBuffer: 64 * 1024,
       env: tmuxQueryEnv()
     });
     if (result.error || result.status !== 0) {
+      launcher.discard();
       const overflow = result.error && "code" in result.error && result.error.code === "ENOBUFS";
       const stderr = result.stderr ?? "";
       // A capture-limit failure can cut a credential in the last line below
