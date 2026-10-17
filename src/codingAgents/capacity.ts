@@ -160,8 +160,13 @@ export interface ProviderCapacityObservation {
 export const CAPACITY_ADMISSION_LIMITS = {
   /** An observation older than this cannot admit unattended work. */
   observationFreshnessMs: 15 * 60_000,
-  /** Stop admitting before the window is spent, so a Run has room to finish. */
-  reserveMarginPercentage: 5,
+  /**
+   * Operator emergency reserve (Decision 0111: 20%). Unattended admission is
+   * budgeted to the rest, 100 - 20 = 80% of every window (Decision 0130 for
+   * Claude's 5-hour and 7-day windows; Decision 0103: percent of window).
+   * Exactly 80% is admitted; anything above is refused.
+   */
+  reserveMarginPercentage: 20,
   /** An operator attestation is bounded; it never becomes standing proof. */
   operatorReceiptMaxTtlMs: 4 * 60 * 60_000,
   /** Deadline for one capacity refresh pass across all providers. */
@@ -444,6 +449,16 @@ export function evaluateCapacityAdmission(
     );
   }
 
+  const unreadable = receipt.windows.find((window) =>
+    !Number.isFinite(window.usedPercentage) || window.usedPercentage < 0);
+  if (unreadable) {
+    return refuse(
+      "capacity_unknown",
+      `${receipt.providerLabel}'s ${unreadable.label} window usage is unreadable (${String(unreadable.usedPercentage)}). ` +
+        `Unattended admission refuses unreadable usage; it is never admitted as free.`
+    );
+  }
+
   const elapsedReset = receipt.windows.find((window) =>
     window.resetsAt
     && Date.parse(window.resetsAt) <= now.getTime()
@@ -492,12 +507,12 @@ export function evaluateCapacityAdmission(
   }
 
   const ceiling = 100 - CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage;
-  if (worst.usedPercentage >= ceiling) {
+  if (worst.usedPercentage > ceiling) {
     return refuse(
       "capacity_reserve_margin",
       `${receipt.providerLabel}'s ${worst.label} window is at ${formatPercentage(worst.usedPercentage)}, ` +
-        `inside the ${CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage}% reserve margin that keeps an ` +
-        `admitted Run able to finish. New admission stops at the boundary.`,
+        `above the ${ceiling}% unattended budget (the ${CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage}% ` +
+        `operator reserve is never spent by unattended work). New admission stops at the boundary.`,
       { retryAfter: worst.resetsAt }
     );
   }
