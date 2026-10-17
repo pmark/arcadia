@@ -121,10 +121,10 @@ actions:
     references: []
   - id: credential-preflight
     title: "Make the production preflight detect a provider credential that cannot be refreshed unattended before it launches (#1155)."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Make the production preflight detect a provider credential that cannot be refreshed unattended before it launches (#1155)."
+    next_action: Completed via Agent Ask complete-credential-preflight-20261017; no further action.
     expected_artifact: Evidence satisfying Agent Ask credential-preflight
     clarification: clarified
     confidence: high

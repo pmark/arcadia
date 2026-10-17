@@ -2582,3 +2582,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Either the worker refreshes the Claude usage snapshot unattended before admission, with a test that a stale snapshot is refreshed rather than refused, or production status names the gate-off path and its consequence for a Claude run."; "An Agent Ask raises one Decision, as a card on /todo, asking the operator for the spend bound of a supervised Claude run, each option stating its consequence."; "A test asserts the workspace config file hash is unchanged after the suite, and the suite makes zero live provider calls.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-claude-capacity-evidence-20261017).
+
+## 2026-10-17 — Completed arcadia/credential-preflight
+
+- **Did:** Completed Action arcadia/credential-preflight from accepted evidence (Candidate 78a06d9f6bfecdd3bca9aa4e480ca547cec4c706).
+- **Result:** Every declared acceptance criterion was accepted as met: "The preflight refuses a launch whose provider credential is expired or unrefreshable, names the provider and the remedy card, and pings the operator once."; "Hermetic tests cover a valid credential, an expired one and an unreadable state treated as unknown."; "No host credential configuration is modified by the code or its tests.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-credential-preflight-20261017).
