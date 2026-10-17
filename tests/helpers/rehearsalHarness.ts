@@ -160,6 +160,8 @@ export interface RehearsalOptions {
   validationCommand?: string;
   /** Omit the integration grant (Decision 0058) from the activation. */
   withoutIntegrationGrant?: boolean;
+  /** Grant the worker pull-request merge opt-in (Decision 0097): integration merges the PR on the fake GitHub. */
+  workerMerge?: boolean;
   /** Omit the packet_approval delegation (Decision 0072) from the activation. */
   withoutPacketApproval?: boolean;
   /** Give the fixture a bare `origin` remote, as a pushed fixture would have. */
@@ -424,7 +426,8 @@ Disposable fixture plan.
       ...(this.options.independentReviewers === "tick" ? { remotePreservation: true } : {}),
       ...(this.options.withoutIntegrationGrant
         ? {}
-        : { integrationGrantDecision: "0058", integrationGrantExpiresAt: grantExpiresAt }),
+        : { integrationGrantDecision: "0058", integrationGrantExpiresAt: grantExpiresAt,
+            ...(this.options.workerMerge ? { integrationGrantMergePullRequest: true } : {}) }),
       ...(this.options.withoutPacketApproval ? {} : { packetApprovalExpiresAt: grantExpiresAt })
     };
     const preview = runProductionPreviewCommand(base);
@@ -902,6 +905,10 @@ export class FakeGitHub {
   afterReady: (() => void) | null = null;
   /** One-shot: runs inside the reviewer-model call (throw to crash mid-review). */
   duringReview: ((role: "code-review" | "qa") => void) | null = null;
+  /** Every `gh pr merge`, with the head it was pinned to and whether GitHub merged it. */
+  mergeCalls: Array<{ url: string; matchHead: string | null; merged: boolean }> = [];
+  /** One-shot: runs when `gh pr merge` is called, before GitHub checks the pinned head (move the head here to race it). */
+  beforeMerge: (() => void) | null = null;
 
   constructor(readonly origin: string) {}
 
@@ -975,6 +982,36 @@ export class FakeGitHub {
     ]);
   }
 
+  /**
+   * `gh pr merge <url> --merge --match-head-commit <sha>`, as GitHub does it:
+   * refused unless the PR is open, ready and its head is exactly the pinned
+   * sha; a merge commit of base and head lands on the bare remote's base.
+   */
+  private merge(args: string[]) {
+    const pr = this.find(args[2]);
+    const at = args.indexOf("--match-head-commit");
+    const matchHead = at >= 0 ? args[at + 1] ?? null : null;
+    const before = this.beforeMerge; this.beforeMerge = null; before?.();
+    const refuse = (stderr: string) => {
+      this.mergeCalls.push({ url: args[2], matchHead, merged: false });
+      return { status: 1, stdout: "", stderr, error: null };
+    };
+    if (!pr) return refuse(`no pull request ${args[2]}`);
+    if ((pr.state ?? "OPEN") !== "OPEN") return refuse(`Pull request ${pr.url} is not open`);
+    if (pr.isDraft) return refuse(`Pull request ${pr.url} is still a draft`);
+    if (!args.includes("--merge")) return refuse("this fake only models --merge");
+    const head = this.headOf(pr.branch);
+    if (!matchHead || matchHead !== head) return refuse("GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)");
+    const base = this.headOf(pr.baseBranch);
+    const tree = git(this.origin, ["merge-tree", "--write-tree", base, head]).trim().split("\n")[0];
+    const commit = git(this.origin, ["-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit-tree", tree, "-p", base, "-p", head,
+      "-m", `Merge pull request #${pr.number} from ${pr.branch}`]).trim();
+    git(this.origin, ["update-ref", `refs/heads/${pr.baseBranch}`, commit, base]);
+    pr.state = "MERGED";
+    this.mergeCalls.push({ url: pr.url, matchHead, merged: true });
+    return ok("");
+  }
+
   private find(reference: string): FakePullRequest | undefined {
     return this.prs.find((pr) => pr.url === reference || String(pr.number) === reference);
   }
@@ -1004,6 +1041,7 @@ export class FakeGitHub {
       const after = this.afterReady; this.afterReady = null; after?.();
       return ok("");
     }
+    if (command === "gh" && args[0] === "pr" && args[1] === "merge") return this.merge(args);
     if (command === "gh" && args[0] === "api") return ok(this.comparePatch(args));
     if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
     if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");

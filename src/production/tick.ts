@@ -334,6 +334,16 @@ function recoverTerminalHandoff(
   return { handoff, sessionId: session.id, head, refusal: null };
 }
 
+/**
+ * The integration deps, with the worker pull-request merge (Decision 0097)
+ * reading GitHub through the same `gh` runner the tick's review step uses.
+ */
+function integrateDepsWithGitHub(options: Pick<ManagedProductionTickOptions, "handoff" | "review">): IntegrateSessionDeps {
+  const integrate = options.handoff?.integrate ?? {};
+  const runCommand = integrate.workerMerge?.runCommand ?? options.review?.runCommand;
+  return runCommand ? { ...integrate, workerMerge: { ...integrate.workerMerge, runCommand } } : integrate;
+}
+
 /** Prefix of the refusal for a recorded integration Grant that has expired; `terminalCandidateRemedy` keys on it. */
 const LAPSED_INTEGRATION_GRANT = "The integration grant expired at";
 
@@ -1808,7 +1818,7 @@ export function runManagedProductionTick(
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed && !operatorAuthorization
           ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now, clock,
-              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, options.handoff?.integrate ?? {})
+              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, integrateDepsWithGitHub(options))
           : {
               kind: "refused" as const,
               reason: operatorAuthorization
@@ -1875,7 +1885,7 @@ export function runManagedProductionTick(
         } catch (error) {
           log(`Operator launch draft PR retry failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
         }
-        const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
+        const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, integrateDepsWithGitHub(options), log,
           { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });
         handoff = recovery?.handoff ?? null;
         handoffSessionId = recovery?.sessionId ?? null;

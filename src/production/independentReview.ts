@@ -50,8 +50,9 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  *
  * Every step, the push included, requires `policyAuthorizesPullRequestReadiness`
  * (`--remote-preservation` and a current Decision 0058 integration grant).
- * Out of scope by design: merging the PR on GitHub and pushing the base
- * branch. Integration remains the tick's local fast-forward.
+ * Out of scope by design: merging the PR and pushing the base branch.
+ * Integration is the tick's local fast-forward, or, under the grant's
+ * `mergeThroughPullRequest` opt-in, the worker merge (workerMerge.ts).
  */
 
 /**

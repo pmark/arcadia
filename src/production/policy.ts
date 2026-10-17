@@ -164,6 +164,16 @@ export interface ProductionIntegrationGrant {
    * covers exactly the scope's own `actions`.
    */
   actions: string[];
+  /**
+   * Opt-in, default off (Decision 0097, Action worker-review-and-merge): land
+   * a covered candidate by merging its host-created pull request on GitHub at
+   * the exact head its independent review passed, with every check green, the
+   * merge state CLEAN and a blast radius that is not authority-adjacent,
+   * instead of the local fast-forward. Absent or false keeps the Decision
+   * 0058 local fast-forward. Needs `remotePreservation`; lapses with the grant
+   * and is never carried across Off.
+   */
+  mergeThroughPullRequest?: boolean;
 }
 
 /**
@@ -605,6 +615,11 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
   if (input.remotePreservation === true) normalized.remotePreservation = true;
   if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
+  if (normalized.integrationGrant?.mergeThroughPullRequest && normalized.remotePreservation !== true) {
+    throw validationError("The worker pull-request merge opt-in needs --remote-preservation: the worker merges only a pull request the host created.", {
+      field: "integrationGrant.mergeThroughPullRequest"
+    });
+  }
   if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
   const packetApprovalExpiresAt = normalizePacketApprovalExpiry(mechanicalTransitions, input.packetApprovalExpiresAt);
   if (packetApprovalExpiresAt) normalized.packetApprovalExpiresAt = packetApprovalExpiresAt;
@@ -644,7 +659,18 @@ export function normalizeIntegrationGrant(input: Partial<ProductionIntegrationGr
       value: input.expiresAt
     });
   }
-  return { decisionRef, expiresAt, actions: dedupePreservingOrder(input.actions ?? []) };
+  if (input.mergeThroughPullRequest !== undefined && typeof input.mergeThroughPullRequest !== "boolean") {
+    throw validationError("integrationGrant.mergeThroughPullRequest must be a boolean.", {
+      field: "integrationGrant.mergeThroughPullRequest",
+      value: input.mergeThroughPullRequest
+    });
+  }
+  return {
+    decisionRef,
+    expiresAt,
+    actions: dedupePreservingOrder(input.actions ?? []),
+    ...(input.mergeThroughPullRequest === true ? { mergeThroughPullRequest: true } : {})
+  };
 }
 
 /**
@@ -751,7 +777,9 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // Same rule for the integration grant: an absent grant must not change a
     // pre-existing scope's fingerprint.
     ...(scope.integrationGrant
-      ? { integrationGrant: { decisionRef: scope.integrationGrant.decisionRef, expiresAt: scope.integrationGrant.expiresAt, actions: scope.integrationGrant.actions } }
+      ? { integrationGrant: { decisionRef: scope.integrationGrant.decisionRef, expiresAt: scope.integrationGrant.expiresAt, actions: scope.integrationGrant.actions,
+          // Omitted unless on, so a grant without the worker-merge opt-in keeps its fingerprint.
+          ...(scope.integrationGrant.mergeThroughPullRequest === true ? { mergeThroughPullRequest: true } : {}) } }
       : {}),
     // Same rule again for the rehearsal exception.
     ...(scope.rehearsalException
@@ -795,8 +823,9 @@ export function policyAuthorizesRemotePreservation(
  * remote-preservation authority under which the host created the PR, and a
  * current Decision 0058 candidate-integration grant naming the Action. Whether
  * Decision 0058 should be read to cover this push, readiness and reviewer
- * spend is an operator question this gate does not settle. Merge on GitHub
- * and pushing the base branch stay outside every grant.
+ * spend is an operator question this gate does not settle. Pushing the base
+ * branch stays outside every grant; merging the PR on GitHub needs the grant's
+ * separate `mergeThroughPullRequest` opt-in (src/production/workerMerge.ts).
  */
 export function policyAuthorizesPullRequestReadiness(
   policy: Pick<ProductionPolicyRecord, "desiredState" | "scope">,
