@@ -1744,8 +1744,8 @@ fields this host simply cannot report. Every receipt is stamped `REAL` or
 **Unknown capacity is inadmissible by default.** Unattended admission refuses —
 with the reason printed — when capacity is unknown, when the observation is
 stale, when included-versus-paid mode cannot be established, when a window is
-spent, or when it is inside the reserve margin that keeps an already-admitted Run
-able to finish. An elapsed reset time is not renewed allowance: work is
+spent, or when any window is above the 80% unattended ceiling (the 20% operator
+reserve of Decision 0111 is never spent by unattended work; Decision 0130). An elapsed reset time is not renewed allowance: work is
 readmitted only after a fresh observation shows the new window. Arcadia never
 redeems a banked reset, buys credits, or enables paid fallback to keep busy — if
 a banked reset exists, it says so and leaves it alone.

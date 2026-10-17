@@ -273,16 +273,42 @@ describe("unattended admission refuses what it cannot prove", () => {
     expect(decision.reason).toContain("credits are never purchased");
   });
 
-  it("stops new admission at the reserve margin so an admitted Run can finish", () => {
-    const inside = decisionFor("codex-cli", {
-      rateLimits: [{ label: "5h", usedPercentage: 96, resetsAt: "2026-09-06T15:00:00.000Z" }]
-    });
-    const outside = decisionFor("codex-cli", {
-      rateLimits: [{ label: "5h", usedPercentage: 94, resetsAt: "2026-09-06T15:00:00.000Z" }]
-    });
+  it("admits up to the 80% unattended budget and refuses above it (Decisions 0103/0111/0130)", () => {
+    const at = (usedPercentage: number, label = "5h") =>
+      decisionFor("codex-cli", { rateLimits: [{ label, usedPercentage, resetsAt: "2026-09-06T15:00:00.000Z" }] });
 
-    expect(inside).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
-    expect(outside.admitted).toBe(true);
+    expect(CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage).toBe(20);
+    expect(at(40).admitted).toBe(true);
+    expect(at(80).admitted).toBe(true);
+    expect(at(80.1)).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+    expect(at(85)).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+    expect(at(85).reason).toContain("80% unattended budget");
+    expect(at(85, "7d")).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+  });
+
+  it("refuses when either window is over budget, even if the other is low", () => {
+    const decision = decisionFor("codex-cli", {
+      rateLimits: [
+        { label: "5h", usedPercentage: 10, resetsAt: "2026-09-06T15:00:00.000Z" },
+        { label: "7d", usedPercentage: 81, resetsAt: "2026-09-10T00:00:00.000Z" }
+      ]
+    });
+    expect(decision).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+    expect(decision.reason).toContain("7d");
+  });
+
+  it.each([["NaN", Number.NaN], ["negative", -5], ["Infinity", Number.POSITIVE_INFINITY], ["-Infinity", Number.NEGATIVE_INFINITY]])(
+    "refuses unreadable usage (%s), never admits it",
+    (_name, usedPercentage) => {
+      const decision = decisionFor("codex-cli", {
+        rateLimits: [{ label: "5h", usedPercentage, resetsAt: "2026-09-06T15:00:00.000Z" }]
+      });
+      expect(decision).toMatchObject({ admitted: false, code: "capacity_unknown" });
+    }
+  );
+
+  it("refuses when no window is reported", () => {
+    expect(decisionFor("codex-cli", { rateLimits: [] })).toMatchObject({ admitted: false, code: "capacity_unknown" });
   });
 });
 
@@ -699,5 +725,27 @@ describe("managed production admission requires proven capacity", () => {
     const outcome = admit(activated(), "adm-proven", decisionFor("codex-cli"));
 
     expect(outcome.admitted).toBe(true);
+  });
+});
+
+describe("the spend budget check is hermetic", () => {
+  it("makes no provider call and touches no workspace config", () => {
+    const dir = scratch();
+    const config = path.join(dir, "config.json");
+    writeFileSync(config, '{"k":1}');
+    const before = readFileSync(config, "utf8");
+    const calls: unknown[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (...args: Parameters<typeof fetch>): Promise<Response> => {
+      calls.push(args);
+      return Promise.reject(new Error("network"));
+    };
+    try {
+      decisionFor("codex-cli", { rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }] });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(calls).toEqual([]);
+    expect(readFileSync(config, "utf8")).toBe(before);
   });
 });
