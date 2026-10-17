@@ -29,7 +29,7 @@ Use orange when a concrete operator answer is the next step. Use red when an ext
 
 `[↳ ]<kind><state> <short workstream> · <role or task> · <specific need>`
 
-Keep the arrow, kind and state first. Put a recognizable shared workstream name next so it survives sidebar truncation. Retain Arcadia's existing kind icons, Plan abbreviation and generated Action wording where supplied; shorten optional prose first. The generated kinds remain 🧭 planning, 🔍 review, 🔨 implementation and 🩹 repair. Direct coordination chats may retain their existing 🚦 display icon; it is not a new formatter kind. Coordination is a duty, not an additional registered role.
+Keep the arrow, kind and state first. Put a recognizable shared workstream name next so it survives sidebar truncation. Retain Arcadia's existing kind icons, Plan abbreviation and generated Action wording where supplied; shorten optional prose first. The generated kinds remain 🧭 planning, 🔍 review, 🔨 implementation and 🩹 repair. Coordinator chats lead with 🚦 in place of the kind glyph; it is a relationship marker (`--relation coordinator`), not a new kind. Coordination is a duty, not an additional registered role.
 
 - `🚦🟠 Lead trials · approve pilot budget`
 - `↳ 🧭🔵 Lead trials · planner`
@@ -46,7 +46,7 @@ Use a stable short workstream label across the parent and its helpers. Record th
 
 Update titles when responsibility or observed state changes. An idle flag, silence, or the end of a turn does not prove completion, pause, blockage or released ownership. Never mark a chat parked or former coordinator without an actual handoff or hold. A question title points to the existing Decision, Agent Ask, PR or handoff containing the full question, choices and consequences. Resolve the title when that record is resolved.
 
-These are display conventions requested by the operator on October 15, 2026. They do not change claims, budgets, approval boundaries, model bindings, review independence or work authority. Use the generated title as the base: keep its kind, current state, Plan abbreviation and exact Action wording, then prepend the helper arrow or append the specific need. The host formatter currently generates only the base title; relationship and attention wording are applied by the agent through the existing title tool. This does not imply automatic relationship detection or new runtime support. For a deliberately parked chat, use ⏸ in place of its state dot while preserving its kind and scope. Do not patch the harness.
+These are display conventions requested by the operator on October 15, 2026. They do not change claims, budgets, approval boundaries, model bindings, review independence or work authority. Use the generated title as the base: keep its kind, current state, Plan abbreviation and exact Action wording, then prepend the helper arrow or append the specific need. `arcadia session title` composes the full title, including the relationship marker and attention wording, from explicit inputs; it does not detect parentage. The coordinator supplies the relationship, and an agent still sets the title through the host's title tool. For a deliberately parked chat, use ⏸ in place of its state dot while preserving its kind and scope. Do not patch the harness.
 
 The operator may still ask a helper a direct question. The arrow reduces routine relaying; it does not prohibit conversation.
 

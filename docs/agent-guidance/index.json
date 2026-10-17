@@ -160,7 +160,7 @@
       "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
       "path": "docs/agent-guidance/chat-titles.md",
       "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
-      "sha256": "acf7c71f5cf1659625a641553abd8bf1d402f766436d4fc1ac82ebde0bdb462f"
+      "sha256": "fde83dd3cf3399a8e89796290770ed6f623954438cbe71fc8608dd8cf7410466"
     },
     {
       "id": "skills",
