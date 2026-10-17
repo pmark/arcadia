@@ -62,7 +62,7 @@ scratch XDG directories, and both were installed under the session scratchpad.
 No repository, `~/.codex`, `~/.config/opencode` or workspace file was
 written. The npm cache under `/root/.npm` belongs to this container.
 
-## Environment observed (LOCAL ONLY: cloud container, not the operator host)
+## Environment observed in session 1 (LOCAL ONLY: cloud container, not the operator host)
 
 | Item | Observed |
 |---|---|
@@ -128,7 +128,7 @@ Limits, stated rather than assumed:
   stream). It ran with `--setting-sources ""` in a scratch directory and
   touched no repository or workspace.
 
-## Criterion 5: Codex and OpenCode blockers (precise, per provider)
+## Criterion 5: Codex and OpenCode blockers in session 1 (precise, per provider)
 
 - **Codex**: blocked. The CLI is not installed in this container and no OpenAI
   credential exists. Installing it without a credential cannot produce a real
