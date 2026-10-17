@@ -24,6 +24,8 @@ import { executeClaimedReviewRun } from "../execution/claimedReviewRun.js";
 import { executePlan } from "../execution/runner.js";
 import { isPlanningApprovalDecision } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
+import { CAPACITY_ADMISSION_LIMITS } from "../codingAgents/capacity.js";
+import { refreshClaudeCapacityBeforeAdmission } from "../production/capacityPreAdmission.js";
 import { runManagedProductionTick } from "../production/tick.js";
 import { probeWorkerCapability } from "../production/sessionCapability.js";
 import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagnosis.js";
@@ -479,6 +481,13 @@ export interface WorkerTickOptions {
   ownsWorker?: () => boolean;
   /** Called exactly when a worker loses its workspace ownership fence. */
   onOwnershipLost?: () => void;
+  /**
+   * Asynchronous step that runs before each synchronous tick body (Decision
+   * 0130: the read-only Claude usage refresh before admission). It must never
+   * throw into the tick; a rejection is logged and the tick still runs, so a
+   * failed refresh leaves the stale snapshot for admission to refuse.
+   */
+  preAdmission?: () => Promise<void>;
 }
 
 /**
@@ -509,7 +518,8 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   let consecutiveFailures = 0;
   const identity = options.identity ?? { pid: options.pid, owner: "test" };
 
-  const tick = () => {
+  let tick: () => void;
+  const tickBody = () => {
     if (!owns()) {
       onOwnershipLost();
       return;
@@ -552,6 +562,21 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
     }
   };
 
+  const preAdmission = options.preAdmission;
+  if (!preAdmission) { tick = tickBody; return tick; }
+  tick = () => {
+    if (!owns()) {
+      onOwnershipLost();
+      return;
+    }
+    // Stamp the tick as started so the bounded refresh counts toward the ceiling.
+    try { markTickStarted(options.workspacePath, identity); } catch {}
+    preAdmission()
+      .catch((error: unknown) => {
+        log(options.logfile, `Pre-admission refresh error: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(tickBody);
+  };
   return tick;
 }
 
@@ -968,13 +993,28 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     logfile,
     identity,
     ownsWorker: () => ownsWorker(workspacePath, identity),
-    onOwnershipLost: stopWhenOwnershipChanges
+    onOwnershipLost: stopWhenOwnershipChanges,
+    preAdmission: () => refreshClaudeUsageBeforeAdmission(workspacePath)
   });
 
   setTimeout(tick, 0);
   process.stdin.resume();
 
   return undefined as never;
+}
+
+/** Open the workspace briefly, run the read-only Claude refresh, close it. */
+async function refreshClaudeUsageBeforeAdmission(workspacePath: string): Promise<void> {
+  const registries = loadPhase3Registries(workspacePath);
+  const db = openDatabase(workspacePath);
+  try {
+    await refreshClaudeCapacityBeforeAdmission(
+      { db, workspacePath, profiles: registries.codingAgents.profiles },
+      CAPACITY_ADMISSION_LIMITS.refreshDeadlineMs
+    );
+  } finally {
+    db.close();
+  }
 }
 
 export { reduceExecutionOutcome } from "../execution/runFinalization.js";

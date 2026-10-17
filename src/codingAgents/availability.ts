@@ -86,12 +86,12 @@ export interface CodingAgentAvailabilitySnapshot {
   agents: CodingAgentAvailabilityRecord[];
 }
 
-interface ClaudeOAuthCredentials {
+export interface ClaudeOAuthCredentials {
   accessToken: string;
   refreshToken: string | null;
 }
 
-interface ClaudeUsageResponse {
+export interface ClaudeUsageResponse {
   five_hour?: ClaudeUsageWindow | null;
   seven_day?: ClaudeUsageWindow | null;
 }
@@ -203,13 +203,37 @@ export function observeCodingAgentAvailability(
  * than the local status-line file. Failures leave the last reported snapshot
  * intact.
  */
+export interface ClaudeUsageRefreshDependencies {
+  /** Read the Claude Code credential; defaults to the host environment, file and keychain. */
+  loadCredentials?: () => Promise<ClaudeOAuthCredentials | null>;
+  /** Call the usage endpoint with an access token; defaults to the live service. */
+  requestUsage?: (accessToken: string) => Promise<{ status: number; body: ClaudeUsageResponse | null }>;
+  /** Exchange a refresh token; only ever reached when `allowTokenRefresh` is true. */
+  exchangeRefreshToken?: (refreshToken: string) => Promise<{ accessToken: string } | null>;
+  /** Snapshot file to read and write; defaults to the host telemetry path. */
+  snapshotPath?: string;
+}
+
 export async function refreshClaudeCodeUsageTelemetry(
   now = new Date(),
-  options: { force?: boolean } = {},
+  options: {
+    force?: boolean;
+    /**
+     * Whether a 401 may exchange the refresh token at the OAuth token endpoint.
+     * Defaults to true for the manual commands. The unattended worker passes
+     * false (Decision 0130): it only reads the access token and calls the usage
+     * endpoint, so the operator's interactive sign-in is never rotated.
+     */
+    allowTokenRefresh?: boolean;
+    /** Injected collaborators. Supplying any bypasses the VITEST early return. */
+    deps?: ClaudeUsageRefreshDependencies;
+  } = {},
 ): Promise<void> {
-  if (process.env.VITEST) return;
+  const deps = options.deps;
+  if (process.env.VITEST && !deps) return;
+  const allowTokenRefresh = options.allowTokenRefresh ?? true;
 
-  const snapshotPath = claudeStatusLinePath();
+  const snapshotPath = deps?.snapshotPath ?? claudeStatusLinePath();
   const existing = readJsonRecord(snapshotPath);
   const lastCheckedAt = stringValue(existing?.arcadia_usage_checked_at);
   if (!options.force && lastCheckedAt && Date.now() - Date.parse(lastCheckedAt) < CLAUDE_USAGE_REFRESH_COOLDOWN_MS) {
@@ -221,16 +245,17 @@ export async function refreshClaudeCodeUsageTelemetry(
     arcadia_usage_checked_at: now.toISOString(),
   });
 
-  const credentials = await loadClaudeOAuthCredentials();
+  const credentials = await (deps?.loadCredentials ?? loadClaudeOAuthCredentials)().catch(() => null);
   if (!credentials) {
     recordClaudeRefreshState(snapshotPath, "no_credentials", now);
     return;
   }
 
-  let response = await requestClaudeUsage(credentials.accessToken);
-  if (response.status === 401 && credentials.refreshToken) {
-    const refreshed = await refreshClaudeOAuthToken(credentials.refreshToken);
-    if (refreshed) response = await requestClaudeUsage(refreshed.accessToken);
+  const requestUsage = deps?.requestUsage ?? requestClaudeUsage;
+  let response = await requestUsage(credentials.accessToken);
+  if (allowTokenRefresh && response.status === 401 && credentials.refreshToken) {
+    const refreshed = await (deps?.exchangeRefreshToken ?? refreshClaudeOAuthToken)(credentials.refreshToken);
+    if (refreshed) response = await requestUsage(refreshed.accessToken);
   }
 
   if (!response.body || (!response.body.five_hour && !response.body.seven_day)) {
@@ -392,6 +417,15 @@ function recordClaudeRefreshState(
     arcadia_usage_checked_at: now.toISOString(),
     arcadia_usage_refresh_state: state,
   });
+}
+
+/** The last recorded outcome of a Claude usage refresh, or null when none is recorded. */
+export function readClaudeUsageRefreshState(snapshotPath = claudeStatusLinePath()): ClaudeUsageRefreshState | null {
+  return stringValue(readJsonRecord(snapshotPath)?.arcadia_usage_refresh_state) as ClaudeUsageRefreshState | null;
+}
+
+export function describeClaudeUsageRefreshState(state: ClaudeUsageRefreshState): string {
+  return describeClaudeRefreshState(state);
 }
 
 function claudeStatusLinePath(): string {

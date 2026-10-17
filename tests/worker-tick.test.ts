@@ -700,6 +700,27 @@ describe("createWorkerTick", () => {
     expect(afterRecovery.slice(afterFailure.length)).not.toContain("Worker tick error:");
   });
 
+  it("runs the pre-admission step before the tick body, and still ticks when it rejects", async () => {
+    const { root, logfile } = workspace();
+    const order: string[] = [];
+    const scheduled: Array<() => void> = [];
+    const openDb = () => { order.push("tick-body"); return openDatabase(root); };
+    const tick = createWorkerTick({
+      workspacePath: root,
+      pid: process.pid,
+      logfile,
+      openDb,
+      preAdmission: async () => { order.push("refresh"); throw new Error("usage service down"); },
+      schedule: (callback) => { scheduled.push(callback); }
+    });
+
+    tick();
+    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+
+    expect(order).toEqual(["refresh", "tick-body"]);
+    expect(readFileSync(logfile, "utf8")).toContain("Pre-admission refresh error: usage service down");
+  });
+
   it("summarizes a persistent open failure instead of logging every tick, then reports recovery", () => {
     const { root, logfile } = workspace();
     const scheduled: Array<() => void> = [];
