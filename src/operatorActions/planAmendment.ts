@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
-import { equal, fieldsMatch, hash, Refusal, refuse, validatePlanAmendmentInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
+import { equal, fieldsMatch, hash, pinnedFieldsMatch, Refusal, refuse, validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 import { withinPlanAmendmentRunner } from "./operatorExecution.js";
-export type { PlanAmendmentInput } from "./planAmendmentContract.js";
+export type { PlanActivationInput, PlanAmendmentInput } from "./planAmendmentContract.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -47,10 +47,19 @@ function targetAction(fields: Record<string, unknown>, actionId: string): Record
   if (matches.length !== 1) refuse("TARGET_STATE_DRIFT", `Action ${actionId} is missing or duplicated.`);
   return matches[0];
 }
-function validateDocuments(input: PlanAmendmentInput, documents: NonNullable<AgentAskSettlementReceipt["review"]>["documents"]): void {
+type DocumentEffects = NonNullable<AgentAskSettlementReceipt["review"]>["documents"];
+/** The canonical settlement moves the exact pinned Ask bytes to its archive and nothing else. */
+function isAskArchival(input: PlanAmendmentInput | PlanActivationInput, document: DocumentEffects[number]): boolean {
+  const askArchive = `.arcadia/asks/archive/${path.basename(input.ask.path)}`;
+  if (document.path === input.ask.path && document.after === null && document.before !== null && hash(document.before) === input.ask.sha256) return true;
+  return document.path === askArchive && document.before === null && document.after !== null && hash(document.after) === input.ask.sha256;
+}
+function validDate(value: unknown): void {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) refuse("UNEXPECTED_EFFECTS", "Invalid managed document update date.");
+}
+function validateDocuments(input: PlanAmendmentInput, documents: DocumentEffects): void {
   const e = input.envelope;
   const planPath = `docs/plans/${e.plan}.md`;
-  const askArchive = `.arcadia/asks/archive/${path.basename(input.ask.path)}`;
   const planChanges = documents.filter((change) => change.path === planPath);
   if (planChanges.length !== 1) refuse("UNEXPECTED_EFFECTS", "Preview must amend exactly the pinned Plan.");
   const change = planChanges[0];
@@ -62,14 +71,60 @@ function validateDocuments(input: PlanAmendmentInput, documents: NonNullable<Age
   const expected = structuredClone(before);
   expected.fields.actions = (expected.fields.actions as Record<string, unknown>[]).map((action) => action.id === e.action ? e.actionAfter : action);
   // The canonical settlement stamps only Plan.updated in addition to the pinned Action.
-  if (typeof after.fields.updated !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(after.fields.updated)) refuse("UNEXPECTED_EFFECTS", "Invalid Plan update date.");
+  validDate(after.fields.updated);
   expected.fields.updated = after.fields.updated;
   equal(after, expected, "UNEXPECTED_EFFECTS", "Preview document effects");
   for (const document of documents.filter((item) => item.path !== planPath)) {
-    if (document.path === input.ask.path && document.after === null && document.before !== null && hash(document.before) === input.ask.sha256) continue;
-    if (document.path === askArchive && document.before === null && document.after !== null && hash(document.after) === input.ask.sha256) continue;
-    refuse("UNEXPECTED_EFFECTS", `Preview changes unauthorized document ${document.path}.`);
+    if (!isAskArchival(input, document)) refuse("UNEXPECTED_EFFECTS", `Preview changes unauthorized document ${document.path}.`);
   }
+}
+/** Each managed document equals its before-image with only the pinned after-image and update date applied. */
+function validateActivationDocuments(input: PlanActivationInput, documents: DocumentEffects): void {
+  const e = input.envelope;
+  const managed: [string, Record<string, unknown>, Record<string, unknown>, string][] = [
+    ["PROJECT.md", e.projectBefore, e.projectAfter, "Project"],
+    [`docs/plans/${e.plan}.md`, e.planBefore, e.planAfter, "Plan"],
+    [`docs/plans/${e.previousPlan}.md`, e.previousPlanBefore, e.previousPlanAfter, "Previous Plan"]
+  ];
+  for (const [file, pinnedBefore, pinnedAfter, label] of managed) {
+    const changes = documents.filter((change) => change.path === file);
+    if (changes.length !== 1 || !changes[0].before || !changes[0].after) refuse("UNEXPECTED_EFFECTS", `Preview must change ${label} ${file} exactly once.`);
+    const before = documentState(changes[0].before!);
+    const after = documentState(changes[0].after!);
+    pinnedFieldsMatch(before.fields, pinnedBefore, `${label} before`);
+    const expected = structuredClone(before);
+    for (const [key, value] of Object.entries(pinnedAfter)) {
+      if (value === null) delete expected.fields[key]; else expected.fields[key] = value;
+    }
+    validDate(after.fields.updated);
+    expected.fields.updated = after.fields.updated;
+    equal(after, expected, "UNEXPECTED_EFFECTS", `${label} after`);
+  }
+  const plan = documentState(documents.find((change) => change.path === `docs/plans/${e.plan}.md`)!.before!);
+  const actions = Array.isArray(plan.fields.actions) ? plan.fields.actions as Record<string, unknown>[] : [];
+  const first = actions.filter((action) => action.id === e.action);
+  if (first.length !== 1) refuse("TARGET_STATE_DRIFT", `Action ${e.action} is missing or duplicated.`);
+  pinnedFieldsMatch(first[0], e.actionUnchanged, "First Action");
+  const logs = documents.filter((change) => change.path === e.log);
+  if (logs.length !== 1 || logs[0].after === null) refuse("UNEXPECTED_EFFECTS", `Preview must append exactly one ${e.log} entry.`);
+  const logBefore = logs[0].before ?? "";
+  const appended = logs[0].after!.slice(logBefore.length);
+  if (!logs[0].after!.startsWith(logBefore) || !appended.includes(`Agent Ask ${input.ask.proposal}`) || !appended.includes(`Activated ${e.plan} at ${e.action}.`)) {
+    refuse("UNEXPECTED_EFFECTS", `${e.log} must only append this activation's entry.`);
+  }
+  const pinnedPaths = new Set([...managed.map(([file]) => file), e.log]);
+  for (const document of documents.filter((item) => !pinnedPaths.has(item.path))) {
+    if (!isAskArchival(input, document)) refuse("UNEXPECTED_EFFECTS", `Preview changes unauthorized document ${document.path}.`);
+  }
+}
+
+/** The live documents carry every pinned after-image of this activation. */
+function activationSettled(repo: string, input: PlanActivationInput): void {
+  const e = input.envelope;
+  const read = (file: string) => documentState(readFileSync(path.join(repo, file), "utf8")).fields;
+  pinnedFieldsMatch(read("PROJECT.md"), { slug: e.project, ...e.projectAfter }, "Settled Project");
+  pinnedFieldsMatch(read(`docs/plans/${e.plan}.md`), { slug: e.plan, ...e.planAfter }, "Settled Plan");
+  pinnedFieldsMatch(read(`docs/plans/${e.previousPlan}.md`), { slug: e.previousPlan, ...e.previousPlanAfter }, "Settled previous Plan");
 }
 
 /** All settlement decisions live here. Generated scripts only identify their descriptor. */
@@ -119,10 +174,14 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     }
     const descriptorBytes = readFileSync(descriptorPath);
     result.descriptorSha256 = hash(descriptorBytes);
-    const descriptor = JSON.parse(descriptorBytes.toString()) as { schema: string; id: string; script: string; planAmendment: PlanAmendmentInput };
+    const descriptor = JSON.parse(descriptorBytes.toString()) as { schema: string; id: string; script: string; planAmendment?: PlanAmendmentInput; planActivation?: PlanActivationInput };
     equal([descriptor.schema, descriptor.id, descriptor.script], ["arcadia-operator-script-v1", id, `${id}.sh`], "INVALID_CONTRACT", "Descriptor identity");
-    const input = descriptor.planAmendment;
-    validatePlanAmendmentInput(input);
+    if ((descriptor.planAmendment === undefined) === (descriptor.planActivation === undefined)) refuse("INVALID_CONTRACT", "The descriptor must pin exactly one of planAmendment or planActivation.");
+    // Exactly one variant: an activation never amends Actions, and an amendment never activates.
+    const activation = descriptor.planActivation;
+    const amendment = descriptor.planAmendment;
+    const input: PlanAmendmentInput | PlanActivationInput = activation ?? amendment!;
+    if (activation) validatePlanActivationInput(activation); else validatePlanAmendmentInput(amendment!);
     save();
     repo = realpathSync(input.checkout.path);
     equal(repo, realpathSync(path.resolve(library, "../../..")), "WRONG_CHECKOUT", "Library checkout");
@@ -142,13 +201,31 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     const normalized = normalizeAgentAsk({ request: ask });
     equal([normalized.requestId, normalized.project, normalized.intent, normalized.targetRef],
       [input.ask.proposal, input.envelope.project, "plan", `plan/${input.envelope.plan}`], "ANOTHER_PROPOSAL", "Ask target");
-    equal(normalized.actions.length, 1, "ANOTHER_PROPOSAL", "Ask Action count");
-    equal(normalized.actions[0].targetRef, `action/${input.envelope.action}`, "ANOTHER_PROPOSAL", "Ask Action");
     const readProjectBefore = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
     const project = documentState(readProjectBefore);
-    fieldsMatch(project.fields, input.envelope.projectUnchanged, "Project");
     const currentPlan = documentState(readFileSync(path.join(repo, `docs/plans/${input.envelope.plan}.md`), "utf8"));
-    fieldsMatch(currentPlan.fields, input.envelope.planUnchanged, "Plan");
+    if (activation) {
+      equal([normalized.actions.length, normalized.planMetadata ?? null], [0, null], "ANOTHER_PROPOSAL", "Ask activation shape");
+      // Before settlement every image must match its before-image; a replay finds the after-images instead.
+      // Preview decides which, and both paths then validate the exact document effects.
+      const e = activation.envelope;
+      const previousPlan = documentState(readFileSync(path.join(repo, `docs/plans/${e.previousPlan}.md`), "utf8"));
+      try {
+        pinnedFieldsMatch(project.fields, e.projectBefore, "Project");
+        pinnedFieldsMatch(currentPlan.fields, e.planBefore, "Plan");
+        pinnedFieldsMatch(previousPlan.fields, e.previousPlanBefore, "Previous Plan");
+      } catch (error) {
+        try { activationSettled(repo, activation); } catch { throw error; }
+      }
+      const actions = Array.isArray(currentPlan.fields.actions) ? currentPlan.fields.actions as Record<string, unknown>[] : [];
+      pinnedFieldsMatch(actions.find((action) => action.id === e.action) ?? {}, e.actionUnchanged, "First Action");
+    } else {
+      const e = amendment!.envelope;
+      equal(normalized.actions.length, 1, "ANOTHER_PROPOSAL", "Ask Action count");
+      equal(normalized.actions[0].targetRef, `action/${e.action}`, "ANOTHER_PROPOSAL", "Ask Action");
+      fieldsMatch(project.fields, e.projectUnchanged, "Project");
+      fieldsMatch(currentPlan.fields, e.planUnchanged, "Plan");
+    }
     let workspace: string;
     try { workspace = resolveReadyWorkspace(process.env.ARCADIA_WORKSPACE).workspacePath; }
     catch { refuse("WORKSPACE_UNAVAILABLE", "The configured workspace cannot be opened.", "Restore the configured workspace and retry; no alternative workspace or proposal will be selected."); }
@@ -172,13 +249,17 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
       }
       previewAgentAskRequest(db, { request: ask, sourcePath: source, repoRoot: repo });
     });
-    const flags = { workspace, proposal: input.ask.proposal, requestId: input.settlement.requestId, disposition: input.settlement.disposition, operator: input.settlement.operator, cwd: repo };
+    const activationFlags = activation
+      ? { activate: true, action: activation.settlement.action, model: activation.settlement.model, effort: activation.settlement.effort, top: true }
+      : {};
+    const flags = { workspace, proposal: input.ask.proposal, requestId: input.settlement.requestId, disposition: input.settlement.disposition, operator: input.settlement.operator, cwd: repo, ...activationFlags };
     // Preview and apply use precisely the same flags. No publication-time fingerprint exists.
     const preview = withinPlanAmendmentRunner(descriptorPath, () => runAgentAskSettleCommand(flags).data.receipt);
     atomic(path.join(runDirectory, "preview.json"), preview);
     equal([preview.proposalRequestId, preview.settlementRequestId, preview.projectSlug, preview.intent, preview.disposition],
       [input.ask.proposal, input.settlement.requestId, input.envelope.project, "plan", "accepted"], "ANOTHER_PROPOSAL", "Settlement identity");
-    equal(preview.queueActionKeys, [], "UNEXPECTED_EFFECTS", "Queue Action additions");
+    equal(preview.queueActionKeys, activation ? activation.envelope.queueSegment : [], "UNEXPECTED_EFFECTS", "Queue Action additions");
+    const validate = (documents: DocumentEffects) => activation ? validateActivationDocuments(activation, documents) : validateDocuments(amendment!, documents);
     if (preview.applied) {
       if (!preview.documentsCommit || preview.recovery) refuse("SETTLEMENT_RECOVERY", "Canonical settlement needs recovery.", preview.recovery?.remedy ?? "Preserve the canonical receipt; no second settlement is permitted.");
       const commit = preview.documentsCommit;
@@ -190,13 +271,17 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
         };
         return { path: file, before: read(`${commit}^`), after: read(commit) };
       });
-      validateDocuments(input, documents);
-      equal(targetAction(documentState(readFileSync(path.join(repo, `docs/plans/${input.envelope.plan}.md`), "utf8")).fields, input.envelope.action), input.envelope.actionAfter, "TARGET_STATE_DRIFT", "Settled Action");
+      validate(documents);
+      if (activation) activationSettled(repo, activation);
+      else equal(targetAction(documentState(readFileSync(path.join(repo, `docs/plans/${amendment!.envelope.plan}.md`), "utf8")).fields, amendment!.envelope.action), amendment!.envelope.actionAfter, "TARGET_STATE_DRIFT", "Settled Action");
       result.settlement = preview;
     } else {
       if (!preview.review) refuse("UNEXPECTED_EFFECTS", "Canonical preview omitted structured effects.");
-      equal(preview.review.queueAfter, preview.review.queueBefore, "UNEXPECTED_EFFECTS", "Queue order");
-      validateDocuments(input, preview.review.documents);
+      const projectSlug = input.envelope.project;
+      // Activation replaces only this Project's segment, at the top; every other Project keeps its order.
+      equal(preview.review.queueAfter, activation ? [...activation.envelope.queueSegment, ...preview.review.queueBefore.filter((key) => !key.startsWith(`${projectSlug}/`))] : preview.review.queueBefore,
+        "UNEXPECTED_EFFECTS", "Queue order");
+      validate(preview.review.documents);
       try {
         git(["fetch", "origin", input.checkout.branch]);
         equal(git(["rev-parse", "HEAD"]), git(["rev-parse", `refs/remotes/origin/${input.checkout.branch}`]), "BASE_NOT_SYNCHRONIZED", "Checkout versus origin base");
@@ -239,8 +324,10 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     } catch (error) { refuse("PUBLICATION_FAILED", `Settlement is committed locally; publication failed: ${error instanceof Error ? error.message : String(error)}`, "Restore origin connectivity or its expected base, then retry this same action. It will verify and publish the existing settlement without applying again."); }
     result.status = "succeeded";
     result.reason = preview.applied ? "REPLAY_PUBLISHED" : "SETTLED_AND_PUBLISHED";
-    result.message = "The exact Plan amendment is committed and published.";
-    result.next = "Keep this receipt. No queue, pointer, Grant, production, service, or PR transition was authorized.";
+    result.message = activation ? "The exact Plan activation is committed and published." : "The exact Plan amendment is committed and published.";
+    result.next = activation
+      ? "Keep this receipt. Only the pinned pointers, Plan statuses and this Project's queue segment changed; no Session, Grant, production, service, or PR transition was authorized."
+      : "Keep this receipt. No queue, pointer, Grant, production, service, or PR transition was authorized.";
   } catch (error) {
     result.status = "failed";
     const normalized = normalizeError(error);

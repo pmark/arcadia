@@ -1,5 +1,5 @@
 import path from "node:path";
-import { validatePlanAmendmentInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
+import { validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 
 export interface OperatorScriptDescriptor {
   schema: "arcadia-operator-script-v1";
@@ -23,6 +23,8 @@ export interface OperatorScriptDescriptor {
    */
   next_after?: NextAfter;
   planAmendment?: PlanAmendmentInput;
+  /** A pinned one-shot activation of a draft Plan; it runs through the same shared runner. */
+  planActivation?: PlanActivationInput;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
   /**
    * A pinned, rejection-only settlement scope: the script may settle exactly
@@ -97,33 +99,34 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
   }
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
   if (d.agentAskRejections !== undefined) {
-    if (d.planAmendment !== undefined || d.agentAsk !== undefined) {
-      fail("INVALID_OPERATOR_CONTRACT", "A rejection-only scope cannot be combined with agentAsk or planAmendment.");
+    if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined) {
+      fail("INVALID_OPERATOR_CONTRACT", "A rejection-only scope cannot be combined with agentAsk, planAmendment or planActivation.");
     }
     validateAgentAskRejections(d.agentAskRejections);
     if (d.repeatable === true) fail("INVALID_OPERATOR_CONTRACT", "A pinned rejection scope must be one-shot.");
     if (script.includes("run-plan-amendment") || script.includes("plan-amendment-worker") || script.includes("withinPlanAmendmentRunner")) {
-      fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "The shared runner requires a pinned planAmendment descriptor.");
+      fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "The shared runner requires a pinned planAmendment or planActivation descriptor.");
     }
     return d;
   }
-  if (d.planAmendment !== undefined) {
-    if (d.agentAsk !== undefined) fail("INVALID_OPERATOR_CONTRACT", "Plan amendments use planAmendment, not a second Agent Ask declaration.");
-    try { validatePlanAmendmentInput(d.planAmendment); }
+  if (d.planAmendment !== undefined || d.planActivation !== undefined) {
+    if (d.agentAsk !== undefined) fail("INVALID_OPERATOR_CONTRACT", "Plan amendments use planAmendment or planActivation, not a second Agent Ask declaration.");
+    if (d.planAmendment !== undefined && d.planActivation !== undefined) fail("INVALID_OPERATOR_CONTRACT", "Pin exactly one of planAmendment or planActivation.");
+    try { if (d.planActivation !== undefined) validatePlanActivationInput(d.planActivation); else validatePlanAmendmentInput(d.planAmendment!); }
     catch (error) { fail("INVALID_PLAN_AMENDMENT", error instanceof Error ? error.message : String(error)); }
-    if (d.repeatable === true) fail("INVALID_PLAN_AMENDMENT", "A Plan-amendment approval must be one-shot.");
+    if (d.repeatable === true) fail("INVALID_PLAN_AMENDMENT", "A Plan-amendment or activation approval must be one-shot.");
     if (script.replace(/\r\n/g, "\n") !== planAmendmentLauncher(id)) {
       fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "Plan-amendment scripts must be exactly the shared runner launcher; bespoke commands are refused.");
     }
   } else {
     if (script.includes("run-plan-amendment") || script.includes("plan-amendment-worker") || script.includes("withinPlanAmendmentRunner")) {
-      fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "The shared runner requires a pinned planAmendment descriptor.");
+      fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "The shared runner requires a pinned planAmendment or planActivation descriptor.");
     }
     if (d.agentAsk !== undefined) {
       const a = d.agentAsk;
       if (!a || Object.keys(a).sort().join(",") !== "intent,proposal,targetRef" || !slug.test(a.proposal) || !intents.includes(a.intent) ||
           !(a.targetRef === null || text(a.targetRef))) fail("INVALID_OPERATOR_CONTRACT", "Agent Ask declaration needs the exact proposal, intent and targetRef.");
-      if (a.intent === "plan" && a.targetRef !== null) fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "Existing-Plan amendments require planAmendment and the shared runner.");
+      if (a.intent === "plan" && a.targetRef !== null) fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "Existing-Plan amendments require planAmendment (or planActivation) and the shared runner.");
     } else if (/agent[-_]ask|runAgentAskSettleCommand|settleAgentAsk/.test(script)) {
       fail("UNDECLARED_OPERATOR_SETTLEMENT", "Agent Ask operator scripts must declare their proposal, intent and targetRef; Plan amendments must use the shared runner.");
     }

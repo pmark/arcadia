@@ -42,10 +42,10 @@ export function assertOperatorSettlementContract(
     return;
   }
   if (ask.intent === "plan" && ask.targetRef !== null) {
-    if (activeRunnerDescriptor !== file || !descriptor.planAmendment) {
+    const input = descriptor.planAmendment ?? descriptor.planActivation;
+    if (activeRunnerDescriptor !== file || !input) {
       return refuse("PLAN_AMENDMENT_RUNNER_REQUIRED", "Operator-script Plan amendments must settle through the shared runner.");
     }
-    const input = descriptor.planAmendment;
     if (ask.requestId !== input.ask.proposal || ask.project !== input.envelope.project || ask.targetRef !== `plan/${input.envelope.plan}`) {
       refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "The actual Plan amendment differs from the pinned operator action.");
     }
