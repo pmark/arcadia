@@ -1,4 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { readClaudeCodeTokenFile } from "./claudeCodeToken.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
@@ -33,8 +36,8 @@ const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
  * conflict path every other sign-out does -- managed production retries it
  * for free instead of spending the Action's repair budget on it.
  */
-export function checkProviderSignIn(provider: string, workspace?: string, env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
-  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace, env);
+export function checkProviderSignIn(provider: string, workspace?: string, env?: NodeJS.ProcessEnv, deps: SignInDeps = {}): ProviderSignInStatus | null {
+  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace, env, deps);
   if (provider === "codex-cli") return checkCodexSignIn(env);
   return null;
 }
@@ -65,6 +68,44 @@ function checkCodexSignIn(env?: NodeJS.ProcessEnv): ProviderSignInStatus | null 
   return { signedIn: result.status === 0, remedy };
 }
 
+/** Test seams for the read-only stored-credential expiry check. */
+export interface SignInDeps {
+  /** Reads the stored Claude Code OAuth `expiresAt` (epoch ms) without refreshing anything; defaults to the keychain/credentials file. */
+  readCredentialExpiry?: () => ClaudeCredentialExpiry;
+  now?: () => number;
+}
+
+/** `unknown`: the stored credential could not be read (no keychain access, other OS, no `expiresAt`). */
+export type ClaudeCredentialExpiry = { status: "ok"; expiresAt: number } | { status: "unknown" };
+
+/**
+ * Parses the stored Claude Code credential JSON for `claudeAiOauth.expiresAt`.
+ * Read-only: it never touches the token endpoint or writes any credential.
+ */
+export function parseClaudeCredentialExpiry(raw: string): ClaudeCredentialExpiry {
+  try {
+    const expiresAt = (JSON.parse(raw) as { claudeAiOauth?: { expiresAt?: unknown } }).claudeAiOauth?.expiresAt;
+    return typeof expiresAt === "number" && Number.isFinite(expiresAt) ? { status: "ok", expiresAt } : { status: "unknown" };
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
+/** Reads (never writes) the stored credential: the macOS keychain item first, else `~/.claude/.credentials.json`. */
+function readStoredClaudeCredentialExpiry(): ClaudeCredentialExpiry {
+  // Tests never read this host's real keychain or credentials file; they inject `readCredentialExpiry`.
+  if (process.env.VITEST) return { status: "unknown" };
+  if (process.platform === "darwin") {
+    const keychain = spawnSync("security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"], { encoding: "utf8", timeout: SIGN_IN_CHECK_TIMEOUT_MS });
+    if (keychain.status === 0 && keychain.stdout) return parseClaudeCredentialExpiry(keychain.stdout);
+  }
+  try {
+    return parseClaudeCredentialExpiry(readFileSync(path.join(os.homedir(), ".claude", ".credentials.json"), "utf8"));
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
 /** The one-sentence Claude Code sign-in remedy shared by the launch preflight and the exit receipt. */
 export const CLAUDE_CODE_SIGN_IN_REMEDY = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
 
@@ -81,7 +122,7 @@ export const CLAUDE_CODE_SIGN_IN_REMEDY = 'Sign in to Claude Code on this worker
  * read from `stdout` whether or not the process exited zero; only when no
  * verdict can be read at all is this treated as a probe failure.
  */
-function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): ProviderSignInStatus | null {
+function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv, deps: SignInDeps = {}): ProviderSignInStatus | null {
   // Tests must not depend on this host's real Claude Code sign-in state.
   // A test that specifically exercises the preflight injects an explicit
   // `providerSignIn` override, or an `env` pointing at a stubbed `claude`,
@@ -116,11 +157,11 @@ function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): Pro
     if (confirmed === null) {
       throw new Error('"claude auth status --json" produced output this worker could not parse.');
     }
-    return { signedIn: confirmed, remedy };
+    return confirmed ? refuseIfStoredCredentialExpired(remedy, env, deps) : { signedIn: false, remedy };
   } catch (error) {
     const stdout = readStdout(error);
     const confirmed = stdout !== null ? readLoggedInVerdict(stdout) : null;
-    if (confirmed !== null) return { signedIn: confirmed, remedy };
+    if (confirmed !== null) return confirmed ? refuseIfStoredCredentialExpired(remedy, env, deps) : { signedIn: false, remedy };
 
     throw new Error(
       `Could not check Claude Code sign-in on this worker (${describeProbeFailure(error)}). ` +
@@ -128,6 +169,28 @@ function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): Pro
       { cause: error }
     );
   }
+}
+
+/**
+ * `claude auth status` reports `loggedIn: true` for any stored credential,
+ * even one whose refresh token is dead (Issue #1155). A stored access token
+ * past its `expiresAt` can only be used if a launched Session refreshes it, and
+ * this check must not exchange a refresh token to find out, so an expired
+ * credential is treated as unrefreshable unattended and refused (fail closed).
+ * A long-lived `CLAUDE_CODE_OAUTH_TOKEN` is not stored OAuth state and is
+ * exempt; an unreadable store is "unknown" and leaves the CLI verdict standing.
+ */
+function refuseIfStoredCredentialExpired(remedy: string, env: NodeJS.ProcessEnv | undefined, deps: SignInDeps): ProviderSignInStatus {
+  if ((env ?? process.env).CLAUDE_CODE_OAUTH_TOKEN) return { signedIn: true, remedy };
+  const stored = (deps.readCredentialExpiry ?? readStoredClaudeCredentialExpiry)();
+  const now = (deps.now ?? Date.now)();
+  if (stored.status === "ok" && stored.expiresAt <= now) {
+    return {
+      signedIn: false,
+      remedy: `The stored Claude Code login expired at ${new Date(stored.expiresAt).toISOString()} and cannot be confirmed refreshable without a live call, so an unattended launch could die on "OAuth session expired". ${remedy}`
+    };
+  }
+  return { signedIn: true, remedy };
 }
 
 /** Extracts a confirmed `loggedIn` verdict from `claude auth status --json` output, or `null` if it cannot be read. */

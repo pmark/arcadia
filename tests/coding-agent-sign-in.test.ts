@@ -8,8 +8,11 @@ vi.mock("node:child_process", () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args)
 }));
 
-import { checkProviderSignIn } from "../src/codingAgents/signIn.js";
+import { checkProviderSignIn, parseClaudeCredentialExpiry } from "../src/codingAgents/signIn.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
+
+/** Hermetic default: never read this host's real keychain or credentials file. */
+const NO_STORE = { readCredentialExpiry: () => ({ status: "unknown" as const }) };
 
 /**
  * `checkProviderSignIn`'s claude-code-cli probe is a no-op under `VITEST`
@@ -39,13 +42,13 @@ describe("checkProviderSignIn", () => {
 
   it("reports a confirmed signed-in provider from claude auth status --json", () => {
     execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
-    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"));
+    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE));
     expect(result).toMatchObject({ signedIn: true });
   });
 
   it("reports a confirmed signed-out provider with a remedy", () => {
     execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: false }));
-    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"));
+    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE));
     expect(result).toMatchObject({ signedIn: false });
     expect(result?.remedy).toContain("claude auth login");
   });
@@ -61,7 +64,7 @@ describe("checkProviderSignIn", () => {
     execFileSyncMock.mockImplementation(() => {
       throw nonzeroExit;
     });
-    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"));
+    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE));
     expect(result).toMatchObject({ signedIn: false });
   });
 
@@ -70,14 +73,50 @@ describe("checkProviderSignIn", () => {
     execFileSyncMock.mockImplementation(() => {
       throw spawnError;
     });
-    expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"))).toThrow(
+    expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE))).toThrow(
       /executable was not found/
     );
   });
 
   it("throws, rather than reporting a confirmed sign-out, on unparsable probe output", () => {
     execFileSyncMock.mockReturnValue("not json");
-    expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"))).toThrow(/could not parse/);
+    expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE))).toThrow(/could not parse/);
+  });
+
+  describe("stored OAuth expiry (Issue #1155), read-only and injected", () => {
+    const NOW = Date.parse("2026-10-17T12:00:00Z");
+    const env = { PATH: "" } as NodeJS.ProcessEnv;
+    const check = (readCredentialExpiry: () => { status: "ok"; expiresAt: number } | { status: "unknown" }, e = env) => {
+      execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
+      return withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, e, { readCredentialExpiry, now: () => NOW }));
+    };
+
+    it("admits a stored credential that has not expired", () => {
+      expect(check(() => ({ status: "ok", expiresAt: NOW + 60_000 }))).toMatchObject({ signedIn: true });
+    });
+
+    it("refuses an expired stored credential reported loggedIn:true, with the remedy", () => {
+      const result = check(() => ({ status: "ok", expiresAt: NOW - 60_000 }));
+      expect(result).toMatchObject({ signedIn: false });
+      expect(result?.remedy).toContain("expired at 2026-10-17T11:59:00.000Z");
+      expect(result?.remedy).toContain("claude auth login");
+    });
+
+    it("treats an unreadable credential store as unknown and leaves the CLI verdict standing", () => {
+      expect(check(() => ({ status: "unknown" }))).toMatchObject({ signedIn: true });
+    });
+
+    it("does not consult the stored credential when a long-lived token is inherited", () => {
+      const read = vi.fn(() => ({ status: "ok" as const, expiresAt: 0 }));
+      expect(check(read, { ...env, CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-example" })).toMatchObject({ signedIn: true });
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("parses expiresAt from credential JSON and treats anything else as unknown", () => {
+      expect(parseClaudeCredentialExpiry(JSON.stringify({ claudeAiOauth: { expiresAt: 5 } }))).toEqual({ status: "ok", expiresAt: 5 });
+      expect(parseClaudeCredentialExpiry("not json")).toEqual({ status: "unknown" });
+      expect(parseClaudeCredentialExpiry("{}")).toEqual({ status: "unknown" });
+    });
   });
 
   describe("with a workspace token file", () => {
@@ -100,7 +139,7 @@ describe("checkProviderSignIn", () => {
 
     it("treats a valid token file as signed in without probing the claude executable", () => {
       const workspace = workspaceWithTokenFile("sk-ant-oat-example");
-      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace, undefined, NO_STORE));
       expect(result).toMatchObject({ signedIn: true });
       expect(execFileSyncMock).not.toHaveBeenCalled();
     });
@@ -111,14 +150,14 @@ describe("checkProviderSignIn", () => {
       mkdirSync(getWorkspacePaths(workspace).config, { recursive: true });
       execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
 
-      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace, undefined, NO_STORE));
       expect(result).toMatchObject({ signedIn: true });
       expect(execFileSyncMock).toHaveBeenCalled();
     });
 
     it("reports signed out with a named remedy for a token file readable by group or others, without probing the claude executable, without throwing", () => {
       const workspace = workspaceWithTokenFile("sk-ant-oat-example", 0o640);
-      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace, undefined, NO_STORE));
       expect(result).toMatchObject({ signedIn: false });
       expect(result?.remedy).toContain("group or others");
       expect(execFileSyncMock).not.toHaveBeenCalled();
@@ -126,7 +165,7 @@ describe("checkProviderSignIn", () => {
 
     it("reports signed out with a named remedy for an empty token file, without throwing", () => {
       const workspace = workspaceWithTokenFile("");
-      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace, undefined, NO_STORE));
       expect(result).toMatchObject({ signedIn: false });
       expect(result?.remedy).toContain("empty");
     });
