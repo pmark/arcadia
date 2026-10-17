@@ -103,10 +103,10 @@ actions:
     references: []
   - id: production-spend-budget
     title: Enforce the approved percent-of-window spend budget and emergency reserve (Decisions 0103 and 0111) at production admission.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Enforce the approved percent-of-window spend budget and emergency reserve (Decisions 0103 and 0111) at production admission.
+    next_action: Completed via Agent Ask complete-production-spend-budget-20261017; no further action.
     expected_artifact: Evidence satisfying Agent Ask production-spend-budget
     clarification: clarified
     confidence: high
