@@ -2257,6 +2257,21 @@ function attemptProjectLaunch(
       const dedupeKey = prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
       if (recordLaunchRefusalIfNew(db, actionKey, dedupeKey, refusalLine, input.now)) {
         input.log(refusalLine);
+        // A signed-out or expired provider login is the operator's to fix on the
+        // host: ping once per refusal episode (the refusal log dedupes the episode,
+        // the ping queue dedupes the message), naming the provider and remedy.
+        if (rawCode === "provider_not_signed_in") {
+          try {
+            queueOperatorPing(db, {
+              message: `Production cannot launch ${actionKey}: ${error.message}`,
+              kind: "attention",
+              agent: "production-tick",
+              now: input.now
+            });
+          } catch (pingError) {
+            input.log(`Could not queue the sign-in ping for ${actionKey}: ${pingError instanceof Error ? pingError.message : String(pingError)}`);
+          }
+        }
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
       if (packetLifecycleKind === "build_packet_approval_pending") {

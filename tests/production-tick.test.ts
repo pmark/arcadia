@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1404,6 +1404,32 @@ describe("runManagedProductionTick", () => {
     );
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db))).toHaveLength(0);
     expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("pings the operator once, naming the provider and remedy, for a repeated sign-in refusal without touching the workspace config", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const configPath = path.join(fixture.workspace, "config");
+    const listConfig = () => (existsSync(configPath) ? readdirSync(configPath).sort().join(",") : "");
+    const configBefore = listConfig();
+    const expired = () => ({ signedIn: false, remedy: "The stored Claude Code login has no refresh token. Run \"claude auth login\" on this worker." });
+    for (const offset of [0, 60_000, 120_000]) {
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offset),
+          capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+          providerSignIn: expired
+        })
+      );
+    }
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT message, kind FROM operator_pings").all() as Array<{ message: string; kind: string }>);
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.kind).toBe("attention");
+    expect(pings[0]?.message).toContain("is not signed in for this worker");
+    expect(pings[0]?.message).toContain("claude auth login");
+    expect(tmux.launches).toHaveLength(0);
+    expect(listConfig()).toBe(configBefore);
   });
 
   it("clears a sign-in blocker the moment sign-in is confirmed, even when the launch then fails for an unrelated reason", () => {
