@@ -53,8 +53,10 @@ require(resolved.get('ok') is True and data.get('workspacePath') and data.get('e
         f'No configured live workspace resolved (source: {data.get("source")}). Nothing was submitted.')
 
 # Submit: preview records the proposal. Exact replay returns the same receipt; changed content is refused.
-code, receipt = arcadia_json(['agent-ask', 'preview', '--file', ask_rel], 120, 'preview')
+# Pin the workspace just checked, so a resolver change between the two calls cannot redirect the write.
+code, receipt = arcadia_json(['agent-ask', 'preview', '--workspace', data['workspacePath'], '--file', ask_rel], 120, 'preview')
 (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+require(hashlib.sha256(ask.read_bytes()).hexdigest() == ask_sha, f'{ask_rel} changed during preview; inspect receipt.json before trusting it.')
 require(code == 0 and receipt.get('ok') is True, 'Preview refused: ' + json.dumps(receipt.get('error') or receipt)[:1500])
 d = receipt.get('data') or {}
 p = d.get('proposal') or {}

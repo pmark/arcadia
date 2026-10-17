@@ -16,7 +16,7 @@
     "does": [
       "Refuse unless .arcadia/asks/agent-ask-proposal-native-mail-readonly-existence-probe-20261017.yaml exists with sha256 95a537f21c610d80893e01467d5ab9d61741242ccdccf2da1bb8a130794b115e",
       "Refuse unless Arcadia's own resolver returns a configured, non-experiment workspace",
-      "Run `arcadia agent-ask preview --file` once (120 s bound). It records a capture and proposal receipt in that workspace. Like every preview, it also scans the main checkout's unprocessed .arcadia/asks/ files and may record their proposals (registration only); the discovery result is printed",
+      "Run `arcadia agent-ask preview --workspace <that resolved path> --file` once (120 s bound), then re-check the file hash. It records a capture and proposal receipt in that workspace. Like every preview, it also scans the main checkout's unprocessed .arcadia/asks/ files and may record their proposals (registration only); the discovery result is printed",
       "Keep stdout, stderr and the receipt in a timestamped runs/ directory"
     ],
     "never_does": [
