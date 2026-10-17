@@ -1,0 +1,4 @@
+{"hooks":{
+ "SessionStart":[{"hooks":[{"type":"command","command":"<fixture>/empty-probe.sh SessionStart"}]}],
+ "PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"<fixture>/empty-probe.sh PostToolUse"}]}]
+}}

@@ -1,0 +1,98 @@
+[
+ {
+  "run": "baseline-1",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19173,
+  "turn2Growth": 123,
+  "turn1Out": 16,
+  "costUsd": 0.0040710799999999995,
+  "hookSystemEvents": 0
+ },
+ {
+  "run": "baseline-2",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19169,
+  "turn2Growth": 119,
+  "turn1Out": 16,
+  "costUsd": 0.00044916000000000004,
+  "hookSystemEvents": 0
+ },
+ {
+  "run": "baseline-3",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19169,
+  "turn2Growth": 119,
+  "turn1Out": 16,
+  "costUsd": 0.00042655000000000004,
+  "hookSystemEvents": 0
+ },
+ {
+  "run": "control-1",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19099,
+  "turn2Prompt": 19462,
+  "turn2Growth": 363,
+  "turn1Out": 3,
+  "costUsd": 0.00127604,
+  "hookSystemEvents": 4
+ },
+ {
+  "run": "control-2",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19099,
+  "turn2Prompt": 19498,
+  "turn2Growth": 399,
+  "turn1Out": 6,
+  "costUsd": 0.00061914,
+  "hookSystemEvents": 4
+ },
+ {
+  "run": "empty-1",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19169,
+  "turn2Growth": 119,
+  "turn1Out": 16,
+  "costUsd": 0.00042655000000000004,
+  "hookSystemEvents": 4
+ },
+ {
+  "run": "empty-2",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19169,
+  "turn2Growth": 119,
+  "turn1Out": 16,
+  "costUsd": 0.00042655000000000004,
+  "hookSystemEvents": 4
+ },
+ {
+  "run": "empty-3",
+  "version": "2.1.302",
+  "model": "claude-haiku-5-5",
+  "toolUses": 1,
+  "turn1Prompt": 19050,
+  "turn2Prompt": 19169,
+  "turn2Growth": 119,
+  "turn1Out": 16,
+  "costUsd": 0.00042655000000000004,
+  "hookSystemEvents": 4
+ }
+]
