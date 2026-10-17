@@ -168,6 +168,13 @@
       "path": "docs/agent-guidance/skills.md",
       "read_before": "Before creating, modifying or installing any Arcadia skill; support Codex, Claude Code and OpenCode together.",
       "sha256": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01"
+    },
+    {
+      "id": "native-mail-checkpoints",
+      "trigger": "native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge",
+      "path": "docs/agent-guidance/native-mail-checkpoints.md",
+      "read_before": "Before checking, acknowledging or replying to native-mail, or briefing a native manager to; explicit checkpoints only, no polling or hooks. Grants no authority.",
+      "sha256": "d50e47f1028d9c120721750055b6d24aa6ddcd6c75164c3839833cf9e1e15b6e"
     }
   ]
 }
