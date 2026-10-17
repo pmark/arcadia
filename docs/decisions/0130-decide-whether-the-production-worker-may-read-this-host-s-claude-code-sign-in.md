@@ -4,7 +4,7 @@ type: decision
 id: "0130"
 slug: decide-whether-the-production-worker-may-read-this-host-s-claude-code-sign-in
 project: arcadia
-status: open
+status: approved
 question: Decide whether the production worker may read this host's Claude Code sign-in to check Claude usage before each unattended launch, and what share of each Claude window unattended work may use.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: enable-bounded-local-native-release-manager-coordination-with-durable-addressed
 updated: 2026-10-17
+answer: Allow read-only usage checks; cap unattended use at 80% of each Claude window
+decided: 2026-10-17
 ---
 
 # Decision 0130: Decide whether the production worker may read this host's Claude Code sign-in to check Claude usage before each unattended launch, and what share of each Claude window unattended work may use.
