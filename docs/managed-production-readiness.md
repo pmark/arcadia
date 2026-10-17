@@ -4,7 +4,33 @@ This derived document answers how far Arcadia is from running software productio
 
 Latest derivation: **2026-10-15**, from this PR candidate's `PROJECT.md`, the active [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) and retained validation/review evidence. This is candidate state; PR #1416 remains open. Historical observations below do not establish installed adoption or current live authority.
 
-## Current answer, 2026-10-15: launch diagnostics are complete in the candidate; Claude worker replay is selected; unattended production remains unproved
+## Current answer, 2026-10-17: Claude worker replay is proven in a PR; reactivation and the Claude usage Decision await the operator; unattended production remains unproved
+
+Claude is the only provider (Codex has no tokens). The production Plan `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider` has **one done and seven open** Actions. On main the native Release Manager coordination Plan is still active and the production Plan is a draft. The production Plan's reactivation at `claude-worker-launch-replay` was settled on the host (receipt `asksettle_2e04bdf9225e466ebd`) and waits for the operator to merge [PR #1479](https://github.com/pmark/arcadia/pull/1479). Until it merges and `arcadia docs sync --project arcadia --apply` runs, `advance queue` reports `orderValid: false` with 5 unpositioned Arcadia Actions, because the checked-in documents on main still name the old Plan. `native-rm-checkpoint-roundtrip` is parked with its state preserved. It resumes when `first-unattended-run` is done or the coordination gap blocks a production run.
+
+| Stage | Evidence at this derivation |
+| --- | --- |
+| Launch diagnostics (`launch-failure-keeps-cause`) | Done and merged (#1416). |
+| Claude worker launch replay | Proven in source in [PR #1481](https://github.com/pmark/arcadia/pull/1481) at head `43af0fc0d`. Independent review found no blocking findings. The real worker tick drives the production tmux adapter on `claude-code-cli`. The Session reaches `running`, a draft PR is preserved, and the replay found no defect. The 2026-10-11 tmux failure was not reproduced on claude-code. A host check on 2026-10-17 found that under the live worker's launchd PATH (`com.arcadia.local.742852621.worker`), `tmux` resolves to `/opt/homebrew/bin/tmux` 3.7c and `claude` to `/opt/homebrew/bin/claude` 2.1.267. The Action is not yet settled; that waits for the reactivation and #1481 merges. |
+| Claude usage credential and window cap | [Decision 0130](https://github.com/pmark/arcadia/pull/1480) is raised (receipt `asksettle_16f7f24b10d24e56a9`) and unanswered. The recommended option is read-only usage checks with no OAuth refresh-token exchange and an 80% cap per Claude window, which keeps Decision 0111's 20% reserve. As verified on main, the worker never refreshes Claude usage before admission: `refreshProviderCapacity` is called only by the manual capacity command. The existing refresher exchanges the refresh token on a 401 and does not store the result. |
+| Credential preflight (#1155) | Implementation in progress by a helper. It is read-only toward credentials and fails closed on unknown. |
+| Installed adoption and live Claude run | Unproved. No activation and no real Claude production run has occurred. |
+| Last live observation | `production status` at 2026-10-17T16:44:52Z read Inactive · Idle, policy revision 47 / epoch 28, and saved configuration revision 9 (Codex-only overlap scope from 2026-10-11, not current). Red alert `ra-2bcf88b68759` is still open from the 2026-10-11 Codex run, and its cause was discarded before #1416. The worker recorded a transient base advance and rewind of local main (`9062495af` ↔ `d0210d7f4`) at 16:38 UTC. That was the activation settlement being moved to its PR branch, and it left no other change. |
+
+| Active Plan Action | Status / dependency | Remaining criterion |
+| --- | --- | --- |
+| launch-failure-keeps-cause | **Done** | None. |
+| claude-worker-launch-replay | **Open, selected once #1479 merges**. Evidence is in #1481. | Merge #1481 and settle the completion Ask from its evidence. |
+| claude-capacity-evidence | Open; after the replay | Needs the Decision 0130 answer. Then refresh Claude usage before admission, read-only and fail-closed, with a test that a stale snapshot is refreshed. The spend-bound card is criterion 2, met by Decision 0130 once it is answered. |
+| credential-preflight | Open; after the replay | In progress (helper). |
+| production-spend-budget | Open; after capacity | Permitted cut: a minimal admission check enforcing the 0130 cap, failing closed on unknown usage. Reserve release and burn rate are deferred. |
+| first-supervised-claude-run | Open; after capacity | Permitted cut: the overlap-retirement criterion. Publish a one-Action claude-code preview and present its activation card. |
+| worker-review-and-merge | Open; after the supervised run | Decision 0097 merge through the PR after exact-head review and green checks. |
+| first-unattended-run | Open; after merge, spend budget and preflight | At least three Actions merged, with only activation and authority-adjacent merges as operator touches. |
+
+**Operator touches now on the critical path:** merge #1479 (reactivation), merge #1480 and answer Decision 0130. The capacity gate stays on. No unattended run happens with the gate off, and no merge happens without exact-head independent review and green checks.
+
+## Historical answer, 2026-10-15 (superseded): launch diagnostics are complete in the candidate; Claude worker replay is selected; unattended production remains unproved
 
 The active Plan is `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider`. Its eight Actions contain **one done and seven open**. Both the Plan and `PROJECT.md` select **`claude-worker-launch-replay`**. `launch-failure-keeps-cause` is done through canonical completion commit [`5ece238d`](https://github.com/pmark/arcadia/commit/5ece238decf7851c3eca632b1ab4a7b67377fb4c), preserved in merge head `b5a27da3e4d7b5d45785b10610dc8e40a2b628f8`. Activation PR #1406 and this source completion establish neither installed adoption nor a live production result.
 
