@@ -155,6 +155,23 @@ actions:
     depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight]
     decisions: []
     references: []
+  - id: implement-a-hermetic-test-that-an
+    title: Implement a hermetic test that an over-budget production admission refusal names the 80% unattended budget and the window that breached it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a hermetic test that an over-budget production admission refusal names the 80% unattended budget and the window that breached it.
+    expected_artifact: Evidence satisfying Agent Ask implement-a-hermetic-test-that-an
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-budget-refusal-reason-test-20261017
+    acceptance_criteria:
+      - In tests/provider-capacity-admission.test.ts, an over-budget production admission (85% on the 5-hour window) is refused with code capacity_refused and a reason that names the 80% unattended budget and the 5-hour window.
+      - A second case refuses on the 7-day window and names it.
+      - The change touches only tests/provider-capacity-admission.test.ts; focused tests, lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: standard
