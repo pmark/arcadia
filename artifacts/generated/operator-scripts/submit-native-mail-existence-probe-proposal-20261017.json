@@ -16,7 +16,7 @@
     "does": [
       "Refuse unless .arcadia/asks/agent-ask-proposal-native-mail-readonly-existence-probe-20261017.yaml exists with sha256 95a537f21c610d80893e01467d5ab9d61741242ccdccf2da1bb8a130794b115e",
       "Refuse unless Arcadia's own resolver returns a configured, non-experiment workspace",
-      "Run `arcadia agent-ask preview --file` once (120 s bound), which records a capture and proposal receipt in that workspace",
+      "Run `arcadia agent-ask preview --file` once (120 s bound). It records a capture and proposal receipt in that workspace. Like every preview, it also scans the main checkout's unprocessed .arcadia/asks/ files and may record their proposals (registration only); the discovery result is printed",
       "Keep stdout, stderr and the receipt in a timestamped runs/ directory"
     ],
     "never_does": [
@@ -26,7 +26,7 @@
     ]
   },
   "success": {
-    "effect": "The proposal is registered in the live workspace and the receipt (proposal and capture ids) is printed. Registration is not approval.",
+    "effect": "The proposal is registered in the live workspace. The proposal id, capture id and replay flag are printed, along with any other Asks preview discovered. Registration is not approval.",
     "next": "The proposal waits for normal triage. Its settlement, and any amendment to the build-*-native-mail-hook Actions, are separate gates."
   },
   "failure": {

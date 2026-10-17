@@ -56,7 +56,11 @@ require(resolved.get('ok') is True and data.get('workspacePath') and data.get('e
 code, receipt = arcadia_json(['agent-ask', 'preview', '--file', ask_rel], 120, 'preview')
 (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
 require(code == 0 and receipt.get('ok') is True, 'Preview refused: ' + json.dumps(receipt.get('error') or receipt)[:1500])
-print('RECEIPT ' + json.dumps({k: receipt.get('data', {}).get(k) for k in ('requestId', 'proposalId', 'captureId', 'projectWritesPerformed')}))
+d = receipt.get('data') or {}
+p = d.get('proposal') or {}
+print('RECEIPT ' + json.dumps({'proposalId': p.get('id'), 'captureId': p.get('captureId'), 'requestId': (p.get('normalized') or {}).get('requestId'),
+    'replayed': d.get('replayed'), 'projectWritesPerformed': d.get('projectWritesPerformed')}))
+print('DISCOVERY ' + json.dumps(d.get('discovery'))[:4000])
 print('SUBMITTED: proposal registered for consideration; it is not approved or settled.')
 PY
     then
