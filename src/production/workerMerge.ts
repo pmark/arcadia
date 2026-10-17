@@ -42,6 +42,7 @@ export type WorkerMergeRefusalCode =
   | "pull_request_unreadable"
   | "pull_request_not_open"
   | "head_moved"
+  | "wrong_base"
   | "checks_unknown"
   | "checks_pending"
   | "check_failed"
@@ -59,6 +60,7 @@ export const WORKER_MERGE_REFUSAL_CODES: readonly WorkerMergeRefusalCode[] = [
   "pull_request_unreadable",
   "pull_request_not_open",
   "head_moved",
+  "wrong_base",
   "checks_unknown",
   "checks_pending",
   "check_failed",
@@ -95,6 +97,8 @@ export interface WorkerMergeBlastRadius {
 export interface WorkerMergeFacts {
   /** The settled candidate head the worker means to land. */
   expectedHead: string;
+  /** The governed base branch the PR must target; anything else (a stacked or retargeted base) refuses. */
+  baseBranch: string;
   /** The independent verdict gate; null when none was consulted (refused as missing). */
   review: VerdictGate | null;
   /** The PR's URL from the worker preservation receipt; null when the candidate has no PR. */
@@ -139,6 +143,9 @@ export function evaluateWorkerMerge(facts: WorkerMergeFacts): WorkerMergeEvaluat
   if (typeof pr.headRefOid !== "string" || !SHA_RE.test(pr.headRefOid)) {
     return refuse("pull_request_unreadable", `PR ${facts.pullRequestUrl} reported no readable head commit.`);
   }
+  if (typeof pr.baseRefName !== "string" || pr.baseRefName !== facts.baseBranch) {
+    return refuse("wrong_base", `PR ${facts.pullRequestUrl} targets ${String(pr.baseRefName ?? "an unreported base")}, not the governed base ${facts.baseBranch}; the worker merges only into the governed base.`);
+  }
   if (pr.headRefOid !== head) {
     return refuse("head_moved", `PR ${facts.pullRequestUrl} head ${short(pr.headRefOid)} is not the reviewed candidate head ${short(head)}; a moved head is never merged.`);
   }
@@ -160,7 +167,34 @@ export function evaluateWorkerMerge(facts: WorkerMergeFacts): WorkerMergeEvaluat
 }
 
 /** The governed records a completion settlement commit writes (pointer, Plan status, Mission Log, archived Ask); anything else in it is authority-adjacent. */
-const SETTLEMENT_RECORD_PATH = /^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;
+/**
+ * The ONLY paths the agent's own commits may change for the worker to merge
+ * unattended (an allowlist: anything else is authority-adjacent). No `src/**`
+ * module is on it: every source file can define or enforce a gate (the merge,
+ * review, blast-radius, check, capacity or spend gate, CLI grant flags,
+ * identity, settlement), so a source change always waits for the operator.
+ * - dashboard presentation files: `.tsx`/`.css` under `apps/dashboard/components/`
+ *   or `apps/dashboard/app/`, minus `app/api/` and route handlers (no `.ts`,
+ *   so no server action, middleware, `lib/` or `*-server.ts` module);
+ * - `tests/**`, minus the shared helpers and harness fakes that gate proofs;
+ * - `docs/**` Markdown, minus Decisions, agent guidance, Plans, scout state,
+ *   the shared agent context and the production readiness report;
+ * - a top-level Markdown file that is not a governance document.
+ * The batch-merge classifier and the stewardship assessment still apply on top.
+ */
+const WORKER_MERGE_SAFE_PATHS: readonly RegExp[] = [
+  /^apps\/dashboard\/(?:components\/|app\/(?!api\/))(?!(?:[^\0]*\/)?route\.)[^\0]*\.(?:tsx|css)$/,
+  /^tests\/(?!helpers\/|fast-rehearsal\/helpers\/|setup)[^\0]+$/,
+  /^docs\/(?!decisions\/|agent-guidance\/|plans\/|scout\/|agents-context\.md$|managed-production-readiness\.md$)[^\0]+\.md$/,
+  /^(?!(?:AGENTS|CLAUDE|PROJECT|CONSTITUTION|NORTH_STAR|OPERATOR_CONTEXT|MISSION_LOG)\.md$)[A-Za-z0-9_-]+\.md$/
+];
+
+/** Whether one agent-changed path is on the worker-merge allowlist. */
+export function isWorkerMergeSafePath(path: string): boolean {
+  return WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(path));
+}
+
+const SETTLEMENT_RECORD_PATH =/^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;
 
 /**
  * The blast-radius assessment of one candidate head: the stewardship
@@ -190,7 +224,9 @@ export function assessWorkerMergeBlastRadius(
       : [];
     const boundaries = agentPaths.length > 0 ? classifyAuthorityPaths(agentPaths) : [];
     const outsideRecords = settlementPaths.filter((path) => !SETTLEMENT_RECORD_PATH.test(path));
+    const notAllowlisted = agentPaths.filter((path) => !isWorkerMergeSafePath(path));
     const reasons = [...stewardship.reasons];
+    if (notAllowlisted.length > 0) reasons.push(`The agent's own commits change paths outside the worker-merge allowlist: ${notAllowlisted.join(", ")}.`);
     if (boundaries.length > 0) reasons.push(`The agent's own commits touch authority boundaries: ${boundaries.join(", ")}.`);
     if (outsideRecords.length > 0) reasons.push(`The completion settlement commit changes paths outside the Project and Plan records: ${outsideRecords.join(", ")}.`);
     if (settled && agentPaths.length === 0) reasons.push("The candidate carries no change of its own beyond its completion settlement.");
@@ -394,12 +430,16 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   // A PR GitHub already merged at exactly this head (an earlier tick merged it
   // and stopped before the local sync) only needs the sync.
   if (read.view && typeof read.view.state === "string" && read.view.state.toUpperCase() === "MERGED") {
+    if (read.view.baseRefName !== baseBranch) {
+      return refused("wrong_base", `PR ${url} was merged into ${String(read.view.baseRefName ?? "an unreported base")}, not the governed base ${baseBranch}.`);
+    }
     if (read.view.headRefOid === head) return synced(true);
     return refused("head_moved", `PR ${url} was merged at ${short(String(read.view.headRefOid))}, not the reviewed head ${short(head)}.`);
   }
   const blastRadius = assessWorkerMergeBlastRadius(repoRoot, baseBranch, head, input.settlementCommit);
   const evaluation = evaluateWorkerMerge({
     expectedHead: head,
+    baseBranch,
     review: input.review,
     pullRequestUrl: url,
     pullRequest: read.view,

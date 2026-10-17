@@ -33,14 +33,17 @@ const GREEN = [{ name: "fast", status: "COMPLETED", conclusion: "SUCCESS", detai
 function gateFor(head: string): VerdictGate {
   return { satisfied: true, binding: { targetHead: head } , verdicts: {} } as unknown as VerdictGate;
 }
-const NARROW: WorkerMergeBlastRadius = { authorityAdjacent: false, reasons: [], boundaries: [], touchedPaths: ["feature.txt"], linesChanged: 1 };
+/** A plain dashboard UI file: on the worker-merge allowlist. */
+const SAFE = "apps/dashboard/components/Feature.tsx";
+const NARROW: WorkerMergeBlastRadius = { authorityAdjacent: false, reasons: [], boundaries: [], touchedPaths: [SAFE], linesChanged: 1 };
 
 function facts(over: Partial<WorkerMergeFacts> = {}): WorkerMergeFacts {
   return {
     expectedHead: HEAD,
+    baseBranch: "main",
     review: gateFor(HEAD),
     pullRequestUrl: URL,
-    pullRequest: { state: "OPEN", isDraft: false, headRefName: "claude/x", headRefOid: HEAD, mergeStateStatus: "CLEAN", statusCheckRollup: GREEN },
+    pullRequest: { state: "OPEN", isDraft: false, headRefName: "claude/x", baseRefName: "main", headRefOid: HEAD, mergeStateStatus: "CLEAN", statusCheckRollup: GREEN },
     blastRadius: NARROW,
     ...over
   };
@@ -60,6 +63,10 @@ describe("evaluateWorkerMerge: the pure gate, fail closed", () => {
   });
   it("refuses a review of another head", () => {
     expect(codeOf(facts({ review: gateFor("b".repeat(40)) }))).toBe("review_stale_head");
+  });
+  it("refuses a PR that does not target the governed base", () => {
+    expect(codeOf(facts({ pullRequest: { ...facts().pullRequest!, baseRefName: "claude/previous" } }))).toBe("wrong_base");
+    expect(codeOf(facts({ pullRequest: { ...facts().pullRequest!, baseRefName: undefined } }))).toBe("wrong_base");
   });
   it("refuses a moved PR head", () => {
     expect(codeOf(facts({ pullRequest: { ...facts().pullRequest!, headRefOid: "c".repeat(40) } }))).toBe("head_moved");
@@ -150,7 +157,7 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
   });
 
   it("merges through GitHub with --match-head-commit and moves the local base onto GitHub's merge commit", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     const outcome = merge();
     expect(outcome).toMatchObject({ kind: "merged", head, pullRequestUrl: URL, replayed: false });
     expect(github.ghCalls).toContain(`gh pr merge ${URL} --merge --match-head-commit ${head}`);
@@ -166,9 +173,9 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
   });
 
   it("refuses a moved head by name, and never calls merge", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     git(repo, ["checkout", "-q", branch]);
-    writeFileSync(path.join(repo, "feature.txt"), "moved\n");
+    writeFileSync(path.join(repo, SAFE), "moved\n");
     git(repo, ["commit", "-q", "-am", "unreviewed push"]);
     git(repo, ["push", "-q", "origin", branch]);
     git(repo, ["checkout", "-q", "main"]);
@@ -179,10 +186,10 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
   });
 
   it("refuses when GitHub's own --match-head-commit check sees the head move after the read", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     github.beforeMerge = () => {
       git(repo, ["checkout", "-q", branch]);
-      writeFileSync(path.join(repo, "feature.txt"), "raced\n");
+      writeFileSync(path.join(repo, SAFE), "raced\n");
       git(repo, ["commit", "-q", "-am", "race"]);
       git(repo, ["push", "-q", "origin", branch]);
       git(repo, ["checkout", "-q", "main"]);
@@ -194,14 +201,14 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
   });
 
   it("refuses a failed check by name", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     github.checks = () => [{ ...GREEN[0], conclusion: "FAILURE" }];
     expect(merge()).toMatchObject({ kind: "refused", code: "check_failed" });
     expect(github.mergeCalls).toEqual([]);
   });
 
   it("refuses unknown check state and a non-CLEAN merge state", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     github.checks = () => [];
     expect(merge()).toMatchObject({ kind: "refused", code: "checks_unknown" });
     github.checks = () => GREEN;
@@ -211,7 +218,7 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
   });
 
   it("refuses a missing review by name", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     expect(merge({ review: null })).toMatchObject({ kind: "refused", code: "review_missing" });
     expect(merge({ review: gateFor("d".repeat(40)) })).toMatchObject({ kind: "refused", code: "review_stale_head" });
     expect(github.mergeCalls).toEqual([]);
@@ -246,7 +253,8 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
 
   it("treats paths outside the governed records in the settlement commit as authority-adjacent", () => {
     git(repo, ["checkout", "-q", "-b", branch]);
-    writeFileSync(path.join(repo, "feature.txt"), "feature\n");
+    mkdirSync(path.dirname(path.join(repo, SAFE)), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
     git(repo, ["add", "-A"]);
     git(repo, ["commit", "-q", "-m", "agent work"]);
     writeFileSync(path.join(repo, "CONSTITUTION.md"), "# Rewritten\n");
@@ -259,8 +267,61 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
   });
 
+  // Review finding B1: every path that defines or enforces a gate (merge, review,
+  // blast radius, checks, capacity/spend, CLI grant flags, identity, harness fakes)
+  // is off the allowlist, so the worker can never merge a weakening of its own gate.
+  it.each([
+    "src/stewardship/prBlastRadius.ts",
+    "src/qa/prReview.ts",
+    "src/review/gate.ts",
+    "src/agentRoles/registry.ts",
+    "src/codingAgents/capacity.ts",
+    "src/workspace/experimentGuard.ts",
+    "src/cli.ts",
+    "src/commands/production.ts",
+    "src/decisions/batchMerge.ts",
+    "src/identity/resolve.ts",
+    "src/feature/plain.ts",
+    "tests/helpers/rehearsalHarness.ts",
+    "tests/fast-rehearsal/helpers/github.ts",
+    "apps/dashboard/app/api/production-control/route.ts",
+    "apps/dashboard/app/todo/route.tsx",
+    "apps/dashboard/lib/decision-cards-server.ts",
+    "apps/dashboard/middleware.ts",
+    "docs/decisions/0200-widen-merge.md",
+    "docs/agent-guidance/pull-requests.md",
+    "docs/plans/next.md",
+    "scripts/merge-decision-card-batch.ts",
+    ".github/workflows/ci.yml",
+    "package.json",
+    "AGENTS.md",
+    "feature.txt"
+  ])("refuses %s as authority_adjacent and never calls merge", (file) => {
+    candidate({ [file]: "changed\n" });
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(outcome.kind === "refused" && outcome.reason).toContain(file);
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it.each([SAFE, "apps/dashboard/app/todo/page.tsx", "apps/dashboard/app/globals.css", "tests/marker.test.mjs", "docs/reports/note.md", "README.md"])(
+    "still merges an allowlisted change: %s",
+    (file) => {
+      candidate({ [file]: "changed\n" });
+      expect(merge()).toMatchObject({ kind: "merged" });
+    }
+  );
+
+  it("refuses a PR that targets another base (N1)", () => {
+    git(repo, ["push", "-q", "origin", "main:refs/heads/claude/previous"]);
+    candidate({ [SAFE]: "feature\n" });
+    github.prs[0].baseBranch = "claude/previous";
+    expect(merge()).toMatchObject({ kind: "refused", code: "wrong_base" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
   it("reports a merged PR whose local base could not be synced, without an operator merge command", () => {
-    candidate({ "feature.txt": "feature\n" });
+    candidate({ [SAFE]: "feature\n" });
     const outcome = merge({ syncFails: true });
     expect(outcome).toMatchObject({ kind: "refused", code: "base_not_synced", operatorMergeCommand: null });
     expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
