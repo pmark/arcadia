@@ -73,10 +73,9 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-supervised-claude-run
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-autonomous-production-on-arcadia-2026-10-14-v2
+    source: Agent Ask cut-overlap-criterion-first-supervised-claude-run-20261017
     why: "No production run has completed an Action on a non-disposable repository; this is the first proof on the real repository."
     acceptance_criteria:
-      - reconcile-completed-governance-overlap is either proposed for retirement with evidence that main already satisfies it, or re-scoped to claude-code, through an Agent Ask.
       - A production preview scoped to claude-code, one Action, concurrency 1 and remote preservation is published with its fingerprint, and the operator's activation is presented as one card; agents do not activate.
       - After the operator activates, the run's Session reaches a draft PR, an independent review of its head is recorded, and the PR merges through the batch-merge card or the operator.
       - docs/managed-production-readiness.md is refreshed under its Refresh contract with the run's observed stages, failures and operator touches.
