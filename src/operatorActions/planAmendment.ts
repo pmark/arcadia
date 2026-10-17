@@ -107,9 +107,18 @@ function validateActivationDocuments(input: PlanActivationInput, documents: Docu
   pinnedFieldsMatch(first[0], e.actionUnchanged, "First Action");
   const logs = documents.filter((change) => change.path === e.log);
   if (logs.length !== 1 || logs[0].after === null) refuse("UNEXPECTED_EFFECTS", `Preview must append exactly one ${e.log} entry.`);
-  const logBefore = logs[0].before ?? "";
-  const appended = logs[0].after.slice(logBefore.length);
-  if (!logs[0].after.startsWith(logBefore) || !appended.includes(`Agent Ask ${input.ask.proposal}`) || !appended.includes(`Activated ${e.plan} at ${e.action}.`)) {
+  // The canonical append also restamps the log's own `updated`; every other frontmatter field and the prior body stay.
+  let appended = logs[0].after;
+  if (logs[0].before !== null) {
+    const before = documentState(logs[0].before);
+    const after = documentState(logs[0].after);
+    validDate(after.fields.updated);
+    equal(after.fields, { ...before.fields, updated: after.fields.updated }, "UNEXPECTED_EFFECTS", `${e.log} frontmatter`);
+    const prior = before.body.trimEnd();
+    if (!after.body.startsWith(prior)) refuse("UNEXPECTED_EFFECTS", `${e.log} must only append this activation's entry.`);
+    appended = after.body.slice(prior.length);
+  }
+  if (!appended.includes(`Agent Ask ${input.ask.proposal}`) || !appended.includes(`Activated ${e.plan} at ${e.action}.`)) {
     refuse("UNEXPECTED_EFFECTS", `${e.log} must only append this activation's entry.`);
   }
   const pinnedPaths = new Set([...managed.map(([file]) => file), e.log]);
@@ -306,6 +315,8 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
         equal(queue.ordered.flatMap(entry => entry.orderKey ? [entry.orderKey] : []), preview.review!.queueBefore, "UNEXPECTED_EFFECTS", "Queue at write fence");
       };
       result.settlement = withinPlanAmendmentRunner(descriptorPath, () => runAgentAskSettleCommand({ ...flags, preview: preview.previewFingerprint, apply: true, beforeGovernanceWrite }).data.receipt);
+      equal([result.settlement.proposalRequestId, result.settlement.settlementRequestId, result.settlement.queueActionKeys], [preview.proposalRequestId, preview.settlementRequestId, preview.queueActionKeys],
+        "SETTLEMENT_RECOVERY", "Applied settlement versus preview");
     }
     atomic(path.join(runDirectory, "settlement-receipt.json"), result.settlement);
     save(); // Durable before push, including crashes and retries.

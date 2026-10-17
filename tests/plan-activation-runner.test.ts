@@ -42,6 +42,8 @@ function fixture() {
   writeDoc("PROJECT.md", project);
   writeDoc("docs/plans/old-plan.md", oldPlan);
   writeDoc("docs/plans/new-plan.md", newPlan);
+  // An older-dated log proves the canonical append may restamp its `updated` on any later day.
+  writeDoc("MISSION_LOG.md", { arcadia: "v1", type: "log", slug: "demo-mission-log", project: "demo", updated: "2026-10-01" });
   writeFileSync(path.join(repo, ".gitignore"), "node_modules\nsrc\nartifacts/generated/operator-scripts/runs/\n");
   symlinkSync(path.join(sourceRoot, "src"), path.join(repo, "src"), "dir");
   symlinkSync(path.join(sourceRoot, "node_modules"), path.join(repo, "node_modules"), "dir");
