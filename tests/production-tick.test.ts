@@ -1353,6 +1353,43 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
   });
 
+  it("names a stale Claude reading whose read-only refresh was rejected (Decision 0130): durable blocker, one deduped sign-in ping", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const stale: CapacityAdmissionDecision = {
+      ...provenCapacity(),
+      admitted: false,
+      code: "capacity_stale",
+      reason: "claude-code-cli capacity was last observed an hour ago, past the 15-minute freshness limit for unattended admission.",
+      unattendedProof: false,
+      refreshRequired: true
+    };
+    const tickAt = (offsetMs: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: { generatedAt: fixture.now.toISOString(), providers: [stale] },
+        claudeUsageRefreshState: () => "unauthorized",
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    for (const offset of [0, 60_000, 120_000]) {
+      const project = tickAt(offset).projects.find((entry) => entry.projectSlug === "test-project")!;
+      expect(project.launch?.outcome).toBe("refused");
+    }
+
+    expect(tmux.launches).toHaveLength(0);
+    const blockers = withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db));
+    expect(blockers[0]).toMatchObject({ projectSlug: "test-project", code: "capacity_refused" });
+    expect(blockers[0]?.reason).toContain("never refreshes it");
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT message FROM operator_pings").all() as { message: string }[]
+    );
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.message).toContain("Sign in to Claude Code again");
+  });
+
   it("surfaces a signed-out provider's refusal in arcadia production status as the Project launch blocker, and clears it once sign-in is restored", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

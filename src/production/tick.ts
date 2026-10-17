@@ -7,6 +7,7 @@ import { listUnsettledAgentAskProposals, recordCommittedCompletionSettlement, se
 import { surfaceMergedAgentAsks, type MergedAskSurfacing } from "../ask/surfaceMergedAsks.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { describeClaudeUsageRefreshState, readClaudeUsageRefreshState, type ClaudeUsageRefreshState } from "../codingAgents/availability.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
@@ -96,6 +97,12 @@ export interface ManagedProductionTickOptions {
   tmux?: TmuxAdapter;
   /** Test-only override for the standing-policy provider capacity observation. */
   capacityObservation?: ProviderCapacityObservation;
+  /**
+   * Last recorded outcome of the read-only Claude usage refresh (Decision
+   * 0130). Defaults to the host snapshot (and to null under test). Used only
+   * to name why a stale/unknown reading refused a launch.
+   */
+  claudeUsageRefreshState?: () => ClaudeUsageRefreshState | null;
   /** Test-only override for where a newly launched agent worktree is created. */
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
@@ -2232,8 +2239,20 @@ function attemptProjectLaunch(
       // conflict code supersedes and clears a stale sign-in blocker.
       // A missing provider binary or headless permission posture
       // (`launchPreflight.ts`) is durable for the same reason.
+      // Decision 0130: a stale/unknown Claude reading whose last read-only
+      // refresh failed on the credential is the operator's to fix (sign in
+      // again); name it durably rather than as a generic capacity wait.
+      const claudeUsageRefreshState = rawCode === "capacity_refused" || rawCode === "capacity_unproven"
+        ? (input.options.claudeUsageRefreshState ?? (() => (process.env.VITEST ? null : readClaudeUsageRefreshState())))()
+        : null;
+      const claudeUsageUnreadable = claudeUsageRefreshState === "no_credentials" || claudeUsageRefreshState === "unauthorized";
+      const claudeUsageRemedy = claudeUsageUnreadable
+        ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) Sign in to Claude Code again on this host; the worker only reads the access token and never refreshes it.`
+        : null;
       if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
+      } else if (claudeUsageRemedy) {
+        recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
       } else {
         clearLaunchBlocker(db, input.projectSlug);
       }
@@ -2260,10 +2279,10 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
-        if (rawCode === "provider_not_signed_in") {
+        if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
-              message: `Production cannot launch ${actionKey}: ${error.message}`,
+              message: `Production cannot launch ${actionKey}: ${error.message}${claudeUsageRemedy ? ` ${claudeUsageRemedy}` : ""}`,
               kind: "attention",
               agent: "production-tick",
               now: input.now
