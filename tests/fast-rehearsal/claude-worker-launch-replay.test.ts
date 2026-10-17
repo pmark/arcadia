@@ -15,7 +15,7 @@ import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS, WORK } from "./helpers/wo
  * `claude-code-cli` provider, through the REAL tmux launch path.
  *
  * Every other fast-rehearsal scenario records the launch in `FakeTmux`. Here
- * the worker tick's tmux adapter is `systemTmux` itself, so the tick runs the
+ * the worker tick's tmux adapter forwards every call to `systemTmux`, so the tick runs the
  * real `tmux new-session` subprocess with the real recording wrapper
  * (`wrapRecordedLaunch`, `scripts/record-session-exit.mjs`) on a real tmux
  * server. Two things are still stand-ins, both external:
@@ -47,6 +47,7 @@ let statusAtLaunch = "";
 let statusWhileLive = "";
 let liveTickReconciled = -1;
 let paneWhileLive: string | null = null;
+let stubCalls: Array<{ argv: string[]; cwd: string }> = [];
 let stubCall: { argv: string[]; cwd: string } | null = null;
 let executed: ExecutorResult;
 let exitStatus: number | null = null;
@@ -90,7 +91,7 @@ describe.skipIf(!tmuxBinary)("claude-worker-launch-replay: a production tick lau
     // The real tmux, on the scenario's own server socket. It replaces the
     // harness's PATH tmux fake, so the queue's own `systemTmux` reads see the
     // same live server as the tick.
-    writeFileSync(path.join(bin, "tmux"), `#!/bin/sh\nexec ${shellQuote(tmuxBinary)} -S ${shellQuote(socket)} "$@"\n`);
+    writeFileSync(path.join(bin, "tmux"), `#!/bin/sh\nexec ${shellQuote(tmuxBinary)} -f /dev/null -S ${shellQuote(socket)} "$@"\n`);
     // The provider stand-in. Only the headless launch blocks; any other call
     // (a preflight probe) answers and is recorded.
     writeFileSync(path.join(bin, "claude"), `#!/usr/bin/env node
@@ -110,6 +111,7 @@ setTimeout(() => process.exit(3), 120000);
     world.tmux.available = () => systemTmux.available();
     world.tmux.hasSession = (name) => systemTmux.hasSession(name);
     world.tmux.capturePane = (name) => systemTmux.capturePane!(name);
+    (world.tmux as typeof systemTmux).killSession = (name) => systemTmux.killSession!(name);
     world.tmux.launch = (input) => {
       systemTmux.launch(input);
       world.tmux.launches.push({ name: input.name, cwd: input.cwd, command: input.command, args: input.args });
@@ -138,6 +140,7 @@ setTimeout(() => process.exit(3), 120000);
     sessionLog = existsSync(log) ? readFileSync(log, "utf8") : "";
     world.tickUntil((r) => r.handoff?.preservation.kind === "preserved", 3);
     statusAfterExit = sessionRow(sessionId).status;
+    stubCalls = readFileSync(stubLog, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { argv: string[]; cwd: string });
     world.finish();
   }, SCENARIO_TIMEOUT_MS);
 
@@ -190,7 +193,10 @@ setTimeout(() => process.exit(3), 120000);
     expect(JSON.stringify(receipt)).toContain(pr!.url);
   });
 
-  it("runs no guarded binary", () => {
+  it("runs no guarded binary, and claude only for the one launch", () => {
     expect(isolation.guardCalls()).toEqual([]);
+    // The stub shadows the claude guard, so it must not hide a stray call.
+    expect(stubCalls).toHaveLength(1);
+    expect(stubCalls[0].argv).toContain("--print");
   });
 });

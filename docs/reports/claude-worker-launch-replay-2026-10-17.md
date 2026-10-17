@@ -4,7 +4,7 @@ Action: `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-
 
 ## The replay
 
-`tests/fast-rehearsal/claude-worker-launch-replay.test.ts` drives the real worker tick (`runManagedProductionTick`, as `arcadia worker` calls it) on the fast-rehearsal fixture. The provider is `claude-code-cli` with profile `claude_build`. Unlike the other scenarios, the tick's tmux adapter is the production `systemTmux`. That means the real `tmux new-session` subprocess runs with the real recording wrapper (`wrapRecordedLaunch`, `scripts/record-session-exit.mjs`) on a real tmux server (3.4).
+`tests/fast-rehearsal/claude-worker-launch-replay.test.ts` drives the real worker tick (`runManagedProductionTick`, as `arcadia worker` calls it) on the fast-rehearsal fixture. The provider is `claude-code-cli` with profile `claude_build`. Unlike the other scenarios, the tick's tmux adapter forwards every call (`available`, `hasSession`, `launch`, `capturePane`, `killSession`) to the production `systemTmux`, and the scenario's tmux server reads no tmux config (`-f /dev/null`). That means the real `tmux new-session` subprocess runs with the real recording wrapper (`wrapRecordedLaunch`, `scripts/record-session-exit.mjs`) on a real tmux server (3.4).
 
 Stand-ins, all external:
 
@@ -13,7 +13,7 @@ Stand-ins, all external:
 - **The agent's edits and completion.** The scripted executor makes them from the same argv.
 - **GitHub, reviewers, capacity and sign-in.** These use the harness's shared fakes.
 
-The guard binaries record no call.
+The guard binaries record no call, and the stub records exactly one call: the launch.
 
 Asserted:
 
@@ -46,7 +46,7 @@ The replay is not vacuous. Two mutations each failed it, and both were reverted:
 | The same with the stub exiting 5 | 1 failed, 5 passed (expected) |
 | `node scripts/fast-rehearsal.mjs` (all scenarios) | 20 files, 78 passed, 1 expected fail. The report's 2 unexpected recorded errors belong to the existing `session-probe-wall` scenario, which this change does not touch. |
 | `pnpm exec vitest run tests/production-tick.test.ts -t "retains real tmux stderr"` | 1 passed |
-| `eslint tests/fast-rehearsal`, `tsc --noEmit`, `pnpm build` | Exit 0 |
+| `eslint tests/fast-rehearsal`, `tsc --noEmit`, `pnpm build` | Exit 0. The repository's `tsconfig.json` covers `src` and `scripts`, not tests; vitest transpiles the test without type-checking. |
 
 The run was in a Linux cloud container with tmux 3.4. CI runs the scenario wherever `tmux` is installed; elsewhere it skips.
 
