@@ -96,6 +96,17 @@ an accepted bulk cleanup, a one-shot `agentAskRejections` block naming the
 reviewed list (`manifest`, `sha256`) and every proposal id it may reject. The
 settlement guard then admits only disposition `rejected` for those ids.
 
+An operator-owned workspace-config change uses a pinned `workspaceConfigEdit`
+block (`arcadia-workspace-config-edit-v1`: exact absolute `workspace`,
+`operation: "remove"`, an allowlisted `field`, its exact `expected` value) and
+exactly the `workspaceConfigEditLauncher` text, which runs
+`scripts/workspace-config-edit-worker.ts`. The worker refuses a different
+resolved workspace, field drift, non-canonical JSON, Active or unreadable
+production, and any second press after a recorded success; it removes only that
+key and records before/after sha256 in a durable receipt. The field allowlist in
+`src/operatorActions/workspaceConfigEditContract.ts` is the only way to widen it,
+by reviewed code change. The inverse is never built as a card; the receipt names it.
+
 One-shot actions (`repeatable: false`) never delete themselves: `/runs` keeps
 their disabled succeeded state and receipt as the durable audit trail. Keep a
 reusable action repeatable only when rerunning is safe and useful. Do not add

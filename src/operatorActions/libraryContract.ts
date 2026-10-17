@@ -1,5 +1,6 @@
 import path from "node:path";
 import { validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
+import { validateWorkspaceConfigEditInput, workspaceConfigEditLauncher, type WorkspaceConfigEditInput } from "./workspaceConfigEditContract.js";
 
 export interface OperatorScriptDescriptor {
   schema: "arcadia-operator-script-v1";
@@ -26,6 +27,8 @@ export interface OperatorScriptDescriptor {
   /** A pinned one-shot activation of a draft Plan; it runs through the same shared runner. */
   planActivation?: PlanActivationInput;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
+  /** A pinned one-shot removal of one allowlisted workspace-config field; it runs only through the shared worker launcher. */
+  workspaceConfigEdit?: WorkspaceConfigEditInput;
   /**
    * A pinned, rejection-only settlement scope: the script may settle exactly
    * these proposals, each only with disposition `rejected` (enforced at
@@ -98,6 +101,21 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
+  if (d.workspaceConfigEdit !== undefined) {
+    if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskRejections !== undefined) {
+      fail("INVALID_OPERATOR_CONTRACT", "A workspace-config edit cannot be combined with a settlement scope.");
+    }
+    try { validateWorkspaceConfigEditInput(d.workspaceConfigEdit); }
+    catch (error) { fail("INVALID_WORKSPACE_CONFIG_EDIT", error instanceof Error ? error.message : String(error)); }
+    if (d.repeatable === true || d.kind !== undefined) fail("INVALID_WORKSPACE_CONFIG_EDIT", "A workspace-config edit is one-shot and is not a grant.");
+    if (script.replace(/\r\n/g, "\n") !== workspaceConfigEditLauncher(id)) {
+      fail("WORKSPACE_CONFIG_EDIT_RUNNER_REQUIRED", "Workspace-config edit scripts must be exactly the shared worker launcher; bespoke commands are refused.");
+    }
+    return d;
+  }
+  if (script.includes("workspace-config-edit-worker") || script.includes("runWorkspaceConfigEdit")) {
+    fail("WORKSPACE_CONFIG_EDIT_RUNNER_REQUIRED", "The workspace-config worker requires a pinned workspaceConfigEdit descriptor.");
+  }
   if (d.agentAskRejections !== undefined) {
     if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined) {
       fail("INVALID_OPERATOR_CONTRACT", "A rejection-only scope cannot be combined with agentAsk, planAmendment or planActivation.");
