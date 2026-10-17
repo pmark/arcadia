@@ -48,10 +48,10 @@ actions:
     references: []
   - id: claude-capacity-evidence
     title: Give the capacity gate a fresh unattended Claude usage reading, or a named gate-off path, and raise the spend-bound card for a Claude run.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Give the capacity gate a fresh unattended Claude usage reading, or a named gate-off path, and raise the spend-bound card for a Claude run.
+    next_action: Completed via Agent Ask complete-claude-capacity-evidence-20261017; no further action.
     expected_artifact: Evidence satisfying Agent Ask claude-capacity-evidence
     clarification: clarified
     confidence: high
@@ -121,10 +121,10 @@ actions:
     references: []
   - id: credential-preflight
     title: "Make the production preflight detect a provider credential that cannot be refreshed unattended before it launches (#1155)."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Make the production preflight detect a provider credential that cannot be refreshed unattended before it launches (#1155)."
+    next_action: Completed via Agent Ask complete-credential-preflight-20261017; no further action.
     expected_artifact: Evidence satisfying Agent Ask credential-preflight
     clarification: clarified
     confidence: high
@@ -159,7 +159,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: claude-capacity-evidence
+current_action: first-supervised-claude-run
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

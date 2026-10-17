@@ -2575,3 +2575,17 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A replay test drives the real worker tick launch path on the claude-code provider in an experiment workspace (Decision 0082) or the fast-rehearsal harness, with only external services faked, and asserts the Session row reaches status running and a draft PR is recorded."; "Every defect the replay finds is fixed with a test that fails before the fix, and the replay is kept as a regression scenario."; "The replay names whether the 2026-10-11 tmux failure reproduces on claude-code, with its retained cause, or records it as not reproduced."; "Focused tests, lint, tsc and pnpm build pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-claude-worker-launch-replay-20261017-r2).
+
+## 2026-10-17 — Completed arcadia/claude-capacity-evidence
+
+- **Did:** Completed Action arcadia/claude-capacity-evidence from accepted evidence (Candidate bfc44160ae067395c27671ed0b76e1f2f8e4504f).
+- **Result:** Every declared acceptance criterion was accepted as met: "Either the worker refreshes the Claude usage snapshot unattended before admission, with a test that a stale snapshot is refreshed rather than refused, or production status names the gate-off path and its consequence for a Claude run."; "An Agent Ask raises one Decision, as a card on /todo, asking the operator for the spend bound of a supervised Claude run, each option stating its consequence."; "A test asserts the workspace config file hash is unchanged after the suite, and the suite makes zero live provider calls.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-claude-capacity-evidence-20261017).
+
+## 2026-10-17 — Completed arcadia/credential-preflight
+
+- **Did:** Completed Action arcadia/credential-preflight from accepted evidence (Candidate 78a06d9f6bfecdd3bca9aa4e480ca547cec4c706).
+- **Result:** Every declared acceptance criterion was accepted as met: "The preflight refuses a launch whose provider credential is expired or unrefreshable, names the provider and the remedy card, and pings the operator once."; "Hermetic tests cover a valid credential, an expired one and an unreadable state treated as unknown."; "No host credential configuration is modified by the code or its tests.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-credential-preflight-20261017).
