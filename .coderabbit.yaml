@@ -9,4 +9,4 @@
 language: en-US
 reviews:
   profile: chill
-  request_changes_workflow: true
+  request_changes_workflow: false
