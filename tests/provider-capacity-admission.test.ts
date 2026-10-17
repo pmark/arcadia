@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -31,6 +32,7 @@ import {
   normalizeProductionScope
 } from "../src/production/policy.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../src/workspace/config.js";
 import adapters from "../config/defaults/provider-adapters.json";
 
@@ -729,11 +731,10 @@ describe("managed production admission requires proven capacity", () => {
 });
 
 describe("the spend budget check is hermetic", () => {
-  it("makes no provider call and touches no workspace config", () => {
-    const dir = scratch();
-    const config = path.join(dir, "config.json");
-    writeFileSync(config, '{"k":1}');
-    const before = readFileSync(config, "utf8");
+  it("makes no provider call and leaves a real workspace config byte-identical through a refused admission", () => {
+    const target = workspace();
+    const configFile = getWorkspacePaths(target).configFile;
+    const before = createHash("sha256").update(readFileSync(configFile)).digest("hex");
     const calls: unknown[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = (...args: Parameters<typeof fetch>): Promise<Response> => {
@@ -741,11 +742,27 @@ describe("the spend budget check is hermetic", () => {
       return Promise.reject(new Error("network"));
     };
     try {
-      decisionFor("codex-cli", { rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }] });
+      const scope = normalizeProductionScope({
+        intent: "Spend budget hermeticity proof.",
+        projects: ["demo"],
+        plans: ["demo/queue-plan"],
+        actions: ["demo/migrate"],
+        providers: ["codex-cli"],
+        maxConcurrentSessions: 1,
+        mechanicalTransitions: []
+      });
+      withDatabase(target, (db) =>
+        activateProduction(db, { requestId: "grant-budget", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" })
+      );
+      const overBudget = decisionFor("codex-cli", { rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }] });
+      const outcome = withDatabase(target, (db) =>
+        issueAdmission(db, { requestId: "adm-budget", actionKey: "demo/migrate", projectSlug: "demo", planSlug: "queue-plan", provider: "codex-cli", capacity: overBudget })
+      );
+      expect(outcome).toMatchObject({ admitted: false, code: "capacity_refused" });
     } finally {
       globalThis.fetch = realFetch;
     }
     expect(calls).toEqual([]);
-    expect(readFileSync(config, "utf8")).toBe(before);
+    expect(createHash("sha256").update(readFileSync(configFile)).digest("hex")).toBe(before);
   });
 });
