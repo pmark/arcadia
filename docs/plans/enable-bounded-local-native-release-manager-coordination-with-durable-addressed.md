@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: enable-bounded-local-native-release-manager-coordination-with-durable-addressed
 project: arcadia
-status: active
+status: draft
 milestone: Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -123,7 +123,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: native-rm-checkpoint-roundtrip
 recommended_model: sonnet
 recommended_reasoning_effort: medium
 ---
