@@ -7,14 +7,14 @@ status: active
 milestone: Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-16
+updated: 2026-10-17
 actions:
   - id: native-rm-coordination-board
     title: Implement local addressed coordination CLI and receipts (implementer standard M; source PR only).
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement local addressed coordination CLI and receipts (implementer standard M; source PR only).
+    next_action: Completed via Agent Ask complete-arcadia-native-rm-coordination-board-1e3ef15ad302; no further action.
     expected_artifact: Evidence satisfying Agent Ask native-rm-coordination-board
     clarification: clarified
     confidence: high
@@ -66,7 +66,7 @@ actions:
     references: ["agentask_1d5764ff34bacad37e", "agentask_3b7c7ebe7ba82bf9d8", "src/ask/captureEnvelope.ts", "src/ask/replyCapture.ts", "src/commands/askTrail.ts", "src/db/schema.ts", "docs/agent-guidance/standard-harness.md", "docs/agent-guidance/native-app-sessions.md", "docs/agent-guidance/session-roles-and-briefs.md"]
 questions: []
 decisions: []
-current_action: native-rm-coordination-board
+current_action: native-rm-checkpoint-roundtrip
 recommended_model: sonnet
 recommended_reasoning_effort: medium
 ---

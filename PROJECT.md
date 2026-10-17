@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff.
 active_plan: enable-bounded-local-native-release-manager-coordination-with-durable-addressed
-current_action: native-rm-coordination-board
-updated: 2026-10-16
+current_action: native-rm-checkpoint-roundtrip
+updated: 2026-10-17
 ---
 
 # Arcadia
