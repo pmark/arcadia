@@ -63,6 +63,12 @@ the host's session-title tool right after starting it, and put that title and
 your chat ID in its brief. Retitle on each real state change. Without a title
 tool, record the exact titles in the handoff and report that capability gap.
 
+Start helper sessions on the operator's host by default: a local session in its
+own worktree of the Project checkout, where the live workspace, `arcadia ping`,
+identity and host checks work and the manager can list and message them. Use a
+cloud or remote session only when the operator asks for one; it cannot reach
+the host workspace or Discord and may not be visible to session tools.
+
 Record the direct operator instruction's coordination and dispatch scope once,
 with the existing attempt, time, capacity and spend limits. Reuse it for routine
 owner continuations and supported dependency-ready dispatch; do not request
