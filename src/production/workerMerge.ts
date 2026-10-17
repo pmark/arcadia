@@ -166,34 +166,48 @@ export function evaluateWorkerMerge(facts: WorkerMergeFacts): WorkerMergeEvaluat
   return { ok: true, head, pullRequestUrl: facts.pullRequestUrl };
 }
 
-/** The governed records a completion settlement commit writes (pointer, Plan status, Mission Log, archived Ask); anything else in it is authority-adjacent. */
 /**
  * The ONLY paths the agent's own commits may change for the worker to merge
- * unattended (an allowlist: anything else is authority-adjacent). No `src/**`
- * module is on it: every source file can define or enforce a gate (the merge,
- * review, blast-radius, check, capacity or spend gate, CLI grant flags,
- * identity, settlement), so a source change always waits for the operator.
- * - dashboard presentation files: `.tsx`/`.css` under `apps/dashboard/components/`
- *   or `apps/dashboard/app/`, minus `app/api/` and route handlers (no `.ts`,
- *   so no server action, middleware, `lib/` or `*-server.ts` module);
+ * unattended (an allowlist: anything else is authority-adjacent). Matched on
+ * the LOWERCASED path, because the host's file system may be case-insensitive
+ * (`docs/Decisions/x.md` is `docs/decisions/x.md` there).
+ * - No source or app code at all: no `src/**` (every module can define or
+ *   enforce a gate), no `apps/**` (dashboard server components can run
+ *   commands), no scripts, config or manifests.
  * - `tests/**`, minus the shared helpers and harness fakes that gate proofs;
  * - `docs/**` Markdown, minus Decisions, agent guidance, Plans, scout state,
  *   the shared agent context and the production readiness report;
  * - a top-level Markdown file that is not a governance document.
- * The batch-merge classifier and the stewardship assessment still apply on top.
+ * No path segment may start with a dot, and no governance file name may
+ * appear anywhere. The batch-merge classifier and the stewardship
+ * assessment still apply on top, and renames count both paths.
  */
 const WORKER_MERGE_SAFE_PATHS: readonly RegExp[] = [
-  /^apps\/dashboard\/(?:components\/|app\/(?!api\/))(?!(?:[^\0]*\/)?route\.)[^\0]*\.(?:tsx|css)$/,
   /^tests\/(?!helpers\/|fast-rehearsal\/helpers\/|setup)[^\0]+$/,
   /^docs\/(?!decisions\/|agent-guidance\/|plans\/|scout\/|agents-context\.md$|managed-production-readiness\.md$)[^\0]+\.md$/,
-  /^(?!(?:AGENTS|CLAUDE|PROJECT|CONSTITUTION|NORTH_STAR|OPERATOR_CONTEXT|MISSION_LOG)\.md$)[A-Za-z0-9_-]+\.md$/
+  /^[a-z0-9_-]+\.md$/
 ];
+const GOVERNANCE_FILE_NAMES = new Set([
+  "agents.md", "claude.md", "project.md", "constitution.md", "north_star.md", "operator_context.md", "mission_log.md", "codeowners"
+]);
 
-/** Whether one agent-changed path is on the worker-merge allowlist. */
+/** Whether one agent-changed path is on the worker-merge allowlist (case-insensitively, fail closed). */
 export function isWorkerMergeSafePath(path: string): boolean {
-  return WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(path));
+  const lower = path.normalize("NFKC").toLowerCase();
+  if (/[^\x20-\x7e]/.test(lower) || lower.includes("\\")) return false;
+  const segments = lower.split("/");
+  if (segments.some((segment) => segment === "" || segment.startsWith(".") || segment !== segment.trim())) return false;
+  if (GOVERNANCE_FILE_NAMES.has(segments[segments.length - 1])) return false;
+  return WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(lower));
 }
 
+/** Every path a diff touches, renames and copies as BOTH their old and new path (`--no-renames`), so a move out of a governed path counts. */
+function diffPaths(repoRoot: string, args: string[]): string[] {
+  return git(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", ...args])
+    .split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+/** The governed records a completion settlement commit writes (pointer, Plan status, Mission Log, archived Ask), exact case; anything else in it is authority-adjacent. */
 const SETTLEMENT_RECORD_PATH =/^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;
 
 /**
@@ -218,10 +232,8 @@ export function assessWorkerMergeBlastRadius(
     const parent = settled ? git(repoRoot, ["rev-parse", `${head}^`]).trim() : head;
     const agentPaths = settled && isAncestor(repoRoot, parent, baseRevision)
       ? []
-      : git(repoRoot, ["diff", "--name-only", `${baseRevision}...${parent}`]).split("\n").map((line) => line.trim()).filter(Boolean);
-    const settlementPaths = settled
-      ? git(repoRoot, ["diff", "--name-only", parent, head]).split("\n").map((line) => line.trim()).filter(Boolean)
-      : [];
+      : diffPaths(repoRoot, [`${baseRevision}...${parent}`]);
+    const settlementPaths = settled ? diffPaths(repoRoot, [parent, head]) : [];
     const boundaries = agentPaths.length > 0 ? classifyAuthorityPaths(agentPaths) : [];
     const outsideRecords = settlementPaths.filter((path) => !SETTLEMENT_RECORD_PATH.test(path));
     const notAllowlisted = agentPaths.filter((path) => !isWorkerMergeSafePath(path));

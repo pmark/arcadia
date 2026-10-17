@@ -33,8 +33,8 @@ const GREEN = [{ name: "fast", status: "COMPLETED", conclusion: "SUCCESS", detai
 function gateFor(head: string): VerdictGate {
   return { satisfied: true, binding: { targetHead: head } , verdicts: {} } as unknown as VerdictGate;
 }
-/** A plain dashboard UI file: on the worker-merge allowlist. */
-const SAFE = "apps/dashboard/components/Feature.tsx";
+/** A plain report document: on the worker-merge allowlist. */
+const SAFE = "docs/reports/feature.md";
 const NARROW: WorkerMergeBlastRadius = { authorityAdjacent: false, reasons: [], boundaries: [], touchedPaths: [SAFE], linesChanged: 1 };
 
 function facts(over: Partial<WorkerMergeFacts> = {}): WorkerMergeFacts {
@@ -295,7 +295,20 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     ".github/workflows/ci.yml",
     "package.json",
     "AGENTS.md",
-    "feature.txt"
+    "feature.txt",
+    // Review round 2, B2: no dashboard file is allowlisted (server components can run commands).
+    "apps/dashboard/components/Feature.tsx",
+    "apps/dashboard/app/todo/page.tsx",
+    "apps/dashboard/app/globals.css",
+    // B3: case variants of excluded and governance paths, on a case-insensitive host.
+    "docs/Decisions/0200-x.md",
+    "Docs/agent-guidance/pull-requests.md",
+    "docs/PLANS/next.md",
+    "agents.md",
+    "Constitution.md",
+    "docs/reports/AGENTS.md",
+    "Tests/helpers/rehearsalHarness.ts",
+    "docs/.hidden/x.md"
   ])("refuses %s as authority_adjacent and never calls merge", (file) => {
     candidate({ [file]: "changed\n" });
     const outcome = merge();
@@ -304,13 +317,40 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(github.mergeCalls).toEqual([]);
   });
 
-  it.each([SAFE, "apps/dashboard/app/todo/page.tsx", "apps/dashboard/app/globals.css", "tests/marker.test.mjs", "docs/reports/note.md", "README.md"])(
+  it.each([SAFE, "tests/marker.test.mjs", "docs/reports/note.md", "README.md"])(
     "still merges an allowlisted change: %s",
     (file) => {
       candidate({ [file]: "changed\n" });
       expect(merge()).toMatchObject({ kind: "merged" });
     }
   );
+
+  // Review round 2, B1: a rename counts as both its old and new path.
+  it.each([
+    ["CONSTITUTION.md", "docs/old-constitution.md"],
+    ["docs/decisions/0001-merge-gate.md", "docs/reports/0001-merge-gate.md"],
+    [".github/workflows/ci.yml", "tests/ci.yml"]
+  ])("refuses renaming %s to %s as authority_adjacent", (from, to) => {
+    mkdirSync(path.dirname(path.join(repo, from)), { recursive: true });
+    writeFileSync(path.join(repo, from), "governed\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "governed file"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.dirname(path.join(repo, to)), { recursive: true });
+    git(repo, ["mv", from, to]);
+    git(repo, ["commit", "-q", "-m", "move it"]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["commit", "-q", "-am", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(outcome.kind === "refused" && outcome.reason).toContain(from);
+    expect(github.mergeCalls).toEqual([]);
+  });
 
   it("refuses a PR that targets another base (N1)", () => {
     git(repo, ["push", "-q", "origin", "main:refs/heads/claude/previous"]);

@@ -42,9 +42,11 @@ export interface BlastRadiusAssessment {
 
 /** Deterministic, zero-token: the real diff decides, never a claimed summary. */
 export function computeBlastRadius(repoRoot: string, baseRevision: string, candidateRevision: string): BlastRadiusAssessment {
-  const touchedPaths = git(repoRoot, ["diff", "--name-only", `${baseRevision}...${candidateRevision}`])
+  // `--no-renames`: a rename counts as both its old and its new path, so moving
+  // a safety path away still matches it.
+  const touchedPaths = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", `${baseRevision}...${candidateRevision}`])
     .split("\n").map((line) => line.trim()).filter(Boolean);
-  const shortstat = git(repoRoot, ["diff", "--shortstat", `${baseRevision}...${candidateRevision}`]);
+  const shortstat = git(repoRoot, ["diff", "--no-renames", "--shortstat", `${baseRevision}...${candidateRevision}`]);
   const linesChanged = parseShortstat(shortstat);
   const matchedSafetyPaths = touchedPaths.filter((path) => BLAST_RADIUS_SAFETY_PATTERNS.some((pattern) => pattern.test(path)));
 
