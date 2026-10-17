@@ -1088,9 +1088,12 @@ describe("runManagedProductionTick", () => {
     const approvals = withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT status FROM review_items WHERE resolved_intent = 'CodexBuildPacketApproval'").all() as Array<{ status: string }>
     );
-    expect(approvals.length).toBeGreaterThan(0);
+    // Issue #1512: an Action whose Plan is outside the grant is out of scope, so
+    // the tick no longer even prepares its packet; nothing can be approved.
+    expect(approvals).toEqual([]);
     expect(approvals.every((row) => row.status !== "approved")).toBe(true);
     expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
   });
 
   it("never approves a packet once the packet_approval delegation has expired (Decision 0072)", () => {
