@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 project: arcadia
-status: draft
+status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-16
+updated: 2026-10-17
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -160,6 +160,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
+current_action: claude-worker-launch-replay
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
