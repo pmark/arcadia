@@ -1,0 +1,135 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-claude-hook-readonly-probe-amendment-20261017",
+  "title": "Approve: build-claude-code-native-mail-hook also adds the read-only mail probe",
+  "script": "accept-claude-hook-readonly-probe-amendment-20261017.sh",
+  "repeatable": false,
+  "problem": "The Claude Code native-mail hook Action needs a cheap read-only existence probe that runs on every hook firing, but no such command exists: native-mail inbox writes receipts and native-mail status needs a message id. The submitted proposal proposal-native-mail-readonly-existence-probe-20261017 recorded this gap.",
+  "desired_effect": "Accept Agent Ask amend-claude-hook-readonly-probe-20261017 and replace only criterion 2 of build-claude-code-native-mail-hook, so that Action first adds the read-only probe (ALLOWED in the experiment guard, writes nothing, tested). The other four criteria, title, status, dependencies and Plan pointers stay unchanged.",
+  "operator_command": "artifacts/generated/operator-scripts/accept-claude-hook-readonly-probe-amendment-20261017.sh run",
+  "planAmendment": {
+    "schema": "arcadia-plan-amendment-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "4eea8d0dd072aca9e9f8bd014215426c42da9089"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-amend-claude-hook-readonly-probe-20261017.yaml",
+      "sha256": "72c903a138455cef87ae215e49606ba6943a0e42515d07452a8a158cbb871a71",
+      "proposal": "amend-claude-hook-readonly-probe-20261017"
+    },
+    "settlement": {
+      "requestId": "accept-claude-hook-readonly-probe-amendment-20261017",
+      "disposition": "accepted",
+      "operator": true
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+      "action": "build-claude-code-native-mail-hook",
+      "projectUnchanged": {
+        "slug": "arcadia",
+        "active_plan": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+        "current_action": "native-rm-checkpoint-roundtrip"
+      },
+      "planUnchanged": {
+        "slug": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "native-rm-checkpoint-roundtrip",
+        "milestone": "Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff."
+      },
+      "actionBefore": {
+        "id": "build-claude-code-native-mail-hook",
+        "title": "Ship an opt-in, default-off Claude Code SessionStart+PostToolUse hook pair that surfaces new native-mail for the current session via one shared, two-tier checkpoint script.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Ship an opt-in, default-off Claude Code SessionStart+PostToolUse hook pair that surfaces new native-mail for the current session via one shared, two-tier checkpoint script.",
+        "expected_artifact": "Evidence satisfying Agent Ask build-claude-code-native-mail-hook",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-native-mail-checkpoint-delivery-20261017b",
+        "acceptance_criteria": [
+          "A SessionStart hook and a PostToolUse hook both run the same shared script; native-rm-checkpoint-roundtrip's own Claude Code measurement is re-verified against this exact built hook, not merely cited.",
+          "The script is two-tier: a cheap non-mutating existence probe runs every time; the real unacknowledged-only inbox read (which marks exposure and writes a receipt) runs only when the probe finds at least one live message, debounced to at most once per a fixed short interval.",
+          "Only unacknowledged, undisposed, unexpired mail is surfaced; already-acknowledged mail already filtered client-side never reappears.",
+          "The hook ships opt-in and default off; enabling it requires an explicit settings.json change, never a silent default or automatic activation.",
+          "Mail body text is rendered only as a quoted string for a human or agent to read; the hook never executes, shells out to, or interpolates mail body content. An adversarial test proves a forged-command-looking body still executes nothing."
+        ],
+        "depends_on": [
+          "native-rm-checkpoint-roundtrip"
+        ],
+        "decisions": [],
+        "references": []
+      },
+      "actionAfter": {
+        "id": "build-claude-code-native-mail-hook",
+        "title": "Ship an opt-in, default-off Claude Code SessionStart+PostToolUse hook pair that surfaces new native-mail for the current session via one shared, two-tier checkpoint script.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Ship an opt-in, default-off Claude Code SessionStart+PostToolUse hook pair that surfaces new native-mail for the current session via one shared, two-tier checkpoint script.",
+        "expected_artifact": "Evidence satisfying Agent Ask build-claude-code-native-mail-hook",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-claude-hook-readonly-probe-20261017",
+        "acceptance_criteria": [
+          "A SessionStart hook and a PostToolUse hook both run the same shared script; native-rm-checkpoint-roundtrip's own Claude Code measurement is re-verified against this exact built hook, not merely cited.",
+          "The script is two-tier. This Action first adds a read-only native-mail existence probe command that reports whether the current session has at least one unacknowledged, undisposed, unexpired addressed message, writes no exposure record, receipt or other row, is classified ALLOWED in src/workspace/experimentGuard.ts, and has a test proving the database is byte-for-byte unchanged after it runs. The probe runs every time; the real unacknowledged-only inbox read (which marks exposure and writes a receipt) runs only when the probe finds at least one live message, debounced to at most once per a fixed short interval.",
+          "Only unacknowledged, undisposed, unexpired mail is surfaced; already-acknowledged mail already filtered client-side never reappears.",
+          "The hook ships opt-in and default off; enabling it requires an explicit settings.json change, never a silent default or automatic activation.",
+          "Mail body text is rendered only as a quoted string for a human or agent to read; the hook never executes, shells out to, or interpolates mail body content. An adversarial test proves a forged-command-looking body still executes nothing."
+        ],
+        "depends_on": [
+          "native-rm-checkpoint-roundtrip"
+        ],
+        "decisions": [],
+        "references": [
+          "proposal-native-mail-readonly-existence-probe-20261017",
+          "docs/evidence/native-rm-checkpoint-roundtrip/README.md",
+          "src/workspace/experimentGuard.ts",
+          "src/nativeMail/store.ts"
+        ]
+      },
+      "noChange": [
+        "id",
+        "title",
+        "status",
+        "responsibility",
+        "effort",
+        "next_action",
+        "expected_artifact",
+        "clarification",
+        "confidence",
+        "depends_on",
+        "decisions"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  },
+  "authority": {
+    "does": [
+      "Through the shared Plan-amendment runner: verify the exact checkout, base, Ask bytes, Project/Plan pointers and the Action before-image, then accept this one Ask",
+      "Replace only criterion 2 and the source/references of build-claude-code-native-mail-hook, commit that settlement on main and publish it with a normal push",
+      "Keep the runner receipt"
+    ],
+    "never_does": [
+      "Change any other Action, the active Plan, current Action, queue or Decision",
+      "Implement the probe or the hook, start a Session, settle proposal-native-mail-readonly-existence-probe-20261017, or force-push"
+    ]
+  },
+  "success": {
+    "effect": "build-claude-code-native-mail-hook now requires adding the read-only probe before using it. Nothing is built yet.",
+    "next": "The Action still depends on native-rm-checkpoint-roundtrip, which needs a host session for criteria 1, 2 and 4."
+  },
+  "failure": {
+    "effect": "Any drift in the checkout, Ask bytes, pointers or Action refuses before settlement; the runner keeps its receipt.",
+    "next": "Read the runner receipt. Drift needs a fresh reviewed descriptor; never retry with edited state."
+  }
+}
