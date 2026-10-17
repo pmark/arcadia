@@ -1413,7 +1413,7 @@ describe("runManagedProductionTick", () => {
     const configPath = path.join(fixture.workspace, "config");
     const listConfig = () => (existsSync(configPath) ? readdirSync(configPath).sort().join(",") : "");
     const configBefore = listConfig();
-    const expired = () => ({ signedIn: false, remedy: "The stored Claude Code login expired. Run \"claude auth login\" on this worker." });
+    const expired = () => ({ signedIn: false, remedy: "The stored Claude Code login has no refresh token. Run \"claude auth login\" on this worker." });
     for (const offset of [0, 60_000, 120_000]) {
       withDatabase(fixture.workspace, (db) =>
         runManagedProductionTick(db, fixture.workspace, {

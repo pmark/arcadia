@@ -8,11 +8,11 @@ vi.mock("node:child_process", () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args)
 }));
 
-import { checkProviderSignIn, parseClaudeCredentialExpiry } from "../src/codingAgents/signIn.js";
+import { checkProviderSignIn, parseClaudeCredentialState } from "../src/codingAgents/signIn.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 /** Hermetic default: never read this host's real keychain or credentials file. */
-const NO_STORE = { readCredentialExpiry: () => ({ status: "unknown" as const }) };
+const NO_STORE = { readCredentialState: () => ({ status: "unknown" as const }) };
 
 /**
  * `checkProviderSignIn`'s claude-code-cli probe is a no-op under `VITEST`
@@ -83,22 +83,22 @@ describe("checkProviderSignIn", () => {
     expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, undefined, NO_STORE))).toThrow(/could not parse/);
   });
 
-  describe("stored OAuth expiry (Issue #1155), read-only and injected", () => {
-    const NOW = Date.parse("2026-10-17T12:00:00Z");
+  describe("stored OAuth refresh token (Issue #1155), read-only and injected", () => {
     const env = { PATH: "" } as NodeJS.ProcessEnv;
-    const check = (readCredentialExpiry: () => { status: "ok"; expiresAt: number } | { status: "unknown" }, e = env) => {
+    type State = { status: "ok"; hasRefreshToken: boolean } | { status: "unknown" };
+    const check = (readCredentialState: () => State, e = env) => {
       execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
-      return withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, e, { readCredentialExpiry, now: () => NOW }));
+      return withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, e, { readCredentialState }));
     };
 
-    it("admits a stored credential that has not expired", () => {
-      expect(check(() => ({ status: "ok", expiresAt: NOW + 60_000 }))).toMatchObject({ signedIn: true });
+    it("admits a stored credential with a refresh token, even when its access token has expired", () => {
+      expect(check(() => ({ status: "ok", hasRefreshToken: true }))).toMatchObject({ signedIn: true });
     });
 
-    it("refuses an expired stored credential reported loggedIn:true, with the remedy", () => {
-      const result = check(() => ({ status: "ok", expiresAt: NOW - 60_000 }));
+    it("refuses a stored credential with no refresh token, naming the remedy", () => {
+      const result = check(() => ({ status: "ok", hasRefreshToken: false }));
       expect(result).toMatchObject({ signedIn: false });
-      expect(result?.remedy).toContain("expired at 2026-10-17T11:59:00.000Z");
+      expect(result?.remedy).toContain("no refresh token");
       expect(result?.remedy).toContain("claude auth login");
     });
 
@@ -107,15 +107,24 @@ describe("checkProviderSignIn", () => {
     });
 
     it("does not consult the stored credential when a long-lived token is inherited", () => {
-      const read = vi.fn(() => ({ status: "ok" as const, expiresAt: 0 }));
+      const read = vi.fn((): State => ({ status: "ok", hasRefreshToken: false }));
       expect(check(read, { ...env, CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-example" })).toMatchObject({ signedIn: true });
       expect(read).not.toHaveBeenCalled();
     });
 
-    it("parses expiresAt from credential JSON and treats anything else as unknown", () => {
-      expect(parseClaudeCredentialExpiry(JSON.stringify({ claudeAiOauth: { expiresAt: 5 } }))).toEqual({ status: "ok", expiresAt: 5 });
-      expect(parseClaudeCredentialExpiry("not json")).toEqual({ status: "unknown" });
-      expect(parseClaudeCredentialExpiry("{}")).toEqual({ status: "unknown" });
+    it("keeps the CLI loggedIn:false refusal", () => {
+      execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: false }));
+      const read = vi.fn((): State => ({ status: "ok", hasRefreshToken: true }));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, env, { readCredentialState: read }));
+      expect(result).toMatchObject({ signedIn: false });
+    });
+
+    it("parses only refresh-token presence from credential JSON and treats anything else as unknown", () => {
+      expect(parseClaudeCredentialState(JSON.stringify({ claudeAiOauth: { refreshToken: "x", expiresAt: 1 } }))).toEqual({ status: "ok", hasRefreshToken: true });
+      expect(parseClaudeCredentialState(JSON.stringify({ claudeAiOauth: { refreshToken: "" } }))).toEqual({ status: "ok", hasRefreshToken: false });
+      expect(parseClaudeCredentialState(JSON.stringify({ claudeAiOauth: { accessToken: "a" } }))).toEqual({ status: "ok", hasRefreshToken: false });
+      expect(parseClaudeCredentialState("not json")).toEqual({ status: "unknown" });
+      expect(parseClaudeCredentialState("{}")).toEqual({ status: "unknown" });
     });
   });
 
