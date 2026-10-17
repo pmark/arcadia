@@ -1,0 +1,36 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "submit-native-mail-existence-probe-proposal-20261017",
+  "title": "Submit the native-mail read-only existence-probe proposal",
+  "script": "submit-native-mail-existence-probe-proposal-20261017.sh",
+  "repeatable": false,
+  "problem": "PR #1475 merged a validated proposal Ask for a read-only native-mail existence probe. The cloud session that drafted it had no configured workspace, so the proposal is not yet registered. All three native-mail hook adapter Actions need this probe.",
+  "desired_effect": "Register the exact reviewed proposal against the configured live workspace with `arcadia agent-ask preview --file`, and keep the receipt.",
+  "operator_command": "artifacts/generated/operator-scripts/submit-native-mail-existence-probe-proposal-20261017.sh run",
+  "agentAsk": {
+    "proposal": "proposal-native-mail-readonly-existence-probe-20261017",
+    "intent": "proposal",
+    "targetRef": null
+  },
+  "authority": {
+    "does": [
+      "Refuse unless .arcadia/asks/agent-ask-proposal-native-mail-readonly-existence-probe-20261017.yaml exists with sha256 95a537f21c610d80893e01467d5ab9d61741242ccdccf2da1bb8a130794b115e",
+      "Refuse unless Arcadia's own resolver returns a configured, non-experiment workspace",
+      "Run `arcadia agent-ask preview --file` once (120 s bound), which records a capture and proposal receipt in that workspace",
+      "Keep stdout, stderr and the receipt in a timestamped runs/ directory"
+    ],
+    "never_does": [
+      "Settle, accept or reject the proposal, or create or change any Action, Plan, Decision, pointer or queue",
+      "Commit, push or edit any repository file; pass a guessed workspace path; touch an experiment workspace",
+      "Make a model call, install software or use a credential"
+    ]
+  },
+  "success": {
+    "effect": "The proposal is registered in the live workspace and the receipt (proposal and capture ids) is printed. Registration is not approval.",
+    "next": "The proposal waits for normal triage. Its settlement, and any amendment to the build-*-native-mail-hook Actions, are separate gates."
+  },
+  "failure": {
+    "effect": "Nothing is registered when the file is missing or changed, the workspace does not resolve, or preview refuses or times out. All output is kept.",
+    "next": "Read the named run.log. A missing file usually means it was already settled and archived. A changed hash needs a fresh review. A workspace or preview refusal needs the host fixed and this button pressed again."
+  }
+}
