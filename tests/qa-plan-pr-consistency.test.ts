@@ -161,6 +161,42 @@ describe("plan-versus-PR consistency (checkpoint replay)", () => {
     expect(report.plan).toMatchObject({ baseBranch: "agent/action-1", baseRevision: f.action1, fileCount: 4 });
   });
 
+  // Issue #1530: the scheduler's unpushed pointer move under the candidate. The
+  // PR opens on main at the remote tip, so the plan must diff from that tip
+  // (the selection's `diffBase`) and list the pointer records the PR shows.
+  it("pointer-only local gap: the plan rendered from the selection's diffBase agrees with its PR on main (Issue #1530)", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "qa-plan-pointer-gap-"));
+    roots.push(root);
+    const github = path.join(root, "github.git");
+    const repo = path.join(root, "host");
+    git(root, ["init", "-q", "--bare", "-b", "main", github]);
+    git(root, ["init", "-q", "-b", "main", repo]);
+    write(repo, "PROJECT.md", "---\ncurrent_action: first\n---\n# Fixture\n");
+    write(repo, "docs/plans/p.md", "---\ncurrent_action: first\n---\n# Plan\n");
+    const m0 = commit(repo, "M0");
+    git(repo, ["remote", "add", "origin", github]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    write(repo, "PROJECT.md", "---\ncurrent_action: next\n---\n# Fixture\n");
+    write(repo, "docs/plans/p.md", "---\ncurrent_action: next\n---\n# Plan\n");
+    const pointer = commit(repo, "chore: point at next");
+    git(repo, ["checkout", "-q", "-b", "agent/next"]);
+    write(repo, "tests/next.test.mjs", "// the Action's own change\n");
+    const head = commit(repo, "next Action work");
+
+    const selection = selectPullRequestBase(null, { repositoryPath: repo, baseBranch: "main", baseRevision: pointer, branch: "agent/next" }, systemPreservationRemote);
+    expect(selection).toMatchObject({ ok: true, base: { kind: "project", branch: "main", tip: m0, diffBase: m0 } });
+    if (!selection.ok) return;
+    const report = checkQaPlanConsistency({
+      repositoryPath: repo,
+      pullRequest: pullRequest(repo, { number: 7, base: m0, head, branch: "agent/next" }),
+      base: selection.base.diffBase!,
+      branch: "agent/next"
+    });
+    expect(report.mismatches).toEqual([]);
+    expect(report.consistent).toBe(true);
+    expect(report.plan.files.map((file) => file.path)).toEqual(["PROJECT.md", "docs/plans/p.md", "tests/next.test.mjs"]);
+  });
+
   // Run 5's pre-fix shape, kept as the checker's own regression pin: a PR
   // opened on the unadvanced main, as #987's fix no longer does.
   it("pins the serial Action 2 diagnostic for a PR on the unadvanced main: plan base M1 vs PR base M0 and Action 1's files only in the PR", () => {

@@ -259,6 +259,15 @@ describe("selectPullRequestBase over a pointer-only local base", () => {
     expect(selection.ok).toBe(false);
   });
 
+  it("still refuses a pointer move that also changes a record's file mode", () => {
+    const f = pointerGap((repo) => {
+      movePointer(repo);
+      execFileSync("chmod", ["+x", path.join(repo, "PROJECT.md")]);
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+
   it("still refuses a pointer move that rides with any other file", () => {
     const f = pointerGap((repo) => {
       movePointer(repo);
