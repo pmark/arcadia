@@ -262,6 +262,11 @@ describe("runManagedProductionTick", () => {
         `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
            VALUES ('test-project/define-contract', 'build_packet_approval_pending', 'stale', 'remedy', ?, ?)`
       ).run(fixture.now.toISOString(), fixture.now.toISOString()));
+      // So is one left over for another, no longer current Action (ordinary staleness rule).
+      withDatabase(fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('test-project/old-action', 'repair_budget_exhausted', 'stale', 'remedy', ?, ?)`
+      ).run(fixture.now.toISOString(), fixture.now.toISOString()));
       activateActions(fixture, ["test-project/not-in-this-plan"]);
 
       const { launch, log } = tickOnce(fixture, tmux);
