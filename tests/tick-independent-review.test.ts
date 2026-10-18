@@ -141,11 +141,18 @@ describe("tick-driven independent review", () => {
     const settled = head(rehearsal, a);
     const preserved = withDatabase(rehearsal.workspace, (db) =>
       (db.prepare("SELECT commit_sha FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${a.id}`) as { commit_sha: string }).commit_sha);
-    // Host settlement committed after preservation pushed the PR: the PR still shows the preserved commit.
+    // Host settlement committed after preservation pushed the PR; the exit tick
+    // pushes that exact settled head at once (Issue #1518).
     expect(settled).not.toBe(preserved);
     expect(git(rehearsal.repo, ["merge-base", "--is-ancestor", preserved, settled])).toBe("");
-    expect(rehearsal.github.headOf(a.branch)).toBe(preserved);
+    expect(rehearsal.github.headOf(a.branch)).toBe(settled);
+    expect(rehearsal.github.pushes.at(-1)).toEqual({ branch: a.branch, commitSha: settled });
+    expect(rehearsal.log.some((line) => line.includes(`Pushed the settled head ${settled.slice(0, 12)}`))).toBe(true);
 
+    // Had that push failed, the PR would still show the preserved commit; the
+    // review step then pushes the settled head before any verdict.
+    git(rehearsal.repo, ["push", "-q", "-f", "origin", `${preserved}:refs/heads/${a.branch}`]);
+    expect(rehearsal.github.headOf(a.branch)).toBe(preserved);
     rehearsal.tick();
     expect(rehearsal.github.headOf(a.branch)).toBe(settled);
     // The push names the exact settled commit, never whatever the local tip is.

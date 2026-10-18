@@ -84,7 +84,9 @@ preserves the terminal candidate itself when the Session exits. The broker's
 file transport has its own tests (`tests/preservation-request-*.test.ts`).
 Because nothing is preserved before the settle, the review step's push of a
 settled head newer than the preserved one (`src/production/independentReview.ts`)
-is not exercised here; `tests/tick-independent-review.test.ts` covers it.
+is not exercised here; `tests/tick-independent-review.test.ts` covers it. The
+exit tick's own push of a head the worker settled after preservation is
+exercised by `draft-at-base.test.ts`.
 
 Not exercised either: no tick runs while an agent pane is live (the executor
 runs between ticks), so stall detection, pane capture and the live-Session
@@ -145,6 +147,8 @@ Simulated time advances one minute per tick; the table shows wall time.
 | `claude-worker-launch-replay.test.ts` | Action `claude-worker-launch-replay`: one launch on `claude-code-cli` with every tmux call forwarded to the real `systemTmux` adapter, recording wrapper and tmux server; only the socket path and the `claude` binary are stand-ins | The Session is `running` at launch and across a tick while its pane is live; the stub receives the exact argv and worktree; the wrapper records exit 0 and the Session log; the terminal tick preserves a draft PR. The 2026-10-11 launch failure ("tmux could not start", cause discarded) does not reproduce; a manual mutation (not committed) that fails `tmux new-session` stopped the scenario with its stderr in the launch reason |
 | `executor-behaviours.test.ts` | untracked, unarchived draft | Run 4's defect (#981); with #983 the settle archives the draft and the candidate integrates |
 | same | draft edited after an inline preview | #983's N4 case: settle warning, the guard refuses every tick, one `terminal_candidate_not_integrable` escalation in `production status` |
+| `draft-at-base.test.ts` | a Session that cannot commit leaves its work uncommitted and drafts its `complete` Ask at the base revision (Issue #1518, the first supervised Claude run) | Exit preservation commits and pushes the tree and opens the draft PR; reconciliation then settles the draft on the candidate, and the same tick pushes that settled head, so the PR's head is the settlement commit and its files include the Plan and `PROJECT.md` (before the fix the PR showed only the preserved commit). It integrates |
+| same | the same, with the settlement's own commit failing (`hash-object --no-filters` faulted once) | The settlement is recorded but its commit is not on the candidate: the exit is never `accepted_completion` and is never offered for resumption; one `completion_settlement_not_in_candidate` escalation names the worktree, kept over the pending Ask's operator gate; nothing launches or integrates |
 | `settle-then-dirty.test.ts` | extra uncommitted file / extra commit after settling | #994: reconciled incomplete, but the candidate already carries the Action's recorded completion settlement, so no continuation is offered (it could only refuse "Action is already done"); the terminal guards refuse the head after the settlement commit (the extra work is never integrated) and `production status` shows one `terminal_candidate_not_integrable` entry naming the settlement commit, the extra paths and the operator's `merge --ff-only <settlement commit>`; doing that admits Action 2 once. Its `it.fails` marker is flipped |
 | same | extra commit, the Session reconciled by an operator (`arcadia session reconcile`) before the worker | The worker never reconciles that exit, so one continuation runs, cannot settle ("Action is already done"), and is then held by the same single `terminal_candidate_not_integrable` entry: never a second continuation |
 | `git-faults.test.ts` | the lifecycle's `git merge --ff-only` fails once at integration | The next tick retries; the Action advances exactly once |
