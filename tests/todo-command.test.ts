@@ -22,6 +22,7 @@ import {
   type TodoCommandOptions,
   type TodoData
 } from "../src/commands/todo.js";
+import { ensureWorkerMergeTable } from "../src/production/workerMerge.js";
 import { withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork, createWorkItemRecord, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -1789,5 +1790,36 @@ describe("arcadia todo: origin on every item kind", () => {
       expect(item.origin === null || typeof item.origin === "string").toBe(true);
     }
     expect(render(data).join("\n")).toContain("origin: request:request-ask-1 via:test");
+  });
+});
+
+describe("arcadia todo: worker-held authority-adjacent pull requests", () => {
+  const URL = "https://github.com/pmark/arcadia/pull/7";
+  const HEAD = "a".repeat(40);
+  function record(workspace: string, outcome: "refused" | "merged", updated: string): void {
+    withDatabase(workspace, (db) => {
+      ensureWorkerMergeTable(db);
+      db.prepare(`INSERT INTO production_worker_merges (request_id, session_id, action_key, pull_request_url, head, outcome, code, reason, boundaries_json, updated_at)
+        VALUES (?, 's', 'demo/write-feature', ?, ?, ?, ?, ?, ?, ?)`).run(`r-${updated}`, URL, HEAD, outcome,
+        outcome === "refused" ? "authority_adjacent" : null, outcome === "refused" ? "touches src/production/policy.ts" : "Merged.",
+        outcome === "refused" ? '["production_policy"]' : "[]", updated);
+    });
+  }
+
+  it("lists a held PR with its link, 12-char head and reason, and drops it once merged", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(2));
+    record(workspace, "refused", "2026-10-08T10:00:00.000Z");
+    const held = run({ workspace, now: NOW, all: true }).data;
+    const item = held.items.find((i) => i.kind === "escalation:authority_adjacent_pr");
+    expect(item).toBeDefined();
+    expect(item!.title).toContain(URL);
+    expect(item!.title).toContain(HEAD.slice(0, 12));
+    expect(item!.title).toContain("src/production/policy.ts");
+    expect(item!.answer).toBe(`Merge on GitHub: ${URL} (head ${HEAD.slice(0, 12)}); the worker never merges it`);
+    expect(render(held).join("\n")).toContain(URL);
+
+    record(workspace, "merged", "2026-10-08T11:00:00.000Z");
+    const cleared = run({ workspace, now: NOW, all: true }).data;
+    expect(cleared.items.find((i) => i.kind === "escalation:authority_adjacent_pr")).toBeUndefined();
   });
 });
