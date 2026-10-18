@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowDown, CheckCircle2, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 import { OperatorActionCard, type OperatorScript } from "../../components/operator-action-card";
 import { singleFlight } from "../../lib/singleFlight";
@@ -28,28 +28,23 @@ export function ActionsList() {
   const [launching, setLaunching] = useState<string | null>(null);
   const [production, setProduction] = useState<ProductionObservation | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
-  const refreshSequence = useRef(0);
   const [showCards, setShowCards] = useState(false);
 
   // Never start a read while the previous one is still in flight: a slow library read must not stack.
   const refresh = useMemo(() => singleFlight(async () => {
-    const sequence = ++refreshSequence.current;
     setRefreshing(true);
     try {
       const response = await fetch("/api/operator-script", { cache: "no-store" });
       const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Operator actions are unavailable.");
-      if (sequence !== refreshSequence.current) return;
       setScripts(body.scripts ?? []);
       setError(null);
       setLoadedAt(new Date());
     } catch (cause) {
-      if (sequence === refreshSequence.current) setError(cause instanceof Error ? cause.message : String(cause));
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      if (sequence === refreshSequence.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setRefreshing(false);
     }
   }), []);
 

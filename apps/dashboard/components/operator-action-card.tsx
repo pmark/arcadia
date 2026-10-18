@@ -94,8 +94,8 @@ export function OperatorActionCard({ script, launching, onLaunch, muted = false,
       {script.receipt ? <div className="mt-3 text-sm"><p>{script.receipt.message}</p><p className="mt-1 text-muted">Next: {script.receipt.next}</p><details className="mt-2"><summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre></details></div> : null}
       {checkError ? <p className="mt-3 rounded-md border border-clay/30 bg-clay/5 p-3 text-sm text-clay" role="alert">{checkError}</p> : null}
       {confirming && shownConfirmation ? (
-        <div role="alertdialog" aria-label="Not your next action" className="mt-4 rounded-md border-2 border-clay/60 bg-clay/5 p-3 text-sm">
-          <p className="font-semibold text-clay">This is not your next action.</p>
+        <div role="alertdialog" aria-label="Confirm before running" className="mt-4 rounded-md border-2 border-clay/60 bg-clay/5 p-3 text-sm">
+          <p className="font-semibold text-clay">Confirm before running.</p>
           <p className="mt-1">{shownConfirmation}</p>
           {nextTitle ? <p className="mt-2 text-xs text-muted">Next action card: {nextTitle}</p> : null}
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">

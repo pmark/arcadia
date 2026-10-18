@@ -15,7 +15,11 @@ import { singleFlight } from "../../../lib/singleFlight";
  */
 export default function OperatorActionPage() {
   const params = useParams<{ id: string }>();
-  const id = params.id;
+  // Keyed by id so navigating between actions never shows the previous action's state.
+  return <OperatorActionView key={params.id} id={params.id} />;
+}
+
+function OperatorActionView({ id }: { id: string }) {
   const [script, setScript] = useState<OperatorScript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
@@ -27,8 +31,13 @@ export default function OperatorActionPage() {
     try {
       const response = await fetch(`/api/operator-script/${encodeURIComponent(id)}`, { cache: "no-store" });
       const body = await response.json() as { script?: OperatorScript; error?: string };
-      if (response.status === 404 || response.status === 400) { setMissing(true); return; }
+      if (response.status === 404 || response.status === 400) {
+        setMissing(true);
+        setScript(null);
+        return;
+      }
       if (!response.ok || !body.script) throw new Error(body.error ?? "This operator action is unavailable.");
+      setMissing(false);
       setScript(body.script);
       setError(null);
       setLoadedAt(new Date());
@@ -71,7 +80,7 @@ export default function OperatorActionPage() {
       {error ? <p className="mb-4 rounded-md border border-clay/30 bg-clay/5 p-3 text-sm text-clay" role="alert">{error}</p> : null}
       {missing ? <p className="rounded-md border border-dashed border-line p-8 text-center text-sm text-muted">No operator action has the id <span className="break-all font-mono">{id}</span>; it may be retired. <Link href="/actions" className="font-semibold text-steel">Browse all actions</Link>.</p> : null}
       {loading ? <div className="h-64 animate-pulse rounded-md border border-line bg-panel" aria-hidden="true" /> : null}
-      {script ? (
+      {script && !missing ? (
         <div className="max-w-3xl">
           <OperatorActionCard
             script={script}
