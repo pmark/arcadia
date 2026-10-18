@@ -16,6 +16,11 @@ export interface OperatorScriptDescriptor {
   failure: { effect: string; next: string };
   repeatable?: boolean;
   /**
+   * When a Grant is repeatable, the instant (ISO 8601, UTC) after which its
+   * script refuses. A Grant without one stays one-shot (Issue #1532).
+   */
+  expires_at?: string;
+  /**
    * Optional sequencing hint for the /actions "Do this next" panel. Declares that
    * this action follows a succeeded run of `id` within `within_minutes`, that a
    * run of any `voided_by` action after that success voids it, and (optionally)
@@ -90,6 +95,9 @@ function validateNextAfter(value: unknown, id: string): void {
   }
 }
 
+/** A UTC ISO 8601 instant, e.g. 2026-10-25T00:00:00Z or 2026-10-02T18:45:00.000Z. */
+const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v) && !Number.isNaN(Date.parse(v));
+
 /** Read-only contract shared by /runs and the library-wide CI gate. */
 export function validateOperatorScriptContract(value: unknown, id: string, script: string): OperatorScriptDescriptor {
   if (!value || typeof value !== "object") fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor must be an object.");
@@ -97,7 +105,8 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
   if (!slug.test(id) || d.schema !== "arcadia-operator-script-v1" || d.id !== id || d.script !== `${id}.sh` ||
       ![d.title, d.problem, d.desired_effect, d.success?.effect, d.success?.next, d.failure?.effect, d.failure?.next].every(text) ||
       !list(d.authority?.does) || !list(d.authority?.never_does) || (d.repeatable !== undefined && typeof d.repeatable !== "boolean") ||
-      (d.kind !== undefined && d.kind !== "grant") || (d.kind === "grant" && d.repeatable === true)) {
+      (d.kind !== undefined && d.kind !== "grant") || (d.expires_at !== undefined && !isIsoInstant(d.expires_at)) ||
+      (d.kind === "grant" && d.repeatable === true && d.expires_at === undefined)) {
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
