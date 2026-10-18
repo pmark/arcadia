@@ -175,6 +175,11 @@ describe("durable Decision 0128 admission", () => {
     expect(() => f.reserve(at)).toThrow();
   });
 
+  it.each([0, 60_000])("refuses with \"authority expired\" at and after the Decision 0128 expiry (+%i ms)", (after) => {
+    const f = fixture();
+    expect(() => f.reserve(Date.parse("2026-10-18T00:00:00Z") + after)).toThrow(/authority expired/);
+  });
+
   it("requires a changed source, verified fix and matching named failure for every retry", () => {
     const f = fixture(); const first = f.reserve(); finishScoutAttempt(f.stores, f.evidence.isolation.pins.fixtureRoot, first, { failure: "wrong bytes", classification: classifyScoutFailure({diagnostic: "wrong bytes", product: true}) }, now + 1);
     f.evidence.retry = { failure: "wrong bytes", previousReservation: first.id, verifiedFix: "verified fix" }; f.pin();

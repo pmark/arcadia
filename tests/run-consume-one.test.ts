@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
 import { reduceExecutionOutcome } from "../src/execution/runFinalization.js";
@@ -14,13 +14,16 @@ import { createProjectWithInitialWork, createReviewExecutionRun, createReviewIte
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { isolateProcess, type IsolatedProcess } from "./fast-rehearsal/helpers/environment.js";
 import { repoRoot, tsxLoader, runCli } from "./cli-response-fixture.js";
+import { pinScoutClock, pinnedScoutClockEnv } from "./helpers/pinnedScoutClock.js";
 import { admissionFixture } from "./fixtures/scout-admission.js";
 import * as admissionModule from "../src/scout/runAdmission.js";
 import * as admissionClock from "../src/scout/admissionClock.js";
 
 const roots: string[] = [];
 let isolation: IsolatedProcess | undefined;
-afterEach(() => { expect(isolation?.guardCalls() ?? []).toEqual([]); isolation?.restore(); isolation = undefined; for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+let unpinClock: (() => void) | undefined;
+beforeEach(() => { unpinClock = pinScoutClock(); });
+afterEach(() => { unpinClock?.(); unpinClock = undefined; expect(isolation?.guardCalls() ?? []).toEqual([]); isolation?.restore(); isolation = undefined; for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const sourceHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 function fixture(scriptBody = 'writeFileSync("HelloWorld.txt", "Hello World!\\n");') {
   isolation = isolateProcess();
@@ -137,7 +140,7 @@ describe("public named approved Run consumption", () => {
       const db=new Database(${JSON.stringify(f.admission.stores.ledger)},{readonly:true}); const h=JSON.parse(db.prepare('SELECT body FROM scout_admission').get().body); db.close();
       if(h.attempts.length!==1 || h.attempts[0].scope.runId!==${JSON.stringify(f.options.runId)} || h.attempts[0].outcome!=='reserved') process.exit(19);
       writeFileSync('HelloWorld.txt','Hello World!\\n');`);
-    const result = runCli(cliArgs(f.options)); expect(result.status, result.stderr + result.stdout).toBe(0);
+    const result = runCli(cliArgs(f.options), pinnedScoutClockEnv()); expect(result.status, result.stderr + result.stdout).toBe(0);
     const data = JSON.parse(result.stdout).data;
     expect(data.run.status).toBe("completed"); expect(data.reservation.attempt).toBe(1);
     expect(f.admission.read().attempts[0].outcome).toBe("completed");
@@ -156,7 +159,7 @@ describe("public named approved Run consumption", () => {
   it("refuses all omitted admission flags through the real public CLI", () => {
     const f = fixture(); const args = cliArgs(f.options);
     for (const flag of ["--admission-evidence", "--admission-ledger", "--admission-witness"]) args.splice(args.indexOf(flag), 2);
-    const result = runCli(args); expect(result.status).not.toBe(0);
+    const result = runCli(args, pinnedScoutClockEnv()); expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toContain("durable Decision 0128 reservation");
     expect(calls(f.workspace)).toBe(0); expect(f.admission.read().attempts).toHaveLength(0);
   });
@@ -194,7 +197,7 @@ describe("public named approved Run consumption", () => {
   });
   it("completes one correlated Run and exact product Artifact via the CLI with zero providers or protected writes", () => {
     const f = fixture();
-    const result = runCli(cliArgs(f.options));
+    const result = runCli(cliArgs(f.options), pinnedScoutClockEnv());
     expect(result.status, result.stderr + result.stdout).toBe(0);
     const data = JSON.parse(result.stdout).data;
     expect(data.run.status).toBe("completed");
@@ -213,7 +216,7 @@ describe("public named approved Run consumption", () => {
   it("rejects an omitted CLI selector without claiming another Run", () => {
     const f = fixture();
     const args = cliArgs(f.options); const at = args.indexOf("--run-id"); args.splice(at, 2);
-    expect(runCli(args).status).not.toBe(0);
+    expect(runCli(args, pinnedScoutClockEnv()).status).not.toBe(0);
     expect(calls(f.workspace)).toBe(0);
     expect(withDatabase(f.workspace, (db) => getExecutionRun(db, f.options.runId!)?.status)).toBe("pending_execution");
   });
@@ -282,7 +285,7 @@ describe("public named approved Run consumption", () => {
 
   it("keeps the independent executor deadline after consumer-parent SIGKILL", async () => {
     const f = fixture('setTimeout(() => writeFileSync("late-output", "deadline lost"), 7000); setInterval(() => {}, 1000);');
-    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: process.env, stdio: "ignore" });
+    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: { ...process.env, ...pinnedScoutClockEnv() }, stdio: "ignore" });
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     try {
       const deadline = Date.now() + 10000;
@@ -340,7 +343,7 @@ describe("public named approved Run consumption", () => {
 
   it.each(["SIGINT", "SIGTERM", "SIGKILL"] as const)("retains an unresolved durable posture if the consumer receives %s", async (signal) => {
     const f = fixture('writeFileSync("HelloWorld.txt", "Hello World!\\n"); setTimeout(() => process.exit(0), 1500);');
-    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: process.env, stdio: "ignore" });
+    const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: { ...process.env, ...pinnedScoutClockEnv() }, stdio: "ignore" });
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     try {
       const deadline = Date.now() + 10000;
@@ -382,7 +385,7 @@ describe("public named approved Run consumption", () => {
   it("admits at most one of simultaneous public CLI callers", async () => {
     const f = fixture();
     const invoke = () => new Promise<{ code: number | null; output: string }>((resolve) => {
-      const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: process.env });
+      const child = spawn(process.execPath, ["--import", tsxLoader, path.join(repoRoot, "src", "cli.ts"), ...cliArgs(f.options)], { env: { ...process.env, ...pinnedScoutClockEnv() } });
       let output = ""; child.stdout.on("data", (chunk) => { output += String(chunk); }); child.stderr.on("data", (chunk) => { output += String(chunk); }); child.on("exit", (code) => resolve({ code, output }));
     });
     const results = await Promise.all([invoke(), invoke()]);
