@@ -901,6 +901,10 @@ function selectPullRequestBaseFromTips(
   if (remoteBase === null || !known) {
     return project(remoteBase, `${remoteState[0].toUpperCase()}${remoteState.slice(1)}${remoteBase !== null ? " (not fetched here)" : ""} and no remote candidate branch has its tip at ${short}, so the PR opens on the Project base.`);
   }
+  if (isAncestor(repositoryPath, remoteBase, baseRevision) && isPointerOnlyGap(repositoryPath, remoteBase, baseRevision)) {
+    return project(remoteBase, `The local ${baseBranch} is ahead of the remote ${baseBranch} (${remoteBase.slice(0, 12)}) at ${short} by only governed pointer moves `
+      + "(`current_action:` lines in PROJECT.md and Plans), which show no earlier Action's change, so the PR opens on the Project base and carries them.");
+  }
   const local = (tryGit(repositoryPath, ["for-each-ref", "--points-at", baseRevision, "--format=%(refname:short)", "refs/heads"]) ?? "")
     .split("\n").map((line) => line.trim()).filter((name) => name && name !== baseBranch && name !== branch && SAFE_TASK_BRANCH.test(name)).sort();
   // A fresh agent branch at exactly the base revision always works (and never
@@ -917,6 +921,26 @@ function selectPullRequestBaseFromTips(
     remedy: `${restore}, or publish the integrated base yourself (\`git -C ${repositoryPath} push origin ${baseBranch}\`: an operator decision; the worker never pushes the base). `
       + "The next preservation attempt then opens the PR."
   };
+}
+
+/** The governed records the scheduler's pointer move rewrites. */
+const POINTER_RECORD_PATH = /^(?:PROJECT\.md|docs\/plans\/[^/]+\.md)$/;
+const POINTER_LINE = /^[+-]current_action: \S+\s*$/;
+
+/**
+ * Whether `from..to` only modifies `current_action:` lines in PROJECT.md and
+ * Plans: the scheduler's governed pointer move, which the worker commits on
+ * the local base and never pushes. Unreadable means no.
+ */
+function isPointerOnlyGap(repositoryPath: string, from: string, to: string): boolean {
+  const status = tryGit(repositoryPath, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-status", from, to]);
+  if (status === null) return false;
+  const entries = status.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (entries.length === 0 || entries.some((line) => !/^M\t/.test(line) || !POINTER_RECORD_PATH.test(line.slice(2)))) return false;
+  const patch = tryGit(repositoryPath, ["diff", "--no-renames", "--no-color", "--no-ext-diff", "-U0", from, to]);
+  if (patch === null) return false;
+  const changed = patch.split("\n").filter((line) => /^[+-]/.test(line) && !/^(?:\+\+\+|---) /.test(line));
+  return changed.length > 0 && changed.every((line) => POINTER_LINE.test(line));
 }
 
 /**
