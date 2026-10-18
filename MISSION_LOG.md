@@ -2617,3 +2617,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "The worker merges only through the pull request, never by a local fast-forward or base-branch push, and only after a recorded independent review of the exact head has no blocking finding and every required check on that head passed."; "A PR the blast-radius assessment marks authority-adjacent is never merged by the worker and appears on the batch-merge card with its reason."; "A moved head, a failed check or a missing review refuses the merge with a named reason, each covered by a hermetic test, and the fast-rehearsal chain merges a fixture PR end to end."; "Focused tests, lint, tsc, pnpm build and the fast rehearsal pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-worker-review-and-merge-20261018).
+
+## 2026-10-18 — Completed arcadia/implement-a-hermetic-test-that-a
+
+- **Did:** Completed Action arcadia/implement-a-hermetic-test-that-a from accepted evidence (Candidate 5e18efc6c33dda3cebfde72d2c9d86afe15c48cf).
+- **Result:** Every declared acceptance criterion was accepted as met: "In tests/system-tmux-long-command.test.ts, a systemTmux.launch whose tmux new-session fails (for example a PATH tmux shim that exits non-zero) throws the existing launch failure and leaves no launch-*.sh file in the launcher directory."; "The test uses its own temporary directory and private tmux socket or shim, never the host's default tmux server."; "The change touches only tests/system-tmux-long-command.test.ts; focused tests, lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-implement-a-hermetic-test-that-a-a4a78ac5e15b).
