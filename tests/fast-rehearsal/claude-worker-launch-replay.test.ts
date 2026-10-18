@@ -33,8 +33,12 @@ import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS, WORK } from "./helpers/wo
  * terminal tick preserves it as a draft PR. This is also the replay of the
  * 2026-10-11 launch failure (155 failures, "tmux could not start", cause
  * discarded): if the real launch path still failed, `untilLaunched` would
- * throw with the retained cause (`formatLaunchFailure`, PR #1416).
+ * throw with the retained cause (`formatLaunchFailure`, PR #1416). The brief
+ * is padded to 64 KiB: the 2026-10-17 supervised run's real brief made tmux
+ * refuse the launch ("command too long"), which a short brief never reached.
  */
+const LONG_BRIEF_PADDING = "Padding that stands in for a realistic Session brief: 'quotes', \"doubles\", $vars, `ticks`.\n".repeat(1000);
+
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
 let socketDir = "";
@@ -112,9 +116,14 @@ setTimeout(() => process.exit(3), 120000);
     world.tmux.hasSession = (name) => systemTmux.hasSession(name);
     world.tmux.capturePane = (name) => systemTmux.capturePane!(name);
     (world.tmux as typeof systemTmux).killSession = (name) => systemTmux.killSession!(name);
+    // The live 2026-10-17 brief was long enough that tmux refused the command
+    // ("command too long"); the fixture brief is short, so pad it to a
+    // realistic 64 KiB before the real launch. The brief is the last argument.
     world.tmux.launch = (input) => {
-      systemTmux.launch(input);
-      world.tmux.launches.push({ name: input.name, cwd: input.cwd, command: input.command, args: input.args });
+      const brief = input.args.at(-1)!;
+      const args = [...input.args.slice(0, -1), brief + "\n" + LONG_BRIEF_PADDING.slice(0, Math.max(0, 64 * 1024 - brief.length - 1))];
+      systemTmux.launch({ ...input, args });
+      world.tmux.launches.push({ name: input.name, cwd: input.cwd, command: input.command, args });
     };
 
     world.start();
@@ -165,7 +174,9 @@ setTimeout(() => process.exit(3), 120000);
     expect(stubCall).not.toBeNull();
     expect(stubCall!.cwd).toBe(path.resolve(launch.cwd));
     expect(launch.args).toEqual(expect.arrayContaining(["--print", "--output-format", "stream-json"]));
-    // The brief, the last argument, crosses tmux and the recording wrapper intact.
+    // The brief, the last argument, crosses tmux and the recording wrapper
+    // intact, at the realistic 64 KiB that tmux once refused as "command too long".
+    expect(launch.args.at(-1)!.length).toBeGreaterThanOrEqual(64 * 1024 - 1);
     expect(stubCall!.argv.at(-1)).toBe(launch.args.at(-1));
     expect(paneWhileLive).toContain("claude stub");
   });
