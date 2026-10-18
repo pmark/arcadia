@@ -75,4 +75,33 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
     // The launcher held the brief; it removes itself before the provider runs.
     expect(existsSync(runDir) ? readdirSync(runDir) : []).toEqual([]);
   });
+
+  it("discards the launcher file when tmux new-session fails", () => {
+    const failingTmuxName = `arcadia-failing-${process.pid}-${Date.now()}`;
+    const runDir = path.join(root, "failing-run");
+    const failingBin = path.join(root, "failing-bin");
+    mkdirSync(failingBin);
+    // A shim that fails with exit code 42
+    writeFileSync(path.join(failingBin, "tmux"), `#!/bin/sh\nexit 42\n`);
+    chmodSync(path.join(failingBin, "tmux"), 0o755);
+    const originalPath = process.env.PATH ?? "";
+    process.env.PATH = `${failingBin}${path.delimiter}${originalPath}`;
+    try {
+      systemTmux.launch({
+        name: failingTmuxName,
+        cwd: root,
+        command: process.execPath,
+        args: ["--version"],
+        launcherDirectory: runDir
+      });
+      expect.fail("Expected systemTmux.launch to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("tmux new-session failed");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+    // Verify no launcher file is left behind
+    expect(existsSync(runDir) ? readdirSync(runDir) : []).toEqual([]);
+  });
 });
