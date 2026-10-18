@@ -817,6 +817,33 @@ describe("preserve-on-exit and integrate", () => {
     expect(existsSync(session.worktree_path)).toBe(true);
   });
 
+  it("under the worker pull-request merge opt-in, a base that moved on is no fast-forward refusal: the PR merge gate decides", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const optedIn = normalizeProductionScope({
+      ...scopeWith(undefined),
+      remotePreservation: true,
+      integrationGrant: { decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [], mergeThroughPullRequest: true }
+    });
+    activatePolicy(fixture, optedIn);
+    const session = launchFirstSession(fixture, tmux);
+    finishCandidate(fixture, tmux, session);
+    // Another PR merged into main during the run: a non-conflicting base move.
+    writeFileSync(path.join(fixture.repo, "OTHER.md"), "merged by someone else\n");
+    git(fixture.repo, ["add", "OTHER.md"]);
+    git(fixture.repo, ["commit", "-m", "unrelated base move"]);
+    const baseHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      integrateSessionCandidate({ db, workspace: fixture.workspace, repoRoot: fixture.repo, session, now: fixture.now })
+    );
+    expect(result.kind).toBe("refused");
+    // Past the local relation check, onto the worker merge's own exact-head gate.
+    expect((result as { reason: string }).reason).not.toMatch(/cannot fast-forward/i);
+    expect(result).toMatchObject({ code: "review_missing" });
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseHead);
+  });
+
   it("reports an already-integrated candidate as such and never duplicates the merge", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

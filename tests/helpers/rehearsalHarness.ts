@@ -877,6 +877,12 @@ export interface FakePullRequest {
 export class FakeGitHub {
   prs: FakePullRequest[] = [];
   readyCalls: string[] = [];
+  /** Every `gh pr ready --undo` (back to draft). */
+  undoReadyCalls: string[] = [];
+  /** Every `gh pr comment <url> --body <text>`. */
+  comments: Array<{ url: string; body: string }> = [];
+  /** Each entry fails one `gh pr comment` with that stderr, in order. */
+  commentFailures: string[] = [];
   /** Every `gh` invocation, in order, as `gh <args>`. */
   ghCalls: string[] = [];
   /** Every reviewer-model invocation, with the PR head it judged. */
@@ -1035,6 +1041,12 @@ export class FakeGitHub {
     if (command === "gh" && args[0] === "pr" && args[1] === "ready") {
       const pr = this.find(args[2]);
       if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (args.includes("--undo")) {
+        // `gh pr ready --undo`: back to draft.
+        pr.isDraft = true;
+        this.undoReadyCalls.push(pr.url);
+        return ok("");
+      }
       const before = this.beforeReady; this.beforeReady = null; before?.();
       pr.isDraft = false;
       this.readyCalls.push(pr.url);
@@ -1042,6 +1054,13 @@ export class FakeGitHub {
       return ok("");
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "merge") return this.merge(args);
+    if (command === "gh" && args[0] === "pr" && args[1] === "comment") {
+      const pr = this.find(args[2]);
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (this.commentFailures.length > 0) return { status: 1, stdout: "", stderr: this.commentFailures.shift()!, error: null };
+      this.comments.push({ url: pr.url, body: args[args.indexOf("--body") + 1] ?? "" });
+      return ok("");
+    }
     if (command === "gh" && args[0] === "api") return ok(this.comparePatch(args));
     if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
     if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");

@@ -30,6 +30,7 @@ import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
 import { renderActionBrief } from "./actionBrief.js";
+import { bindRepairSession, getSessionRepair } from "./reviewRepair.js";
 import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
@@ -539,6 +540,12 @@ export function prepareSession(input: {
   now: Date;
   tmux?: TmuxAdapter;
   host?: string;
+  /**
+   * A review repair (src/production/reviewRepair.ts): bind the new Session to
+   * this pending repair row and supersede the failed candidate's accepted exit
+   * in the same transaction as the Session insert.
+   */
+  repair?: { requestId: string };
   testHooks?: {
     /** Deterministic fault injection between the lease/handoff/competing-run checks and the insert, inside the same transaction. */
     afterChecksBeforeInsert?: () => void;
@@ -671,6 +678,7 @@ export function prepareSession(input: {
     if (handoff) {
       supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
     }
+    if (input.repair) bindRepairSession(input.db, { requestId: input.repair.requestId, sessionId: id, now: input.now });
     return row;
   });
 }
@@ -1427,6 +1435,7 @@ function buildProviderLaunch(
     agent,
     baseRevision: session.base_revision,
     continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision } : undefined,
+    repair: getSessionRepair(db, session.id),
     // The same identity the launch environment below commits under, so the
     // name the agent is told and the name on its commits cannot diverge.
     identity,

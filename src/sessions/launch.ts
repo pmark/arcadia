@@ -42,6 +42,7 @@ import {
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
+import { releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
@@ -99,6 +100,25 @@ export interface GuardedLaunchInput {
    * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
    */
   reuseOwnLeaseOnly?: boolean;
+  /**
+   * Standing policy only: launch a review repair Session (src/production/reviewRepair.ts)
+   * for the current Action instead of a fresh one. Its worktree is a NEW branch cut at
+   * `startRevision` (the failed candidate's work before its completion settlement), its
+   * lineage base is the failed candidate's own base revision, the failed candidate's
+   * Action claim moves to it, and its development attempt supersedes the passed attempt
+   * whose candidate failed review. The pending repair row `requestId` is bound in the
+   * Session insert's transaction.
+   */
+  repair?: {
+    requestId: string;
+    failedSessionId: string;
+    /** The failed candidate's Action: the pointer must still name it, or nothing launches. */
+    actionId: string;
+    failedWorktreePath: string;
+    startRevision: string;
+    baseRevision: string;
+    supersedesDevelopmentAttempt: string;
+  };
   /**
    * Per-launch wall-clock limit override in ms for this Session; omitted
    * defers to the policy scope's `sessionTimeLimitMs`, then the default. See
@@ -184,6 +204,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     );
   }
 
+  if (input.repair && (!input.standingPolicy || input.operatorLaunch)) {
+    throw validationError("A review repair Session is launched only under the standing production policy.", { code: "repair_requires_standing_policy" });
+  }
   if (input.operatorLaunch) {
     if (input.standingPolicy) {
       throw validationError("An operator launch authorization is minted only by a confirmed, fingerprinted Launch, never under the standing production policy.");
@@ -230,6 +253,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     tmux,
     now
   });
+
+  if (input.repair && preview.actionId !== input.repair.actionId) {
+    throw validationError(`A review repair of ${input.repair.actionId} launches only while the governed pointer names it (it names ${preview.actionId ?? "nothing"}).`, {
+      code: "repair_pointer_moved", conflict: true
+    });
+  }
 
   // Reconcile onto an already-durable result first, before any staleness
   // check: a lost HTTP response or a second tab retrying the same approved
@@ -362,7 +391,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // standing policy or an approved preview) authorizes the next bounded ordinal.
   const requirement = requirementIdentity({ projectSlug: preview.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
   try {
-    planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true });
+    planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true, supersedesPassed: input.repair?.supersedesDevelopmentAttempt ?? null });
   } catch (error) {
     throw lineageRefusal(error);
   }
@@ -422,7 +451,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // (or was somehow re-checked-out to a different branch) must not have its
   // claim renewed only to throw past that point with the claim already held
   // and nothing left to release it (CodeRabbit, PR #696).
-  const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
+  // A review repair never resumes an incomplete handoff or a draft-only candidate: it
+  // always starts its own branch from the failed candidate's pre-settlement work.
+  const staleHandoff = input.repair ? null : getResumableLeaseHandoff(input.db, repoRoot);
   let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
   if (staleHandoff && staleHandoff.session.action_id === preview.actionId && !tmux.hasSession(staleHandoff.session.tmux_session_name)) {
     const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
@@ -473,7 +504,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // handoff (handled above) decides first; only with none at all is an
   // undescribed candidate considered.
   let draftResume: { path: string; branch: string; receipt: DraftRecoveryReceipt } | null = null;
-  if (!staleHandoff) {
+  if (!staleHandoff && !input.repair) {
     const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
     try {
       const decision = writeTransaction(input.db, () => {
@@ -553,7 +584,17 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
           now,
           model,
           effort,
+          ...(input.repair ? { startPoint: input.repair.startRevision } : {}),
           beforeCreate(candidate) {
+            // The failed candidate's Action claim moves to the repair (fenced on
+            // its exact generation, only while it is still held on that worktree);
+            // its worktree reservation, branch and PR stay as they are.
+            if (input.repair) {
+              const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now);
+              if (held?.claim_generation && canonicalPath(held.worktree_path) === canonicalPath(input.repair.failedWorktreePath)) {
+                releaseActionClaim(input.db, { repositoryPath: repoRoot, project: preview.projectSlug, actionId: preview.actionId!, generation: held.claim_generation });
+              }
+            }
             claim.generation = reserveAgentWorktree(input.db, {
               repositoryPath: repoRoot,
               worktreePath: candidate.path,
@@ -600,8 +641,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // right expectation the second time around.
   // A never-launched draft-only candidate carries no commits, so its own
   // branch tip is both its lineage start and the HEAD launch must observe.
-  const sessionBaseRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
-  const sessionLaunchRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+  const sessionBaseRevision = input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  const sessionLaunchRevision = input.repair ? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   // Outside the `prepareSession` failure path below on purpose: a mismatch is
   // positive evidence that something is writing in the worktree, so the
@@ -634,6 +675,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       worktreePath: nextWorktree.path,
       now,
       tmux,
+      ...(input.repair ? { repair: { requestId: input.repair.requestId } } : {}),
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
     if (input.reuseOwnLeaseOnly && admission) {
@@ -717,6 +759,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   /** Abandon the prepared, never-started Session and everything this call reserved for it. */
   const abandonPrepared = () => {
     failPreparedSession(input.db, prepared.id);
+    if (input.repair) releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
     // See the same guard above: a resumed stale claim's worktree is prior
     // real work, never this call's to delete.
     if (!resumedInPlace) {
@@ -774,7 +817,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // back its committed slot, exactly like a withdrawn admission.
   let development: SessionRoleAttempt;
   try {
-    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: prepared.id, now }).attempt;
+    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: prepared.id,
+      supersedesPassed: input.repair?.supersedesDevelopmentAttempt ?? null, now }).attempt;
   } catch (error) {
     abandonPrepared();
     if (admission) releaseAdmission(input.db, admission.requestId, now);
@@ -821,6 +865,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     if (resumableStaleClaim) {
       restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
     }
+    // A repair that never started gives the failed candidate back to terminal recovery.
+    if (input.repair) releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
     throw error;
   }
   markAttemptRunning(input.db, development, now);

@@ -526,10 +526,12 @@ export interface AllocateAttemptInput {
    */
   binding?: VerdictBinding;
   /**
-   * Planner and critique only: the request id of the latest attempt, which
-   * passed, that the caller has deterministically shown no longer stands (the
-   * launch preview needs planning again under the same input). It allows the
-   * next bounded ordinal without pretending the earlier attempt failed.
+   * Planner, critique and (review repair only) development: the request id of
+   * the latest attempt, which passed, that the caller has deterministically
+   * shown no longer stands (the launch preview needs planning again under the
+   * same input; a developed candidate failed an independent verdict). It
+   * allows the next bounded ordinal without pretending the earlier attempt
+   * failed.
    */
   supersedesPassed?: string;
   now?: Date;
@@ -642,7 +644,10 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
     // the same binding after a failure is a retry and needs authorization.
     const supersededVerdict = previous !== null && isVerdictRole(input.role) &&
       (previous.status === "passed" || previous.status === "failed") && !sameBinding(previous, binding);
-    const supersededHelper = previous !== null && (input.role === "planner" || input.role === "critique") &&
+    // A passed development attempt is superseded the same way only by a
+    // review repair (src/production/reviewRepair.ts): its candidate failed an
+    // independent verdict, so the repair is a new attempt, never a retry.
+    const supersededHelper = previous !== null && (input.role === "planner" || input.role === "critique" || input.role === "development") &&
       previous.status === "passed" && input.supersedesPassed === previous.request_id;
     if (previous && !supersededVerdict && !supersededHelper && (previous.status !== "failed" || !input.retryAuthorized)) {
       throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {

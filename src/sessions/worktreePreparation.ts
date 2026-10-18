@@ -46,6 +46,12 @@ export function prepareAgentWorktree(input: {
   now: Date;
   model: string;
   effort: string | null;
+  /**
+   * The commit the new branch starts at instead of the base branch tip: a
+   * review repair starts from the failed candidate's work before its
+   * completion settlement (src/production/reviewRepair.ts).
+   */
+  startPoint?: string;
   beforeCreate?: (candidate: PreparedAgentWorktree) => void;
 }): PreparedAgentWorktree {
   const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z");
@@ -69,7 +75,7 @@ export function prepareAgentWorktree(input: {
   };
   input.beforeCreate?.(candidate);
   mkdirSync(path.dirname(worktreePath), { recursive: true });
-  git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
+  git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-b", branch, worktreePath, input.startPoint ?? input.baseBranch]);
   try {
     trustMiseConfig(input.repositoryPath, worktreePath);
   } catch (error) {

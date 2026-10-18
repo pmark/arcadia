@@ -28,6 +28,13 @@ export interface AutoSettlePendingCompletionInput {
    * `candidate_revision` is the only evidenced tree.
    */
   evidencedRevision?: string | null;
+  /**
+   * A review repair Session only: drafts byte-identical to the ones at this
+   * revision (the failed candidate's pre-settlement work, where its own
+   * completion draft may still sit) are not this Session's and never settle;
+   * the repair's completion must be a fresh Ask it drafted itself.
+   */
+  excludeDraftsAt?: string | null;
 }
 
 export interface AutoSettlePendingCompletionResult {
@@ -151,7 +158,13 @@ export function attemptAutoSettlePendingCompletion(
   db: Database.Database,
   input: AutoSettlePendingCompletionInput
 ): AutoSettlePendingCompletionResult {
-  const candidates = findMatchingCompleteAskDrafts(input.repoRoot, input.projectSlug, input.activePlanSlug, input.action.id);
+  const inherited = (draft: DraftedCompleteAsk): boolean => {
+    if (!input.excludeDraftsAt) return false;
+    const relative = path.relative(input.repoRoot, draft.path).split(path.sep).join("/");
+    return tryGit(input.repoRoot, ["show", `${input.excludeDraftsAt}:${relative}`]) === draft.content.trim();
+  };
+  const candidates = findMatchingCompleteAskDrafts(input.repoRoot, input.projectSlug, input.activePlanSlug, input.action.id)
+    .filter((draft) => !inherited(draft));
   if (candidates.length === 0) return { settled: false, reason: AUTO_SETTLE_NO_DRAFT };
 
   // Try every matching draft in order rather than stopping at the first: an

@@ -98,7 +98,9 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       worker("review_rate_limited", "The reviewer provider is rate limited."),
       step("required_checks_timeout", "Required checks did not finish in time; reset the review budget with `arcadia production reset-repair-budget` once they can."),
       step("review_budget_exhausted", "The unattended review used its per-head budget; reset it with `arcadia production reset-repair-budget`."),
-      step("independent_verdict_failed", "An independent verdict failed on the candidate head; fix the finding or rerun the review.")
+      step("independent_verdict_failed", "An independent verdict failed on the candidate head; fix the finding or rerun the review."),
+      step("review_repair_rounds_exhausted", "Three repair rounds for this Action failed independent review; read the findings on the draft PR, fix the candidate or rerun the review."),
+      step("review_repair_gated", "A gate stopped the review repair loop (an authority-adjacent verdict or a checked-in authority path); read the findings on the draft PR and decide.")
     ].map((entry) => [entry.kind, entry] as const)
   )
 );

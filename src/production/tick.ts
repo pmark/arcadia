@@ -75,6 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
+import { attemptReviewRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -302,6 +303,7 @@ function recoverTerminalHandoff(
   // Every terminal guard passed: an escalation recorded while one of them
   // refused is stale now, whatever the integration step decides next.
   clearTerminalCandidateEscalation(db, `${session.project_slug}/${session.action_id}`);
+  let reviewOutcome: ReviewStepOutcome | undefined;
   const handoff: SessionHandoffResult = {
     preservation,
     integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head, clock: review?.clock,
@@ -314,10 +316,11 @@ function recoverTerminalHandoff(
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
             deps: { ...(review.clock ? { clock: review.clock } : {}), ...review.deps } })
           : undefined;
+        reviewOutcome = outcome;
         return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
       } }, integrateDeps)
   };
-  return { handoff, sessionId: session.id, head, refusal: null };
+  return { handoff, sessionId: session.id, head, refusal: null, session, review: reviewOutcome };
 }
 
 /**
@@ -366,6 +369,9 @@ interface TerminalHandoffRecovery {
   head: string | null;
   /** Set only when a terminal guard refused; null once every guard passed (integration may still refuse). */
   refusal: TerminalRefusalFacts | null;
+  /** The candidate whose guards all passed, and the review step's outcome this tick, when one ran. */
+  session?: AgentSession;
+  review?: ReviewStepOutcome;
 }
 
 /**
@@ -450,6 +456,9 @@ function escalatingVerdictGate(
     remedy = `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
   }
+  // The review repair loop stopped for the operator on this failed head: that
+  // entry already names the verdict and its findings, so it stands, quietly.
+  if (previous && REVIEW_REPAIR_ESCALATIONS.has(previous.kind)) return gate;
   if (previous && !supersedable(previous.kind)) {
     // One row per Action: never overwrite a different, still-open escalation.
     input.log?.(`${actionKey} also waits on independent verdicts (${message}); keeping its open ${previous.kind} escalation.`);
@@ -1770,6 +1779,9 @@ export function runManagedProductionTick(
     let handoffSessionId: string | null = null;
     let handoffHead: string | null = null;
     let terminalRefusal: TerminalRefusalFacts | null = null;
+    // The review step's outcome for the recovered candidate, when one ran (the review repair loop's trigger).
+    let handoffReview: ReviewStepOutcome | undefined;
+    let handoffSession: AgentSession | undefined;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
     // Scope drift is observed once per tick for every Project, before any early skip below, so a
     // stranded scope is seen whether or not this tick could launch, wait or reconcile.
@@ -2007,6 +2019,8 @@ export function runManagedProductionTick(
         handoffSessionId = recovery?.sessionId ?? null;
         handoffHead = recovery?.head ?? null;
         terminalRefusal = recovery?.refusal ?? null;
+        handoffReview = recovery?.review;
+        handoffSession = recovery?.session;
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -2038,6 +2052,12 @@ export function runManagedProductionTick(
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
+    } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession
+      && handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole) {
+      // A reviewer's real non-pass judgment of the exact settled head: the review
+      // repair loop (src/production/reviewRepair.ts) returns the PR to draft with
+      // its findings and launches one bounded repair Session, or stops once.
+      launch = attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       // Logged once per (Session, head, reason), not on every ~3 s tick: the
@@ -2115,6 +2135,80 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
   }
   return `The development attempt for this exact Action input is ${String(details?.status ?? "finished")} and no retry is authorized; `
     + "the only path is a governed amendment of the Action (an Agent Ask).";
+}
+
+/**
+ * The review repair loop's one step for a recovered candidate whose exact
+ * settled head carries a reviewer's real failed verdict
+ * (src/production/reviewRepair.ts). Launches only through the guarded
+ * standing-policy launch, like any other admission; a conflict (capacity, Off,
+ * a moved pointer) is a wait retried next tick, logged once per reason.
+ */
+function attemptReviewRepairLaunch(
+  db: Database.Database,
+  input: {
+    workspace: string;
+    repoRoot: string;
+    projectSlug: string;
+    session: AgentSession;
+    options: ManagedProductionTickOptions;
+    tmux: TmuxAdapter;
+    now: Date;
+    log: (message: string) => void;
+  }
+): ManagedProductionLaunchAttempt {
+  const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
+  const paused = getSchedulingProject(db, input.projectSlug).pausedReason;
+  if (paused) return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey };
+  try {
+    const step = attemptReviewRepair({
+      db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
+      runCommand: input.options.review?.runCommand,
+      escalate: (kind, message, remedy) => {
+        const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+        const newlyDetected = recordOperatorEscalation(db, { actionKey, kind, message, remedy, now: input.now });
+        if (newlyDetected || previous?.kind !== kind) {
+          input.log(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
+          try {
+            queueOperatorPing(db, { message: `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`, kind: "attention", agent: "production-tick", now: input.now });
+          } catch (error) {
+            input.log(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      },
+      launch: (repair) => launchGuardedHostSession({
+        db,
+        workspace: input.workspace,
+        repoRoot: input.repoRoot,
+        projectSlug: input.projectSlug,
+        requestId: `worker-tick-repair-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`,
+        standingPolicy: true,
+        repair,
+        profiles: input.options.profiles,
+        adapters: input.options.adapters,
+        now: input.now,
+        tmux: input.tmux,
+        capacityObservation: input.options.capacityObservation,
+        agentWorktreeRoot: input.options.agentWorktreeRoot,
+        providerSignIn: input.options.providerSignIn,
+        workerCapability: input.options.workerCapability,
+        onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
+      })
+    });
+    if (step.kind === "launched") {
+      clearLaunchBlocker(db, input.projectSlug);
+      clearOperatorEscalation(db, actionKey);
+      clearLaunchRefusal(db, actionKey);
+      return { attempted: true, outcome: "launched", reason: step.reason, actionKey };
+    }
+    return { attempted: false, outcome: "skipped", reason: step.reason, actionKey };
+  } catch (error) {
+    const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
+    const message = error instanceof Error ? error.message : String(error);
+    const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
+    if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
+    return { attempted: true, outcome: error instanceof ArcadiaError && error.details?.conflict ? "refused" : "failed", reason: message, actionKey };
+  }
 }
 
 function attemptProjectLaunch(

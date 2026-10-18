@@ -143,6 +143,13 @@ export function planDevelopmentAttempt(db: Database.Database, input: {
   /** The launch's own prepared Session, which never counts as another live holder. */
   exceptSessionId?: string | null;
   maxOrdinal?: number;
+  /**
+   * Review repair only: the request id of the latest development attempt,
+   * which passed, whose candidate then failed an independent verdict. The
+   * repair is the next ordinal; the repair-round bound, not the retry
+   * ordinal limit, bounds how many there are.
+   */
+  supersedesPassed?: string | null;
 }): { kind: "resume"; attempt: SessionRoleAttempt } | { kind: "allocate"; supersedes: SessionRoleAttempt | null } {
   const live = liveMutationOwner(db, input.requirement.requirementId);
   if (live && live.input_revision === input.requirement.inputRevision) return { kind: "resume", attempt: live };
@@ -157,6 +164,9 @@ export function planDevelopmentAttempt(db: Database.Database, input: {
     }
   }
   const previous = latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development");
+  if (previous && previous.status === "passed" && input.supersedesPassed && input.supersedesPassed === previous.request_id) {
+    return { kind: "allocate", supersedes: live };
+  }
   if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
     throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
       code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
@@ -186,6 +196,8 @@ export function beginDevelopmentAttempt(db: Database.Database, input: {
   requestId: string;
   retryAuthorized: boolean;
   exceptSessionId?: string | null;
+  /** See {@link planDevelopmentAttempt}: review repair only. */
+  supersedesPassed?: string | null;
   now: Date;
 }): { attempt: SessionRoleAttempt; resumed: boolean } {
   return writeTransaction(db, () => {
@@ -211,6 +223,12 @@ export function beginDevelopmentAttempt(db: Database.Database, input: {
       mutationOwner: true,
       retryAuthorized: input.retryAuthorized,
       authorityCurrent: true,
+      // A review repair: one ordinal past the passed attempt it supersedes,
+      // never refused by the retry limit (the repair-round bound applies).
+      ...(input.supersedesPassed
+        ? { supersedesPassed: input.supersedesPassed,
+          maxOrdinal: Math.max(3, (latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development")?.ordinal ?? 0) + 1) }
+        : {}),
       now: input.now
     });
     return { attempt, resumed: false };

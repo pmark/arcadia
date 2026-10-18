@@ -7,11 +7,13 @@ import { FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helpers/world.js";
 
 /**
  * The nine-Action chain (helpers/chain.ts) hitting a blocker midway: steps 1
- * to 4 integrate, then the QA reviewer fails step 5's exact head. A failed
- * verdict never integrates, so the chain must stop on that one Action, say so
- * in `production status`, admit nothing later, and stay that way hours later
- * (the operator asleep). The Grant expiring midway is in
- * long-chain-grant-expiry.test.ts.
+ * to 4 integrate, then the QA reviewer fails step 5's exact head with a
+ * finding about authority. A failed verdict never integrates, and an
+ * authority-adjacent one is never repaired unattended (the ordinary repair
+ * loop is in review-repair.test.ts), so the chain must stop on that one
+ * Action, say so in `production status` and on the PR (back to draft, one
+ * comment), admit nothing later, and stay that way hours later (the operator
+ * asleep). The Grant expiring midway is in long-chain-grant-expiry.test.ts.
  */
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
@@ -26,12 +28,13 @@ beforeAll(() => {
   isolation = isolateProcess();
   world = new FastRehearsal("long-chain-qa-fails-step-5", isolation, import.meta.filename, { longChain: true });
   // The tick's own log lines for the failed verdict and the withheld integration.
-  world.expectError(/independent_verdict_failed|qa: failed|verdict on [0-9a-f]+ is fail/);
+  world.expectError(/independent_verdict_failed|review_repair_gated|qa: failed|verdict on [0-9a-f]+ (is fail|failed)/);
   world.start();
   for (const index of [0, 1, 2, 3]) steps.push(runChainStep(world, index));
+  world.github.findingTitle = "Widens the operator's approval authority";
   world.github.verdict = (role, pr) => (role === "qa" && pr?.branch.includes(`/${CHAIN[4]}-`) ? "fail" : "pass");
   five = runChainStep(world, 4, { integrate: false });
-  world.tickUntil(() => world.escalations().some((e) => e.kind === "independent_verdict_failed"), 6);
+  world.tickUntil(() => world.escalations().some((e) => e.kind === "review_repair_gated"), 6);
   blocked = world.productionStatus();
   afterBlock = world.ticks(3);
   // The operator is asleep: three simulated hours pass, the worker keeps ticking.
@@ -63,15 +66,21 @@ describe("fast rehearsal: the nine-Action chain stops on a failed QA verdict at 
   it("stops on exactly one named, visible entry in production status, still there hours later", () => {
     const key = world.actionKey(CHAIN[4]);
     for (const status of [blocked, later]) {
-      expect(status.data.operatorEscalations.map((e) => [e.actionKey, e.kind])).toEqual([[key, "independent_verdict_failed"]]);
+      expect(status.data.operatorEscalations.map((e) => [e.actionKey, e.kind])).toEqual([[key, "review_repair_gated"]]);
       expect(status.text).toContain("Needs an operator or agent (1):");
-      expect(status.text).toContain(`${key} [independent_verdict_failed]`);
+      expect(status.text).toContain(`${key} [review_repair_gated]`);
+      expect(status.data.operatorEscalations[0].message).toContain("Widens the operator's approval authority");
       expect(status.data.operatorEscalations[0].remedy).toContain(`arcadia qa pr ${five.view.url} --rerun`);
       expect(status.data.redAlerts).toEqual([]);
       expect(status.data.liveAdmissions).toBe(0);
     }
     // The row is refreshed by every tick: the blocker is current, not a stale record.
     expect(later.data.operatorEscalations[0].lastSeenAt).toBe(world.now.toISOString());
+    // Visible on GitHub too: the PR is a draft with exactly one verdict comment.
+    const pr = world.gh.prs.find((entry) => entry.url === five.view.url)!;
+    expect(pr.isDraft).toBe(true);
+    expect(world.github.comments.map((comment) => comment.url)).toEqual([five.view.url]);
+    expect(world.github.comments[0].body).toContain("Do not merge: escalated to the operator.");
   });
 
   it("never admits a later Action", () => {

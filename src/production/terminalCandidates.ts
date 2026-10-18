@@ -17,7 +17,9 @@ import { developedForSupersededInput } from "../sessions/roleLineage.js";
  * whose candidate already carries the Action's recorded completion settlement
  * (Issue #994); its Action is not done in the base checkout; its branch has
  * not landed on the base branch; and it was not developed for a superseded
- * input of its Action (Issue #1158). Newest exit first. Read-only.
+ * input of its Action (Issue #1158). An accepted exit a review repair Session
+ * superseded (src/production/reviewRepair.ts) no longer qualifies: the repair
+ * owns the Action now. Newest exit first. Read-only.
  */
 
 export interface PendingTerminalCandidates {
@@ -45,7 +47,7 @@ export function listPendingTerminalCandidates(
     JOIN agent_sessions s ON s.id = r.session_id
     WHERE s.repository_path = ? AND s.project_slug = ?
       AND (? IS NULL OR s.action_id = ?)
-      AND (r.outcome = 'accepted_completion' OR (r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL))
+      AND r.superseded_by_session_id IS NULL AND r.outcome IN ('accepted_completion', 'incomplete_resumable')
       AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
     ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug, actionId, actionId) as Array<{ session_id: string; outcome: string }>;
   if (exits.length === 0) return null;
