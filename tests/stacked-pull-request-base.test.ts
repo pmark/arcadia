@@ -268,6 +268,19 @@ describe("selectPullRequestBase over a pointer-only local base", () => {
     expect(selection.ok).toBe(false);
   });
 
+  it("still refuses a pointer move that rides with a binary change to another Plan", () => {
+    const f = pointerGap((repo) => {
+      writeFileSync(path.join(repo, "docs", "plans", "q.md"), Buffer.from([0, 1, 2, 3]));
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "add", "-A"], { cwd: repo });
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "add q"], { cwd: repo });
+      execFileSync("git", ["push", "-q", "origin", "main"], { cwd: repo });
+      movePointer(repo);
+      writeFileSync(path.join(repo, "docs", "plans", "q.md"), Buffer.from([0, 9, 9, 9]));
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+
   it("still refuses a pointer move that rides with any other file", () => {
     const f = pointerGap((repo) => {
       movePointer(repo);

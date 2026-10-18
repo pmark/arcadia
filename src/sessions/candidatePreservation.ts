@@ -948,7 +948,10 @@ function isPointerOnlyGap(repositoryPath: string, from: string, to: string): boo
   if (status === null) return false;
   const entries = status.split("\n").map((line) => line.trim()).filter(Boolean);
   if (entries.length === 0 || entries.some((line) => !/^M\t/.test(line) || !POINTER_RECORD_PATH.test(line.slice(2)))) return false;
-  const patch = tryGit(repositoryPath, ["diff", "--no-renames", "--no-color", "--no-ext-diff", "-U0", from, to]);
+  // A binary change has no text lines to inspect; `--numstat` reports it as "-".
+  const numstat = tryGit(repositoryPath, ["diff", "--no-renames", "--numstat", from, to]);
+  if (numstat === null || numstat.split("\n").filter(Boolean).some((line) => !/^\d+\t\d+\t/.test(line))) return false;
+  const patch = tryGit(repositoryPath, ["diff", "--no-renames", "--no-color", "--no-ext-diff", "--text", "-U0", from, to]);
   if (patch === null) return false;
   const changed = patch.split("\n").filter((line) => /^[+-]/.test(line) && !/^(?:\+\+\+|---) /.test(line));
   return changed.length > 0 && changed.every((line) => POINTER_LINE.test(line));
