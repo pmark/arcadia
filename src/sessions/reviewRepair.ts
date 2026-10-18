@@ -31,7 +31,8 @@ export interface ReviewRepairCheck {
   evidence: string;
 }
 
-export type ReviewRepairOutcome = "pending" | "launched" | "escalated" | "gated";
+/** `released`: decided but never launched because its failed verdict stopped standing. */
+export type ReviewRepairOutcome = "pending" | "launched" | "escalated" | "gated" | "released";
 
 export interface ReviewRepairRow {
   request_id: string;
@@ -84,7 +85,7 @@ export function ensureReviewRepairTable(db: Database.Database): void {
       findings_json TEXT NOT NULL,
       failed_checks_json TEXT NOT NULL,
       repair_session_id TEXT UNIQUE,
-      outcome TEXT NOT NULL CHECK (outcome IN ('pending', 'launched', 'escalated', 'gated')),
+      outcome TEXT NOT NULL CHECK (outcome IN ('pending', 'launched', 'escalated', 'gated', 'released')),
       reason TEXT,
       last_error TEXT,
       drafted_at TEXT,

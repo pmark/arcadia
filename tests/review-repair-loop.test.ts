@@ -11,7 +11,9 @@ import { ESCALATION_REMEDIES } from "../src/production/blockerRemedies.js";
 import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
 import type { AgentSession } from "../src/sessions/index.js";
-import { ensureReviewRepairTable, getSessionRepair, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
+import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
+import { getSession } from "../src/sessions/index.js";
+import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 /**
@@ -53,6 +55,8 @@ function failedReview(setup: (rehearsal: Rehearsal) => void = () => {}, edits: R
   return { rehearsal, a, head: git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim() };
 }
 
+const exitReceiptOf = (rehearsal: Rehearsal, sessionId: string) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
+  db.prepare("SELECT outcome, superseded_by_session_id FROM session_exit_receipts WHERE session_id = ?").get(sessionId) as { outcome: string; superseded_by_session_id: string | null });
 const repairs = (rehearsal: Rehearsal) => withReadOnlyDatabase(rehearsal.workspace, (db) => listReviewRepairs(db, rehearsal.actionA));
 const escalation = (rehearsal: Rehearsal) => rehearsal.status().operatorEscalations.find((row) => row.actionKey === rehearsal.actionA);
 
@@ -228,6 +232,78 @@ describe("the review repair bound and gates", () => {
     const repairPr = rehearsal.github.prs.find((pr) => pr.branch === repair.branch)!;
     expect(rehearsal.github.ghCalls.filter((call) => call.startsWith(`gh pr comment ${repairPr.url}`))).toHaveLength(5);
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
+  });
+
+  it("never launches a repair once a rerun on the same head passed while the repair was pending, and releases the row", () => {
+    const { rehearsal, a, head } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
+    expect(rehearsal.lease()).toBeNull(); // held back by the failed comment: the row is pending
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["pending"]);
+    // An operator judges the verdict wrong and reruns the code review on the same head: it passes.
+    withDatabase(rehearsal.workspace, (db) => {
+      const session = getSession(db, a.id)!;
+      const requestId = "code-review-operator-rerun-0001";
+      const actorId = "code-review-reviewer:operator-rerun";
+      beginIndependentVerdict(db, { role: "code-review", session, repoRoot: rehearsal.repo, requestId, actorId, executionCwd: rehearsal.workspace, retryAuthorized: true, now: rehearsal.now });
+      finishIndependentVerdict(db, { requestId, actorId, session, repoRoot: rehearsal.repo, verdict: "passed", receipt: { reviewer: actorId }, now: rehearsal.now });
+    });
+    for (let i = 0; i < 4; i += 1) rehearsal.tick();
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    expect(exitReceiptOf(rehearsal, a.id)).toMatchObject({ superseded_by_session_id: null });
+    expect(repairs(rehearsal).map((row) => [row.failed_head, row.outcome])).toEqual([[head, "released"]]);
+  });
+
+  it("re-judges a pending repair's round under a new production epoch before launching it", () => {
+    const { rehearsal } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
+    const epoch = withReadOnlyDatabase(rehearsal.workspace, (db) => (readProductionPolicySafely(db) as { policy: { epoch: number } }).policy.epoch);
+    withDatabase(rehearsal.workspace, (db) => {
+      // The row was decided under an earlier run; this run already spent its three rounds.
+      db.prepare("UPDATE production_review_repairs SET policy_epoch = ?, round = 1").run(epoch - 1);
+      for (const round of [1, 2, 3]) {
+        db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+          start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome,
+          created_at, updated_at) VALUES (?, ?, ?, ?, 's', 'b', 'h', 'r', NULL, 'code-review', 'fail', 'x', NULL, '[]', '[]', ?, 'launched', ?, ?)`)
+          .run(`this-run-${round}`, rehearsal.actionA, epoch, round, `this-run-session-${round}`, rehearsal.now.toISOString(), rehearsal.now.toISOString());
+      }
+    });
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    const row = repairs(rehearsal).find((entry) => entry.repair_session_id === null)!;
+    expect(row).toMatchObject({ outcome: "escalated", policy_epoch: epoch });
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_rounds_exhausted" });
+  });
+
+  it("gates a drafted failed PR that was closed before the repair launches", () => {
+    const { rehearsal } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
+    expect(repairs(rehearsal)[0].drafted_at).not.toBeNull();
+    rehearsal.github.prs[0].state = "CLOSED";
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("no longer open") });
+  });
+
+  it("launches the same repair after one spawn failure: one row, one round, budget reset, the unstarted attempt set aside", () => {
+    let failures = 1;
+    const { rehearsal } = failedReview((r) => {
+      const launch = r.tmux.launch.bind(r.tmux);
+      r.tmux.launch = (input) => {
+        if (failures-- > 0) throw new Error("tmux could not start the Session (simulated)");
+        launch(input);
+      };
+    });
+    expect(rehearsal.lease()).toBeNull();
+    rehearsal.tick();
+    const repair = rehearsal.lease()!;
+    expect(repair).not.toBeNull();
+    const rows = repairs(rehearsal);
+    expect(rows.map((row) => [row.outcome, row.repair_session_id])).toEqual([["launched", repair.id]]);
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => launchedRepairRounds(db, rehearsal.actionA, rows[0].policy_epoch))).toBe(1);
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => getProductionRepairAttempts(db, rehearsal.actionA)).attempts).toBe(0);
+    const development = rehearsal.attempts("write-marker-a").filter((x) => x.role === "development");
+    expect(development.map((x) => x.status)).toEqual(["passed", "failed", expect.stringMatching(/pending|running/)]);
+    expect(JSON.parse(development[1].terminal_receipt_json!)).toMatchObject({ repairNeverStarted: true });
+    expect(rehearsal.log.some((line) => line.includes("mutation_owner_active"))).toBe(false);
   });
 
   it("stops a repeating non-conflict repair launch failure at the per-Action repair budget with one escalation", () => {

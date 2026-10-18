@@ -75,7 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
-import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, hasPendingReviewRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
+import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -316,6 +316,9 @@ function recoverTerminalHandoff(
         const repairGate = gateRepairCandidate(db, { repoRoot, session, head, now, log, runCommand: review?.deps.runCommand,
           escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey: `${session.project_slug}/${session.action_id}`, kind, message, remedy, now, log }) });
         if (repairGate) return { satisfied: false, code: "awaiting_independent_verdicts", reason: repairGate, head, missing: [] };
+        // A decided repair whose failed verdict no longer stands (a passing rerun,
+        // a new head) is released before anything can launch it.
+        releaseStalePendingRepair(db, { session, repoRoot, now, log });
         const waiting = independentVerdictGate(db, { session, repoRoot });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
@@ -2065,8 +2068,7 @@ export function runManagedProductionTick(
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession
-      && ((handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole)
-        || hasPendingReviewRepair(db, handoffSession, repoRoot))) {
+      && handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole) {
       // A reviewer's real non-pass judgment of the exact settled head: the review
       // repair loop (src/production/reviewRepair.ts) returns the PR to draft with
       // its findings and launches one bounded repair Session, or stops once.

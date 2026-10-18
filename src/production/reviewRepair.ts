@@ -3,9 +3,9 @@ import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/bat
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 import type { AgentSession } from "../sessions/index.js";
-import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, type SessionRoleAttempt } from "../sessions/enrollment.js";
+import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
-import { MAX_VERDICT_ATTEMPTS, requirementIdFor } from "../sessions/roleLineage.js";
+import { MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
 import type { GuardedLaunchInput, GuardedLaunchResult } from "../sessions/launch.js";
 import {
   ensureReviewRepairTable,
@@ -338,15 +338,15 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   if (exit?.outcome !== "accepted_completion" || exit.superseded_by_session_id !== null) {
     return { kind: "not_applicable", reason: `The candidate's exit is ${exit ? `${exit.outcome}${exit.superseded_by_session_id ? `, superseded by ${exit.superseded_by_session_id}` : ""}` : "unrecorded"}, not an unsuperseded accepted completion.` };
   }
-  // A repair already decided for this exact failed head whose launch did not
-  // start (a guard, a spawn failure) resumes from its own durable row: its live
-  // development attempt now stands between the failed candidate and verdict
-  // readiness, so the failed verdict is no longer re-derivable from readiness.
-  const branchHead = tryGit(repoRoot, ["rev-parse", "--verify", `refs/heads/${session.branch}`]);
-  const pendingRow = branchHead ? getReviewRepair(db, reviewRepairRequestId(session.id, branchHead)) : null;
-  const failed = realFailedVerdict(db, { session, repoRoot })
-    ?? (pendingRow?.outcome === "pending" && pendingRow.repair_session_id === null ? resumedFailure(db, session, pendingRow) : null);
-  if (!failed) return { kind: "not_applicable", reason: "No real failed independent verdict is recorded on the candidate's current head." };
+  // Only a reviewer's real non-pass that is still the latest verdict of its
+  // role, on the current requirement input, head, criteria and evidence: a
+  // repair whose Session never started is set aside by the lineage, so a
+  // pending repair is re-judged from the same facts every tick.
+  const failed = realFailedVerdict(db, { session, repoRoot });
+  if (!failed) {
+    releaseStalePendingRepair(db, { session, repoRoot, now, log: input.log });
+    return { kind: "not_applicable", reason: "No real failed independent verdict is recorded on the candidate's current head." };
+  }
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
     return { kind: "not_applicable", reason: "Managed production is not Active." };
@@ -398,6 +398,20 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     row = getReviewRepair(db, requestId)!;
     input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
   }
+  // A pending row decided under an earlier production run (epoch) is
+  // re-judged against THIS run's round count before it can launch, so a new
+  // run never exceeds its own bound; fenced on the row never having launched.
+  if (row.outcome === "pending" && row.policy_epoch !== policy.epoch) {
+    const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
+    const exhausted = rounds >= MAX_REVIEW_REPAIR_ROUNDS;
+    db.prepare(`UPDATE production_review_repairs SET policy_epoch = ?, round = ?, outcome = ?, reason = ?, updated_at = ?
+      WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`)
+      .run(policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), exhausted ? "escalated" : "pending",
+        exhausted ? `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.` : null,
+        now.toISOString(), requestId);
+    row = getReviewRepair(db, requestId)!;
+    input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)} re-judged under production epoch ${policy.epoch}: ${row.outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : row.outcome}.`);
+  }
   // Re-judged every tick while pending: the repaired head needs a fresh code
   // review and QA, and the role lineage bounds both per requirement input.
   if (row.outcome === "pending") {
@@ -433,6 +447,27 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     return { kind: "stopped", escalation, reason: row.reason ?? row.outcome };
   }
   if (row.outcome !== "pending") return { kind: "not_applicable", reason: `The repair for this failed head is already ${row.outcome}.` };
+
+  // The PR was read while drafting; a person may have closed or merged it
+  // since. Re-read it right before the launch: a failed PR no longer open is
+  // a gated stop, never a repair.
+  if (row.pull_request_url) {
+    const viewed = (input.runCommand ?? runHostCommand)({ command: "gh", args: ["pr", "view", row.pull_request_url, "--json", "state"], cwd: repoRoot, timeoutMs: 30_000 });
+    if (viewed.status !== 0) return { kind: "waiting", reason: `gh pr view ${row.pull_request_url} failed before the repair launch: ${commandError(viewed)}` };
+    let state = "UNKNOWN";
+    try { state = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "UNKNOWN").toUpperCase(); } catch { /* UNKNOWN */ }
+    if (state !== "OPEN") {
+      const reason = state === "MERGED"
+        ? `PR ${row.pull_request_url} was MERGED although its independent ${row.role} verdict failed; the failed head may already be on the base.`
+        : `PR ${row.pull_request_url} is ${state}: the failed PR is no longer open, so the repair loop stops for the operator.`;
+      db.prepare("UPDATE production_review_repairs SET outcome = 'gated', reason = ?, updated_at = ? WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL")
+        .run(reason, now.toISOString(), requestId);
+      input.escalate(REVIEW_REPAIR_GATED,
+        `The independent ${row.role} verdict on ${row.failed_head.slice(0, 12)} is ${row.verdict}; ${reason} Findings (report ${row.report_path ?? "unavailable"}):\n${findings}`,
+        `Check ${row.pull_request_url} and the base branch; the worker launches no repair for a PR that is no longer open. Nothing integrates meanwhile.`);
+      return { kind: "stopped", escalation: REVIEW_REPAIR_GATED, reason };
+    }
+  }
 
   const result = input.launch({
     requestId,
@@ -484,23 +519,31 @@ export function closeSupersededPullRequests(db: Database.Database, input: { repo
   return closed;
 }
 
-/** The failed verdict and passed development attempt a pending repair row was decided from, read back from the lineage by its exact head. */
-function resumedFailure(db: Database.Database, session: AgentSession, row: ReviewRepairRow):
-  { role: string; head: string; attempt: SessionRoleAttempt; developerRequestId: string } | null {
-  const requirementId = requirementIdFor(session.project_slug, session.plan_slug, session.action_id);
-  const attempt = db.prepare(`SELECT * FROM session_role_attempts WHERE requirement_id = ? AND role = ? AND target_head = ? AND status = 'failed'
-    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(requirementId, row.role, row.failed_head) as SessionRoleAttempt | undefined;
-  const developer = db.prepare(`SELECT request_id FROM session_role_attempts WHERE requirement_id = ? AND role = 'development' AND status = 'passed' AND target_head = ?
-    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(requirementId, row.failed_head) as { request_id: string } | undefined;
-  return attempt && developer ? { role: row.role, head: row.failed_head, attempt, developerRequestId: developer.request_id } : null;
-}
-
-/** Whether this terminal candidate has a decided repair whose launch has not started yet (the tick resumes it). */
-export function hasPendingReviewRepair(db: Database.Database, session: AgentSession, repoRoot: string): boolean {
-  const head = tryGit(repoRoot, ["rev-parse", "--verify", `refs/heads/${session.branch}`]);
-  if (!head) return false;
-  const row = getReviewRepair(db, reviewRepairRequestId(session.id, head));
-  return row?.outcome === "pending" && row.repair_session_id === null;
+/**
+ * A pending repair (decided, not launched) whose failed verdict no longer
+ * stands on the candidate's current head (an operator's passing rerun, a new
+ * head, an amended Action input) is released, fenced on its never having
+ * been bound to a Session: it can never launch later. Read-only otherwise.
+ */
+export function releaseStalePendingRepair(db: Database.Database, input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void }): boolean {
+  const { session } = input;
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_review_repairs'").get() === undefined) return false;
+  const pending = db.prepare(`SELECT * FROM production_review_repairs
+    WHERE failed_session_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`).all(session.id) as ReviewRepairRow[];
+  if (pending.length === 0) return false;
+  const failed = realFailedVerdict(db, { session, repoRoot: input.repoRoot });
+  let released = false;
+  for (const row of pending) {
+    if (failed && failed.head === row.failed_head) continue;
+    const changed = db.prepare(`UPDATE production_review_repairs SET outcome = 'released', reason = ?, updated_at = ?
+      WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`)
+      .run(`The failed verdict on ${row.failed_head.slice(0, 12)} no longer stands (a newer verdict, head or Action input); this repair is never launched.`, input.now.toISOString(), row.request_id).changes;
+    if (changed > 0) {
+      released = true;
+      input.log?.(`Released the pending review repair for ${row.action_key} at ${row.failed_head.slice(0, 12)}: its failed verdict no longer stands.`);
+    }
+  }
+  return released;
 }
 
 /** The `role` of a repair row recording a gated repair candidate rather than a failed verdict. */

@@ -34,7 +34,7 @@ import {
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { checkLaunchPrerequisites, refuseUnlessSignedIn } from "./launchPreflight.js";
-import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
+import { liveMutationOwner, recordSessionRoleAttemptTerminal, type SessionRoleAttempt } from "./enrollment.js";
 import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementForSession, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
   assertDraftRecoveryUnchanged,
@@ -897,6 +897,18 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // A repair that never started gives the failed candidate back to terminal
     // recovery, and its own fresh worktree, branch and reservation go with it.
     if (input.repair) {
+      // Its development attempt did no work: recorded as a never-started
+      // repair, which the lineage sets aside, so the failed candidate's own
+      // passed attempt stands again (its verdict readiness and real failed
+      // verdict are re-derived normally) and a retried repair supersedes it.
+      if (development.status === "pending" || development.status === "running") {
+        try {
+          recordSessionRoleAttemptTerminal(input.db, { requestId: development.request_id, actorId: development.actor_id, status: "failed", now,
+            receipt: { repairNeverStarted: true, sessionId: prepared.id, reason: `the review repair Session never started: ${error instanceof Error ? error.message : String(error)}` } });
+        } catch {
+          // Left live: the failed candidate then stays unready until an operator acts; never a launch.
+        }
+      }
       releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
       tryGit(repoRoot, ["worktree", "remove", "--force", nextWorktree.path]);
       tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);

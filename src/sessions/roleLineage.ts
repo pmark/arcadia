@@ -137,6 +137,27 @@ function liveSessionFor(db: Database.Database, requirement: RequirementIdentity,
  * Off/epoch cutoff committed, so an Off or stale-epoch refusal never leaves a
  * pending attempt behind.
  */
+/**
+ * Whether a development attempt is a review repair whose Session never started
+ * (recorded failed by the launch with `repairNeverStarted`): it did no work, so
+ * it neither stands for nor supersedes the candidate before it.
+ */
+export function isRepairNeverStarted(attempt: Pick<SessionRoleAttempt, "status" | "terminal_receipt_json">): boolean {
+  if (attempt.status !== "failed" || !attempt.terminal_receipt_json) return false;
+  try {
+    return (JSON.parse(attempt.terminal_receipt_json) as { repairNeverStarted?: unknown }).repairNeverStarted === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The latest development attempt for a requirement input that is not a never-started repair attempt. */
+export function effectiveDevelopmentAttempt(db: Database.Database, requirementId: string, inputRevision: string): SessionRoleAttempt | null {
+  const rows = db.prepare(`SELECT * FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = 'development'
+    ORDER BY ordinal DESC, created_at DESC, rowid DESC`).all(requirementId, inputRevision) as SessionRoleAttempt[];
+  return rows.find((row) => !isRepairNeverStarted(row)) ?? null;
+}
+
 export function planDevelopmentAttempt(db: Database.Database, input: {
   requirement: RequirementIdentity;
   retryAuthorized: boolean;
@@ -164,7 +185,11 @@ export function planDevelopmentAttempt(db: Database.Database, input: {
     }
   }
   const previous = latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development");
-  if (previous && previous.status === "passed" && input.supersedesPassed && input.supersedesPassed === previous.request_id) {
+  // A review repair supersedes the passed attempt whose candidate failed review;
+  // a repair attempt that never started (its Session failed to spawn) is set
+  // aside, so the retried repair supersedes the same passed attempt.
+  const effective = effectiveDevelopmentAttempt(db, input.requirement.requirementId, input.requirement.inputRevision);
+  if (effective && effective.status === "passed" && input.supersedesPassed && input.supersedesPassed === effective.request_id && previous?.status !== "pending" && previous?.status !== "running") {
     return { kind: "allocate", supersedes: live };
   }
   if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
@@ -374,7 +399,7 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
   if (!action) return { ready: false, requirement: null, reasons: ["The governed Action is not in the checked-in Plan."] };
   const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
   const reasons: string[] = [];
-  const developer = latestRoleAttempt(db, requirement.requirementId, requirement.inputRevision, "development");
+  const developer = effectiveDevelopmentAttempt(db, requirement.requirementId, requirement.inputRevision);
   if (developer?.status !== "passed" || !developer.target_head) {
     reasons.push("No passed development attempt exists for the current governed Action input.");
   }
