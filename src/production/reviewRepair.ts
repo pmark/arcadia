@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
-import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
+import { NOT_APPLICABLE_CHECK_NAME, REFUSED_NOT_APPLICABLE_FINDING_TITLE, runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 import type { AgentSession } from "../sessions/index.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
@@ -103,11 +103,31 @@ const AUTHORITY_TEXT = /\b(authority|authori[sz]ation|approval[- ]boundar|creden
  * Approval-boundaries check, whatever else failed with it.
  */
 export function verdictIsAuthorityAdjacent(findings: ReviewRepairFinding[], checks: ReviewRepairCheck[]): string | null {
-  const flagged = findings.find((finding) => AUTHORITY_TEXT.test(`${finding.title} ${finding.recommendation}`));
+  // The deterministic gate's refused not-applicable finding titles itself with
+  // the NAMES of the criteria it refused ("..., Security and authority, ..."):
+  // that list is no authority flag. A failed authority criterion still gates
+  // below, and the candidate's own authority paths gate in candidateChangeGate.
+  const flagged = findings.find((finding) => AUTHORITY_TEXT.test(isRefusedNotApplicableFinding(finding)
+    ? finding.recommendation
+    : `${finding.title} ${finding.recommendation}`));
   if (flagged) return `the reviewer's finding "${flagged.title}" concerns authority`;
   const failed = checks.find((check) => /security and authority|approval boundar/i.test(check.name) && check.status === "fail");
   if (failed) return `the reviewer failed the ${failed.name} criterion`;
   return null;
+}
+
+/** The deterministic patch check's own finding refusing the reviewer's not-applicable claims (src/qa/prReview.ts). */
+const isRefusedNotApplicableFinding = (finding: ReviewRepairFinding) => finding.title.startsWith(`${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: `);
+
+/**
+ * Whether a repair Session could change the verdict: some reviewer finding
+ * or failed criterion beyond the deterministic refusal of the reviewer's
+ * not-applicable claims. That refusal alone judges the reviewer's claim, not
+ * the candidate's work, so a repair round could only spend a Session on it.
+ */
+export function verdictIsRepairable(findings: ReviewRepairFinding[], checks: ReviewRepairCheck[]): boolean {
+  return findings.some((finding) => !isRefusedNotApplicableFinding(finding))
+    || checks.some((check) => check.status === "fail" && check.name !== NOT_APPLICABLE_CHECK_NAME);
 }
 
 /**
@@ -384,6 +404,8 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
       outcome = "gated"; reason = `The verdict is authority-adjacent (${adjacent}); a repair is never launched unattended for it.`;
     } else if (gate) {
       outcome = "gated"; reason = `The candidate is on Decision 0098's gate list: ${gate}. The repair loop stops for the operator.`;
+    } else if (!verdictIsRepairable(context.findings, context.checks)) {
+      outcome = "gated"; reason = "The verdict's only failure is the deterministic patch check refusing the reviewer's not-applicable claims; a repair Session cannot change the reviewer's claim, so the repair loop stops for the operator.";
     } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
       outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
     }

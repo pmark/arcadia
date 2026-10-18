@@ -1233,7 +1233,9 @@ function reviewerFailureVerdict(message: string, criteria: PrReviewRoleProfile["
 /** The two deterministic-gate reasons that a reviewer's own variance can cause; any other gate reason is never variance. */
 const REFUSED_NOT_APPLICABLE_REASON = "the deterministic patch check refused the reviewer's not-applicable claim";
 const NOT_EVERY_CRITERION_PASSED_REASON = "the reviewer did not pass every declared criterion";
-const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
+export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
+/** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */
+export const NOT_APPLICABLE_CHECK_NAME = "Not-applicable claims";
 
 function evaluateDeterministicEvidence(
   pullRequest: RawPullRequest,
@@ -1437,7 +1439,7 @@ function evaluateModelNotApplicableClaims(
   if (claims.length === 0) return { accepted: [], refused: [], check: null };
   if (!review.profile.allowsNotApplicable) {
     const refused = claims.map((claim) => ({ criterion: claim.criterion, name: claim.name, reason: "this review role may not report a criterion not-applicable." }));
-    return { accepted: [], refused, check: { name: "Not-applicable claims", status: "fail", evidence: refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ") } };
+    return { accepted: [], refused, check: { name: NOT_APPLICABLE_CHECK_NAME, status: "fail", evidence: refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ") } };
   }
   const applicability = classifyPatchApplicability(review.patch, {
     declaredFiles: pullRequest.files.map((file) => file.path),
@@ -1448,8 +1450,8 @@ function evaluateModelNotApplicableClaims(
   return {
     ...evaluation,
     check: evaluation.refused.length > 0
-      ? { name: "Not-applicable claims", status: "fail", evidence: `Refused: ${evaluation.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ")} Touched files: ${touched}.` }
-      : { name: "Not-applicable claims", status: "pass", evidence: `Accepted for ${claims.map((claim) => claim.name).join(", ")}: every touched file is an inert document or an attested governed record (${touched}).` }
+      ? { name: NOT_APPLICABLE_CHECK_NAME, status: "fail", evidence: `Refused: ${evaluation.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ")} Touched files: ${touched}.` }
+      : { name: NOT_APPLICABLE_CHECK_NAME, status: "pass", evidence: `Accepted for ${claims.map((claim) => claim.name).join(", ")}: every touched file is an inert document or an attested governed record (${touched}).` }
   };
 }
 

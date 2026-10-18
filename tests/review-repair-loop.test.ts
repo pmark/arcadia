@@ -8,7 +8,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "../src/production/policy.js";
 import { getProductionRepairAttempts } from "../src/production/tick.js";
 import { ESCALATION_REMEDIES } from "../src/production/blockerRemedies.js";
-import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent } from "../src/production/reviewRepair.js";
+import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent, verdictIsRepairable } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
@@ -171,6 +171,28 @@ describe("the review repair bound and gates", () => {
     expect(rehearsal.lease()).toBeNull();
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("authority-adjacent") });
     expect(rehearsal.github.prs[0].isDraft).toBe(true);
+    expect(rehearsal.github.comments[0].body).toContain("Do not merge: escalated to the operator.");
+  });
+
+  // The live verdict on PR #1545 (2026-10-18): the deterministic gate's refused
+  // not-applicable finding lists the criterion NAMES it refused, including
+  // "Security and authority"; that list is not the reviewer flagging authority.
+  const REFUSED_TITLE = "Refused not-applicable claim: Failure handling, State and concurrency, Security and authority, Compatibility, Tests";
+
+  it("launches a repair, not a gated stop, when only the refused not-applicable title names the authority criterion", () => {
+    const { rehearsal, a } = failedReview((r) => { r.github.findingTitle = REFUSED_TITLE; });
+    const repair = rehearsal.lease();
+    expect(repair?.action_id).toBe(a.action_id);
+    expect(repair?.id).not.toBe(a.id);
+    expect(escalation(rehearsal)).toBeUndefined();
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["launched"]);
+  });
+
+  it("stops once instead of repairing when the deterministic refusal is the verdict's only failure", () => {
+    const { rehearsal } = failedReview((r) => { r.github.findingTitle = REFUSED_TITLE; r.github.failCriteria = []; });
+    expect(rehearsal.lease()).toBeNull();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("cannot change the reviewer's claim") });
+    expect(rehearsal.github.comments).toHaveLength(1);
     expect(rehearsal.github.comments[0].body).toContain("Do not merge: escalated to the operator.");
   });
 
@@ -376,6 +398,26 @@ describe("review repair pure parts", () => {
     expect(verdictIsAuthorityAdjacent([finding("Defect")], [check("Correctness", "fail"), check("Security and authority", "fail")])).toMatch(/Security and authority/);
     expect(verdictIsAuthorityAdjacent([finding("Exposes a credential in logs")], [])).toMatch(/authority/);
     expect(verdictIsAuthorityAdjacent([], [check("Correctness", "pass"), check("Approval boundaries", "fail")])).toMatch(/Approval boundaries/);
+  });
+
+  it("does not read the deterministic refused not-applicable finding's criterion list as an authority flag (live PR #1545 verdict)", () => {
+    // The exact findings and non-pass checks of review_ef65d2d07572489c90 (code review of 71d40eb99459).
+    const refused = {
+      severity: "high",
+      title: "Refused not-applicable claim: Failure handling, State and concurrency, Security and authority, Compatibility, Tests",
+      evidence: "Security and authority: the patch touches files that can affect it: .arcadia/asks/agent-ask-complete-x.yaml (authority: managed record changed outside an attested Arcadia governed commit)",
+      recommendation: "Judge each refused criterion pass or fail against the patch, or report it not-checked; not-applicable is accepted only for a criterion the change demonstrably cannot affect."
+    };
+    const missing = { severity: "medium", title: "Required #1512 failure/fix is absent from the report", evidence: "never cites #1512", recommendation: "Add the missing #1512 failure and its stated resolution, then revalidate the completion evidence before marking the Action done." };
+    const check = (name: string, status: string) => ({ name, status, evidence: "" });
+    expect(verdictIsAuthorityAdjacent([refused, missing], [check("Not-applicable claims", "fail"), check("Correctness", "fail")])).toBeNull();
+    // A real authority finding beside it, or a failed authority criterion, still gates.
+    expect(verdictIsAuthorityAdjacent([refused, { ...missing, title: "Widens the worker's merge authority" }], [])).toMatch(/authority/);
+    expect(verdictIsAuthorityAdjacent([refused], [check("Security and authority", "fail")])).toMatch(/Security and authority/);
+    // Repairable only when something beyond the deterministic refusal failed.
+    expect(verdictIsRepairable([refused, missing], [check("Not-applicable claims", "fail"), check("Correctness", "fail")])).toBe(true);
+    expect(verdictIsRepairable([refused], [check("Not-applicable claims", "fail")])).toBe(false);
+    expect(verdictIsRepairable([refused], [check("Not-applicable claims", "fail"), check("Correctness", "fail")])).toBe(true);
   });
 
   it("describes both repair escalations generally and points at the entry's reason and the PR's findings comment", () => {
