@@ -57,6 +57,10 @@ export interface ReviewRepairRow {
   drafted_at: string | null;
   /** When the worker posted its one verdict comment on the failed PR (once per failed head). */
   commented_at: string | null;
+  /** When the worker closed this failed PR as superseded by its repair's PR. */
+  closed_at: string | null;
+  /** Consecutive failures returning the PR to draft or commenting; past the bound the loop stops for the operator. */
+  notify_failures: number;
   created_at: string;
   updated_at: string;
 }
@@ -85,11 +89,16 @@ export function ensureReviewRepairTable(db: Database.Database): void {
       last_error TEXT,
       drafted_at TEXT,
       commented_at TEXT,
+      closed_at TEXT,
+      notify_failures INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_production_review_repairs_action ON production_review_repairs(action_key, policy_epoch);
   `);
+  const present = new Set((db.prepare("PRAGMA table_info(production_review_repairs)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!present.has("closed_at")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN closed_at TEXT");
+  if (!present.has("notify_failures")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN notify_failures INTEGER NOT NULL DEFAULT 0");
 }
 
 function hasTable(db: Database.Database): boolean {
@@ -118,10 +127,20 @@ export function launchedRepairRounds(db: Database.Database, actionKey: string, e
     WHERE action_key = ? AND policy_epoch = ? AND repair_session_id IS NOT NULL`).get(actionKey, epoch) as { count: number }).count;
 }
 
-/** The repair this Session was launched for, when it is a repair Session. */
+/**
+ * The repair this Session works on: the one it was launched for, or, for a
+ * Session that resumed a repair Session's candidate (Decision 0051: same
+ * worktree and branch), the repair that candidate was launched for.
+ */
 export function getSessionRepair(db: Database.Database, sessionId: string): ReviewRepairRow | null {
   if (!hasTable(db)) return null;
-  return (db.prepare("SELECT * FROM production_review_repairs WHERE repair_session_id = ?").get(sessionId) as ReviewRepairRow | undefined) ?? null;
+  const direct = db.prepare("SELECT * FROM production_review_repairs WHERE repair_session_id = ?").get(sessionId) as ReviewRepairRow | undefined;
+  if (direct) return direct;
+  return (db.prepare(`SELECT r.* FROM production_review_repairs r
+    JOIN agent_sessions repair ON repair.id = r.repair_session_id
+    JOIN agent_sessions s ON s.id = ?
+    WHERE repair.worktree_path = s.worktree_path AND repair.branch = s.branch AND repair.action_id = s.action_id
+    ORDER BY r.created_at DESC LIMIT 1`).get(sessionId) as ReviewRepairRow | undefined) ?? null;
 }
 
 /**
@@ -214,8 +233,9 @@ export function renderRepairBrief(row: ReviewRepairRow): string[] {
     `Reviewer findings, in the reviewer's order:`,
     ...renderRepairFindings(row),
     "Fix every finding in this worktree, run the declared validation, and finish with the completion protocol below:",
-    "draft a fresh `complete` Agent Ask for THIS Session (a new request id). A completion Ask already in `.arcadia/asks/`",
-    "was drafted for the failed head and is not yours to reuse.",
+    "draft a fresh `complete` Agent Ask for THIS Session (a new request id). The host retired the failed candidate's own",
+    "completion draft from this branch before you started; if a `complete` draft for this Action that you did not write is",
+    "still in `.arcadia/asks/` (not the archive), delete it and never reuse its request id: it was for the failed head.",
     "The repaired head is reviewed again from scratch by independent reviewers before it can integrate.",
     "This repair grants no additional authority: the Plan, the Constitution and every approval boundary still bind."
   ];

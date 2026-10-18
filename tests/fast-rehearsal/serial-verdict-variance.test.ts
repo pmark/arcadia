@@ -138,6 +138,8 @@ describe("a real finding is never rerun: the review repair loop takes it instead
   beforeAll(() => {
     world = new FastRehearsal("serial-real-finding-no-rerun", isolation, import.meta.filename);
     worlds.push(world);
+    // A correctness defect: a failed authority criterion would stop the repair loop instead.
+    world.github.failCriteria = ["correctness"];
     world.expectError(/independent_verdict_failed|code-review: failed|verdict on [0-9a-f]+ (is needs-follow-up|is fail|failed)/);
     world.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
     world.start();

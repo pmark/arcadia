@@ -158,8 +158,13 @@ export function attemptAutoSettlePendingCompletion(
   db: Database.Database,
   input: AutoSettlePendingCompletionInput
 ): AutoSettlePendingCompletionResult {
+  // A repair's inherited drafts: by request id (an edited copy still carries
+  // the failed candidate's id) and, for drafts that do not parse the same, by
+  // their exact bytes at the start revision.
+  const inheritedIds = input.excludeDraftsAt ? requestIdsOfDraftsAt(input.repoRoot, input.excludeDraftsAt) : new Set<string>();
   const inherited = (draft: DraftedCompleteAsk): boolean => {
     if (!input.excludeDraftsAt) return false;
+    if (inheritedIds.has(draft.normalized.requestId)) return true;
     const relative = path.relative(input.repoRoot, draft.path).split(path.sep).join("/");
     return tryGit(input.repoRoot, ["show", `${input.excludeDraftsAt}:${relative}`]) === draft.content.trim();
   };
@@ -265,4 +270,25 @@ function attemptSettleOneDraft(
   } catch (error) {
     return { settled: false, reason: normalizeError(error).message, askPath: draft.path };
   }
+}
+
+/** The request ids of every Agent Ask draft (not the archive) committed under `.arcadia/asks/` at `revision`. */
+export function requestIdsOfDraftsAt(repoRoot: string, revision: string): Set<string> {
+  const ids = new Set<string>();
+  for (const file of draftPathsAt(repoRoot, revision)) {
+    const content = tryGit(repoRoot, ["show", `${revision}:${file}`]);
+    if (content === null) continue;
+    try {
+      ids.add(normalizeAgentAsk({ request: content }).requestId);
+    } catch { /* not an Agent Ask */ }
+  }
+  return ids;
+}
+
+/** Repository-relative paths of the Agent Ask drafts (not the archive) committed under `.arcadia/asks/` at `revision`. */
+export function draftPathsAt(repoRoot: string, revision: string): string[] {
+  const listed = tryGit(repoRoot, ["ls-tree", "-r", "--name-only", revision, "--", `${AGENT_ASK_ASKS_DIR}/`]);
+  if (!listed) return [];
+  return listed.split("\n").map((line) => line.trim())
+    .filter((file) => file && /\.ya?ml$/i.test(file) && path.posix.dirname(file) === AGENT_ASK_ASKS_DIR);
 }

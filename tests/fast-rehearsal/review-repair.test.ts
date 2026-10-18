@@ -55,6 +55,7 @@ describe("a failed code review: draft PR with the findings, one repair Session, 
     worlds.push(world);
     world.expectError(/independent_verdict_failed|code-review: failed|verdict on [0-9a-f]+ (is fail|failed)/);
     world.github.findingTitle = "The test never asserts the temporary launcher directory was removed";
+    world.github.failCriteria = ["correctness"];
     world.github.verdict = (role, pr) => (role === "code-review" && pr?.branch === failedBranch ? "fail" : "pass");
     world.start();
     const first = world.untilLaunched(ACTION_1, 3);
@@ -78,10 +79,16 @@ describe("a failed code review: draft PR with the findings, one repair Session, 
     expect(failedPr.isDraft).toBe(true);
     expect(world.github.undoReadyCalls).toEqual([failedPr.url]);
     const comments = world.github.comments.filter((comment) => comment.url === failedPr.url);
-    expect(comments).toHaveLength(1);
+    expect(comments).toHaveLength(2);
     expect(comments[0].body).toContain(failedHead);
     expect(comments[0].body).toContain("The test never asserts the temporary launcher directory was removed");
     expect(comments[0].body).toContain("Do not merge: the repair loop will push a fixed head (round 1 of 3)");
+    // Once the repair has its own PR, the failed one is closed with a pointer to it.
+    const repairPr = world.gh.prs.find((pr) => pr.branch !== failedBranch && pr.url !== failedPr.url && world.sessions().some((s) => s.id === repairSessionId && s.branch === pr.branch))!;
+    expect(failedPr.state).toBe("CLOSED");
+    expect(world.github.closeCalls).toEqual([failedPr.url]);
+    expect(comments[1].body).toContain(`Superseded by ${repairPr.url}`);
+    expect(comments[1].body).toContain("do not merge");
     expect(world.github.mergeCalls).toEqual([]);
   });
 
@@ -132,6 +139,7 @@ describe("three failed repair rounds: one escalation naming the findings, nothin
     world = new FastRehearsal("review-repair-rounds-exhausted", isolation, import.meta.filename);
     worlds.push(world);
     world.expectError(/independent_verdict_failed|review_repair_rounds_exhausted|code-review: failed|verdict on [0-9a-f]+ (is fail|failed)|repair rounds/);
+    world.github.failCriteria = ["correctness"];
     world.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
     world.start();
     const first = world.untilLaunched(ACTION_1, 3);
@@ -166,12 +174,15 @@ describe("three failed repair rounds: one escalation naming the findings, nothin
     expect(status.data.operatorEscalations[0].remedy).toContain("--rerun");
     expect(world.log.filter((line) => line.includes("Escalated") && line.includes("(review_repair_rounds_exhausted)"))).toHaveLength(1);
     // One comment and one return-to-draft per failed head.
-    expect(world.github.comments).toHaveLength(4);
+    const verdictComments = world.github.comments.filter((comment) => comment.body.startsWith("Arcadia worker:"));
+    expect(verdictComments).toHaveLength(4);
     expect(world.github.undoReadyCalls).toHaveLength(4);
-    expect(world.github.comments.map((comment) => /round (\d) of 3/.exec(comment.body)?.[1] ?? "escalated")).toEqual(["1", "2", "3", "escalated"]);
-    expect(world.github.comments[3].body).toContain("Do not merge: escalated to the operator.");
-    for (const [index, head] of heads.entries()) expect(world.github.comments[index].body).toContain(head);
+    expect(verdictComments.map((comment) => /round (\d) of 3/.exec(comment.body)?.[1] ?? "escalated")).toEqual(["1", "2", "3", "escalated"]);
+    expect(verdictComments[3].body).toContain("Do not merge: escalated to the operator.");
+    for (const [index, head] of heads.entries()) expect(verdictComments[index].body).toContain(head);
     expect(world.gh.prs.every((pr) => pr.isDraft)).toBe(true);
+    // Each failed PR a later repair superseded is closed; the last one stays open as a draft for the operator.
+    expect(world.gh.prs.map((pr) => pr.state ?? "OPEN")).toEqual(["CLOSED", "CLOSED", "CLOSED", "OPEN"]);
     expect(isolation.guardCalls()).toEqual([]);
     expect(report.errors.filter((error) => !error.expected)).toEqual([]);
   });

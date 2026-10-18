@@ -349,6 +349,14 @@ export function advanceIndependentReview(db: Database.Database, input: {
 
   const applicability = reviewApplicability(db, session, clock());
   if (!applicability.applicable) return { kind: "not_applicable", reason: applicability.reason };
+  // A candidate a review repair superseded is never readied, reviewed or
+  // integrated again: its PR is a draft until the repair's PR closes it.
+  let superseded: string | null | undefined = null;
+  try {
+    superseded = (db.prepare("SELECT superseded_by_session_id FROM session_exit_receipts WHERE session_id = ? AND outcome = 'accepted_completion'")
+      .get(session.id) as { superseded_by_session_id: string | null } | undefined)?.superseded_by_session_id;
+  } catch { /* a database without exit receipts has no supersession */ }
+  if (superseded) return { kind: "not_applicable", reason: `The candidate was superseded by review repair Session ${superseded}; its PR never integrates.` };
   const url = applicability.pullRequestUrl;
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok") return { kind: "not_applicable", reason: "The production policy is unreadable." };
@@ -467,6 +475,22 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
 
+    // The worker returns a PR to draft itself when it records a real failed
+    // verdict on it (src/production/reviewRepair.ts), so a draft whose exact
+    // head carries one reports that verdict, never a person pausing the review;
+    // so does a PR closed or merged after its verdict failed (the repair loop
+    // stops for the operator on it).
+    const failedOnHead = pr.isDraft || pr.state.toUpperCase() !== "OPEN" ? realFailedVerdictRole(db, readiness, head) : null;
+    if (failedOnHead) {
+      return {
+        kind: "blocked",
+        code: "independent_verdict_failed",
+        failedRole: failedOnHead,
+        reason: `The independent ${failedOnHead} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates, and ${url} is ${pr.isDraft ? "a draft" : pr.state}.`,
+        remedy: `Read the ${failedOnHead} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, mark the PR ready and rerun it with \`arcadia ${failedOnHead === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
+      };
+    }
+
     // The base host preservation opened the PR on (Issue #987: possibly a
     // stacked candidate branch); its Operator QA plan describes that base.
     const opened = workerPreservationReceipt(db, session)?.prBase ?? null;
@@ -546,19 +570,6 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return { kind: "advanced", step: "pushed", reason: `Pushed the settled head ${head.slice(0, 12)} to ${url}.` };
     }
 
-    // The worker returns a PR to draft itself when it records a real failed
-    // verdict on it (src/production/reviewRepair.ts), so a draft whose exact
-    // head carries one reports that verdict, never a person pausing the review.
-    const failedOnHead = pr.isDraft ? realFailedVerdictRole(db, readiness, head) : null;
-    if (failedOnHead) {
-      return {
-        kind: "blocked",
-        code: "independent_verdict_failed",
-        failedRole: failedOnHead,
-        reason: `The independent ${failedOnHead} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates, and the worker returned ${url} to draft.`,
-        remedy: `Read the ${failedOnHead} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, mark the PR ready and rerun it with \`arcadia ${failedOnHead === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
-      };
-    }
     if (pr.isDraft && step.ready_at) {
       // The tick readied it once; someone converted it back to draft. That is
       // a person pausing the review, never something to undo every minute.

@@ -474,6 +474,9 @@ function assertIndependentOf(db: Database.Database, session: AgentSession, input
  * `executionCwd` are the host-observed identity and working directory of the
  * reviewer process; neither may be the developer's.
  */
+/** Code review or QA attempts per role per requirement input revision (every head and rerun counts). */
+export const MAX_VERDICT_ATTEMPTS = 5;
+
 export function beginIndependentVerdict(db: Database.Database, input: {
   role: IndependentVerdictRole;
   session: AgentSession;
@@ -530,7 +533,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
     mutationOwner: false,
     retryAuthorized: input.retryAuthorized ?? false,
     authorityCurrent: true,
-    maxOrdinal: input.maxOrdinal ?? 5,
+    maxOrdinal: input.maxOrdinal ?? MAX_VERDICT_ATTEMPTS,
     binding: readiness.binding,
     now: input.now
   });

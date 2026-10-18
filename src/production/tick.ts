@@ -75,7 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
-import { attemptReviewRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
+import { attemptReviewRepair, closeSupersededPullRequests, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -2012,6 +2012,13 @@ export function runManagedProductionTick(
           retryOperatorLaunchPublications({ db, workspace, repoRoot, now, log }, options.handoff?.preserve ?? {});
         } catch (error) {
           log(`Operator launch draft PR retry failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // A failed PR whose review repair now has its own PR is closed with a
+        // pointer to it, under the review step's own authority; never throws.
+        try {
+          closeSupersededPullRequests(db, { repoRoot, projectSlug: project.slug, now, runCommand: options.review?.runCommand, log });
+        } catch (error) {
+          log(`Closing superseded review-repair PRs failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
         }
         const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, integrateDepsWithGitHub(options), log,
           { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });

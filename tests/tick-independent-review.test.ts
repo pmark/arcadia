@@ -34,6 +34,9 @@ const GREEN: PullRequestCheckRun[] = [{ name: "fast", status: "COMPLETED", concl
 function finishedA(options: RehearsalOptions = {}, finish: "settled" | "sandboxed" = "settled"): { rehearsal: Rehearsal; a: AgentSession } {
   const rehearsal = new Rehearsal({ independentReviewers: "tick", ...options });
   rehearsals.push(rehearsal);
+  // A "fail" verdict judges only correctness: a failed authority criterion is a
+  // review-repair gate (tests/review-repair-loop.test.ts), not this file's subject.
+  rehearsal.github.failCriteria = ["correctness"];
   rehearsal.createFixtureRepository();
   rehearsal.approve(rehearsal.registerProject());
   rehearsal.activate();
