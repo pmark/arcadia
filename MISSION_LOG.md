@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 
 # Mission Log: Arcadia
@@ -2596,3 +2596,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Admission refuses a launch that would breach the budget or the operator reserve set by Decisions 0103 and 0111, with the refusal shown in production status on the same tick."; "Hermetic tests cover under-budget admission, budget refusal, reserve refusal and an unreadable usage reading treated as unknown, never as admitted."; "A test asserts the workspace config file hash is unchanged after the suite, and the suite makes zero live provider calls.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-production-spend-budget-20261017).
+
+## 2026-10-18 — Completed arcadia/implement-a-hermetic-test-that-an
+
+- **Did:** Completed Action arcadia/implement-a-hermetic-test-that-an from accepted evidence (Candidate 28ab246b9e7a6b3d1e93d1a216f0c182194cacd5).
+- **Result:** Every declared acceptance criterion was accepted as met: "In tests/provider-capacity-admission.test.ts, an over-budget production admission (85% on the 5-hour window) is refused with code capacity_refused and a reason that names the 80% unattended budget and the 5-hour window."; "A second case refuses on the 7-day window and names it."; "The change touches only tests/provider-capacity-admission.test.ts; focused tests, lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-implement-a-hermetic-test-that-an-r2-20261018).
