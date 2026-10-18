@@ -172,6 +172,57 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: implement-a-hermetic-test-that-a
+    title: Implement a hermetic test that a refused tmux launch leaves no launcher file behind.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a hermetic test that a refused tmux launch leaves no launcher file behind.
+    expected_artifact: Evidence satisfying Agent Ask implement-a-hermetic-test-that-a
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-first-unattended-run-actions-20261018
+    acceptance_criteria:
+      - In tests/system-tmux-long-command.test.ts, a systemTmux.launch whose tmux new-session fails (for example a PATH tmux shim that exits non-zero) throws the existing launch failure and leaves no launch-*.sh file in the launcher directory.
+      - The test uses its own temporary directory and private tmux socket or shim, never the host's default tmux server.
+      - The change touches only tests/system-tmux-long-command.test.ts; focused tests, lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: implement-a-hermetic-test-that-an-2
+    title: Implement a hermetic test that an interactive tmux launch with a 64 KiB brief keeps the brief byte-identical.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a hermetic test that an interactive tmux launch with a 64 KiB brief keeps the brief byte-identical.
+    expected_artifact: Evidence satisfying Agent Ask implement-a-hermetic-test-that-an-2
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-first-unattended-run-actions-20261018
+    acceptance_criteria:
+      - In tests/system-tmux-long-command.test.ts, a systemTmux.launch with no launcherDirectory (the interactive temporary-directory path) on a private tmux socket delivers a 64 KiB brief to a stub provider byte-identical, and the temporary launcher directory is removed afterwards.
+      - The test skips when tmux is not installed and never uses the host's default tmux server.
+      - The change touches only tests/system-tmux-long-command.test.ts; focused tests, lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: implement-docs-reports-first-supervised-claude
+    title: Implement docs/reports/first-supervised-claude-run-2026-10-18.md, a standalone report of the first supervised Claude production run.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement docs/reports/first-supervised-claude-run-2026-10-18.md, a standalone report of the first supervised Claude production run.
+    expected_artifact: Evidence satisfying Agent Ask implement-docs-reports-first-supervised-claude
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-first-unattended-run-actions-20261018
+    acceptance_criteria:
+      - "docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md."
+      - Every PR and issue number cited resolves to the stated item on GitHub.
+      - The change touches only that new report file.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: standard
