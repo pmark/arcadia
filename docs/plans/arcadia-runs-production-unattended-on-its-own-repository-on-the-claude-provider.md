@@ -84,10 +84,10 @@ actions:
     references: []
   - id: worker-review-and-merge
     title: "Build the worker's automated review-and-merge (Decision 0097): merge a candidate PR through GitHub only when an independent review of its exact head passes, required checks are green and it is not authority-adjacent."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Build the worker's automated review-and-merge (Decision 0097): merge a candidate PR through GitHub only when an independent review of its exact head passes, required checks are green and it is not authority-adjacent."
+    next_action: Completed via Agent Ask complete-worker-review-and-merge-20261018; no further action.
     expected_artifact: Evidence satisfying Agent Ask worker-review-and-merge
     clarification: clarified
     confidence: high
@@ -176,7 +176,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: worker-review-and-merge
+current_action: first-unattended-run
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

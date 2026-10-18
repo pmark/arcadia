@@ -2610,3 +2610,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A production preview scoped to claude-code, one Action, concurrency 1 and remote preservation is published with its fingerprint, and the operator's activation is presented as one card; agents do not activate."; "After the operator activates, the run's Session reaches a draft PR, an independent review of its head is recorded, and the PR merges through the batch-merge card or the operator."; "docs/managed-production-readiness.md is refreshed under its Refresh contract with the run's observed stages, failures and operator touches.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-first-supervised-claude-run-20261018).
+
+## 2026-10-18 — Completed arcadia/worker-review-and-merge
+
+- **Did:** Completed Action arcadia/worker-review-and-merge from accepted evidence (Candidate 10267bbb3d81a69d3dc55789e5df1f6b711d4549).
+- **Result:** Every declared acceptance criterion was accepted as met: "The worker merges only through the pull request, never by a local fast-forward or base-branch push, and only after a recorded independent review of the exact head has no blocking finding and every required check on that head passed."; "A PR the blast-radius assessment marks authority-adjacent is never merged by the worker and appears on the batch-merge card with its reason."; "A moved head, a failed check or a missing review refuses the merge with a named reason, each covered by a hermetic test, and the fast-rehearsal chain merges a fixture PR end to end."; "Focused tests, lint, tsc, pnpm build and the fast rehearsal pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-worker-review-and-merge-20261018).
