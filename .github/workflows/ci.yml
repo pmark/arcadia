@@ -63,9 +63,9 @@ jobs:
       - name: Run this shard's test files
         run: |
           mise exec -- bash -euo pipefail -c '
-            node scripts/ci-test-shard.mjs ${{ matrix.shard }} 8 > shard-files.txt
-            test -s shard-files.txt
-            xargs -r pnpm exec vitest run < shard-files.txt
+            node scripts/ci-test-shard.mjs ${{ matrix.shard }} 8 > "$RUNNER_TEMP/shard-files.txt"
+            test -s "$RUNNER_TEMP/shard-files.txt"
+            xargs -r pnpm exec vitest run < "$RUNNER_TEMP/shard-files.txt"
           '
 
   unit-gate:
