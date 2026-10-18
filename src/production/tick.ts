@@ -920,18 +920,28 @@ function scopePointerHold(
   db: Database.Database,
   input: { repoRoot: string; projectSlug: string; actionKey: string; actionId: string; now: Date; log: (message: string) => void }
 ): string | null {
-  const candidate = pendingTerminalCandidateFor(db, input.repoRoot, input.projectSlug, input.actionId);
-  if (!candidate) {
+  const check = pendingTerminalCandidateFor(db, input.repoRoot, input.projectSlug, input.actionId);
+  if (check.kind === "none") {
     db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ? AND kind = ?").run(input.actionKey, SCOPE_POINTER_HELD_ESCALATION);
     return null;
   }
-  let merge = `merge ${candidate.branch} into the base branch`;
-  try {
-    merge = operatorMergeCommand({ repoRoot: input.repoRoot, branch: candidate.branch, baseBranch: resolveBaseBranch(input.repoRoot) });
-  } catch { /* the plain wording stands */ }
-  const message = `Production is held: the pointer names ${input.actionKey}, which is outside the Active production scope, and its terminal candidate `
-    + `${candidate.branch} (Session ${candidate.id}) has not landed, so the scheduler will not move the pointer to an in-scope Action.`;
-  const remedy = `Land the candidate (operator merge: ${merge}), or turn production Off and grant a scope that includes ${input.actionKey} so terminal recovery can integrate it; the pointer then moves to the first in-scope Action.`;
+  let message: string;
+  let remedy: string;
+  if (check.kind === "pending") {
+    const candidate = check.session;
+    let merge = `merge ${candidate.branch} into the base branch`;
+    try {
+      merge = operatorMergeCommand({ repoRoot: input.repoRoot, branch: candidate.branch, baseBranch: resolveBaseBranch(input.repoRoot) });
+    } catch { /* the plain wording stands */ }
+    message = `Production is held: the pointer names ${input.actionKey}, which is outside the Active production scope, and its terminal candidate `
+      + `${candidate.branch} (Session ${candidate.id}) has not landed, so the scheduler will not move the pointer to an in-scope Action.`;
+    remedy = `Land the candidate (operator merge: ${merge}), or turn production Off and grant a scope that includes ${input.actionKey} so terminal recovery can integrate it; the pointer then moves to the first in-scope Action.`;
+  } else {
+    // Fail closed: the scheduler holds the pointer on an unknown answer too.
+    message = `Production is held: the pointer names ${input.actionKey}, which is outside the Active production scope, and whether it still has a `
+      + `terminal candidate could not be determined (${check.reason}), so the scheduler will not move the pointer to an in-scope Action.`;
+    remedy = `Repair the repository at ${input.repoRoot} so its base branch and candidate branches resolve (origin/HEAD, or a local main/master branch); the hold is re-checked every tick.`;
+  }
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as { kind: string } | undefined;
   if (!existing || existing.kind === SCOPE_POINTER_HELD_ESCALATION) {
     if (recordOperatorEscalation(db, { actionKey: input.actionKey, kind: SCOPE_POINTER_HELD_ESCALATION, message, remedy, now: input.now })) {

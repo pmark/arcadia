@@ -30,20 +30,33 @@ export function listPendingTerminalCandidates(
   db: Database.Database,
   repoRoot: string,
   projectSlug: string,
-  options: { onSuperseded?: (session: AgentSession, action: PlanActionDoc | undefined) => void } = {}
+  options: {
+    /** Only this Action's exits (filtered in SQL). Recovery passes none. */
+    actionId?: string;
+    /** Throw, rather than return null, when the base branch cannot be resolved. */
+    strict?: boolean;
+    onSuperseded?: (session: AgentSession, action: PlanActionDoc | undefined) => void;
+  } = {}
 ): PendingTerminalCandidates | null {
   const hasExits = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_exit_receipts'").get();
   if (!hasExits) return null;
+  const actionId = options.actionId ?? null;
   const exits = db.prepare(`SELECT r.session_id, r.outcome FROM session_exit_receipts r
     JOIN agent_sessions s ON s.id = r.session_id
     WHERE s.repository_path = ? AND s.project_slug = ?
+      AND (? IS NULL OR s.action_id = ?)
       AND (r.outcome = 'accepted_completion' OR (r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL))
       AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
-    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug) as Array<{ session_id: string; outcome: string }>;
+    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug, actionId, actionId) as Array<{ session_id: string; outcome: string }>;
   if (exits.length === 0) return null;
 
   let baseBranch: string;
-  try { baseBranch = resolveBaseBranch(repoRoot); } catch { return null; }
+  try {
+    baseBranch = resolveBaseBranch(repoRoot);
+  } catch (error) {
+    if (options.strict) throw error;
+    return null;
+  }
   const basePlans = discoverDocs(repoRoot).docs.filter((doc) => doc.type === "plan");
   const pending: AgentSession[] = [];
   for (const exit of exits) {
@@ -63,21 +76,30 @@ export function listPendingTerminalCandidates(
   return { baseBranch, pending };
 }
 
+export type TerminalCandidateCheck =
+  | { kind: "none" }
+  | { kind: "pending"; session: AgentSession }
+  /** The check could not answer (Git or store failure); callers must hold, never treat it as "none". */
+  | { kind: "unknown"; reason: string };
+
 /**
- * The newest pending terminal candidate (per `listPendingTerminalCandidates`)
- * for `actionId`, or null. Any failure reads as "none", so it never holds a
- * pointer on an unreadable store or repository.
+ * The newest pending terminal candidate (per `listPendingTerminalCandidates`,
+ * filtered to `actionId`) for the pointer hold. Fails closed: a failure to
+ * answer is `unknown`, which holds the pointer exactly like a pending
+ * candidate, so a Git or store fault never lets the scheduler commit a
+ * pointer move under work recovery may still own.
  */
 export function pendingTerminalCandidateFor(
   db: Database.Database,
   repoRoot: string,
   projectSlug: string,
   actionId: string
-): AgentSession | null {
+): TerminalCandidateCheck {
   try {
-    return listPendingTerminalCandidates(db, repoRoot, projectSlug)?.pending.find((session) => session.action_id === actionId) ?? null;
-  } catch {
-    return null;
+    const session = listPendingTerminalCandidates(db, repoRoot, projectSlug, { actionId, strict: true })?.pending[0];
+    return session ? { kind: "pending", session } : { kind: "none" };
+  } catch (error) {
+    return { kind: "unknown", reason: error instanceof Error ? error.message : String(error) };
   }
 }
 

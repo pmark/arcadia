@@ -328,8 +328,12 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
     // so this holds exactly while recovery would act on the candidate, never
     // for one it ignores (done Action, superseded input, unsettled resumable).
     const terminal = pendingTerminalCandidateFor(db, schedule.repositoryRoot, schedule.projectSlug, from);
-    if (terminal) {
-      return unchanged(`Action ${from} has an unlanded terminal candidate on ${terminal.branch} (Session ${terminal.id}) that terminal recovery still owns; the pointer moves once it lands.`);
+    if (terminal.kind === "pending") {
+      return unchanged(`Action ${from} has an unlanded terminal candidate on ${terminal.session.branch} (Session ${terminal.session.id}) that terminal recovery still owns; the pointer moves once it lands.`);
+    }
+    // Fail closed: an unanswerable check holds rather than re-points.
+    if (terminal.kind === "unknown") {
+      return unchanged(`Whether Action ${from} still has a terminal candidate could not be determined (${terminal.reason}); the pointer is held until it can.`);
     }
   }
 

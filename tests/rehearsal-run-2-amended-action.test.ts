@@ -213,13 +213,15 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
 
   it("holds the pointer for run 1's pending candidate only until its input is superseded (Issue #1512, shared predicate)", () => {
     const { rehearsal, run1 } = afterRun1();
-    const pending = () => withDatabase(rehearsal.workspace, (db) =>
-      pendingTerminalCandidateFor(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a")?.id ?? null);
+    const pending = () => withDatabase(rehearsal.workspace, (db) => {
+      const check = pendingTerminalCandidateFor(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a");
+      return check.kind === "pending" ? check.session.id : check.kind;
+    });
     // Accepted, preserved, unlanded and for the current input: recovery owns it, so the scheduler holds.
     expect(pending()).toBe(run1.id);
     amend(rehearsal);
     // Developed for a superseded input: recovery skips it, so it never holds the pointer.
-    expect(pending()).toBeNull();
+    expect(pending()).toBe("none");
   });
 
   it("reports run 1's superseded terminal candidate once, not on every tick (Issue #1158)", () => {
