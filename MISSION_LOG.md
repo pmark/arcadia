@@ -2603,3 +2603,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/provider-capacity-admission.test.ts, an over-budget production admission (85% on the 5-hour window) is refused with code capacity_refused and a reason that names the 80% unattended budget and the 5-hour window."; "A second case refuses on the 7-day window and names it."; "The change touches only tests/provider-capacity-admission.test.ts; focused tests, lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-implement-a-hermetic-test-that-an-r2-20261018).
+
+## 2026-10-18 — Completed arcadia/first-supervised-claude-run
+
+- **Did:** Completed Action arcadia/first-supervised-claude-run from accepted evidence (Candidate b0315e9be55f9d0850840996b81a7c0479c78b0b).
+- **Result:** Every declared acceptance criterion was accepted as met: "A production preview scoped to claude-code, one Action, concurrency 1 and remote preservation is published with its fingerprint, and the operator's activation is presented as one card; agents do not activate."; "After the operator activates, the run's Session reaches a draft PR, an independent review of its head is recorded, and the PR merges through the batch-merge card or the operator."; "docs/managed-production-readiness.md is refreshed under its Refresh contract with the run's observed stages, failures and operator touches.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-first-supervised-claude-run-20261018).
