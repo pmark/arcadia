@@ -34,6 +34,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import {
+  ensureProductionTickTables,
   runManagedProductionTick,
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
@@ -273,6 +274,29 @@ describe("runManagedProductionTick", () => {
       expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
       expect(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8")).toContain("current_action: define-contract");
     });
+
+    it.each(["repair_budget_exhausted", "operator_gate_pending", "environment_wall"])(
+      "keeps an operator-actionable %s escalation for an out-of-scope pointer Action",
+      (kind) => {
+        const fixture = preparedFixture({ skipPacket: true });
+        const tmux = new FakeTmux();
+        withDatabase(fixture.workspace, (db) => {
+          ensureProductionTickTables(db);
+          db.prepare(
+            `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+               VALUES ('test-project/define-contract', ?, 'needs the operator', 'remedy', ?, ?)`
+          ).run(kind, fixture.now.toISOString(), fixture.now.toISOString());
+        });
+        activateActions(fixture, ["test-project/not-in-this-plan"]);
+
+        const { launch } = tickOnce(fixture, tmux);
+
+        expect(launch).toMatchObject({ outcome: "skipped", actionKey: null });
+        expect(tmux.launches).toHaveLength(0);
+        expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)))
+          .toEqual([expect.objectContaining({ actionKey: "test-project/define-contract", kind })]);
+      }
+    );
   });
 
   it("stops unchanged resumed Sessions at the existing repair budget, preserving their candidate", () => {

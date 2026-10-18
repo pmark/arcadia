@@ -3,7 +3,8 @@ import { validationError } from "../cli/errors.js";
 import { createReviewItem, getProjectBySlug, getReviewItem, listProjects } from "../db/repositories.js";
 import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
-import { getRepositoryLease } from "../sessions/index.js";
+import { canonicalPath, getRepositoryLease } from "../sessions/index.js";
+import { isAncestor, isPatchEquivalent, refExists, resolveBaseBranch } from "../git/worktrees.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
 import { loadActionOrder } from "../dispatch/order.js";
@@ -317,6 +318,16 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
         : `branch ${outstanding.branch} (${outstanding.preservationState})`;
       return unchanged(`Action ${from} has an unmerged candidate in ${where}; the pointer moves once it lands.`);
     }
+    // A terminal candidate whose preservation was refused (e.g. it exited
+    // while production was Off) has no preservation receipt, so the check
+    // above cannot see it; terminal recovery still owns it. Moving the
+    // pointer here would commit to the base branch under that candidate and
+    // break its fast-forward (Issue #1512: an Action-scoped `next` can now
+    // differ from an unfinished pointer that still has existing work).
+    const terminal = unlandedTerminalCandidate(db, schedule.repositoryRoot, schedule.projectSlug, from);
+    if (terminal) {
+      return unchanged(`Action ${from} has an unlanded terminal candidate on ${terminal}; the pointer moves once it lands.`);
+    }
   }
 
   const requestId = `scheduler-pointer-${actionKey.replaceAll("/", "-")}-r${schedule.queueRevision}-${now.getTime()}`;
@@ -359,6 +370,38 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
     log(`Scheduler could not move the pointer for ${schedule.projectSlug}: ${message}`);
     return { moved: false, from, to: from, reason: `Pointer transition refused: ${message}` };
   }
+}
+
+/**
+ * The branch of the newest Session exit for `actionId` that terminal recovery
+ * would still act on (the same exit criteria as the tick's
+ * `recoverTerminalHandoff`) and whose branch has not landed on the base branch,
+ * or null. Read-only; any Git failure reads as "nothing outstanding" exactly
+ * as `findOutstandingCandidate` does.
+ */
+function unlandedTerminalCandidate(db: Database.Database, repoRoot: string, projectSlug: string, actionId: string): string | null {
+  let rows: Array<{ branch: string }>;
+  try {
+    rows = db.prepare(`SELECT s.branch FROM session_exit_receipts r
+      JOIN agent_sessions s ON s.id = r.session_id
+      WHERE s.repository_path = ? AND s.project_slug = ? AND s.action_id = ?
+        AND (r.outcome = 'accepted_completion' OR (r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL))
+      ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug, actionId) as Array<{ branch: string }>;
+  } catch {
+    return null;
+  }
+  if (rows.length === 0) return null;
+  try {
+    const baseBranch = resolveBaseBranch(repoRoot);
+    for (const { branch } of rows) {
+      if (!branch || !refExists(repoRoot, `refs/heads/${branch}`)) continue;
+      if (isAncestor(repoRoot, branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, branch)) continue;
+      return branch;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export interface FailedRunRecord {

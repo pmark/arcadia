@@ -294,7 +294,13 @@ describe("preserve-on-exit and integrate", () => {
       integrationGrant: { decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: ["test-project/second-action"] }
     });
     activatePolicy(narrowed.fixture, scope, "narrowed-terminal-grant");
-    expect(retryHandoff(narrowed.fixture, narrowed.tmux).handoff?.integration.kind).toBe("refused");
+    const narrowedTick = retryHandoff(narrowed.fixture, narrowed.tmux);
+    expect(narrowedTick.handoff?.integration.kind).toBe("refused");
+    // Issue #1512: the narrowed scope selects second-action, but the scheduler
+    // must not re-point (commit on the base) under define-contract's unlanded
+    // terminal candidate, and the tick must not launch past it.
+    expect(narrowedTick.launch?.actionKey ?? null).toBeNull();
+    expect(narrowed.tmux.launches).toHaveLength(1);
     expect(git(narrowed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(narrowed.baseBefore);
   });
 

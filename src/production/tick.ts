@@ -713,6 +713,15 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
 const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required", "build_packet_approval_pending"]);
 
 /**
+ * Escalations the launch path raises while preparing a packet for the pointer
+ * Action. An Action-scoped policy withdraws only these for an out-of-scope
+ * pointer (Issue #1512); every other kind needs the operator and is kept.
+ */
+const LAUNCH_PATH_PACKET_ESCALATION_KINDS = new Set<string>([
+  "planning_required", "build_packet_approval_pending", "planning_run_approval_pending"
+]);
+
+/**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
  * automatically through the exact same `arcadia work plan` machinery a human
  * or agent would otherwise have to notice and run by hand (Issue #584):
@@ -2059,14 +2068,24 @@ function attemptProjectLaunch(
   // The scheduling pass already points at the first ready in-scope queued
   // Action; when it could not (no in-scope Action is ready, or the pointer
   // move was held), the pointer still names an out-of-scope Action, which is
-  // never auto-settled, packet-prepared, launched or escalated here. Its
-  // per-Action bookkeeping is pruned like any other Action that is not current.
+  // never auto-settled, packet-prepared, launched or escalated here. Only the
+  // launch-path packet escalations this path itself raises are withdrawn for
+  // it; operator-actionable ones (repair budget, operator gate, environment
+  // wall, terminal candidate) stay visible. Terminal recovery and handoff of
+  // existing work ran before this and are untouched by the gate.
   const selected = transition.dispatch.context;
   if (selected) {
     const inScope = activeActionScopeGate(db, input.projectSlug, selected.activePlan);
     const selectedKey = `${input.projectSlug}/${selected.action.id}`;
     if (inScope && !inScope(selectedKey)) {
-      pruneStaleOperatorEscalations(db, input.projectSlug, null);
+      const kinds = [...LAUNCH_PATH_PACKET_ESCALATION_KINDS];
+      db.prepare(`DELETE FROM production_operator_escalations WHERE action_key = ? AND kind IN (${kinds.map(() => "?").join(", ")})`)
+        .run(selectedKey, ...kinds);
+      // The tick clears operator-gate escalations for every Action but the one
+      // named here; keep an existing one for this Action rather than drop it.
+      const gateHeld = db.prepare("SELECT 1 FROM production_operator_escalations WHERE action_key = ? AND kind = ?")
+        .get(selectedKey, OPERATOR_GATE_ESCALATION);
+      if (gateHeld && input.gate) input.gate.actionKey = selectedKey;
       return {
         attempted: false,
         outcome: "skipped",
