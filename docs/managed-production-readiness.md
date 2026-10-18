@@ -6,7 +6,7 @@ Latest derivation: **2026-10-18**, from `origin/main` 4777543a7 `PROJECT.md` and
 
 ## Current answer, 2026-10-18: the first supervised Claude run reached a reviewed, merged PR; unattended production remains unproved
 
-The production Plan has **six done** Actions (`launch-failure-keeps-cause`, `claude-worker-launch-replay`, `claude-capacity-evidence`, `credential-preflight`, `production-spend-budget`, and the supervised-run target `implement-a-hermetic-test-that-an`). `first-supervised-claude-run` is completed by this refresh. Two remain: `worker-review-and-merge` (source merged in #1496; settlement pending) and `first-unattended-run`. Production is **Inactive**. The capacity gate is **on**: the operator ran the `enable-capacity-gate-20261017` card. Services and the go-broker run main 4777543a7.
+With this refresh the production Plan has **seven done** Actions (`launch-failure-keeps-cause`, `claude-worker-launch-replay`, `claude-capacity-evidence`, `credential-preflight`, `production-spend-budget`, the supervised-run target `implement-a-hermetic-test-that-an`, and `first-supervised-claude-run`, settled alongside this refresh). Two remain: `worker-review-and-merge` (source merged in #1496; settlement pending) and `first-unattended-run`. Production is **Inactive**. The capacity gate is **on**: the operator ran the `enable-capacity-gate-20261017` card. Services and the go-broker run main 4777543a7.
 
 ### Run record: first supervised Claude run on Arcadia's own repository (2026-10-17/18)
 
