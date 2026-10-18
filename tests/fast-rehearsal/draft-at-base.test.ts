@@ -51,6 +51,23 @@ describe("Issue #1518: a completion Ask drafted at the base revision by a Sessio
     expect(world.finish().errors.filter((error) => !error.expected)).toEqual([]);
   }, SCENARIO_TIMEOUT_MS);
 
+  it("is merged by the worker through its PR under the merge opt-in, not refused as authority-adjacent for its archived draft", () => {
+    // The live headless Claude shape (PR #1545): host preservation commits the work
+    // and the agent's draft together; the settlement archives that draft.
+    const world = new FastRehearsal("draft-at-base-worker-merge", isolation, import.meta.filename, { workerMerge: true });
+    worlds.push(world);
+    world.start();
+    world.expectError(/Did not record pending completion Agent Ask/);
+    const { launch } = world.untilLaunched(ACTION_1, 3);
+    world.execute(launch, ACTION_1, "draft-at-base-uncommitted");
+    world.untilIntegrated(ACTION_1, 10);
+    const pr = world.pullRequestFor(ACTION_1)!;
+    expect(world.github.mergeCalls).toEqual([{ url: pr.url, matchHead: world.github.headOf(pr.branch), merged: true }]);
+    expect(world.escalations()).toEqual([]);
+    expect(isolation.guardCalls()).toEqual([]);
+    expect(world.finish().errors.filter((error) => !error.expected)).toEqual([]);
+  }, SCENARIO_TIMEOUT_MS);
+
   it("never reports accepted_completion when the settlement cannot be committed in the candidate, and escalates it by name", () => {
     const world = new FastRehearsal("draft-at-base-settlement-uncommitted", isolation, import.meta.filename);
     worlds.push(world);
