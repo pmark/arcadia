@@ -1,12 +1,17 @@
+export interface SingleFlight<Args extends unknown[]> {
+  /** Explicit refresh (after a press, manual Refresh): if a call is in flight, coalesces ONE trailing run after it. */
+  (...args: Args): Promise<void>;
+  /** Interval tick: skipped while a call is in flight, never queues a trailing run, so a slow read leaves idle gaps. */
+  tick: (...args: Args) => Promise<void>;
+}
+
 /**
- * Wraps an async poll so a tick that arrives while the previous call is still running is not
- * stacked. Slow endpoints (tens of seconds) otherwise pile up overlapping requests.
- *
- * A call made during a flight is remembered and coalesced into ONE trailing run after the flight
- * settles, so a request for fresh data (such as a refresh right after a press) is never lost to
- * an older, slower read. The returned promise resolves when the call it started or joined is done.
+ * Wraps an async poll so calls never overlap. Slow endpoints (tens of seconds) otherwise pile up
+ * requests. Interval ticks (`.tick`) are dropped while busy; an explicit call is remembered and run
+ * once after the in-flight call settles, so a request for fresh data is never lost to an older,
+ * slower read. The returned promise resolves when the call it started or joined is done.
  */
-export function singleFlight<Args extends unknown[]>(run: (...args: Args) => Promise<void>): (...args: Args) => Promise<void> {
+export function singleFlight<Args extends unknown[]>(run: (...args: Args) => Promise<void>): SingleFlight<Args> {
   let current: Promise<void> | null = null;
   let trailing: Promise<void> | null = null;
   let trailingArgs: Args | null = null;
@@ -29,7 +34,7 @@ export function singleFlight<Args extends unknown[]>(run: (...args: Args) => Pro
     return flight;
   };
 
-  return (...args: Args) => {
+  const explicit = (...args: Args): Promise<void> => {
     if (!current) return start(args);
     trailingArgs = args;
     if (!trailing) {
@@ -38,4 +43,6 @@ export function singleFlight<Args extends unknown[]>(run: (...args: Args) => Pro
     }
     return trailing;
   };
+  const tick = (...args: Args): Promise<void> => current ?? start(args);
+  return Object.assign(explicit, { tick });
 }

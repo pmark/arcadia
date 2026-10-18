@@ -56,7 +56,7 @@ export function ActionsList() {
 
   useEffect(() => {
     void refresh();
-    const interval = setInterval(() => void refresh(), 3_000);
+    const interval = setInterval(() => void refresh.tick(), 3_000);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -76,7 +76,7 @@ export function ActionsList() {
       }
     });
     void load();
-    const interval = setInterval(() => void load(), PRODUCTION_POLL_MS);
+    const interval = setInterval(() => void load.tick(), PRODUCTION_POLL_MS);
     return () => { disposed = true; clearInterval(interval); };
   }, [needsProduction]);
 

@@ -41,6 +41,35 @@ describe("singleFlight", () => {
     expect(seen).toEqual(["slow", "after-press"]);
   });
 
+  it("interval ticks during a slow flight are skipped and never queue a trailing run", async () => {
+    const { poll, releases, calls } = gated();
+    const first = poll.tick();
+    void poll.tick();
+    void poll.tick();
+    expect(calls()).toBe(1);
+    releases[0]();
+    await first;
+    await Promise.resolve();
+    expect(calls()).toBe(1); // no back-to-back run: the next tick starts a fresh call after the idle gap
+    const next = poll.tick();
+    expect(calls()).toBe(2);
+    releases[1]();
+    await next;
+  });
+
+  it("an explicit refresh during a tick-started flight still gets its trailing run", async () => {
+    const { poll, releases, calls } = gated();
+    const tick = poll.tick();
+    void poll.tick();
+    const explicit = poll();
+    releases[0]();
+    await tick;
+    await Promise.resolve();
+    expect(calls()).toBe(2);
+    releases[1]();
+    await explicit;
+  });
+
   it("recovers after a failed call", async () => {
     let calls = 0;
     const poll = singleFlight(async () => { calls += 1; if (calls === 1) throw new Error("boom"); });

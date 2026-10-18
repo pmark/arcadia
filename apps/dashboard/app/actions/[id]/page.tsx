@@ -52,7 +52,7 @@ function OperatorActionView({ id }: { id: string }) {
   const running = script?.state.status === "running";
   useEffect(() => {
     if (!running) return undefined;
-    const interval = setInterval(() => void refresh(), 2_000);
+    const interval = setInterval(() => void refresh.tick(), 2_000);
     return () => clearInterval(interval);
   }, [running, refresh]);
 

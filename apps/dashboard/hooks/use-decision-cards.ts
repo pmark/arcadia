@@ -31,7 +31,7 @@ export function useDecisionCards() {
 
   useEffect(() => {
     void refresh();
-    const interval = setInterval(() => void refresh(), POLL_MS);
+    const interval = setInterval(() => void refresh.tick(), POLL_MS);
     return () => clearInterval(interval);
   }, [refresh]);
 
