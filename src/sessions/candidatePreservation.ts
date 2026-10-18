@@ -193,6 +193,12 @@ export interface PullRequestBase {
   /** The remote tip of `branch` when it was chosen; null when the adapter reports no tips or the remote lacks it. */
   tip: string | null;
   reason: string;
+  /**
+   * The revision GitHub diffs this PR from when it is not the candidate's base
+   * revision: the remote tip under a pointer-only local gap, so the Operator
+   * QA plan lists the same files as the PR (Issue #1530). Absent otherwise.
+   */
+  diffBase?: string;
 }
 
 export type PullRequestBaseSelection =
@@ -901,6 +907,13 @@ function selectPullRequestBaseFromTips(
   if (remoteBase === null || !known) {
     return project(remoteBase, `${remoteState[0].toUpperCase()}${remoteState.slice(1)}${remoteBase !== null ? " (not fetched here)" : ""} and no remote candidate branch has its tip at ${short}, so the PR opens on the Project base.`);
   }
+  // Deliberately outside the worker-merge blast-radius assessment, which diffs
+  // from the Session base: the gap is only governed pointer lines.
+  if (isAncestor(repositoryPath, remoteBase, baseRevision) && isPointerOnlyGap(repositoryPath, remoteBase, baseRevision)) {
+    return { ok: true, base: { kind: "project", branch: baseBranch, tip: remoteBase, diffBase: remoteBase,
+      reason: `The local ${baseBranch} is ahead of the remote ${baseBranch} (${remoteBase.slice(0, 12)}) at ${short} by only governed pointer moves `
+        + "(`current_action:` lines in PROJECT.md and Plans), which show no earlier Action's change, so the PR opens on the Project base and carries them." } };
+  }
   const local = (tryGit(repositoryPath, ["for-each-ref", "--points-at", baseRevision, "--format=%(refname:short)", "refs/heads"]) ?? "")
     .split("\n").map((line) => line.trim()).filter((name) => name && name !== baseBranch && name !== branch && SAFE_TASK_BRANCH.test(name)).sort();
   // A fresh agent branch at exactly the base revision always works (and never
@@ -917,6 +930,31 @@ function selectPullRequestBaseFromTips(
     remedy: `${restore}, or publish the integrated base yourself (\`git -C ${repositoryPath} push origin ${baseBranch}\`: an operator decision; the worker never pushes the base). `
       + "The next preservation attempt then opens the PR."
   };
+}
+
+/** The governed records the scheduler's pointer move rewrites. */
+const POINTER_RECORD_PATH = /^(?:PROJECT\.md|docs\/plans\/[^/]+\.md)$/;
+const POINTER_LINE = /^[+-]current_action: \S+\s*$/;
+
+/**
+ * Whether `from..to` only modifies `current_action:` lines in PROJECT.md and
+ * Plans: the scheduler's governed pointer move, which the worker commits on
+ * the local base and never pushes. Unreadable means no.
+ */
+function isPointerOnlyGap(repositoryPath: string, from: string, to: string): boolean {
+  const summary = tryGit(repositoryPath, ["diff", "--no-renames", "--summary", from, to]);
+  if (summary === null || summary.trim().length > 0) return false; // a mode change, add, delete or rename
+  const status = tryGit(repositoryPath, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-status", from, to]);
+  if (status === null) return false;
+  const entries = status.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (entries.length === 0 || entries.some((line) => !/^M\t/.test(line) || !POINTER_RECORD_PATH.test(line.slice(2)))) return false;
+  // A binary change has no text lines to inspect; `--numstat` reports it as "-".
+  const numstat = tryGit(repositoryPath, ["diff", "--no-renames", "--numstat", from, to]);
+  if (numstat === null || numstat.split("\n").filter(Boolean).some((line) => !/^\d+\t\d+\t/.test(line))) return false;
+  const patch = tryGit(repositoryPath, ["diff", "--no-renames", "--no-color", "--no-ext-diff", "--text", "-U0", from, to]);
+  if (patch === null) return false;
+  const changed = patch.split("\n").filter((line) => /^[+-]/.test(line) && !/^(?:\+\+\+|---) /.test(line));
+  return changed.length > 0 && changed.every((line) => POINTER_LINE.test(line));
 }
 
 /**
@@ -973,7 +1011,7 @@ function resolvePullRequestBody(
     repositoryPath,
     branch: request.branch,
     baseBranch: prBase.branch,
-    baseRevision: request.baseRevision,
+    baseRevision: prBase.diffBase ?? request.baseRevision,
     commitSha
   });
   return { body: withValidationEvidence(result.body, plan, request, repositoryPath, commitSha), refusal: result.status === "refused" ? result.reason : null };

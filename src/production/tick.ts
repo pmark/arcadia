@@ -1857,6 +1857,9 @@ export function runManagedProductionTick(
           : operatorExit?.kind === "refused"
             ? { kind: "refused", reason: `Host-side validation is not authorized for this Action: ${operatorExit.reason}` }
             : preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
+        // A refusal here leaves the candidate uncommitted and blocks everything
+        // after it, so it is never silent (the 2026-10-18 stall left no trace).
+        if (preservation.kind === "refused") log(`Preservation refused for Session ${lease.id} (${project.slug}/${lease.action_id}): ${preservation.reason}`);
         // An agent that died between its settlement commit and the receipt
         // left a pending completion (Issue #995): record it first, so the
         // reconciliation below finds the settlement exactly as if the agent

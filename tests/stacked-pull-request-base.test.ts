@@ -207,6 +207,90 @@ describe("selectPullRequestBase", () => {
   });
 });
 
+/**
+ * The scheduler's governed pointer move (`arcadia advance queue make-next`)
+ * commits only `current_action:` lines on the local base, which the worker
+ * never pushes. The first unattended run (2026-10-18) stalled because a
+ * Session launched from that commit was refused a PR base, silently. A gap of
+ * pointer lines only shows no earlier Action's change, so it opens on the
+ * Project base; any other change in the gap still refuses (Issue #987).
+ */
+describe("selectPullRequestBase over a pointer-only local base", () => {
+  /** M0 (with PROJECT.md and a Plan) on the remote; `gap` committed on the local main only; the candidate branched from it. */
+  function pointerGap(gap: (repo: string) => void): { repo: string; branch: string; m0: string; base: string } {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-pointer-base-")));
+    roots.push(root);
+    const origin = path.join(root, "origin.git");
+    const repo = path.join(root, "repo");
+    g(root, ["init", "-q", "--bare", "-b", "main", origin]);
+    g(root, ["init", "-q", "-b", "main", repo]);
+    execFileSync("mkdir", ["-p", path.join(repo, "docs", "plans")]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "---\nactive_plan: p\ncurrent_action: first\n---\n# Project\n");
+    writeFileSync(path.join(repo, "docs", "plans", "p.md"), "---\nslug: p\ncurrent_action: first\n---\n# Plan\n");
+    g(repo, ["add", "-A"]);
+    g(repo, ["commit", "-q", "-m", "M0"]);
+    const m0 = g(repo, ["rev-parse", "HEAD"]);
+    g(repo, ["remote", "add", "origin", origin]);
+    g(repo, ["push", "-q", "origin", "main"]);
+    gap(repo);
+    g(repo, ["add", "-A"]);
+    g(repo, ["commit", "-q", "-m", "chore: point at next"]);
+    const base = g(repo, ["rev-parse", "HEAD"]);
+    return { repo, branch: "claude/next-20261018T140543609Z", m0, base };
+  }
+  const movePointer = (repo: string) => {
+    writeFileSync(path.join(repo, "PROJECT.md"), "---\nactive_plan: p\ncurrent_action: next\n---\n# Project\n");
+    writeFileSync(path.join(repo, "docs", "plans", "p.md"), "---\nslug: p\ncurrent_action: next\n---\n# Plan\n");
+  };
+
+  it("opens on the Project base when the unpushed gap only moves current_action in PROJECT.md and Plans", () => {
+    const f = pointerGap(movePointer);
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection).toMatchObject({ ok: true, base: { kind: "project", branch: "main", tip: f.m0 } });
+    expect(selection.ok && selection.base.reason).toContain("only governed pointer moves");
+  });
+
+  it("still refuses a gap that changes anything besides current_action in those records", () => {
+    const f = pointerGap((repo) => {
+      movePointer(repo);
+      writeFileSync(path.join(repo, "PROJECT.md"), "---\nactive_plan: other\ncurrent_action: next\n---\n# Project\n");
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+
+  it("still refuses a pointer move that also changes a record's file mode", () => {
+    const f = pointerGap((repo) => {
+      movePointer(repo);
+      execFileSync("chmod", ["+x", path.join(repo, "PROJECT.md")]);
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+
+  it("still refuses a pointer move that rides with a binary change to another Plan", () => {
+    const f = pointerGap((repo) => {
+      writeFileSync(path.join(repo, "docs", "plans", "q.md"), Buffer.from([0, 1, 2, 3]));
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "add", "-A"], { cwd: repo });
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "add q"], { cwd: repo });
+      execFileSync("git", ["push", "-q", "origin", "main"], { cwd: repo });
+      movePointer(repo);
+      writeFileSync(path.join(repo, "docs", "plans", "q.md"), Buffer.from([0, 9, 9, 9]));
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+
+  it("still refuses a pointer move that rides with any other file", () => {
+    const f = pointerGap((repo) => {
+      movePointer(repo);
+      writeFileSync(path.join(repo, "PREVIOUS.md"), "previous Action\n");
+    });
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: f.base, branch: f.branch }, systemPreservationRemote);
+    expect(selection.ok).toBe(false);
+  });
+});
+
 describe("systemPreservationRemote.listBranchTips", () => {
   it("reads every remote branch tip with git ls-remote", () => {
     const f = serial();
