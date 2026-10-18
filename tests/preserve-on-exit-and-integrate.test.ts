@@ -25,6 +25,8 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { activateProduction, deactivateProduction, fingerprintProductionScope, normalizeIntegrationGrant, normalizeProductionScope, type ProductionScope } from "../src/production/policy.js";
 import { integrateSessionCandidate, preserveSessionCandidate } from "../src/production/sessionHandoff.js";
 import { listOperatorEscalations, runManagedProductionTick } from "../src/production/tick.js";
+import { listPendingTerminalCandidates, pendingTerminalCandidateFor } from "../src/production/terminalCandidates.js";
+import { runSchedulingPass } from "../src/scheduling/scheduler.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { getRepositoryLease, getSession, type TmuxAdapter } from "../src/sessions/index.js";
 import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
@@ -294,8 +296,121 @@ describe("preserve-on-exit and integrate", () => {
       integrationGrant: { decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: ["test-project/second-action"] }
     });
     activatePolicy(narrowed.fixture, scope, "narrowed-terminal-grant");
-    expect(retryHandoff(narrowed.fixture, narrowed.tmux).handoff?.integration.kind).toBe("refused");
+    const narrowedTick = retryHandoff(narrowed.fixture, narrowed.tmux);
+    expect(narrowedTick.handoff?.integration.kind).toBe("refused");
+    // Issue #1512: the narrowed scope selects second-action, but the scheduler
+    // must not re-point (commit on the base) under define-contract's unlanded
+    // terminal candidate, and the tick must not launch past it.
+    expect(narrowedTick.launch?.actionKey ?? null).toBeNull();
+    expect(narrowed.tmux.launches).toHaveLength(1);
     expect(git(narrowed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(narrowed.baseBefore);
+  });
+
+  it("names a held scoped run in the launch reason and one deduped operator escalation (Issue #1512)", () => {
+    const { fixture, tmux, session, baseBefore } = completedWhileOff();
+    const scope = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"]
+    });
+    activatePolicy(fixture, scope, "scoped-held-grant");
+    const logs: string[] = [];
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: (line) => logs.push(line),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      handoff: { preserve: { validate: fixtureValidator(true) } }
+    })).projects[0];
+    const first = tick(120_000);
+    const second = tick(150_000);
+    for (const result of [first, second]) {
+      expect(result.launch).toMatchObject({ outcome: "skipped", actionKey: null });
+      expect(result.launch?.reason).toContain(`terminal candidate ${session.branch} (Session ${session.id})`);
+      expect(result.launch?.reason).toContain("Remedy: Land the candidate (operator merge: git -C");
+    }
+    const held = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))
+      .filter((row) => row.actionKey === "test-project/define-contract");
+    expect(held).toEqual([expect.objectContaining({ kind: "scope_pointer_held", remedy: expect.stringContaining("includes test-project/define-contract") })]);
+    expect(logs.filter((line) => line.includes("(scope_pointer_held)"))).toHaveLength(1);
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("holds the pointer only for a terminal candidate recovery owns (shared predicate, Issue #1512)", () => {
+    const { fixture, session } = completedWhileOff();
+    const pending = () => withDatabase(fixture.workspace, (db) => {
+      const check = pendingTerminalCandidateFor(db, fixture.repo, "test-project", "define-contract");
+      return check.kind === "pending" ? check.session.id : check.kind;
+    });
+    const sql = (statement: string, ...args: unknown[]) => withDatabase(fixture.workspace, (db) => db.prepare(statement).run(...args));
+    expect(pending()).toBe(session.id);
+    expect(withDatabase(fixture.workspace, (db) => pendingTerminalCandidateFor(db, fixture.repo, "test-project", "second-action"))).toEqual({ kind: "none" });
+    // The SQL actionId filter selects exactly what recovery's unfiltered list holds for that Action.
+    withDatabase(fixture.workspace, (db) => {
+      const all = listPendingTerminalCandidates(db, fixture.repo, "test-project")!.pending;
+      for (const actionId of ["define-contract", "second-action"]) {
+        const filtered = listPendingTerminalCandidates(db, fixture.repo, "test-project", { actionId })?.pending ?? [];
+        expect(filtered.map((entry) => entry.id)).toEqual(all.filter((entry) => entry.action_id === actionId).map((entry) => entry.id));
+      }
+    });
+    // An incomplete_resumable exit whose candidate already carries the Action's
+    // completion settlement is recovery's (Issue #994); without one it is
+    // resumable work, not recovery's, and never holds the pointer.
+    sql("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable' WHERE session_id = ?", session.id);
+    expect(pending()).toBe(session.id);
+    sql("UPDATE agent_ask_settlements SET disposition = 'rejected' WHERE project_slug = 'test-project'");
+    expect(pending()).toBe("none");
+    sql("UPDATE session_exit_receipts SET outcome = 'accepted_completion' WHERE session_id = ?", session.id);
+    // An exit not recorded by the worker's own reconcile is not recovery's either.
+    sql("UPDATE session_exit_receipts SET request_id = 'operator-reconcile' WHERE session_id = ?", session.id);
+    expect(pending()).toBe("none");
+    sql("UPDATE session_exit_receipts SET request_id = ? WHERE session_id = ?", `worker-tick-reconcile-${session.id}`, session.id);
+    expect(pending()).toBe(session.id);
+
+    // Not held: an Action-scoped run re-points past the head as designed.
+    sql("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable' WHERE session_id = ?", session.id);
+    const scope = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"]
+    });
+    activatePolicy(fixture, scope, "scoped-unheld-grant");
+    const pass = withDatabase(fixture.workspace, (db) => runSchedulingPass(db, { now: new Date(fixture.now.getTime() + 120_000) }));
+    expect(pass.projects[0]?.pointer).toMatchObject({ moved: true, from: "define-contract", to: "second-action" });
+  });
+
+  it("fails closed: an unanswerable terminal-candidate check holds the pointer and names the hold (Issue #1512)", () => {
+    const { fixture, tmux, session } = completedWhileOff();
+    const scope = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"]
+    });
+    activatePolicy(fixture, scope, "scoped-unknown-grant");
+    // No origin/HEAD and no local main/master: the base branch cannot be resolved.
+    git(fixture.repo, ["branch", "-m", "main", "trunk"]);
+    const check = withDatabase(fixture.workspace, (db) => pendingTerminalCandidateFor(db, fixture.repo, "test-project", "define-contract"));
+    expect(check).toMatchObject({ kind: "unknown", reason: expect.stringContaining("base branch") });
+    // Unfiltered recovery keeps its existing behavior (nothing to act on without a base).
+    expect(withDatabase(fixture.workspace, (db) => listPendingTerminalCandidates(db, fixture.repo, "test-project"))).toBeNull();
+
+    const pass = withDatabase(fixture.workspace, (db) => runSchedulingPass(db, { now: new Date(fixture.now.getTime() + 120_000) }));
+    expect(pass.projects[0]?.pointer).toMatchObject({ moved: false, from: "define-contract" });
+    expect(pass.projects[0]?.pointer.reason).toContain("could not be determined");
+    const logs: string[] = [];
+    const result = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 150_000), log: (line) => logs.push(line),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    })).projects[0];
+    expect(result.launch?.reason).toContain("could not be determined");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ actionKey: "test-project/define-contract", kind: "scope_pointer_held" })]));
+    expect(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8")).toContain("current_action: define-contract");
+    expect(tmux.launches).toHaveLength(1);
+
+    // Once the repository answers again, the ordinary pending hold applies.
+    git(fixture.repo, ["branch", "-m", "trunk", "main"]);
+    const again = withDatabase(fixture.workspace, (db) => pendingTerminalCandidateFor(db, fixture.repo, "test-project", "define-contract"));
+    expect(again).toMatchObject({ kind: "pending", session: { id: session.id } });
   });
 
   it("refuses an unpreserved terminal candidate after its base diverges", () => {

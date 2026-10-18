@@ -34,6 +34,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import {
+  ensureProductionTickTables,
   runManagedProductionTick,
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
@@ -213,6 +214,94 @@ describe("runManagedProductionTick", () => {
     expect(project.launch?.actionKey).toBe("test-project/define-contract");
     expect(tmux.launches).toHaveLength(1);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).not.toBeNull();
+  });
+
+  describe("Action-level scope selection (Issue #1512)", () => {
+    function activateActions(fixture: ReturnType<typeof preparedFixture>, actions: string[]) {
+      const scope = normalizeProductionScope({ ...productionScope, actions });
+      withDatabase(fixture.workspace, (db) => activateProduction(db, {
+        requestId: `policy-grant-${actions.join("-").replaceAll("/", "_")}`,
+        scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator"
+      }));
+    }
+    function tickOnce(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, log = vi.fn()) {
+      const result = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: fixture.now, log,
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      }));
+      return { launch: result.projects.find((entry) => entry.projectSlug === "test-project")?.launch, log };
+    }
+    const invocationsFor = (fixture: ReturnType<typeof preparedFixture>, actionId: string) =>
+      withReadOnlyDatabase(fixture.workspace, (db) => (db.prepare(
+        "SELECT COUNT(*) AS n FROM codex_invocations WHERE work_item_id = ?"
+      ).get(getWorkItemByDocRef(db, `plan/copy-proof#${actionId}`)!.id) as { n: number }).n);
+
+    it("launches the first in-scope queued Action and never prepares or escalates an out-of-scope queue head", () => {
+      // Queue [define-contract (ready, no packet: planning_required), second-action (ready, packet approved)];
+      // the scope names only second-action.
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      activateActions(fixture, ["test-project/second-action"]);
+
+      const { launch, log } = tickOnce(fixture, tmux);
+
+      expect(launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
+      expect(tmux.launches).toHaveLength(1);
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/Scheduler pointed test-project at second-action \(was define-contract\)/));
+      expect(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8")).toContain("current_action: second-action");
+      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/define-contract.*(planning|Escalated)|Automatically/));
+      expect(invocationsFor(fixture, "define-contract")).toBe(0);
+      expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+    });
+
+    it("skips an out-of-scope pointer it cannot re-point: no launch, no packet, no escalation", () => {
+      const fixture = preparedFixture({ skipPacket: true });
+      const tmux = new FakeTmux();
+      // A stale escalation for the out-of-scope Action is pruned, not kept.
+      withDatabase(fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('test-project/define-contract', 'build_packet_approval_pending', 'stale', 'remedy', ?, ?)`
+      ).run(fixture.now.toISOString(), fixture.now.toISOString()));
+      // So is one left over for another, no longer current Action (ordinary staleness rule).
+      withDatabase(fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('test-project/old-action', 'repair_budget_exhausted', 'stale', 'remedy', ?, ?)`
+      ).run(fixture.now.toISOString(), fixture.now.toISOString()));
+      activateActions(fixture, ["test-project/not-in-this-plan"]);
+
+      const { launch, log } = tickOnce(fixture, tmux);
+
+      expect(launch).toMatchObject({ attempted: false, outcome: "skipped", actionKey: null });
+      expect(launch?.reason).toContain("outside the Active production scope");
+      expect(tmux.launches).toHaveLength(0);
+      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Scheduler pointed|Automatically|Escalated/));
+      expect(invocationsFor(fixture, "define-contract")).toBe(0);
+      expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+      expect(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8")).toContain("current_action: define-contract");
+    });
+
+    it.each(["repair_budget_exhausted", "operator_gate_pending", "environment_wall"])(
+      "keeps an operator-actionable %s escalation for an out-of-scope pointer Action",
+      (kind) => {
+        const fixture = preparedFixture({ skipPacket: true });
+        const tmux = new FakeTmux();
+        withDatabase(fixture.workspace, (db) => {
+          ensureProductionTickTables(db);
+          db.prepare(
+            `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+               VALUES ('test-project/define-contract', ?, 'needs the operator', 'remedy', ?, ?)`
+          ).run(kind, fixture.now.toISOString(), fixture.now.toISOString());
+        });
+        activateActions(fixture, ["test-project/not-in-this-plan"]);
+
+        const { launch } = tickOnce(fixture, tmux);
+
+        expect(launch).toMatchObject({ outcome: "skipped", actionKey: null });
+        expect(tmux.launches).toHaveLength(0);
+        expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)))
+          .toEqual([expect.objectContaining({ actionKey: "test-project/define-contract", kind })]);
+      }
+    );
   });
 
   it("stops unchanged resumed Sessions at the existing repair budget, preserving their candidate", () => {
@@ -1028,9 +1117,12 @@ describe("runManagedProductionTick", () => {
     const approvals = withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT status FROM review_items WHERE resolved_intent = 'CodexBuildPacketApproval'").all() as Array<{ status: string }>
     );
-    expect(approvals.length).toBeGreaterThan(0);
+    // Issue #1512: an Action whose Plan is outside the grant is out of scope, so
+    // the tick no longer even prepares its packet; nothing can be approved.
+    expect(approvals).toEqual([]);
     expect(approvals.every((row) => row.status !== "approved")).toBe(true);
     expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
   });
 
   it("never approves a packet once the packet_approval delegation has expired (Decision 0072)", () => {

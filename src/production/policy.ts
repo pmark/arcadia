@@ -947,6 +947,33 @@ export function assertNoActiveScopeOverPlan(db: Database.Database, projectSlug: 
   );
 }
 
+/**
+ * The Action-level selection gate an Active production policy places on one
+ * Project's queue (Issue #1512), or null when none applies.
+ *
+ * Null (no gate, today's queue-head behavior) when the policy is Off, has no
+ * scope, cannot be read, does not name `projectSlug`, or lists no Actions (an
+ * empty `scope.actions` permits every Action of the scoped Plans, matching
+ * `isWithinPolicyScope`). Otherwise the returned predicate admits exactly the
+ * `<project-slug>/<action-id>` keys the scope names, and only while the
+ * Project's current Plan is a scoped Plan, so the scheduler points at, and the
+ * tick selects, the first queued in-scope Action rather than the queue head.
+ * Selection only: it grants nothing that admission does not already check.
+ */
+export function activeActionScopeGate(
+  db: Database.Database,
+  projectSlug: string,
+  planSlug: string | null
+): ((actionKey: string) => boolean) | null {
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
+  const scope = read.policy.scope;
+  if (!scope.projects.includes(projectSlug) || scope.actions.length === 0) return null;
+  const planInScope = planSlug !== null && scope.plans.includes(`${projectSlug}/${planSlug}`);
+  const actions = new Set(scope.actions);
+  return (actionKey) => planInScope && actions.has(actionKey);
+}
+
 /** The Project/Plan/Action a caller wants checked against an active policy's scope. */
 export interface PolicyScopeIdentity {
   projectSlug: string;

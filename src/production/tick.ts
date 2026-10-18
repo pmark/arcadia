@@ -16,11 +16,12 @@ import { queueOperatorPing } from "../ping/operatorPing.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
-import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor } from "./terminalCandidates.js";
+import { activeActionScopeGate, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -33,7 +34,7 @@ import {
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
-import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
+import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -64,7 +65,7 @@ import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
-import { developedForSupersededInput, independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
+import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
   advanceIndependentReview,
   ensureProductionReviewStepTable,
@@ -195,37 +196,15 @@ function recoverTerminalHandoff(
   log?: (message: string) => void,
   review?: { deps: IndependentReviewDeps; heartbeat?: () => void; clock?: () => Date }
 ): TerminalHandoffRecovery | null {
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
-    .all() as Array<{ name: string }>;
-  if (!tables.some((table) => table.name === "session_exit_receipts")) return null;
-  const hasPreservationTable = tables.some((table) => table.name === "candidate_preservation_receipts");
-  // An unfinished exit whose candidate already carries this Action's own
-  // recorded completion settlement is terminal too (Issue #994): the agent
-  // settled and then left more work (an extra file or commit). A
-  // continuation could only refuse "Action is already done" and draft another
-  // pending completion, so it is handed to the terminal guards below instead,
-  // which refuse it (the head is not the settlement commit) and escalate once.
-  const exits = db.prepare(`SELECT r.session_id, r.outcome FROM session_exit_receipts r
-    JOIN agent_sessions s ON s.id = r.session_id
-    WHERE s.repository_path = ? AND s.project_slug = ?
-      AND (r.outcome = 'accepted_completion' OR (r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL))
-      AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
-    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug) as Array<{ session_id: string; outcome: string }>;
-  if (exits.length === 0) return null;
-
-  let baseBranch: string;
-  try { baseBranch = resolveBaseBranch(repoRoot); } catch { return null; }
-  const basePlans = discoverDocs(repoRoot).docs.filter((doc) => doc.type === "plan");
-  const pending: AgentSession[] = [];
-  for (const exit of exits) {
-    const session = getSession(db, exit.session_id);
-    if (!session) continue;
-    const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
-    const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
-    if (action?.status === "done") continue;
-    if (exit.outcome !== "accepted_completion" && !latestCandidateSettlementCommit(db, session, repoRoot)) continue;
-    if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
-    if (developedForSupersededInput(db, session, action)) {
+  const hasPreservationTable = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_preservation_receipts'").get());
+  // Selection is shared with the scheduler's pointer hold (Issue #1512), so
+  // the two never disagree about which candidate recovery still owns. An
+  // unfinished exit whose candidate already carries this Action's own
+  // recorded completion settlement is terminal too (Issue #994); the terminal
+  // guards below refuse it (the head is not the settlement commit) and
+  // escalate once.
+  const candidates = listPendingTerminalCandidates(db, repoRoot, projectSlug, {
+    onSuperseded: (session, action) => {
       // Reported once per worker process per (Session, Action input revision):
       // the candidate is skipped identically on every tick (Issue #1158).
       const reportKey = `${session.id}\u0000${action ? requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action }).inputRevision : ""}`;
@@ -233,10 +212,10 @@ function recoverTerminalHandoff(
         reportedSupersededTerminalCandidates.add(reportKey);
         log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
       }
-      continue;
     }
-    pending.push(session);
-  }
+  });
+  if (!candidates) return null;
+  const { baseBranch, pending } = candidates;
   if (pending.length === 0) return null;
 
   const session = pending[0];
@@ -399,32 +378,6 @@ const TERMINAL_CANDIDATE_ESCALATION = "terminal_candidate_not_integrable";
 
 /** The verdict-wait kinds a terminal-guard escalation may replace: waits, not review findings. */
 const PLAIN_VERDICT_WAITS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed"]);
-
-/**
- * The newest documents commit any applied completion settlement recorded on
- * this Session's branch (not yet on the base): for the remedy text, and to
- * recognise an unfinished exit whose candidate already settled its Action.
- */
-function latestCandidateSettlementCommit(db: Database.Database, session: AgentSession, repoRoot: string): string | null {
-  try {
-    const baseBranch = resolveBaseBranch(repoRoot);
-    const rows = db.prepare(`SELECT s.receipt_json, p.proposal_json FROM agent_ask_settlements s
-      JOIN agent_ask_proposals p ON p.id = s.proposal_id
-      WHERE s.project_slug = ? AND s.disposition = 'accepted' AND p.intent_kind = 'complete'
-      ORDER BY s.created_at DESC LIMIT 20`)
-      .all(session.project_slug) as Array<{ receipt_json: string; proposal_json: string }>;
-    const targets = new Set([`action/${session.action_id}`, `plan/${session.plan_slug}#${session.action_id}`]);
-    for (const row of rows) {
-      const receipt = JSON.parse(row.receipt_json) as { applied?: boolean; documentsCommit?: string | null };
-      const targetRef = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null } }).normalized?.targetRef;
-      if (!receipt.applied || !receipt.documentsCommit || !targetRef || !targets.has(targetRef)) continue;
-      // An earlier attempt's settlement already on the base is not this candidate's.
-      if (isAncestor(session.worktree_path, receipt.documentsCommit, baseBranch)) continue;
-      if (isAncestor(session.worktree_path, receipt.documentsCommit, "HEAD")) return receipt.documentsCommit;
-    }
-  } catch { /* the remedy then names no settlement commit */ }
-  return null;
-}
 
 const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed", ...REVIEW_BLOCK_CODES]);
 
@@ -713,6 +666,15 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
 const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required", "build_packet_approval_pending"]);
 
 /**
+ * Escalations the launch path raises while preparing a packet for the pointer
+ * Action. An Action-scoped policy withdraws only these for an out-of-scope
+ * pointer (Issue #1512); every other kind needs the operator and is kept.
+ */
+const LAUNCH_PATH_PACKET_ESCALATION_KINDS = new Set<string>([
+  "planning_required", "build_packet_approval_pending", "planning_run_approval_pending"
+]);
+
+/**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
  * automatically through the exact same `arcadia work plan` machinery a human
  * or agent would otherwise have to notice and run by hand (Issue #584):
@@ -940,6 +902,75 @@ function recordOperatorEscalation(
        kind = @kind, message = @message, remedy = @remedy, last_seen_at = @at`
   ).run({ action_key: input.actionKey, kind: input.kind, message: input.message, remedy: input.remedy, at });
   return !existing;
+}
+
+export const SCOPE_POINTER_HELD_ESCALATION = "scope_pointer_held";
+
+/**
+ * Issue #1512: the pointer names an out-of-scope Action whose terminal
+ * candidate recovery still owns (`pendingTerminalCandidateFor`), so the
+ * scheduler holds the pointer and no in-scope Action can run until it lands.
+ * Returns the named reason and remedy when held, and records one deduped
+ * operator escalation (logged once) so `production status` shows it; an
+ * existing escalation of another kind on that Action (a terminal-guard
+ * refusal, a repair budget) is never overwritten. When not held, a stale
+ * hold escalation for the Action is cleared and null is returned.
+ */
+function scopePointerHold(
+  db: Database.Database,
+  input: { repoRoot: string; projectSlug: string; actionKey: string; actionId: string; now: Date; log: (message: string) => void }
+): string | null {
+  const check = pendingTerminalCandidateFor(db, input.repoRoot, input.projectSlug, input.actionId);
+  if (check.kind === "none") {
+    db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ? AND kind = ?").run(input.actionKey, SCOPE_POINTER_HELD_ESCALATION);
+    return null;
+  }
+  let message: string;
+  let remedy: string;
+  if (check.kind === "pending") {
+    const candidate = check.session;
+    let merge = `merge ${candidate.branch} into the base branch`;
+    try {
+      merge = operatorMergeCommand({ repoRoot: input.repoRoot, branch: candidate.branch, baseBranch: resolveBaseBranch(input.repoRoot) });
+    } catch { /* the plain wording stands */ }
+    message = `Production is held: the pointer names ${input.actionKey}, which is outside the Active production scope, and its terminal candidate `
+      + `${candidate.branch} (Session ${candidate.id}) has not landed, so the scheduler will not move the pointer to an in-scope Action.`;
+    remedy = `Land the candidate (operator merge: ${merge}), or turn production Off and grant a scope that includes ${input.actionKey} so terminal recovery can integrate it; the pointer then moves to the first in-scope Action.`;
+  } else {
+    // Fail closed: the scheduler holds the pointer on an unknown answer too.
+    message = `Production is held: the pointer names ${input.actionKey}, which is outside the Active production scope, and whether it still has a `
+      + `terminal candidate could not be determined (${check.reason}), so the scheduler will not move the pointer to an in-scope Action.`;
+    remedy = `Repair the repository at ${input.repoRoot} so its base branch and candidate branches resolve (origin/HEAD, or a local main/master branch); the hold is re-checked every tick.`;
+  }
+  const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as { kind: string } | undefined;
+  if (!existing || existing.kind === SCOPE_POINTER_HELD_ESCALATION) {
+    if (recordOperatorEscalation(db, { actionKey: input.actionKey, kind: SCOPE_POINTER_HELD_ESCALATION, message, remedy, now: input.now })) {
+      input.log(`Escalated ${input.actionKey} to the operator (${SCOPE_POINTER_HELD_ESCALATION}): ${remedy}`);
+    }
+  }
+  return `${message} Remedy: ${remedy}`;
+}
+
+/**
+ * `scopePointerHold` for the checked-in pointer, when an Action-scoped Active
+ * policy excludes it; null otherwise. Used where the tick never reaches
+ * `attemptProjectLaunch` because terminal recovery returned a refused handoff.
+ */
+function outOfScopePointerHold(
+  db: Database.Database,
+  input: { repoRoot: string; projectSlug: string; now: Date; log: (message: string) => void }
+): string | null {
+  try {
+    const projectDoc = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "project" && doc.slug === input.projectSlug);
+    if (projectDoc?.type !== "project" || !projectDoc.currentAction || !projectDoc.activePlan) return null;
+    const actionKey = `${input.projectSlug}/${projectDoc.currentAction}`;
+    const inScope = activeActionScopeGate(db, input.projectSlug, projectDoc.activePlan);
+    if (!inScope || inScope(actionKey)) return null;
+    return scopePointerHold(db, { ...input, actionKey, actionId: projectDoc.currentAction });
+  } catch (error) {
+    input.log(`Scope pointer-hold check failed for ${input.projectSlug}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 /** Clear a previously recorded escalation once its Action launches or its refusal stops being non-self-resolving. */
@@ -1951,7 +1982,10 @@ export function runManagedProductionTick(
       // time. Give the operator (or bound CI) a full tick to land that merge
       // before this repository is considered for another launch; the next
       // tick's base-branch-advance detection picks it up as soon as it lands.
-      launch = { attempted: false, outcome: "skipped", reason: "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
+      // A refused terminal handoff of an out-of-scope pointer Action recurs
+      // every tick and holds an Action-scoped run (Issue #1512): name it.
+      const held = handoff !== null && reconciled.length === 0 ? outOfScopePointerHold(db, { repoRoot, projectSlug: project.slug, now, log }) : null;
+      launch = { attempted: false, outcome: "skipped", reason: held ?? "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
     }
     // An integration-refusal episode ends whenever this tick has no refused
     // handoff to log (it integrated, nothing is pending, or production is Off
@@ -2054,6 +2088,42 @@ function attemptProjectLaunch(
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
     transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
+  }
+  // Issue #1512: an Action-scoped Active policy selects only Actions it names.
+  // The scheduling pass already points at the first ready in-scope queued
+  // Action; when it could not (no in-scope Action is ready, or the pointer
+  // move was held), the pointer still names an out-of-scope Action, which is
+  // never auto-settled, packet-prepared, launched or escalated here. Only the
+  // launch-path packet escalations this path itself raises are withdrawn for
+  // it; operator-actionable ones (repair budget, operator gate, environment
+  // wall, terminal candidate) stay visible. Terminal recovery and handoff of
+  // existing work ran before this and are untouched by the gate.
+  const selected = transition.dispatch.context;
+  if (selected) {
+    const inScope = activeActionScopeGate(db, input.projectSlug, selected.activePlan);
+    const selectedKey = `${input.projectSlug}/${selected.action.id}`;
+    if (inScope && !inScope(selectedKey)) {
+      // Escalations for any other Action are stale exactly as on the ordinary
+      // path (the pointer names this one); for this Action only the launch-path
+      // packet kinds are withdrawn.
+      pruneStaleOperatorEscalations(db, input.projectSlug, selectedKey);
+      const kinds = [...LAUNCH_PATH_PACKET_ESCALATION_KINDS];
+      db.prepare(`DELETE FROM production_operator_escalations WHERE action_key = ? AND kind IN (${kinds.map(() => "?").join(", ")})`)
+        .run(selectedKey, ...kinds);
+      // The tick clears operator-gate escalations for every Action but the one
+      // named here; keep an existing one for this Action rather than drop it.
+      const gateHeld = db.prepare("SELECT 1 FROM production_operator_escalations WHERE action_key = ? AND kind = ?")
+        .get(selectedKey, OPERATOR_GATE_ESCALATION);
+      if (gateHeld && input.gate) input.gate.actionKey = selectedKey;
+      const held = scopePointerHold(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, actionKey: selectedKey, actionId: selected.action.id, now: input.now, log: input.log });
+      return {
+        attempted: false,
+        outcome: "skipped",
+        reason: held
+          ?? `The pointer names ${selectedKey}, which is outside the Active production scope; production waits for an in-scope Action to become current.`,
+        actionKey: null
+      };
+    }
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
     // `dispatch` is resolved before the lease/competing-run check that

@@ -7,6 +7,7 @@ import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import type { PlanActionDoc } from "../src/docs/types.js";
+import { pendingTerminalCandidateFor } from "../src/production/terminalCandidates.js";
 import { developmentLineageRemedy } from "../src/production/tick.js";
 import { allocateSessionRoleAttempt, latestRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { getActiveActionClaim, releaseSupersededActionClaim, type AgentSession } from "../src/sessions/index.js";
@@ -208,6 +209,19 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     expect(git(run1.worktree_path, ["status", "--porcelain"]).trim()).toBe("");
     expect(claimOf(rehearsal, run1.worktree_path)).toEqual({ action_id: null, claim_generation: null });
     expect(withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(run1.id))).toEqual({ status: run1.status });
+  });
+
+  it("holds the pointer for run 1's pending candidate only until its input is superseded (Issue #1512, shared predicate)", () => {
+    const { rehearsal, run1 } = afterRun1();
+    const pending = () => withDatabase(rehearsal.workspace, (db) => {
+      const check = pendingTerminalCandidateFor(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a");
+      return check.kind === "pending" ? check.session.id : check.kind;
+    });
+    // Accepted, preserved, unlanded and for the current input: recovery owns it, so the scheduler holds.
+    expect(pending()).toBe(run1.id);
+    amend(rehearsal);
+    // Developed for a superseded input: recovery skips it, so it never holds the pointer.
+    expect(pending()).toBe("none");
   });
 
   it("reports run 1's superseded terminal candidate once, not on every tick (Issue #1158)", () => {

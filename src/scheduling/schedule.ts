@@ -7,6 +7,7 @@ import { discoverDocs, type DiscoveryResult } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { Project } from "../domain/types.js";
 import { arrangeActionOrder, loadActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
+import { activeActionScopeGate } from "../production/policy.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
 import { canonicalOrder, type OrderCandidate, type SchedulingClass } from "./order.js";
 import {
@@ -69,8 +70,14 @@ export interface ProjectSchedule {
   queue: string[];
   /** Follow-ups and other unqueued work. */
   backlog: string[];
-  /** The Action the scheduler would start now, or null. */
+  /**
+   * The Action the scheduler would start now, or null. While an Active
+   * production policy scopes this Project by Action, the first ready queued
+   * Action that scope names, never an out-of-scope queue head (Issue #1512).
+   */
   next: string | null;
+  /** True when an Active policy's Action-level scope filtered `next`. */
+  actionScoped: boolean;
   /** Why the Project cannot be scheduled at all, when it cannot. */
   blockers: DispatchBlocker[];
   record: SchedulingProjectRecord;
@@ -134,6 +141,7 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
     queue: [],
     backlog: [],
     next: null,
+    actionScoped: false,
     blockers: [],
     record
   };
@@ -207,9 +215,14 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
   base.queue = canonicalOrder(orderCandidates(base.actions.filter((action) => action.status !== "deferred"), base.planSlug));
   base.backlog = base.actions.filter((action) => action.status === "deferred").map((action) => action.key);
   const byKey = new Map(base.actions.map((action) => [action.key, action]));
+  // Queue order still decides among in-scope Actions (Decision 0097 serial
+  // order is unchanged); an out-of-scope Action ahead of them is skipped, not
+  // reordered, so a coordination Action at the head never blocks a scoped run.
+  const inScope = activeActionScopeGate(db, project.slug, base.planSlug);
+  base.actionScoped = inScope !== null;
   base.next = record.pausedReason
     ? null
-    : base.queue.find((key) => byKey.get(key)?.status === "ready") ?? null;
+    : base.queue.find((key) => byKey.get(key)?.status === "ready" && (inScope === null || inScope(key))) ?? null;
   return base;
 }
 
