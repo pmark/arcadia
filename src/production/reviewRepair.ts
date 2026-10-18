@@ -3,9 +3,9 @@ import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/bat
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 import type { AgentSession } from "../sessions/index.js";
-import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
+import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, type SessionRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
-import { MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { MAX_VERDICT_ATTEMPTS, requirementIdFor } from "../sessions/roleLineage.js";
 import type { GuardedLaunchInput, GuardedLaunchResult } from "../sessions/launch.js";
 import {
   ensureReviewRepairTable,
@@ -134,12 +134,14 @@ const TEST_PATH = /(^|\/)(tests?|__tests__|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$/i
  * the runners' spellings: a modifier anywhere in a member chain that starts
  * at describe/it/test/suite/bench (`it.skipIf(c)(...)`,
  * `test.concurrent.skip(...)`, `describe.sequential.only(...)`,
- * `test.fails(...)`), the x/f prefixes, and a runtime skip (`ctx.skip()`,
- * `this.skip()`, any bare `.skip()`).
+ * `test.fails(...)`, `describe.each(...).skip`), the x/f prefixes, and a
+ * runtime skip (`ctx.skip()` with or without a condition, `this.skip()`, any
+ * bare `.skip()`). A preceding `.` or word character never starts the chain,
+ * so a regex `RE.test(x)` is neither a test nor a skip.
  */
-const SKIPPED_TEST = /\b(?:describe|it|test|suite|bench)(?:\.\w+)*\.(?:skip|only|todo|fails|skipIf|runIf)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(|\.skip\(\s*\)/;
+const SKIPPED_TEST = /(?<![.\w])(?:describe|it|test|suite|bench)(?:\.\w+|\([^\n]*?\))*\.(?:skip|only|todo|fails|skipIf|runIf)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(|\bctx\.skip\(|\.skip\(\s*\)/;
 /** One test case: `it(`, `test(`, or either with a modifier chain (`it.each(...)(` counts once). */
-const TEST_CASE = /\b(?:it|test)(?:\.\w+)*\s*\(/g;
+const TEST_CASE = /(?<![.\w])(?:it|test)(?:\.\w+)*\s*\(/g;
 const THRESHOLD_FILE = /(^|\/)(vitest|vite|jest|playwright)\.config\.[cm]?[jt]s$|(^|\/)(package\.json|\.c8rc(\.json)?|\.nycrc(\.json)?|codecov\.ya?ml)$|(^|\/)\.github\//i;
 const THRESHOLD_LINE = /threshold|coverage|minimum|maxWorkers|timeout|retries|bail/i;
 
@@ -336,7 +338,14 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   if (exit?.outcome !== "accepted_completion" || exit.superseded_by_session_id !== null) {
     return { kind: "not_applicable", reason: `The candidate's exit is ${exit ? `${exit.outcome}${exit.superseded_by_session_id ? `, superseded by ${exit.superseded_by_session_id}` : ""}` : "unrecorded"}, not an unsuperseded accepted completion.` };
   }
-  const failed = realFailedVerdict(db, { session, repoRoot });
+  // A repair already decided for this exact failed head whose launch did not
+  // start (a guard, a spawn failure) resumes from its own durable row: its live
+  // development attempt now stands between the failed candidate and verdict
+  // readiness, so the failed verdict is no longer re-derivable from readiness.
+  const branchHead = tryGit(repoRoot, ["rev-parse", "--verify", `refs/heads/${session.branch}`]);
+  const pendingRow = branchHead ? getReviewRepair(db, reviewRepairRequestId(session.id, branchHead)) : null;
+  const failed = realFailedVerdict(db, { session, repoRoot })
+    ?? (pendingRow?.outcome === "pending" && pendingRow.repair_session_id === null ? resumedFailure(db, session, pendingRow) : null);
   if (!failed) return { kind: "not_applicable", reason: "No real failed independent verdict is recorded on the candidate's current head." };
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
@@ -475,6 +484,25 @@ export function closeSupersededPullRequests(db: Database.Database, input: { repo
   return closed;
 }
 
+/** The failed verdict and passed development attempt a pending repair row was decided from, read back from the lineage by its exact head. */
+function resumedFailure(db: Database.Database, session: AgentSession, row: ReviewRepairRow):
+  { role: string; head: string; attempt: SessionRoleAttempt; developerRequestId: string } | null {
+  const requirementId = requirementIdFor(session.project_slug, session.plan_slug, session.action_id);
+  const attempt = db.prepare(`SELECT * FROM session_role_attempts WHERE requirement_id = ? AND role = ? AND target_head = ? AND status = 'failed'
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(requirementId, row.role, row.failed_head) as SessionRoleAttempt | undefined;
+  const developer = db.prepare(`SELECT request_id FROM session_role_attempts WHERE requirement_id = ? AND role = 'development' AND status = 'passed' AND target_head = ?
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(requirementId, row.failed_head) as { request_id: string } | undefined;
+  return attempt && developer ? { role: row.role, head: row.failed_head, attempt, developerRequestId: developer.request_id } : null;
+}
+
+/** Whether this terminal candidate has a decided repair whose launch has not started yet (the tick resumes it). */
+export function hasPendingReviewRepair(db: Database.Database, session: AgentSession, repoRoot: string): boolean {
+  const head = tryGit(repoRoot, ["rev-parse", "--verify", `refs/heads/${session.branch}`]);
+  if (!head) return false;
+  const row = getReviewRepair(db, reviewRepairRequestId(session.id, head));
+  return row?.outcome === "pending" && row.repair_session_id === null;
+}
+
 /** The `role` of a repair row recording a gated repair candidate rather than a failed verdict. */
 export const REPAIR_CANDIDATE_GATE_ROLE = "repair-gate";
 
@@ -523,18 +551,27 @@ export function gateRepairCandidate(db: Database.Database, input: {
       workerPullRequestUrl(db, session.id), REPAIR_CANDIDATE_GATE_ROLE, gate, repair.report_path, repair.findings_json, repair.failed_checks_json, reason, at, at);
   let row = getReviewRepair(db, requestId)!;
   const policy = readProductionPolicySafely(db);
+  const epoch = policy.status === "ok" ? policy.policy.epoch : null;
+  /** Re-read before each side effect, like the repair step's own: Off, a new epoch or a lapsed grant withholds it. */
   const authorized = (): string | null => {
     const current = readProductionPolicySafely(db);
     if (current.status !== "ok" || current.policy.desiredState !== "active") return "managed production is Off";
+    if (current.policy.epoch !== epoch) return `the production epoch changed (${String(epoch)} -> ${current.policy.epoch})`;
     const allowed = policyAuthorizesPullRequestReadiness(current.policy, actionKey, now);
     return allowed.authorized ? null : allowed.reason;
   };
-  if (policy.status === "ok") {
+  if (policy.status === "ok" && row.notify_failures < MAX_NOTIFY_FAILURES) {
     const error = notifyPullRequest(db, row, { repoRoot: input.repoRoot, now, runCommand: input.runCommand ?? runHostCommand, authorized });
     row = getReviewRepair(db, requestId)!;
-    if (error && row.last_error !== error) {
-      db.prepare("UPDATE production_review_repairs SET last_error = ?, updated_at = ? WHERE request_id = ?").run(error, at, requestId);
-      input.log?.(`Review repair candidate gate for ${actionKey}: ${error}; retried next tick.`);
+    if (error) {
+      // The same bounded accounting as the repair step: past the bound the
+      // draft/comment is no longer retried; the escalation below stands.
+      const failures = row.notify_failures + 1;
+      db.prepare("UPDATE production_review_repairs SET last_error = ?, notify_failures = ?, updated_at = ? WHERE request_id = ?").run(error, failures, at, requestId);
+      if (row.last_error !== error || failures >= MAX_NOTIFY_FAILURES) {
+        input.log?.(`Review repair candidate gate for ${actionKey}: ${error}; ${failures >= MAX_NOTIFY_FAILURES ? `not retried after ${failures} attempts` : "retried next tick"}.`);
+      }
+      row = getReviewRepair(db, requestId)!;
     }
   }
   input.escalate(REVIEW_REPAIR_GATED,

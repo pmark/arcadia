@@ -75,7 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
-import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
+import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, hasPendingReviewRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -2065,7 +2065,8 @@ export function runManagedProductionTick(
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession
-      && handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole) {
+      && ((handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole)
+        || hasPendingReviewRepair(db, handoffSession, repoRoot))) {
       // A reviewer's real non-pass judgment of the exact settled head: the review
       // repair loop (src/production/reviewRepair.ts) returns the PR to draft with
       // its findings and launches one bounded repair Session, or stops once.
@@ -2149,6 +2150,9 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
     + "the only path is a governed amendment of the Action (an Agent Ask).";
 }
 
+/** A review repair launch withheld by a guard (sign-in hold, repair budget); never a launch failure. */
+class RepairLaunchHeld extends Error {}
+
 /** One deduped review-repair escalation, logged and pinged once per kind. */
 function escalateReviewRepair(db: Database.Database, input: { actionKey: string; kind: string; message: string; remedy: string; now: Date; log?: (message: string) => void }): void {
   const { actionKey, kind, message } = input;
@@ -2187,31 +2191,54 @@ function attemptReviewRepairLaunch(
   const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
   const paused = getSchedulingProject(db, input.projectSlug).pausedReason;
   if (paused) return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey };
+  // The same launch guards attemptProjectLaunch applies, checked only at the
+  // launch itself (the failed PR is drafted and commented on first, whatever
+  // they say): a provider sign-in hold, and the per-Action repair budget a
+  // repeating non-conflict launch failure spends.
+  const held: { outcome: ManagedProductionLaunchAttempt["outcome"] | null; reason: string } = { outcome: null, reason: "" };
   try {
     const step = attemptReviewRepair({
       db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
       runCommand: input.options.review?.runCommand,
       escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
-      launch: (repair) => launchGuardedHostSession({
-        db,
-        workspace: input.workspace,
-        repoRoot: input.repoRoot,
-        projectSlug: input.projectSlug,
-        requestId: `worker-tick-repair-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`,
-        standingPolicy: true,
-        repair,
-        profiles: input.options.profiles,
-        adapters: input.options.adapters,
-        now: input.now,
-        tmux: input.tmux,
-        capacityObservation: input.options.capacityObservation,
-        agentWorktreeRoot: input.options.agentWorktreeRoot,
-        providerSignIn: input.options.providerSignIn,
-        workerCapability: input.options.workerCapability,
-        onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
-      })
+      launch: (repair) => {
+        const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
+        if (signInHold) {
+          const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a repair Session launched now would die on the same dead login. Sign in again on this worker host.`;
+          if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
+            input.log(`Review repair launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
+          }
+          held.outcome = "skipped"; held.reason = reason;
+          throw new RepairLaunchHeld(reason);
+        }
+        const attempts = getRepairAttempts(db, actionKey);
+        if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+          const reason = recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts, lastError: attempts.lastError, now: input.now, log: input.log });
+          held.outcome = "repair_budget_exhausted"; held.reason = reason;
+          throw new RepairLaunchHeld(reason);
+        }
+        return launchGuardedHostSession({
+          db,
+          workspace: input.workspace,
+          repoRoot: input.repoRoot,
+          projectSlug: input.projectSlug,
+          requestId: `worker-tick-repair-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`,
+          standingPolicy: true,
+          repair,
+          profiles: input.options.profiles,
+          adapters: input.options.adapters,
+          now: input.now,
+          tmux: input.tmux,
+          capacityObservation: input.options.capacityObservation,
+          agentWorktreeRoot: input.options.agentWorktreeRoot,
+          providerSignIn: input.options.providerSignIn,
+          workerCapability: input.options.workerCapability,
+          onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
+        });
+      }
     });
     if (step.kind === "launched") {
+      resetRepairAttempts(db, actionKey);
       clearLaunchBlocker(db, input.projectSlug);
       clearOperatorEscalation(db, actionKey);
       clearLaunchRefusal(db, actionKey);
@@ -2219,11 +2246,28 @@ function attemptReviewRepairLaunch(
     }
     return { attempted: false, outcome: "skipped", reason: step.reason, actionKey };
   } catch (error) {
+    if (error instanceof RepairLaunchHeld && held.outcome !== null) {
+      return { attempted: false, outcome: held.outcome, reason: held.reason, actionKey };
+    }
     const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
     const message = error instanceof Error ? error.message : String(error);
-    const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
-    if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
-    return { attempted: true, outcome: error instanceof ArcadiaError && error.details?.conflict ? "refused" : "failed", reason: message, actionKey };
+    if (error instanceof ArcadiaError && error.details?.conflict) {
+      const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
+      if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
+      return { attempted: true, outcome: "refused", reason: message, actionKey };
+    }
+    // A real defect in preparing or spawning the repair (tmux, the draft
+    // retirement, a worktree error): counted against the finite repair budget
+    // exactly like attemptProjectLaunch's, so it cannot cycle every tick.
+    const failure = formatLaunchFailure(error);
+    recordRepairAttempt(db, actionKey, failure, input.now);
+    recordFailedRun(db, input.projectSlug, { reason: `Review repair launch failed for ${actionKey}: ${failure}`, actionKey });
+    input.log(`Review repair launch attempt failed for ${actionKey}: ${failure}`);
+    const attemptsAfter = getRepairAttempts(db, actionKey);
+    if (attemptsAfter.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+      recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attemptsAfter.attempts, lastError: attemptsAfter.lastError, now: input.now, log: input.log });
+    }
+    return { attempted: true, outcome: "failed", reason: failure, actionKey };
   }
 }
 

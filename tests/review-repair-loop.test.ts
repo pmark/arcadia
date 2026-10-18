@@ -5,7 +5,9 @@ import type Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_NO_DRAFT } from "../src/ask/autoSettleBeforeDispatch.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
-import { readProductionPolicySafely } from "../src/production/policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "../src/production/policy.js";
+import { getProductionRepairAttempts } from "../src/production/tick.js";
+import { ESCALATION_REMEDIES } from "../src/production/blockerRemedies.js";
 import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
 import type { AgentSession } from "../src/sessions/index.js";
@@ -213,6 +215,37 @@ describe("the review repair bound and gates", () => {
     expect(rehearsal.log.filter((line) => line.includes("(review_repair_gated)"))).toHaveLength(1);
   });
 
+  it("bounds the gated repair candidate's draft/comment retries like the repair step's own", () => {
+    const { rehearsal } = failedReview(() => {}, { "tests/marker.test.mjs": "import { test } from \"node:test\";\ntest(\"marker\", () => {});\n" });
+    const repair = rehearsal.lease()!;
+    rmSync(path.join(repair.worktree_path, "tests", "marker.test.mjs"));
+    rehearsal.agentFinish(repair, CRITERIA_A);
+    rehearsal.tmux.exit(repair.tmux_session_name);
+    rehearsal.github.commentFailures.push(...Array.from({ length: 20 }, () => "HTTP 502 (simulated)"));
+    for (let i = 0; i < 9; i += 1) rehearsal.tick();
+    const gateRow = repairs(rehearsal).find((row) => row.role === "repair-gate")!;
+    expect(gateRow).toMatchObject({ outcome: "gated", notify_failures: 5, last_error: expect.stringContaining("HTTP 502") });
+    const repairPr = rehearsal.github.prs.find((pr) => pr.branch === repair.branch)!;
+    expect(rehearsal.github.ghCalls.filter((call) => call.startsWith(`gh pr comment ${repairPr.url}`))).toHaveLength(5);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
+  });
+
+  it("stops a repeating non-conflict repair launch failure at the per-Action repair budget with one escalation", () => {
+    let spawns = 0;
+    const { rehearsal } = failedReview((r) => {
+      r.tmux.launch = () => { spawns += 1; throw new Error("tmux could not start the Session (simulated)"); };
+    });
+    for (let i = 0; i < 6; i += 1) rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(spawns).toBe(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => getProductionRepairAttempts(db, rehearsal.actionA)).attempts)
+      .toBe(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "repair_budget_exhausted" });
+    expect(rehearsal.log.filter((line) => line.includes("(repair_budget_exhausted)"))).toHaveLength(1);
+    // Each failed attempt left no repair worktree or branch behind.
+    expect(rehearsal.sessions().filter((s) => s.status === "running" || s.status === "prepared")).toEqual([]);
+  });
+
   it("escalates instead of launching when no verdict attempt is left to review a repaired head", () => {
     const { rehearsal } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
     expect(rehearsal.lease()).toBeNull(); // held back by the failed comment
@@ -267,6 +300,17 @@ describe("review repair pure parts", () => {
     expect(verdictIsAuthorityAdjacent([finding("Defect")], [check("Correctness", "fail"), check("Security and authority", "fail")])).toMatch(/Security and authority/);
     expect(verdictIsAuthorityAdjacent([finding("Exposes a credential in logs")], [])).toMatch(/authority/);
     expect(verdictIsAuthorityAdjacent([], [check("Correctness", "pass"), check("Approval boundaries", "fail")])).toMatch(/Approval boundaries/);
+  });
+
+  it("describes both repair escalations generally and points at the entry's reason and the PR's findings comment", () => {
+    const exhausted = ESCALATION_REMEDIES.review_repair_rounds_exhausted.consequence;
+    const gated = ESCALATION_REMEDIES.review_repair_gated.consequence;
+    expect(exhausted).toMatch(/verdict attempt/);
+    for (const text of ["authority", "launch", "test", "threshold", "no longer open", "comment", "repair candidate"]) expect(gated).toContain(text);
+    for (const text of [exhausted, gated]) {
+      expect(text).toMatch(/escalation entry/);
+      expect(text).toMatch(/findings comment/);
+    }
   });
 
   it("renders the comment's next step from the row's outcome", () => {
@@ -343,7 +387,10 @@ describe("review repair pure parts", () => {
     ["test.fails(\"b\", () => {});"],
     ["bench.only(\"b\", () => {});"],
     ["test(\"b\", (ctx) => { ctx.skip(); });"],
-    ["test(\"b\", function () { this.skip(); });"]
+    ["test(\"b\", function () { this.skip(); });"],
+    ["test(\"b\", (ctx) => { ctx.skip(true); });"],
+    ["describe.each([1, 2])(\"b %s\", () => {}).skip;"],
+    ["describe.each([1, 2]).skip(\"b %s\", () => {});"]
   ])("gates a skipped, conditional, focused or expected-failure test written as %s", (line) => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-repair-skip-"));
     roots.push(root);
@@ -376,6 +423,9 @@ describe("review repair pure parts", () => {
     const base = commit("base");
     writeFileSync(path.join(root, "tests", "c.test.ts"), "it(\"one\", () => {});\n");
     expect(testWeakeningGates(root, base, commit("drop a case")).join(" | ")).toMatch(/removes test cases \(tests\/c\.test\.ts: 2 -> 1\)/);
+    // A regex `.test(` call is not a test case: dropping a case while adding one still counts as fewer.
+    writeFileSync(path.join(root, "tests", "c.test.ts"), "it(\"one\", () => { expect(/x/.test(\"x\")).toBe(true); });\n");
+    expect(testWeakeningGates(root, base, commit("swap a case for a regex call")).join(" | ")).toMatch(/removes test cases \(tests\/c\.test\.ts: 2 -> 1\)/);
     writeFileSync(path.join(root, "src", "sessions", "worktreePreparation.ts"), "export const x = 1;\n");
     expect(candidateChangeGate(root, base, commit("touch sessions"))).toMatch(/src\/sessions\/worktreePreparation\.ts/);
   });
