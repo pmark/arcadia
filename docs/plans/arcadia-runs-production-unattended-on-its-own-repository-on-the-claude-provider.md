@@ -191,10 +191,10 @@ actions:
     references: []
   - id: implement-a-hermetic-test-that-an-2
     title: Implement a hermetic test that an interactive tmux launch with a 64 KiB brief keeps the brief byte-identical.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a hermetic test that an interactive tmux launch with a 64 KiB brief keeps the brief byte-identical.
+    next_action: Completed via Agent Ask auto-settle-arcadia-implement-a-hermetic-test-that-an-2-dc90bc96a74c; no further action.
     expected_artifact: Evidence satisfying Agent Ask implement-a-hermetic-test-that-an-2
     clarification: clarified
     confidence: high

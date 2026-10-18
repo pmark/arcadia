@@ -104,4 +104,22 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
     // Verify no launcher file is left behind
     expect(existsSync(runDir) ? readdirSync(runDir) : []).toEqual([]);
   });
+
+  it("delivers the brief byte-identical with no launcherDirectory (temporary directory removed)", async () => {
+    const out = path.join(root, "argv-temp.json");
+    const provider = path.join(root, "provider-temp.mjs");
+    writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.argv.slice(2)));\n`);
+    const name = `arcadia-temp-brief-${process.pid}-${Date.now()}`;
+    systemTmux.launch({
+      name,
+      cwd: root,
+      command: process.execPath,
+      args: [provider, "--print", LONG_BRIEF]
+      // No launcherDirectory specified - should use temporary directory that is cleaned up
+    });
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(out) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    const argv = JSON.parse(readFileSync(out, "utf8")) as string[];
+    expect(argv).toEqual(["--print", LONG_BRIEF]);
+  });
 });
