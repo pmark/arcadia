@@ -458,6 +458,11 @@ review items read-only with the command that answers them; the same list as
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
+A ping that names one operator action opens `/actions/<script id>`, a page with
+only that card (title, consequences, state, Run with its confirmation), so it is
+interactive without loading the whole library; the Run press then checks, once,
+whether it is your next action. `/actions` lists everything, and its decision
+cards load only after you tap **Show decision cards**.
 Operator-action authors must run `mise exec -- pnpm check:operator-scripts`
 before publishing a button. CI checks every library entry. `/runs` refuses an
 altered Plan-amendment launcher with `PLAN_AMENDMENT_RUNNER_REQUIRED`; repair

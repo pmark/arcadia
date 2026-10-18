@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
 import { loadOperatorScriptReceipt } from "../../../lib/operatorScriptReceipt";
-import { loadLatestRunReceipts } from "../../../lib/operatorRunReceipts";
+import { loadLatestRunReceipts, type RunReceiptSummary } from "../../../lib/operatorRunReceipts";
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 
 export const dynamic = "force-dynamic";
@@ -126,6 +126,42 @@ export async function claimLaunch(id: string): Promise<string> {
   }
 }
 
+/**
+ * One library entry as the list and the single-action page show it, or null when it is retired.
+ * Shared so /actions and /actions/<id> can never disagree about an action's state.
+ */
+export async function describeScript(id: string, runReceipt: RunReceiptSummary | null) {
+  if (await isRetired(id)) return null;
+  const { descriptor } = await loadDescriptor(id);
+  const recorded = await loadState(id);
+  const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+  const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
+    ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
+    : recorded;
+  const scriptMtime = (await stat(path.join(LIBRARY_PATH, `${id}.sh`))).mtime.toISOString();
+  const updatedAt = state?.finishedAt ?? state?.startedAt ?? scriptMtime;
+  return {
+    id: descriptor.id,
+    kind: descriptor.kind,
+    title: descriptor.title,
+    problem: descriptor.problem,
+    desiredEffect: descriptor.desired_effect,
+    authority: descriptor.authority,
+    success: descriptor.success,
+    failure: descriptor.failure,
+    repeatable: descriptor.repeatable === true,
+    nextAfter: descriptor.next_after ?? null,
+    lastRunReceipt: runReceipt,
+    state: state?.status === "running" ? state : receipt
+      ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,
+          message: receipt.status === "running" && !processIsRunning(receipt.pid) ? "The bounded runner stopped; retry this exact action to recover its canonical receipt." : receipt.message }
+      : state ?? { status: "available" },
+    receipt,
+    updatedAt,
+    modifiedAt: scriptMtime
+  };
+}
+
 /** List every valid operator script currently available in the library. */
 export async function GET() {
   try {
@@ -134,35 +170,7 @@ export async function GET() {
     const runReceipts = await loadLatestRunReceipts(LIBRARY_PATH);
     const scripts = await Promise.all(ids.map(async (id) => {
       try {
-        if (await isRetired(id)) return null;
-        const { descriptor } = await loadDescriptor(id);
-        const recorded = await loadState(id);
-        const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
-        const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
-          ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
-          : recorded;
-        const scriptMtime = (await stat(path.join(LIBRARY_PATH, `${id}.sh`))).mtime.toISOString();
-        const updatedAt = state?.finishedAt ?? state?.startedAt ?? scriptMtime;
-        return {
-          id: descriptor.id,
-          kind: descriptor.kind,
-          title: descriptor.title,
-          problem: descriptor.problem,
-          desiredEffect: descriptor.desired_effect,
-          authority: descriptor.authority,
-          success: descriptor.success,
-          failure: descriptor.failure,
-          repeatable: descriptor.repeatable === true,
-          nextAfter: descriptor.next_after ?? null,
-          lastRunReceipt: runReceipts.get(descriptor.id) ?? null,
-          state: state?.status === "running" ? state : receipt
-            ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,
-                message: receipt.status === "running" && !processIsRunning(receipt.pid) ? "The bounded runner stopped; retry this exact action to recover its canonical receipt." : receipt.message }
-            : state ?? { status: "available" },
-          receipt,
-          updatedAt,
-          modifiedAt: scriptMtime
-        };
+        return await describeScript(id, runReceipts.get(id) ?? null);
       } catch (error) {
         console.error(`Ignoring invalid operator-script library entry ${id}.`, error);
         return null;
