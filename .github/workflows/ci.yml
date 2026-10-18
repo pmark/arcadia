@@ -35,16 +35,17 @@ jobs:
         run: mise exec -- pnpm check:plan-close-outs
 
   unit:
-    # Required checks are named unit-1..unit-4; `name` keeps those exact check
-    # names. Shards come from scripts/ci-test-shard.mjs (duration-balanced,
-    # every test file in exactly one shard) instead of vitest's hash shards.
-    name: unit-${{ matrix.shard }}
+    # Test files are split over 8 duration-balanced shards (scripts/ci-test-shard.mjs;
+    # every test file lands in exactly one shard) so wall time is the slowest
+    # small shard. Branch protection requires the checks unit-1..unit-4, so the
+    # unit-N gate jobs below keep those names and fail unless every shard passed.
+    name: unit-shard-${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
@@ -58,7 +59,26 @@ jobs:
       # already enforces, so CI builds only the artifacts.
       - run: mise exec -- pnpm build:artifacts
       - name: Run this shard's test files
-        run: mise exec -- bash -c 'node scripts/ci-test-shard.mjs ${{ matrix.shard }} 4 | xargs pnpm exec vitest run'
+        run: mise exec -- bash -c 'node scripts/ci-test-shard.mjs ${{ matrix.shard }} 8 | xargs pnpm exec vitest run'
+
+  unit-gate:
+    # Required check names unit-1..unit-4 (see above). Each is red unless all
+    # eight shards succeeded, so no test can fail without blocking merge.
+    name: unit-${{ matrix.gate }}
+    needs: unit
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        gate: [1, 2, 3, 4]
+    steps:
+      - name: Require every unit shard to pass
+        env:
+          RESULT: ${{ needs.unit.result }}
+        run: |
+          echo "unit shards: $RESULT"
+          test "$RESULT" = "success"
 
   dashboard:
     runs-on: ubuntu-latest
