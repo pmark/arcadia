@@ -442,7 +442,7 @@ function isSettlementRecordPath(file: string): boolean {
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): string | null {
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): DraftedCompletionSettlement | null {
   if (!evidence.worktreeExists) return null;
   const worktree = session.worktree_path;
   const plan = discoverDocs(worktree).docs.find(
@@ -459,8 +459,49 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     // left, draft included, so that commit is what its evidence describes.
     evidencedRevision: evidence.candidateRevision
   });
-  return result.settled ? result.receiptId ?? "unknown" : null;
+  if (!result.settled) return null;
+  const settlementId = result.receiptId ?? "unknown";
+  // Issue #1518: a settlement can be recorded while its commit is not on the
+  // candidate (its Git commit failed, leaving the settled documents in the
+  // working tree). Accept only a candidate whose HEAD is this settlement's own
+  // commit, proven the same way every later terminal guard proves it.
+  let head: string | null;
+  try { head = git(worktree, ["rev-parse", "HEAD"]).trim(); } catch { head = null; }
+  const carried = head ? findCandidateSettledCompletion(db, session, head) : null;
+  if (carried && carried.id === settlementId && carried.documentsCommit === head) return { kind: "settled", settlementId };
+  const receipt = readSettlementReceipt(db, settlementId);
+  const why = receipt?.recovery?.documentsCommitted === false
+    ? `its documents were written but not committed (${receipt.recovery.reason})`
+    : !receipt?.documentsCommit
+      ? "it recorded no settlement commit"
+      : `the candidate's HEAD ${head ?? "(unreadable)"} is not its settlement commit ${receipt.documentsCommit} on a clean tree`;
+  return {
+    kind: "not_in_candidate",
+    settlementId,
+    reason: `${COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_PREFIX}: the Session's drafted complete Ask was settled (settlement ${settlementId}), but ${why}, so the candidate does not carry its completion.`
+  };
 }
+
+function readSettlementReceipt(db: Database.Database, id: string): AgentAskSettlementReceipt | null {
+  try {
+    const row = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE id = ?").get(id) as { receipt_json: string } | undefined;
+    return row ? JSON.parse(row.receipt_json) as AgentAskSettlementReceipt : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The reason prefix of an exit whose drafted completion was settled but whose
+ * candidate does not carry the settlement commit (Issue #1518). It is never
+ * `accepted_completion`; the tick escalates it as
+ * `completion_settlement_not_in_candidate`.
+ */
+export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_PREFIX = "Completion settlement not in candidate";
+
+type DraftedCompletionSettlement =
+  | { kind: "settled"; settlementId: string }
+  | { kind: "not_in_candidate"; settlementId: string; reason: string };
 
 function terminalStatusFor(outcome: SessionExitOutcome): AgentSession["status"] {
   switch (outcome) {
@@ -577,18 +618,27 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   // merged. Resolve the next move against the worktree in that one case; every
   // other outcome keeps reading `repoRoot` exactly as before.
   let nextMoveRepoRoot = repoRoot;
+  let settlementNotInCandidate: { settlementId: string; reason: string } | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence);
     const attempt = settled
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
-      : drafted
-        ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted}).` }
-        : { completed: false, reason: "Completion requires a canonical settlement or a drafted complete Ask with criterion-level evidence; a Run alone does not prove acceptance." };
+      : drafted?.kind === "settled"
+        ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted.settlementId}).` }
+        : drafted?.kind === "not_in_candidate"
+          ? { completed: false, reason: drafted.reason }
+          : { completed: false, reason: "Completion requires a canonical settlement or a drafted complete Ask with criterion-level evidence; a Run alone does not prove acceptance." };
     if (attempt.completed) {
       outcome = "accepted_completion";
       reason = attempt.reason;
       nextMoveRepoRoot = session.worktree_path;
+    } else if (drafted?.kind === "not_in_candidate") {
+      // Never accepted, and never offered for resumption: the proposal is
+      // already settled, so a continuation could only refuse. The tick
+      // escalates it by name.
+      settlementNotInCandidate = { settlementId: drafted.settlementId, reason: drafted.reason };
+      reason = drafted.reason;
     } else {
       reason = `${reason} ${attempt.reason}`;
     }
@@ -604,7 +654,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   const providerSignInExit = Boolean(signInFailure) && reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX);
   const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
-  const suppressHandoff = outcome === "incomplete_resumable" && input.suppressLeaseHandoff;
+  const suppressHandoff = outcome === "incomplete_resumable" && !settlementNotInCandidate && input.suppressLeaseHandoff;
   const row: SessionExitReceipt = {
     id: createId("sessionExitReceipt"),
     session_id: session.id,
@@ -618,10 +668,11 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     evidence_json: JSON.stringify({
       ...evidence,
       ...(session.stop_reason ? { stopReason: session.stop_reason } : {}),
+      ...(settlementNotInCandidate ? { completionSettlementNotInCandidate: settlementNotInCandidate } : {}),
       ...(providerSignInExit ? { providerFailure: { kind: "sign_in", provider: session.provider, message: signInFailure } } : {})
     }),
     next_action_json: JSON.stringify(nextMove),
-    lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
+    lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff && !settlementNotInCandidate ? 1 : 0,
     superseded_by_session_id: null,
     is_simulated: session.is_simulated ? 1 : 0,
     created_at: now,

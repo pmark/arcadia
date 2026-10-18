@@ -53,6 +53,14 @@ export type ExecutorBehaviour =
    * settlement already exposes for exactly this window).
    */
   | "interrupted-after-settlement-commit"
+  /**
+   * Issue #1518's live shape (2026-10-17, headless Claude): a sandboxed agent
+   * that cannot commit or settle. It writes its work, runs the validation,
+   * leaves the tree uncommitted and runs only `agent-ask draft` (which also
+   * previews, recording a pending proposal), with `candidate_revision` its
+   * HEAD -- the Session's base, since it never committed.
+   */
+  | "draft-at-base-uncommitted"
   /** Commits its work and dies before drafting or settling anything. */
   | "interrupted-after-work-commit"
   /**
@@ -172,6 +180,24 @@ export class ScriptedExecutor {
         }
       });
       this.recorder.measure("validation", () => this.sh(cwd, work.validation));
+      if (behaviour === "draft-at-base-uncommitted") {
+        workCommit = this.git(cwd, ["rev-parse", "HEAD"]).trim();
+        const ask = JSON.stringify({
+          agent_ask: "v1",
+          request_id: requestId,
+          project: brief.project,
+          intent: "complete",
+          target_ref: `action/${brief.action}`,
+          desired_result: `Record ${brief.action} complete.`,
+          candidate_revision: workCommit,
+          evidence: brief.criteria.map((criterion) => ({ criterion, status: "met", note: "Verified in the candidate worktree by the scripted executor." })),
+          requested_authority: "apply_if_approved"
+        });
+        this.recorder.measure("gitFinalization", () => {
+          this.arcadia("agent-ask draft", cwd, () => runAgentAskDraftCommand({ workspace: this.workspace, request: ask, dir: cwd }));
+        });
+        return this.result(brief, requestId, workCommit, null, [], null);
+      }
       workCommit = this.recorder.measure("gitFinalization", () => {
         this.git(cwd, ["add", "-A"]);
         if (this.git(cwd, ["status", "--porcelain"]).trim()) this.git(cwd, ["commit", "-q", "-m", `Implement ${brief.action}`]);

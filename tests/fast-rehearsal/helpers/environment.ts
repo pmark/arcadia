@@ -143,8 +143,11 @@ export function realGit(): string {
  */
 export interface GitFaults {
   dir: string;
-  /** Arm `count` failures of `git <subcommand>`. */
-  arm(subcommand: string, count?: number): void;
+  /**
+   * Arm `count` failures of `git <subcommand>`; with `argvContains`, only of
+   * invocations whose argv contains that text (other invocations pass).
+   */
+  arm(subcommand: string, count?: number, argvContains?: string): void;
   /** Every injected failure: subcommand, working directory and argv. */
   injected(): Array<{ subcommand: string; cwd: string; argv: string }>;
   /** Remove the shim from PATH. */
@@ -171,7 +174,12 @@ for a in "$@"; do
   esac
 done
 rule=${shellQuote(rules)}/"$sub"
-if [ -n "$sub" ] && [ -f "$rule" ]; then
+matches=1
+if [ -n "$sub" ] && [ -f "$rule.match" ]; then
+  pattern=$(cat "$rule.match")
+  case "$*" in *"$pattern"*) ;; *) matches=0 ;; esac
+fi
+if [ -n "$sub" ] && [ -f "$rule" ] && [ "$matches" = 1 ]; then
   n=$(cat "$rule")
   if [ "$n" -gt 0 ]; then
     echo $((n - 1)) > "$rule"
@@ -187,7 +195,12 @@ exec ${shellQuote(git)} "$@"
   process.env.PATH = `${dir}${path.delimiter}${previousPath}`;
   return {
     dir,
-    arm: (subcommand, count = 1) => writeFileSync(path.join(rules, subcommand), `${count}\n`),
+    arm: (subcommand, count = 1, argvContains) => {
+      const match = path.join(rules, `${subcommand}.match`);
+      if (argvContains === undefined) rmSync(match, { force: true });
+      else writeFileSync(match, argvContains);
+      writeFileSync(path.join(rules, subcommand), `${count}\n`);
+    },
     injected: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean).map((line) => {
       const [subcommand, cwd, argv] = line.split("\t");
       return { subcommand, cwd, argv };

@@ -21,7 +21,7 @@ import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor } from "./terminalCandidates.js";
-import { activeActionScopeGate, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -38,7 +38,7 @@ import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
-import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
+import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
@@ -1052,6 +1052,73 @@ function recordInterruptedCompletionSettlement(
   }
 }
 
+/** A drafted completion settled without its commit on the candidate (Issue #1518). */
+export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_settlement_not_in_candidate";
+
+/**
+ * Issue #1518: a Session that cannot commit leaves its work and its drafted
+ * `complete` Ask uncommitted; exit preservation commits that tree and pushes
+ * it (opening the draft PR), and only then does reconciliation settle the
+ * draft, committing the settlement on the candidate branch. Push that settled
+ * head (a governance-only fast-forward of the branch preservation already
+ * pushed) in the same tick, so the pushed candidate and its PR carry the
+ * Plan, pointer and Log change before anything else reads them. An operator
+ * Launch's own publish step pushes the branch tip after reconciliation, so it
+ * needs nothing here.
+ *
+ * A reconciliation that settled the draft but whose candidate does not carry
+ * the settlement commit is never `accepted_completion`; it is escalated here
+ * as {@link COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}. Never throws.
+ */
+function publishSettledCandidateHead(
+  db: Database.Database,
+  input: {
+    session: AgentSession; repoRoot: string; preservation: PreservationStep; operatorLaunch: boolean;
+    receipt: { outcome: string; reason: string; evidence_json: string | null };
+    remote: Pick<CandidatePreservationRemote, "push">; now: Date; log: (message: string) => void;
+  }
+): void {
+  const { session, preservation, receipt, log } = input;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  try {
+    const notInCandidate = (JSON.parse(receipt.evidence_json ?? "{}") as { completionSettlementNotInCandidate?: { settlementId: string; reason: string } })
+      .completionSettlementNotInCandidate;
+    if (notInCandidate) {
+      recordOperatorEscalation(db, {
+        actionKey,
+        kind: COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
+        message: notInCandidate.reason,
+        remedy: `Inspect ${session.worktree_path} on ${session.branch}: settlement ${notInCandidate.settlementId} is recorded, but the candidate does not carry its commit. `
+          + "Commit the settled Plan, PROJECT.md, MISSION_LOG.md and archived Ask there (or redo the completion), push the branch to its pull request, and land it through that pull request; "
+          + "do not merge a pull request whose diff lacks the Plan status change.",
+        now: input.now
+      });
+      log(`Escalated ${actionKey} to the operator (${COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
+      return;
+    }
+    if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
+      || preservation.state === "LOCAL ONLY") return;
+    const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
+    if (!head || head === preservation.commitSha) return;
+    if (tryGit(input.repoRoot, ["rev-parse", `refs/heads/${session.branch}`])?.trim() !== head
+      || !isAncestor(session.worktree_path, preservation.commitSha, head)) {
+      log(`Did not push the settled head of ${session.branch} for ${actionKey}: the branch is not a fast-forward of preserved commit ${preservation.commitSha.slice(0, 12)} at ${head.slice(0, 12)}.`);
+      return;
+    }
+    const policyRead = readProductionPolicySafely(db);
+    if (policyRead.status !== "ok" || !policyAuthorizesRemotePreservation(policyRead.policy, actionKey)) {
+      log(`Did not push the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey}: the Active policy no longer authorizes remote preservation.`);
+      return;
+    }
+    const changed = (tryGit(session.worktree_path, ["diff", "--name-only", preservation.commitSha, head]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    if (!findCandidateSettledCompletion(db, session, head) || changed.length === 0) return;
+    input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
+    log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
+  } catch (error) {
+    log(`Pushing the settled head of ${session.branch} for ${actionKey} failed (the review step retries it before any verdict): ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 /**
  * A launch wait that is the operator's, not time's: an in-scope Action whose
  * preparation sits on a planning review item (run approval, artifact
@@ -1168,6 +1235,9 @@ function recordOperatorGateEscalation(
     | { kind: string; message: string }
     | undefined;
   if (previous?.kind === OPERATOR_GATE_ESCALATION && previous.message === message) return false;
+  // A completion settled without its commit on the candidate (Issue #1518) is
+  // the gate's cause and is recorded only once, at the exit tick: keep it.
+  if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION) return false;
   const remedy = operatorGateRemedy(db, { ...input, label });
   if (previous) clearOperatorEscalation(db, actionKey);
   recordOperatorEscalation(db, { actionKey, kind: OPERATOR_GATE_ESCALATION, message, remedy, now: input.now });
@@ -1848,6 +1918,11 @@ export function runManagedProductionTick(
             });
           }
         });
+        // Issue #1518: a completion the worker settled after preservation
+        // pushed the candidate must reach the pushed branch (and its PR) now,
+        // and a settlement that never reached the candidate is escalated.
+        publishSettledCandidateHead(db, { session: lease, repoRoot, preservation, operatorLaunch: Boolean(operatorAuthorization),
+          receipt: result.receipt, remote: options.handoff?.preserve?.remote ?? systemPreservationRemote, now, log });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
         // agent's work on the base branch while the pointer still names the same
@@ -2670,6 +2745,7 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   "no_validation_commands",
   OPERATOR_GATE_ESCALATION,
   TERMINAL_CANDIDATE_ESCALATION,
+  COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
   PLANNER_ATTEMPTS_EXHAUSTED,
   ...ATTEMPT_LINEAGE_ESCALATIONS,
   ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,
