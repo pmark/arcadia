@@ -178,11 +178,6 @@ nobody is blocked. One ping per thing; never for routine progress.
 arcadia ping "Added a Retry button to the Actions page" --kind look --link http://localhost:3020/actions
 ```
 
-To point at one operator action, link `/actions/<script id>`: it loads only that
-card (`GET /api/operator-script/<id>`), not the library or decision cards.
-`/actions?q=<script id>` still works and redirects there when `q` is exactly an
-id; any other `q` is a list search.
-
 - `--kind look|fyi|attention` (default `fyi`) sets the headline; `--link` takes
   an http(s) URL; `--channel <alias>` aims it at a channel the operator listed
   in `DISCORD_PING_CHANNELS` (an unlisted name lands in the default channel
