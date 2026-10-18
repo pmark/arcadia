@@ -143,7 +143,10 @@ describe("issuing the probe and pinning its allowance", () => {
   });
 
   it("ships the probe in the packaged build", () => {
-    const build = JSON.parse(readFileSync(path.resolve(path.dirname(SESSION_PROBE_SCRIPT_PATH), "../package.json"), "utf8")).scripts.build as string;
+    const scripts = JSON.parse(readFileSync(path.resolve(path.dirname(SESSION_PROBE_SCRIPT_PATH), "../package.json"), "utf8")).scripts as Record<string, string>;
+    // `build` is lint plus `build:artifacts`; CI runs the latter so lint runs once (in its own job).
+    expect(scripts.build).toContain("pnpm build:artifacts");
+    const build = scripts["build:artifacts"];
     expect(build).toContain("scripts/session-capability-probe.mjs");
     expect(build).toMatch(/cp [^&]*scripts\/session-capability-probe\.mjs[^&]* dist\/scripts\//);
   });
