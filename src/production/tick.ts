@@ -75,7 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
-import { attemptReviewRepair, closeSupersededPullRequests, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
+import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -311,6 +311,11 @@ function recoverTerminalHandoff(
       // hold: the one place the tick may advance the candidate's unattended
       // review by a step before the gate decides.
       verdictGate: () => {
+        // A review repair's own candidate on Decision 0098's gate list is never
+        // readied or reviewed: it stops for the operator like a failed verdict.
+        const repairGate = gateRepairCandidate(db, { repoRoot, session, head, now, log, runCommand: review?.deps.runCommand,
+          escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey: `${session.project_slug}/${session.action_id}`, kind, message, remedy, now, log }) });
+        if (repairGate) return { satisfied: false, code: "awaiting_independent_verdicts", reason: repairGate, head, missing: [] };
         const waiting = independentVerdictGate(db, { session, repoRoot });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
@@ -2144,6 +2149,21 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
     + "the only path is a governed amendment of the Action (an Agent Ask).";
 }
 
+/** One deduped review-repair escalation, logged and pinged once per kind. */
+function escalateReviewRepair(db: Database.Database, input: { actionKey: string; kind: string; message: string; remedy: string; now: Date; log?: (message: string) => void }): void {
+  const { actionKey, kind, message } = input;
+  const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  const newlyDetected = recordOperatorEscalation(db, { actionKey, kind, message, remedy: input.remedy, now: input.now });
+  if (newlyDetected || previous?.kind !== kind) {
+    input.log?.(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
+    try {
+      queueOperatorPing(db, { message: `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`, kind: "attention", agent: "production-tick", now: input.now });
+    } catch (error) {
+      input.log?.(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 /**
  * The review repair loop's one step for a recovered candidate whose exact
  * settled head carries a reviewer's real failed verdict
@@ -2171,18 +2191,7 @@ function attemptReviewRepairLaunch(
     const step = attemptReviewRepair({
       db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
       runCommand: input.options.review?.runCommand,
-      escalate: (kind, message, remedy) => {
-        const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
-        const newlyDetected = recordOperatorEscalation(db, { actionKey, kind, message, remedy, now: input.now });
-        if (newlyDetected || previous?.kind !== kind) {
-          input.log(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
-          try {
-            queueOperatorPing(db, { message: `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`, kind: "attention", agent: "production-tick", now: input.now });
-          } catch (error) {
-            input.log(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      },
+      escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
       launch: (repair) => launchGuardedHostSession({
         db,
         workspace: input.workspace,

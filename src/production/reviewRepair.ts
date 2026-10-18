@@ -10,6 +10,7 @@ import type { GuardedLaunchInput, GuardedLaunchResult } from "../sessions/launch
 import {
   ensureReviewRepairTable,
   getReviewRepair,
+  getSessionRepair,
   launchedRepairRounds,
   MAX_REVIEW_REPAIR_ROUNDS,
   renderRepairFindings,
@@ -113,38 +114,60 @@ export function verdictIsAuthorityAdjacent(findings: ReviewRepairFinding[], chec
  * Launch-authority and loop code the batch-merge classifier does not name:
  * Decision 0098's gate list includes "launch-authority code" and the code
  * implementing this loop and its gates, so a candidate changing any of it is
- * never repaired unattended.
+ * never repaired unattended. An entry ending in "/" gates the whole tree:
+ * every module under `src/sessions/` prepares, launches, briefs, reconciles
+ * or settles Sessions.
  */
 export const REPAIR_GATED_PATHS: readonly string[] = [
-  "src/sessions/launch.ts",
-  "src/sessions/enrollment.ts",
-  "src/sessions/roleLineage.ts",
-  "src/sessions/operatorLaunch.ts",
-  "src/sessions/reviewRepair.ts",
+  "src/sessions/",
   "src/production/reviewRepair.ts",
   "src/production/policy.ts",
   "src/production/workerMerge.ts",
   "src/production/independentReview.ts"
 ];
 
+const isRepairGatedPath = (file: string) => REPAIR_GATED_PATHS.some((entry) => entry.endsWith("/") ? file.startsWith(entry) : file === entry);
+
 const TEST_PATH = /(^|\/)(tests?|__tests__|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$/i;
-const SKIPPED_TEST = /\b(?:describe|it|test|suite)\.(?:skip|only|todo)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(|\bit\.fails\b/;
+/**
+ * A skipped, conditional, focused, to-do or expected-failure test in any of
+ * the runners' spellings: a modifier anywhere in a member chain that starts
+ * at describe/it/test/suite/bench (`it.skipIf(c)(...)`,
+ * `test.concurrent.skip(...)`, `describe.sequential.only(...)`,
+ * `test.fails(...)`), the x/f prefixes, and a runtime skip (`ctx.skip()`,
+ * `this.skip()`, any bare `.skip()`).
+ */
+const SKIPPED_TEST = /\b(?:describe|it|test|suite|bench)(?:\.\w+)*\.(?:skip|only|todo|fails|skipIf|runIf)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(|\.skip\(\s*\)/;
+/** One test case: `it(`, `test(`, or either with a modifier chain (`it.each(...)(` counts once). */
+const TEST_CASE = /\b(?:it|test)(?:\.\w+)*\s*\(/g;
 const THRESHOLD_FILE = /(^|\/)(vitest|vite|jest|playwright)\.config\.[cm]?[jt]s$|(^|\/)(package\.json|\.c8rc(\.json)?|\.nycrc(\.json)?|codecov\.ya?ml)$|(^|\/)\.github\//i;
 const THRESHOLD_LINE = /threshold|coverage|minimum|maxWorkers|timeout|retries|bail/i;
 
+const countCases = (content: string | null) => (content ?? "").match(TEST_CASE)?.length ?? 0;
+
 /**
  * The rest of Decision 0098's gate list over the candidate's own change
- * (`from...to`): deleted test files, an added skip/only/todo marker, or a
- * changed line about a check threshold in test or CI configuration. Each
- * entry names what it found; unreadable Git is itself a gate.
+ * (`from...to`): deleted test files, fewer test cases in a surviving test
+ * file, an added skip/only/todo/fails/conditional marker, or a changed line
+ * about a check threshold in test or CI configuration. Each entry names what
+ * it found; unreadable Git is itself a gate.
  */
 export function testWeakeningGates(repoRoot: string, from: string, to: string): string[] {
   const reasons: string[] = [];
+  const mergeBase = tryGit(repoRoot, ["merge-base", from, to]);
   const deleted = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=D", "--name-only", `${from}...${to}`]);
+  const modified = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=M", "--name-only", `${from}...${to}`]);
   const patch = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--no-color", "--no-ext-diff", "-U0", `${from}...${to}`]);
-  if (deleted === null || patch === null) return ["the candidate's diff could not be read"];
-  const deletedTests = deleted.split("\n").map((line) => line.trim()).filter((file) => file && TEST_PATH.test(file));
+  if (!mergeBase || deleted === null || modified === null || patch === null) return ["the candidate's diff could not be read"];
+  const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const deletedTests = lines(deleted).filter((file) => TEST_PATH.test(file));
   if (deletedTests.length > 0) reasons.push(`it deletes test files (${deletedTests.join(", ")})`);
+  const fewer = lines(modified).filter((file) => TEST_PATH.test(file)).flatMap((file) => {
+    const before = countCases(tryGit(repoRoot, ["show", `${mergeBase}:${file}`]));
+    const after = countCases(tryGit(repoRoot, ["show", `${to}:${file}`]));
+    return after < before ? [`${file}: ${before} -> ${after}`] : [];
+  });
+  if (fewer.length > 0) reasons.push(`it removes test cases (${fewer.join(", ")})`);
   let file = "";
   const skipped = new Set<string>();
   const thresholds = new Set<string>();
@@ -160,12 +183,18 @@ export function testWeakeningGates(repoRoot: string, from: string, to: string): 
   return reasons;
 }
 
-/** Every gate on the candidate's own change, as one reason, or null. */
-function changeGate(repoRoot: string, from: string, to: string): string | null {
+/**
+ * Every Decision 0098 gate on a candidate's own change (`from...to`), as one
+ * reason, or null: checked-in authority paths, launch-authority and
+ * repair-loop code, and the test-weakening gates. Applied to the failed
+ * candidate before a repair launches and to a repair's own candidate before
+ * it is readied or reviewed.
+ */
+export function candidateChangeGate(repoRoot: string, from: string, to: string): string | null {
   const paths = agentChangedPaths(repoRoot, from, to);
   if (paths === null) return "the candidate's changed paths could not be read";
   const boundaries: AuthorityBoundary[] = paths.length > 0 ? classifyAuthorityPaths(paths) : [];
-  const launchCode = paths.filter((file) => REPAIR_GATED_PATHS.includes(file));
+  const launchCode = paths.filter(isRepairGatedPath);
   const reasons: string[] = [];
   if (boundaries.length > 0) reasons.push(`it touches checked-in authority boundaries (${boundaries.join(", ")})`);
   if (launchCode.length > 0) reasons.push(`it changes launch-authority or repair-loop code (${launchCode.join(", ")})`);
@@ -227,7 +256,9 @@ export function renderFailedVerdictComment(row: ReviewRepairRow): string {
       ? `**Do not merge: escalated to the operator.** ${row.reason ?? "A gate stops the repair loop."}`
       : `**Do not merge: the repair loop will push a fixed head (round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS})** on a new branch and pull request for this Action; that head is reviewed again from scratch.`;
   return [
-    `Arcadia worker: the independent ${row.role} verdict on \`${row.failed_head}\` is **${row.verdict}**, so this candidate is returned to draft and never integrates.`,
+    row.role === REPAIR_CANDIDATE_GATE_ROLE
+      ? `Arcadia worker: this repair candidate \`${row.failed_head}\` is on Decision 0098's gate list, so it stays a draft, is not reviewed and never integrates unattended.`
+      : `Arcadia worker: the independent ${row.role} verdict on \`${row.failed_head}\` is **${row.verdict}**, so this candidate is returned to draft and never integrates.`,
     "",
     `Summary: ${row.summary}`,
     "",
@@ -257,10 +288,15 @@ function notifyPullRequest(db: Database.Database, row: ReviewRepairRow, input: {
   const mark = (column: "drafted_at" | "commented_at") =>
     db.prepare(`UPDATE production_review_repairs SET ${column} = ?, last_error = NULL, notify_failures = 0, updated_at = ? WHERE request_id = ?`).run(at, at, row.request_id);
   if (!row.drafted_at) {
-    const viewed = input.runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state"], cwd: input.repoRoot, timeoutMs: 30_000 });
+    const viewed = input.runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state,isDraft"], cwd: input.repoRoot, timeoutMs: 30_000 });
     if (viewed.status !== 0) return `gh pr view ${url} failed: ${commandError(viewed)}`;
     let state = "UNKNOWN";
-    try { state = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "UNKNOWN").toUpperCase(); } catch { /* UNKNOWN */ }
+    let isDraft = false;
+    try {
+      const view = JSON.parse(viewed.stdout) as { state?: unknown; isDraft?: unknown };
+      state = String(view.state ?? "UNKNOWN").toUpperCase();
+      isDraft = view.isDraft === true;
+    } catch { /* UNKNOWN */ }
     if (state !== "OPEN") {
       const reason = state === "MERGED"
         ? `PR ${url} was MERGED although its independent ${row.role} verdict failed; the failed head may already be on the base.`
@@ -269,10 +305,12 @@ function notifyPullRequest(db: Database.Database, row: ReviewRepairRow, input: {
         .run(reason, MAX_NOTIFY_FAILURES, at, row.request_id);
       return null;
     }
-    const fenced = input.authorized();
-    if (fenced) return `withheld returning ${url} to draft: ${fenced}`;
-    const undone = input.runCommand({ command: "gh", args: ["pr", "ready", url, "--undo"], cwd: input.repoRoot, timeoutMs: 30_000 });
-    if (undone.status !== 0) return `gh pr ready ${url} --undo failed: ${commandError(undone)}`;
+    if (!isDraft) {
+      const fenced = input.authorized();
+      if (fenced) return `withheld returning ${url} to draft: ${fenced}`;
+      const undone = input.runCommand({ command: "gh", args: ["pr", "ready", url, "--undo"], cwd: input.repoRoot, timeoutMs: 30_000 });
+      if (undone.status !== 0) return `gh pr ready ${url} --undo failed: ${commandError(undone)}`;
+    }
     mark("drafted_at");
   }
   if (!row.commented_at) {
@@ -331,7 +369,7 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     let outcome: ReviewRepairOutcome = "pending";
     let reason: string | null = null;
     const adjacent = verdictIsAuthorityAdjacent(context.findings, context.checks);
-    const gate = adjacent ? null : changeGate(repoRoot, session.base_revision, start);
+    const gate = adjacent ? null : candidateChangeGate(repoRoot, session.base_revision, start);
     const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
     if (adjacent) {
       outcome = "gated"; reason = `The verdict is authority-adjacent (${adjacent}); a repair is never launched unattended for it.`;
@@ -435,4 +473,72 @@ export function closeSupersededPullRequests(db: Database.Database, input: { repo
     closed += 1;
   }
   return closed;
+}
+
+/** The `role` of a repair row recording a gated repair candidate rather than a failed verdict. */
+export const REPAIR_CANDIDATE_GATE_ROLE = "repair-gate";
+
+/**
+ * A repair Session's own candidate, checked before it is readied, reviewed or
+ * integrated: the same Decision 0098 gates as the failed candidate, over the
+ * repair's whole change (its base revision to its settlement's parent), so a
+ * repair that deletes or skips the test the reviewer complained about, or
+ * touches authority paths, stops for the operator exactly like a failed
+ * verdict (PR kept a draft with one comment, one escalation) and is never
+ * reviewed. Returns the gate's reason, or null when the candidate is not a
+ * repair or passes every gate. Idempotent per repair Session and head.
+ */
+export function gateRepairCandidate(db: Database.Database, input: {
+  repoRoot: string;
+  session: AgentSession;
+  head: string;
+  now: Date;
+  log?: (message: string) => void;
+  runCommand?: RunCommand;
+  escalate: (kind: string, message: string, remedy: string) => void;
+}): string | null {
+  const { session, head, now } = input;
+  const repair = getSessionRepair(db, session.id);
+  if (!repair) return null;
+  const parent = tryGit(input.repoRoot, ["rev-parse", "--verify", `${head}^1`]);
+  // Both the whole candidate (base -> repaired work) and the repair's own
+  // change over the failed work it started from: a test only the failed
+  // candidate added, then deleted by the repair, nets out of the first diff.
+  const gates = parent
+    ? [candidateChangeGate(input.repoRoot, session.base_revision, parent), candidateChangeGate(input.repoRoot, repair.start_revision, parent)]
+      .filter((reason): reason is string => reason !== null)
+    : ["the repair candidate's settlement parent could not be read"];
+  const gate = gates.length > 0 ? [...new Set(gates)].join("; ") : null;
+  if (!gate) return null;
+  ensureReviewRepairTable(db);
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const requestId = reviewRepairRequestId(session.id, head);
+  const reason = `The review repair candidate (round ${repair.round} of ${MAX_REVIEW_REPAIR_ROUNDS}) is on Decision 0098's gate list: ${gate}. It is not reviewed or integrated unattended.`;
+  const at = now.toISOString();
+  db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+      start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
+      last_error, drafted_at, commented_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?) ON CONFLICT(request_id) DO NOTHING`)
+    .run(requestId, actionKey, repair.policy_epoch, repair.round, session.id, session.branch, head, parent ?? head,
+      workerPullRequestUrl(db, session.id), REPAIR_CANDIDATE_GATE_ROLE, gate, repair.report_path, repair.findings_json, repair.failed_checks_json, reason, at, at);
+  let row = getReviewRepair(db, requestId)!;
+  const policy = readProductionPolicySafely(db);
+  const authorized = (): string | null => {
+    const current = readProductionPolicySafely(db);
+    if (current.status !== "ok" || current.policy.desiredState !== "active") return "managed production is Off";
+    const allowed = policyAuthorizesPullRequestReadiness(current.policy, actionKey, now);
+    return allowed.authorized ? null : allowed.reason;
+  };
+  if (policy.status === "ok") {
+    const error = notifyPullRequest(db, row, { repoRoot: input.repoRoot, now, runCommand: input.runCommand ?? runHostCommand, authorized });
+    row = getReviewRepair(db, requestId)!;
+    if (error && row.last_error !== error) {
+      db.prepare("UPDATE production_review_repairs SET last_error = ?, updated_at = ? WHERE request_id = ?").run(error, at, requestId);
+      input.log?.(`Review repair candidate gate for ${actionKey}: ${error}; retried next tick.`);
+    }
+  }
+  input.escalate(REVIEW_REPAIR_GATED,
+    `${reason} The original findings it was repairing (report ${repair.report_path ?? "unavailable"}):\n${renderRepairFindings(repair).join("\n")}`,
+    `Inspect the repair candidate ${session.branch} at ${head}; fix it yourself (a new head is reviewed afresh) or land the change by hand after review. Its PR${row.pull_request_url ? ` ${row.pull_request_url}` : ""} stays a draft; nothing integrates meanwhile.`);
+  return reason;
 }

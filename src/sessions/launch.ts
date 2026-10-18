@@ -12,6 +12,7 @@ import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { normalizeAgentAsk } from "../ask/agentAsk.js";
 import { draftPathsAt } from "../ask/autoSettleBeforeDispatch.js";
+import { commitTreeAt } from "./candidateSnapshot.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
@@ -1073,8 +1074,14 @@ function retireInheritedCompletionDrafts(worktreePath: string, startRevision: st
     try {
       // A freshly created worktree: the index holds exactly these removals.
       git(worktreePath, ["rm", "-q", "--", ...inherited]);
-      git(worktreePath, ["-c", "core.hooksPath=/dev/null", "commit", "-q", "-m",
-        `chore(arcadia): retire the failed candidate's completion draft for ${actionId}\n\nA review repair settles only a completion it drafts itself.`]);
+      // Under the standing Arcadia Controller identity (the one preservation
+      // commits under), never the host's ambient Git identity.
+      const parent = git(worktreePath, ["rev-parse", "HEAD"]).trim();
+      const tree = git(worktreePath, ["write-tree"]).trim();
+      const retired = commitTreeAt(worktreePath, tree, parent, {
+        message: `chore(arcadia): retire the failed candidate's completion draft for ${actionId}\n\nA review repair settles only a completion it drafts itself.`
+      });
+      git(worktreePath, ["update-ref", "-m", "arcadia: retire inherited completion draft", "HEAD", retired, parent]);
     } catch (error) {
       throw validationError(`The review repair could not retire the failed candidate's completion draft: ${error instanceof Error ? error.message : String(error)}`, { code: "repair_draft_retirement_failed" });
     }

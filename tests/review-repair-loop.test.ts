@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_NO_DRAFT } from "../src/ask/autoSettleBeforeDispatch.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { readProductionPolicySafely } from "../src/production/policy.js";
-import { renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent } from "../src/production/reviewRepair.js";
+import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, verdictIsAuthorityAdjacent } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { ensureReviewRepairTable, getSessionRepair, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
@@ -108,6 +108,9 @@ describe("the inherited completion draft and a resumed repair", () => {
     expect(git(repair.worktree_path, ["rev-parse", "HEAD^"]).trim()).toBe(start);
     expect(repair.launch_revision).toBe(git(repair.worktree_path, ["rev-parse", "HEAD"]).trim());
     expect(git(repair.worktree_path, ["log", "-1", "--format=%s"]).trim()).toMatch(/retire the failed candidate's completion draft/);
+    // Under the standing host identity, never the ambient one.
+    expect(git(repair.worktree_path, ["log", "-1", "--format=%an <%ae> / %cn <%ce>"]).trim())
+      .toBe("Arcadia Controller <controller@arcadia.local> / Arcadia Controller <controller@arcadia.local>");
     for (const file of inherited) expect(git(repair.worktree_path, ["ls-files", "--", file]).trim()).toBe("");
     // The repair agent works, then dies before finishing: a resumable exit.
     rehearsal.agentEdit(repair, "REPAIR.md", "partial fix\n");
@@ -187,6 +190,27 @@ describe("the review repair bound and gates", () => {
     const { rehearsal } = failedReview(() => {}, { "tests/marker.test.mjs": "import { it } from \"node:test\";\nit.skip(\"marker\", () => {});\n" });
     expect(rehearsal.lease()).toBeNull();
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("skipped or focused test") });
+  });
+
+  it("stops for the operator, unreviewed, when a repair Session deletes the test the reviewer complained about", () => {
+    const { rehearsal } = failedReview(() => {}, { "tests/marker.test.mjs": "import { test } from \"node:test\";\ntest(\"marker\", () => {});\n" });
+    const repair = rehearsal.lease()!;
+    rmSync(path.join(repair.worktree_path, "tests", "marker.test.mjs"));
+    rehearsal.agentFinish(repair, CRITERIA_A);
+    rehearsal.tmux.exit(repair.tmux_session_name);
+    expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion"); // exit tick: the repair's own draft PR
+    const reviewersBefore = rehearsal.github.reviewerCalls.length;
+    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).not.toBe("integrated");
+    expect(rehearsal.github.reviewerCalls.length).toBe(reviewersBefore);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("deletes test files (tests/marker.test.mjs)") });
+    const repairPr = rehearsal.github.prs.find((pr) => pr.branch === repair.branch)!;
+    expect(repairPr.isDraft).toBe(true);
+    expect(rehearsal.github.readyCalls).not.toContain(repairPr.url);
+    expect(rehearsal.github.comments.filter((comment) => comment.url === repairPr.url).map((comment) => comment.body)).toEqual([
+      expect.stringContaining("Do not merge: escalated to the operator.")
+    ]);
+    expect(rehearsal.tmux.launches).toHaveLength(2);
+    expect(rehearsal.log.filter((line) => line.includes("(review_repair_gated)"))).toHaveLength(1);
   });
 
   it("escalates instead of launching when no verdict attempt is left to review a repaired head", () => {
@@ -308,5 +332,51 @@ describe("review repair pure parts", () => {
     expect(reasons.join(" | ")).toMatch(/deletes test files \(tests\/a\.test\.mjs\)/);
     expect(reasons.join(" | ")).toMatch(/skipped or focused test \(tests\/b\.test\.mjs\)/);
     expect(reasons.join(" | ")).toMatch(/check threshold .*vitest\.config\.ts/);
+  });
+
+  it.each([
+    ["it.skipIf(true)(\"b\", () => {});"],
+    ["describe.skipIf(process.env.CI)(\"b\", () => {});"],
+    ["it.runIf(false)(\"b\", () => {});"],
+    ["test.concurrent.skip(\"b\", () => {});"],
+    ["describe.sequential.skip(\"b\", () => {});"],
+    ["test.fails(\"b\", () => {});"],
+    ["bench.only(\"b\", () => {});"],
+    ["test(\"b\", (ctx) => { ctx.skip(); });"],
+    ["test(\"b\", function () { this.skip(); });"]
+  ])("gates a skipped, conditional, focused or expected-failure test written as %s", (line) => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-repair-skip-"));
+    roots.push(root);
+    const commit = (message: string) => {
+      git(root, ["add", "-A"]);
+      git(root, ["-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "-m", message]);
+      return git(root, ["rev-parse", "HEAD"]).trim();
+    };
+    git(root, ["init", "-q", "-b", "main"]);
+    mkdirSync(path.join(root, "tests"), { recursive: true });
+    writeFileSync(path.join(root, "tests", "b.test.ts"), "test(\"b\", () => {});\n");
+    const base = commit("base");
+    writeFileSync(path.join(root, "tests", "b.test.ts"), `${line}\n`);
+    expect(testWeakeningGates(root, base, commit("weaken")).join(" | ")).toMatch(/skipped or focused test \(tests\/b\.test\.ts\)/);
+  });
+
+  it("gates a net decrease of test cases in a surviving test file, and the whole src/sessions/ tree", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-repair-cases-"));
+    roots.push(root);
+    const commit = (message: string) => {
+      git(root, ["add", "-A"]);
+      git(root, ["-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "-m", message]);
+      return git(root, ["rev-parse", "HEAD"]).trim();
+    };
+    git(root, ["init", "-q", "-b", "main"]);
+    mkdirSync(path.join(root, "tests"), { recursive: true });
+    mkdirSync(path.join(root, "src", "sessions"), { recursive: true });
+    writeFileSync(path.join(root, "tests", "c.test.ts"), "it(\"one\", () => {});\ntest(\"two\", () => {});\n");
+    writeFileSync(path.join(root, "src", "sessions", "worktreePreparation.ts"), "export {};\n");
+    const base = commit("base");
+    writeFileSync(path.join(root, "tests", "c.test.ts"), "it(\"one\", () => {});\n");
+    expect(testWeakeningGates(root, base, commit("drop a case")).join(" | ")).toMatch(/removes test cases \(tests\/c\.test\.ts: 2 -> 1\)/);
+    writeFileSync(path.join(root, "src", "sessions", "worktreePreparation.ts"), "export const x = 1;\n");
+    expect(candidateChangeGate(root, base, commit("touch sessions"))).toMatch(/src\/sessions\/worktreePreparation\.ts/);
   });
 });
