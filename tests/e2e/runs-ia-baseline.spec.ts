@@ -9,7 +9,7 @@ test('record the current information-architecture request baseline', async ({ pa
   const qa = path.join(arcadia.repo, 'docs/qa/runs-information-architecture');
   mkdirSync(qa, { recursive: true });
   try {
-    for (const route of ['/runs', '/actions', '/review', '/work-queue', '/flight-deck']) {
+    for (const route of ['/runs', '/actions', '/actions/no-such-action', '/review', '/work-queue', '/flight-deck']) {
       const requests: string[] = [];
       const capture = (request: { url(): string }) => {
         const url = new URL(request.url());
@@ -31,9 +31,10 @@ test('record the current information-architecture request baseline', async ({ pa
       requests: records
     }, null, 2) + '\n');
     expect(records['/runs']).toEqual(['/api/approvals']);
-    // The decision-card list (GET) joined the focused Operator actions page with the cards Action (#1284); still read-only.
-    expect(records['/actions']).toEqual(expect.arrayContaining(['/api/decision-card', '/api/operator-script']));
-    expect(records['/actions']).toHaveLength(2);
+    // Decision cards load only after the operator opens "Show decision cards" (#1542), so a cold list reads the library alone.
+    expect(records['/actions']).toEqual(['/api/operator-script']);
+    // A single-action page reads exactly that action: no library, no decision cards, no production status.
+    expect(records['/actions/no-such-action']).toEqual(['/api/operator-script/no-such-action']);
     expect(records['/review']).toEqual(['/api/snapshot']);
     expect(records['/work-queue']).toEqual(['/api/work-queue']);
     expect(records['/flight-deck']).toEqual(expect.arrayContaining(['/api/work-queue', '/api/snapshot']));
