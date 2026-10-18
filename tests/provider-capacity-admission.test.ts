@@ -728,6 +728,28 @@ describe("managed production admission requires proven capacity", () => {
 
     expect(outcome.admitted).toBe(true);
   });
+
+  it("refuses over-budget production admission on the 5-hour window, naming the 80% unattended budget and window", () => {
+    const overBudget = decisionFor("codex-cli", {
+      rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }]
+    });
+    const outcome = admit(activated(), "adm-5h-over-budget", overBudget);
+
+    expect(outcome).toMatchObject({ admitted: false, code: "capacity_refused" });
+    expect(outcome.admitted === false && outcome.reason).toContain("80% unattended budget");
+    expect(outcome.admitted === false && outcome.reason).toContain("5h");
+  });
+
+  it("refuses over-budget production admission on the 7-day window, naming it", () => {
+    const overBudget = decisionFor("codex-cli", {
+      rateLimits: [{ label: "7d", usedPercentage: 85, resetsAt: "2026-09-10T00:00:00.000Z" }]
+    });
+    const outcome = admit(activated(), "adm-7d-over-budget", overBudget);
+
+    expect(outcome).toMatchObject({ admitted: false, code: "capacity_refused" });
+    expect(outcome.admitted === false && outcome.reason).toContain("80% unattended budget");
+    expect(outcome.admitted === false && outcome.reason).toContain("7d");
+  });
 });
 
 describe("the spend budget check is hermetic", () => {
