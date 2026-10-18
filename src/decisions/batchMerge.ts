@@ -19,6 +19,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+  DECISION_CARD_LIMITS,
   DECISION_CARD_SCHEMA,
   validateDecisionCard,
   type DecisionCard,
@@ -496,8 +497,22 @@ export interface BatchMergeItem {
   consequence: string;
 }
 
+/**
+ * A PR the production worker declined to merge as authority-adjacent (structurally
+ * satisfied by `OperatorMergeQueueEntry`). Read-only context: it is shown on the card
+ * with its reason, and never gains merge authority from being listed.
+ */
+export interface WorkerHeldPr {
+  actionKey: string;
+  pullRequestUrl: string;
+  pullRequestNumber: number | null;
+  headSha: string;
+  why: string;
+  boundaries: readonly AuthorityBoundary[];
+}
+
 export type BatchMergeBuild =
-  | { ok: true; card: DecisionCard; spec: BatchMergeSpec; items: BatchMergeItem[] }
+  | { ok: true; card: DecisionCard; spec: BatchMergeSpec; items: BatchMergeItem[]; held: WorkerHeldPr[] }
   | { ok: false; refusal: BatchRefusal };
 
 const clip = (s: string, max: number): string => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
@@ -519,6 +534,12 @@ export function buildBatchMergeCard(input: {
    * listed here refuses the build; nothing is acknowledged by default.
    */
   acknowledgedBoundaries?: Readonly<Record<number, readonly AuthorityBoundary[]>>;
+  /**
+   * The worker's authority-adjacent queue. Every entry appears on the card with its
+   * reason and exact head. An entry for a PR in this batch at the same head adds its
+   * reason to that row; the rest are listed as held and are not merged by this card.
+   */
+  workerHeld?: readonly WorkerHeldPr[];
 }): BatchMergeBuild {
   const trunk = input.trunk ?? "main";
   const repo = input.repo ?? "pmark/arcadia";
@@ -566,13 +587,14 @@ export function buildBatchMergeCard(input: {
           ? "touches no authority boundary"
           : `touches authority boundary: ${r.boundaries.map((b) => BOUNDARY_MEANING[b]).join("; ")}`;
       const into = s.parent === null ? trunk : `the head of #${s.parent}`;
+      const heldRow = (input.workerHeld ?? []).find((h) => h.pullRequestNumber === number && h.headSha === f.headSha);
       return {
         order: index + 1,
         number,
         title: f.title,
         headSha: f.headSha,
         parent: s.parent,
-        why: f.why,
+        why: heldRow ? (f.why ? `${f.why} ${heldRow.why}` : heldRow.why) : f.why,
         decisions: [...f.decisions],
         boundaries: r.boundaries,
         boundarySummary,
@@ -582,9 +604,13 @@ export function buildBatchMergeCard(input: {
       };
     });
     const anyBoundary = items.some((i) => i.boundaries.length > 0);
+    const held = (input.workerHeld ?? [])
+      .filter((h) => !items.some((i) => i.number === h.pullRequestNumber && i.headSha === h.headSha))
+      .slice(0, Math.max(0, DECISION_CARD_LIMITS.maxEvidence - items.length));
     const what = clip(
       `Merge ${items.length} PR${items.length === 1 ? "" : "s"} into ${trunk} in stack order: ${items.map((i) => `#${i.number}`).join(", ")}.` +
-        (anyBoundary ? " Some touch authority boundaries; read each row before pressing." : ""),
+        (anyBoundary ? " Some touch authority boundaries; read each row before pressing." : "") +
+        (held.length > 0 ? ` The worker also holds ${held.length} authority-adjacent PR${held.length === 1 ? "" : "s"} for you (listed in evidence, not merged by this card).` : ""),
       500,
     );
     const candidate = {
@@ -604,10 +630,16 @@ export function buildBatchMergeCard(input: {
         },
         { id: "hold", label: "Hold", consequence: "Nothing merges; the card stays open until it expires or a head moves." },
       ],
-      evidence: items.map((i) => ({
-        label: clip(`#${i.order} PR ${i.number} ${sha12(i.headSha)}: ${i.boundaries.length === 0 ? "no authority boundary" : i.boundaries.join(",")}; review ${i.reviewVerdict}`, 200),
-        url: `https://github.com/${repo}/pull/${i.number}`,
-      })),
+      evidence: [
+        ...items.map((i) => ({
+          label: clip(`#${i.order} PR ${i.number} ${sha12(i.headSha)}: ${i.boundaries.length === 0 ? "no authority boundary" : i.boundaries.join(",")}; review ${i.reviewVerdict}`, 200),
+          url: `https://github.com/${repo}/pull/${i.number}`,
+        })),
+        ...held.map((h) => ({
+          label: clip(`Held by worker (not merged here): ${h.pullRequestNumber === null ? h.pullRequestUrl : `PR ${h.pullRequestNumber}`} ${sha12(h.headSha)}: ${h.why}`, 200),
+          url: h.pullRequestUrl,
+        })),
+      ],
       verb: "merge",
       pins: { stateHash: manifestStateHash(trunk, repo, specPrs) },
       expires: input.expires,
@@ -618,7 +650,7 @@ export function buildBatchMergeCard(input: {
     if (!validated.ok) {
       return fail("invalid_spec", null, `The card did not validate: ${validated.errors.map((e) => e.code).join(", ")}.`);
     }
-    return { ok: true, card: validated.card, spec, items };
+    return { ok: true, card: validated.card, spec, items, held };
   } catch (error) {
     return fail("invalid_spec", null, `The batch could not be read: ${error instanceof Error ? error.message : "unreadable input"}.`);
   }

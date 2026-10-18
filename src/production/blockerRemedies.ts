@@ -87,6 +87,7 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       answer("planning_artifact_validation_pending", "Retry planning", "The review item's own button on /todo creates a planning-retry approval."),
       answer("planning_artifact_acceptance_pending", "Accept plan", "The review item's own button on /todo accepts the validated plan; no Run starts."),
       answer("build_packet_approval_pending", "Approve build packet", "The packet's own button on /todo records the approval; nothing executes from it."),
+      link("authority_adjacent_pr", "Merge on GitHub", "The worker never merges a pull request the blast-radius assessment marks authority-adjacent. Review it, then merge it on GitHub yourself; this card is a link only and grants no merge authority. The row clears once the worker records the PR merged.", "todo", null, "operator-step"),
       worker("awaiting_independent_verdicts", "The independent review and QA verdicts for the candidate's head are pending."),
       worker("verdict_readiness_failed", "The candidate could not be made ready for verdicts this tick."),
       worker("review_head_moved", "The candidate head moved after review started."),

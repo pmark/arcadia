@@ -21,6 +21,7 @@ import { resolveDispatch, resolveReadySet, type ReadySetResolution } from "../do
 import { discoverDocs, withDocsSnapshot } from "../docs/discover.js";
 import { listOperatorTasks, type OperatorTask } from "../docs/operatorTasks.js";
 import { listOperatorEscalations, type OperatorEscalation } from "../production/tick.js";
+import { operatorMergeQueue } from "../production/workerMerge.js";
 import { listOpenRedAlerts } from "../production/redAlerts.js";
 import { blockerRemedyFor } from "../production/blockerRemedies.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
@@ -1084,7 +1085,18 @@ function readWithWorkspace(
         firstDetectedAt: alert.firstSeenAt,
         lastSeenAt: alert.lastSeenAt
       }));
-    const escalations = [...listOperatorEscalations(db), ...scopeAlerts];
+    // Authority-adjacent PRs the worker declined to merge wait for the operator's own merge on GitHub: one read-only
+    // escalation-shaped item each (title: PR, head and the held reason; answer: the PR link). They vanish once the
+    // worker's latest record for the Action is no longer a refusal (operatorMergeQueue).
+    const heldPullRequests: OperatorEscalation[] = operatorMergeQueue(db).map((entry) => ({
+      actionKey: entry.actionKey,
+      kind: "authority_adjacent_pr",
+      message: `${entry.pullRequestNumber === null ? entry.pullRequestUrl : `PR #${entry.pullRequestNumber}`} (${entry.pullRequestUrl}) is held for you at ${entry.headSha.slice(0, 12)}: ${entry.why}`,
+      remedy: `Merge on GitHub: ${entry.pullRequestUrl} (head ${entry.headSha.slice(0, 12)}); the worker never merges it`,
+      firstDetectedAt: entry.updatedAt,
+      lastSeenAt: entry.updatedAt
+    }));
+    const escalations = [...listOperatorEscalations(db), ...scopeAlerts, ...heldPullRequests];
     const escalationsOf = (slug: string): OperatorEscalation[] =>
       escalations.filter((row) => splitActionKey(row.actionKey).project.toLowerCase() === slug.toLowerCase());
 

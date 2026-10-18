@@ -329,6 +329,8 @@ export interface OperatorMergeQueueEntry {
   pullRequestUrl: string;
   pullRequestNumber: number | null;
   headSha: string;
+  /** When the worker recorded the refusal. */
+  updatedAt: string;
   /** The card row's "why": the worker's named refusal and the assessment's reasons. */
   why: string;
   boundaries: AuthorityBoundary[];
@@ -353,6 +355,7 @@ export function operatorMergeQueue(db: Database.Database): OperatorMergeQueueEnt
       pullRequestUrl: row.pull_request_url,
       pullRequestNumber: number ? Number(number) : null,
       headSha: row.head,
+      updatedAt: row.updated_at,
       why: `The worker did not merge ${row.action_key} (authority_adjacent): ${row.reason}`,
       boundaries
     });

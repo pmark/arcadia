@@ -88,4 +88,11 @@ describe("platform blocker remedies (#1284)", () => {
     expect(found.launchHref).toBeNull();
     expect(found.blockerRemedy).toMatchObject({ label: "Turn production Off", href: "/production", oneClick: false, actionKey: null });
   });
+
+  it("shows a worker-held authority-adjacent PR as a read-only card with a Merge on GitHub remedy and no button", () => {
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items: [esc("authority_adjacent_pr", "write-feature")], unavailable: [] } });
+    const found = list.approvals[0];
+    expect(found.readOnly).toBe(true);
+    expect(found.blockerRemedy).toMatchObject({ kind: "authority_adjacent_pr", label: "Merge on GitHub", oneClick: false, actionKey: null, href: null });
+  });
 });
