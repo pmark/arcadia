@@ -3,8 +3,9 @@
 # production run on Arcadia's own repository on the Claude provider. A copy of
 # grant-production-unattended-claude-rerun-20261018 with a new pinned scope: the
 # three Actions added by Agent Ask add-next-unattended-run-actions-20261019
-# (Issues #1582, #1585 items 3-4, #1574 item 3) and first-unattended-run, in
-# queue order. It refuses until that amendment is settled: a pinned Action
+# (Issues #1582, #1585 items 3-4, #1574 item 3), in queue order. The evidence
+# Action first-unattended-run is NOT in scope: the Release Manager settles it from
+# the run's ledger (a worker Session on it would be self-referential). It refuses until that amendment is settled: a pinned Action
 # missing from the Plan at main's HEAD refuses instead of silently dropping out.
 # Each press activates under its own request id ($SCRIPT_ID-$RUN_ID) and scopes
 # only the pinned Actions still open in the Plan at main's HEAD, in the pinned
@@ -61,7 +62,6 @@ ACTIONS=(
   test-transient-review-retry-after-exhaustion
   refresh-decision-0130-status-and-1559-fake
   guard-repair-gate-upsert-role
-  first-unattended-run
 )
 PROVIDER="claude-code-cli"
 TRANSITIONS="validation,acceptance,pointer,packet_approval"
@@ -73,7 +73,7 @@ SPEND_DECISION="0130"
 INTEGRATION_DECISION="0058"
 HANDOFF_DECISION="0097"
 REQUIRED_DECISIONS=("$SPEND_DECISION" "$INTEGRATION_DECISION" "$HANDOFF_DECISION")
-INTENT="Next unattended production run on Arcadia's own repository on the claude-code provider: three small offline-provable Actions then first-unattended-run, each merged through its PR by the worker after exact-head independent review, with operator touches limited to activation and authority-adjacent merges."
+INTENT="Next unattended production run on Arcadia's own repository on the claude-code provider: three small offline-provable Actions, each merged through its PR by the worker after exact-head independent review, with operator touches limited to activation and authority-adjacent merges."
 
 MODE="${1:-run}"
 case "$MODE" in run | --describe) ;; *) echo "usage: $0 [run|--describe]" >&2; exit 2 ;; esac
@@ -199,7 +199,7 @@ on_signal() {
 trap on_error ERR
 trap on_signal TERM INT
 
-echo "== Unattended run Grant: Arcadia's next unattended Claude run, claude-code-cli only, four pinned Actions, worker PR merge =="
+echo "== Unattended run Grant: Arcadia's next unattended Claude run, claude-code-cli only, three pinned Actions, worker PR merge =="
 # This repeatable Grant runs only through the operator-action library.
 DESCRIPTOR_PATH="${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}"
 [[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$SCRIPT_ID" && -n "$DESCRIPTOR_PATH" && -f "$DESCRIPTOR_PATH" ]] || refuse "launch this Grant through the /actions operator-action library"

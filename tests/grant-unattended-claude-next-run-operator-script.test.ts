@@ -10,7 +10,7 @@ import { fingerprintProductionScope, normalizeProductionScope } from "../src/pro
  * The repeatable Grant for the NEXT unattended Claude run on Arcadia's own
  * repository (a copy of grant-production-unattended-claude-rerun-20261018 with a
  * new pinned scope): the three Actions of Agent Ask
- * add-next-unattended-run-actions-20261019 and first-unattended-run, plus a Decision 0058 integration grant with the
+ * add-next-unattended-run-actions-20261019 (never first-unattended-run), plus a Decision 0058 integration grant with the
  * Decision 0097 worker pull-request merge opt-in. Every behavioral case runs the reviewed pair copied into a
  * throwaway checkout and library with a fake `mise` (standing in for the
  * Arcadia CLI and the sign-in probe), `timeout` and `sleep` on PATH, and a
@@ -26,10 +26,9 @@ const PLAN = "arcadia-runs-production-unattended-on-its-own-repository-on-the-cl
 const ACTIONS = [
   "arcadia/test-transient-review-retry-after-exhaustion",
   "arcadia/refresh-decision-0130-status-and-1559-fake",
-  "arcadia/guard-repair-gate-upsert-role",
-  "arcadia/first-unattended-run"
+  "arcadia/guard-repair-gate-upsert-role"
 ];
-const INTENT = "Next unattended production run on Arcadia's own repository on the claude-code provider: three small offline-provable Actions then first-unattended-run, each merged through its PR by the worker after exact-head independent review, with operator touches limited to activation and authority-adjacent merges.";
+const INTENT = "Next unattended production run on Arcadia's own repository on the claude-code provider: three small offline-provable Actions, each merged through its PR by the worker after exact-head independent review, with operator touches limited to activation and authority-adjacent merges.";
 const source = readFileSync(path.join(library, `${ID}.sh`), "utf8");
 const descriptor = JSON.parse(readFileSync(path.join(library, `${ID}.json`), "utf8"));
 
@@ -237,7 +236,7 @@ describe("next unattended Claude run Grant: contract and static safety", () => {
   it("is a valid REPEATABLE grant pair with the exact title, executable and accepted by the library contract", () => {
     const validated = validateOperatorScriptContract(descriptor, ID, source);
     expect(validated).toMatchObject({ kind: "grant", repeatable: true, script: `${ID}.sh` });
-    expect(validated.title).toBe("START or RE-RUN production: next unattended Claude run on Arcadia (Claude only, the 4 pinned Actions still open, worker merges non-authority PRs after exact-head review; grant expires 24h after each press; card valid until 2026-10-26)");
+    expect(validated.title).toBe("START or RE-RUN production: next unattended Claude run on Arcadia (Claude only, the 3 pinned Actions still open, worker merges non-authority PRs after exact-head review; grant expires 24h after each press; card valid until 2026-10-26)");
     expect(source).toContain('CARD_EXPIRES_AT="2026-10-26T00:00:00Z"');
     expect(descriptor.expires_at).toBe("2026-10-26T00:00:00Z");
     expect(source).toContain('refuse "this re-run card expired at $CARD_EXPIRES_AT; ask for a fresh card"');
@@ -250,7 +249,8 @@ describe("next unattended Claude run Grant: contract and static safety", () => {
   it("pins the scope and the integration grant, previews twice, activates once, and never merges itself, refreshes usage or edits config", () => {
     expect(source).toContain(`SCRIPT_ID="${ID}"`);
     expect(source).toContain(`PLAN="${PLAN}"`);
-    expect(source).toMatch(/ACTIONS=\(\n {2}test-transient-review-retry-after-exhaustion\n {2}refresh-decision-0130-status-and-1559-fake\n {2}guard-repair-gate-upsert-role\n {2}first-unattended-run\n\)/);
+    expect(source).toMatch(/ACTIONS=\(\n {2}test-transient-review-retry-after-exhaustion\n {2}refresh-decision-0130-status-and-1559-fake\n {2}guard-repair-gate-upsert-role\n\)/);
+    expect(source).not.toMatch(/^ {2}first-unattended-run$/m);
     expect(source).toContain('INTEGRATION_DECISION="0058"');
     expect(source).toContain('HANDOFF_DECISION="0097"');
     expect(source).toContain('ARGS+=(--integration-grant-decision "$INTEGRATION_DECISION" --integration-grant-expires-at "$EXPIRES" --integration-grant-merge-pull-request)');
@@ -367,16 +367,16 @@ describe("next unattended Claude run Grant: refusals before any change", () => {
   });
 
   it.each([
-    ["a fifth Action rides along", { scopeInput: { actions: [...ACTIONS, "arcadia/claude-worker-launch-replay"] } }],
-    ["only three Actions are queued", { scopeInput: { actions: ACTIONS.slice(0, 3) } }],
-    ["the queue orders the Actions differently", { scopeInput: { actions: [ACTIONS[1], ACTIONS[0], ACTIONS[2], ACTIONS[3]] } }],
+    ["a fourth Action rides along", { scopeInput: { actions: [...ACTIONS, "arcadia/first-unattended-run"] } }],
+    ["only two Actions are queued", { scopeInput: { actions: ACTIONS.slice(0, 2) } }],
+    ["the queue orders the Actions differently", { scopeInput: { actions: [ACTIONS[1], ACTIONS[0], ACTIONS[2]] } }],
     ["the intent differs", { scopeInput: { intent: "Something else" } }],
     ["the integration grant is missing", { scopeInput: { integrationGrant: null } }],
     ["the worker merge opt-in is missing", { scopeInput: { integrationGrant: { decisionRef: "0058", expiresAt: "2026-10-19T00:00:00.000Z", actions: [] } } }],
     ["the integration grant names another Decision", { scopeInput: { integrationGrant: { decisionRef: "0130", expiresAt: "2026-10-19T00:00:00.000Z", actions: [], mergeThroughPullRequest: true } } }],
     ["the integration grant covers only one Action", { scopeInput: { integrationGrant: { decisionRef: "0058", expiresAt: "2026-10-19T00:00:00.000Z", actions: [ACTIONS[0]], mergeThroughPullRequest: true } } }],
     ["a Session limit appears", { scopeInput: { sessionTimeLimitMs: 60_000 } }],
-    ["one Action is not ready", { orderedActions: [{ actionKey: ACTIONS[0], state: "ready" }, { actionKey: ACTIONS[1], state: "blocked" }, { actionKey: ACTIONS[2], state: "ready" }, { actionKey: ACTIONS[3], state: "ready" }] }],
+    ["one Action is not ready", { orderedActions: [{ actionKey: ACTIONS[0], state: "ready" }, { actionKey: ACTIONS[1], state: "blocked" }, { actionKey: ACTIONS[2], state: "ready" }] }],
     ["no Action is queued", { scopeInput: { actions: [] as string[] }, orderedActions: [] }]
   ])("refuses scope drift when %s, never activating", (_label, realPreview) => {
     const b = box({ config: gateOn, replies: { "production preview": { realPreview } } });
