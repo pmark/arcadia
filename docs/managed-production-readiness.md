@@ -66,6 +66,8 @@ Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 3
 
 Some defects were visible in live database rows before the presses: the stale gated repair row and the not-applicable authority gate (a, b, d) and the candidate's own pending completion Ask (e). Others appeared only at run time (ping length c, capacity 401 f, heartbeat g) or only after the repair Session ran (patch-check defects #1555 and #1556, identity #1557). Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. The refresh contract's obligation to add a hermetic replay scenario for each predictable live failure is **deferred** to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. It is not done in this change. That replay is now in progress in a separate session.
 
+Pre-press checklist: [process-critic-brief.md](agent-guidance/process-critic-brief.md) (run it before any press or merge batch once judgement, settlement, patch-check or tick code changed since the last green replay).
+
 **Verdict: not yet.**
 
 ## Historical answer, 2026-10-18: the first supervised Claude run reached a reviewed, merged PR; unattended production remains unproved

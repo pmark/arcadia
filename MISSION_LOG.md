@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-18
+updated: 2026-10-19
 ---
 
 # Mission Log: Arcadia
@@ -2631,3 +2631,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/system-tmux-long-command.test.ts, a systemTmux.launch with no launcherDirectory (the interactive temporary-directory path) on a private tmux socket delivers a 64 KiB brief to a stub provider byte-identical, and the temporary launcher directory is removed afterwards."; "The test skips when tmux is not installed and never uses the host's default tmux server."; "The change touches only tests/system-tmux-long-command.test.ts; focused tests, lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-implement-a-hermetic-test-that-an-2-dc90bc96a74c).
+
+## 2026-10-19 — Completed arcadia/implement-docs-reports-first-supervised-claude
+
+- **Did:** Completed Action arcadia/implement-docs-reports-first-supervised-claude from accepted evidence (Candidate ba1331ed46e2e403bd7262521172c9d52a57dcdc).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md."; "Every PR and issue number cited resolves to the stated item on GitHub."; "The change touches only that new report file.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-implement-docs-reports-first-supervised-claude-69db38eeb760).

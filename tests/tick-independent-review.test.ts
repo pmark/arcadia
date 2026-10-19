@@ -3,6 +3,7 @@ import { runProductionResetRepairBudgetCommand } from "../src/commands/productio
 import { withDatabase } from "../src/db/connection.js";
 import { listReviewSteps } from "../src/production/independentReview.js";
 import { roleAttemptsOnHead } from "../src/sessions/enrollment.js";
+import { MAX_VERDICT_ATTEMPTS } from "../src/sessions/roleLineage.js";
 import { policyAuthorizesPullRequestReadiness, PRODUCTION_CONTROL_DEADLINES } from "../src/production/policy.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 import { ensureProductionTickTables, resetProductionRepairBudget } from "../src/production/tick.js";
@@ -237,6 +238,35 @@ describe("tick-driven independent review", () => {
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(escalation(rehearsal)).toBeUndefined();
     expect(rehearsal.github.readyCalls).toHaveLength(1);
+  });
+
+  it("names an exhausted code-review attempt budget as its own operator escalation instead of retrying it as a transient failure", () => {
+    const { rehearsal, a } = finishedA();
+    exitTick(rehearsal);
+    const candidate = head(rehearsal, a);
+    // The live shape (PR #1577): earlier heads of this requirement input
+    // revision already spent every code-review attempt the lineage allows.
+    const development = rehearsal.attempts("write-marker-a").find((attempt) => attempt.role === "development")!;
+    withDatabase(rehearsal.workspace, (db) => {
+      for (let ordinal = 1; ordinal <= MAX_VERDICT_ATTEMPTS; ordinal += 1) {
+        db.prepare(`INSERT INTO session_role_attempts (id, requirement_id, input_revision, role, ordinal, request_id, actor_id, mutation_owner, status,
+          target_head, criteria_fingerprint, evidence_fingerprint, terminal_receipt_json, created_at, updated_at)
+          VALUES (?, ?, ?, 'code-review', ?, ?, 'code-review-reviewer:earlier', 0, 'failed', ?, 'c', 'e', '{"verdict":"fail"}', ?, ?)`)
+          .run(`attempt_earlier_${ordinal}`, development.requirement_id, development.input_revision, ordinal, `earlier-review-${ordinal}`,
+            "0".repeat(40), "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+      }
+    });
+    rehearsal.tick(); // ready
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    expect(verdicts(rehearsal, "code-review").filter((attempt) => attempt.target_head === candidate)).toEqual([]);
+    expect(escalation(rehearsal)).toMatchObject({
+      kind: "review_attempts_exhausted",
+      message: expect.stringContaining(`${MAX_VERDICT_ATTEMPTS} of ${MAX_VERDICT_ATTEMPTS}`),
+      remedy: expect.stringContaining("Plan amendment")
+    });
+    expect(rehearsal.log.some((line) => line.includes("Review step code-review") && line.includes("failed ("))).toBe(false);
+    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).not.toBe(candidate);
   });
 
   it("reads captured rollups by their real state: waits on empty and pending contexts, blocks failed and unknown ones by name, and never waits on CodeRabbit", () => {
