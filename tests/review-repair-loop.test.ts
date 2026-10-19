@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -13,7 +13,7 @@ import { listPendingTerminalCandidates } from "../src/production/terminalCandida
 import type { AgentSession } from "../src/sessions/index.js";
 import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
 import { getSession } from "../src/sessions/index.js";
-import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
+import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 /**
@@ -304,6 +304,75 @@ describe("the review repair bound and gates", () => {
     expect(development.map((x) => x.status)).toEqual(["passed", "failed", expect.stringMatching(/pending|running/)]);
     expect(JSON.parse(development[1].terminal_receipt_json!)).toMatchObject({ repairNeverStarted: true });
     expect(rehearsal.log.some((line) => line.includes("mutation_owner_active"))).toBe(false);
+  });
+
+  it("reads no PR state for a launch the repair budget already forbids", () => {
+    const { rehearsal } = failedReview((r) => {
+      r.tmux.launch = () => { throw new Error("tmux could not start the Session (simulated)"); };
+    });
+    for (let i = 0; i < 4; i += 1) rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "repair_budget_exhausted" });
+    const stateReads = () => rehearsal.github.ghCalls.filter((call) => /^gh pr view \S+ --json state$/.test(call)).length;
+    const before = stateReads();
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(stateReads()).toBe(before);
+  });
+
+  it("stops for the operator when the pre-launch PR state read keeps failing", () => {
+    const { rehearsal } = failedReview((r) => {
+      const github = r.github as unknown as { runCommand: typeof r.github.runCommand };
+      const original = github.runCommand;
+      github.runCommand = (input) => input.command === "gh" && input.args[0] === "pr" && input.args[1] === "view" && input.args.at(-1) === "state"
+        ? { status: 1, stdout: "", stderr: "HTTP 502 (simulated)", error: null }
+        : original(input);
+    });
+    for (let i = 0; i < 6; i += 1) rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(repairs(rehearsal).map((row) => [row.outcome, row.notify_failures])).toEqual([["gated", 5]]);
+    expect(repairs(rehearsal)[0].last_error).toContain("HTTP 502");
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("could not be read") });
+  });
+
+  it("after a repair spawn failure, an ordinary development launch is refused over the passed candidate; only the retried repair allocates", () => {
+    let failures = 1;
+    const { rehearsal, a } = failedReview((r) => {
+      const launch = r.tmux.launch.bind(r.tmux);
+      r.tmux.launch = (input) => {
+        if (failures-- > 0) throw new Error("tmux could not start the Session (simulated)");
+        launch(input);
+      };
+    });
+    const development = () => rehearsal.attempts("write-marker-a").filter((x) => x.role === "development");
+    expect(development().map((x) => x.status)).toEqual(["passed", "failed"]);
+    withDatabase(rehearsal.workspace, (db) => {
+      const readiness = independentVerdictReadiness(db, { session: getSession(db, a.id)!, repoRoot: rehearsal.repo });
+      const requirement = readiness.requirement!;
+      expect(() => planDevelopmentAttempt(db, { requirement, retryAuthorized: true }))
+        .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_retry_not_authorized" }) }));
+      expect(() => beginDevelopmentAttempt(db, { requirement, requestId: "plain-operator-launch-0001", retryAuthorized: true, now: rehearsal.now }))
+        .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_retry_not_authorized" }) }));
+    });
+    expect(development()).toHaveLength(2);
+    rehearsal.tick();
+    expect(rehearsal.lease()).not.toBeNull();
+    expect(development().map((x) => x.status)).toEqual(["passed", "failed", expect.stringMatching(/pending|running/)]);
+  });
+
+  it("never marks a repair never-started, or removes its worktree, when the failure came after the Session spawned", () => {
+    const { rehearsal } = failedReview((r) => {
+      const launch = r.tmux.launch.bind(r.tmux);
+      let failed = false;
+      r.tmux.launch = (input) => {
+        launch(input); // the process is running
+        if (!failed) { failed = true; throw new Error("SQLITE_BUSY: database is locked (simulated, after spawn)"); }
+      };
+    });
+    const repairSession = rehearsal.sessions().at(-1)!;
+    expect(repairSession.id).not.toBe(rehearsal.sessions()[0].id);
+    expect(existsSync(repairSession.worktree_path)).toBe(true);
+    const development = rehearsal.attempts("write-marker-a").filter((x) => x.role === "development");
+    expect(development.some((x) => x.terminal_receipt_json?.includes("repairNeverStarted"))).toBe(false);
+    expect(repairs(rehearsal).map((row) => row.repair_session_id)).toEqual([repairSession.id]);
   });
 
   it("stops a repeating non-conflict repair launch failure at the per-Action repair budget with one escalation", () => {

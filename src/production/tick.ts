@@ -2198,27 +2198,35 @@ function attemptReviewRepairLaunch(
   // they say): a provider sign-in hold, and the per-Action repair budget a
   // repeating non-conflict launch failure spends.
   const held: { outcome: ManagedProductionLaunchAttempt["outcome"] | null; reason: string } = { outcome: null, reason: "" };
+  /** The launch guards, as a reason that withholds the launch (recorded on `held`), or null. */
+  const launchGuard = (): string | null => {
+    const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
+    if (signInHold) {
+      const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a repair Session launched now would die on the same dead login. Sign in again on this worker host.`;
+      if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
+        input.log(`Review repair launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
+      }
+      held.outcome = "skipped"; held.reason = reason;
+      return reason;
+    }
+    const attempts = getRepairAttempts(db, actionKey);
+    if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+      const reason = recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts, lastError: attempts.lastError, now: input.now, log: input.log });
+      held.outcome = "repair_budget_exhausted"; held.reason = reason;
+      return reason;
+    }
+    return null;
+  };
   try {
     const step = attemptReviewRepair({
       db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
       runCommand: input.options.review?.runCommand,
       escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
+      // Asked before the pre-launch PR read, and again inside the launch.
+      canLaunch: launchGuard,
       launch: (repair) => {
-        const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
-        if (signInHold) {
-          const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a repair Session launched now would die on the same dead login. Sign in again on this worker host.`;
-          if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
-            input.log(`Review repair launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
-          }
-          held.outcome = "skipped"; held.reason = reason;
-          throw new RepairLaunchHeld(reason);
-        }
-        const attempts = getRepairAttempts(db, actionKey);
-        if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
-          const reason = recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts, lastError: attempts.lastError, now: input.now, log: input.log });
-          held.outcome = "repair_budget_exhausted"; held.reason = reason;
-          throw new RepairLaunchHeld(reason);
-        }
+        const withheld = launchGuard();
+        if (withheld) throw new RepairLaunchHeld(withheld);
         return launchGuardedHostSession({
           db,
           workspace: input.workspace,
@@ -2246,6 +2254,7 @@ function attemptReviewRepairLaunch(
       clearLaunchRefusal(db, actionKey);
       return { attempted: true, outcome: "launched", reason: step.reason, actionKey };
     }
+    if (held.outcome !== null) return { attempted: false, outcome: held.outcome, reason: held.reason, actionKey };
     return { attempted: false, outcome: "skipped", reason: step.reason, actionKey };
   } catch (error) {
     if (error instanceof RepairLaunchHeld && held.outcome !== null) {

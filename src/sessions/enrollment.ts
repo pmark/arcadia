@@ -591,6 +591,16 @@ export function markSessionRoleAttemptRunning(db: Database.Database, input: { re
   });
 }
 
+/** A failed development attempt recorded by a review repair whose Session never started (see roleLineage `isRepairNeverStarted`). */
+function repairNeverStartedReceipt(attempt: Pick<SessionRoleAttempt, "status" | "terminal_receipt_json">): boolean {
+  if (attempt.status !== "failed" || !attempt.terminal_receipt_json) return false;
+  try {
+    return (JSON.parse(attempt.terminal_receipt_json) as { repairNeverStarted?: unknown }).repairNeverStarted === true;
+  } catch {
+    return false;
+  }
+}
+
 export function allocateSessionRoleAttempt(db: Database.Database, input: AllocateAttemptInput): SessionRoleAttempt {
   if (!input.authorityCurrent) throw validationError("Attempt authority is stale.", { code: "attempt_authority_stale" });
   if (!SESSION_ATTEMPT_ROLES.includes(input.role)) throw validationError("Unknown session attempt role.", { code: "unknown_attempt_role" });
@@ -649,6 +659,20 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
     // independent verdict, so the repair is a new attempt, never a retry.
     const supersededHelper = previous !== null && (input.role === "planner" || input.role === "critique" || input.role === "development") &&
       previous.status === "passed" && input.supersedesPassed === previous.request_id;
+    // A review repair whose Session never started (`repairNeverStarted`) did no
+    // work: the passed development attempt before it still stands, and only
+    // the repair superseding exactly that attempt may allocate past it. Any
+    // other launch is refused as before, never a "retry after failure".
+    if (input.role === "development" && previous && repairNeverStartedReceipt(previous)) {
+      const standing = (db.prepare(`SELECT * FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = 'development'
+        ORDER BY ordinal DESC, created_at DESC, rowid DESC`).all(input.requirementId, input.inputRevision) as SessionRoleAttempt[])
+        .find((row) => !repairNeverStartedReceipt(row));
+      if (standing?.status === "passed" && input.supersedesPassed !== standing.request_id) {
+        throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
+          code: "attempt_retry_not_authorized", requestId: standing.request_id, status: standing.status
+        });
+      }
+    }
     if (previous && !supersededVerdict && !supersededHelper && (previous.status !== "failed" || !input.retryAuthorized)) {
       throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
         code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
