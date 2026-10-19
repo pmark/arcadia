@@ -23,9 +23,14 @@ export function JourneyLive({ initial, refreshSeconds }: { initial: Journey; ref
   useEffect(() => {
     const url = `/api/journey/${encodeURIComponent(initial.action.project)}/${encodeURIComponent(initial.action.id)}`;
     let cancelled = false;
+    // Each poll spawns one CLI process on the shared host; a slow one never stacks another.
+    let inFlight = false;
+    const controller = new AbortController();
     const tick = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
       try {
-        const response = await fetch(url, { cache: "no-store" });
+        const response = await fetch(url, { cache: "no-store", signal: controller.signal });
         const body = (await response.json()) as Journey & { error?: string };
         if (cancelled) return;
         if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
@@ -33,12 +38,21 @@ export function JourneyLive({ initial, refreshSeconds }: { initial: Journey; ref
         setStale(null);
       } catch (error) {
         if (!cancelled) setStale(error instanceof Error ? error.message : String(error));
+      } finally {
+        inFlight = false;
       }
     };
     const timer = window.setInterval(() => void tick(), refreshSeconds * 1000);
+    // A phone coming back to the tab sees the current journey at once.
+    const onVisible = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [initial.action.project, initial.action.id, refreshSeconds]);
 

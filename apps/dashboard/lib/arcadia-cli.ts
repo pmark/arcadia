@@ -1461,8 +1461,19 @@ export async function loadJourney(project: string, action: string) {
   if (!JOURNEY_SEGMENT.test(project) || !JOURNEY_SEGMENT.test(action)) {
     throw new ArcadiaCliError("Expected /journey/<project>/<action> with slug segments.", 400);
   }
-  return runArcadiaCliJson<Journey>(["journey", `${project}/${action}`], { timeoutMs: 30_000 });
+  // Every viewer polls every 30 s and each read spawns a CLI process on the
+  // shared host; viewers of one Action within 10 s share one read.
+  const key = `${project}/${action}`;
+  const cached = journeyReads.get(key);
+  if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read;
+  const read = runArcadiaCliJson<Journey>(["journey", key], { timeoutMs: 30_000 });
+  journeyReads.set(key, { at: Date.now(), read });
+  read.catch(() => journeyReads.delete(key));
+  return read;
 }
+
+const JOURNEY_CACHE_MS = 10_000;
+const journeyReads = new Map<string, { at: number; read: Promise<ArcadiaJsonSuccess<Journey>> }>();
 
 const JOURNEY_SEGMENT = /^[a-z0-9][a-z0-9._-]{0,199}$/i;
 

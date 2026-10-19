@@ -205,7 +205,7 @@ export function JourneyLog({ journey }: { journey: Journey }) {
             <span className={event.kind === "now" ? "font-semibold text-ink" : "text-ink"}>{event.label}</span>
             {event.class ? <span className="ml-1.5 rounded bg-line/60 px-1 text-xs text-muted">{event.class}</span> : null}
             <span className="ml-1.5 text-xs text-muted">{event.kind === "gate" ? "ahead" : `${event.at.slice(5, 16).replace("T", " ")} UTC`}</span>
-            {event.ref?.url ? <a className="ml-1.5 text-xs text-steel underline" href={event.ref.url}>#{event.ref.id}</a> : null}
+            {event.ref?.url && /^https:\/\//.test(event.ref.url) ? <a className="ml-1.5 text-xs text-steel underline" href={event.ref.url}>#{event.ref.id}</a> : null}
             <span className="block break-words text-xs text-muted">{event.detail}</span>
           </span>
         </li>

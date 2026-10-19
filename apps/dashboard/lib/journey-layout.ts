@@ -66,7 +66,7 @@ export function layoutJourney(journey: Journey): Scene {
   const travelled: PathCmd[] = [{ op: "M", s: START, o: 0 }];
   const glyphs: Glyph[] = [];
   const labels: Label[] = [];
-  const past = journey.events.filter((event) => event.kind !== "obstacle");
+  const past = journey.events.filter((event) => event.kind === "launch" || event.kind === "victory" || event.kind === "cleared");
   const open = journey.events.filter((event) => event.kind === "obstacle");
 
   let s = START;
@@ -213,7 +213,9 @@ export function placeLabels(orientation: Orientation, labels: Label[]): PlacedLa
     if (orientation === "h") {
       placed.push({ x: label.s, y: side === "a" ? 78 : 131, anchor: "middle", text: label.text, strong: label.strong });
     } else {
-      placed.push({ x: side === "a" ? 182 : 138, y: label.s + 4, anchor: side === "a" ? "start" : "end", text: label.text, strong: label.strong });
+      // Beside a vertical path there is room for about 22 characters; the glyph's title and the log keep the rest.
+      const text = label.text.length > 22 ? `${label.text.slice(0, 21)}…` : label.text;
+      placed.push({ x: side === "a" ? 182 : 138, y: label.s + 4, anchor: side === "a" ? "start" : "end", text, strong: label.strong });
     }
   }
   return placed;
