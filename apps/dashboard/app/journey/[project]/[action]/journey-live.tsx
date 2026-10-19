@@ -22,15 +22,24 @@ export function JourneyLive({ initial, initialPath, follow, refreshSeconds }: { 
 
   useEffect(() => {
     const controller = new AbortController();
-    const timer = window.setInterval(() => {
+    let last = Date.now();
+    const refresh = () => {
       if (document.hidden) return;
+      last = Date.now();
       fetch("/api/path", { cache: "no-store", signal: controller.signal })
         .then(async (response) => (response.ok ? setPath((await response.json()) as PathBrief) : undefined))
         .catch(() => undefined);
-    }, PATH_REFRESH_MS);
+    };
+    const timer = window.setInterval(refresh, PATH_REFRESH_MS);
+    // Back on a tab that was hidden through a refresh: catch up at once.
+    const onVisible = () => {
+      if (!document.hidden && Date.now() - last >= PATH_REFRESH_MS) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
   const [stale, setStale] = useState<string | null>(null);

@@ -14,7 +14,7 @@ export function JourneyMission({ journey, path }: { journey: Journey; path: Path
   const row = (label: string, body: React.ReactNode) => (
     <div className="flex gap-2">
       <dt className="w-20 shrink-0 text-xs uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="min-w-0 text-sm text-ink">{body}</dd>
+      <dd className="min-w-0 break-words text-sm text-ink">{body}</dd>
     </div>
   );
   const more = (summary: string, text: string | null | undefined) =>

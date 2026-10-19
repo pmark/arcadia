@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** Seconds between refreshes, live (fetch) and with JavaScript off (meta refresh). */
 const REFRESH_SECONDS = 30;
+/** How long the first paint waits for the North Star before rendering without it. */
+const PATH_WAIT_MS = 5_000;
 
 /**
  * `/journey/<project>/<action>` — one Action's rover journey: past, now and
@@ -16,8 +18,12 @@ const REFRESH_SECONDS = 30;
  */
 export default async function JourneyPage({ params }: { params: Promise<{ project: string; action: string }> }) {
   const { project, action } = await params;
-  // The North Star and its gates give the trip its context; the page stands without them.
-  const pathRead = loadPathBrief().then((response) => response.data, () => null);
+  // The North Star and its gates give the trip its context; the page stands without them,
+  // and never waits on them longer than PATH_WAIT_MS.
+  const pathRead = Promise.race([
+    loadPathBrief().then((response) => response.data, () => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), PATH_WAIT_MS))
+  ]);
   const loaded = await loadJourney(project, action).then(
     (response) => ({ journey: response.data, error: null }),
     (error: unknown) => ({ journey: null, error: error instanceof ArcadiaCliError || error instanceof Error ? error.message : String(error) })
