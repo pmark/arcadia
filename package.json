@@ -52,7 +52,8 @@
     "check:frozen-records": "node --import tsx scripts/check-frozen-records.ts",
     "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
-    "fast-rehearsal": "node scripts/fast-rehearsal.mjs"
+    "fast-rehearsal": "node scripts/fast-rehearsal.mjs",
+    "production-replay": "node --import tsx scripts/production-replay.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
