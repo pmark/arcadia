@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -82,7 +82,10 @@ function fixture(options: { amended?: boolean } = {}) {
   symlinkSync(path.join(sourceRoot, "node_modules"), path.join(repo, "node_modules"), "dir");
   for (const file of ["run-plan-amendment.mjs", "plan-amendment-worker.ts"]) copyFileSync(path.join(sourceRoot, "scripts", file), path.join(repo, "scripts", file));
   const askPath = pinned.ask.path;
-  copyFileSync(path.join(sourceRoot, askPath), path.join(repo, askPath));
+  // Hermetic after the settlement archived the Ask on main: same bytes either way (a pure rename).
+  const liveAsk = path.join(sourceRoot, askPath);
+  const archivedAsk = path.join(sourceRoot, path.dirname(askPath), "archive", path.basename(askPath));
+  copyFileSync(existsSync(liveAsk) ? liveAsk : archivedAsk, path.join(repo, askPath));
   writeFileSync(path.join(bin, "mise"), FAKE_MISE, { mode: 0o755 });
 
   initWorkspace(workspace);
