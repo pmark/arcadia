@@ -24,6 +24,7 @@ import type {
   QaRestartResult,
   QaSwitchResult
 } from "./types";
+import type { Journey } from "./journey-types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
 import type { PlanProgressData, ProjectPlansResponse } from "./plans-types";
@@ -1454,6 +1455,33 @@ export async function loadNowBrief(options: { narrate?: boolean } = {}) {
 export async function loadPathBrief() {
   return runArcadiaCliJson<PathBrief>(["path"], { timeoutMs: 30_000 });
 }
+
+/** `arcadia journey <project>/<action>` — one Action's rover journey; read-only. */
+export async function loadJourney(project: string, action: string) {
+  if (!JOURNEY_SEGMENT.test(project) || !JOURNEY_SEGMENT.test(action)) {
+    throw new ArcadiaCliError("Expected /journey/<project>/<action> with slug segments.", 400);
+  }
+  // Every viewer polls every 30 s and each read spawns a CLI process on the
+  // shared host; viewers of one Action within 10 s share one read.
+  const key = `${project}/${action}`;
+  const cached = journeyReads.get(key);
+  if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read;
+  for (const [other, entry] of journeyReads) {
+    if (Date.now() - entry.at >= JOURNEY_CACHE_MS) journeyReads.delete(other);
+  }
+  const read = runArcadiaCliJson<Journey>(["journey", key], { timeoutMs: 30_000 });
+  journeyReads.set(key, { at: Date.now(), read });
+  // A late failure must not evict a newer read that replaced it.
+  read.catch(() => {
+    if (journeyReads.get(key)?.read === read) journeyReads.delete(key);
+  });
+  return read;
+}
+
+const JOURNEY_CACHE_MS = 10_000;
+const journeyReads = new Map<string, { at: number; read: Promise<ArcadiaJsonSuccess<Journey>> }>();
+
+const JOURNEY_SEGMENT = /^[a-z0-9][a-z0-9._-]{0,199}$/i;
 
 export interface WorkQuestionContext {
   workItem: {
