@@ -1466,9 +1466,15 @@ export async function loadJourney(project: string, action: string) {
   const key = `${project}/${action}`;
   const cached = journeyReads.get(key);
   if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read;
+  for (const [other, entry] of journeyReads) {
+    if (Date.now() - entry.at >= JOURNEY_CACHE_MS) journeyReads.delete(other);
+  }
   const read = runArcadiaCliJson<Journey>(["journey", key], { timeoutMs: 30_000 });
   journeyReads.set(key, { at: Date.now(), read });
-  read.catch(() => journeyReads.delete(key));
+  // A late failure must not evict a newer read that replaced it.
+  read.catch(() => {
+    if (journeyReads.get(key)?.read === read) journeyReads.delete(key);
+  });
   return read;
 }
 
