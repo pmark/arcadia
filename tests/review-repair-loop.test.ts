@@ -456,8 +456,8 @@ function rerunFailedReview(rehearsal: Rehearsal, a: AgentSession, suffix: string
     const item = createReviewItem(db, {
       decisionNeeded: "Code review failed", sourceInput: "rerun", proposedAction: "repair", resolvedIntent: "repair", confidenceLabel: "high", confidence: 0.9,
       context: { verdict: "fail", summary: "Off by one.", findings: [{ severity: "blocker", title: "Off by one", evidence: "MARKER.md", recommendation: "Fix it." }],
-        checks: [{ name: "Correctness", status: "fail" }] }
-    } as never);
+        checks: [{ name: "Correctness", status: "fail" }, { name: "Security and authority", status: "not-applicable" }, { name: "Not-applicable claims", status: "pass" }] }
+    });
     const requestId = `code-review-operator-rerun-${suffix}`;
     const actorId = `code-review-reviewer:operator-rerun-${suffix}`;
     beginIndependentVerdict(db, { role: "code-review", session, repoRoot: rehearsal.repo, requestId, actorId, executionCwd: rehearsal.workspace, retryAuthorized: true, now: rehearsal.now });
@@ -533,6 +533,21 @@ describe("review repair pure parts", () => {
     expect(verdictIsAuthorityAdjacent([missing], [crit("Approval boundaries", "not-checked")])).toMatch(/Approval boundaries/);
     // A refused list naming no authority criterion is no authority flag.
     expect(verdictIsAuthorityAdjacent([refusedNA("Failure handling", "Compatibility", "Tests"), missing], [naFailed, crit("Correctness", "fail")])).toBeNull();
+  });
+
+  it("does not gate a not-applicable authority criterion when the Not-applicable claims check passed (the live rerun shape)", () => {
+    const naPass = crit("Not-applicable claims", "pass");
+    const correctness = { ...missing, title: "Off by one" };
+    const checks = [crit("Correctness", "fail"), crit("Security and authority", "not-applicable"), crit("Approval boundaries", "not-applicable"), naPass];
+    expect(verdictIsAuthorityAdjacent([correctness], checks)).toBeNull();
+    expect(verdictIsRepairable([correctness], checks)).toBe(true);
+    // Still gated: the check missing or not passed, a failed or unchecked authority criterion, a refused claim, an authority finding.
+    expect(verdictIsAuthorityAdjacent([correctness], checks.filter((check) => check !== naPass))).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Security and authority", "not-applicable"), naFailed])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Security and authority", "fail"), naPass])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Approval boundaries", "not-checked"), naPass])).toMatch(/Approval boundaries/);
+    expect(verdictIsAuthorityAdjacent([refusedNA("Security and authority"), correctness], [crit("Security and authority", "not-applicable"), naPass])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([{ ...correctness, title: "Leaks a credential" }], [crit("Security and authority", "not-applicable"), naPass])).toMatch(/concerns authority/);
   });
 
   it("treats a reviewer-authored finding that only borrows the deterministic title as an ordinary finding", () => {
