@@ -249,6 +249,7 @@
   "tests/grant-first-supervised-claude-run-r2-operator-script.test.ts": 19.5,
   "tests/grant-first-unattended-claude-run-operator-script.test.ts": 28.5,
   "tests/grant-rehearsal-preflight.test.ts": 1.2,
+  "tests/grant-unattended-claude-next-run-operator-script.test.ts": 49,
   "tests/grant-unattended-claude-rerun-operator-script.test.ts": 49,
   "tests/headless-provider-operator-script.test.ts": 136.7,
   "tests/host-browser-audit.test.ts": 0.1,
