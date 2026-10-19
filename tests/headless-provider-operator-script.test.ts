@@ -27,6 +27,7 @@ import {
 } from "../src/operatorActions/headlessProviderTest.js";
 import { claudePreservationDenied, describeClaudeResult, extractDiagnosis, parseClaudeStream } from "../src/operatorActions/headlessProviderDiagnosis.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
+import { pinnedScoutClockEnv } from "./helpers/pinnedScoutClock.js";
 
 /**
  * The /runs action test-headless-provider-single-action. No case reaches a
@@ -81,10 +82,17 @@ function harness(extra: Record<string, string> = {}) {
   const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "models" | "providerTimeoutMs" | "now" | "signalSource" | "hostPreserve">> = {}) =>
     runHeadlessProviderTest({
       repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: options.keep ?? false, env, tempBase: base, liveLeakCheck: false,
-      killGraceMs: 200, out: () => {}, ...options
+      killGraceMs: 200, out: () => {}, now: PINNED_IN_WINDOW_NOW, ...options
     });
   return { run, runDirectory, base, callLog, env };
 }
+
+/**
+ * Decision 0082's experiment window really ends (2026-10-18) and the script correctly refuses afterwards.
+ * Tests that need an open window run on this pinned in-window clock instead of the wall clock, so they stay green
+ * after the window closes; the expiry test below passes a post-window clock explicitly.
+ */
+const PINNED_IN_WINDOW_NOW = () => new Date("2026-10-16T12:00:00Z");
 
 /** A host that cannot preserve (an experiment workspace holds no production validation authority; CI is not macOS). */
 const hostRefuses: HostPreserve = () => ({ ok: false, ran: true, commit: null, detail: "Declared preservation validation failed or was skipped." });
@@ -170,7 +178,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     // The same entry point the launcher runs under mise, run here with node directly so the case needs no mise trust write.
     const launched = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts", "headless-provider-test.ts"), runDirectory, "run-1", ID, "--keep", "--providers", "codex", "--model-codex=gpt-5.6-terra"], {
       encoding: "utf8", cwd: repoRoot, timeout: 240_000,
-      env: { ...env, ARCADIA_HEADLESS_TEST_LEAK_CHECK: "0", TMPDIR: base }
+      env: { ...env, ...pinnedScoutClockEnv(), ARCADIA_HEADLESS_TEST_LEAK_CHECK: "0", TMPDIR: base }
     });
     expect(launched.status, launched.stdout + launched.stderr).toBe(0);
 
@@ -352,7 +360,7 @@ esac
     const base = temp("headless-base-");
     const runDirectory = path.join(temp("headless-run-"), "runs", "run-1");
     const old = await runHeadlessProviderTest({
-      repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: false, tempBase: base, liveLeakCheck: false, out: () => {},
+      repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: false, tempBase: base, liveLeakCheck: false, out: () => {}, now: PINNED_IN_WINDOW_NOW,
       env: { PATH: bin, HOME: temp("headless-home-") }, toolDirectories: [], providers: ["claude"]
     });
     expect(old.outcome).toBe("refused");
@@ -718,7 +726,7 @@ describe("refusals create nothing", () => {
     const base = temp("headless-base-");
     const runDirectory = path.join(temp("headless-run-"), "runs", "run-1");
     const outcome = await runHeadlessProviderTest({
-      repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: false, tempBase: base, liveLeakCheck: false, out: () => {},
+      repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: false, tempBase: base, liveLeakCheck: false, out: () => {}, now: PINNED_IN_WINDOW_NOW,
       // No stub and no operator tool directory: an empty directory is the whole PATH, so no real codex can be reached.
       env: { PATH: temp("headless-empty-"), HOME: temp("headless-home-") }, toolDirectories: [], providers: ["codex"]
     });
