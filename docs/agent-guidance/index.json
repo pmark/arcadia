@@ -125,7 +125,7 @@
       "trigger": "launch subagent, driver brief, session ledger row, model per role",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "33e131010389fba4a25d1b6ad740858b74f9c20f45fdec754af6d76a100afddb"
+      "sha256": "7461f13f80c0b8a2af8baba8e36cc0ea1789291028d4f8c209a4ce29bc7fd151"
     },
     {
       "id": "native-app-sessions",
@@ -175,6 +175,13 @@
       "path": "docs/agent-guidance/native-mail-checkpoints.md",
       "read_before": "Before checking, acknowledging or replying to native-mail, or briefing a native manager to; explicit checkpoints only, no polling or hooks. Grants no authority.",
       "sha256": "1d43d43362b2e8803c98c4b4b18c010f0ff329c68132d9107a91d888b5da4141"
+    },
+    {
+      "id": "process-critic",
+      "trigger": "live run stopped, before production press, defect class recurs, authority Decision pending, process critic, pre-mortem, post-mortem",
+      "path": "docs/agent-guidance/process-critic-brief.md",
+      "read_before": "Before a post-mortem of a stopped live run, a pre-press or merge-batch pre-mortem, or an authority Decision reaching the operator; read-only plan-critic specialization, grants no authority.",
+      "sha256": "cb9cd7cc3055eb821d684ce2261e19344376a10b8fb10130259eb6e0291cd798"
     }
   ]
 }
