@@ -1,5 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
+import { gitIntegration } from "../src/commands/journey.js";
 import { classifyObstacle } from "../src/journey/classify.js";
 import { deriveJourney, firstLine } from "../src/journey/derive.js";
 import { applyInitialSchema } from "../src/db/schema.js";
@@ -154,6 +159,24 @@ describe("deriveJourney", () => {
     expect(deriveJourney(db, KEY, NOW).budget.repairRounds.spent).toBe(0);
   });
 
+  it("reaches the destination when the head is already in the base branch, and clears what it met on the way", () => {
+    seedPath();
+    insert("production_review_repairs", { request_id: "repair-3", action_key: KEY, policy_epoch: 2, round: 2, failed_session_id: "s3", failed_branch: "claude/demo-3", failed_head: HEAD.c, pull_request_url: pr(1577), role: "code-review", verdict: "fail", summary: "x", findings_json: "[]", failed_checks_json: "[]", outcome: "escalated", reason: "No attempt remains.", created_at: "2026-10-19T15:57:00.000Z", updated_at: "2026-10-19T15:57:00.000Z" });
+    const asked: unknown[] = [];
+    const journey = deriveJourney(db, KEY, NOW, { integration: (input) => { asked.push(input); return { commit: "m".repeat(40), at: "2026-10-19T15:58:00.000Z" }; } });
+    expect(asked).toEqual([{ repositoryPath: expect.any(String), head: HEAD.c, baseBranch: expect.any(String) }]);
+    expect(journey.destination).toMatchObject({ reached: true, at: "2026-10-19T15:58:00.000Z", ref: { id: "1577" } });
+    expect(journey.events.filter((event) => event.kind === "obstacle")).toEqual([]);
+    expect(journey.events.find((event) => event.label === "repair escalated")?.kind).toBe("cleared");
+    expect(journey.now).toBeNull();
+    expect(journey.ahead).toEqual([]);
+  });
+
+  it("stays on the way when the head is not in the base branch", () => {
+    seedPath();
+    expect(deriveJourney(db, KEY, NOW, { integration: () => null }).destination.reached).toBe(false);
+  });
+
   it("returns an empty journey for an Action that never launched", () => {
     const journey = deriveJourney(db, KEY, NOW);
     expect(journey.events).toEqual([]);
@@ -189,5 +212,33 @@ describe("classifyObstacle", () => {
 
   it("keeps only the headline of a message that quotes a report", () => {
     expect(firstLine("A fail; no attempt remains. Findings (report x):\n1. y")).toBe("A fail; no attempt remains.");
+  });
+});
+
+describe("gitIntegration", () => {
+  it("finds the base-branch merge commit that landed a head, and nothing for an unmerged head", () => {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "journey-git-"));
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" };
+    const git = (args: string[], date = "2026-10-19T10:00:00Z") => execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "maintenance.auto=false", ...args], { cwd: repo, encoding: "utf8", env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } }).trim();
+    try {
+      git(["init", "-q", "-b", "main"]);
+      writeFileSync(path.join(repo, "a"), "a"); git(["add", "a"]); git(["commit", "-qm", "base"]);
+      git(["checkout", "-qb", "candidate"]);
+      writeFileSync(path.join(repo, "b"), "b"); git(["add", "b"]); git(["commit", "-qm", "work"], "2026-10-19T11:00:00Z");
+      const head = git(["rev-parse", "HEAD"]);
+      git(["checkout", "-qb", "other", "main"]);
+      writeFileSync(path.join(repo, "c"), "c"); git(["add", "c"]); git(["commit", "-qm", "unmerged"]);
+      const unmerged = git(["rev-parse", "HEAD"]);
+      git(["checkout", "-q", "main"]);
+      git(["merge", "-q", "--no-ff", "-m", "Merge candidate", "candidate"], "2026-10-19T12:00:00Z");
+      const landing = git(["rev-parse", "HEAD"]);
+      writeFileSync(path.join(repo, "d"), "d"); git(["add", "d"]); git(["commit", "-qm", "later"], "2026-10-19T13:00:00Z");
+
+      expect(gitIntegration({ repositoryPath: repo, head, baseBranch: "main" })).toEqual({ commit: landing, at: "2026-10-19T12:00:00.000Z" });
+      expect(gitIntegration({ repositoryPath: repo, head: unmerged, baseBranch: "main" })).toBeNull();
+      expect(gitIntegration({ repositoryPath: path.join(repo, "missing"), head, baseBranch: "main" })).toBeNull();
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

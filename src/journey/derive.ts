@@ -21,14 +21,21 @@ import {
  * repair round launches), review-repair rows, red alerts, launch refusals,
  * review-step errors, operator escalations and worker merges.
  */
-export function deriveJourney(db: Database.Database, actionKey: string, now: Date): Journey {
+/**
+ * Where the reviewed head landed, when it is already part of the base branch:
+ * the first base-branch commit that contains it. The command answers this
+ * with read-only local Git; tests pass a stub.
+ */
+export type IntegrationLookup = (input: { repositoryPath: string; head: string; baseBranch: string }) => { commit: string; at: string } | null;
+
+export function deriveJourney(db: Database.Database, actionKey: string, now: Date, deps: { integration?: IntegrationLookup } = {}): Journey {
   const [project, actionId] = splitActionKey(actionKey);
   const warnings: string[] = [];
   const events: JourneyEvent[] = [];
   const has = (table: string) => tableExists(db, table);
 
   const sessions = has("agent_sessions")
-    ? (db.prepare(`SELECT id, plan_slug, work_item_id, status, branch, prepared_at, started_at, ended_at
+    ? (db.prepare(`SELECT id, plan_slug, work_item_id, repository_path, status, branch, prepared_at, started_at, ended_at
         FROM agent_sessions WHERE project_slug = ? AND action_id = ? AND is_simulated = 0
         ORDER BY prepared_at, id`).all(project, actionId) as SessionRow[])
     : [];
@@ -43,7 +50,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   const prByBranch = new Map<string, JourneyRef>();
   const prByHead = new Map<string, JourneyRef>();
   const preservations = sessions.length > 0 && has("candidate_preservation_receipts")
-    ? (db.prepare(`SELECT branch, commit_sha, pull_request_number, pull_request_url, created_at
+    ? (db.prepare(`SELECT branch, base_branch, commit_sha, pull_request_number, pull_request_url, created_at
         FROM candidate_preservation_receipts WHERE action_id = ? ORDER BY created_at`).all(actionId) as PreservationRow[])
         .filter((row) => sessions.some((session) => session.branch === row.branch))
     : [];
@@ -196,6 +203,19 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     });
   }
 
+  // A head merged any other way (the operator's merge, a fast-forward) is
+  // already in the base branch: the destination is reached all the same.
+  if (merged === null && latestHead && latestSession && deps.integration) {
+    const baseBranch = preservations.at(-1)?.base_branch ?? "main";
+    const integrated = deps.integration({ repositoryPath: latestSession.repository_path, head: latestHead, baseBranch });
+    if (integrated) merged = { at: integrated.at, ref: prByHead.get(latestHead) ?? sessionPr(latestSession.id) };
+  }
+  // Once there, every obstacle met on the way was got past.
+  const arrival = merged;
+  if (arrival) {
+    for (const event of events) if (event.kind === "obstacle" && event.at <= arrival.at) event.kind = "cleared";
+  }
+
   // Operator escalations that need a person are open obstacles; waiting ones only describe "now".
   const escalation = has("production_operator_escalations")
     ? (db.prepare("SELECT kind, message, first_detected_at, last_seen_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as EscalationRow | undefined)
@@ -233,7 +253,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   };
 
   const latestPr = latestHead ? (prByHead.get(latestHead) ?? (latestSession ? sessionPr(latestSession.id) : null)) : (latestSession ? sessionPr(latestSession.id) : null);
-  const reached = merged as { at: string; ref: JourneyRef | null } | null;
+  const reached = merged;
   const destination = {
     label: "PR merged",
     reached: reached !== null,
@@ -409,8 +429,8 @@ function tableExists(db: Database.Database, table: string): boolean {
   return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== undefined;
 }
 
-interface SessionRow { id: string; plan_slug: string; work_item_id: string; status: string; branch: string; prepared_at: string; started_at: string | null; ended_at: string | null }
-interface PreservationRow { branch: string; commit_sha: string; pull_request_number: number | null; pull_request_url: string | null; created_at: string }
+interface SessionRow { id: string; plan_slug: string; work_item_id: string; repository_path: string; status: string; branch: string; prepared_at: string; started_at: string | null; ended_at: string | null }
+interface PreservationRow { branch: string; base_branch: string; commit_sha: string; pull_request_number: number | null; pull_request_url: string | null; created_at: string }
 interface StepRow { request_id: string; session_id: string; target_head: string; pull_request_url: string; failures: number; total_failures: number; failure_step: string | null; last_error: string | null; last_outcome_json: string | null; created_at: string; updated_at: string }
 interface RepairRow { request_id: string; policy_epoch: number; round: number; failed_session_id: string; failed_head: string; pull_request_url: string | null; role: string; verdict: string; summary: string; repair_session_id: string | null; outcome: string; reason: string | null; created_at: string; updated_at: string; closed_at: string | null }
 interface ExitRow { session_id: string; outcome: string; reason: string; created_at: string }
