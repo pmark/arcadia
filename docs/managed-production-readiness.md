@@ -2,9 +2,73 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-18**, from `origin/main` 4777543a7 `PROJECT.md` and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the first supervised Claude run's worker log and receipts, and live `production status`. Historical observations below do not establish installed adoption or current live authority.
+Latest derivation: **2026-10-19**, from `origin/main` 9e6ff4aa1 and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the first unattended Claude run's worker log, ledger rows and PR record. The 2026-10-18 derivation used `origin/main` 4777543a7, the first supervised Claude run's worker log and receipts, and live `production status`. Historical observations below do not establish installed adoption or current live authority.
 
-## Current answer, 2026-10-18: the first supervised Claude run reached a reviewed, merged PR; unattended production remains unproved
+## Current answer, 2026-10-19: not yet. The review-repair loop ran unattended from the rerun verdict onward, but no Action of the first unattended Claude run reached a merged PR unattended
+
+The first multi-Action run under the repeatable grant card `grant-production-unattended-claude-rerun-20261018` (valid to 2026-10-25; live workspace `martianrover`, repository `pmark/arcadia`, provider `claude-code-cli`) ran 2026-10-18/19 and was stopped by the operator. The standalone record is [first-unattended-claude-run-2026-10-19.md](reports/first-unattended-claude-run-2026-10-19.md). Acceptance criterion 2 of `first-unattended-run` is **not met**; the Action stays open.
+
+**What is now proved.** From the rerun verdict onward, a failed independent review drives the whole repair loop without an operator: failed verdict, draft PR plus comment, repair Session launch, settlement, new PR, superseded PR closed, fresh review. Repair Session `session_c2387f0c86504224a4` launched 05:12:52Z, settled head a6e473d8f7c5, opened repair PR #1554, and the worker closed #1545 as superseded.
+
+**What is not proved.** Action 1 merged as #1534 only after the Release Manager merged it and removed a stray Ask. Action 2 merged as #1535 by the operator despite a failed independent review (defect #1536). Action 3 (`implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`) produced #1545 (head 71d40eb99459), which failed independent code review (the report omitted #1512, plus refused not-applicable claims); #1545 was returned to draft by the Arcadia worker; its repair #1554 was gated authority-adjacent and left drafted with Do-not-merge. No Action reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges.
+
+### Failures observed, in order
+
+| # | Failure | Fix or tracking |
+| --- | --- | --- |
+| a | The repair loop gated #1545 on the stale verdict's refused authority not-applicable claim. `qa code-review` refuses while production is Off and refuses a draft PR, so a rerun ran only after the press; the operator approved marking #1545 ready briefly. | #1552 |
+| b | The gated repair row (keyed session plus head, `ON CONFLICT DO NOTHING`) never re-judged on a newer verdict. | #1552 |
+| c | A gate ping over 500 characters failed to queue. | #1552 (capped at 500) |
+| d | A validated not-applicable claim on Security and authority still gated. | #1552 |
+| e | The repair launch was refused "not ready to launch" by the candidate's own pending completion Ask `agentask_f3b1644fe08cf772fe`. | #1553 (includes resume path and exact target match) |
+| f | `capacity_refused`: the Claude usage refresh returned 401 on the worker host, leaving the reading 6 hours stale. The operator signed in again. | Issue #1559 |
+| g | `session_environment_wall`: the preservation heartbeat was 15s old against a 15s limit under load. | Issue #1558 |
+| h | Fresh review of #1554 was needs-follow-up and gated authority-adjacent on patch-check defects: the Mission Log date-rollover bump was refused as non-append (#1555), the controller's retire-completion-draft commit 2bbc69665 was not attested (#1556), and settlement commits were authored under the operator's git identity (#1557). | Issues #1555, #1556, #1557 |
+| i | An Action merged despite a failed independent review. | Defect #1536 |
+
+Infrastructure PRs merged during the run: #1539 (production review-repair loop, Release Manager-merged on clean exact-head review and green CI), #1546 (pre-mortem fixes, Release Manager-merged; follow-ups #1549, #1550, #1551), #1552 and #1553 (operator-merged; the classifier blocked an agent commit of #1552, so the operator committed and pushed its gate change by hand). Earlier: #1531, #1533, #1537, #1541, #1543, #1548.
+
+### Operator and Release Manager touches
+
+Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 36); STOP presses (before each fix merge and at the end); merges of #1535, #1552, #1553; the hand commit and push of #1552's gate change; approval to mark #1545 ready for a review rerun; Claude re-sign-in on the host; decisions on the gate narrowing and on stopping. Release Manager: merge of #1534 and its stray-Ask cleanup; merges of #1539 and #1546; the review rerun. (The Arcadia worker, not the Release Manager, returned #1545 to draft and drafted #1554.) GitHub shows every merge as `pmark`, so the Release Manager versus operator attribution here is the run record's claim, not something GitHub proves.
+
+### Acceptance criteria of `first-unattended-run`
+
+| Criterion | Status |
+| --- | --- |
+| 1. Production preview for at least three ready Claude Actions, activation presented as one card, agents did not activate | Met 2026-10-18, as recorded in the earlier sections below. |
+| 2. Every Action reaches a merged PR with only activation and authority-adjacent merges as operator touches | **Not met.** One Action needed a Release Manager cleanup, one merged despite a failed review, one is unmerged; touches included STOP, RE-RUN, re-sign-in and a hand commit. |
+| 3. This document re-derived from the run with verdict and every failure | Met once this PR merges, with the replay-scenario obligation deferred (see below). |
+
+### Gates, critical path, live state and Plan scoreboard, 2026-10-19
+
+**Gates.** The capacity gate stays on. No merge happens without exact-head independent review and green checks. Authority-adjacent PRs (including every repair PR the gate classifies so, such as #1554) wait for the operator. Production is Off after the operator's STOP, and the 2026-10-25 grant card remains the only activation path.
+
+**Critical path.** (1) Land the live-state replay (separate session in progress): copy the live database and candidate refs into a throwaway workspace and run the worker tick offline to the launch or the stop. (2) Fix #1555 to #1559, whose live effects stopped this run. (3) Only then another press. (4) The run must reach merged PRs for all Actions with only activation and authority-adjacent merges as operator touches.
+
+| Item | State at this derivation |
+| --- | --- |
+| Production | Off after the operator's STOP. Grant card `grant-production-unattended-claude-rerun-20261018`, valid to 2026-10-25. |
+| Review-repair loop | Proven unattended from the rerun verdict onward once; the review rerun itself needed the operator's approval to mark #1545 ready, outside the loop (Session `session_c2387f0c86504224a4`, repair PR #1554, #1545 closed as superseded). |
+| Open candidates | #1554 drafted with Do-not-merge; #1545 closed as superseded. |
+| Open follow-ups | #1536, #1549, #1550, #1551, #1555 to #1559; replay proposal `agentask_f72f7a21bc28706079`. |
+| Live state not re-read | Policy revision, epoch and red alerts were not re-read for this derivation; treat the 2026-10-18 table figures as stale. |
+
+| Plan Action | Status |
+| --- | --- |
+| Seven Actions done as of 2026-10-18 (`launch-failure-keeps-cause`, `claude-worker-launch-replay`, `claude-capacity-evidence`, `credential-preflight`, `production-spend-budget`, `implement-a-hermetic-test-that-an`, `first-supervised-claude-run`) | Done; not re-verified here. |
+| `worker-review-and-merge` | Source merged in #1496; settlement state not re-read here. |
+| Run Actions 1 and 2 | Merged as #1534 and #1535 (see attribution caveats above). |
+| `implement-docs-reports-first-supervised-claude` | Open; repair #1554 drafted. |
+| `first-unattended-run` | **Open.** Criterion 1 met, criterion 2 not met, criterion 3 met once this PR merges. |
+
+### Lesson and next step
+
+Some defects were visible in live database rows before the presses: the stale gated repair row and the not-applicable authority gate (a, b, d) and the candidate's own pending completion Ask (e). Others appeared only at run time (ping length c, capacity 401 f, heartbeat g) or only after the repair Session ran (patch-check defects #1555 and #1556, identity #1557). Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. The refresh contract's obligation to add a hermetic replay scenario for each predictable live failure is **deferred** to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. It is not done in this change. That replay is now in progress in a separate session.
+
+**Verdict: not yet.**
+
+## Historical answer, 2026-10-18: the first supervised Claude run reached a reviewed, merged PR; unattended production remains unproved
 
 With this refresh the production Plan has **seven done** Actions (`launch-failure-keeps-cause`, `claude-worker-launch-replay`, `claude-capacity-evidence`, `credential-preflight`, `production-spend-budget`, the supervised-run target `implement-a-hermetic-test-that-an`, and `first-supervised-claude-run`, settled alongside this refresh). Two remain: `worker-review-and-merge` (source merged in #1496; settlement pending) and `first-unattended-run`. Production is **Inactive**. The capacity gate is **on**: the operator ran the `enable-capacity-gate-20261017` card. Services and the go-broker run main 4777543a7.
 
