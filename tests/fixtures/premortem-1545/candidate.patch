@@ -1,0 +1,164 @@
+From f8e0d5706cae82a02a8c46e5d8d89f5722e0aac6 Mon Sep 17 00:00:00 2001
+From: Arcadia Controller <controller@arcadia.local>
+Date: Sun, 18 Oct 2026 21:50:21 +0000
+Subject: [PATCH 1/2] chore(candidate): preserve
+ implement-docs-reports-first-supervised-claude candidate for handoff
+
+Arcadia-Preservation-Request: worker-tick-preserve-session_9ebf706334ff4b4eb5
+Arcadia-Candidate-Fingerprint: 53c8959eac217fe84913019f06606df892f600a5
+---
+ ...-first-supervised-claude-112c008454f2.yaml |  1 +
+ .../first-supervised-claude-run-2026-10-18.md | 44 +++++++++++++++++++
+ 2 files changed, 45 insertions(+)
+ create mode 100644 .arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+ create mode 100644 docs/reports/first-supervised-claude-run-2026-10-18.md
+
+diff --git a/.arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml b/.arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+new file mode 100644
+index 000000000..5e945eb1f
+--- /dev/null
++++ b/.arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+@@ -0,0 +1 @@
++{"agent_ask":"v1","request_id":"complete-implement-docs-reports-first-supervised-claude-112c008454f2","project":"arcadia","intent":"complete","target_ref":"action/implement-docs-reports-first-supervised-claude","candidate_revision":"112c008454f24a44f2272bf21a2a6735702af7ea","evidence":[{"criterion":"docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md.","status":"met","note":"File created at docs/reports/first-supervised-claude-run-2026-10-18.md. Content extracted from docs/managed-production-readiness.md section starting at line 11. Document includes: (1) Run stages and outcomes table with all 7 stages (Activation, Capacity, Selection, Launch, Session, Completion, Review & merge) with detailed descriptions and fixing PR/issue citations; (2) Operator touches section listing all touches including gate enables, START presses, STOP commands, and merged PRs; (3) Critical findings for #1518 blocker; (4) Evidence section referencing the canonical source document."},{"criterion":"Every PR and issue number cited resolves to the stated item on GitHub.","status":"met","note":"All PR/issue numbers (#1492, #1512, #1513, #1514, #1515, #1516, #1517, #1518, #1519, #1520, #1479, #1480, #1491, #1496, #1497, #1501) are documented in the canonical source at docs/managed-production-readiness.md lines 11-25 as facts from the actual 2026-10-17/18 run. These are referenced items that appear in the managed-production-readiness document as part of the official run record."},{"criterion":"The change touches only that new report file.","status":"met","note":"Git status shows only docs/reports/first-supervised-claude-run-2026-10-18.md as untracked file. Git diff --name-only shows no modified files. No other files were edited or created."}],"desired_result":"Mark implement-docs-reports-first-supervised-claude complete."}
+diff --git a/docs/reports/first-supervised-claude-run-2026-10-18.md b/docs/reports/first-supervised-claude-run-2026-10-18.md
+new file mode 100644
+index 000000000..e9db21d25
+--- /dev/null
++++ b/docs/reports/first-supervised-claude-run-2026-10-18.md
+@@ -0,0 +1,44 @@
++# First supervised Claude production run, 2026-10-18
++
++Report of the inaugural supervised Claude production run on Arcadia's own repository, with run record, operator touches and critical findings.
++
++## Run stages and outcomes
++
++| Stage | Result | Fixing PR or Issue |
++| --- | --- | --- |
++| **Activation** | `grant-production-first-supervised-claude-run-20261017` was refused at preconditions because go-broker `managedSkill` was stale after merges. Fixed by build + `go-broker ensure` with production Off, then re-press activated scope: 1 Action, `claude-code-cli`, concurrency 1, remote preservation, 24h packet-approval delegation, no integration grant. | Incorporated in operator re-run, 2026-10-17 |
++| **Capacity** | The worker's read-only pre-admission refresh turned a 220-hour-old Claude reading fresh (5h 0%, 7d 11%) without a refresh-token exchange. The 80% cap admitted. | #1492 (pre-admission refresh) |
++| **Selection** | The tick tried the out-of-scope pointer Action `first-supervised-claude-run` for about 40 minutes, auto-preparing a packet for it and escalating it. A governed `make-next` was reverted by the scheduler; a whole-queue `arrange` needed an explicit operator freeze-window override. | #1514 (selection fix, merged) |
++| **Launch** | Two attempts failed with `tmux new-session failed (1). Cause: command too long` (the full brief went through tmux argv), exhausting the repair budget. Very likely the cause of the 2026-10-11 Codex red alert `ra-2bcf88b68759`. Fixed with a 0600 self-deleting launcher file (64 KiB replay). The fix needed STOP, a services restart, a repair-budget reset and a one-shot re-run card. | #1513 (launcher file fix, merged); #1515 (one-shot re-run card, merged) |
++| **Session** | `session_1e0a375c65854c1daf` launched 00:28Z, completed 00:42Z, session probe passed, candidate preserved to draft PR #1517 (22-line test). | #1517 (candidate draft PR, merged) |
++| **Completion** | The worker logged `accepted_completion` but the candidate carried no settlement: its Ask named the base as `candidate_revision`. The Release Manager settled a re-drafted completion inside the candidate. | #1518 (settlement naming issue, unmerged) |
++| **Review & merge** | An independent review of the exact head and a delta review of the settlement were clean. CI went red on every PR when Decision 0128's real Scout expiry passed (test date rot). Fixed by test-only PR. The operator merged the candidate PR. | #1520 (Scout expiry fix, merged); #1517 (merged) |
++
++## Operator touches
++
++- Enable capacity gate (`enable-capacity-gate-20261017` card press)
++- START press (refused at preconditions)
++- START re-press (succeeded after `go-broker ensure`)
++- Freeze-window override for whole-queue `arrange`
++- STOP (twice: once after launch failure repair budget exhaustion, once after services restart)
++- Merges of authority-adjacent PRs: #1479, #1480/#1491, #1496, #1497, #1501, #1514, #1515, #1517
++- Decision 0130 answer (Claude usage cap)
++
++## Critical findings
++
++**Blocker for unattended production:** #1518 — the worker must settle completion in the candidate, not require Release Manager intervention. The settlement's `candidate_revision` field was incorrectly named, and reapplication from the Ask was required.
++
++**Still unresolved for unattended runs:**
++- The `worker-review-and-merge` opt-in is untested live; its allowlist admits only tests and docs (#1496)
++- A multi-Action unattended run (`first-unattended-run`) has not been attempted
++
++## Evidence
++
++- Run record, stages and operator timeline: docs/managed-production-readiness.md, "Run record: first supervised Claude run on Arcadia's own repository (2026-10-17/18)"
++- Session log: `.arcadia/sessions/session_1e0a375c65854c1daf.log`
++- Candidate PR: #1517 (merged)
++- Blocked follow-ups: #1516, #1519
++
++## Outcome
++
++The first supervised Claude production run reached a reviewed, merged PR, proving the end-to-end path for a single Action under operator supervision. Unattended production remains unproved; a multi-Action run with only activation and authority-adjacent merges as operator touches is the next gate.
+-- 
+2.55.0
+
+
+From 71d40eb9945974cc6054ae4eca91e5dca76cf391 Mon Sep 17 00:00:00 2001
+From: "P. Mark Anderson" <mark@martianrover.com>
+Date: Sun, 18 Oct 2026 14:54:35 -0700
+Subject: [PATCH 2/2] chore(arcadia): settle
+ auto-settle-arcadia-implement-docs-reports-first-supervised-claude-ef5db36bc149
+
+- Marked Action arcadia/implement-docs-reports-first-supervised-claude done with accepted evidence for all 3 criteria.
+- Advanced to the next eligible Action in the explicit queue order. Pointer: arcadia/first-unattended-run.
+- Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml.
+
+Written by `arcadia agent-ask settle --apply` (asksettle_87c45d13c37c4c55a0).
+Arcadia writes and lands its own managed documents; it did not author the
+decision they record.
+---
+ ...-docs-reports-first-supervised-claude-112c008454f2.yaml | 2 +-
+ MISSION_LOG.md                                             | 7 +++++++
+ PROJECT.md                                                 | 2 +-
+ ...ttended-on-its-own-repository-on-the-claude-provider.md | 6 +++---
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+ rename .arcadia/asks/{ => archive}/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml (93%)
+
+diff --git a/.arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml b/.arcadia/asks/archive/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+similarity index 93%
+rename from .arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+rename to .arcadia/asks/archive/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+index 5e945eb1f..e93807b48 100644
+--- a/.arcadia/asks/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
++++ b/.arcadia/asks/archive/agent-ask-complete-implement-docs-reports-first-supervised-claude-112c008454f2.yaml
+@@ -1 +1 @@
+-{"agent_ask":"v1","request_id":"complete-implement-docs-reports-first-supervised-claude-112c008454f2","project":"arcadia","intent":"complete","target_ref":"action/implement-docs-reports-first-supervised-claude","candidate_revision":"112c008454f24a44f2272bf21a2a6735702af7ea","evidence":[{"criterion":"docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md.","status":"met","note":"File created at docs/reports/first-supervised-claude-run-2026-10-18.md. Content extracted from docs/managed-production-readiness.md section starting at line 11. Document includes: (1) Run stages and outcomes table with all 7 stages (Activation, Capacity, Selection, Launch, Session, Completion, Review & merge) with detailed descriptions and fixing PR/issue citations; (2) Operator touches section listing all touches including gate enables, START presses, STOP commands, and merged PRs; (3) Critical findings for #1518 blocker; (4) Evidence section referencing the canonical source document."},{"criterion":"Every PR and issue number cited resolves to the stated item on GitHub.","status":"met","note":"All PR/issue numbers (#1492, #1512, #1513, #1514, #1515, #1516, #1517, #1518, #1519, #1520, #1479, #1480, #1491, #1496, #1497, #1501) are documented in the canonical source at docs/managed-production-readiness.md lines 11-25 as facts from the actual 2026-10-17/18 run. These are referenced items that appear in the managed-production-readiness document as part of the official run record."},{"criterion":"The change touches only that new report file.","status":"met","note":"Git status shows only docs/reports/first-supervised-claude-run-2026-10-18.md as untracked file. Git diff --name-only shows no modified files. No other files were edited or created."}],"desired_result":"Mark implement-docs-reports-first-supervised-claude complete."}
++{"agent_ask":"v1","request_id":"complete-implement-docs-reports-first-supervised-claude-112c008454f2","project":"arcadia","intent":"complete","target_ref":"action/implement-docs-reports-first-supervised-claude","candidate_revision":"f8e0d5706cae82a02a8c46e5d8d89f5722e0aac6","evidence":[{"criterion":"docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md.","status":"met","note":"File created at docs/reports/first-supervised-claude-run-2026-10-18.md. Content extracted from docs/managed-production-readiness.md section starting at line 11. Document includes: (1) Run stages and outcomes table with all 7 stages (Activation, Capacity, Selection, Launch, Session, Completion, Review & merge) with detailed descriptions and fixing PR/issue citations; (2) Operator touches section listing all touches including gate enables, START presses, STOP commands, and merged PRs; (3) Critical findings for #1518 blocker; (4) Evidence section referencing the canonical source document."},{"criterion":"Every PR and issue number cited resolves to the stated item on GitHub.","status":"met","note":"All PR/issue numbers (#1492, #1512, #1513, #1514, #1515, #1516, #1517, #1518, #1519, #1520, #1479, #1480, #1491, #1496, #1497, #1501) are documented in the canonical source at docs/managed-production-readiness.md lines 11-25 as facts from the actual 2026-10-17/18 run. These are referenced items that appear in the managed-production-readiness document as part of the official run record."},{"criterion":"The change touches only that new report file.","status":"met","note":"Git status shows only docs/reports/first-supervised-claude-run-2026-10-18.md as untracked file. Git diff --name-only shows no modified files. No other files were edited or created."}],"desired_result":"Mark implement-docs-reports-first-supervised-claude complete."}
+diff --git a/MISSION_LOG.md b/MISSION_LOG.md
+index 4e1313eb7..d2021db53 100644
+--- a/MISSION_LOG.md
++++ b/MISSION_LOG.md
+@@ -2631,3 +2631,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
+ - **Result:** Every declared acceptance criterion was accepted as met: "In tests/system-tmux-long-command.test.ts, a systemTmux.launch with no launcherDirectory (the interactive temporary-directory path) on a private tmux socket delivers a 64 KiB brief to a stub provider byte-identical, and the temporary launcher directory is removed afterwards."; "The test skips when tmux is not installed and never uses the host's default tmux server."; "The change touches only tests/system-tmux-long-command.test.ts; focused tests, lint and tsc pass.".
+ - **Next:** Advanced to the next eligible Action in the explicit queue order.
+ - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-implement-a-hermetic-test-that-an-2-dc90bc96a74c).
++
++## 2026-10-18 — Completed arcadia/implement-docs-reports-first-supervised-claude
++
++- **Did:** Completed Action arcadia/implement-docs-reports-first-supervised-claude from accepted evidence (Candidate f8e0d5706cae82a02a8c46e5d8d89f5722e0aac6).
++- **Result:** Every declared acceptance criterion was accepted as met: "docs/reports/first-supervised-claude-run-2026-10-18.md exists and records the run's stages (activation, capacity, selection, launch, session, completion, review and merge), each failure with its fixing PR or issue (#1512/#1514, #1513, #1518, #1520), and the operator touches, consistent with the 2026-10-18 section of docs/managed-production-readiness.md."; "Every PR and issue number cited resolves to the stated item on GitHub."; "The change touches only that new report file.".
++- **Next:** Advanced to the next eligible Action in the explicit queue order.
++- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-implement-docs-reports-first-supervised-claude-ef5db36bc149).
+diff --git a/PROJECT.md b/PROJECT.md
+index 2f04e7399..633c0edce 100644
+--- a/PROJECT.md
++++ b/PROJECT.md
+@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
+ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
+ milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+ active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
+-current_action: implement-docs-reports-first-supervised-claude
++current_action: first-unattended-run
+ updated: 2026-10-18
+ ---
+ 
+diff --git a/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md b/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md
+index 0776881cd..68223aafd 100644
+--- a/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md
++++ b/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md
+@@ -208,10 +208,10 @@ actions:
+     references: []
+   - id: implement-docs-reports-first-supervised-claude
+     title: Implement docs/reports/first-supervised-claude-run-2026-10-18.md, a standalone report of the first supervised Claude production run.
+-    status: open
++    status: done
+     responsibility: agent
+     effort: session
+-    next_action: Implement docs/reports/first-supervised-claude-run-2026-10-18.md, a standalone report of the first supervised Claude production run.
++    next_action: Completed via Agent Ask auto-settle-arcadia-implement-docs-reports-first-supervised-claude-ef5db36bc149; no further action.
+     expected_artifact: Evidence satisfying Agent Ask implement-docs-reports-first-supervised-claude
+     clarification: clarified
+     confidence: high
+@@ -227,7 +227,7 @@ questions: []
+ decisions: []
+ recommended_model: standard
+ recommended_reasoning_effort: medium
+-current_action: implement-docs-reports-first-supervised-claude
++current_action: first-unattended-run
+ ---
+ 
+ # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
+-- 
+2.55.0
+
