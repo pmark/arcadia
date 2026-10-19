@@ -16,6 +16,7 @@ import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listRe
 import { getSession } from "../src/sessions/index.js";
 import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { candidateCompletionAskIds } from "../src/sessions/launch.js";
 
 /**
  * The production worker's review repair loop (src/production/reviewRepair.ts),
@@ -33,7 +34,7 @@ afterEach(() => {
 const CRITERIA_A = [`MARKER.md exists and contains exactly the line "${LINE_A}" followed by a trailing newline, with no other content.`];
 
 /** Action A finished, preserved, readied and its code review failed; returns the failed Session after the tick that recorded the verdict. */
-function failedReview(setup: (rehearsal: Rehearsal) => void = () => {}, edits: Record<string, string> = {}, finish: "settled" | "sandboxed" = "settled"): { rehearsal: Rehearsal; a: AgentSession; head: string } {
+function failedReview(setup: (rehearsal: Rehearsal) => void = () => {}, edits: Record<string, string> = {}, finish: "settled" | "sandboxed" = "settled", beforeReview: (rehearsal: Rehearsal) => void = () => {}): { rehearsal: Rehearsal; a: AgentSession; head: string } {
   const rehearsal = new Rehearsal({ independentReviewers: "tick" });
   rehearsals.push(rehearsal);
   rehearsal.createFixtureRepository();
@@ -52,6 +53,7 @@ function failedReview(setup: (rehearsal: Rehearsal) => void = () => {}, edits: R
   setup(rehearsal);
   expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion"); // exit tick: preserved behind a draft PR
   rehearsal.tick(); // ready
+  beforeReview(rehearsal);
   rehearsal.tick(); // code review fails; the repair step runs in this same tick
   return { rehearsal, a, head: git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim() };
 }
@@ -100,6 +102,82 @@ describe("the review repair trigger", () => {
     const pending = withReadOnlyDatabase(rehearsal.workspace, (db) => listPendingTerminalCandidates(db, rehearsal.repo, rehearsal.projectSlug));
     expect(pending?.pending.map((session) => session.id)).toContain(a.id);
     expect(repairs(rehearsal).map((r) => [r.outcome, r.repair_session_id])).toEqual([["pending", null]]);
+  });
+});
+
+describe("the failed candidate's own pending completion Ask", () => {
+  // Live shape (2026-10-19): the candidate's completion Ask is registered but its
+  // settlement is not recorded in the workspace, while the head carries the settled file.
+  const unsettleCandidateCompletion = (rehearsal: Rehearsal) => withDatabase(rehearsal.workspace, (db) => {
+    // The receipt stays (the candidate's settlement commit is still canonical) but the
+    // registered completion proposal itself reads as unsettled, as it did live.
+    db.pragma("foreign_keys = OFF");
+    const original = db.prepare("SELECT * FROM agent_ask_proposals WHERE intent_kind = 'complete'").get() as Record<string, string>;
+    db.prepare(`INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("agentask_receipt_holder", "receipt-holder", original.capture_id, "0".repeat(64), original.format, original.intent_kind, original.project_ref, original.proposal_json, original.created_at);
+    expect(db.prepare("UPDATE agent_ask_settlements SET proposal_id = ? WHERE proposal_id = ?").run("agentask_receipt_holder", original.id).changes).toBe(1);
+  });
+  const pendingCompletions = (rehearsal: Rehearsal) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
+    db.prepare(`SELECT p.request_id FROM agent_ask_proposals p LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id WHERE s.id IS NULL AND p.request_id <> 'receipt-holder'`).all() as Array<{ request_id: string }>);
+
+  it("does not gate the repair launch and leaves the superseded proposal pending", () => {
+    const { rehearsal, a } = failedReview(() => {}, {}, "settled", unsettleCandidateCompletion);
+    const repair = rehearsal.lease()!;
+    expect(repair.id).not.toBe(a.id);
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["launched"]);
+    expect(pendingCompletions(rehearsal).map((row) => row.request_id)).toEqual([`complete-${a.action_id}-${a.id.replaceAll("_", "-")}`]);
+  });
+
+  it("does not gate the resume of a repair Session that exited incomplete", () => {
+    const { rehearsal } = failedReview(() => {}, {}, "settled", unsettleCandidateCompletion);
+    const repair = rehearsal.lease()!;
+    rehearsal.agentEdit(repair, "REPAIR.md", "partial fix\n");
+    rehearsal.tmux.exit(repair.tmux_session_name);
+    rehearsal.tickUntil(() => {
+      const lease = rehearsal.lease();
+      return lease !== null && lease.id !== repair.id;
+    }, 4);
+    const resumed = rehearsal.lease()!;
+    expect(resumed.worktree_path).toBe(repair.worktree_path);
+    expect(pendingCompletions(rehearsal)).toHaveLength(1);
+  });
+
+  it("still gates a repair launch on a different pending completion Ask for the same Action", () => {
+    const { rehearsal, a } = failedReview(() => {}, {}, "settled", (r) => {
+      unsettleCandidateCompletion(r);
+      withDatabase(r.workspace, (db) => {
+        db.pragma("foreign_keys = OFF");
+        const original = db.prepare("SELECT * FROM agent_ask_proposals WHERE request_id LIKE 'complete-%'").get() as Record<string, string>;
+        const proposal = JSON.parse(original.proposal_json);
+        proposal.normalized.requestId = "complete-someone-else";
+        db.prepare(`INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("agentask_other", "complete-someone-else", original.capture_id, "1".repeat(64), original.format, original.intent_kind, original.project_ref, JSON.stringify(proposal), original.created_at);
+      });
+    });
+    expect(rehearsal.lease()).toBeNull();
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["pending"]);
+    expect(exitReceiptOf(rehearsal, a.id).superseded_by_session_id).toBeNull();
+  });
+});
+
+describe("candidateCompletionAskIds", () => {
+  it("matches the selected Plan's exact target, never a same-named Action in another Plan", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ask-ids-"));
+    roots.push(root);
+    git(root, ["init", "-q", "-b", "main"]);
+    writeFileSync(path.join(root, "README.md"), "x\n");
+    const identity = ["-c", "user.name=t", "-c", "user.email=t@example.test"];
+    git(root, ["add", "-A"]);
+    git(root, [...identity, "commit", "-q", "-m", "base"]);
+    const base = git(root, ["rev-parse", "HEAD"]).trim();
+    mkdirSync(path.join(root, ".arcadia", "asks"), { recursive: true });
+    const ask = (id: string, target: string) => JSON.stringify({ agent_ask: "v1", request_id: id, project: "p", intent: "complete", target_ref: target, desired_result: "Done.", candidate_revision: base, evidence: [{ criterion: "c", status: "met", note: "n" }] });
+    writeFileSync(path.join(root, ".arcadia", "asks", "own.yaml"), ask("complete-own", "action/same-id"));
+    writeFileSync(path.join(root, ".arcadia", "asks", "other.yaml"), ask("complete-other-plan", "plan/other-plan#same-id"));
+    git(root, ["add", "-A"]);
+    git(root, [...identity, "commit", "-q", "-m", "candidate"]);
+    const head = git(root, ["rev-parse", "HEAD"]).trim();
+    expect([...candidateCompletionAskIds(root, "p", base, head, "same-id")]).toEqual(["complete-own"]);
   });
 });
 

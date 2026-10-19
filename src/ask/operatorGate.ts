@@ -105,8 +105,24 @@ export function resolveOperatorGate(input: {
   selectedActionId: string | null;
   /** Every unfinished Action's readiness in the active plan's queue segment, when already computed. */
   readySetCandidates?: ReadySetCandidate[];
+  /**
+   * Request ids of a failed review candidate's own completion Asks, passed only
+   * by a review repair launch. A pending `complete` Ask with one of these ids
+   * that targets the selected Action is part of the candidate the repair
+   * supersedes (the repair settles its own completion), so it does not gate
+   * that repair. Every other pending item still gates.
+   */
+  supersededCompletionAskIds?: ReadonlySet<string>;
 }): OperatorGateResolution {
-  const agentAsks: PendingAgentAskGateInput[] = (input.db ? listUnsettledAgentAskProposals(input.db) : []).map((row) => agentAskGateInput(row));
+  const superseded = input.supersededCompletionAskIds;
+  const agentAsks: PendingAgentAskGateInput[] = (input.db ? listUnsettledAgentAskProposals(input.db) : [])
+    .filter((row) => !(
+      superseded?.has(row.requestId) &&
+      row.proposal.normalized.intent === "complete" &&
+      input.selectedActionId !== null &&
+      extractActionIds(row.proposal.normalized).includes(input.selectedActionId)
+    ))
+    .map((row) => agentAskGateInput(row));
 
   const decisions: PendingDecisionGateInput[] = listOpenDecisions(input.repoRoot, input.projectSlug).map((doc) => ({
     id: doc.id,

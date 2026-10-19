@@ -382,6 +382,8 @@ export function resolveProjectTransition(input: {
    * and not moved.
    */
   actionId?: string;
+  /** A review repair launch only: the failed candidate's own completion Ask ids that must not gate it. See `resolveOperatorGate`. */
+  supersededCompletionAskIds?: ReadonlySet<string>;
 }): ProjectTransition {
   const dispatch = resolveDispatch(input.repoRoot, input.projectSlug, { actionId: input.actionId });
   if (input.db) {
@@ -413,7 +415,8 @@ export function resolveProjectTransition(input: {
           db: input.db,
           repoRoot: input.repoRoot,
           projectSlug: input.projectSlug,
-          selectedActionId: dispatch.context!.action.id
+          selectedActionId: dispatch.context!.action.id,
+          ...(input.supersededCompletionAskIds ? { supersededCompletionAskIds: input.supersededCompletionAskIds } : {})
         })
       : undefined;
     const blocker = operatorGate?.blocking[0];
