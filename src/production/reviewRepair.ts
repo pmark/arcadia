@@ -1,7 +1,16 @@
 import type Database from "better-sqlite3";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
-import { CODE_REVIEW_PR_CRITERIA, NOT_APPLICABLE_CHECK_NAME, QA_PR_REVIEW_CRITERIA, REFUSED_NOT_APPLICABLE_FINDING_TITLE, REFUSED_NOT_APPLICABLE_RECOMMENDATION, runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
+import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
+// A leaf module: importing these through prReview.js can see them undefined at
+// load time through an import cycle (prReview -> ... -> reviewRepair).
+import {
+  CODE_REVIEW_PR_CRITERIA,
+  NOT_APPLICABLE_CHECK_NAME,
+  QA_PR_REVIEW_CRITERIA,
+  REFUSED_NOT_APPLICABLE_FINDING_TITLE,
+  REFUSED_NOT_APPLICABLE_RECOMMENDATION
+} from "../qa/reviewCriteria.js";
 import type { AgentSession } from "../sessions/index.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
