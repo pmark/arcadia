@@ -10,6 +10,7 @@ import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
+import { renderRepairBrief, type ReviewRepairRow } from "./reviewRepair.js";
 
 /**
  * The actionable brief handed to a managed-production Session at launch.
@@ -42,6 +43,8 @@ export interface ActionBriefInput {
   baseRevision: string;
   /** The canonical incomplete handoff consumed by this Session, when resuming. */
   continuation?: { sessionId: string; candidateRevision: string | null };
+  /** The review repair this Session was launched for (src/production/reviewRepair.ts), when it is a repair Session. */
+  repair?: ReviewRepairRow | null;
   /**
    * The identity the Session's launch environment commits under. Absent, the
    * brief still carries an Identity block, but one that names nobody and
@@ -244,6 +247,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
       "This handoff proves neither completion nor additional authority. The Plan and approval boundaries still bind."
     );
   }
+  if (input.repair) lines.push(...renderRepairBrief(input.repair));
   if (pinned) {
     lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }

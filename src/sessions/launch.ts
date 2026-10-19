@@ -10,6 +10,9 @@ import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.j
 import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { normalizeAgentAsk } from "../ask/agentAsk.js";
+import { draftPathsAt } from "../ask/autoSettleBeforeDispatch.js";
+import { commitTreeAt } from "./candidateSnapshot.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
 import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
@@ -31,7 +34,7 @@ import {
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { checkLaunchPrerequisites, refuseUnlessSignedIn } from "./launchPreflight.js";
-import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
+import { liveMutationOwner, recordSessionRoleAttemptTerminal, type SessionRoleAttempt } from "./enrollment.js";
 import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementForSession, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
   assertDraftRecoveryUnchanged,
@@ -42,6 +45,7 @@ import {
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
+import { releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
@@ -99,6 +103,25 @@ export interface GuardedLaunchInput {
    * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
    */
   reuseOwnLeaseOnly?: boolean;
+  /**
+   * Standing policy only: launch a review repair Session (src/production/reviewRepair.ts)
+   * for the current Action instead of a fresh one. Its worktree is a NEW branch cut at
+   * `startRevision` (the failed candidate's work before its completion settlement), its
+   * lineage base is the failed candidate's own base revision, the failed candidate's
+   * Action claim moves to it, and its development attempt supersedes the passed attempt
+   * whose candidate failed review. The pending repair row `requestId` is bound in the
+   * Session insert's transaction.
+   */
+  repair?: {
+    requestId: string;
+    failedSessionId: string;
+    /** The failed candidate's Action: the pointer must still name it, or nothing launches. */
+    actionId: string;
+    failedWorktreePath: string;
+    startRevision: string;
+    baseRevision: string;
+    supersedesDevelopmentAttempt: string;
+  };
   /**
    * Per-launch wall-clock limit override in ms for this Session; omitted
    * defers to the policy scope's `sessionTimeLimitMs`, then the default. See
@@ -184,6 +207,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     );
   }
 
+  if (input.repair && (!input.standingPolicy || input.operatorLaunch)) {
+    throw validationError("A review repair Session is launched only under the standing production policy.", { code: "repair_requires_standing_policy" });
+  }
   if (input.operatorLaunch) {
     if (input.standingPolicy) {
       throw validationError("An operator launch authorization is minted only by a confirmed, fingerprinted Launch, never under the standing production policy.");
@@ -230,6 +256,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     tmux,
     now
   });
+
+  if (input.repair && preview.actionId !== input.repair.actionId) {
+    throw validationError(`A review repair of ${input.repair.actionId} launches only while the governed pointer names it (it names ${preview.actionId ?? "nothing"}).`, {
+      code: "repair_pointer_moved", conflict: true
+    });
+  }
 
   // Reconcile onto an already-durable result first, before any staleness
   // check: a lost HTTP response or a second tab retrying the same approved
@@ -362,7 +394,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // standing policy or an approved preview) authorizes the next bounded ordinal.
   const requirement = requirementIdentity({ projectSlug: preview.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
   try {
-    planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true });
+    planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true, supersedesPassed: input.repair?.supersedesDevelopmentAttempt ?? null });
   } catch (error) {
     throw lineageRefusal(error);
   }
@@ -422,7 +454,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // (or was somehow re-checked-out to a different branch) must not have its
   // claim renewed only to throw past that point with the claim already held
   // and nothing left to release it (CodeRabbit, PR #696).
-  const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
+  // A review repair never resumes an incomplete handoff or a draft-only candidate: it
+  // always starts its own branch from the failed candidate's pre-settlement work.
+  const staleHandoff = input.repair ? null : getResumableLeaseHandoff(input.db, repoRoot);
   let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
   if (staleHandoff && staleHandoff.session.action_id === preview.actionId && !tmux.hasSession(staleHandoff.session.tmux_session_name)) {
     const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
@@ -473,7 +507,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // handoff (handled above) decides first; only with none at all is an
   // undescribed candidate considered.
   let draftResume: { path: string; branch: string; receipt: DraftRecoveryReceipt } | null = null;
-  if (!staleHandoff) {
+  if (!staleHandoff && !input.repair) {
     const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
     try {
       const decision = writeTransaction(input.db, () => {
@@ -509,6 +543,23 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // after the claim committed releases it explicitly instead of leaving the
   // Action blocked for the TTL over work that never started.
   const claim: { generation: string | null } = { generation: null };
+  // A review repair moves the failed candidate's Action claim to its own worktree;
+  // every failure path below gives that claim back to the failed candidate.
+  let repairReleasedClaim: { worktreePath: string; branch: string } | null = null;
+  const restoreFailedCandidateClaim = () => {
+    if (!repairReleasedClaim) return;
+    const released = repairReleasedClaim;
+    repairReleasedClaim = null;
+    try {
+      writeTransaction(input.db, () => reserveAgentWorktree(input.db, {
+        repositoryPath: repoRoot, worktreePath: released.worktreePath, branch: released.branch, now,
+        project: preview.projectSlug, actionId: preview.actionId!
+      }));
+    } catch {
+      // Best effort: the failed candidate's worktree reservation itself was never released.
+    }
+  };
+  let repairLaunchRevision: string | null = null;
   let nextWorktree: PreparedAgentWorktree;
   if (draftResume) {
     nextWorktree = {
@@ -553,7 +604,18 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
           now,
           model,
           effort,
+          ...(input.repair ? { startPoint: input.repair.startRevision } : {}),
           beforeCreate(candidate) {
+            // The failed candidate's Action claim moves to the repair (fenced on
+            // its exact generation, only while it is still held on that worktree);
+            // its worktree reservation, branch and PR stay as they are.
+            if (input.repair) {
+              const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now);
+              if (held?.claim_generation && canonicalPath(held.worktree_path) === canonicalPath(input.repair.failedWorktreePath)) {
+                releaseActionClaim(input.db, { repositoryPath: repoRoot, project: preview.projectSlug, actionId: preview.actionId!, generation: held.claim_generation });
+                repairReleasedClaim = { worktreePath: held.worktree_path, branch: held.branch };
+              }
+            }
             claim.generation = reserveAgentWorktree(input.db, {
               repositoryPath: repoRoot,
               worktreePath: candidate.path,
@@ -568,11 +630,17 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         input.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
         return created;
       });
+      if (input.repair) repairLaunchRevision = retireInheritedCompletionDrafts(nextWorktree.path, input.repair.startRevision, preview.projectSlug, preview.planSlug ?? "", preview.actionId);
     } catch (error) {
       if (reservationCommitCleanup.candidate) {
-        tryGit(repoRoot, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
+        tryGit(repoRoot, ["worktree", "remove", "--force", reservationCommitCleanup.candidate.path]);
         tryGit(repoRoot, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+        if (input.repair) releaseWorktreeReservation(input.db, repoRoot, reservationCommitCleanup.candidate.path);
       }
+      if (claim.generation && input.repair) {
+        releaseActionClaim(input.db, { repositoryPath: repoRoot, project: preview.projectSlug, actionId: preview.actionId, generation: claim.generation });
+      }
+      restoreFailedCandidateClaim();
       // Worktree preparation failed before this admission ever reached
       // `commitAdmission`; nothing else will free the slot it reserved.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
@@ -600,8 +668,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // right expectation the second time around.
   // A never-launched draft-only candidate carries no commits, so its own
   // branch tip is both its lineage start and the HEAD launch must observe.
-  const sessionBaseRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
-  const sessionLaunchRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+  const sessionBaseRevision = input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  const sessionLaunchRevision = input.repair ? repairLaunchRevision ?? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   // Outside the `prepareSession` failure path below on purpose: a mismatch is
   // positive evidence that something is writing in the worktree, so the
@@ -634,6 +702,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       worktreePath: nextWorktree.path,
       now,
       tmux,
+      ...(input.repair ? { repair: { requestId: input.repair.requestId } } : {}),
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
     if (input.reuseOwnLeaseOnly && admission) {
@@ -672,6 +741,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     if (!resumedInPlace) {
       releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
     }
+    restoreFailedCandidateClaim();
     // A draft-only handout whose launch failed before any Session row came to
     // describe the candidate is voided, or every later Go or tick attempt would
     // refuse it as handed out over a session that never ran. Best effort.
@@ -717,6 +787,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   /** Abandon the prepared, never-started Session and everything this call reserved for it. */
   const abandonPrepared = () => {
     failPreparedSession(input.db, prepared.id);
+    if (input.repair) releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
     // See the same guard above: a resumed stale claim's worktree is prior
     // real work, never this call's to delete.
     if (!resumedInPlace) {
@@ -740,6 +811,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // even though nothing ever ran in it (CodeRabbit, PR #696).
       restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
     }
+    restoreFailedCandidateClaim();
   };
   if (admission) {
     const committed = commitAdmission(input.db, admission.requestId, now);
@@ -774,7 +846,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // back its committed slot, exactly like a withdrawn admission.
   let development: SessionRoleAttempt;
   try {
-    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: prepared.id, now }).attempt;
+    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: prepared.id,
+      supersedesPassed: input.repair?.supersedesDevelopmentAttempt ?? null, now }).attempt;
   } catch (error) {
     abandonPrepared();
     if (admission) releaseAdmission(input.db, admission.requestId, now);
@@ -820,6 +893,34 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // undone the same way, or the candidate is lost to future resumption.
     if (resumableStaleClaim) {
       restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
+    }
+    // A repair that never started gives the failed candidate back to terminal
+    // recovery, and its own fresh worktree, branch and reservation go with it.
+    // Only when tmux never started its process: a failure after the spawn
+    // (a busy database on the status write) leaves a running agent in that
+    // worktree, so its attempt, binding and worktree are left exactly as they
+    // are for reconciliation to judge.
+    const spawned = (() => {
+      try { return tmux.hasSession(launching.tmux_session_name); } catch { return true; }
+    })();
+    if (input.repair && !spawned) {
+      // Its development attempt did no work: recorded as a never-started
+      // repair, which the lineage sets aside, so the failed candidate's own
+      // passed attempt stands again (its verdict readiness and real failed
+      // verdict are re-derived normally) and a retried repair supersedes it.
+      if (development.status === "pending" || development.status === "running") {
+        try {
+          recordSessionRoleAttemptTerminal(input.db, { requestId: development.request_id, actorId: development.actor_id, status: "failed", now,
+            receipt: { repairNeverStarted: true, sessionId: prepared.id, reason: `the review repair Session never started: ${error instanceof Error ? error.message : String(error)}` } });
+        } catch {
+          // Left live: the failed candidate then stays unready until an operator acts; never a launch.
+        }
+      }
+      releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
+      tryGit(repoRoot, ["worktree", "remove", "--force", nextWorktree.path]);
+      tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+      restoreFailedCandidateClaim();
     }
     throw error;
   }
@@ -966,4 +1067,43 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
     preview.packet !== null &&
     session.packet_sha256 === preview.packet.sha256
   );
+}
+
+/**
+ * A review repair's fresh worktree starts at the failed candidate's work
+ * before its completion settlement, which may still carry that candidate's own
+ * drafted `complete` Ask (a sandboxed agent's draft, committed by host
+ * preservation). It is retired here, in one host commit before the agent
+ * starts, so it can neither be settled for the repaired head nor ride onto the
+ * base as a stray draft. Returns the worktree HEAD the launch must observe.
+ */
+function retireInheritedCompletionDrafts(worktreePath: string, startRevision: string, projectSlug: string, planSlug: string, actionId: string): string {
+  const targets = new Set([`action/${actionId}`, `plan/${planSlug}#${actionId}`]);
+  const inherited = draftPathsAt(worktreePath, startRevision).filter((file) => {
+    const content = tryGit(worktreePath, ["show", `${startRevision}:${file}`]);
+    if (content === null) return false;
+    try {
+      const ask = normalizeAgentAsk({ request: content });
+      return ask.intent === "complete" && ask.targetRef !== null && targets.has(ask.targetRef) && (ask.project === "unknown" || ask.project === projectSlug);
+    } catch {
+      return false;
+    }
+  });
+  if (inherited.length > 0) {
+    try {
+      // A freshly created worktree: the index holds exactly these removals.
+      git(worktreePath, ["rm", "-q", "--", ...inherited]);
+      // Under the standing Arcadia Controller identity (the one preservation
+      // commits under), never the host's ambient Git identity.
+      const parent = git(worktreePath, ["rev-parse", "HEAD"]).trim();
+      const tree = git(worktreePath, ["write-tree"]).trim();
+      const retired = commitTreeAt(worktreePath, tree, parent, {
+        message: `chore(arcadia): retire the failed candidate's completion draft for ${actionId}\n\nA review repair settles only a completion it drafts itself.`
+      });
+      git(worktreePath, ["update-ref", "-m", "arcadia: retire inherited completion draft", "HEAD", retired, parent]);
+    } catch (error) {
+      throw validationError(`The review repair could not retire the failed candidate's completion draft: ${error instanceof Error ? error.message : String(error)}`, { code: "repair_draft_retirement_failed" });
+    }
+  }
+  return git(worktreePath, ["rev-parse", "HEAD"]).trim();
 }

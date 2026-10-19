@@ -267,10 +267,10 @@ export class FastRehearsal extends Rehearsal {
   }
 
   /** The agent process runs (the scripted executor), then its pane ends. */
-  execute(launch: LaunchRecord, actionId: string, behaviour: ExecutorBehaviour = "clean"): ExecutorResult {
+  execute(launch: LaunchRecord, actionId: string, behaviour: ExecutorBehaviour = "clean", work: ActionWork = WORK[actionId]): ExecutorResult {
     this.recorder.current = actionId;
     try {
-      const result = this.executor.run(launch, WORK[actionId], behaviour);
+      const result = this.executor.run(launch, work, behaviour);
       this.executions.push(result);
       return result;
     } finally {

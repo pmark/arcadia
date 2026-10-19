@@ -432,8 +432,14 @@ export function integrateSessionCandidate(
     if (changed) return changed;
   }
 
+  // Under the worker pull-request merge opt-in (Decision 0097) the base is
+  // never fast-forwarded locally, so a base that moved on (another PR merged
+  // into main during the run) is no refusal here: GitHub's merge state CLEAN,
+  // the exact-head verdicts and the blast radius decide (workerMerge.ts). A
+  // missing branch still refuses. Without the opt-in nothing changes.
+  const mergeThroughPullRequest = policy.scope?.integrationGrant?.mergeThroughPullRequest === true;
   const kind = integrationKind(repoRoot, baseBranch, branch);
-  if (kind === null) {
+  if (kind === null && !(mergeThroughPullRequest && refExists(repoRoot, `refs/heads/${branch}`))) {
     return refusal(`The candidate branch ${branch} cannot fast-forward the governed base branch ${baseBranch}.`, merge);
   }
   if (kind === "not-needed") {
@@ -447,7 +453,6 @@ export function integrateSessionCandidate(
   // the exact head both current independent verdicts bind, nothing newer.
   // Under the worker pull-request merge opt-in (Decision 0097) the same gate
   // decides, and the PR is merged on GitHub instead of fast-forwarded here.
-  const mergeThroughPullRequest = policy.scope?.integrationGrant?.mergeThroughPullRequest === true;
   if (mergeThroughPullRequest && !input.verdictGate) {
     return { kind: "refused", reason: "Worker merge refused (review_missing): no independent verdict gate was consulted for this candidate.", operatorMergeCommand: merge, code: "review_missing" };
   }

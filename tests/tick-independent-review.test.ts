@@ -34,6 +34,9 @@ const GREEN: PullRequestCheckRun[] = [{ name: "fast", status: "COMPLETED", concl
 function finishedA(options: RehearsalOptions = {}, finish: "settled" | "sandboxed" = "settled"): { rehearsal: Rehearsal; a: AgentSession } {
   const rehearsal = new Rehearsal({ independentReviewers: "tick", ...options });
   rehearsals.push(rehearsal);
+  // A "fail" verdict judges only correctness: a failed authority criterion is a
+  // review-repair gate (tests/review-repair-loop.test.ts), not this file's subject.
+  rehearsal.github.failCriteria = ["correctness"];
   rehearsal.createFixtureRepository();
   rehearsal.approve(rehearsal.registerProject());
   rehearsal.activate();
@@ -63,6 +66,22 @@ function head(rehearsal: Rehearsal, session: AgentSession): string {
 
 function escalation(rehearsal: Rehearsal) {
   return rehearsal.status().operatorEscalations.find((row) => row.actionKey === rehearsal.actionA);
+}
+
+/**
+ * A real failed verdict is never re-run and never integrates; since the review
+ * repair loop (src/production/reviewRepair.ts, tests/review-repair-loop.test.ts)
+ * it is handed to exactly one repair Session for the same Action instead of
+ * waiting on the operator.
+ */
+function expectRepairTookOver(rehearsal: Rehearsal, failed: AgentSession | null = null) {
+  const sessions = rehearsal.sessions();
+  expect(sessions).toHaveLength(2);
+  expect(rehearsal.lease()?.id).toBe(sessions[1].id);
+  if (failed) expect(sessions[0].id).toBe(failed.id);
+  expect(escalation(rehearsal)).toBeUndefined();
+  expect(rehearsal.github.prs[0].isDraft).toBe(true);
+  expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).not.toBe(head(rehearsal, sessions[0]));
 }
 
 function verdicts(rehearsal: Rehearsal, role: "code-review" | "qa") {
@@ -357,12 +376,12 @@ describe("tick-driven independent review", () => {
     rehearsal.tick(); // ready
     rehearsal.tick(); // code review: reviewer unavailable
     rehearsal.tick(); // authorized re-run: a real failed judgment
-    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).not.toBe("integrated");
     expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review"]);
     expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"], [2, "failed"]]);
     expect(verdicts(rehearsal, "code-review").map((x) => typeof JSON.parse(x.terminal_receipt_json!).reviewerUnavailable)).toEqual(["string", "object"]);
     expect(verdicts(rehearsal, "qa")).toEqual([]);
-    expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed" });
+    expectRepairTookOver(rehearsal);
   });
 
   it("bounds the tick's reviewer well under the worker tick ceiling, reports progress before it, and spends the budget on timeouts", () => {
@@ -463,10 +482,10 @@ describe("tick-driven independent review", () => {
       rehearsal.github.findingTitle = title;
       exitTick(rehearsal);
       rehearsal.tick(); // ready
-      for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+      for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).not.toBe("integrated");
       expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
       expect(verdicts(rehearsal, "code-review").map((x) => [x.status, JSON.parse(x.terminal_receipt_json!).reviewerUnavailable])).toEqual([["failed", null]]);
-      expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed" });
+      expectRepairTookOver(rehearsal);
     }
   );
 
@@ -529,16 +548,16 @@ describe("tick-driven independent review", () => {
     }
   });
 
-  it("never retries or integrates a real failed verdict", () => {
-    const { rehearsal } = finishedA();
+  it("never retries or integrates a real failed verdict: one repair Session takes it", () => {
+    const { rehearsal, a } = finishedA();
     rehearsal.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
     exitTick(rehearsal);
     rehearsal.tick(); // ready
-    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).not.toBe("integrated");
     expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
     expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
     expect(verdicts(rehearsal, "qa")).toEqual([]);
-    expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", remedy: expect.stringContaining("--rerun") });
+    expectRepairTookOver(rehearsal, a);
   });
 
   describe("reviewer variance reruns (Issue #1018)", () => {
@@ -649,7 +668,7 @@ describe("tick-driven independent review", () => {
       expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
       expect(receipts(rehearsal, "code-review")).toEqual([{ status: "failed", verdict: "fail", artifactId: expect.any(String), decisionId: expect.any(String), headSha: expect.any(String), evidenceFingerprint: expect.any(String), reviewerUnavailable: null }]);
       expect(rerunLines(rehearsal)).toEqual([]);
-      expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", message: expect.not.stringContaining("reruns are spent") });
+      expectRepairTookOver(rehearsal);
     });
 
     it("spends the bound by head and kind from durable attempts: a restarted tick resumes at the same count and a different head starts from none", () => {
@@ -661,7 +680,7 @@ describe("tick-driven independent review", () => {
       for (let i = 0; i < 8; i += 1) rehearsal.tick();
       // Variance, then a real failure on the rerun: stopped by the real finding, not by the bound.
       expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review"]);
-      expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", message: expect.not.stringContaining("reruns are spent") });
+      expectRepairTookOver(rehearsal);
       const attempts = verdicts(rehearsal, "code-review");
       const requirement = attempts[0].requirement_id;
       const counts = (headSha: string) => withDatabase(rehearsal.workspace, (db) =>

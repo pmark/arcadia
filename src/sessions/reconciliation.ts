@@ -15,6 +15,7 @@ import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getSession, hasWorktreeReservationTable, type AgentSession } from "./index.js";
 import { settleDevelopmentAttemptForExit } from "./roleLineage.js";
+import { getSessionRepair } from "./reviewRepair.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
 function hasRoleAttemptTable(db: Database.Database): boolean {
@@ -457,7 +458,9 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     action: { id: action.id, acceptanceCriteria: action.acceptanceCriteria },
     // Host preservation has already committed exactly the tree the Session
     // left, draft included, so that commit is what its evidence describes.
-    evidencedRevision: evidence.candidateRevision
+    evidencedRevision: evidence.candidateRevision,
+    // A review repair Session settles only a completion it drafted itself.
+    excludeDraftsAt: getSessionRepair(db, session.id)?.start_revision ?? null
   });
   if (!result.settled) return null;
   const settlementId = result.receiptId ?? "unknown";

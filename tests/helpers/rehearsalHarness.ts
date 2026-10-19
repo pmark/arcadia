@@ -831,7 +831,7 @@ function hostPullRequest(branch: string, head: string) {
  */
 export type HostModelVerdict = "pass" | "fail" | "not-applicable" | "variance";
 
-function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect"): QaPrModelVerdict {
+function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect", failCriteria: string[] | null = null): QaPrModelVerdict {
   return {
     verdict: verdict === "fail" ? "fail" : verdict === "variance" ? "needs-follow-up" : "pass",
     summary: verdict === "fail" ? "A defect blocks this head." : verdict === "variance" ? "No defect found, but one criterion is not established." : "No defects in the exact head.",
@@ -839,7 +839,7 @@ function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ i
     checks: criteria.map((criterion, index) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
-      status: verdict === "fail" ? "fail" : verdict === "variance" && index === criteria.length - 1 ? "not-checked"
+      status: verdict === "fail" ? (failCriteria === null || failCriteria.includes(criterion.id) ? "fail" : "pass") : verdict === "variance" && index === criteria.length - 1 ? "not-checked"
         : verdict === "not-applicable" && criterion.id !== "correctness" ? "not-applicable" : "pass",
       evidence: verdict === "not-applicable" && criterion.id !== "correctness"
         ? `The patch touches only MARKER.md and Arcadia's governed settlement records, none of which can affect ${criterion.name.toLowerCase()}.`
@@ -877,6 +877,19 @@ export interface FakePullRequest {
 export class FakeGitHub {
   prs: FakePullRequest[] = [];
   readyCalls: string[] = [];
+  /** Every `gh pr ready --undo` (back to draft). */
+  undoReadyCalls: string[] = [];
+  /** Every `gh pr comment <url> --body <text>`. */
+  comments: Array<{ url: string; body: string }> = [];
+  /** Each entry fails one `gh pr comment` with that stderr, in order. */
+  commentFailures: string[] = [];
+  /** Every `gh pr close`. */
+  closeCalls: string[] = [];
+  /**
+   * The criteria a "fail" verdict judges fail; null fails every criterion (the
+   * default). A defect that fails only correctness is not authority-adjacent.
+   */
+  failCriteria: string[] | null = null;
   /** Every `gh` invocation, in order, as `gh <args>`. */
   ghCalls: string[] = [];
   /** Every reviewer-model invocation, with the PR head it judged. */
@@ -1035,6 +1048,12 @@ export class FakeGitHub {
     if (command === "gh" && args[0] === "pr" && args[1] === "ready") {
       const pr = this.find(args[2]);
       if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (args.includes("--undo")) {
+        // `gh pr ready --undo`: back to draft.
+        pr.isDraft = true;
+        this.undoReadyCalls.push(pr.url);
+        return ok("");
+      }
       const before = this.beforeReady; this.beforeReady = null; before?.();
       pr.isDraft = false;
       this.readyCalls.push(pr.url);
@@ -1042,6 +1061,21 @@ export class FakeGitHub {
       return ok("");
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "merge") return this.merge(args);
+    if (command === "gh" && args[0] === "pr" && args[1] === "close") {
+      const pr = this.find(args[2]);
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      pr.state = "CLOSED";
+      if (args.includes("--comment")) this.comments.push({ url: pr.url, body: args[args.indexOf("--comment") + 1] ?? "" });
+      this.closeCalls.push(pr.url);
+      return ok("");
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "comment") {
+      const pr = this.find(args[2]);
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (this.commentFailures.length > 0) return { status: 1, stdout: "", stderr: this.commentFailures.shift()!, error: null };
+      this.comments.push({ url: pr.url, body: args[args.indexOf("--body") + 1] ?? "" });
+      return ok("");
+    }
     if (command === "gh" && args[0] === "api") return ok(this.comparePatch(args));
     if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
     if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
@@ -1056,7 +1090,7 @@ export class FakeGitHub {
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
-      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle))}\n`, "utf8");
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle, this.failCriteria))}\n`, "utf8");
       return ok('{"type":"task.completed"}\n');
     }
     return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };

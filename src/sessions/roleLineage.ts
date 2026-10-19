@@ -137,12 +137,40 @@ function liveSessionFor(db: Database.Database, requirement: RequirementIdentity,
  * Off/epoch cutoff committed, so an Off or stale-epoch refusal never leaves a
  * pending attempt behind.
  */
+/**
+ * Whether a development attempt is a review repair whose Session never started
+ * (recorded failed by the launch with `repairNeverStarted`): it did no work, so
+ * it neither stands for nor supersedes the candidate before it.
+ */
+export function isRepairNeverStarted(attempt: Pick<SessionRoleAttempt, "status" | "terminal_receipt_json">): boolean {
+  if (attempt.status !== "failed" || !attempt.terminal_receipt_json) return false;
+  try {
+    return (JSON.parse(attempt.terminal_receipt_json) as { repairNeverStarted?: unknown }).repairNeverStarted === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The latest development attempt for a requirement input that is not a never-started repair attempt. */
+export function effectiveDevelopmentAttempt(db: Database.Database, requirementId: string, inputRevision: string): SessionRoleAttempt | null {
+  const rows = db.prepare(`SELECT * FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = 'development'
+    ORDER BY ordinal DESC, created_at DESC, rowid DESC`).all(requirementId, inputRevision) as SessionRoleAttempt[];
+  return rows.find((row) => !isRepairNeverStarted(row)) ?? null;
+}
+
 export function planDevelopmentAttempt(db: Database.Database, input: {
   requirement: RequirementIdentity;
   retryAuthorized: boolean;
   /** The launch's own prepared Session, which never counts as another live holder. */
   exceptSessionId?: string | null;
   maxOrdinal?: number;
+  /**
+   * Review repair only: the request id of the latest development attempt,
+   * which passed, whose candidate then failed an independent verdict. The
+   * repair is the next ordinal; the repair-round bound, not the retry
+   * ordinal limit, bounds how many there are.
+   */
+  supersedesPassed?: string | null;
 }): { kind: "resume"; attempt: SessionRoleAttempt } | { kind: "allocate"; supersedes: SessionRoleAttempt | null } {
   const live = liveMutationOwner(db, input.requirement.requirementId);
   if (live && live.input_revision === input.requirement.inputRevision) return { kind: "resume", attempt: live };
@@ -157,6 +185,21 @@ export function planDevelopmentAttempt(db: Database.Database, input: {
     }
   }
   const previous = latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development");
+  // A review repair supersedes the passed attempt whose candidate failed review;
+  // a repair attempt that never started (its Session failed to spawn) is set
+  // aside, so the retried repair supersedes the same passed attempt.
+  const effective = effectiveDevelopmentAttempt(db, input.requirement.requirementId, input.requirement.inputRevision);
+  if (effective && effective.status === "passed" && input.supersedesPassed && input.supersedesPassed === effective.request_id && previous?.status !== "pending" && previous?.status !== "running") {
+    return { kind: "allocate", supersedes: live };
+  }
+  // A never-started repair attempt is not a failure to retry over: behind it
+  // the passed candidate still stands, and only the repair it was for may
+  // supersede that.
+  if (previous && isRepairNeverStarted(previous) && effective?.status === "passed") {
+    throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
+      code: "attempt_retry_not_authorized", requestId: effective.request_id, status: effective.status
+    });
+  }
   if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
     throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
       code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
@@ -186,6 +229,8 @@ export function beginDevelopmentAttempt(db: Database.Database, input: {
   requestId: string;
   retryAuthorized: boolean;
   exceptSessionId?: string | null;
+  /** See {@link planDevelopmentAttempt}: review repair only. */
+  supersedesPassed?: string | null;
   now: Date;
 }): { attempt: SessionRoleAttempt; resumed: boolean } {
   return writeTransaction(db, () => {
@@ -211,6 +256,12 @@ export function beginDevelopmentAttempt(db: Database.Database, input: {
       mutationOwner: true,
       retryAuthorized: input.retryAuthorized,
       authorityCurrent: true,
+      // A review repair: one ordinal past the passed attempt it supersedes,
+      // never refused by the retry limit (the repair-round bound applies).
+      ...(input.supersedesPassed
+        ? { supersedesPassed: input.supersedesPassed,
+          maxOrdinal: Math.max(3, (latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development")?.ordinal ?? 0) + 1) }
+        : {}),
       now: input.now
     });
     return { attempt, resumed: false };
@@ -356,7 +407,7 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
   if (!action) return { ready: false, requirement: null, reasons: ["The governed Action is not in the checked-in Plan."] };
   const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
   const reasons: string[] = [];
-  const developer = latestRoleAttempt(db, requirement.requirementId, requirement.inputRevision, "development");
+  const developer = effectiveDevelopmentAttempt(db, requirement.requirementId, requirement.inputRevision);
   if (developer?.status !== "passed" || !developer.target_head) {
     reasons.push("No passed development attempt exists for the current governed Action input.");
   }
@@ -456,6 +507,9 @@ function assertIndependentOf(db: Database.Database, session: AgentSession, input
  * `executionCwd` are the host-observed identity and working directory of the
  * reviewer process; neither may be the developer's.
  */
+/** Code review or QA attempts per role per requirement input revision (every head and rerun counts). */
+export const MAX_VERDICT_ATTEMPTS = 5;
+
 export function beginIndependentVerdict(db: Database.Database, input: {
   role: IndependentVerdictRole;
   session: AgentSession;
@@ -512,7 +566,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
     mutationOwner: false,
     retryAuthorized: input.retryAuthorized ?? false,
     authorityCurrent: true,
-    maxOrdinal: input.maxOrdinal ?? 5,
+    maxOrdinal: input.maxOrdinal ?? MAX_VERDICT_ATTEMPTS,
     binding: readiness.binding,
     now: input.now
   });

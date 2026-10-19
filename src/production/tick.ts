@@ -75,6 +75,7 @@ import {
   type IndependentReviewDeps,
   type ReviewStepOutcome
 } from "./independentReview.js";
+import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -302,6 +303,7 @@ function recoverTerminalHandoff(
   // Every terminal guard passed: an escalation recorded while one of them
   // refused is stale now, whatever the integration step decides next.
   clearTerminalCandidateEscalation(db, `${session.project_slug}/${session.action_id}`);
+  let reviewOutcome: ReviewStepOutcome | undefined;
   const handoff: SessionHandoffResult = {
     preservation,
     integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head, clock: review?.clock,
@@ -309,15 +311,24 @@ function recoverTerminalHandoff(
       // hold: the one place the tick may advance the candidate's unattended
       // review by a step before the gate decides.
       verdictGate: () => {
+        // A review repair's own candidate on Decision 0098's gate list is never
+        // readied or reviewed: it stops for the operator like a failed verdict.
+        const repairGate = gateRepairCandidate(db, { repoRoot, session, head, now, log, runCommand: review?.deps.runCommand,
+          escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey: `${session.project_slug}/${session.action_id}`, kind, message, remedy, now, log }) });
+        if (repairGate) return { satisfied: false, code: "awaiting_independent_verdicts", reason: repairGate, head, missing: [] };
+        // A decided repair whose failed verdict no longer stands (a passing rerun,
+        // a new head) is released before anything can launch it.
+        releaseStalePendingRepair(db, { session, repoRoot, now, log });
         const waiting = independentVerdictGate(db, { session, repoRoot });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
             deps: { ...(review.clock ? { clock: review.clock } : {}), ...review.deps } })
           : undefined;
+        reviewOutcome = outcome;
         return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
       } }, integrateDeps)
   };
-  return { handoff, sessionId: session.id, head, refusal: null };
+  return { handoff, sessionId: session.id, head, refusal: null, session, review: reviewOutcome };
 }
 
 /**
@@ -366,6 +377,9 @@ interface TerminalHandoffRecovery {
   head: string | null;
   /** Set only when a terminal guard refused; null once every guard passed (integration may still refuse). */
   refusal: TerminalRefusalFacts | null;
+  /** The candidate whose guards all passed, and the review step's outcome this tick, when one ran. */
+  session?: AgentSession;
+  review?: ReviewStepOutcome;
 }
 
 /**
@@ -450,6 +464,9 @@ function escalatingVerdictGate(
     remedy = `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
   }
+  // The review repair loop stopped for the operator on this failed head: that
+  // entry already names the verdict and its findings, so it stands, quietly.
+  if (previous && REVIEW_REPAIR_ESCALATIONS.has(previous.kind)) return gate;
   if (previous && !supersedable(previous.kind)) {
     // One row per Action: never overwrite a different, still-open escalation.
     input.log?.(`${actionKey} also waits on independent verdicts (${message}); keeping its open ${previous.kind} escalation.`);
@@ -1770,6 +1787,9 @@ export function runManagedProductionTick(
     let handoffSessionId: string | null = null;
     let handoffHead: string | null = null;
     let terminalRefusal: TerminalRefusalFacts | null = null;
+    // The review step's outcome for the recovered candidate, when one ran (the review repair loop's trigger).
+    let handoffReview: ReviewStepOutcome | undefined;
+    let handoffSession: AgentSession | undefined;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
     // Scope drift is observed once per tick for every Project, before any early skip below, so a
     // stranded scope is seen whether or not this tick could launch, wait or reconcile.
@@ -2001,12 +2021,21 @@ export function runManagedProductionTick(
         } catch (error) {
           log(`Operator launch draft PR retry failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
         }
+        // A failed PR whose review repair now has its own PR is closed with a
+        // pointer to it, under the review step's own authority; never throws.
+        try {
+          closeSupersededPullRequests(db, { repoRoot, projectSlug: project.slug, now, runCommand: options.review?.runCommand, log });
+        } catch (error) {
+          log(`Closing superseded review-repair PRs failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        }
         const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, integrateDepsWithGitHub(options), log,
           { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });
         handoff = recovery?.handoff ?? null;
         handoffSessionId = recovery?.sessionId ?? null;
         handoffHead = recovery?.head ?? null;
         terminalRefusal = recovery?.refusal ?? null;
+        handoffReview = recovery?.review;
+        handoffSession = recovery?.session;
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -2038,6 +2067,12 @@ export function runManagedProductionTick(
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
+    } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession
+      && handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole) {
+      // A reviewer's real non-pass judgment of the exact settled head: the review
+      // repair loop (src/production/reviewRepair.ts) returns the PR to draft with
+      // its findings and launches one bounded repair Session, or stops once.
+      launch = attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       // Logged once per (Session, head, reason), not on every ~3 s tick: the
@@ -2115,6 +2150,136 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
   }
   return `The development attempt for this exact Action input is ${String(details?.status ?? "finished")} and no retry is authorized; `
     + "the only path is a governed amendment of the Action (an Agent Ask).";
+}
+
+/** A review repair launch withheld by a guard (sign-in hold, repair budget); never a launch failure. */
+class RepairLaunchHeld extends Error {}
+
+/** One deduped review-repair escalation, logged and pinged once per kind. */
+function escalateReviewRepair(db: Database.Database, input: { actionKey: string; kind: string; message: string; remedy: string; now: Date; log?: (message: string) => void }): void {
+  const { actionKey, kind, message } = input;
+  const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  const newlyDetected = recordOperatorEscalation(db, { actionKey, kind, message, remedy: input.remedy, now: input.now });
+  if (newlyDetected || previous?.kind !== kind) {
+    input.log?.(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
+    try {
+      queueOperatorPing(db, { message: `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`, kind: "attention", agent: "production-tick", now: input.now });
+    } catch (error) {
+      input.log?.(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+/**
+ * The review repair loop's one step for a recovered candidate whose exact
+ * settled head carries a reviewer's real failed verdict
+ * (src/production/reviewRepair.ts). Launches only through the guarded
+ * standing-policy launch, like any other admission; a conflict (capacity, Off,
+ * a moved pointer) is a wait retried next tick, logged once per reason.
+ */
+function attemptReviewRepairLaunch(
+  db: Database.Database,
+  input: {
+    workspace: string;
+    repoRoot: string;
+    projectSlug: string;
+    session: AgentSession;
+    options: ManagedProductionTickOptions;
+    tmux: TmuxAdapter;
+    now: Date;
+    log: (message: string) => void;
+  }
+): ManagedProductionLaunchAttempt {
+  const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
+  const paused = getSchedulingProject(db, input.projectSlug).pausedReason;
+  if (paused) return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey };
+  // The same launch guards attemptProjectLaunch applies, checked only at the
+  // launch itself (the failed PR is drafted and commented on first, whatever
+  // they say): a provider sign-in hold, and the per-Action repair budget a
+  // repeating non-conflict launch failure spends.
+  const held: { outcome: ManagedProductionLaunchAttempt["outcome"] | null; reason: string } = { outcome: null, reason: "" };
+  /** The launch guards, as a reason that withholds the launch (recorded on `held`), or null. */
+  const launchGuard = (): string | null => {
+    const signInHold = activeSignInFailureHold(db, input.projectSlug, input.now);
+    if (signInHold) {
+      const reason = `Held until ${signInHold.until.toISOString()} after a provider sign-in failure: a repair Session launched now would die on the same dead login. Sign in again on this worker host.`;
+      if (recordLaunchRefusalIfNew(db, actionKey, `${PROVIDER_SIGN_IN_FAILED_CODE}:${signInHold.observedAt}`, reason, input.now)) {
+        input.log(`Review repair launch held for ${actionKey} [${PROVIDER_SIGN_IN_FAILED_CODE}]: ${reason}`);
+      }
+      held.outcome = "skipped"; held.reason = reason;
+      return reason;
+    }
+    const attempts = getRepairAttempts(db, actionKey);
+    if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+      const reason = recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts, lastError: attempts.lastError, now: input.now, log: input.log });
+      held.outcome = "repair_budget_exhausted"; held.reason = reason;
+      return reason;
+    }
+    return null;
+  };
+  try {
+    const step = attemptReviewRepair({
+      db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
+      runCommand: input.options.review?.runCommand,
+      escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
+      // Asked before the pre-launch PR read, and again inside the launch.
+      canLaunch: launchGuard,
+      launch: (repair) => {
+        const withheld = launchGuard();
+        if (withheld) throw new RepairLaunchHeld(withheld);
+        return launchGuardedHostSession({
+          db,
+          workspace: input.workspace,
+          repoRoot: input.repoRoot,
+          projectSlug: input.projectSlug,
+          requestId: `worker-tick-repair-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`,
+          standingPolicy: true,
+          repair,
+          profiles: input.options.profiles,
+          adapters: input.options.adapters,
+          now: input.now,
+          tmux: input.tmux,
+          capacityObservation: input.options.capacityObservation,
+          agentWorktreeRoot: input.options.agentWorktreeRoot,
+          providerSignIn: input.options.providerSignIn,
+          workerCapability: input.options.workerCapability,
+          onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
+        });
+      }
+    });
+    if (step.kind === "launched") {
+      resetRepairAttempts(db, actionKey);
+      clearLaunchBlocker(db, input.projectSlug);
+      clearOperatorEscalation(db, actionKey);
+      clearLaunchRefusal(db, actionKey);
+      return { attempted: true, outcome: "launched", reason: step.reason, actionKey };
+    }
+    if (held.outcome !== null) return { attempted: false, outcome: held.outcome, reason: held.reason, actionKey };
+    return { attempted: false, outcome: "skipped", reason: step.reason, actionKey };
+  } catch (error) {
+    if (error instanceof RepairLaunchHeld && held.outcome !== null) {
+      return { attempted: false, outcome: held.outcome, reason: held.reason, actionKey };
+    }
+    const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof ArcadiaError && error.details?.conflict) {
+      const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
+      if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
+      return { attempted: true, outcome: "refused", reason: message, actionKey };
+    }
+    // A real defect in preparing or spawning the repair (tmux, the draft
+    // retirement, a worktree error): counted against the finite repair budget
+    // exactly like attemptProjectLaunch's, so it cannot cycle every tick.
+    const failure = formatLaunchFailure(error);
+    recordRepairAttempt(db, actionKey, failure, input.now);
+    recordFailedRun(db, input.projectSlug, { reason: `Review repair launch failed for ${actionKey}: ${failure}`, actionKey });
+    input.log(`Review repair launch attempt failed for ${actionKey}: ${failure}`);
+    const attemptsAfter = getRepairAttempts(db, actionKey);
+    if (attemptsAfter.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+      recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attemptsAfter.attempts, lastError: attemptsAfter.lastError, now: input.now, log: input.log });
+    }
+    return { attempted: true, outcome: "failed", reason: failure, actionKey };
+  }
 }
 
 function attemptProjectLaunch(

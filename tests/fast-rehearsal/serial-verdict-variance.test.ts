@@ -131,33 +131,35 @@ describe("three variance verdicts: one visible entry says the reruns are spent",
   });
 });
 
-describe("a real finding stops on the first attempt with no rerun", () => {
+describe("a real finding is never rerun: the review repair loop takes it instead", () => {
   let world: FastRehearsal;
   let status: ReturnType<FastRehearsal["productionStatus"]>;
   let report: ScenarioReport;
   beforeAll(() => {
     world = new FastRehearsal("serial-real-finding-no-rerun", isolation, import.meta.filename);
     worlds.push(world);
-    world.expectError(/independent_verdict_failed|code-review: failed|verdict on [0-9a-f]+ is needs-follow-up/);
+    // A correctness defect: a failed authority criterion would stop the repair loop instead.
+    world.github.failCriteria = ["correctness"];
+    world.expectError(/independent_verdict_failed|code-review: failed|verdict on [0-9a-f]+ (is needs-follow-up|is fail|failed)/);
     world.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
     world.start();
     const first = world.untilLaunched(ACTION_1, 3);
     world.execute(first.launch, ACTION_1);
-    world.tickUntil(() => world.escalations().some((e) => e.kind === "independent_verdict_failed"), 8);
+    world.tickUntil(() => world.sessions().length === 2, 8);
     world.ticks(6);
     status = world.productionStatus();
     report = world.finish();
   }, SCENARIO_TIMEOUT_MS);
 
-  it("calls the reviewer once, never again, and names no rerun", () => {
+  it("calls the reviewer once on that head, names no rerun, and launches one repair Session instead", () => {
     expect(roles(world)).toEqual(["code-review"]);
     expect(lineage(world, ACTION_1)).toEqual([["code-review", "failed"]]);
     expect(JSON.parse(world.attempts(ACTION_1).find((x) => x.role === "code-review")!.terminal_receipt_json!).variance).toBeUndefined();
     expect(reruns(world)).toEqual([]);
-    expect(status.data.operatorEscalations.map((e) => [e.actionKey, e.kind])).toEqual([[world.actionKey(ACTION_1), "independent_verdict_failed"]]);
-    expect(status.data.operatorEscalations[0].message).not.toContain("reruns are spent");
-    expect(status.data.operatorEscalations[0].remedy).toContain("--rerun");
-    expect(world.sessions().map((s) => s.action_id)).toEqual([ACTION_1]);
+    // The repair Session is still running (no executor ran it): nothing waits on the operator.
+    expect(status.data.operatorEscalations).toEqual([]);
+    expect(world.sessions().map((s) => s.action_id)).toEqual([ACTION_1, ACTION_1]);
+    expect(world.lease()?.id).toBe(world.sessions()[1].id);
     expect(isolation.guardCalls()).toEqual([]);
     expect(report.errors.filter((error) => !error.expected)).toEqual([]);
   });

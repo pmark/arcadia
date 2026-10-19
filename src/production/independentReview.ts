@@ -91,7 +91,12 @@ export type ReviewStepOutcome =
   | { kind: "waiting"; reason: string }
   /** One side effect happened this tick. */
   | { kind: "advanced"; step: "pushed" | "ready" | IndependentVerdictRole; reason: string }
-  | { kind: "blocked"; code: ReviewBlockCode; reason: string; remedy: string };
+  /**
+   * `failedRole` is set only for a reviewer's real non-pass judgment of this exact
+   * head (never reviewer unavailability or variance): the trigger of the review
+   * repair loop (src/production/reviewRepair.ts).
+   */
+  | { kind: "blocked"; code: ReviewBlockCode; reason: string; remedy: string; failedRole?: IndependentVerdictRole };
 
 export interface IndependentReviewDeps {
   /** The GitHub CLI and reviewer process runner; defaults to the one `arcadia qa pr` uses. */
@@ -278,6 +283,37 @@ function varianceFromReceipt(json: string | null): string | null {
   }
 }
 
+/**
+ * The role whose latest verdict on exactly this binding is a reviewer's real
+ * non-pass judgment (failed, not reviewer unavailability, not a stale run, not
+ * variance), or null. Code review first, as the reviewers run.
+ */
+function realFailedVerdictRole(db: Database.Database, readiness: { requirement: { requirementId: string; inputRevision: string }; binding: { criteriaFingerprint: string; evidenceFingerprint: string } }, head: string): IndependentVerdictRole | null {
+  for (const role of INDEPENDENT_VERDICT_ROLES) {
+    const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+    if (!latest || latest.status !== "failed" || latest.target_head !== head
+      || latest.criteria_fingerprint !== readiness.binding.criteriaFingerprint || latest.evidence_fingerprint !== readiness.binding.evidenceFingerprint) continue;
+    if (retryableVerdictReceipt(latest.terminal_receipt_json) || varianceFromReceipt(latest.terminal_receipt_json) !== null) continue;
+    return role;
+  }
+  return null;
+}
+
+/**
+ * The real failed verdict (see `realFailedVerdictRole`) on a candidate's current
+ * ready head, with the lineage attempt that recorded it, or null.
+ */
+export function realFailedVerdict(db: Database.Database, input: { session: AgentSession; repoRoot: string }):
+  { role: IndependentVerdictRole; head: string; attempt: NonNullable<ReturnType<typeof latestRoleAttempt>>; developerRequestId: string } | null {
+  const readiness = independentVerdictReadiness(db, input);
+  if (!readiness.ready) return null;
+  const head = readiness.binding.targetHead;
+  const role = realFailedVerdictRole(db, readiness, head);
+  if (!role) return null;
+  const attempt = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+  return attempt ? { role, head, attempt, developerRequestId: readiness.developer.request_id } : null;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -313,6 +349,14 @@ export function advanceIndependentReview(db: Database.Database, input: {
 
   const applicability = reviewApplicability(db, session, clock());
   if (!applicability.applicable) return { kind: "not_applicable", reason: applicability.reason };
+  // A candidate a review repair superseded is never readied, reviewed or
+  // integrated again: its PR is a draft until the repair's PR closes it.
+  let superseded: string | null | undefined = null;
+  try {
+    superseded = (db.prepare("SELECT superseded_by_session_id FROM session_exit_receipts WHERE session_id = ? AND outcome = 'accepted_completion'")
+      .get(session.id) as { superseded_by_session_id: string | null } | undefined)?.superseded_by_session_id;
+  } catch { /* a database without exit receipts has no supersession */ }
+  if (superseded) return { kind: "not_applicable", reason: `The candidate was superseded by review repair Session ${superseded}; its PR never integrates.` };
   const url = applicability.pullRequestUrl;
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok") return { kind: "not_applicable", reason: "The production policy is unreadable." };
@@ -429,6 +473,22 @@ export function advanceIndependentReview(db: Database.Database, input: {
     if (step.backoff_started_at) {
       update({ backoff_started_at: null });
       step = read();
+    }
+
+    // The worker returns a PR to draft itself when it records a real failed
+    // verdict on it (src/production/reviewRepair.ts), so a draft whose exact
+    // head carries one reports that verdict, never a person pausing the review;
+    // so does a PR closed or merged after its verdict failed (the repair loop
+    // stops for the operator on it).
+    const failedOnHead = pr.isDraft || pr.state.toUpperCase() !== "OPEN" ? realFailedVerdictRole(db, readiness, head) : null;
+    if (failedOnHead) {
+      return {
+        kind: "blocked",
+        code: "independent_verdict_failed",
+        failedRole: failedOnHead,
+        reason: `The independent ${failedOnHead} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates, and ${url} is ${pr.isDraft ? "a draft" : pr.state}.`,
+        remedy: `Read the ${failedOnHead} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, mark the PR ready and rerun it with \`arcadia ${failedOnHead === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
+      };
     }
 
     // The base host preservation opened the PR on (Issue #987: possibly a
@@ -589,6 +649,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
     const failedVerdict = (role: IndependentVerdictRole): ReviewStepOutcome => ({
       kind: "blocked",
       code: "independent_verdict_failed",
+      failedRole: role,
       reason: `The independent ${role} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates.`,
       remedy: `Read the ${role} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the failure wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
     });
@@ -683,6 +744,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
         return {
           kind: "blocked",
           code: "independent_verdict_failed",
+          failedRole: role,
           reason: `The independent ${role} verdict on ${head.slice(0, 12)} is ${result.data.verdict}: ${result.data.summary}`,
           remedy: `Read ${result.data.reportPath}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
         };
