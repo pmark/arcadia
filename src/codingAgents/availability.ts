@@ -9,8 +9,6 @@ import { codingAgentLabel } from "./adapters.js";
 
 const execFileAsync = promisify(execFile);
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
-const CLAUDE_OAUTH_TOKEN_URL = "https://api.anthropic.com/v1/oauth/token";
-const CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const CLAUDE_USAGE_REFRESH_COOLDOWN_MS = 5 * 60_000;
 const CLAUDE_KEYCHAIN_SERVICES = ["Claude Code-credentials"];
 
@@ -86,9 +84,13 @@ export interface CodingAgentAvailabilitySnapshot {
   agents: CodingAgentAvailabilityRecord[];
 }
 
+/**
+ * Only the access token is read (Decision 0130). The refresh token is never
+ * read, exchanged or written: an exchange spends the single-use refresh token
+ * and, unpersisted, signs the host out (issue #1559).
+ */
 export interface ClaudeOAuthCredentials {
   accessToken: string;
-  refreshToken: string | null;
 }
 
 export interface ClaudeUsageResponse {
@@ -208,8 +210,6 @@ export interface ClaudeUsageRefreshDependencies {
   loadCredentials?: () => Promise<ClaudeOAuthCredentials | null>;
   /** Call the usage endpoint with an access token; defaults to the live service. */
   requestUsage?: (accessToken: string) => Promise<{ status: number; body: ClaudeUsageResponse | null }>;
-  /** Exchange a refresh token; only ever reached when `allowTokenRefresh` is true. */
-  exchangeRefreshToken?: (refreshToken: string) => Promise<{ accessToken: string } | null>;
   /** Snapshot file to read and write; defaults to the host telemetry path. */
   snapshotPath?: string;
 }
@@ -218,20 +218,12 @@ export async function refreshClaudeCodeUsageTelemetry(
   now = new Date(),
   options: {
     force?: boolean;
-    /**
-     * Whether a 401 may exchange the refresh token at the OAuth token endpoint.
-     * Defaults to true for the manual commands. The unattended worker passes
-     * false (Decision 0130): it only reads the access token and calls the usage
-     * endpoint, so the operator's interactive sign-in is never rotated.
-     */
-    allowTokenRefresh?: boolean;
     /** Injected collaborators. Supplying any bypasses the VITEST early return. */
     deps?: ClaudeUsageRefreshDependencies;
   } = {},
 ): Promise<void> {
   const deps = options.deps;
   if (process.env.VITEST && !deps) return;
-  const allowTokenRefresh = options.allowTokenRefresh ?? true;
 
   const snapshotPath = deps?.snapshotPath ?? claudeStatusLinePath();
   const existing = readJsonRecord(snapshotPath);
@@ -251,12 +243,10 @@ export async function refreshClaudeCodeUsageTelemetry(
     return;
   }
 
+  // Read-only for every caller (Decision 0130, issue #1559): a 401 is recorded
+  // as `unauthorized`; the OAuth token endpoint is never contacted.
   const requestUsage = deps?.requestUsage ?? requestClaudeUsage;
-  let response = await requestUsage(credentials.accessToken);
-  if (allowTokenRefresh && response.status === 401 && credentials.refreshToken) {
-    const refreshed = await (deps?.exchangeRefreshToken ?? refreshClaudeOAuthToken)(credentials.refreshToken);
-    if (refreshed) response = await requestUsage(refreshed.accessToken);
-  }
+  const response = await requestUsage(credentials.accessToken);
 
   if (!response.body || (!response.body.five_hour && !response.body.seven_day)) {
     recordClaudeRefreshState(
@@ -274,6 +264,8 @@ export async function refreshClaudeCodeUsageTelemetry(
     arcadia_captured_at: now.toISOString(),
     arcadia_usage_checked_at: now.toISOString(),
     arcadia_usage_refresh_state: "ok" satisfies ClaudeUsageRefreshState,
+    arcadia_usage_unauthorized_since: null,
+    arcadia_usage_unauthorized_signalled: null,
     rate_limits: {
       ...(currentRateLimits ?? {}),
       five_hour: mergeClaudeUsageWindow(
@@ -308,7 +300,7 @@ function readProviderTelemetry(provider: string, now: Date): ProviderTelemetry |
 
 async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials | null> {
   const environmentToken = stringValue(process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  if (environmentToken) return { accessToken: environmentToken, refreshToken: null };
+  if (environmentToken) return { accessToken: environmentToken };
 
   const credentialsPath = process.env.ARCADIA_CLAUDE_CREDENTIALS_PATH
     ?? path.join(os.homedir(), ".claude", ".credentials.json");
@@ -336,10 +328,7 @@ function credentialsFromRecord(record: Record<string, unknown> | null): ClaudeOA
   const oauth = objectValue(record?.claudeAiOauth);
   const accessToken = stringValue(oauth?.accessToken);
   if (!accessToken) return null;
-  return {
-    accessToken,
-    refreshToken: stringValue(oauth?.refreshToken),
-  };
+  return { accessToken };
 }
 
 async function requestClaudeUsage(accessToken: string): Promise<{
@@ -361,27 +350,6 @@ async function requestClaudeUsage(accessToken: string): Promise<{
     return { status: response.status, body: await response.json() as ClaudeUsageResponse };
   } catch {
     return { status: 0, body: null };
-  }
-}
-
-async function refreshClaudeOAuthToken(refreshToken: string): Promise<{ accessToken: string } | null> {
-  try {
-    const response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: process.env.ARCADIA_CLAUDE_OAUTH_CLIENT_ID ?? CLAUDE_OAUTH_CLIENT_ID,
-        refresh_token: refreshToken,
-      }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!response.ok) return null;
-    const body = await response.json() as { access_token?: unknown };
-    const accessToken = stringValue(body.access_token);
-    return accessToken ? { accessToken } : null;
-  } catch {
-    return null;
   }
 }
 
@@ -412,11 +380,35 @@ function recordClaudeRefreshState(
   now: Date,
 ): void {
   const current = readJsonRecord(snapshotPath) ?? {};
+  // An unauthorized episode starts on the first 401 after a good (or no)
+  // reading and lasts until the next good reading, so a flap between
+  // `unauthorized` and `unreachable` stays one episode and one signal.
+  const since = stringValue(current.arcadia_usage_unauthorized_since)
+    ?? (state === "unauthorized" ? now.toISOString() : null);
   writeClaudeSnapshot(snapshotPath, {
     ...current,
     arcadia_usage_checked_at: now.toISOString(),
     arcadia_usage_refresh_state: state,
+    arcadia_usage_unauthorized_since: since,
   });
+}
+
+/**
+ * The open unauthorized episode, when its operator signal has not yet been
+ * raised. Returns null when there is no episode or it was already signalled.
+ */
+export function unsignalledClaudeUnauthorizedEpisode(snapshotPath = claudeStatusLinePath()): { since: string } | null {
+  const record = readJsonRecord(snapshotPath);
+  const since = stringValue(record?.arcadia_usage_unauthorized_since);
+  if (!since || stringValue(record?.arcadia_usage_unauthorized_signalled) === since) return null;
+  return { since };
+}
+
+/** Record that the operator signal for this unauthorized episode was raised. */
+export function markClaudeUnauthorizedEpisodeSignalled(since: string, snapshotPath = claudeStatusLinePath()): void {
+  const current = readJsonRecord(snapshotPath) ?? {};
+  if (stringValue(current.arcadia_usage_unauthorized_since) !== since) return;
+  writeClaudeSnapshot(snapshotPath, { ...current, arcadia_usage_unauthorized_signalled: since });
 }
 
 /** The last recorded outcome of a Claude usage refresh, or null when none is recorded. */
@@ -662,7 +654,7 @@ function describeClaudeRefreshState(state: ClaudeUsageRefreshState): string {
     case "no_credentials":
       return "no Claude Code OAuth credential was readable on this host, so subscription usage cannot be refreshed automatically.";
     case "unauthorized":
-      return "Claude's usage service rejected the stored credential; signing in again would restore automatic refresh.";
+      return "Claude sign-in on the worker host needs renewing; the usage service rejected the stored token.";
     case "unreachable":
       return "Claude's usage service could not be reached.";
     default:

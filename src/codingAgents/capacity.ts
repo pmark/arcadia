@@ -8,7 +8,8 @@ import type {
   CodingAgentAvailabilityRecord,
   CodingAgentAvailabilitySnapshot,
   CodingAgentBankedReset,
-  CodingAgentCreditState
+  CodingAgentCreditState,
+  ClaudeUsageRefreshDependencies
 } from "./availability.js";
 import { observeCodingAgentAvailability, refreshClaudeCodeUsageTelemetry } from "./availability.js";
 import type {
@@ -575,7 +576,11 @@ export interface CapacityRefreshResult {
  */
 export async function refreshProviderCapacity(
   profiles: CodingAgentProfile[],
-  options: CapacityObservationOptions & { deadlineMs?: number } = {}
+  options: CapacityObservationOptions & {
+    deadlineMs?: number;
+    /** Injected Claude usage collaborators for hermetic tests. */
+    claudeUsageRefreshDeps?: ClaudeUsageRefreshDependencies;
+  } = {}
 ): Promise<CapacityRefreshResult> {
   const deadlineMs = options.deadlineMs ?? CAPACITY_ADMISSION_LIMITS.refreshDeadlineMs;
   const startedAt = Date.now();
@@ -595,7 +600,10 @@ export async function refreshProviderCapacity(
     }
     attempts += 1;
     const before = observationSignature(observation);
-    await refreshClaudeCodeUsageTelemetry(options.now ?? new Date(), { force: attempts > 1 });
+    await refreshClaudeCodeUsageTelemetry(options.now ?? new Date(), {
+      force: attempts > 1,
+      ...(options.claudeUsageRefreshDeps ? { deps: options.claudeUsageRefreshDeps } : {}),
+    });
     observation = observeProviderCapacity(profiles, { ...options, snapshot: undefined });
     // A pass that moved nothing will not move anything on the next one either —
     // a missing credential does not appear because it was asked three times.
