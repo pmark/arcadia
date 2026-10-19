@@ -558,6 +558,17 @@ const CANDIDATE_REVISION_VALUE = /^[0-9a-f]{7,40}$/;
 const CANDIDATE_REVISION_LINE = /^(\s*candidate_revision\s*:\s*)(.*)$/m;
 
 /** An Ask's content with its `candidate_revision` blanked (a JSON object or simple YAML), or null when it has no hex one. */
+/**
+ * Whether an archived Ask is the same Ask as the draft it archives apart from
+ * the `candidate_revision` settlement binds (both a hex revision): the split
+ * archive move `splitArchiveMoves` recognizes, shared with the worker merge's
+ * blast radius (src/production/workerMerge.ts).
+ */
+export function isSettlementArchiveOf(draft: string, archive: string): boolean {
+  const left = askWithoutCandidate(draft);
+  return left !== null && left === askWithoutCandidate(archive);
+}
+
 function askWithoutCandidate(content: string): string | null {
   if (content.trimStart().startsWith("{")) {
     try {

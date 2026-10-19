@@ -3,6 +3,7 @@ import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/bat
 import { computeBlastRadius } from "../stewardship/prBlastRadius.js";
 import { git, isAncestor, tryGit } from "../git/worktrees.js";
 import { classifyPullRequestChecks, runHostCommand, type PullRequestCheckRun, type QaPrReviewDependencies } from "../qa/prReview.js";
+import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 
 /**
@@ -238,6 +239,22 @@ function consumedCompletionDrafts(repoRoot: string, baseRevision: string, parent
   const consumed = new Set<string>();
   const renames = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--find-renames", "--name-status", "--diff-filter=R", parent, head])
     .split("\n").map((line) => line.split("\t")).filter((fields) => fields.length === 3);
+  // Settlement re-serializes a JSON draft compactly when it archives it with
+  // the revision it bound, so a pretty-printed draft shares too little text
+  // for rename detection and shows as a deletion plus a new archive (live
+  // repair PR #1554). It counts as the same move only when the archive is the
+  // same Ask apart from `candidate_revision` (the patch check's own rule).
+  const changes = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-status", parent, head])
+    .split("\n").map((line) => line.split("\t")).filter((fields) => fields.length === 2);
+  const added = new Set(changes.filter(([status]) => status === "A").map(([, file]) => file));
+  for (const [status, from] of changes) {
+    if (status !== "D" || !/^\.arcadia\/asks\/agent-ask-[^/]+\.ya?ml$/.test(from)) continue;
+    const to = `.arcadia/asks/archive/${from.slice(".arcadia/asks/".length)}`;
+    if (!added.has(to)) continue;
+    const draft = tryGit(repoRoot, ["show", `${parent}:${from}`]);
+    const archive = tryGit(repoRoot, ["show", `${head}:${to}`]);
+    if (draft !== null && archive !== null && isSettlementArchiveOf(draft, archive)) renames.push(["R", from, to]);
+  }
   // Absent at the base tip AND where the candidate branched from it: a draft the
   // candidate inherited (and main removed later) is not the candidate's own.
   const mergeBase = git(repoRoot, ["merge-base", baseRevision, parent]).trim();
