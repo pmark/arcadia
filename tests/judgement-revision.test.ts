@@ -14,7 +14,8 @@ import { judgedCriteriaFingerprint } from "../src/sessions/roleLineage.js";
  */
 const JUDGEMENT_FILES = ["src/qa/patchApplicability.ts", "src/qa/reviewCriteria.ts"];
 const PINNED: Record<number, string> = {
-  2: "b51f6220877ce630fb5aed4d6936977689dd71272611edf4c88c413f065f7157"
+  // Re-pinned without a bump: isSettlementArchiveOf only exports an existing rule for the worker merge.
+  2: "d0929404bc12b824d3ddef6ea1fa71ab5a033cbdef3186c02de1dc826be9b1a5"
 };
 
 function judgementContentHash(): string {

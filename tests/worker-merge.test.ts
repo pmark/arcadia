@@ -407,6 +407,55 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
   });
 
+  /**
+   * Live repair PR #1554 (2026-10-19): a review repair of a candidate that had
+   * drafted its own completion. The failed candidate's draft is preserved, then
+   * retired by the controller; the repair's own draft is pretty-printed JSON,
+   * which the settlement re-serializes compactly with the revision it bound, so
+   * git shows a deletion plus a new archive rather than a rename.
+   */
+  function repairWithSplitArchive(archive: (ask: Record<string, unknown>) => Record<string, unknown>): void {
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    const failedDraft = ".arcadia/asks/agent-ask-complete-write-feature-aaaaaaaaaaaa.yaml";
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    writeFileSync(path.join(repo, failedDraft), ASK.replace("0123456789ab", "aaaaaaaaaaaa"));
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "chore(candidate): preserve write-feature candidate for handoff"]);
+    git(repo, ["rm", "-q", failedDraft]);
+    git(repo, ["-c", "user.name=Arcadia Controller", "-c", "user.email=controller@arcadia.local", "commit", "-q", "-m",
+      "chore(arcadia): retire the failed candidate's completion draft for write-feature\n\nArcadia-Retired-Completion-Draft: complete-write-feature-aaaaaaaaaaaa"]);
+    const ask = JSON.parse(ASK) as Record<string, unknown>;
+    writeFileSync(path.join(repo, SAFE), "feature, repaired\n");
+    writeFileSync(path.join(repo, DRAFT), `${JSON.stringify(ask, null, 2)}\n`);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "chore(candidate): preserve write-feature candidate for handoff"]);
+    git(repo, ["rm", "-q", DRAFT]);
+    writeFileSync(path.join(repo, `.arcadia/asks/archive/${path.basename(DRAFT)}`), `${JSON.stringify(archive({ ...ask, candidate_revision: "1".repeat(40) }))}\n`);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "chore(arcadia): settle auto-settle-fixture-write-feature"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+  }
+
+  it("merges a repair whose settlement archives its own pretty-printed draft compactly (a deletion plus a new archive, PR #1554)", () => {
+    repairWithSplitArchive((ask) => ask);
+    expect(merge()).toMatchObject({ kind: "merged", head });
+    expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
+  });
+
+  it("still refuses a deleted draft whose new archive is not the same Ask apart from candidate_revision", () => {
+    repairWithSplitArchive((ask) => ({ ...ask, desired_result: "Mark something else complete." }));
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(outcome.kind === "refused" && outcome.reason).toContain(path.basename(DRAFT));
+    expect(github.mergeCalls).toEqual([]);
+  });
+
   it("still refuses a draft the settlement leaves in place, archives under another name, or one it did not consume", () => {
     draftOnlyCandidate({ archive: null });
     expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
