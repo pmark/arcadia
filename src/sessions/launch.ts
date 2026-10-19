@@ -897,7 +897,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
     // A repair that never started gives the failed candidate back to terminal
     // recovery, and its own fresh worktree, branch and reservation go with it.
-    if (input.repair) {
+    // Only when tmux never started its process: a failure after the spawn
+    // (a busy database on the status write) leaves a running agent in that
+    // worktree, so its attempt, binding and worktree are left exactly as they
+    // are for reconciliation to judge.
+    const spawned = (() => {
+      try { return tmux.hasSession(launching.tmux_session_name); } catch { return true; }
+    })();
+    if (input.repair && !spawned) {
       // Its development attempt did no work: recorded as a never-started
       // repair, which the lineage sets aside, so the failed candidate's own
       // passed attempt stands again (its verdict readiness and real failed

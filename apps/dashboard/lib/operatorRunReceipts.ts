@@ -48,3 +48,37 @@ export async function loadLatestRunReceipts(library: string): Promise<Map<string
   }
   return latest;
 }
+
+/**
+ * The same summary as `loadLatestRunReceipts(...).get(id)`, read for one id by walking the run
+ * directories newest-first and stopping at the latest receipt (and, when that one did not succeed,
+ * the latest succeeded one). It never reads the descriptor library.
+ */
+export async function loadLatestRunReceiptFor(library: string, id: string): Promise<RunReceiptSummary | null> {
+  let entries: string[];
+  try {
+    entries = (await readdir(path.join(library, "runs"))).filter((entry) => RUN_DIRECTORY.test(entry)).sort().reverse();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error("Could not read operator run receipts; showing the action without them.", error);
+    return null;
+  }
+  let latest: RunReceiptSummary | null = null;
+  for (const entry of entries) {
+    let value: Record<string, unknown>;
+    try {
+      value = JSON.parse(await readFile(path.join(library, "runs", entry, "receipt.json"), "utf8")) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const outcome = text(value.outcome);
+    if (text(value.id) !== id || !outcome) continue;
+    const startedAt = text(value.startedAt);
+    const finishedAt = text(value.finishedAt);
+    if (!latest) latest = { runDirectory: `runs/${entry}`, outcome, startedAt, finishedAt, succeededAt: null };
+    if (outcome === "succeeded") {
+      latest.succeededAt = finishedAt ?? startedAt ?? entry;
+      break;
+    }
+  }
+  return latest;
+}

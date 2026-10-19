@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { singleFlight } from "../lib/singleFlight";
 import type { DecisionCardRefusalView, DecisionCardView } from "../lib/decision-cards";
 import type { CardOutcome } from "../components/decision-cards";
 
@@ -15,7 +16,8 @@ export function useDecisionCards() {
   const [kept, setKept] = useState<DecisionCardView[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, CardOutcome | undefined>>({});
 
-  const refresh = useCallback(async () => {
+  // This read can take tens of seconds; never start another while one is in flight.
+  const refresh = useMemo(() => singleFlight(async () => {
     try {
       const response = await fetch("/api/decision-card", { cache: "no-store" });
       if (!response.ok) return;
@@ -25,11 +27,11 @@ export function useDecisionCards() {
     } catch {
       // Cards are additive; a failed read leaves the existing to-do list untouched.
     }
-  }, []);
+  }), []);
 
   useEffect(() => {
     void refresh();
-    const interval = setInterval(() => void refresh(), POLL_MS);
+    const interval = setInterval(() => void refresh.tick(), POLL_MS);
     return () => clearInterval(interval);
   }, [refresh]);
 

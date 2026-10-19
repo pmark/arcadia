@@ -90,6 +90,13 @@ export interface ReviewRepairInput {
   log?: (message: string) => void;
   /** `gh` for the draft and the comment; the review step's own runner. */
   runCommand?: RunCommand;
+  /**
+   * Launch guards the caller enforces (a provider sign-in hold, an exhausted
+   * repair budget), asked before the pre-launch PR read so a launch that is
+   * already forbidden spends no GitHub call: a reason withholds the launch.
+   * The launch callback re-checks them.
+   */
+  canLaunch?: () => string | null;
   /** The guarded standing-policy launch, carrying the repair. */
   launch: (repair: NonNullable<GuardedLaunchInput["repair"]>) => GuardedLaunchResult;
   /** Records (deduped) the one operator escalation when the loop stops. */
@@ -513,12 +520,28 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   }
   if (row.outcome !== "pending") return { kind: "not_applicable", reason: `The repair for this failed head is already ${row.outcome}.` };
 
+  const withheld = input.canLaunch?.() ?? null;
+  if (withheld) return { kind: "waiting", reason: withheld };
   // The PR was read while drafting; a person may have closed or merged it
   // since. Re-read it right before the launch: a failed PR no longer open is
   // a gated stop, never a repair.
   if (row.pull_request_url) {
     const viewed = (input.runCommand ?? runHostCommand)({ command: "gh", args: ["pr", "view", row.pull_request_url, "--json", "state"], cwd: repoRoot, timeoutMs: 30_000 });
-    if (viewed.status !== 0) return { kind: "waiting", reason: `gh pr view ${row.pull_request_url} failed before the repair launch: ${commandError(viewed)}` };
+    if (viewed.status !== 0) {
+      // The same bounded accounting as drafting and commenting.
+      const error = `gh pr view ${row.pull_request_url} failed before the repair launch: ${commandError(viewed)}`;
+      const failures = row.notify_failures + 1;
+      const exhausted = failures >= MAX_NOTIFY_FAILURES;
+      const reason = `The failed PR's state could not be read before the repair launch after ${failures} attempts: ${error}`;
+      db.prepare(`UPDATE production_review_repairs SET last_error = ?, notify_failures = ?, updated_at = ?${exhausted ? ", outcome = 'gated', reason = ?" : ""}
+        WHERE request_id = ? AND repair_session_id IS NULL`).run(...[error, failures, now.toISOString(), ...(exhausted ? [reason] : []), requestId]);
+      if (row.last_error !== error || exhausted) input.log?.(`Review repair for ${actionKey}: ${error}; ${exhausted ? "stopping for the operator" : "retried next tick"}.`);
+      if (!exhausted) return { kind: "waiting", reason: error };
+      input.escalate(REVIEW_REPAIR_GATED,
+        `The independent ${row.role} verdict on ${row.failed_head.slice(0, 12)} is ${row.verdict}; ${reason} Findings (report ${row.report_path ?? "unavailable"}):\n${findings}`,
+        `Check that the GitHub CLI can read ${row.pull_request_url}, then decide the candidate yourself; nothing integrates meanwhile.`);
+      return { kind: "stopped", escalation: REVIEW_REPAIR_GATED, reason };
+    }
     let state = "UNKNOWN";
     try { state = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "UNKNOWN").toUpperCase(); } catch { /* UNKNOWN */ }
     if (state !== "OPEN") {

@@ -192,6 +192,14 @@ export function planDevelopmentAttempt(db: Database.Database, input: {
   if (effective && effective.status === "passed" && input.supersedesPassed && input.supersedesPassed === effective.request_id && previous?.status !== "pending" && previous?.status !== "running") {
     return { kind: "allocate", supersedes: live };
   }
+  // A never-started repair attempt is not a failure to retry over: behind it
+  // the passed candidate still stands, and only the repair it was for may
+  // supersede that.
+  if (previous && isRepairNeverStarted(previous) && effective?.status === "passed") {
+    throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
+      code: "attempt_retry_not_authorized", requestId: effective.request_id, status: effective.status
+    });
+  }
   if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
     throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
       code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
