@@ -68,7 +68,7 @@ test("isolates G7 with its live deadline and confirms an off-path G8 press befor
 
     const g8 = page.getByTestId(`operator-action-${G8}`);
     await g8.getByRole("button", { name: "Run" }).click();
-    const confirm = g8.getByRole("alertdialog", { name: "Not your next action" });
+    const confirm = g8.getByRole("alertdialog", { name: "Confirm before running" });
     await expect(confirm).toContainText("Your next action is G7 (run 2), before");
     await expect(confirm).toContainText("Running G8 (run 2) now undoes G6 (run 2)'s pass that G7 (run 2) needs, so you would have to run G6 (run 2) again before G7 (run 2).");
     await page.screenshot({ path: path.join(shots, "confirm-off-path-g8-390.png"), fullPage: false });

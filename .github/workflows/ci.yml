@@ -33,10 +33,21 @@ jobs:
         run: mise exec -- pnpm check:frozen-records
       - name: Validate Plan close-out records
         run: mise exec -- pnpm check:plan-close-outs
+      - name: Validate unit shard partition covers every test file once
+        run: mise exec -- node scripts/ci-test-shard.mjs --check 8
 
-  unit-1:
+  unit:
+    # Test files are split over 8 duration-balanced shards (scripts/ci-test-shard.mjs;
+    # every test file lands in exactly one shard) so wall time is the slowest
+    # small shard. Branch protection requires the checks unit-1..unit-4, so the
+    # unit-N gate jobs below keep those names and fail unless every shard passed.
+    name: unit-shard-${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
@@ -45,53 +56,36 @@ jobs:
           cache: true
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
-      # Unit tests resolve workspace imports through vitest aliases, but the
-      # package-boundary suite builds dist itself if it is missing; a
-      # pre-existing build keeps that hook instant.
-      - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=1/4
+      # Unit tests resolve workspace imports through vitest aliases, but a few
+      # suites read dist/. `pnpm build` also runs ESLint, which the lint job
+      # already enforces, so CI builds only the artifacts.
+      - run: mise exec -- pnpm build:artifacts
+      - name: Run this shard's test files
+        run: |
+          mise exec -- bash -euo pipefail -c '
+            node scripts/ci-test-shard.mjs ${{ matrix.shard }} 8 > "$RUNNER_TEMP/shard-files.txt"
+            test -s "$RUNNER_TEMP/shard-files.txt"
+            xargs -r pnpm exec vitest run < "$RUNNER_TEMP/shard-files.txt"
+          '
 
-  unit-2:
+  unit-gate:
+    # Required check names unit-1..unit-4 (see above). Each is red unless all
+    # eight shards succeeded, so no test can fail without blocking merge.
+    name: unit-${{ matrix.gate }}
+    needs: unit
+    if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        gate: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          install: true
-          cache: true
-      - run: mise exec -- corepack enable pnpm
-      - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=2/4
-
-  unit-3:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          install: true
-          cache: true
-      - run: mise exec -- corepack enable pnpm
-      - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=3/4
-
-  unit-4:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          install: true
-          cache: true
-      - run: mise exec -- corepack enable pnpm
-      - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
-      - run: mise exec -- pnpm exec vitest run --shard=4/4
+      - name: Require every unit shard to pass
+        env:
+          RESULT: ${{ needs.unit.result }}
+        run: |
+          echo "unit shards: $RESULT"
+          test "$RESULT" = "success"
 
   dashboard:
     runs-on: ubuntu-latest
@@ -104,7 +98,7 @@ jobs:
           cache: true
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm build:artifacts
       - run: mise exec -- pnpm dashboard:build
 
   e2e:
@@ -120,7 +114,7 @@ jobs:
           cache: true
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
-      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm build:artifacts
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
