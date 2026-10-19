@@ -211,7 +211,9 @@ export function placeLabels(orientation: Orientation, labels: Label[]): PlacedLa
     if (!side) continue;
     taken[side].push(span);
     if (orientation === "h") {
-      placed.push({ x: label.s, y: side === "a" ? 78 : 131, anchor: "middle", text: label.text, strong: label.strong });
+      // A label wider than the room left of its glyph starts at the edge instead of running off it.
+      const clipped = label.s - half < EDGE;
+      placed.push({ x: clipped ? EDGE : label.s, y: side === "a" ? 78 : 131, anchor: clipped ? "start" : "middle", text: label.text, strong: label.strong });
     } else {
       // Beside a vertical path there is room for about 22 characters; the glyph's title and the log keep the rest.
       const text = label.text.length > 22 ? `${label.text.slice(0, 21)}…` : label.text;
@@ -220,6 +222,8 @@ export function placeLabels(orientation: Orientation, labels: Label[]): PlacedLa
   }
   return placed;
 }
+
+const EDGE = 4;
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;

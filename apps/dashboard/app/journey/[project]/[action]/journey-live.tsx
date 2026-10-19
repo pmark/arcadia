@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { JourneyLegend, JourneyLog, JourneyMap } from "../../../../components/journey-map";
+import { JourneyActivityLine, JourneyLegend, JourneyLog, JourneyMap, utcTime } from "../../../../components/journey-map";
 import type { Journey } from "../../../../lib/journey-types";
 
 /**
@@ -15,6 +15,10 @@ export function JourneyLive({ initial, follow, refreshSeconds }: { initial: Jour
   const [journey, setJourney] = useState(initial);
   const [stale, setStale] = useState<string | null>(null);
   const scrolled = useRef(false);
+  // The server renders UTC; once in the browser, times read in the viewer's own zone.
+  const [local, setLocal] = useState(false);
+  useEffect(() => setLocal(true), []);
+  const formatTime = local ? localTime : utcTime;
 
   useEffect(() => {
     if (scrolled.current) return;
@@ -58,7 +62,7 @@ export function JourneyLive({ initial, follow, refreshSeconds }: { initial: Jour
     };
   }, [initial.action.project, follow, refreshSeconds]);
 
-  const updated = journey.generatedAt.slice(11, 19);
+  const updated = local ? localTime(journey.generatedAt, true) : `${journey.generatedAt.slice(11, 19)} UTC`;
   return (
     <>
       <h1 className="text-[15px] font-semibold tracking-[.01em]">
@@ -68,11 +72,20 @@ export function JourneyLive({ initial, follow, refreshSeconds }: { initial: Jour
       <p className="mb-4 mt-0.5 text-[13px] text-muted">
         Destination: {journey.destination.label}
         {journey.destination.reached ? " — reached" : ""}
-        <span className="ml-2" aria-live="polite">· updated {updated} UTC{stale ? ` · refresh failed: ${stale}` : ""}</span>
+        <span className="ml-2">· updated {updated}{stale ? ` · refresh failed: ${stale}` : ""}</span>
       </p>
+      <JourneyActivityLine journey={journey} formatTime={formatTime} />
       <JourneyMap journey={journey} />
       <JourneyLegend />
-      <JourneyLog journey={journey} />
+      <JourneyLog journey={journey} formatTime={formatTime} />
     </>
   );
+}
+
+/** The viewer's local time: "Oct 19, 9:50 AM", or with seconds and no date for the refresh stamp. */
+function localTime(iso: string, clock = false): string {
+  const date = new Date(iso);
+  return clock
+    ? date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short" })
+    : date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }

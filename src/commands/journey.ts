@@ -61,7 +61,12 @@ const GLYPH: Record<JourneyEvent["kind"], string> = { launch: "•", victory: "�
 
 export function renderJourneySuccess(response: CommandSuccess<Journey>): string[] {
   const journey = response.data;
-  const lines = [`${journey.action.key}`, `Destination: ${journey.destination.label}${journey.destination.reached ? " (reached)" : ""}`, ""];
+  const lines = [
+    `${journey.action.key}`,
+    `Now: ${journey.activity.headline}${journey.activity.since ? ` (since ${journey.activity.since.slice(0, 16).replace("T", " ")} UTC)` : ""} — ${journey.activity.detail}`,
+    `Destination: ${journey.destination.label}${journey.destination.reached ? " (reached)" : ""}`,
+    ""
+  ];
   for (const event of journey.events) lines.push(line(event));
   if (journey.now) lines.push(line(journey.now));
   if (journey.gate) lines.push(line(journey.gate));

@@ -5,6 +5,7 @@ import { classifyObstacle } from "./classify.js";
 import {
   JOURNEY_SCHEMA,
   type Journey,
+  type JourneyActivity,
   type JourneyBranch,
   type JourneyBudget,
   type JourneyEvent,
@@ -175,7 +176,12 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     const refusal = db.prepare("SELECT message, first_at, last_at FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as
       { message: string; first_at: string; last_at: string } | undefined;
     if (refusal) {
-      const cleared = admissions.some((admission) => admission.committed_at > refusal.last_at);
+      // An admission after it, or production activated since (a new run), leaves it behind.
+      const policyNow = has("production_policy")
+        ? (db.prepare("SELECT desired_state, updated_at FROM production_policy WHERE id = 'workspace'").get() as { desired_state: string; updated_at: string } | undefined)
+        : undefined;
+      const reactivated = policyNow?.desired_state === "active" && policyNow.updated_at > refusal.last_at;
+      const cleared = reactivated || admissions.some((admission) => admission.committed_at > refusal.last_at);
       events.push(obstacle(refusal.first_at, cleared, "launch refused", refusal.message, null, "production_launch_refusal_log"));
     }
   }
@@ -300,11 +306,16 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
         }
       ];
 
+  const activity = currentActivity({
+    db, has, actionKey, now, reached, latestSession, latestPr, steps, repairs, events, escalation, repairRounds
+  });
+
   return {
     schema: JOURNEY_SCHEMA,
     generatedAt: now.toISOString(),
     action: { key: actionKey, project, plan, id: actionId, title },
     destination,
+    activity,
     events,
     now: nowEvent,
     gate,
@@ -318,6 +329,88 @@ export function splitActionKey(actionKey: string): [string, string] {
   const match = /^([^/\s]+)\/([^/\s]+)$/.exec(actionKey);
   if (!match) throw new Error(`Expected <project>/<action>, got "${actionKey}".`);
   return [match[1], match[2]];
+}
+
+/**
+ * What the rover is doing right now, in one phrase: the first of these that
+ * holds. Arrived; a Session working (a repair round when it was launched for
+ * one); a repair queued in the running production; stopped on an open
+ * obstacle; in review; and, for an Action no Session has run for yet, parked
+ * (production Off or the Action outside its scope), launching (a live
+ * admission) or waiting to launch. An Action that has run reads from its own
+ * records (stopped, in review) even while production is Off.
+ */
+function currentActivity(input: {
+  db: Database.Database;
+  has: (table: string) => boolean;
+  actionKey: string;
+  now: Date;
+  reached: { at: string; ref: JourneyRef | null } | null;
+  latestSession: SessionRow | null;
+  latestPr: JourneyRef | null;
+  steps: StepRow[];
+  repairs: RepairRow[];
+  events: JourneyEvent[];
+  escalation: EscalationRow | undefined;
+  repairRounds: JourneyBudget;
+}): JourneyActivity {
+  const { db, has, actionKey, reached, latestSession, latestPr, repairs, events } = input;
+  const pr = latestPr ? ` PR #${latestPr.id}` : "";
+  const policy = has("production_policy")
+    ? (db.prepare("SELECT desired_state, scope_json, epoch, updated_at FROM production_policy WHERE id = 'workspace'").get() as { desired_state: string; scope_json: string | null; epoch: number; updated_at: string } | undefined)
+    : undefined;
+  const active = policy?.desired_state === "active";
+  if (reached) {
+    return { phase: "arrived", headline: `Arrived:${pr || " PR"} merged`, detail: "The reviewed head is in the base branch.", since: reached.at };
+  }
+  if (latestSession && (latestSession.status === "prepared" || latestSession.status === "running")) {
+    const repair = repairs.find((row) => row.repair_session_id === latestSession.id);
+    const since = latestSession.started_at ?? latestSession.prepared_at;
+    return repair
+      ? { phase: "repairing", headline: `Under repair: round ${repair.round} of ${input.repairRounds.limit}`, detail: `Session ${latestSession.id} is fixing the failed ${repair.role}: ${firstLine(repair.summary, 200)}`, since }
+      : { phase: "driving", headline: "Driving: a Session is working", detail: `Session ${latestSession.id} is ${latestSession.status} on ${latestSession.branch}.`, since };
+  }
+  if (latestSession?.status === "needs_input") {
+    return { phase: "blocked", headline: "Stopped: the Session needs input", detail: `Session ${latestSession.id} is waiting for input.`, since: latestSession.ended_at ?? latestSession.started_at ?? latestSession.prepared_at };
+  }
+  // Only the running production launches a queued repair; one left from an earlier run is not queued.
+  const pendingRepair = active ? repairs.filter((row) => row.outcome === "pending" && row.policy_epoch === policy.epoch).at(-1) : undefined;
+  if (pendingRepair) {
+    return { phase: "repairing", headline: "Repair round queued", detail: `A repair of the failed ${pendingRepair.role} on${pr} waits for its launch.`, since: pendingRepair.updated_at };
+  }
+  const open = events.filter((event) => event.kind === "obstacle").at(-1);
+  if (open) {
+    return { phase: "blocked", headline: `Stopped: ${open.label}`, detail: open.detail, since: open.at };
+  }
+  if (latestSession) {
+    const step = input.steps.filter((row) => row.session_id === latestSession.id).at(-1);
+    if (step) {
+      const outcome = parseJson(step.last_outcome_json);
+      const reason = typeof outcome.reason === "string" ? outcome.reason : "Waiting for the next pull-request poll.";
+      return { phase: "in-review", headline: `In review:${pr} ${stepPhase(outcome)}`, detail: firstLine(input.escalation?.message ?? reason), since: step.updated_at };
+    }
+    return { phase: "in-review", headline: `Settled:${pr} waiting for review`, detail: `Session ${latestSession.id} ended ${latestSession.status}; the worker readies its PR next.`, since: latestSession.ended_at ?? latestSession.prepared_at };
+  }
+
+  // No Session yet: why not.
+  if (!policy || !active) {
+    return { phase: "parked", headline: "Parked: production is Off", detail: "Nothing launches until the operator turns managed production on.", since: policy?.updated_at ?? null };
+  }
+  const scope = parseJson(policy.scope_json);
+  const scoped = Array.isArray(scope.actions) ? (scope.actions as unknown[]).includes(actionKey) : false;
+  if (!scoped) {
+    return { phase: "parked", headline: "Parked: not in this production run", detail: "Managed production is on, but its scope does not name this Action.", since: policy.updated_at };
+  }
+  const admission = has("production_admissions")
+    ? (db.prepare("SELECT status, issued_at, expires_at, epoch FROM production_admissions WHERE action_key = ? ORDER BY issued_at DESC LIMIT 1").get(actionKey) as { status: string; issued_at: string; expires_at: string; epoch: number } | undefined)
+    : undefined;
+  // A live admission of this run: issued and unexpired, or committed under the current epoch.
+  const launching = admission?.epoch === policy.epoch
+    && ((admission.status === "issued" && admission.expires_at > input.now.toISOString()) || admission.status === "committed");
+  if (admission && launching) {
+    return { phase: "launching", headline: "Launching", detail: "The worker admitted this Action and is starting its Session.", since: admission.issued_at };
+  }
+  return { phase: "waiting", headline: "Waiting to launch", detail: "In scope of the running production; the worker launches it on a coming tick.", since: policy.updated_at };
 }
 
 /** Escalation kinds that describe an ordinary wait the worker resolves itself. */
