@@ -115,7 +115,7 @@ describe("Agent Ask isolation", () => {
     expect(snapshot(f.candidate)).toEqual(before);
   });
   it("commits a governed record as the Arcadia Controller when no identity is resolved, never host git config (#1557)", () => {
-    const f = fixture(); for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) vi.stubEnv(key, undefined as unknown as string);
+    const f = fixture(); for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) { vi.stubEnv(key, "x"); delete process.env[key]; }
     writeFileSync(path.join(f.candidate, "record.md"), "record\n");
     const held = reserveAskGitIndex(f.candidate); try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
     expect(git(f.candidate, "log", "-1", "--format=%an <%ae>|%cn <%ce>")).toBe("Arcadia Controller <controller@arcadia.local>|Arcadia Controller <controller@arcadia.local>");

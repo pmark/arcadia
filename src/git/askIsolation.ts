@@ -27,7 +27,7 @@ export function controllerIdentityDefaults(env: NodeJS.ProcessEnv = process.env)
   return defaults;
 }
 
-export function askGit(root: string, args: string[], index?: string, trim = true, extraEnv?: NodeJS.ProcessEnv): string {
+export function askGit(root: string, args: string[], index?: string, trim = true, extraEnv?: Record<string, string | undefined>): string {
   const env = { ...isolatedGitEnvironment(), ...extraEnv };
   // core.worktree must name the physical checkout, not an invocation subdirectory.
   let checkout = path.resolve(root);

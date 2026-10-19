@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import {
   runAgentAskDraftCommand,
@@ -29,7 +29,7 @@ import { ensureRedAlertTables, listOpenRedAlerts, observeScopePointer } from "..
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Agent Ask settlement", () => {
   it("refuses the raw historical production handoff Ask before managed-document or queue writes", () => {
@@ -370,6 +370,8 @@ describe("Agent Ask settlement", () => {
     const hook = path.join(repo, ".git", "failing-hooks", "pre-commit");
     writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
     execFileSync("git", ["config", "user.name", ""], { cwd: repo });
+    // The Controller identity default (#1557) lets an unset identity commit; an empty one still fails closed.
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
     const options = { workspace, proposal: "activate-production", requestId: "commit-failure", disposition: "accepted" as const,
       activate: true, action: "first", model: "gpt-6-astra", top: true };
     const preview = runAgentAskSettleCommand(options);
