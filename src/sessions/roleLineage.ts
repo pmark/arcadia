@@ -8,6 +8,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import type { CandidatePreservationReceipt } from "./candidatePreservation.js";
+import { JUDGEMENT_REVISION } from "../qa/reviewCriteria.js";
 import {
   actedAsDeveloper,
   allocateSessionRoleAttempt,
@@ -393,6 +394,19 @@ function workerPreservation(db: Database.Database, session: AgentSession): Candi
 }
 
 /**
+ * A verdict binding's criteria fingerprint: the governed acceptance criteria
+ * and the revision of Arcadia's deterministic review judgement
+ * (`JUDGEMENT_REVISION`). Revision 1 is the bare criteria fingerprint every
+ * verdict before the revision existed was bound to; any later revision makes
+ * those verdicts non-current, so the candidate is reviewed again under the
+ * current checker. The requirement's input revision is untouched, so the
+ * development attempt and the per-role attempt bound stay as they were.
+ */
+export function judgedCriteriaFingerprint(criteriaFingerprint: string, revision: number = JUDGEMENT_REVISION): string {
+  return revision <= 1 ? criteriaFingerprint : sha256({ criteriaFingerprint, judgementRevision: revision });
+}
+
+/**
  * Deterministic readiness for an independent verdict. It reads only checked-in
  * documents, Git and receipts -- never a model -- and must hold before any
  * reviewer attempt is allocated or any reviewer inference starts. The binding
@@ -431,7 +445,7 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
     developer,
     binding: {
       targetHead: head,
-      criteriaFingerprint: requirement.criteriaFingerprint,
+      criteriaFingerprint: judgedCriteriaFingerprint(requirement.criteriaFingerprint),
       evidenceFingerprint: sha256([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256])
     }
   };

@@ -28,6 +28,24 @@ export const CODE_REVIEW_PR_CRITERIA = [
   { id: "tests", name: "Tests", description: "Tests exercise the changed behavior and would fail if it regressed; not-applicable when the patch touches no executable or test file." }
 ] as const;
 
+/**
+ * The revision of Arcadia's deterministic review judgement: these criteria,
+ * the not-applicable refusal wording, and the patch check that accepts or
+ * refuses not-applicable claims (src/qa/patchApplicability.ts). It is hashed
+ * into every independent verdict's criteria binding
+ * (`independentVerdictReadiness`) and into the persisted review receipt's
+ * evidence fingerprint (src/qa/prReview.ts), so bumping it makes every verdict
+ * judged under an earlier revision non-current: the existing readiness path
+ * re-reviews the candidate, and an old verdict, pass or fail, never stands.
+ * Bump it whenever a change to either file can alter a verdict;
+ * tests/judgement-revision.test.ts pins both files' content per revision.
+ *
+ * 1: implicit, every verdict before the revision existed.
+ * 2: PR #1563 (#1555 Mission Log date-rollover bump, #1556
+ *    retire-completion-draft attestation).
+ */
+export const JUDGEMENT_REVISION = 2;
+
 export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 /** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */
 export const NOT_APPLICABLE_CHECK_NAME = "Not-applicable claims";

@@ -257,3 +257,59 @@ describe("production replay over a fixture workspace", () => {
     expect(report.root.startsWith(parent)).toBe(true);
   });
 });
+
+describe("production replay simulation guards (--simulate-verdict, --simulate-github-writes)", () => {
+  let root: string;
+  let effectsLog: string;
+  let env: NodeJS.ProcessEnv;
+  const effects = () => readFileSync(effectsLog, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { kind: string; detail: string });
+  const url = "https://github.com/pmark/arcadia/pull/1554";
+
+  beforeAll(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-simulation-")));
+    effectsLog = path.join(root, "effects.jsonl");
+    writeFileSync(effectsLog, "");
+    installGuards(root, effectsLog, "fail-repairable");
+    const recording = path.join(root, "recording.jsonl");
+    writeFileSync(recording, `${JSON.stringify({ args: ["pr", "view", "1554", "--repo", "pmark/arcadia", "--json", "url,isDraft,state"], status: 0, stdout: JSON.stringify({ url, isDraft: true, state: "OPEN" }), stderr: "" })}\n`);
+    env = {
+      PATH: `${path.join(root, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+      HOME: root,
+      REPLAY_EFFECTS_LOG: effectsLog,
+      REPLAY_GH_MODE: "offline",
+      REPLAY_GH_RECORDING: recording,
+      REPLAY_SIMULATE_GH_WRITES: "1",
+      REPLAY_GH_OVERLAY: path.join(root, "overlay.json")
+    };
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it("answers pull-request lifecycle writes, overlays later reads by URL, and still refuses other writes", () => {
+    const run = (args: string[]) => spawnSync("gh", args, { cwd: root, env, encoding: "utf8" });
+    const view = () => JSON.parse(run(["pr", "view", "1554", "--repo", "pmark/arcadia", "--json", "url,isDraft,state"]).stdout) as { isDraft: boolean; state: string };
+    expect(view().isDraft).toBe(true);
+    expect(run(["pr", "ready", url]).status).toBe(0);
+    expect(view()).toMatchObject({ isDraft: false, state: "OPEN" });
+    expect(run(["pr", "merge", url, "--squash"]).status).toBe(0);
+    expect(view().state).toBe("MERGED");
+    expect(run(["pr", "create", "--title", "x"]).status).toBe(1);
+    expect(effects().map((effect) => effect.kind)).toEqual(["simulated:github-write", "simulated:github-write", "github:write"]);
+  });
+
+  it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {
+    writeFileSync(effectsLog, "");
+    const bare = { PATH: env.PATH };
+    const probe = spawnSync("codex", ["sandbox", "--", "/bin/zsh", "-c", "true"], { cwd: root, env: bare, encoding: "utf8" });
+    expect(probe.stdout.trim()).toBe("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied");
+    const output = path.join(root, "verdict.json");
+    const reviewed = spawnSync("codex", ["exec", "--json", "--output-last-message", output, "-"], { cwd: root, env: bare, input: "## Exact-Head Code Review\n", encoding: "utf8" });
+    expect(reviewed.status).toBe(0);
+    const verdict = JSON.parse(readFileSync(output, "utf8")) as { verdict: string; summary: string; checks: Array<{ criterion: string; status: string }> };
+    expect(verdict.verdict).toBe("fail");
+    expect(verdict.summary).toContain("SIMULATED");
+    expect(verdict.checks.filter((check) => check.status === "fail").map((check) => check.criterion)).toEqual(["correctness"]);
+    expect(effects()).toEqual([{ kind: "simulated:reviewer", detail: "code-review fail" }]);
+    // Anything else is still a refused provider run.
+    expect(spawnSync("codex", ["login"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
+  });
+});
