@@ -56,7 +56,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -76,8 +76,10 @@ const UNCOPIED_ARTIFACTS = new Set(["intelligence", "narration"]);
 /** Ignored marker files the tick reads inside a candidate worktree. */
 const WORKTREE_MARKERS = [".arcadia-go-request", ".arcadia-preserve-request", ".arcadia-enrollment-request"];
 const WORKSPACE_COPIES = ["config", "prompts", "mission_logs", "NORTH_STAR.md", "OPERATOR_CONTEXT.md", path.join(".arcadia", "sessions")];
-/** Credentials and host pointers the child never inherits. */
-const SCRUBBED_ENV = /^(ARCADIA_WORKSPACE|ARCADIA_CLAUDE_.*|ARCADIA_CAPACITY_RECEIPTS_PATH|ARCADIA_CODING_AGENT_USAGE_CACHE_PATH|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_.*|OPENAI_.*|GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|DISCORD_.*|CODEX_HOME|CODEX_SANDBOX|GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_CONFIG_.*|XDG_CONFIG_HOME)$/;
+/** The only host variables the child inherits; everything else (credentials, ARCADIA_*, TMUX, SSH agents) is dropped. */
+const INHERITED_ENV = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL", "TZ", "NODE_PATH"];
+/** How long the replay waits for a detached host operation (preservation, go, enrollment) to finish between ticks. */
+const HOST_OPERATION_DEADLINE_MS = 180_000;
 
 export interface ReplayOptions {
   sourceWorkspace: string;
@@ -111,7 +113,7 @@ export interface ReplayTick {
   tick: number;
   at: string;
   launch: { outcome: string; actionKey: string | null; reason: string } | null;
-  handoff: { preservation: string; integration: string } | null;
+  handoff: { preservation: string; integration: string; integrationKind: string } | null;
   reconciled: Array<{ sessionId: string; outcome: string }>;
   log: string[];
   escalations: { added: string[]; changed: string[]; cleared: string[] };
@@ -125,7 +127,14 @@ export interface ReplayReport {
   grantReceipt: string;
   activation: { ok: boolean; detail: string; warnings: string[] };
   ticks: ReplayTick[];
-  stop: { reason: "launched" | "integrated" | "external_effect" | "steady_state" | "tick_limit" | "activation_refused" | "error"; detail: string };
+  stop: {
+    reason: "launched" | "integrated" | "external_effect" | "unrecorded_github_read" | "steady_state" | "host_operation_timeout" | "tick_limit" | "activation_refused" | "error";
+    detail: string;
+  };
+  /** Effects recorded after the child's last tick (a detached host operation). */
+  lateEffects?: ReplayEffect[];
+  /** Operator pings the tick queued in the replay database (never sent). */
+  pings: string[];
   /** Every refusal, escalation, blocker and red alert the replay predicts, deduplicated. */
   predicted: string[];
   finalEscalations: Array<{ actionKey: string; kind: string; message: string; remedy: string | null }>;
@@ -172,8 +181,11 @@ function run(command: string, args: string[], options: { cwd?: string; env?: Nod
   return result.stdout;
 }
 
+/** No optional locks: `git status` against a source checkout must never refresh its index under a live agent. */
+const GIT_READ_ENV = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
+
 function git(cwd: string, args: string[], input?: string): string {
-  return run("git", ["-c", "core.fsmonitor=false", ...args], { cwd, input });
+  return run("git", ["-c", "core.fsmonitor=false", ...args], { cwd, input, env: GIT_READ_ENV });
 }
 
 function shellQuote(value: string): string {
@@ -260,10 +272,45 @@ export function rewriteSnapshotPaths(databaseFile: string, mappings: PathMapping
   }
 }
 
+/**
+ * Every path the worker operates on (Session and reservation worktrees,
+ * repositories, preservation receipts) must be inside the replay root or not
+ * exist: a path no mapping covered would otherwise let the transport consume a
+ * live marker file or run against a live checkout.
+ */
+export function unconfinedPaths(databaseFile: string, root: string): string[] {
+  const db = new Database(databaseFile, { readonly: true, fileMustExist: true });
+  const columns: Array<[string, string]> = [
+    ["agent_sessions", "worktree_path"], ["agent_sessions", "repository_path"],
+    ["agent_worktree_reservations", "worktree_path"], ["agent_worktree_reservations", "repository_path"],
+    ["project_metadata", "repo_path"],
+    ["candidate_preservation_receipts", "repository_path"], ["candidate_preservation_receipts", "candidate_worktree_path"]
+  ];
+  const found = new Set<string>();
+  try {
+    for (const [table, column] of columns) {
+      let values: string[];
+      try {
+        values = db.prepare(`SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND trim("${column}") <> ''`).pluck().all() as string[];
+      } catch {
+        continue;
+      }
+      for (const value of values) {
+        const candidate = value.trim();
+        if (candidate === root || candidate.startsWith(`${root}/`)) continue;
+        if (existsSync(candidate)) found.add(`${table}.${column}=${candidate}`);
+      }
+    }
+  } finally {
+    db.close();
+  }
+  return [...found];
+}
+
 function latestGrantReceipt(databaseFile: string, prefix: string): GrantReceipt {
   const db = new Database(databaseFile, { readonly: true, fileMustExist: true });
   try {
-    const row = db.prepare("SELECT request_id, receipt_json, created_at FROM production_policy_receipts WHERE transition IN ('activate', 'reactivate') AND request_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    const row = db.prepare("SELECT request_id, receipt_json, created_at FROM production_policy_receipts WHERE transition IN ('activate', 'reactivate') AND request_id LIKE ? ESCAPE '\\' ORDER BY created_at DESC, rowid DESC LIMIT 1")
       .get(`${prefix.replace(/[%_]/g, (match) => `\\${match}`)}%`) as { request_id: string; receipt_json: string; created_at: string } | undefined;
     if (!row) throw new Error(`No activation receipt whose request id starts with "${prefix}" in the snapshot.`);
     const receipt = JSON.parse(row.receipt_json) as { scope?: GrantReceipt["scope"]; authority?: GrantReceipt["authority"] };
@@ -284,10 +331,10 @@ function projectRepositories(databaseFile: string): Array<{ slug: string; repoPa
   }
 }
 
-function sessionWorktrees(databaseFile: string, slugs: string[]): Array<{ id: string; worktree: string }> {
+function sessionWorktrees(databaseFile: string, slugs: string[]): Array<{ id: string; worktree: string; projectSlug: string }> {
   const db = new Database(databaseFile, { readonly: true, fileMustExist: true });
   try {
-    const rows = db.prepare(`SELECT id, worktree_path AS worktree FROM agent_sessions WHERE worktree_path IS NOT NULL AND project_slug IN (${slugs.map(() => "?").join(",") || "''"})`).all(...slugs) as Array<{ id: string; worktree: string }>;
+    const rows = db.prepare(`SELECT id, worktree_path AS worktree, project_slug AS projectSlug FROM agent_sessions WHERE worktree_path IS NOT NULL AND project_slug IN (${slugs.map(() => "?").join(",") || "''"})`).all(...slugs) as Array<{ id: string; worktree: string; projectSlug: string }>;
     return rows;
   } finally {
     db.close();
@@ -328,7 +375,7 @@ function cloneRepository(source: string, target: string, origin: string, fidelit
   writeFileSync(path.join(target, ".git", "objects", "info", "alternates"), `${objects}\n`);
   git(target, ["update-ref", "--stdin"], `${localUpdates.join("\n")}\n`);
   git(target, ["remote", "add", "origin", origin]);
-  const branch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim();
+  const branch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: source, encoding: "utf8", env: GIT_READ_ENV }).stdout.trim();
   const head = git(source, ["rev-parse", "HEAD"]).trim();
   if (branch) {
     git(target, ["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
@@ -372,14 +419,14 @@ function copyOne(source: string, target: string, file: string): boolean {
   mkdirSync(path.dirname(to), { recursive: true });
   rmSync(to, { recursive: true, force: true });
   if (stats.isSymbolicLink()) symlinkSync(readlinkSync(from), to);
-  else if (stats.isDirectory()) cpSync(from, to, { recursive: true });
+  else if (stats.isDirectory()) cpSync(from, to, { recursive: true, verbatimSymlinks: true });
   else copyFileSync(from, to);
   return true;
 }
 
 function recreateWorktree(clone: string, source: string, target: string, refs: Record<string, string>): void {
   const head = git(source, ["rev-parse", "HEAD"]).trim();
-  const branch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim();
+  const branch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: source, encoding: "utf8", env: GIT_READ_ENV }).stdout.trim();
   mkdirSync(path.dirname(target), { recursive: true });
   if (branch && refs[`refs/heads/${branch}`] === head) {
     git(clone, ["worktree", "add", "-q", "-f", target, branch]);
@@ -400,12 +447,22 @@ function which(name: string): string | null {
 }
 
 /** PATH guards for the child: every external seam either answers from the replay or records a refused effect. */
-function installGuards(root: string, effectsLog: string): string {
+export function installGuards(root: string, effectsLog: string): string {
   const bin = path.join(root, "bin");
   mkdirSync(bin, { recursive: true });
   const record = (kind: string) => `printf '{"kind":"%s","detail":"%s"}\\n' ${shellQuote(kind)} "$(printf '%s' "$(pwd -P): $*" | tr -d '"\\\\' | tr '\\n' ' ')" >> ${shellQuote(effectsLog)}`;
-  for (const name of ["claude", "codex", "opencode"]) {
-    writeExecutable(path.join(bin, name), `#!/bin/sh\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
+  // Providers answer the launch preflight's read-only probes like an installed,
+  // signed-in CLI (the real flags and sign-in are not replayed); anything else is refused.
+  const probes: Record<string, string> = {
+    claude: `  --help|-h) echo "Usage: claude [options] --print --output-format --permission-mode --settings --setting-sources --verbose --model"; exit 0 ;;
+  --version|-v) echo "0.0.0 (production replay)"; exit 0 ;;
+  auth) echo '{"loggedIn":true,"authMethod":"replay"}'; exit 0 ;;`,
+    codex: `  --version) echo "codex 0.0.0 (production replay)"; exit 0 ;;
+  exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac ;;`,
+    opencode: `  --version) echo "0.0.0 (production replay)"; exit 0 ;;`
+  };
+  for (const [name, answers] of Object.entries(probes)) {
+    writeExecutable(path.join(bin, name), `#!/bin/sh\ncase "$1" in\n${answers}\nesac\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
   }
   writeExecutable(path.join(bin, "tmux"), `#!/bin/sh
 case "$1" in
@@ -421,23 +478,43 @@ exit 97
   if (!realGit) throw new Error("git is not on PATH.");
   const roots = [...new Set([root, realpathSync(root)])];
   writeExecutable(path.join(bin, "git"), `#!/bin/sh
-# production replay git guard: only the temporary root, never a network remote.
+# production replay git guard: only the temporary root (cwd, -C, --git-dir,
+# --work-tree, GIT_DIR and friends, absolute remote or worktree paths), never a network remote.
 inside() { case "$1" in ${roots.map((entry) => `${shellQuote(entry)}|${shellQuote(entry)}/*`).join("|")}) return 0 ;; esac; return 1; }
+resolve() {
+  case "$1" in /*) t="$1" ;; *) t="$dir/$1" ;; esac
+  if r=$(cd "$t" 2>/dev/null && pwd -P); then printf '%s' "$r"; return; fi
+  if r=$(cd "$(dirname "$t")" 2>/dev/null && pwd -P); then printf '%s/%s' "$r" "$(basename "$t")"; return; fi
+  printf '%s' "$t"
+}
+outside() { ${record("git:outside")}; echo "production replay: refused git outside the replay root ($1)" >&2; exit 97; }
+network() { ${record("git:network")}; echo "production replay: refused git toward a network remote" >&2; exit 97; }
 dir=$(pwd -P)
+for value in "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_INDEX_FILE" "$GIT_COMMON_DIR" "$GIT_OBJECT_DIRECTORY"; do
+  if [ -n "$value" ]; then resolved=$(resolve "$value"); inside "$resolved" || outside "$resolved"; fi
+done
 prev=""
+sub=""
 for arg in "$@"; do
-  if [ "$prev" = "-C" ]; then
-    case "$arg" in /*) target="$arg" ;; *) target="$dir/$arg" ;; esac
-    dir=$(cd "$target" 2>/dev/null && pwd -P || printf '%s' "$target")
+  case "$prev" in
+    -C) dir=$(resolve "$arg") ;;
+    --git-dir|--work-tree) resolved=$(resolve "$arg"); inside "$resolved" || outside "$resolved" ;;
+  esac
+  case "$arg" in --git-dir=*|--work-tree=*) resolved=$(resolve "\${arg#*=}"); inside "$resolved" || outside "$resolved" ;; esac
+  if [ -z "$sub" ]; then
+    case "$prev" in -C|-c|--git-dir|--work-tree) ;; *) case "$arg" in -*) ;; *) sub="$arg" ;; esac ;; esac
+  else
+    case "$sub" in
+      push|fetch|pull|clone|ls-remote|remote|worktree|submodule|archive)
+        case "$arg" in
+          *://*|git@*:*) network ;;
+          /*) resolved=$(resolve "$arg"); inside "$resolved" || outside "$resolved" ;;
+        esac ;;
+    esac
   fi
-  case "$arg" in *://*|git@*:*) ${record("git:network")}; echo "production replay: refused git toward a network remote" >&2; exit 97 ;; esac
   prev="$arg"
 done
-if ! inside "$dir"; then
-  ${record("git:outside")}
-  echo "production replay: refused git outside the replay root ($dir)" >&2
-  exit 97
-fi
+inside "$dir" || outside "$dir"
 exec ${shellQuote(realGit)} "$@"
 `);
   const realGh = which("gh");
@@ -463,10 +540,13 @@ function isRead() {
   if (group === "--version" || group === "version") return true;
   if (group === "api") {
     const rest = args.slice(1);
-    const method = rest.find((value, index) => rest[index - 1] === "-X" || rest[index - 1] === "--method") ?? rest.find((value) => value.startsWith("--method="))?.slice(9);
+    const method = rest.find((value, index) => rest[index - 1] === "-X" || rest[index - 1] === "--method")
+      ?? rest.find((value) => value.startsWith("--method="))?.slice(9)
+      ?? rest.find((value) => /^-X=?[A-Za-z]+$/.test(value))?.replace(/^-X=?/, "");
     if (method && method.toUpperCase() !== "GET") return false;
     const fields = rest.some((value) => ["-f", "-F", "--field", "--raw-field", "--input"].includes(value) || /^--(raw-)?field=/.test(value));
-    if (rest[0] === "graphql") return !rest.some((value) => /\bmutation\b/.test(value));
+    // A query read from a file cannot be inspected: treated as a write.
+    if (rest[0] === "graphql") return !rest.some((value) => /\bmutation\b/.test(value) || /^query=@/.test(value) || value === "--input");
     return !fields || method?.toUpperCase() === "GET";
   }
   return Boolean(READ[group]?.includes(sub));
@@ -494,6 +574,23 @@ if (!recorded) {
 process.stdout.write(recorded.stdout);
 process.stderr.write(recorded.stderr);
 process.exit(recorded.status);
+`;
+
+/** Preloaded into the child and every node descendant: no network, every attempt recorded. */
+export const NET_GUARD = String.raw`import { appendFileSync } from "node:fs";
+import http from "node:http";
+import https from "node:https";
+import { syncBuiltinESMExports } from "node:module";
+const refuse = (target) => {
+  try { appendFileSync(process.env.REPLAY_EFFECTS_LOG, JSON.stringify({ kind: "network", detail: String(target) }) + "\n"); } catch {}
+  throw new Error("production replay: network refused");
+};
+globalThis.fetch = async (input) => refuse(input?.url ?? input?.href ?? input);
+for (const module of [http, https]) {
+  module.request = (target) => refuse(target?.href ?? target?.host ?? target?.hostname ?? target);
+  module.get = module.request;
+}
+syncBuiltinESMExports();
 `;
 
 function githubRepository(repo: string): string | null {
@@ -550,6 +647,10 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (rewrite.remaining.length > 0) {
       throw new Error(`Path rewrite incomplete; refusing to run a tick that could reach a source path: ${JSON.stringify(rewrite.remaining.slice(0, 5))}`);
     }
+    const unconfined = unconfinedPaths(databaseFile, root);
+    if (unconfined.length > 0) {
+      throw new Error(`Refusing to run: these existing paths in the snapshot are outside the replay root and no mapping covers them: ${unconfined.slice(0, 5).join(", ")}`);
+    }
     print(`Snapshot: ${sourceBytes} bytes; ${rewrite.rewritten} values remapped into the replay root.`);
     if (rewrite.kept > 0) fidelity.push(`${rewrite.kept} fingerprinted validation-evidence references keep their source path (read-only), so recorded verdicts stay bound.`);
 
@@ -561,7 +662,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       const refs = readRefs(repoPath);
       for (const [name, sha] of Object.entries(refs)) sourceRefs[`${slug}:${name}`] = sha;
       let recreated = 0;
-      for (const session of sessions) {
+      for (const session of sessions.filter((entry) => entry.projectSlug === slug)) {
         // Read before the rewrite: `worktree` is the source path.
         const original = session.worktree;
         const mapped = mapPath(original, mappings);
@@ -576,7 +677,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       print(`Repository ${slug}: rebuilt from ${repoPath} (${Object.keys(refs).length} refs, ${recreated} Session worktrees recreated).`);
     }
     fidelity.push("No tmux session is live in the replay: a Session the source shows running is reconciled as exited.");
-    fidelity.push("Provider capacity and sign-in are simulated as available; the worker capability probe (host heartbeats) is not replayed.");
+    fidelity.push("Provider capacity, sign-in and the installed CLI's headless flags are simulated as available; the worker capability probe (host heartbeats) is not replayed.");
+    fidelity.push(`The replay runs this checkout's source (${spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8", env: GIT_READ_ENV }).stdout.trim() || "unknown revision"}); the installed worker and go-broker may run another revision.`);
 
     const effectsLog = path.join(root, "effects.jsonl");
     writeFileSync(effectsLog, "");
@@ -591,9 +693,16 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     const manifestFile = path.join(root, "manifest.json");
     writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
 
+    const scratch = path.join(root, "tmp");
+    mkdirSync(scratch, { recursive: true });
+    const netGuard = path.join(root, "bin", "net-guard.mjs");
+    writeFileSync(netGuard, NET_GUARD);
     const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) if (!SCRUBBED_ENV.test(key)) env[key] = value;
+    for (const key of INHERITED_ENV) if (process.env[key] !== undefined) env[key] = process.env[key];
     Object.assign(env, {
+      TMPDIR: scratch,
+      // Every node descendant (preservation, go and enrollment workers) loads the network guard too.
+      NODE_OPTIONS: `--import=${JSON.stringify(pathToFileURL(netGuard).href)}`,
       HOME: home,
       XDG_CONFIG_HOME: path.join(home, ".config"),
       GIT_CONFIG_NOSYSTEM: "1",
@@ -609,7 +718,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       REPLAY_REAL_PATH: process.env.PATH ?? "",
       REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? ""
     });
-    const child = spawnSync(process.execPath, ["--import", "tsx", SCRIPT, "--run-prepared", manifestFile], { cwd: REPO_ROOT, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+    // cwd is the replay root, never a checkout: a cwd-relative operation cannot reach the source.
+    const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), SCRIPT, "--run-prepared", manifestFile], { cwd: root, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
     if (child.stdout) for (const line of child.stdout.replace(/\n$/, "").split("\n")) print(line);
     const reportFile = path.join(root, "report.json");
     if (!existsSync(reportFile)) {
@@ -617,6 +727,18 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     }
     const report = JSON.parse(readFileSync(reportFile, "utf8")) as ReplayReport;
     report.sourceFingerprint = { databaseBytes: sourceBytes, refs: sourceRefs };
+    // A detached host operation may record an effect after the child wrote its report.
+    const recorded = readFileSync(effectsLog, "utf8").split("\n").filter(Boolean).length;
+    const reported = report.ticks.reduce((sum, tick) => sum + tick.effects.length, 0);
+    if (recorded > reported) {
+      report.lateEffects = readFileSync(effectsLog, "utf8").split("\n").filter(Boolean).slice(reported).map((line) => {
+        try { return JSON.parse(line) as ReplayEffect; } catch { return { kind: "unparsed", detail: line }; }
+      });
+      for (const effect of report.lateEffects) {
+        report.predicted.push(`requested external effect (after the last tick) ${effect.kind}: ${effect.detail}`);
+        print(`Late effect ${effect.kind}: ${effect.detail.slice(0, 600)}`);
+      }
+    }
     const destination = options.reportPath ? path.resolve(options.reportPath) : reportFile;
     writeFileSync(destination, JSON.stringify(report, null, 2));
     if (options.reportPath) print(`Report: ${destination}`);
@@ -642,11 +764,6 @@ async function runPrepared(manifestFile: string): Promise<void> {
     effectsSeen.count = all.length;
     return fresh;
   };
-  const recordEffect = (kind: string, detail: string) => writeFileSync(manifest.effectsLog, `${JSON.stringify({ kind, detail })}\n`, { flag: "a" });
-  globalThis.fetch = (async (input: unknown) => {
-    recordEffect("network", String(input instanceof URL ? input.href : typeof input === "string" ? input : (input as { url?: string })?.url ?? input));
-    throw new Error("production replay: network refused");
-  }) as typeof fetch;
 
   const { runProductionPreviewCommand, runProductionActivateCommand, runProductionStatusCommand, renderProductionStatusSuccess } = await import("../src/commands/production.js");
   const { withDatabase } = await import("../src/db/connection.js");
@@ -676,6 +793,7 @@ async function runPrepared(manifestFile: string): Promise<void> {
     predicted: [],
     finalEscalations: [],
     finalBlockers: [],
+    pings: [],
     status: "",
     fidelity: manifest.fidelity,
     sourceFingerprint: { databaseBytes: 0, refs: {} }
@@ -689,6 +807,13 @@ async function runPrepared(manifestFile: string): Promise<void> {
     } catch (error) {
       report.status = `production status failed: ${error instanceof Error ? error.message : String(error)}`;
     }
+    try {
+      report.pings = withDatabase(workspace, (db) => db.prepare("SELECT kind, message FROM operator_pings WHERE rowid > ? ORDER BY rowid").all(pingBase) as Array<{ kind: string; message: string }>)
+        .map((ping) => `${ping.kind}: ${ping.message}`);
+    } catch {
+      report.pings = [];
+    }
+    for (const ping of report.pings) predicted.add(`would ping the operator (queued only in the replay) ${ping}`);
     report.predicted = [...predicted];
     writeFileSync(path.join(manifest.root, "report.json"), JSON.stringify(report, null, 2));
     out("");
@@ -758,12 +883,20 @@ async function runPrepared(manifestFile: string): Promise<void> {
     }]
   });
 
+  let pingBase = 0;
+  try {
+    pingBase = withDatabase(workspace, (db) => (db.prepare("SELECT COALESCE(MAX(rowid), 0) AS n FROM operator_pings").get() as { n: number }).n);
+  } catch {
+    // No ping table: nothing to report.
+  }
   let now = start;
+  let hostWaitSince: number | null = null;
+  let budget = manifest.ticks;
   let previous: Map<string, string> = new Map(withDatabase(workspace, (db) => listOperatorEscalations(db)).map((entry) => [`${entry.actionKey} ${entry.kind}`, entry.message]));
   let lastSignature = "";
   let steady = 0;
   const seenAlerts = new Set<string>();
-  for (let n = 1; n <= manifest.ticks; n += 1) {
+  for (let n = 1; n <= budget; n += 1) {
     now = new Date(now.getTime() + 60_000);
     const lines: string[] = [];
     const registries = loadPhase3Registries(workspace);
@@ -772,19 +905,20 @@ async function runPrepared(manifestFile: string): Promise<void> {
       break;
     }
     const tick: ReplayTick = { tick: n, at: now.toISOString(), launch: null, handoff: null, reconciled: [], log: lines, escalations: { added: [], changed: [], cleared: [] }, blockers: [], redAlerts: [], effects: [] };
+    let serviced = false;
     try {
-      const serviced = withDatabase(workspace, (db) => processPreservationRequests(db, workspace));
+      serviced = withDatabase(workspace, (db) => processPreservationRequests(db, workspace));
       if (serviced) {
-        lines.push("(worker) a preservation request was serviced; the managed tick is skipped this iteration");
+        lines.push("(worker) a host operation (preservation, go or enrollment request) is in flight; the managed tick is skipped this iteration");
       } else {
         const result = withDatabase(workspace, (db) => runManagedProductionTick(db, workspace, {
           profiles: registries.codingAgents.profiles,
           adapters: registries.providerAdapters!,
-          tmux: tmux as never,
+          tmux,
           now,
           clock: () => now,
           capacityObservation: capacityObservation(scope.providers[0] ?? "claude-code-cli") as never,
-          providerSignIn: () => ({ signedIn: true, remedy: "" }) as never,
+          providerSignIn: () => ({ signedIn: true, remedy: "" }),
           workerCapability: () => [],
           agentWorktreeRoot: path.join(manifest.root, "agent-worktrees", "new"),
           log: (message) => lines.push(message)
@@ -792,7 +926,9 @@ async function runPrepared(manifestFile: string): Promise<void> {
         for (const project of result.projects) {
           if (!scope.projects.includes(project.projectSlug)) continue;
           if (project.launch) tick.launch = { outcome: project.launch.outcome, actionKey: project.launch.actionKey, reason: project.launch.reason };
-          if (project.handoff) tick.handoff = { preservation: describeStep(project.handoff.preservation), integration: describeStep(project.handoff.integration) };
+          if (project.handoff) {
+            tick.handoff = { preservation: describeStep(project.handoff.preservation), integration: describeStep(project.handoff.integration), integrationKind: project.handoff.integration.kind };
+          }
           tick.reconciled.push(...project.reconciled);
         }
       }
@@ -819,21 +955,40 @@ async function runPrepared(manifestFile: string): Promise<void> {
     }
     tick.effects = readEffects();
     if (tick.launch && tick.launch.outcome !== "launched" && tick.launch.outcome !== "skipped") predicted.add(`launch ${tick.launch.outcome} (${tick.launch.actionKey ?? "-"}): ${tick.launch.reason}`);
-    report.ticks.push(tick);
-    printTick(out, tick, tmux.launches);
+    // A detached host operation is awaited in real time; its iterations spend no tick budget.
+    const waiting = serviced && tick.effects.length === 0;
+    const repeatWait = waiting && hostWaitSince !== null;
+    if (!repeatWait) {
+      report.ticks.push(tick);
+      printTick(out, tick, tmux.launches);
+    }
+    if (waiting) {
+      hostWaitSince ??= Date.now();
+      if (Date.now() - hostWaitSince > HOST_OPERATION_DEADLINE_MS) {
+        report.stop = { reason: "host_operation_timeout", detail: `a host operation was still in flight after ${HOST_OPERATION_DEADLINE_MS / 1000}s` };
+        break;
+      }
+      budget += 1;
+      steady = 0;
+      lastSignature = "";
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      continue;
+    }
+    hostWaitSince = null;
 
     if (tick.launch?.outcome === "launched") {
       const launch = tmux.launches.at(-1);
       report.stop = { reason: "launched", detail: `${tick.launch.actionKey}${launch ? ` in ${launch.cwd}: ${launch.command} ${launch.args.join(" ").slice(0, 400)}` : ""}` };
       break;
     }
-    if (tick.handoff && /integrated|merged/.test(tick.handoff.integration) && !/not|refus/.test(tick.handoff.integration)) {
+    if (tick.handoff?.integrationKind === "integrated") {
       report.stop = { reason: "integrated", detail: tick.handoff.integration };
       break;
     }
     if (tick.effects.length > 0) {
-      report.stop = { reason: "external_effect", detail: tick.effects.map((effect) => `${effect.kind}: ${effect.detail}`).join("; ").slice(0, 2000) };
-      for (const effect of tick.effects) predicted.add(`requested external effect ${effect.kind}: ${effect.detail}`);
+      const unrecordedOnly = tick.effects.every((effect) => effect.kind === "github:unrecorded-read");
+      report.stop = { reason: unrecordedOnly ? "unrecorded_github_read" : "external_effect", detail: tick.effects.map((effect) => `${effect.kind}: ${effect.detail}`).join("; ").slice(0, 2000) };
+      for (const effect of tick.effects) predicted.add(`${effect.kind === "github:unrecorded-read" ? "replay gap (no recorded answer)" : "requested external effect"} ${effect.kind}: ${effect.detail}`);
       break;
     }
     const signature = JSON.stringify([tick.launch?.outcome, tick.launch?.reason, tick.handoff, [...current.keys()].sort(), tick.blockers]);
@@ -843,7 +998,7 @@ async function runPrepared(manifestFile: string): Promise<void> {
       report.stop = { reason: "steady_state", detail: `three identical ticks: ${tick.launch ? `launch ${tick.launch.outcome}` : "no launch"}` };
       break;
     }
-    if (n === manifest.ticks) report.stop = { reason: "tick_limit", detail: `${manifest.ticks} ticks` };
+    if (n === budget) report.stop = { reason: "tick_limit", detail: `${manifest.ticks} ticks` };
   }
   finish();
 }

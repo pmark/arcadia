@@ -1,15 +1,34 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { mapPath, orderMappings, rewriteSnapshotPaths, runProductionReplay, type ReplayReport } from "../scripts/production-replay.js";
+import { installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 const REPLAY_TIMEOUT_MS = 240_000;
 
-function fingerprint(rehearsal: Rehearsal): { database: string; refs: string; status: string } {
+/** Content hash of files and directory trees (missing paths hash as absent). */
+function treeHash(paths: string[]): string {
+  const hash = createHash("sha256");
+  const walk = (target: string) => {
+    if (!existsSync(target)) { hash.update(`absent ${target}`); return; }
+    const stats = statSync(target);
+    if (stats.isDirectory()) {
+      for (const entry of readdirSync(target).sort()) walk(path.join(target, entry));
+    } else {
+      hash.update(target);
+      hash.update(readFileSync(target));
+    }
+  };
+  for (const target of paths) walk(target);
+  return hash.digest("hex");
+}
+
+function fingerprint(rehearsal: Rehearsal): { database: string; refs: string; status: string; gitMetadata: string; workspaceFiles: string } {
   // The WAL is checkpointed into the main file by the snapshot's read-only open
   // only if something writes; hash the logical content instead of the bytes.
   const db = new Database(path.join(rehearsal.workspace, "database", "arcadia.sqlite3"), { readonly: true });
@@ -22,7 +41,10 @@ function fingerprint(rehearsal: Rehearsal): { database: string; refs: string; st
     return {
       database: hash.digest("hex"),
       refs: git(rehearsal.repo, ["for-each-ref", "--format=%(objectname) %(refname)"]),
-      status: git(rehearsal.repo, ["status", "--porcelain"])
+      status: git(rehearsal.repo, ["status", "--porcelain"]),
+      // Byte-level Git metadata a replay could touch: the index, config, worktree registrations, the bare origin.
+      gitMetadata: treeHash([path.join(rehearsal.repo, ".git", "index"), path.join(rehearsal.repo, ".git", "config"), path.join(rehearsal.repo, ".git", "worktrees"), path.join(rehearsal.root, "origin.git", "refs")]),
+      workspaceFiles: treeHash([path.join(rehearsal.workspace, "config"), path.join(rehearsal.workspace, "artifacts")])
     };
   } finally {
     db.close();
@@ -78,6 +100,82 @@ describe("production replay snapshot rewrite", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("production replay guards", () => {
+  let root: string;
+  let outside: string;
+  let effectsLog: string;
+  let env: NodeJS.ProcessEnv;
+  const effects = () => readFileSync(effectsLog, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { kind: string; detail: string });
+  const run = (command: string, args: string[], cwd = root) => spawnSync(command, args, { cwd, env, encoding: "utf8" });
+
+  beforeAll(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-guards-")));
+    outside = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-outside-")));
+    effectsLog = path.join(root, "effects.jsonl");
+    writeFileSync(effectsLog, "");
+    installGuards(root, effectsLog);
+    const netGuard = path.join(root, "bin", "net-guard.mjs");
+    writeFileSync(netGuard, NET_GUARD);
+    mkdirSync(path.join(root, "repo"));
+    env = {
+      PATH: `${path.join(root, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+      HOME: root,
+      GIT_CONFIG_NOSYSTEM: "1",
+      REPLAY_EFFECTS_LOG: effectsLog,
+      REPLAY_GH_MODE: "offline",
+      REPLAY_GH_RECORDING: path.join(root, "recording.jsonl"),
+      NODE_OPTIONS: `--import=${JSON.stringify(pathToFileURL(netGuard).href)}`
+    };
+  });
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("lets git run inside the root and refuses it outside, through -C, --git-dir, GIT_DIR or a remote path", () => {
+    expect(run("git", ["init", "-q", path.join(root, "repo")]).status).toBe(0);
+    expect(run("git", ["-C", outside, "init", "-q"]).status).toBe(97);
+    expect(run("git", ["status"], outside).status).toBe(97);
+    expect(run("git", [`--git-dir=${path.join(outside, ".git")}`, "status"]).status).toBe(97);
+    expect(spawnSync("git", ["status"], { cwd: path.join(root, "repo"), env: { ...env, GIT_DIR: path.join(outside, ".git") }, encoding: "utf8" }).status).toBe(97);
+    expect(run("git", ["-C", path.join(root, "repo"), "push", outside, "HEAD:refs/heads/x"]).status).toBe(97);
+    expect(run("git", ["-C", path.join(root, "repo"), "push", "https://github.com/pmark/arcadia.git", "HEAD"]).status).toBe(97);
+    // A URL in a commit message is not a remote.
+    expect(run("git", ["-C", path.join(root, "repo"), "-c", "user.name=r", "-c", "user.email=r@r", "commit", "-q", "--allow-empty", "-m", "see https://example.com"]).status).toBe(0);
+    expect(existsSync(path.join(outside, ".git"))).toBe(false);
+    expect(effects().filter((effect) => effect.kind.startsWith("git:")).map((effect) => effect.kind))
+      .toEqual(["git:outside", "git:outside", "git:outside", "git:outside", "git:outside", "git:network"]);
+  });
+
+  it("refuses and records every GitHub write, a provider, tmux and the network; an unrecorded read is its own kind", () => {
+    writeFileSync(effectsLog, "");
+    expect(run("gh", ["pr", "create", "--title", "x"]).status).toBe(1);
+    expect(run("gh", ["api", "-XPOST", "repos/pmark/arcadia/issues"]).status).toBe(1);
+    expect(run("gh", ["api", "graphql", "-F", "query=@mutation.graphql"]).status).toBe(1);
+    expect(run("gh", ["pr", "view", "1"]).status).toBe(1);
+    expect(run("claude", ["--print", "hi"]).status).toBe(97);
+    expect(run("tmux", ["new-session", "-d"]).status).toBe(97);
+    expect(run("tmux", ["has-session", "-t", "x"]).status).toBe(1);
+    const fetched = run(process.execPath, ["-e", "fetch('https://example.com').then(() => process.exit(0), () => process.exit(3))"]);
+    expect(fetched.status).toBe(3);
+    const https = run(process.execPath, ["-e", "try { require('node:https').get('https://example.com'); process.exit(0) } catch { process.exit(4) }"]);
+    expect(https.status).toBe(4);
+    expect(effects().map((effect) => effect.kind)).toEqual([
+      "github:write", "github:write", "github:write", "github:unrecorded-read", "provider:claude", "tmux", "network", "network"
+    ]);
+  });
+
+  it("refuses a snapshot whose existing operational path no mapping moved into the root", () => {
+    const file = path.join(root, "confined.sqlite3");
+    const db = new Database(file);
+    db.exec("CREATE TABLE agent_sessions (id TEXT, worktree_path TEXT, repository_path TEXT)");
+    db.prepare("INSERT INTO agent_sessions VALUES (?, ?, ?)").run("s1", path.join(root, "repo"), "/nonexistent/replay/path");
+    db.prepare("INSERT INTO agent_sessions VALUES (?, ?, ?)").run("s2", outside, null);
+    db.close();
+    expect(unconfinedPaths(file, root)).toEqual([`agent_sessions.worktree_path=${outside}`]);
   });
 });
 
