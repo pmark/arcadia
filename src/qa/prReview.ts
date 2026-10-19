@@ -39,6 +39,7 @@ import { sessionTokensFromLog } from "../production/sessionCapability.js";
 import type { ReviewEffectivenessTelemetry } from "../reports/modelEffectiveness.js";
 import {
   CODE_REVIEW_PR_CRITERIA,
+  JUDGEMENT_REVISION,
   NOT_APPLICABLE_CHECK_NAME,
   QA_PR_REVIEW_CRITERIA,
   REFUSED_NOT_APPLICABLE_FINDING_TITLE,
@@ -1644,6 +1645,9 @@ function readPersistedReceipt(
 
 function fingerprintPullRequestEvidence(pullRequest: RawPullRequest): string {
   return createHash("sha256").update(JSON.stringify({
+    // A persisted receipt judged under an earlier deterministic judgement
+    // revision is never reused: the PR is reviewed again under the current one.
+    judgementRevision: JUDGEMENT_REVISION,
     number: pullRequest.number,
     title: pullRequest.title,
     url: pullRequest.url,

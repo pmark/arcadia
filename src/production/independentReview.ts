@@ -4,6 +4,7 @@ import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { independentVerdictReadiness } from "../sessions/roleLineage.js";
+import { ensureReviewRepairTable, getReviewRepair, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
   classifyPullRequestChecks,
@@ -530,6 +531,26 @@ export function advanceIndependentReview(db: Database.Database, input: {
       };
     }
 
+    /**
+     * Whether the review repair loop itself returned this PR to draft on this
+     * exact head (its unlaunched repair row records the draft) for a failed
+     * verdict that is no longer current only because it was judged under an
+     * earlier criteria binding (a `JUDGEMENT_REVISION` bump): same head, same
+     * evidence, same requirement input. Never a person's pause.
+     */
+    const workerDraftedSupersededVerdict = (): boolean => {
+      const superseded = INDEPENDENT_VERDICT_ROLES.some((role) => {
+        const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+        return latest !== null && latest.status === "failed" && latest.target_head === head
+          && latest.evidence_fingerprint === readiness.binding.evidenceFingerprint
+          && latest.criteria_fingerprint !== readiness.binding.criteriaFingerprint;
+      });
+      if (!superseded) return false;
+      ensureReviewRepairTable(db);
+      const repair = getReviewRepair(db, reviewRepairRequestId(session.id, head));
+      return repair !== null && repair.drafted_at !== null && repair.repair_session_id === null;
+    };
+
     if (pr.headRefOid !== head) {
       // A settlement commit landed after preservation pushed the PR: publish the
       // exact settled head (a fast-forward of the agent branch) before any
@@ -570,9 +591,12 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return { kind: "advanced", step: "pushed", reason: `Pushed the settled head ${head.slice(0, 12)} to ${url}.` };
     }
 
-    if (pr.isDraft && step.ready_at) {
+    if (pr.isDraft && step.ready_at && !workerDraftedSupersededVerdict()) {
       // The tick readied it once; someone converted it back to draft. That is
       // a person pausing the review, never something to undo every minute.
+      // The one exception is the repair loop's own return to draft for a
+      // failed verdict judged under an earlier judgement revision: that
+      // verdict is no longer current, so the PR is readied for its re-review.
       return {
         kind: "blocked",
         code: "review_paused_as_draft",

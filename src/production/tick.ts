@@ -420,7 +420,10 @@ function escalatingVerdictGate(
   // cleared here exactly like a verdict wait, never kept beside it.
   const supersedable = (kind: string): boolean => VERDICT_WAIT_ESCALATIONS.has(kind) || kind === TERMINAL_CANDIDATE_ESCALATION;
   if (gate.satisfied) {
-    if (previous && supersedable(previous.kind)) clearOperatorEscalation(db, actionKey);
+    // A review repair stop names a failed verdict; current passing verdicts on
+    // this exact head (a re-review after a JUDGEMENT_REVISION bump, an
+    // operator's rerun) mean it no longer stands, so it is cleared too.
+    if (previous && (supersedable(previous.kind) || REVIEW_REPAIR_ESCALATIONS.has(previous.kind))) clearOperatorEscalation(db, actionKey);
     return gate;
   }
   let pullRequestUrl: string | null = null;

@@ -58,6 +58,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
+import { CODE_REVIEW_PR_CRITERIA, QA_PR_REVIEW_CRITERIA } from "../src/qa/reviewCriteria.js";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -97,7 +98,23 @@ export interface ReplayOptions {
   /** Where to write the JSON report; defaults to `<root>/report.json` (lost unless `keep`). */
   reportPath?: string;
   print?: (line: string) => void;
+  /**
+   * SIMULATION ONLY: the independent reviewer (`codex exec` and its sandbox
+   * probe) answers with this verdict instead of being refused. `pass` passes
+   * every criterion; `fail-repairable` fails Correctness with one ordinary
+   * finding (no authority wording), the shape the repair loop launches for.
+   * It predicts what the worker does with such a verdict, never the verdict.
+   */
+  simulateVerdict?: SimulatedVerdict;
+  /**
+   * SIMULATION ONLY: `gh pr ready`, `ready --undo`, `comment`, `close`, `edit`
+   * and `merge` succeed without reaching GitHub; later `gh pr view` reads see
+   * the simulated draft/state. Every other write is still refused.
+   */
+  simulateGithubWrites?: boolean;
 }
+
+export type SimulatedVerdict = "pass" | "fail-repairable";
 
 export interface PathMapping {
   from: string;
@@ -458,7 +475,7 @@ function which(name: string): string | null {
 }
 
 /** PATH guards for the child: every external seam either answers from the replay or records a refused effect. */
-export function installGuards(root: string, effectsLog: string): string {
+export function installGuards(root: string, effectsLog: string, simulateVerdict?: SimulatedVerdict): string {
   const bin = path.join(root, "bin");
   mkdirSync(bin, { recursive: true });
   const record = (kind: string) => `printf '{"kind":"%s","detail":"%s"}\\n' ${shellQuote(kind)} "$(printf '%s' "$(pwd -P): $replay_args" | tr -d '"\\\\' | tr '\\n' ' ')" >> ${shellQuote(effectsLog)}`;
@@ -472,6 +489,22 @@ export function installGuards(root: string, effectsLog: string): string {
   exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac ;;`,
     opencode: `  --version) echo "0.0.0 (production replay)"; exit 0 ;;`
   };
+  if (simulateVerdict) {
+    // SIMULATION ONLY (--simulate-verdict): the reviewer's sandbox probe and
+    // `codex exec` answer from simulated-reviewer.mjs instead of refusing. The
+    // reviewer runs with a stripped environment, so the verdict and the
+    // effects log are baked into the guard rather than read from it.
+    const simulatedReviewer = path.join(bin, "simulated-reviewer.mjs");
+    writeFileSync(simulatedReviewer, SIMULATED_REVIEWER);
+    writeFileSync(path.join(bin, "review-criteria.json"), JSON.stringify({ "code-review": CODE_REVIEW_PR_CRITERIA, qa: QA_PR_REVIEW_CRITERIA }));
+    probes.codex = `  --version) echo "codex 0.0.0 (production replay)"; exit 0 ;;
+  sandbox) printf 'sandbox-evidence-readable\\nsandbox-home-denied\\nsandbox-repository-denied\\nsandbox-network-denied\\n'; exit 0 ;;
+  app-server) exit 1 ;;`;
+    // The reviewer's Codex rate-limit read (\`codex app-server\`) reports nothing in a simulation.
+    probes.codex += `
+  exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac
+    exec ${shellQuote(process.execPath)} ${shellQuote(simulatedReviewer)} ${shellQuote(simulateVerdict)} ${shellQuote(effectsLog)} "$@" ;;`;
+  }
   for (const [name, answers] of Object.entries(probes)) {
     writeExecutable(path.join(bin, name), `#!/bin/sh\nreplay_args="$*"\ncase "$1" in\n${answers}\nesac\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
   }
@@ -506,6 +539,11 @@ outside() { ${record("git:outside")}; echo "production replay: refused git outsi
 network() { ${record("git:network")}; echo "production replay: refused git toward a network remote ($1)" >&2; exit 97; }
 check() { resolved=$(resolve "$1"); inside "$resolved" || outside "$resolved"; }
 dir=$(pwd -P)
+# SIMULATION ONLY: the review command matches a PR to its Project by origin's
+# GitHub URL; the replay's origin is a local bare clone, so name the source's.
+if [ -n "$REPLAY_SIMULATE_VERDICT" ] && [ -n "$REPLAY_GH_REPO" ] && [ "$replay_args" = "remote get-url origin" ] && inside "$dir"; then
+  echo "https://github.com/$REPLAY_GH_REPO.git"; exit 0
+fi
 for value in "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_INDEX_FILE" "$GIT_COMMON_DIR" "$GIT_OBJECT_DIRECTORY"; do
   [ -n "$value" ] && check "$value"
 done
@@ -563,7 +601,7 @@ exec ${shellQuote(realGit)} "$@"
  * and appends to the recording. Anything else is a write: recorded as an
  * effect and refused.
  */
-const GH_GUARD = String.raw`import { appendFileSync, existsSync, readFileSync } from "node:fs";
+const GH_GUARD = String.raw`import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 const args = process.argv.slice(2);
 const env = process.env;
@@ -585,6 +623,34 @@ function isRead() {
   }
   return Boolean(READ[group]?.includes(sub));
 }
+// SIMULATION ONLY (REPLAY_SIMULATE_GH_WRITES): pull-request lifecycle writes
+// succeed without GitHub, and later reads of that PR see the simulated state.
+const overlayFile = env.REPLAY_GH_OVERLAY;
+const readOverlay = () => { try { return JSON.parse(readFileSync(overlayFile, "utf8")); } catch { return {}; } };
+const SIMULATED_PR_WRITES = ["ready", "comment", "close", "edit", "merge"];
+if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "pr" && SIMULATED_PR_WRITES.includes(args[1]) && args[2]) {
+  const overlay = readOverlay();
+  const pr = overlay[args[2]] ?? {};
+  if (args[1] === "ready") pr.isDraft = args.includes("--undo");
+  if (args[1] === "close") pr.state = "CLOSED";
+  if (args[1] === "merge") pr.state = "MERGED";
+  overlay[args[2]] = pr;
+  writeFileSync(overlayFile, JSON.stringify(overlay));
+  effect("simulated:github-write", "gh " + args.join(" "));
+  process.exit(0);
+}
+const overlaid = (stdout) => {
+  if (args[0] !== "pr" || args[1] !== "view" || !overlayFile) return stdout;
+  try {
+    const view = JSON.parse(stdout);
+    if (!view || typeof view !== "object") return stdout;
+    // Keyed by URL: a read by number (--repo) is matched through the URL it returns.
+    const pr = readOverlay()[typeof view.url === "string" ? view.url : args[2]] ?? readOverlay()[args[2]];
+    if (!pr) return stdout;
+    for (const key of ["isDraft", "state"]) if (key in pr && key in view) view[key] = pr[key];
+    return JSON.stringify(view) + "\n";
+  } catch { return stdout; }
+};
 if (!isRead()) {
   effect("github:write", "gh " + args.join(" "));
   process.stderr.write("production replay: refused GitHub write (gh " + args.join(" ") + ")\n");
@@ -595,7 +661,7 @@ if (env.REPLAY_GH_MODE === "live" && env.REPLAY_REAL_GH) {
   const real = spawnSync(env.REPLAY_REAL_GH, args, { encoding: "utf8", env: { PATH: env.REPLAY_REAL_PATH, HOME: env.REPLAY_REAL_HOME, GH_REPO: env.REPLAY_GH_REPO ?? "", GH_PROMPT_DISABLED: "1" }, maxBuffer: 64 * 1024 * 1024 });
   const entry = { args, status: real.status ?? 1, stdout: real.stdout ?? "", stderr: real.stderr ?? "" };
   appendFileSync(env.REPLAY_GH_RECORDING, JSON.stringify(entry) + "\n");
-  process.stdout.write(entry.stdout);
+  process.stdout.write(overlaid(entry.stdout));
   process.stderr.write(entry.stderr);
   process.exit(entry.status);
 }
@@ -605,9 +671,36 @@ if (!recorded) {
   process.stderr.write("production replay: no recorded answer for gh " + args.join(" ") + "\n");
   process.exit(1);
 }
-process.stdout.write(recorded.stdout);
+process.stdout.write(overlaid(recorded.stdout));
 process.stderr.write(recorded.stderr);
 process.exit(recorded.status);
+`;
+
+/**
+ * SIMULATION ONLY: the reviewer `codex exec` under --simulate-verdict (argv: verdict, effects log, codex args).
+ * It reads the prompt (stdin) for the role, writes a schema-valid verdict to
+ * `--output-last-message` and records a `simulated:reviewer` effect. It says
+ * nothing about what the real reviewer would judge.
+ */
+const SIMULATED_REVIEWER = String.raw`import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const [simulated, effectsLog, ...args] = process.argv.slice(2);
+const prompt = readFileSync(0, "utf8");
+const role = prompt.includes("Exact-Head Code Review") ? "code-review" : "qa";
+const criteria = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "review-criteria.json"), "utf8"))[role];
+const fail = simulated === "fail-repairable" && role === "code-review";
+const verdict = {
+  verdict: fail ? "fail" : "pass",
+  summary: fail ? "SIMULATED verdict (production replay): one repairable defect." : "SIMULATED verdict (production replay): no defect.",
+  findings: fail ? [{ severity: "medium", title: "SIMULATED repairable defect", evidence: "Simulated by the production replay; no reviewer ran.", recommendation: "Fix the simulated defect." }] : [],
+  checks: criteria.map((criterion) => ({ criterion: criterion.id, name: criterion.name, status: fail && criterion.id === "correctness" ? "fail" : "pass",
+    evidence: "SIMULATED by the production replay; no reviewer judged " + criterion.name + "." })),
+  residualRisks: []
+};
+writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(verdict) + "\n");
+appendFileSync(effectsLog, JSON.stringify({ kind: "simulated:reviewer", detail: role + " " + verdict.verdict }) + "\n");
+process.stdout.write('{"type":"task.completed"}\n');
 `;
 
 /** Preloaded into the child and every node descendant: no network, every attempt recorded. */
@@ -719,7 +812,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
 
     const effectsLog = path.join(root, "effects.jsonl");
     writeFileSync(effectsLog, "");
-    const realGh = installGuards(root, effectsLog);
+    const realGh = installGuards(root, effectsLog, options.simulateVerdict);
     const home = path.join(root, "home");
     mkdirSync(path.join(home, ".config"), { recursive: true });
     writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = Arcadia Production Replay\n\temail = production-replay@arcadia.invalid\n[commit]\n\tgpgsign = false\n[core]\n\tfsmonitor = false\n");
@@ -753,8 +846,23 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       REPLAY_REAL_GH: realGh,
       REPLAY_REAL_HOME: realHome,
       REPLAY_REAL_PATH: process.env.PATH ?? "",
-      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? ""
+      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? "",
+      REPLAY_SIMULATE_VERDICT: options.simulateVerdict ?? "",
+      REPLAY_SIMULATE_GH_WRITES: options.simulateGithubWrites ? "1" : "",
+      REPLAY_GH_OVERLAY: path.join(root, "github-overlay.json")
     });
+    if (options.simulateVerdict) {
+      // The reviewer preflight's host baseline proves the home probe file is
+      // readable outside the sandbox; the replay home gets a placeholder (no credential).
+      mkdirSync(path.join(home, ".codex"), { recursive: true });
+      writeFileSync(path.join(home, ".codex", "auth.json"), "{\"productionReplay\":\"placeholder; no credential\"}\n");
+      print(`SIMULATION: every independent reviewer verdict is simulated as "${options.simulateVerdict}"; the real reviewer never runs and may judge otherwise.`);
+      fidelity.push(`SIMULATION: reviewer verdicts are simulated as "${options.simulateVerdict}" (--simulate-verdict); they predict what the worker does with such a verdict, not the verdict. \`git remote get-url origin\` in a replay repository answers the source's GitHub URL so the review command can match the PR.`);
+    }
+    if (options.simulateGithubWrites) {
+      print("SIMULATION: gh pr ready/comment/close/edit/merge succeed without GitHub; later PR reads see the simulated state.");
+      fidelity.push("SIMULATION: pull-request writes (ready, comment, close, edit, merge) were simulated (--simulate-github-writes); GitHub's own response (checks re-running, branch protection, merge conflicts) is not.");
+    }
     // cwd is the replay root, never a checkout: a cwd-relative operation cannot reach the source.
     const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), SCRIPT, "--run-prepared", manifestFile], { cwd: root, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
     if (child.stdout) for (const line of child.stdout.replace(/\n$/, "").split("\n")) print(line);
@@ -1022,10 +1130,13 @@ async function runPrepared(manifestFile: string): Promise<void> {
       report.stop = { reason: "integrated", detail: tick.handoff.integration };
       break;
     }
-    if (tick.effects.length > 0) {
-      const unrecordedOnly = tick.effects.every((effect) => effect.kind === "github:unrecorded-read");
-      report.stop = { reason: unrecordedOnly ? "unrecorded_github_read" : "external_effect", detail: tick.effects.map((effect) => `${effect.kind}: ${effect.detail}`).join("; ").slice(0, 2000) };
-      for (const effect of tick.effects) predicted.add(`${effect.kind === "github:unrecorded-read" ? "replay gap (no recorded answer)" : "requested external effect"} ${effect.kind}: ${effect.detail}`);
+    // A simulated effect (--simulate-verdict, --simulate-github-writes) was answered, so it does not stop the replay.
+    const stopping = tick.effects.filter((effect) => !effect.kind.startsWith("simulated:"));
+    for (const effect of tick.effects) if (effect.kind.startsWith("simulated:")) predicted.add(`SIMULATED ${effect.kind}: ${effect.detail}`);
+    if (stopping.length > 0) {
+      const unrecordedOnly = stopping.every((effect) => effect.kind === "github:unrecorded-read");
+      report.stop = { reason: unrecordedOnly ? "unrecorded_github_read" : "external_effect", detail: stopping.map((effect) => `${effect.kind}: ${effect.detail}`).join("; ").slice(0, 2000) };
+      for (const effect of stopping) predicted.add(`${effect.kind === "github:unrecorded-read" ? "replay gap (no recorded answer)" : "requested external effect"} ${effect.kind}: ${effect.detail}`);
       break;
     }
     const signature = JSON.stringify([tick.launch?.outcome, tick.launch?.reason, tick.handoff, [...current.keys()].sort(), tick.blockers]);
@@ -1059,7 +1170,7 @@ function printTick(out: (line: string) => void, tick: ReplayTick, launches: Arra
   for (const entry of tick.escalations.cleared) out(`   - escalation ${entry}`);
   for (const entry of tick.blockers) out(`   blocker ${entry.slice(0, 600)}`);
   for (const entry of tick.redAlerts) out(`   red alert ${entry.slice(0, 600)}`);
-  for (const effect of tick.effects) out(`   EFFECT ${effect.kind}: ${effect.detail.slice(0, 600)}`);
+  for (const effect of tick.effects) out(`   ${effect.kind.startsWith("simulated:") ? "SIMULATED" : "EFFECT"} ${effect.kind}: ${effect.detail.slice(0, 600)}`);
 }
 
 /* ------------------------------------------------------------------- CLI */
@@ -1089,8 +1200,16 @@ function parseArgs(argv: string[]): ReplayOptions {
       case "--parent": options.parent = value(); break;
       case "--report": options.reportPath = value(); break;
       case "--keep": options.keep = true; break;
+      case "--simulate-verdict": {
+        const verdict = value();
+        if (verdict !== "pass" && verdict !== "fail-repairable") throw new Error("--simulate-verdict is pass or fail-repairable.");
+        options.simulateVerdict = verdict;
+        break;
+      }
+      case "--simulate-github-writes": options.simulateGithubWrites = true; break;
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> --grant <request-id prefix> [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep]\n`);
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> --grant <request-id prefix> [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes]\n`
+          + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n");
         process.exit(0);
         break;
       default: throw new Error(`Unknown argument ${flag}.`);
