@@ -190,8 +190,13 @@ export function JourneyLegend() {
 const LOG_MARK: Record<JourneyEvent["kind"], string> = { launch: "•", victory: "◆", cleared: "△", obstacle: "▲", gate: "○", now: "◉" };
 const LOG_COLOR: Record<JourneyEvent["kind"], string> = { launch: "text-ink", victory: "text-moss", cleared: "text-muted", obstacle: "text-gold", gate: "text-ink", now: "text-steel" };
 
+/** `MM-DD HH:MM UTC`: the server's rendering, before the browser shows its own time zone. */
+export function utcTime(iso: string): string {
+  return `${iso.slice(5, 16).replace("T", " ")} UTC`;
+}
+
 /** The same events as text, newest first: what a phone tap cannot get from a hover title. */
-export function JourneyLog({ journey }: { journey: Journey }) {
+export function JourneyLog({ journey, formatTime = utcTime }: { journey: Journey; formatTime?: (iso: string) => string }) {
   const rows = [...journey.events];
   if (journey.now) rows.push(journey.now);
   rows.reverse();
@@ -204,13 +209,34 @@ export function JourneyLog({ journey }: { journey: Journey }) {
           <span className="min-w-0">
             <span className={event.kind === "now" ? "font-semibold text-ink" : "text-ink"}>{event.label}</span>
             {event.class ? <span className="ml-1.5 rounded bg-line/60 px-1 text-xs text-muted">{event.class}</span> : null}
-            <span className="ml-1.5 text-xs text-muted">{event.kind === "gate" ? "ahead" : `${event.at.slice(5, 16).replace("T", " ")} UTC`}</span>
+            <span className="ml-1.5 text-xs text-muted">{event.kind === "gate" ? "ahead" : formatTime(event.at)}</span>
             {event.ref?.url && /^https:\/\//.test(event.ref.url) ? <a className="ml-1.5 text-xs text-steel underline" href={event.ref.url}>#{event.ref.id}</a> : null}
             <span className="block break-words text-xs text-muted">{event.detail}</span>
           </span>
         </li>
       ))}
     </ol>
+  );
+}
+
+const PHASE_COLOR: Record<Journey["activity"]["phase"], string> = {
+  arrived: "bg-moss", driving: "bg-steel", launching: "bg-steel", repairing: "bg-gold",
+  "in-review": "bg-ink", blocked: "bg-clay", waiting: "bg-muted", parked: "bg-muted"
+};
+
+/** What the rover is doing now, in one line, with how long it has been so. */
+export function JourneyActivityLine({ journey, formatTime = utcTime }: { journey: Journey; formatTime?: (iso: string) => string }) {
+  const { activity } = journey;
+  const moving = activity.phase === "driving" || activity.phase === "repairing" || activity.phase === "launching";
+  return (
+    <div className="mb-3 rounded-md border border-line bg-panel px-3 py-2" aria-live="polite">
+      <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${PHASE_COLOR[activity.phase]} ${moving ? "journey-halo" : ""}`} aria-hidden="true" />
+        {activity.headline}
+        <span className="text-xs font-normal text-muted">since {formatTime(activity.since)}</span>
+      </p>
+      <p className="mt-0.5 break-words text-xs text-muted">{activity.detail}</p>
+    </div>
   );
 }
 

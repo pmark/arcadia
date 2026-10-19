@@ -61,6 +61,18 @@ export interface JourneyBranch {
   likely: boolean;
 }
 
+/** What the rover is doing right now. */
+export type JourneyPhase = "parked" | "waiting" | "launching" | "driving" | "repairing" | "in-review" | "blocked" | "arrived";
+
+export interface JourneyActivity {
+  phase: JourneyPhase;
+  /** A few words: "Under repair: round 2 of 3". */
+  headline: string;
+  detail: string;
+  /** When this phase began, as far as the records say. */
+  since: string;
+}
+
 export interface Journey {
   schema: typeof JOURNEY_SCHEMA;
   generatedAt: string;
@@ -72,6 +84,7 @@ export interface Journey {
     title: string | null;
   };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
+  activity: JourneyActivity;
   /** Chronological. Open obstacles (`kind: "obstacle"`) still block the way ahead. */
   events: JourneyEvent[];
   /** Where the rover is now; null once the destination is reached. */

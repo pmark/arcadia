@@ -188,6 +188,52 @@ describe("deriveJourney", () => {
     expect(asked).toBe(false);
   });
 
+  describe("activity", () => {
+    const activity = () => deriveJourney(db, KEY, NOW).activity;
+
+    it("is in review while the PR waits for checks, and stopped on an open obstacle", () => {
+      seedPath();
+      expect(activity()).toMatchObject({ phase: "in-review", headline: "In review: PR #1577 awaiting checks", since: "2026-10-19T15:50:00.000Z" });
+      attempt("code-review", 3, "failed", HEAD.c, "2026-10-19T15:55:00.000Z");
+      expect(activity()).toMatchObject({ phase: "blocked", headline: "Stopped: review fail", since: "2026-10-19T15:55:00.000Z" });
+    });
+
+    it("is under repair while a repair Session runs, and queued while its repair is pending", () => {
+      seedPath();
+      insert("production_review_repairs", { request_id: "repair-q", action_key: KEY, policy_epoch: 2, round: 2, failed_session_id: "s3", failed_branch: "claude/demo-3", failed_head: HEAD.c, role: "code-review", verdict: "fail", summary: "Fix it.", findings_json: "[]", failed_checks_json: "[]", outcome: "pending", created_at: "2026-10-19T15:56:00.000Z", updated_at: "2026-10-19T15:56:00.000Z" });
+      expect(activity()).toMatchObject({ phase: "repairing", headline: "Repair round queued" });
+      db.prepare("UPDATE production_review_repairs SET outcome = 'launched', repair_session_id = 's4' WHERE request_id = 'repair-q'").run();
+      session("s4", "claude/demo-4", "2026-10-19T15:57:00.000Z", "running");
+      expect(activity()).toMatchObject({ phase: "repairing", headline: "Under repair: round 2 of 3", since: "2026-10-19T15:57:00.000Z" });
+    });
+
+    it("drives while an ordinary Session runs", () => {
+      session("s1", "claude/demo-1", "2026-10-19T15:00:00.000Z", "running");
+      expect(activity()).toMatchObject({ phase: "driving", headline: "Driving: a Session is working" });
+    });
+
+    it("explains why an Action has not launched: production Off, out of scope, refused, waiting, or admitted", () => {
+      expect(activity()).toMatchObject({ phase: "parked", headline: "Parked: production is Off" });
+      db.prepare("UPDATE production_policy SET desired_state = 'active', scope_json = ?, updated_at = ? WHERE id = 'workspace'").run(JSON.stringify({ actions: ["arcadia/other"] }), "2026-10-19T15:00:00.000Z");
+      expect(activity()).toMatchObject({ phase: "parked", headline: "Parked: not in this production run" });
+      db.prepare("UPDATE production_policy SET scope_json = ? WHERE id = 'workspace'").run(JSON.stringify({ actions: [KEY] }));
+      expect(activity()).toMatchObject({ phase: "waiting", headline: "Waiting to launch" });
+      insert("production_launch_refusal_log", { action_key: KEY, dedupe_key: "d", message: "Launch refused: capacity window closed.\nmore", first_at: "2026-10-19T15:10:00.000Z", last_at: "2026-10-19T15:20:00.000Z" });
+      expect(activity()).toMatchObject({ phase: "blocked", headline: "Stopped: launch refused", detail: "Launch refused: capacity window closed." });
+      // A refusal from before production was last switched belongs to an earlier run.
+      db.prepare("UPDATE production_policy SET updated_at = ? WHERE id = 'workspace'").run("2026-10-19T15:25:00.000Z");
+      expect(activity()).toMatchObject({ phase: "waiting", headline: "Waiting to launch" });
+      insert("production_admissions", { action_key: KEY, project_slug: PROJECT, plan_slug: PLAN, provider: "claude-code-cli", epoch: 2, policy_revision: 2, status: "issued", issued_at: "2026-10-19T15:30:00.000Z", expires_at: "2026-10-19T16:30:00.000Z" });
+      expect(activity()).toMatchObject({ phase: "launching", since: "2026-10-19T15:30:00.000Z" });
+    });
+
+    it("has arrived once merged", () => {
+      seedPath();
+      expect(deriveJourney(db, KEY, NOW, { integration: () => ({ commit: "m".repeat(40), at: "2026-10-19T15:58:00.000Z" }) }).activity)
+        .toMatchObject({ phase: "arrived", headline: "Arrived: PR #1577 merged", since: "2026-10-19T15:58:00.000Z" });
+    });
+  });
+
   it("returns an empty journey for an Action that never launched", () => {
     const journey = deriveJourney(db, KEY, NOW);
     expect(journey.events).toEqual([]);

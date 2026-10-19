@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { JourneyLog, JourneyMap, describe as describeJourney } from "../components/journey-map";
+import { JourneyActivityLine, JourneyLog, JourneyMap, describe as describeJourney } from "../components/journey-map";
 import { layoutJourney, pathData, placeLabels } from "./journey-layout";
 import type { Journey, JourneyEvent } from "./journey-types";
 
@@ -16,6 +16,7 @@ function journey(overrides: Partial<Journey> = {}): Journey {
     generatedAt: "2026-10-19T16:20:00.000Z",
     action: { key: "arcadia/demo", project: "arcadia", plan: "plan", id: "demo", title: "Demo" },
     destination: { label: "PR merged", reached: false, at: null, ref: pr("1577") },
+    activity: { phase: "repairing", headline: "Under repair: round 2 of 3", detail: "Session s4 is fixing the failed code-review.", since: "2026-10-19T16:20:00.000Z" },
     events: [
       event("launch", "launched", "2026-10-18T21:48:00.000Z"),
       event("victory", "#1545", "2026-10-18T21:50:00.000Z", { ref: pr("1545") }),
@@ -60,6 +61,10 @@ describe("layoutJourney", () => {
     expect(scene.glyphs.at(-1)).toMatchObject({ type: "destination", reached: true });
   });
 
+  it("starts a label at the left edge when centring it would run off the map", () => {
+    expect(placeLabels("h", [{ s: 30, text: "not launched", prefer: "a", strong: true }])).toEqual([{ x: 4, y: 78, anchor: "start", text: "not launched", strong: true }]);
+  });
+
   it("keeps strong labels and drops colliding ones rather than overlapping them", () => {
     const placed = placeLabels("h", [
       { s: 100, text: "#1545", prefer: "a", strong: false },
@@ -84,6 +89,15 @@ describe("JourneyMap", () => {
   it("has no #now anchor once the destination is reached", () => {
     const html = renderToStaticMarkup(<JourneyMap journey={journey({ destination: { label: "PR merged", reached: true, at: "2026-10-19T17:00:00.000Z", ref: null }, now: null, gate: null, ahead: [] })} />);
     expect(html).not.toContain('id="now"');
+  });
+
+  it("states what the rover is doing, since when, in the given time format", () => {
+    const html = renderToStaticMarkup(<JourneyActivityLine journey={journey()} />);
+    expect(html).toContain("Under repair: round 2 of 3");
+    expect(html).toContain("since 10-19 16:20 UTC");
+    expect(html).toContain("bg-gold");
+    expect(html).toContain("journey-halo");
+    expect(renderToStaticMarkup(<JourneyActivityLine journey={journey()} formatTime={() => "9:20 AM"} />)).toContain("since 9:20 AM");
   });
 
   it("logs the gate first, then events newest first, with PR links and classes", () => {

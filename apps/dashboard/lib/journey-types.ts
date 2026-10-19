@@ -43,11 +43,21 @@ export interface JourneyBranch {
   likely: boolean;
 }
 
+export type JourneyPhase = "parked" | "waiting" | "launching" | "driving" | "repairing" | "in-review" | "blocked" | "arrived";
+
+export interface JourneyActivity {
+  phase: JourneyPhase;
+  headline: string;
+  detail: string;
+  since: string;
+}
+
 export interface Journey {
   schema: "arcadia-journey-v1";
   generatedAt: string;
   action: { key: string; project: string; plan: string | null; id: string; title: string | null };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
+  activity: JourneyActivity;
   events: JourneyEvent[];
   now: JourneyEvent | null;
   gate: JourneyEvent | null;
