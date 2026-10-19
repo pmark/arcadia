@@ -11,7 +11,7 @@ Standalone factual record of the first multi-Action production run on Arcadia's 
 | Activation | Plan Actions were pinned to the repeatable grant card. The operator pressed START, then RE-RUN at epochs 34, 35 and 36, with a STOP before each fix merge and at the end. |
 | Action 1 | Merged as PR #1534. The Release Manager merged it after a stray-Ask cleanup commit. |
 | Action 2 | Merged as PR #1535 by the operator despite a failed independent review (defect #1536). |
-| Action 3 | `implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`, PR #1545 head 71d40eb99459. Independent code review failed: the report omitted #1512, and the deterministic check refused its not-applicable claims. The Release Manager drafted #1545 with Do-not-merge. |
+| Action 3 | `implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`, PR #1545 head 71d40eb99459. Independent code review failed: the report omitted #1512, and the deterministic check refused its not-applicable claims. The Arcadia worker returned #1545 to draft with Do-not-merge. |
 | Repair | Failed verdict, draft plus comment, repair Session `session_c2387f0c86504224a4` launched 05:12:52Z and settled head a6e473d8f7c5; repair PR #1554 opened; the worker closed #1545 as superseded; a fresh review ran. |
 | Fresh review | Needs-follow-up and gated authority-adjacent because of patch-check defects (failure h). The operator stopped the run; #1554 stayed drafted with Do-not-merge. |
 
@@ -41,7 +41,7 @@ Infrastructure PRs merged during the run: #1539 (production review-repair loop; 
 - Claude re-sign-in on the worker host.
 - Decisions on narrowing the gate and on stopping the run.
 
-Release Manager touches: merge of #1534 and its stray-Ask cleanup commit; merges of #1539 and #1546; drafting #1545 and #1554; the review rerun.
+Release Manager touches: merge of #1534 and its stray-Ask cleanup commit; merges of #1539 and #1546; the review rerun. The Arcadia worker, not the Release Manager, returned #1545 to draft and drafted #1554. GitHub shows every merge as `pmark`, so Release Manager versus operator attribution is the run record's claim.
 
 ## Acceptance criteria of `first-unattended-run`
 
@@ -49,7 +49,7 @@ Release Manager touches: merge of #1534 and its stray-Ask cleanup commit; merges
 | --- | --- |
 | 1. A production preview for at least three ready Actions on Claude is published and activation presented as one card; agents do not activate. | Met 2026-10-18, as recorded in the earlier sections of the readiness document. |
 | 2. Every Action reaches a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges. | **Not met.** No Action reached a merged PR unattended; the touches listed above go beyond activation and authority-adjacent merges. |
-| 3. `docs/managed-production-readiness.md` is re-derived from the run with the new verdict and every failure. | Met by the change that adds this report. |
+| 3. `docs/managed-production-readiness.md` is re-derived from the run with the new verdict and every failure. | Met once this PR merges, with the obligation to add a hermetic replay scenario per predictable live failure deferred to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. |
 
 The Action is not complete.
 

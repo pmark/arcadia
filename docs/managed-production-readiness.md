@@ -10,7 +10,7 @@ The first multi-Action run under the repeatable grant card `grant-production-una
 
 **What is now proved.** A failed independent review drives the whole repair loop without an operator: failed verdict, draft PR plus comment, repair Session launch, settlement, new PR, superseded PR closed, fresh review. Repair Session `session_c2387f0c86504224a4` launched 05:12:52Z, settled head a6e473d8f7c5, opened repair PR #1554, and the worker closed #1545 as superseded.
 
-**What is not proved.** Action 1 merged as #1534 only after the Release Manager merged it and removed a stray Ask. Action 2 merged as #1535 by the operator despite a failed independent review (defect #1536). Action 3 (`implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`) produced #1545 (head 71d40eb99459), which failed independent code review (the report omitted #1512, plus refused not-applicable claims); its repair #1554 was gated authority-adjacent and left drafted with Do-not-merge. No Action reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges.
+**What is not proved.** Action 1 merged as #1534 only after the Release Manager merged it and removed a stray Ask. Action 2 merged as #1535 by the operator despite a failed independent review (defect #1536). Action 3 (`implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`) produced #1545 (head 71d40eb99459), which failed independent code review (the report omitted #1512, plus refused not-applicable claims); #1545 was returned to draft by the Arcadia worker; its repair #1554 was gated authority-adjacent and left drafted with Do-not-merge. No Action reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges.
 
 ### Failures observed, in order
 
@@ -30,7 +30,7 @@ Infrastructure PRs merged during the run: #1539 (production review-repair loop, 
 
 ### Operator and Release Manager touches
 
-Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 36); STOP presses (before each fix merge and at the end); merges of #1535, #1552, #1553; the hand commit and push of #1552's gate change; approval to mark #1545 ready for a review rerun; Claude re-sign-in on the host; decisions on the gate narrowing and on stopping. Release Manager: merge of #1534 and its stray-Ask cleanup; merges of #1539 and #1546; drafting #1545 and #1554; the review rerun.
+Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 36); STOP presses (before each fix merge and at the end); merges of #1535, #1552, #1553; the hand commit and push of #1552's gate change; approval to mark #1545 ready for a review rerun; Claude re-sign-in on the host; decisions on the gate narrowing and on stopping. Release Manager: merge of #1534 and its stray-Ask cleanup; merges of #1539 and #1546; the review rerun. (The Arcadia worker, not the Release Manager, returned #1545 to draft and drafted #1554.) GitHub shows every merge as `pmark`, so the Release Manager versus operator attribution here is the run record's claim, not something GitHub proves.
 
 ### Acceptance criteria of `first-unattended-run`
 
@@ -38,11 +38,33 @@ Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 3
 | --- | --- |
 | 1. Production preview for at least three ready Claude Actions, activation presented as one card, agents did not activate | Met 2026-10-18, as recorded in the earlier sections below. |
 | 2. Every Action reaches a merged PR with only activation and authority-adjacent merges as operator touches | **Not met.** One Action needed a Release Manager cleanup, one merged despite a failed review, one is unmerged; touches included STOP, RE-RUN, re-sign-in and a hand commit. |
-| 3. This document re-derived from the run with verdict and every failure | Met by this change. |
+| 3. This document re-derived from the run with verdict and every failure | Met once this PR merges, with the replay-scenario obligation deferred (see below). |
+
+### Gates, critical path, live state and Plan scoreboard, 2026-10-19
+
+**Gates.** The capacity gate stays on. No merge happens without exact-head independent review and green checks. Authority-adjacent PRs (including every repair PR the gate classifies so, such as #1554) wait for the operator. Production is Off after the operator's STOP, and the 2026-10-25 grant card remains the only activation path.
+
+**Critical path.** (1) Land the live-state replay (separate session in progress): copy the live database and candidate refs into a throwaway workspace and run the worker tick offline to the launch or the stop. (2) Fix #1555 to #1559, whose live effects stopped this run. (3) Only then another press. (4) The run must reach merged PRs for all Actions with only activation and authority-adjacent merges as operator touches.
+
+| Item | State at this derivation |
+| --- | --- |
+| Production | Off after the operator's STOP. Grant card `grant-production-unattended-claude-rerun-20261018`, valid to 2026-10-25. |
+| Review-repair loop | Proven end to end unattended once (Session `session_c2387f0c86504224a4`, repair PR #1554, #1545 closed as superseded). |
+| Open candidates | #1554 drafted with Do-not-merge; #1545 closed as superseded. |
+| Open follow-ups | #1536, #1549, #1550, #1551, #1555 to #1559; replay proposal `agentask_f72f7a21bc28706079`. |
+| Live state not re-read | Policy revision, epoch and red alerts were not re-read for this derivation; treat the 2026-10-18 table figures as stale. |
+
+| Plan Action | Status |
+| --- | --- |
+| Seven Actions done as of 2026-10-18 (`launch-failure-keeps-cause`, `claude-worker-launch-replay`, `claude-capacity-evidence`, `credential-preflight`, `production-spend-budget`, `implement-a-hermetic-test-that-an`, `first-supervised-claude-run`) | Done; not re-verified here. |
+| `worker-review-and-merge` | Source merged in #1496; settlement state not re-read here. |
+| Run Actions 1 and 2 | Merged as #1534 and #1535 (see attribution caveats above). |
+| `implement-docs-reports-first-supervised-claude` | Open; repair #1554 drafted. |
+| `first-unattended-run` | **Open.** Criterion 1 met, criterion 2 not met, criterion 3 met once this PR merges. |
 
 ### Lesson and next step
 
-Every defect of this run was visible in live database rows before the press. Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. Per the refresh contract, each failure above that a replay could have predicted needs a hermetic replay scenario; #1555 to #1559 remain open.
+Every defect of this run was visible in live database rows before the press. Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. The refresh contract's obligation to add a hermetic replay scenario for each predictable live failure is **deferred** to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. It is not done in this change. That replay is now in progress in a separate session.
 
 **Verdict: not yet.**
 
