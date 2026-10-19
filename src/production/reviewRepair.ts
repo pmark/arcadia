@@ -150,7 +150,11 @@ export function verdictIsAuthorityAdjacent(findings: ReviewRepairFinding[], chec
     }
     if (AUTHORITY_TEXT.test(`${finding.title} ${finding.recommendation}`)) return `the reviewer's finding "${finding.title}" concerns authority`;
   }
-  const failed = checks.find((check) => isAuthorityCriterion(check.name) && check.status !== "pass");
+  // A not-applicable authority criterion is no flag when the deterministic
+  // Not-applicable claims check ran and passed (the claim was verified against
+  // the patch); with that check missing or not passed it still gates.
+  const naVerified = checks.some((check) => check.name === NOT_APPLICABLE_CHECK_NAME && check.status === "pass");
+  const failed = checks.find((check) => isAuthorityCriterion(check.name) && check.status !== "pass" && !(check.status === "not-applicable" && naVerified));
   if (failed) return `the reviewer did not pass the ${failed.name} criterion (${failed.status})`;
   return null;
 }
@@ -282,6 +286,8 @@ function verdictAttemptsRemaining(db: Database.Database, attempt: { requirement_
 
 function reviewContext(db: Database.Database, receiptJson: string | null): {
   verdict: string; summary: string; reportPath: string | null; findings: ReviewRepairFinding[]; checks: ReviewRepairCheck[];
+  /** `checks` plus the passed deterministic Not-applicable claims check, which only the authority judgement reads. */
+  judgedChecks: ReviewRepairCheck[];
 } {
   let decisionId: string | null = null;
   let verdict = "fail";
@@ -293,7 +299,12 @@ function reviewContext(db: Database.Database, receiptJson: string | null): {
   const row = decisionId ? db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(decisionId) as { context_json: string } | undefined : undefined;
   try {
     const context = JSON.parse(row?.context_json ?? "{}") as { verdict?: string; summary?: string; reportPath?: string; findings?: ReviewRepairFinding[]; checks?: ReviewRepairCheck[] };
+    const naPassed = Array.isArray(context.checks) ? context.checks.filter((check) => check.name === NOT_APPLICABLE_CHECK_NAME && check.status === "pass") : [];
+    const stored = Array.isArray(context.checks)
+      ? context.checks.filter((check) => check.status !== "pass" && (check.status !== "not-applicable" || isAuthorityCriterion(check.name)))
+      : [];
     return {
+      judgedChecks: [...stored, ...naPassed],
       verdict: context.verdict ?? verdict,
       summary: context.summary ?? "(no summary recorded)",
       reportPath: context.reportPath ?? null,
@@ -306,7 +317,7 @@ function reviewContext(db: Database.Database, receiptJson: string | null): {
         : []
     };
   } catch {
-    return { verdict, summary: "(the reviewer's report could not be read)", reportPath: null, findings: [], checks: [] };
+    return { verdict, summary: "(the reviewer's report could not be read)", reportPath: null, findings: [], checks: [], judgedChecks: [] };
   }
 }
 
@@ -439,15 +450,23 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   ensureReviewRepairTable(db);
   const requestId = reviewRepairRequestId(session.id, failed.head);
   let row = getReviewRepair(db, requestId);
-  if (!row) {
+  // A row that never launched was judged on one verdict attempt. A newer failed
+  // verdict on the same head (a reviewer rerun) is judged afresh from its own
+  // context; a NULL record counts as different once the attempt is newer than
+  // the row. A launched, escalated or released row is never re-judged.
+  const verdictRequestId = failed.attempt.request_id;
+  const rejudge = row !== null && (row.outcome === "gated" || row.outcome === "pending") && row.repair_session_id === null
+    && row.verdict_request_id !== verdictRequestId
+    && (row.verdict_request_id !== null || failed.attempt.created_at > row.created_at);
+  if (!row || rejudge) {
     const context = reviewContext(db, failed.attempt.terminal_receipt_json);
-    const start = tryGit(repoRoot, ["rev-parse", "--verify", `${failed.head}^1`]);
+    const start = row ? row.start_revision : tryGit(repoRoot, ["rev-parse", "--verify", `${failed.head}^1`]);
     if (!start || !isAncestor(repoRoot, session.base_revision, start)) {
       return { kind: "not_applicable", reason: `The failed head ${failed.head.slice(0, 12)} has no pre-settlement parent descending from the candidate's base ${session.base_revision.slice(0, 12)}.` };
     }
     let outcome: ReviewRepairOutcome = "pending";
     let reason: string | null = null;
-    const adjacent = verdictIsAuthorityAdjacent(context.findings, context.checks);
+    const adjacent = verdictIsAuthorityAdjacent(context.findings, context.judgedChecks);
     const gate = adjacent ? null : candidateChangeGate(repoRoot, session.base_revision, start);
     const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
     if (adjacent) {
@@ -460,15 +479,24 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
       outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
     }
     const at = now.toISOString();
-    db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
-        start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
-        last_error, drafted_at, commented_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?) ON CONFLICT(request_id) DO NOTHING`)
-      .run(requestId, actionKey, policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), session.id, session.branch, failed.head, start,
-        workerPullRequestUrl(db, session.id), failed.role, context.verdict, context.summary, context.reportPath,
-        JSON.stringify(context.findings), JSON.stringify(context.checks), outcome, reason, at, at);
+    if (!row) {
+      db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+          start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
+          last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`)
+        .run(requestId, actionKey, policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), session.id, session.branch, failed.head, start,
+          workerPullRequestUrl(db, session.id), failed.role, context.verdict, context.summary, context.reportPath,
+          JSON.stringify(context.findings), JSON.stringify(context.checks), outcome, reason, at, at, verdictRequestId);
+    } else {
+      // Fenced on never having launched; the new verdict is commented afresh.
+      db.prepare(`UPDATE production_review_repairs SET policy_epoch = ?, round = ?, role = ?, verdict = ?, summary = ?, report_path = ?, findings_json = ?,
+          failed_checks_json = ?, outcome = ?, reason = ?, verdict_request_id = ?, last_error = NULL, notify_failures = 0, drafted_at = NULL, commented_at = NULL, updated_at = ?
+        WHERE request_id = ? AND outcome IN ('gated', 'pending') AND repair_session_id IS NULL`)
+        .run(policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), failed.role, context.verdict, context.summary, context.reportPath,
+          JSON.stringify(context.findings), JSON.stringify(context.checks), outcome, reason, verdictRequestId, at, requestId);
+    }
     row = getReviewRepair(db, requestId)!;
-    input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
+    input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}${rejudge ? " re-judged from a newer verdict" : ""}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
   }
   // A pending row decided under an earlier production run (epoch) is
   // re-judged against THIS run's round count before it can launch, so a new

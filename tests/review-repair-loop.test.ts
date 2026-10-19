@@ -5,8 +5,9 @@ import type Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_NO_DRAFT } from "../src/ask/autoSettleBeforeDispatch.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { createReviewItem } from "../src/db/repositories.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "../src/production/policy.js";
-import { getProductionRepairAttempts } from "../src/production/tick.js";
+import { getProductionRepairAttempts, reviewRepairPingMessage } from "../src/production/tick.js";
 import { ESCALATION_REMEDIES } from "../src/production/blockerRemedies.js";
 import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, unrepairableReason, verdictIsAuthorityAdjacent, verdictIsRepairable } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
@@ -448,6 +449,57 @@ describe("the review repair bound and gates", () => {
   });
 });
 
+/** An operator reruns the code review on the same head; it fails again with a repairable Correctness finding. */
+function rerunFailedReview(rehearsal: Rehearsal, a: AgentSession, suffix: string): void {
+  withDatabase(rehearsal.workspace, (db) => {
+    const session = getSession(db, a.id)!;
+    const item = createReviewItem(db, {
+      decisionNeeded: "Code review failed", sourceInput: "rerun", proposedAction: "repair", resolvedIntent: "repair", confidenceLabel: "high", confidence: 0.9,
+      context: { verdict: "fail", summary: "Off by one.", findings: [{ severity: "blocker", title: "Off by one", evidence: "MARKER.md", recommendation: "Fix it." }],
+        checks: [{ name: "Correctness", status: "fail" }, { name: "Security and authority", status: "not-applicable" }, { name: "Not-applicable claims", status: "pass" }] }
+    });
+    const requestId = `code-review-operator-rerun-${suffix}`;
+    const actorId = `code-review-reviewer:operator-rerun-${suffix}`;
+    beginIndependentVerdict(db, { role: "code-review", session, repoRoot: rehearsal.repo, requestId, actorId, executionCwd: rehearsal.workspace, retryAuthorized: true, now: rehearsal.now });
+    finishIndependentVerdict(db, { requestId, actorId, session, repoRoot: rehearsal.repo, verdict: "failed", receipt: { reviewer: actorId, decisionId: item.id, verdict: "fail" }, now: rehearsal.now });
+  });
+}
+
+const REFUSED_TITLE = "Refused not-applicable claim: Failure handling, State and concurrency, Security and authority, Compatibility, Tests";
+
+describe("a newer failed verdict on the same head", () => {
+  it("re-judges a gated row never launched, and launches a repair from the new repairable verdict", () => {
+    const { rehearsal, a, head } = failedReview((r) => { r.github.findingTitle = REFUSED_TITLE; });
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["gated"]);
+    expect(rehearsal.lease()).toBeNull();
+    rerunFailedReview(rehearsal, a, "0001");
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    const rows = repairs(rehearsal);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ failed_head: head, outcome: "launched" });
+    expect(rows[0].verdict_request_id).toBe("code-review-operator-rerun-0001");
+    expect(rows[0].repair_session_id).not.toBeNull();
+  });
+
+  it("never re-judges a launched row", () => {
+    const { rehearsal } = failedReview();
+    const before = repairs(rehearsal);
+    expect(before.map((row) => row.outcome)).toEqual(["launched"]);
+    // Once launched, the candidate is no longer verdict-ready; later ticks leave the row untouched.
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    const after = repairs(rehearsal);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ outcome: "launched", repair_session_id: before[0].repair_session_id, findings_json: before[0].findings_json });
+  });
+
+  it("caps the operator ping text at 500 characters", () => {
+    const text = reviewRepairPingMessage("p/a", "review_repair_gated", `The independent code-review verdict is fail; ${"x".repeat(900)}\nsecond line`);
+    expect(text.length).toBeLessThanOrEqual(500);
+    expect(text).toContain("review_repair_gated");
+    expect(reviewRepairPingMessage("p/a", "k", "short")).toBe("Production stopped the review repair loop for p/a (k): short");
+  });
+});
+
 describe("review repair pure parts", () => {
   it("flags every failed authority or approval criterion and authority findings, not a plain defect", () => {
     const finding = (title: string) => ({ severity: "blocker", title, evidence: "MARKER.md", recommendation: "Fix it." });
@@ -481,6 +533,21 @@ describe("review repair pure parts", () => {
     expect(verdictIsAuthorityAdjacent([missing], [crit("Approval boundaries", "not-checked")])).toMatch(/Approval boundaries/);
     // A refused list naming no authority criterion is no authority flag.
     expect(verdictIsAuthorityAdjacent([refusedNA("Failure handling", "Compatibility", "Tests"), missing], [naFailed, crit("Correctness", "fail")])).toBeNull();
+  });
+
+  it("does not gate a not-applicable authority criterion when the Not-applicable claims check passed (the live rerun shape)", () => {
+    const naPass = crit("Not-applicable claims", "pass");
+    const correctness = { ...missing, title: "Off by one" };
+    const checks = [crit("Correctness", "fail"), crit("Security and authority", "not-applicable"), crit("Approval boundaries", "not-applicable"), naPass];
+    expect(verdictIsAuthorityAdjacent([correctness], checks)).toBeNull();
+    expect(verdictIsRepairable([correctness], checks)).toBe(true);
+    // Still gated: the check missing or not passed, a failed or unchecked authority criterion, a refused claim, an authority finding.
+    expect(verdictIsAuthorityAdjacent([correctness], checks.filter((check) => check !== naPass))).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Security and authority", "not-applicable"), naFailed])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Security and authority", "fail"), naPass])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([correctness], [crit("Approval boundaries", "not-checked"), naPass])).toMatch(/Approval boundaries/);
+    expect(verdictIsAuthorityAdjacent([refusedNA("Security and authority"), correctness], [crit("Security and authority", "not-applicable"), naPass])).toMatch(/Security and authority/);
+    expect(verdictIsAuthorityAdjacent([{ ...correctness, title: "Leaks a credential" }], [crit("Security and authority", "not-applicable"), naPass])).toMatch(/concerns authority/);
   });
 
   it("treats a reviewer-authored finding that only borrows the deterministic title as an ordinary finding", () => {
