@@ -16,7 +16,7 @@ Standalone record of the first supervised Claude production run on Arcadia's own
 
 ## Failures and fixing PRs
 
-- **Activation**: `grant-production-first-supervised-claude-run-20261017` refused at preconditions (go-broker stale) → Fixed in #1514
+- **Activation**: `grant-production-first-supervised-claude-run-20261017` refused at preconditions (go-broker stale) → Remedied operationally (build + `go-broker ensure` with production Off); no code fix
 - **Selection**: Out-of-scope pointer and queue arrange issues → Fixed in #1514
 - **Launch**: Command-too-long tmux failure → Fixed in #1513
 - **Launch recovery**: Needed repair-budget reset and re-run → #1515
