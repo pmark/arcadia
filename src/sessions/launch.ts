@@ -11,6 +11,7 @@ import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { normalizeAgentAsk } from "../ask/agentAsk.js";
+import { retiredCompletionDraftMessage } from "../qa/patchApplicability.js";
 import { draftPathsAt } from "../ask/autoSettleBeforeDispatch.js";
 import { commitTreeAt } from "./candidateSnapshot.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -1079,12 +1080,15 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
  */
 function retireInheritedCompletionDrafts(worktreePath: string, startRevision: string, projectSlug: string, planSlug: string, actionId: string): string {
   const targets = new Set([`action/${actionId}`, `plan/${planSlug}#${actionId}`]);
+  const requestIds: string[] = [];
   const inherited = draftPathsAt(worktreePath, startRevision).filter((file) => {
     const content = tryGit(worktreePath, ["show", `${startRevision}:${file}`]);
     if (content === null) return false;
     try {
       const ask = normalizeAgentAsk({ request: content });
-      return ask.intent === "complete" && ask.targetRef !== null && targets.has(ask.targetRef) && (ask.project === "unknown" || ask.project === projectSlug);
+      const retire = ask.intent === "complete" && ask.targetRef !== null && targets.has(ask.targetRef) && (ask.project === "unknown" || ask.project === projectSlug);
+      if (retire) requestIds.push(ask.requestId);
+      return retire;
     } catch {
       return false;
     }
@@ -1097,9 +1101,10 @@ function retireInheritedCompletionDrafts(worktreePath: string, startRevision: st
       // commits under), never the host's ambient Git identity.
       const parent = git(worktreePath, ["rev-parse", "HEAD"]).trim();
       const tree = git(worktreePath, ["write-tree"]).trim();
-      const retired = commitTreeAt(worktreePath, tree, parent, {
-        message: `chore(arcadia): retire the failed candidate's completion draft for ${actionId}\n\nA review repair settles only a completion it drafts itself.`
-      });
+      // The trailers let the deterministic patch check recognize exactly this
+      // retirement (src/qa/patchApplicability.ts), so a repaired head's
+      // governed records are not classified as authority.
+      const retired = commitTreeAt(worktreePath, tree, parent, { message: retiredCompletionDraftMessage(actionId, requestIds) });
       git(worktreePath, ["update-ref", "-m", "arcadia: retire inherited completion draft", "HEAD", retired, parent]);
     } catch (error) {
       throw validationError(`The review repair could not retire the failed candidate's completion draft: ${error instanceof Error ? error.message : String(error)}`, { code: "repair_draft_retirement_failed" });

@@ -37,6 +37,14 @@ import { normalizeStatusCheck, type NormalizedStatusCheck, type RawStatusCheck }
 import { classifyPatchApplicability, evaluateNotApplicableClaims } from "./patchApplicability.js";
 import { sessionTokensFromLog } from "../production/sessionCapability.js";
 import type { ReviewEffectivenessTelemetry } from "../reports/modelEffectiveness.js";
+import {
+  CODE_REVIEW_PR_CRITERIA,
+  NOT_APPLICABLE_CHECK_NAME,
+  QA_PR_REVIEW_CRITERIA,
+  REFUSED_NOT_APPLICABLE_FINDING_TITLE,
+  REFUSED_NOT_APPLICABLE_RECOMMENDATION
+} from "./reviewCriteria.js";
+export { CODE_REVIEW_PR_CRITERIA, NOT_APPLICABLE_CHECK_NAME, QA_PR_REVIEW_CRITERIA, REFUSED_NOT_APPLICABLE_FINDING_TITLE, REFUSED_NOT_APPLICABLE_RECOMMENDATION };
 
 export type QaPrVerdict = "pass" | "fail" | "needs-follow-up";
 /**
@@ -59,29 +67,6 @@ export interface QaPrCheck {
   status: QaEvidenceStatus;
   evidence: string;
 }
-
-export const QA_PR_REVIEW_CRITERIA = [
-  { id: "correctness", name: "Correctness", description: "The change behaves as claimed and avoids material defects." },
-  { id: "scope-fidelity", name: "Scope fidelity", description: "The change implements the approved scope without hidden expansion or omission." },
-  { id: "approval-boundaries", name: "Approval boundaries", description: "The change preserves operator authority and does not cross gated boundaries." },
-  { id: "managed-documents", name: "Managed documents", description: "Plans, Decisions, pointers, terminology, and operator guidance remain consistent." },
-  { id: "hidden-consequences", name: "Hidden consequences", description: "Security, persistence, failure, idempotency, and compatibility consequences are explicit and safe." },
-  { id: "operator-qa-plan", name: "Operator QA plan", description: "The operator-facing procedure is concrete, runnable, and states observable consequences." },
-  { id: "tests-and-evidence", name: "Tests and evidence", description: "Supplied tests and runtime evidence substantiate the Candidate's material claims." }
-] as const;
-
-/**
- * The exact-head code review is the same evidence-only read-only executor as
- * QA, judging the patch as code rather than the Candidate against its scope.
- */
-export const CODE_REVIEW_PR_CRITERIA = [
-  { id: "correctness", name: "Correctness", description: "The changed code does what it claims for every input it accepts, with no logic, boundary, or type defect." },
-  { id: "failure-handling", name: "Failure handling", description: "Errors, partial failures, retries, crashes, and restarts leave state consistent and idempotent." },
-  { id: "state-and-concurrency", name: "State and concurrency", description: "Races, ordering, persistence, schema, and shared state are safe; no work can be lost or done twice." },
-  { id: "security-and-authority", name: "Security and authority", description: "No credential exposure, injection, path escape, or broadened authority or approval boundary." },
-  { id: "compatibility", name: "Compatibility", description: "Existing callers, stored data, configuration, and supported platforms (including Linux CI) keep working." },
-  { id: "tests", name: "Tests", description: "Tests exercise the changed behavior and would fail if it regressed; not-applicable when the patch touches no executable or test file." }
-] as const;
 
 export type QaPrReviewCriterion = typeof QA_PR_REVIEW_CRITERIA[number]["id"] | typeof CODE_REVIEW_PR_CRITERIA[number]["id"];
 
@@ -1233,7 +1218,6 @@ function reviewerFailureVerdict(message: string, criteria: PrReviewRoleProfile["
 /** The two deterministic-gate reasons that a reviewer's own variance can cause; any other gate reason is never variance. */
 const REFUSED_NOT_APPLICABLE_REASON = "the deterministic patch check refused the reviewer's not-applicable claim";
 const NOT_EVERY_CRITERION_PASSED_REASON = "the reviewer did not pass every declared criterion";
-const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 
 function evaluateDeterministicEvidence(
   pullRequest: RawPullRequest,
@@ -1371,7 +1355,7 @@ function evaluateDeterministicEvidence(
       severity: "high",
       title: `${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: ${notApplicable.refused.map((claim) => claim.name).join(", ")}`,
       evidence: notApplicable.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" "),
-      recommendation: "Judge each refused criterion pass or fail against the patch, or report it not-checked; not-applicable is accepted only for a criterion the change demonstrably cannot affect."
+      recommendation: REFUSED_NOT_APPLICABLE_RECOMMENDATION
     });
   }
   const acceptedNotApplicable = new Set(notApplicable.accepted);
@@ -1437,7 +1421,7 @@ function evaluateModelNotApplicableClaims(
   if (claims.length === 0) return { accepted: [], refused: [], check: null };
   if (!review.profile.allowsNotApplicable) {
     const refused = claims.map((claim) => ({ criterion: claim.criterion, name: claim.name, reason: "this review role may not report a criterion not-applicable." }));
-    return { accepted: [], refused, check: { name: "Not-applicable claims", status: "fail", evidence: refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ") } };
+    return { accepted: [], refused, check: { name: NOT_APPLICABLE_CHECK_NAME, status: "fail", evidence: refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ") } };
   }
   const applicability = classifyPatchApplicability(review.patch, {
     declaredFiles: pullRequest.files.map((file) => file.path),
@@ -1448,8 +1432,8 @@ function evaluateModelNotApplicableClaims(
   return {
     ...evaluation,
     check: evaluation.refused.length > 0
-      ? { name: "Not-applicable claims", status: "fail", evidence: `Refused: ${evaluation.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ")} Touched files: ${touched}.` }
-      : { name: "Not-applicable claims", status: "pass", evidence: `Accepted for ${claims.map((claim) => claim.name).join(", ")}: every touched file is an inert document or an attested governed record (${touched}).` }
+      ? { name: NOT_APPLICABLE_CHECK_NAME, status: "fail", evidence: `Refused: ${evaluation.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" ")} Touched files: ${touched}.` }
+      : { name: NOT_APPLICABLE_CHECK_NAME, status: "pass", evidence: `Accepted for ${claims.map((claim) => claim.name).join(", ")}: every touched file is an inert document or an attested governed record (${touched}).` }
   };
 }
 

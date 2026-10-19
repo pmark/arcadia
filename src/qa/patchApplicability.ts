@@ -37,13 +37,20 @@
  * well-formed Action id, which can skip Actions or change which Actions are
  * dependency-ready, and rewrite that same done Action's own `next_action` to
  * its exact canonical completed form naming any Agent Ask id this same patch
- * series actually carries — the filename/content checks only establish that
+ * series actually carries: by file name, by a whole-content-verified Ask's own
+ * request_id, or as the auto-settle id derived from that content; and excuse a
+ * host-preserved completion draft from the governed-only rule when its own
+ * settlement archives it or a review repair's controller-authored retirement
+ * commit names and deletes it for the Action this patch settles — the filename/content checks only establish that
  * *some* file under `.arcadia/asks/` with that exact id was added or
  * archived here, never that its content truly describes this Action or
  * criteria, or that a real operator ever accepted it). The code reviewer's
  * correctness judgment and QA's managed-document and approval-boundary
  * criteria (never not-applicable) are the backstops for those.
  */
+
+import { createHash } from "node:crypto";
+import { autoSettleRequestId } from "../ask/autoSettleRequestId.js";
 
 export type PatchFileClass =
   | "inert-document"
@@ -125,6 +132,10 @@ interface ParsedFile {
   copied: boolean;
   /** Each hunk's body lines, prefix included (` `, `+`, `-`, `\`). */
   hunks: string[][];
+  /** The new blob id from the `index <old>..<new>` header line (abbreviated), when shown. */
+  newBlob: string | null;
+  /** The old blob id from the same `index` line, when shown. */
+  oldBlob: string | null;
 }
 
 interface ParsedCommit {
@@ -132,6 +143,10 @@ interface ParsedCommit {
   attested: boolean;
   /** `[PATCH i/N]` from the Subject header; null for a bare `[PATCH]`, undefined when absent. */
   numbering: { index: number; total: number } | null | undefined;
+  /** The `From:` header (the commit author), as format-patch writes it; null when absent. */
+  author?: string | null;
+  /** The request ids its `Arcadia-Retired-Completion-Draft:` trailers name. */
+  retiredDraftIds?: string[];
 }
 
 const SUBJECT_NUMBERING = /^Subject: \[PATCH(?: (\d+)\/(\d+))?\]/;
@@ -178,12 +193,14 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
   // attestation and every path it touches is a governed-record path.
   const governedCommit = commits.map((commit, index) => commit.attested &&
     files.filter((file) => file.commit === index).every((file) => !file.special && !file.executableMode && file.paths.every(isGovernedRecordPath)));
-  const shapeViolations = governedShapeViolations(files);
+  const retired = retiredCompletionDrafts(files, commits);
+  const shapeViolations = governedShapeViolations(files, retired);
+  const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired);
   const byPath = new Map<string, PathEntry>();
   for (const file of files) {
     for (const filePath of file.paths) {
       const entry = byPath.get(filePath) ?? { governedOnly: true, executableMode: false, special: null, shapeViolation: null };
-      entry.governedOnly &&= governedCommit[file.commit] === true;
+      entry.governedOnly &&= governedCommit[file.commit] === true || consumed.has(file) || retired.has(file);
       entry.executableMode ||= file.executableMode;
       entry.special ??= file.special;
       entry.shapeViolation ??= shapeViolations.get(filePath) ?? null;
@@ -303,6 +320,8 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
     commits[commits.length - 1] = {
       ...commits[commits.length - 1],
       attested: GOVERNED_ATTESTATIONS.some((pattern) => pattern.test(message)),
+      author: messageLines.find((line) => line.startsWith("From: "))?.slice("From: ".length).trim() ?? null,
+      retiredDraftIds: messageLines.flatMap((line) => RETIRED_DRAFT_LINE.exec(line)?.[1] ?? []),
       numbering: !numbering ? undefined : numbering[1] ? { index: Number(numbering[1]), total: Number(numbering[2]) } : null
     };
     messageLines = null;
@@ -362,7 +381,9 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
         deleted: false,
         renamed: false,
         copied: false,
-        hunks: []
+        hunks: [],
+        newBlob: null,
+        oldBlob: null
       };
       files.push(current);
       inExtendedHeader = true;
@@ -381,6 +402,11 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
       continue;
     }
     if (!inExtendedHeader) continue;
+    const blob = /^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: \d{6})?$/.exec(line);
+    if (blob) {
+      current.oldBlob = blob[1];
+      current.newBlob = blob[2];
+    }
     const mode = /^(?:new file mode|new mode|old mode|deleted file mode) (\d{6})$/.exec(line) ??
       /^index [0-9a-f]+\.\.[0-9a-f]+ (\d{6})$/.exec(line);
     if (mode) {
@@ -425,6 +451,147 @@ function isGovernedRecordPath(filePath: string): boolean {
     /^docs\/plans\/[^/]+\.md$/.test(filePath);
 }
 
+/** The trailer a review repair's host retirement commit carries, once per retired draft's request id. */
+export const RETIRED_COMPLETION_DRAFT_TRAILER = "Arcadia-Retired-Completion-Draft";
+const RETIRED_DRAFT_LINE = new RegExp(`^${RETIRED_COMPLETION_DRAFT_TRAILER}: (\\S+)$`);
+/** The identity host preservation and the repair's draft retirement commit under (src/sessions/candidateSnapshot.ts). */
+export const ARCADIA_CONTROLLER_AUTHOR = "Arcadia Controller <controller@arcadia.local>";
+const COMPLETION_DRAFT_PATH = /^\.arcadia\/asks\/agent-ask-[^/]+\.ya?ml$/;
+
+/**
+ * The commit message of a review repair's host retirement of the failed
+ * candidate's own completion draft (src/sessions/launch.ts): the patch check
+ * recognizes exactly this commit by its trailers and author.
+ */
+export function retiredCompletionDraftMessage(actionId: string, requestIds: readonly string[]): string {
+  return [
+    `chore(arcadia): retire the failed candidate's completion draft for ${actionId}`,
+    "",
+    "A review repair settles only a completion it drafts itself.",
+    "",
+    ...requestIds.map((requestId) => `${RETIRED_COMPLETION_DRAFT_TRAILER}: ${requestId}`)
+  ].join("\n");
+}
+
+/**
+ * The deletions a review repair's host retirement commit made, each mapped to
+ * the Action its draft completes. A commit qualifies only when it is authored
+ * by the Arcadia Controller, carries retirement trailers, and does nothing but
+ * delete top-level `agent-ask-*.yaml` drafts, each of which:
+ * - shows its whole old content (verified against its blob id),
+ * - is a `complete` Ask whose request_id one of the trailers names (and every
+ *   trailer names one of them),
+ * - was created earlier in this series by an attested commit (the failed
+ *   candidate's own preserved draft).
+ * The Action must also be the one this patch settles (checked with the
+ * Plan's done transition in governedShapeViolations). Anything else is no
+ * retirement, and its deletions stay "a governed record may not be deleted".
+ */
+function retiredCompletionDrafts(files: ParsedFile[], commits: ParsedCommit[]): Map<ParsedFile, string> {
+  const retired = new Map<ParsedFile, string>();
+  commits.forEach((commit, index) => {
+    const trailers = commit.retiredDraftIds ?? [];
+    if (commit.author !== ARCADIA_CONTROLLER_AUTHOR || trailers.length === 0) return;
+    const entries = files.filter((file) => file.commit === index);
+    const found = new Map<ParsedFile, string>();
+    const named = new Set<string>();
+    for (const file of entries) {
+      const draft = file.oldPath;
+      if (!file.deleted || !draft || file.paths.length !== 1 || !COMPLETION_DRAFT_PATH.test(draft) || file.special || file.executableMode) return;
+      const content = verifiedOldContent(file);
+      const requestId = content === null ? null : askScalar(content, "request_id");
+      const targetRef = content === null ? null : askScalar(content, "target_ref");
+      const actionId = targetRef?.startsWith("action/") ? targetRef.slice("action/".length) : targetRef?.split("#")[1] ?? null;
+      if (!content || askScalar(content, "intent") !== "complete" || !requestId || !trailers.includes(requestId) || !actionId) return;
+      const createdEarlier = files.some((other) => other.created && other.newPath === draft && other.commit < index && commits[other.commit]?.attested === true);
+      if (!createdEarlier) return;
+      found.set(file, actionId);
+      named.add(requestId);
+    }
+    if (entries.length === 0 || !trailers.every((requestId) => named.has(requestId))) return;
+    for (const [file, actionId] of found) retired.set(file, actionId);
+  });
+  return retired;
+}
+
+/**
+ * The creations of a candidate's own completion draft that its host
+ * settlement consumed: a top-level `.arcadia/asks/agent-ask-<id>.yaml` created
+ * in this series (so absent at its base) by an attested commit (host
+ * preservation commits it beside the agent's work, so that commit is not
+ * governed-only), then renamed to `.arcadia/asks/archive/` under the same name
+ * by a governed-only commit, and touched by nothing else, so it is gone at the
+ * head. Only that creation is excused from the governed-only rule; a draft
+ * left in place, archived otherwise or touched again is not.
+ */
+function consumedCompletionDraftCreations(files: ParsedFile[], commits: ParsedCommit[], governedCommit: boolean[], retired: Map<ParsedFile, string>): Set<ParsedFile> {
+  const consumed = new Set<ParsedFile>();
+  for (const created of files) {
+    const draft = created.newPath;
+    if (!created.created || !draft || !COMPLETION_DRAFT_PATH.test(draft) || created.special || created.executableMode || created.paths.length !== 1) continue;
+    const touching = files.filter((file) => file.paths.includes(draft));
+    // Archived by its own settlement, or retired by a review repair's host retirement commit.
+    const archived = touching.find((file) => file !== created && file.renamed && file.oldPath === draft
+      && file.newPath === `.arcadia/asks/archive/${basename(draft)}` && governedCommit[file.commit] === true)
+      ?? touching.find((file) => file !== created && retired.has(file));
+    if (!archived || touching.length !== 2 || archived.commit <= created.commit) continue;
+    if (commits[created.commit]?.attested !== true) continue;
+    // Its creating commit may otherwise hold only inert documents and governed
+    // records: a commit that also edits code keeps tainting it.
+    const otherwiseInert = files.filter((file) => file.commit === created.commit && file !== created).every((file) => file.paths.every((filePath) =>
+      ["inert-document", "governed-record"].includes(classifyPath(filePath, { governedOnly: true, executableMode: file.executableMode, special: file.special, shapeViolation: null }).class)));
+    if (!otherwiseInert) continue;
+    consumed.add(created);
+  }
+  return consumed;
+}
+
+/**
+ * A file's whole new content, rebuilt from its hunks' new side, only when the
+ * patch proves it is complete: the rebuilt bytes hash to the blob id on the
+ * file's `index` line. Null otherwise (no index line, hunks that skip lines).
+ */
+function verifiedNewContent(file: ParsedFile): string | null {
+  return verifiedSideContent(file, "new");
+}
+
+/** The same for the file's whole OLD content (a deletion shows it all as removed lines). */
+function verifiedOldContent(file: ParsedFile): string | null {
+  return verifiedSideContent(file, "old");
+}
+
+function verifiedSideContent(file: ParsedFile, side: "new" | "old"): string | null {
+  const expected = side === "new" ? file.newBlob : file.oldBlob;
+  if (!expected || file.hunks.length === 0) return null;
+  const skipped = side === "new" ? "-" : "+";
+  let content = "";
+  let lastOnSide = false;
+  for (const lines of file.hunks) {
+    for (const line of lines) {
+      if (line.startsWith("\\")) {
+        // "\ No newline at end of file" after a line of this side: drop the newline just added.
+        if (content.endsWith("\n") && lastOnSide) content = content.slice(0, -1);
+        continue;
+      }
+      lastOnSide = line[0] !== skipped;
+      if (lastOnSide) content += `${line.slice(1)}\n`;
+    }
+  }
+  const blob = createHash("sha1").update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest("hex");
+  return blob.startsWith(expected) ? content : null;
+}
+
+/** An Agent Ask's top-level scalar (JSON or simple YAML), or null. */
+function askScalar(content: string, key: string): string | null {
+  try {
+    const value = (JSON.parse(content) as Record<string, unknown>)[key];
+    return typeof value === "string" ? value : null;
+  } catch {
+    const match = new RegExp(`^${key}:[ \\t]*["']?([^"'\\n]+?)["']?[ \\t]*$`, "m").exec(content);
+    return match ? match[1] : null;
+  }
+}
+
 /** An Action id: a plain slug, never YAML syntax (anchors, aliases, tags, flow or block scalars). */
 const PLAN_POINTER = /^current_action: ([A-Za-z0-9][\w.-]*)$/;
 const UPDATED = /^updated: \d{4}-\d{2}-\d{2}$/;
@@ -451,7 +618,7 @@ const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent A
  * claims. A path is mapped to its first violation; consistency across files
  * (the pointer leaves only the Action marked done) is checked here too.
  */
-function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
+function governedShapeViolations(files: ParsedFile[], retired: Map<ParsedFile, string> = new Map()): Map<string, string> {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
   const done = new Map<string, string[]>();
@@ -465,6 +632,16 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
   // file at either location or rename an existing one into the archive, so
   // these are the only shapes an id can actually appear under).
   const availableAskIds = new Set<string>();
+  /** Agent Asks this patch carries whose whole content it proves (see verifiedNewContent). */
+  const carriedAsks: Array<{ content: string; project: string; targetRef: string }> = [];
+  /**
+   * An auto-settle names its content-addressed proposal id, not the draft's
+   * file name (src/ask/autoSettleBeforeDispatch.ts): accepted only when it is
+   * exactly the id derived from a carried Ask whose target is this Action.
+   */
+  const derivesAutoSettleId = (actionId: string, requestId: string) => carriedAsks.some((ask) =>
+    (ask.targetRef === `action/${actionId}` || ask.targetRef.endsWith(`#${actionId}`))
+    && autoSettleRequestId(ask.project, actionId, ask.content) === requestId);
   const ASK_ID = /^\.arcadia\/asks\/(?:archive\/)?agent-ask-(.+)\.(?:ya?ml|json)$/;
   for (const file of files) {
     if (!file.paths.every(isGovernedRecordPath) || file.special || file.executableMode || !file.newPath || !file.oldPath) continue;
@@ -472,6 +649,7 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
     const violateFile = (reason: string) => { for (const filePath of file.paths) violate(filePath, reason); };
     const removed = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("-")).map((line) => line.slice(1)));
     const added = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("+")).map((line) => line.slice(1)));
+    if (file.deleted && retired.has(file)) continue;
     if (file.copied || file.deleted) {
       violateFile("a governed record may not be copied or deleted");
       continue;
@@ -484,6 +662,14 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
       else {
         const askId = ASK_ID.exec(target)?.[1];
         if (askId) availableAskIds.add(askId);
+        // Its content, when the patch proves it whole: its own request_id, and
+        // the content-addressed id an auto-settle of exactly this Ask mints.
+        const content = verifiedNewContent(file);
+        const project = content === null ? null : askScalar(content, "project");
+        const targetRef = content === null ? null : askScalar(content, "target_ref");
+        const requestId = content === null ? null : askScalar(content, "request_id");
+        if (requestId) availableAskIds.add(requestId);
+        if (content !== null && project && targetRef) carriedAsks.push({ content, project, targetRef });
       }
       continue;
     }
@@ -584,6 +770,10 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
     if (!done.has(plan) && moves.length > 0) violate(plan, "current_action moved without marking its Action done");
   }
   const allDone = new Set([...done.values()].flat());
+  // A retired completion draft must complete the very Action this patch settles.
+  for (const [file, actionId] of retired) {
+    if (!allDone.has(actionId)) violate(file.oldPath!, "a retired completion draft must complete the Action this patch marks done");
+  }
   if (projectMoves.some((from) => !allDone.has(from))) violate("PROJECT.md", "PROJECT.md's current_action moved without its Action being marked done");
   // A canonical next_action rewrite is tied to the actual status transition
   // (it may only land on an Action this same file's patch also marks done,
@@ -600,7 +790,7 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
       violate(plan, "a next_action rewrite to the canonical completed form must name an Action this same patch also marks done");
       continue;
     }
-    if (rewritten.some((entry) => !availableAskIds.has(entry.requestId))) {
+    if (rewritten.some((entry) => !availableAskIds.has(entry.requestId) && !derivesAutoSettleId(entry.id, entry.requestId))) {
       violate(plan, "a next_action rewrite's completion request id must match an Agent Ask this same patch series carries (drafted or archived)");
       continue;
     }

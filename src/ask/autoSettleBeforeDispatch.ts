@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
 import { evidenceHasPlaceholder, normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
+import { autoSettleRequestId } from "./autoSettleRequestId.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
 
@@ -232,8 +232,7 @@ function attemptSettleOneDraft(
   // Content-addressed and distinct from the draft's own request_id: replaying
   // the original id would look up (and be refused by) whatever proposal it
   // was already recorded under -- this auto-settle attempt needs its own.
-  const contentHash = createHash("sha256").update(effectiveContent).digest("hex").slice(0, 12);
-  const requestId = `auto-settle-${input.projectSlug}-${input.action.id}-${contentHash}`.slice(0, 120);
+  const requestId = autoSettleRequestId(input.projectSlug, input.action.id, effectiveContent);
   effectiveContent = withRequestId(effectiveContent, requestId);
 
   const settlementRequestId = `settle-${requestId}`.slice(0, 120);

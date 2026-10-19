@@ -226,6 +226,31 @@ function diffPaths(repoRoot: string, args: string[]): string[] {
 const SETTLEMENT_RECORD_PATH =/^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;
 
 /**
+ * The candidate's own completion drafts that its settlement commit consumed:
+ * a top-level `.arcadia/asks/agent-ask-<id>.yaml` the candidate added after the base
+ * (a sandboxed agent's draft, committed by host preservation) that the
+ * settlement commit renames to `.arcadia/asks/archive/<file>.yaml` under the
+ * same name, so it is gone at the head. It never reaches the base: only its
+ * archived copy does, which is a settlement record. A draft already on the
+ * base, one archived under another name or one left in place is not consumed.
+ */
+function consumedCompletionDrafts(repoRoot: string, baseRevision: string, parent: string, head: string): Set<string> {
+  const consumed = new Set<string>();
+  const renames = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--find-renames", "--name-status", "--diff-filter=R", parent, head])
+    .split("\n").map((line) => line.split("\t")).filter((fields) => fields.length === 3);
+  // Absent at the base tip AND where the candidate branched from it: a draft the
+  // candidate inherited (and main removed later) is not the candidate's own.
+  const mergeBase = git(repoRoot, ["merge-base", baseRevision, parent]).trim();
+  for (const [, from, to] of renames) {
+    if (!/^\.arcadia\/asks\/agent-ask-[^/]+\.ya?ml$/.test(from) || to !== `.arcadia/asks/archive/${from.slice(".arcadia/asks/".length)}`) continue;
+    if ([baseRevision, mergeBase].some((revision) => tryGit(repoRoot, ["cat-file", "-e", `${revision}:${from}`]) !== null)) continue;
+    if (tryGit(repoRoot, ["cat-file", "-e", `${head}:${from}`]) !== null) continue;
+    consumed.add(from);
+  }
+  return consumed;
+}
+
+/**
  * The blast-radius assessment of one candidate head: the stewardship
  * assessment (`arcadia pr assess-blast-radius`: controller safety and
  * authority paths, diff size, missing evidence) over the whole candidate,
@@ -245,10 +270,13 @@ export function assessWorkerMergeBlastRadius(
     const stewardship = computeBlastRadius(repoRoot, baseRevision, head);
     const settled = settlementCommit !== null && settlementCommit === head;
     const parent = settled ? git(repoRoot, ["rev-parse", `${head}^`]).trim() : head;
+    // A draft-only Session's own completion draft, archived by its settlement,
+    // is neither the agent's change nor outside the settlement records.
+    const consumed = settled ? consumedCompletionDrafts(repoRoot, baseRevision, parent, head) : new Set<string>();
     const agentPaths = settled && isAncestor(repoRoot, parent, baseRevision)
       ? []
-      : diffPaths(repoRoot, [`${baseRevision}...${parent}`]);
-    const settlementPaths = settled ? diffPaths(repoRoot, [parent, head]) : [];
+      : diffPaths(repoRoot, [`${baseRevision}...${parent}`]).filter((path) => !consumed.has(path));
+    const settlementPaths = settled ? diffPaths(repoRoot, [parent, head]).filter((path) => !consumed.has(path)) : [];
     const boundaries = agentPaths.length > 0 ? classifyAuthorityPaths(agentPaths) : [];
     const outsideRecords = settlementPaths.filter((path) => !SETTLEMENT_RECORD_PATH.test(path));
     const notAllowlisted = agentPaths.filter((path) => !isWorkerMergeSafePath(path));

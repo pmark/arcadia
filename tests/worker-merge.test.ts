@@ -371,6 +371,127 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(github.mergeCalls).toEqual([]);
   });
 
+  /**
+   * The live shape of every headless Claude candidate (PR #1545, 2026-10-18): the
+   * sandboxed agent cannot commit, so host preservation commits its work AND its
+   * drafted `complete` Ask in one commit, and the worker's settlement commit then
+   * renames that draft into `.arcadia/asks/archive/`. The draft never reaches the
+   * base: at the head only the archived Ask (a settlement record) remains.
+   */
+  const DRAFT = ".arcadia/asks/agent-ask-complete-write-feature-0123456789ab.yaml";
+  const ASK = `${JSON.stringify({ agent_ask: "v1", request_id: "complete-write-feature-0123456789ab", project: "fixture", intent: "complete", target_ref: "action/write-feature", candidate_revision: "0".repeat(40), evidence: [{ criterion: "The feature report exists.", status: "met", note: "Wrote docs/reports/feature.md and read it back." }], desired_result: "Mark write-feature complete." })}\n`;
+  function draftOnlyCandidate(input: { archive?: string | null; extraDraft?: string } = {}): void {
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    writeFileSync(path.join(repo, DRAFT), ASK);
+    if (input.extraDraft) writeFileSync(path.join(repo, input.extraDraft), ASK.replace("0123456789ab", "ffffffffffff"));
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "chore(candidate): preserve write-feature candidate for handoff"]);
+    const archive = input.archive === undefined ? `.arcadia/asks/archive/${path.basename(DRAFT)}` : input.archive;
+    if (archive) git(repo, ["mv", DRAFT, archive]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "chore(arcadia): settle auto-settle-fixture-write-feature"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+  }
+
+  it("merges a draft-only candidate whose own completion draft its settlement archives (the headless Claude shape)", () => {
+    draftOnlyCandidate();
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "merged", head });
+    expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
+  });
+
+  it("still refuses a draft the settlement leaves in place, archives under another name, or one it did not consume", () => {
+    draftOnlyCandidate({ archive: null });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it("still refuses a second Agent Ask file the settlement did not archive", () => {
+    draftOnlyCandidate({ extraDraft: ".arcadia/asks/agent-ask-complete-other-ffffffffffff.yaml" });
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(outcome.kind === "refused" && outcome.reason).toContain("agent-ask-complete-other-ffffffffffff.yaml");
+    expect(outcome.kind === "refused" && outcome.reason).not.toContain(path.basename(DRAFT));
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it("still refuses a settlement that archives a draft already on the base rather than the candidate's own", () => {
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, DRAFT), ASK);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "a stale draft already on main"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    git(repo, ["mv", DRAFT, `.arcadia/asks/archive/${path.basename(DRAFT)}`]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it("still refuses archiving a draft that was on the candidate's merge base, even after main later removed it", () => {
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, DRAFT), ASK);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "a stale draft on main"]);
+    git(repo, ["checkout", "-q", "-b", branch]);
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["rm", "-q", DRAFT]);
+    git(repo, ["commit", "-q", "-m", "main removes the stale draft"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(repo, ["checkout", "-q", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    git(repo, ["mv", DRAFT, `.arcadia/asks/archive/${path.basename(DRAFT)}`]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it("only treats an agent-ask-*.yaml draft as a consumed completion draft", () => {
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    writeFileSync(path.join(repo, ".arcadia/asks/other.yaml"), ASK);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    git(repo, ["mv", ".arcadia/asks/other.yaml", ".arcadia/asks/archive/other.yaml"]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
   it("reports a merged PR whose local base could not be synced, without an operator merge command", () => {
     candidate({ [SAFE]: "feature\n" });
     const outcome = merge({ syncFails: true });
