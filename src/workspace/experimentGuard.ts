@@ -388,6 +388,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "gate reopen": ALLOWED,
   now: ALLOWED,
   path: ALLOWED,
+  journey: ALLOWED,
   roles: exempt("Read-only role registry and optional workspace config; no activity or database writes."),
   "roles show": exempt("Read-only registered role; no activity or database writes."),
   "role brief": exempt("Read-only role and Action brief; no model calls, activity or database writes."),
