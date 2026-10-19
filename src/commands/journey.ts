@@ -30,13 +30,13 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const data = withReadOnlyDatabase(workspacePath, (db) => {
     const [project, action] = splitActionKey(options.actionKey);
-    const actionKey = action === CURRENT ? `${project}/${currentActionOf(db, project)}` : options.actionKey;
+    const actionKey = action === CURRENT ? `${getProjectBySlug(db, project)?.slug ?? project}/${currentActionOf(db, project)}` : options.actionKey;
     return deriveJourney(db, actionKey, options.now ?? new Date(), { integration: gitIntegration });
   });
   return createSuccess({ command: "journey", workspace: workspacePath, data, warnings: data.warnings });
 }
 
-/** The action segment that means "the Project's current Action". */
+/** The action segment that means "the Project's current Action" (so an Action literally named `current` is reachable only through the pointer). */
 export const CURRENT = "current";
 
 /** The Project's `current_action` pointer, or its active Plan's; read-only. */
@@ -45,10 +45,12 @@ export function currentActionOf(db: Database.Database, projectSlug: string): str
   if (!project) throw validationError(`No Project "${projectSlug}" in this workspace.`);
   const root = projectRepositoryRoot(db, project);
   if (!root) throw validationError(`Project "${projectSlug}" has no usable repository path, so its current Action cannot be read.`);
+  // The record's own slug: the lookup above ignores case, the documents do not.
+  const slug = project.slug ?? projectSlug;
   const docs = discoverDocs(root).docs;
-  const projectDoc = docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === projectSlug) ?? null;
+  const projectDoc = docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === slug) ?? null;
   const plan = projectDoc?.activePlan
-    ? docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === projectSlug && doc.slug === projectDoc.activePlan) ?? null
+    ? docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === slug && doc.slug === projectDoc.activePlan) ?? null
     : null;
   const current = projectDoc?.currentAction ?? plan?.currentAction ?? null;
   if (!current) throw validationError(`Project "${projectSlug}" has no current Action.`);
