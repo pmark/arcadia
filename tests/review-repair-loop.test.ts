@@ -16,6 +16,7 @@ import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listRe
 import { getSession } from "../src/sessions/index.js";
 import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { candidateCompletionAskIds } from "../src/sessions/launch.js";
 
 /**
  * The production worker's review repair loop (src/production/reviewRepair.ts),
@@ -119,12 +120,26 @@ describe("the failed candidate's own pending completion Ask", () => {
   const pendingCompletions = (rehearsal: Rehearsal) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
     db.prepare(`SELECT p.request_id FROM agent_ask_proposals p LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id WHERE s.id IS NULL AND p.request_id <> 'receipt-holder'`).all() as Array<{ request_id: string }>);
 
-  it("does not gate the repair launch, and the superseded proposal stays out of every later gate", () => {
+  it("does not gate the repair launch and leaves the superseded proposal pending", () => {
     const { rehearsal, a } = failedReview(() => {}, {}, "settled", unsettleCandidateCompletion);
     const repair = rehearsal.lease()!;
     expect(repair.id).not.toBe(a.id);
     expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["launched"]);
     expect(pendingCompletions(rehearsal).map((row) => row.request_id)).toEqual([`complete-${a.action_id}-${a.id.replaceAll("_", "-")}`]);
+  });
+
+  it("does not gate the resume of a repair Session that exited incomplete", () => {
+    const { rehearsal } = failedReview(() => {}, {}, "settled", unsettleCandidateCompletion);
+    const repair = rehearsal.lease()!;
+    rehearsal.agentEdit(repair, "REPAIR.md", "partial fix\n");
+    rehearsal.tmux.exit(repair.tmux_session_name);
+    rehearsal.tickUntil(() => {
+      const lease = rehearsal.lease();
+      return lease !== null && lease.id !== repair.id;
+    }, 4);
+    const resumed = rehearsal.lease()!;
+    expect(resumed.worktree_path).toBe(repair.worktree_path);
+    expect(pendingCompletions(rehearsal)).toHaveLength(1);
   });
 
   it("still gates a repair launch on a different pending completion Ask for the same Action", () => {
@@ -142,6 +157,27 @@ describe("the failed candidate's own pending completion Ask", () => {
     expect(rehearsal.lease()).toBeNull();
     expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["pending"]);
     expect(exitReceiptOf(rehearsal, a.id).superseded_by_session_id).toBeNull();
+  });
+});
+
+describe("candidateCompletionAskIds", () => {
+  it("matches the selected Plan's exact target, never a same-named Action in another Plan", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ask-ids-"));
+    roots.push(root);
+    git(root, ["init", "-q", "-b", "main"]);
+    writeFileSync(path.join(root, "README.md"), "x\n");
+    const identity = ["-c", "user.name=t", "-c", "user.email=t@example.test"];
+    git(root, ["add", "-A"]);
+    git(root, [...identity, "commit", "-q", "-m", "base"]);
+    const base = git(root, ["rev-parse", "HEAD"]).trim();
+    mkdirSync(path.join(root, ".arcadia", "asks"), { recursive: true });
+    const ask = (id: string, target: string) => JSON.stringify({ agent_ask: "v1", request_id: id, project: "p", intent: "complete", target_ref: target, desired_result: "Done.", candidate_revision: base, evidence: [{ criterion: "c", status: "met", note: "n" }] });
+    writeFileSync(path.join(root, ".arcadia", "asks", "own.yaml"), ask("complete-own", "action/same-id"));
+    writeFileSync(path.join(root, ".arcadia", "asks", "other.yaml"), ask("complete-other-plan", "plan/other-plan#same-id"));
+    git(root, ["add", "-A"]);
+    git(root, [...identity, "commit", "-q", "-m", "candidate"]);
+    const head = git(root, ["rev-parse", "HEAD"]).trim();
+    expect([...candidateCompletionAskIds(root, "p", base, head, "same-id")]).toEqual(["complete-own"]);
   });
 });
 

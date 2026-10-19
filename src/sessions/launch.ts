@@ -46,7 +46,7 @@ import {
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
-import { releaseRepairSession } from "./reviewRepair.js";
+import { getSessionRepair, releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
@@ -258,7 +258,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     adapters: input.adapters,
     tmux,
     now,
-    ...(input.repair ? { supersededCompletionAskIds: candidateCompletionAskIds(repoRoot, input.repair.baseRevision, input.repair.failedHead, input.repair.actionId) } : {})
+    ...(input.repair
+      ? { supersededCompletionAskIds: candidateCompletionAskIds(repoRoot, input.projectSlug, input.repair.baseRevision, input.repair.failedHead, input.repair.actionId) }
+      : (() => { const resumed = resumedRepairSupersededAskIds(input.db, repoRoot, input.projectSlug); return resumed ? { supersededCompletionAskIds: resumed } : {}; })())
   });
 
   if (input.repair && preview.actionId !== input.repair.actionId) {
@@ -1074,14 +1076,32 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
 }
 
 /**
+ * The superseded candidate's completion Ask ids for a launch that RESUMES a
+ * repair Session's incomplete candidate (the stale handoff the next launch
+ * would pick up), so the failed candidate's pending Ask gates the resume no
+ * more than it gated the first repair launch. Undefined when the handoff is
+ * not a repair Session's.
+ */
+export function resumedRepairSupersededAskIds(db: Database.Database, repoRoot: string, projectSlug: string): ReadonlySet<string> | undefined {
+  const handoff = getResumableLeaseHandoff(db, path.resolve(repoRoot));
+  if (!handoff) return undefined;
+  const repair = getSessionRepair(db, handoff.session.id);
+  if (!repair) return undefined;
+  return candidateCompletionAskIds(path.resolve(repoRoot), projectSlug, handoff.session.base_revision, repair.failed_head, handoff.session.action_id);
+}
+
+/**
  * The request ids of every `complete` Ask for `actionId` that the failed
  * candidate added to the base (its own, and any an earlier repair round
  * retired), read from the history `baseRevision..failedHead` rather than from
  * the head tree, which a retirement commit may have emptied. Unreadable
  * history yields nothing, so the gate stays closed.
  */
-function candidateCompletionAskIds(repoRoot: string, baseRevision: string, failedHead: string, actionId: string): Set<string> {
+export function candidateCompletionAskIds(repoRoot: string, projectSlug: string, baseRevision: string, failedHead: string, actionId: string): Set<string> {
   const ids = new Set<string>();
+  // Exactly the selected Plan's target: a same-named Action in another Plan is a different Action.
+  const planSlug = resolveDispatch(repoRoot, projectSlug).context?.activePlan;
+  const targets = new Set([`action/${actionId}`, ...(planSlug ? [`plan/${planSlug}#${actionId}`] : [])]);
   const log = tryGit(repoRoot, ["log", "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
   if (!log) return ids;
   let commit = "";
@@ -1094,7 +1114,7 @@ function candidateCompletionAskIds(repoRoot: string, baseRevision: string, faile
     try {
       const ask = normalizeAgentAsk({ request: content });
       const target = ask.targetRef;
-      if (ask.intent === "complete" && target !== null && (target === `action/${actionId}` || target.endsWith(`#${actionId}`))) ids.add(ask.requestId);
+      if (ask.intent === "complete" && target !== null && targets.has(target)) ids.add(ask.requestId);
     } catch { /* not an Ask */ }
   }
   return ids;
