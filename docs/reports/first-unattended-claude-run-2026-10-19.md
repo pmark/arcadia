@@ -2,7 +2,7 @@
 
 Standalone factual record of the first multi-Action production run on Arcadia's own repository (`pmark/arcadia`, live workspace `martianrover`, provider `claude-code-cli`) under the repeatable grant card `grant-production-unattended-claude-rerun-20261018` (valid to 2026-10-25). It grants no authority. It supports Action `first-unattended-run` of the [unattended-Claude Plan](../plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) and the re-derivation in [managed-production-readiness.md](../managed-production-readiness.md).
 
-**Verdict: not yet.** The review-repair loop now works end to end unattended, but no Action of this run reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges. The operator stopped the run.
+**Verdict: not yet.** The review-repair loop ran unattended from the rerun verdict onward (the review rerun itself needed the operator's approval to mark #1545 ready, outside the loop), but no Action of this run reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges. The operator stopped the run.
 
 ## Stages
 
@@ -55,4 +55,4 @@ The Action is not complete.
 
 ## Lesson
 
-Every defect of this run was visible in live database rows before the press. The next step is a live-state replay: copy the live database and candidate refs into a throwaway workspace and run the worker tick offline to the launch or to the stop before any further press.
+Some defects were visible in live database rows before the presses: the stale gated repair row and the not-applicable authority gate (a, b, d) and the candidate's own pending completion Ask (e). Others appeared only at run time (ping length c, capacity 401 f, heartbeat g) or only after the repair Session ran (patch-check defects #1555 and #1556, identity #1557). The next step is a live-state replay: copy the live database and candidate refs into a throwaway workspace and run the worker tick offline to the launch or to the stop before any further press.

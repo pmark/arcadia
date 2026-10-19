@@ -4,11 +4,11 @@ This derived document answers how far Arcadia is from running software productio
 
 Latest derivation: **2026-10-19**, from `origin/main` 9e6ff4aa1 and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the first unattended Claude run's worker log, ledger rows and PR record. The 2026-10-18 derivation used `origin/main` 4777543a7, the first supervised Claude run's worker log and receipts, and live `production status`. Historical observations below do not establish installed adoption or current live authority.
 
-## Current answer, 2026-10-19: not yet. The review-repair loop works end to end unattended, but no Action of the first unattended Claude run reached a merged PR unattended
+## Current answer, 2026-10-19: not yet. The review-repair loop ran unattended from the rerun verdict onward, but no Action of the first unattended Claude run reached a merged PR unattended
 
 The first multi-Action run under the repeatable grant card `grant-production-unattended-claude-rerun-20261018` (valid to 2026-10-25; live workspace `martianrover`, repository `pmark/arcadia`, provider `claude-code-cli`) ran 2026-10-18/19 and was stopped by the operator. The standalone record is [first-unattended-claude-run-2026-10-19.md](reports/first-unattended-claude-run-2026-10-19.md). Acceptance criterion 2 of `first-unattended-run` is **not met**; the Action stays open.
 
-**What is now proved.** A failed independent review drives the whole repair loop without an operator: failed verdict, draft PR plus comment, repair Session launch, settlement, new PR, superseded PR closed, fresh review. Repair Session `session_c2387f0c86504224a4` launched 05:12:52Z, settled head a6e473d8f7c5, opened repair PR #1554, and the worker closed #1545 as superseded.
+**What is now proved.** From the rerun verdict onward, a failed independent review drives the whole repair loop without an operator: failed verdict, draft PR plus comment, repair Session launch, settlement, new PR, superseded PR closed, fresh review. Repair Session `session_c2387f0c86504224a4` launched 05:12:52Z, settled head a6e473d8f7c5, opened repair PR #1554, and the worker closed #1545 as superseded.
 
 **What is not proved.** Action 1 merged as #1534 only after the Release Manager merged it and removed a stray Ask. Action 2 merged as #1535 by the operator despite a failed independent review (defect #1536). Action 3 (`implement-docs-reports-first-supervised-claude`, Session `session_9ebf706334ff4b4eb5`) produced #1545 (head 71d40eb99459), which failed independent code review (the report omitted #1512, plus refused not-applicable claims); #1545 was returned to draft by the Arcadia worker; its repair #1554 was gated authority-adjacent and left drafted with Do-not-merge. No Action reached a merged PR unattended, and operator touches exceeded activation plus authority-adjacent merges.
 
@@ -49,7 +49,7 @@ Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 3
 | Item | State at this derivation |
 | --- | --- |
 | Production | Off after the operator's STOP. Grant card `grant-production-unattended-claude-rerun-20261018`, valid to 2026-10-25. |
-| Review-repair loop | Proven end to end unattended once (Session `session_c2387f0c86504224a4`, repair PR #1554, #1545 closed as superseded). |
+| Review-repair loop | Proven unattended from the rerun verdict onward once; the review rerun itself needed the operator's approval to mark #1545 ready, outside the loop (Session `session_c2387f0c86504224a4`, repair PR #1554, #1545 closed as superseded). |
 | Open candidates | #1554 drafted with Do-not-merge; #1545 closed as superseded. |
 | Open follow-ups | #1536, #1549, #1550, #1551, #1555 to #1559; replay proposal `agentask_f72f7a21bc28706079`. |
 | Live state not re-read | Policy revision, epoch and red alerts were not re-read for this derivation; treat the 2026-10-18 table figures as stale. |
@@ -64,7 +64,7 @@ Operator: START and RE-RUN presses (initial run plus RE-RUNs at epochs 34, 35, 3
 
 ### Lesson and next step
 
-Every defect of this run was visible in live database rows before the press. Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. The refresh contract's obligation to add a hermetic replay scenario for each predictable live failure is **deferred** to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. It is not done in this change. That replay is now in progress in a separate session.
+Some defects were visible in live database rows before the presses: the stale gated repair row and the not-applicable authority gate (a, b, d) and the candidate's own pending completion Ask (e). Others appeared only at run time (ping length c, capacity 401 f, heartbeat g) or only after the repair Session ran (patch-check defects #1555 and #1556, identity #1557). Before any further press, replay live state offline: copy the live database and candidate refs into a throwaway workspace and run the worker tick to the launch or to the stop. The refresh contract's obligation to add a hermetic replay scenario for each predictable live failure is **deferred** to the live-state replay work (Agent Ask proposal `agentask_f72f7a21bc28706079`) and Issues #1555 to #1559. It is not done in this change. That replay is now in progress in a separate session.
 
 **Verdict: not yet.**
 
