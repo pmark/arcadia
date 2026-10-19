@@ -8,10 +8,11 @@ import {
   refreshClaudeCodeUsageTelemetry,
   type ClaudeUsageRefreshDependencies
 } from "../src/codingAgents/availability.js";
-import { observeProviderCapacity } from "../src/codingAgents/capacity.js";
-import { withDatabase } from "../src/db/connection.js";
+import { observeProviderCapacity, refreshProviderCapacity } from "../src/codingAgents/capacity.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
-import { refreshClaudeCapacityBeforeAdmission } from "../src/production/capacityPreAdmission.js";
+import { CLAUDE_UNAUTHORIZED_PING, refreshClaudeCapacityBeforeAdmission } from "../src/production/capacityPreAdmission.js";
+import { listPendingOperatorPings } from "../src/ping/operatorPing.js";
 import {
   activateProduction,
   fingerprintProductionScope,
@@ -108,7 +109,6 @@ function deps(overrides: Partial<ClaudeUsageRefreshDependencies> = {}): ClaudeUs
         seven_day: { utilization: 0.2, resets_at: new Date(Date.now() + 3 * 86_400_000).toISOString() }
       }
     }),
-    exchangeRefreshToken: async () => { throw new Error("token endpoint must not be contacted"); },
     ...overrides
   };
 }
@@ -141,17 +141,16 @@ describe("worker pre-admission Claude usage refresh (Decision 0130)", () => {
   it("never exchanges the refresh token: a 401 is recorded unauthorized and the stale reading is refused", async () => {
     activate();
     writeStaleSnapshot();
-    const exchangeRefreshToken = vi.fn(async () => ({ accessToken: "rotated" }));
     const requestUsage = vi.fn(async () => ({ status: 401, body: null }));
 
     await withDatabase(workspace, (db) =>
       refreshClaudeCapacityBeforeAdmission(
-        { db, workspacePath: workspace, profiles, unmeteredProvider: null, deps: deps({ requestUsage, exchangeRefreshToken }) },
+        { db, workspacePath: workspace, profiles, unmeteredProvider: null, deps: deps({ requestUsage }) },
         5_000
       )
     );
 
-    expect(exchangeRefreshToken).not.toHaveBeenCalled();
+    expect(liveFetch).not.toHaveBeenCalled();
     expect(requestUsage).toHaveBeenCalledTimes(1);
     expect(readClaudeUsageRefreshState(snapshotPath)).toBe("unauthorized");
     const decision = claudeDecision();
@@ -159,19 +158,94 @@ describe("worker pre-admission Claude usage refresh (Decision 0130)", () => {
     expect(decision.code).toBe("capacity_stale");
   });
 
-  it("keeps the manual-command behaviour: a 401 still exchanges the token when refresh is allowed", async () => {
+  it("the manual refresh is read-only too: a 401 is recorded unauthorized with no token exchange", async () => {
     writeStaleSnapshot();
-    const exchangeRefreshToken = vi.fn(async () => ({ accessToken: "rotated" }));
-    const requestUsage = vi.fn(async (token: string) =>
-      token === "rotated" ? (await deps().requestUsage!(token)) : { status: 401, body: null });
+    const requestUsage = vi.fn(async () => ({ status: 401, body: null }));
 
-    await refreshClaudeCodeUsageTelemetry(new Date(), {
-      force: true,
-      deps: deps({ requestUsage, exchangeRefreshToken })
+    await refreshClaudeCodeUsageTelemetry(new Date(), { force: true, deps: deps({ requestUsage }) });
+
+    expect(requestUsage).toHaveBeenCalledTimes(1);
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("unauthorized");
+  });
+
+  it("raises one attention ping on the first turn to unauthorized, none on later ticks, and a new one after a good reading", async () => {
+    activate();
+    writeStaleSnapshot();
+    let status = 200;
+    const requestUsage = vi.fn(async (token: string) =>
+      status === 401 ? { status: 401, body: null } : deps().requestUsage!(token));
+    // The worker keeps its connection open across the async refresh (worker.ts).
+    const tick = async (now?: Date) => {
+      const db = openDatabase(workspace);
+      try {
+        await refreshClaudeCapacityBeforeAdmission(
+          { db, workspacePath: workspace, profiles, unmeteredProvider: null, deps: deps({ requestUsage }), ...(now ? { now } : {}) },
+          5_000
+        );
+      } finally {
+        db.close();
+      }
+    };
+    const pings = () => withDatabase(workspace, (db) =>
+      listPendingOperatorPings(db).filter((ping) => ping.message === CLAUDE_UNAUTHORIZED_PING));
+    const expireCooldown = () => {
+      const record = JSON.parse(readFileSync(snapshotPath, "utf8")) as Record<string, unknown>;
+      record.arcadia_usage_checked_at = new Date(Date.now() - 60 * 60_000).toISOString();
+      writeFileSync(snapshotPath, JSON.stringify(record));
+    };
+
+    await tick();
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("ok");
+    expect(pings()).toHaveLength(0);
+
+    status = 401;
+    expireCooldown();
+    await tick();
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("unauthorized");
+    expect(pings()).toHaveLength(1);
+    expect(pings()[0]?.kind).toBe("attention");
+
+    // Later ticks in the same episode stay quiet, even past the ping queue's own dedupe window.
+    for (let index = 0; index < 3; index += 1) {
+      expireCooldown();
+      await tick();
+    }
+    expect(requestUsage).toHaveBeenCalledTimes(5);
+    expect(pings()).toHaveLength(1);
+
+    // A good reading closes the episode; the next 401 is a new transition and signals again.
+    status = 200;
+    expireCooldown();
+    await tick();
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("ok");
+    status = 401;
+    expireCooldown();
+    // Past the ping queue's 10-minute identical-message window, so only our episode dedupe is under test.
+    await tick(new Date(Date.now() + 20 * 60_000));
+    expect(pings()).toHaveLength(2);
+  });
+
+  it("issue #1559: a 401 through the capacity-observer refresh never contacts the OAuth token endpoint", async () => {
+    // The live shape: `arcadia capacity --refresh` reaches refreshProviderCapacity,
+    // which used the refresher's default and exchanged the single-use refresh
+    // token on a 401 without persisting the rotation. No exchange collaborator is
+    // injected here, so any exchange would reach the (stubbed) live fetch.
+    writeStaleSnapshot();
+    const requestUsage = vi.fn(async () => ({ status: 401, body: null }));
+    await refreshProviderCapacity(profiles, {
+      unmeteredProvider: null,
+      claudeUsageRefreshDeps: {
+        snapshotPath,
+        loadCredentials: async () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+        requestUsage
+      }
     });
 
-    expect(exchangeRefreshToken).toHaveBeenCalledTimes(1);
-    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("ok");
+    const tokenEndpointCalls = liveFetch.mock.calls.filter((call) => String(call[0]).includes("/oauth/token"));
+    expect(tokenEndpointCalls).toHaveLength(0);
+    expect(requestUsage).toHaveBeenCalledTimes(1);
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("unauthorized");
+    expect(claudeDecision().admitted).toBe(false);
   });
 
   it("records an unreadable credential as no_credentials and refuses", async () => {
@@ -226,7 +300,7 @@ describe("worker pre-admission Claude usage refresh (Decision 0130)", () => {
 
   it("makes no live call when nothing is injected under the test runner", async () => {
     writeStaleSnapshot();
-    await refreshClaudeCodeUsageTelemetry(new Date(), { force: true, allowTokenRefresh: false });
+    await refreshClaudeCodeUsageTelemetry(new Date(), { force: true });
     expect(liveFetch).not.toHaveBeenCalled();
   });
 });
