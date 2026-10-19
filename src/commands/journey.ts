@@ -1,8 +1,13 @@
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withReadOnlyDatabase } from "../db/connection.js";
 import { execFileSync } from "node:child_process";
+import type Database from "better-sqlite3";
+import { withReadOnlyDatabase } from "../db/connection.js";
+import { getProjectBySlug } from "../db/repositories.js";
+import { discoverDocs } from "../docs/discover.js";
+import type { PlanDoc, ProjectDoc } from "../docs/types.js";
+import { projectRepositoryRoot } from "../scheduling/schedule.js";
 import { deriveJourney, splitActionKey, type IntegrationLookup } from "../journey/derive.js";
 import type { Journey, JourneyEvent } from "../journey/schema.js";
 
@@ -11,6 +16,10 @@ import type { Journey, JourneyEvent } from "../journey/schema.js";
  * now, ahead). A noun: it opens the workspace database read-only, makes no
  * model or network call and writes nothing. The dashboard's
  * `/journey/[project]/[action]` renders exactly this payload.
+ *
+ * `<project>/current` follows the Project's `current_action` pointer (or its
+ * active Plan's), read from the checked-in documents the same way the
+ * scheduler reads them, so one bookmark keeps following the active rover.
  */
 export function runJourneyCommand(options: { actionKey: string; workspace?: string; now?: Date }): CommandSuccess<Journey> {
   try {
@@ -19,8 +28,31 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
     throw validationError(error instanceof Error ? error.message : String(error));
   }
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withReadOnlyDatabase(workspacePath, (db) => deriveJourney(db, options.actionKey, options.now ?? new Date(), { integration: gitIntegration }));
+  const data = withReadOnlyDatabase(workspacePath, (db) => {
+    const [project, action] = splitActionKey(options.actionKey);
+    const actionKey = action === CURRENT ? `${project}/${currentActionOf(db, project)}` : options.actionKey;
+    return deriveJourney(db, actionKey, options.now ?? new Date(), { integration: gitIntegration });
+  });
   return createSuccess({ command: "journey", workspace: workspacePath, data, warnings: data.warnings });
+}
+
+/** The action segment that means "the Project's current Action". */
+export const CURRENT = "current";
+
+/** The Project's `current_action` pointer, or its active Plan's; read-only. */
+export function currentActionOf(db: Database.Database, projectSlug: string): string {
+  const project = getProjectBySlug(db, projectSlug);
+  if (!project) throw validationError(`No Project "${projectSlug}" in this workspace.`);
+  const root = projectRepositoryRoot(db, project);
+  if (!root) throw validationError(`Project "${projectSlug}" has no usable repository path, so its current Action cannot be read.`);
+  const docs = discoverDocs(root).docs;
+  const projectDoc = docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === projectSlug) ?? null;
+  const plan = projectDoc?.activePlan
+    ? docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === projectSlug && doc.slug === projectDoc.activePlan) ?? null
+    : null;
+  const current = projectDoc?.currentAction ?? plan?.currentAction ?? null;
+  if (!current) throw validationError(`Project "${projectSlug}" has no current Action.`);
+  return current;
 }
 
 const GLYPH: Record<JourneyEvent["kind"], string> = { launch: "•", victory: "◆", cleared: "△", obstacle: "▲", gate: "○", now: "◉" };
