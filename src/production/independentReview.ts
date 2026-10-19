@@ -3,7 +3,7 @@ import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
-import { independentVerdictReadiness } from "../sessions/roleLineage.js";
+import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
 import { ensureReviewRepairTable, getReviewRepair, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
@@ -71,6 +71,7 @@ export type ReviewBlockCode =
   | "required_checks_failed"
   | "required_checks_timeout"
   | "review_budget_exhausted"
+  | "review_attempts_exhausted"
   | "review_rate_limited"
   | "independent_verdict_failed";
 
@@ -81,6 +82,7 @@ export const REVIEW_BLOCK_CODES: ReadonlySet<string> = new Set<ReviewBlockCode>(
   "required_checks_failed",
   "required_checks_timeout",
   "review_budget_exhausted",
+  "review_attempts_exhausted",
   "review_rate_limited",
   "independent_verdict_failed"
 ]);
@@ -730,6 +732,17 @@ export function advanceIndependentReview(db: Database.Database, input: {
             code: "review_head_moved",
             reason: `The ${role} reviewer refused: the PR head is no longer the candidate's ready head (${errorMessage(error)}).`,
             remedy: `Restore ${session.branch} on the remote to ${head}; a moved head never receives a verdict.`
+          };
+        }
+        if (code === "attempt_limit_exhausted") {
+          // The lineage budget is spent for this requirement input revision:
+          // no retry can succeed, so it is named for the operator, never
+          // counted as a transient step failure (whose reset cannot help).
+          return {
+            kind: "blocked",
+            code: "review_attempts_exhausted",
+            reason: `The independent ${role} of ${actionKey} at ${head.slice(0, 12)} cannot start: this Action's ${role} attempts are spent (${MAX_VERDICT_ATTEMPTS} of ${MAX_VERDICT_ATTEMPTS} per requirement input revision, every head and rerun counted); no reviewer runs unattended.`,
+            remedy: `Read the earlier ${role} report Artifacts for ${url}; revise the Action through a governed Plan amendment (a new requirement input revision restarts the budget), or decide the candidate yourself. \`arcadia production reset-repair-budget\` does not restore lineage attempts.`
           };
         }
         return fail(role, `${role} review of ${url} failed: ${errorMessage(error)}`);
