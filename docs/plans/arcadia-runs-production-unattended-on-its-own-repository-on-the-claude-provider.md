@@ -223,6 +223,60 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: test-transient-review-retry-after-exhaustion
+    title: Implement hermetic tests that a transient reviewer error still retries after the review_attempts_exhausted branch and that resetProductionRepairBudget leaves that escalation in place.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement hermetic tests that a transient reviewer error still retries after the review_attempts_exhausted branch and that resetProductionRepairBudget leaves that escalation in place.
+    expected_artifact: Evidence satisfying Agent Ask test-transient-review-retry-after-exhaustion
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-next-unattended-run-actions-20261019
+    why: "Issue #1582: the independent review of #1578 found neither case covered."
+    acceptance_criteria:
+      - tests/tick-independent-review.test.ts gains a case where a reviewer call fails with a transient error while the Action's verdict attempts are below MAX_VERDICT_ATTEMPTS, and a later tick runs the reviewer again with no review_attempts_exhausted escalation recorded.
+      - tests/tick-independent-review.test.ts gains a case where, after a review_attempts_exhausted escalation is recorded, calling resetProductionRepairBudget for that Action leaves the escalation with kind review_attempts_exhausted in place and runs no reviewer.
+      - The change touches only tests/tick-independent-review.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1582"]
+  - id: refresh-decision-0130-status-and-1559-fake
+    title: "Implement the two stale-text corrections from Issue #1585: record Decision 0130 as approved in docs/managed-production-readiness.md and remove the refreshToken field from the issue #1559 test's injected credentials."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Implement the two stale-text corrections from Issue #1585: record Decision 0130 as approved in docs/managed-production-readiness.md and remove the refreshToken field from the issue #1559 test's injected credentials."
+    expected_artifact: Evidence satisfying Agent Ask refresh-decision-0130-status-and-1559-fake
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-next-unattended-run-actions-20261019
+    why: "Issue #1585 items 3 and 4: the readiness document still calls Decision 0130 raised and unanswered, and the #1559 test fake still returns a refresh token the read-only path no longer uses."
+    acceptance_criteria:
+      - In docs/managed-production-readiness.md, the Claude usage credential and window cap row (near line 101) states that Decision 0130 is approved and no longer says it is raised and unanswered; no other line of that file changes.
+      - "In tests/claude-capacity-preadmission.test.ts, the loadCredentials fake inside the test named 'issue #1559: a 401 through the capacity-observer refresh never contacts the OAuth token endpoint' returns no refreshToken field, and that test still passes."
+      - The change touches only those two files; the focused vitest run of tests/claude-capacity-preadmission.test.ts, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1585"]
+  - id: guard-repair-gate-upsert-role
+    title: Implement a role guard on the gated review-repair upsert in src/production/reviewRepair.ts so its ON CONFLICT DO UPDATE changes only a row whose role is REPAIR_CANDIDATE_GATE_ROLE, with a hermetic test.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a role guard on the gated review-repair upsert in src/production/reviewRepair.ts so its ON CONFLICT DO UPDATE changes only a row whose role is REPAIR_CANDIDATE_GATE_ROLE, with a hermetic test.
+    expected_artifact: Evidence satisfying Agent Ask guard-repair-gate-upsert-role
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-next-unattended-run-actions-20261019
+    why: "Issue #1574 item 3: the DO UPDATE can overwrite the summary and reason of a non-gate review-repair row that shares its request id."
+    acceptance_criteria:
+      - In src/production/reviewRepair.ts, the INSERT INTO production_review_repairs ... ON CONFLICT(request_id) DO UPDATE statement that writes REPAIR_CANDIDATE_GATE_ROLE has a WHERE clause that also requires production_review_repairs.role to equal REPAIR_CANDIDATE_GATE_ROLE.
+      - A hermetic test in tests/review-repair-loop.test.ts seeds a production_review_repairs row with the gate path's request id and a role other than REPAIR_CANDIDATE_GATE_ROLE, runs the gate path, and asserts that row's summary, reason and role are unchanged; the test fails without the guard.
+      - The change touches only src/production/reviewRepair.ts and tests/review-repair-loop.test.ts; the focused vitest run of tests/review-repair-loop.test.ts, pnpm lint, tsc and pnpm build pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1574"]
 questions: []
 decisions: []
 recommended_model: standard
