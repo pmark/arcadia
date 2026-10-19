@@ -503,6 +503,7 @@ import {
 } from "./commands/operatorTasks.js";
 import { renderPortfolioSuccess, runPortfolioCommand } from "./commands/portfolio.js";
 import { renderNowSuccess, runNowCommand } from "./commands/now.js";
+import { renderJourneySuccess, runJourneyCommand } from "./commands/journey.js";
 import { renderPathSuccess, runPathCommand } from "./commands/path.js";
 import {
   renderWorkResolveQuestionSuccess,
@@ -4506,6 +4507,15 @@ Origin: every item has "origin" (a string from a field its source records, else 
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("journey <action>")
+      .description("One Action's rover journey (<project>/<action>): launch, victories, obstacles, now and the way ahead; read-only")
+      .option("--workspace <path>", "Workspace path")
+  ).action((actionKey: string, options: { workspace?: string; json?: boolean }) =>
+    runCliAction("journey", options, () => runJourneyCommand({ actionKey, workspace: options.workspace }), renderJourneySuccess)
   );
 
   const roles = program.command("roles").description("Read the governed role registry; grants no authority");
