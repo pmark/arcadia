@@ -198,10 +198,17 @@ describe("deriveJourney", () => {
       expect(activity()).toMatchObject({ phase: "blocked", headline: "Stopped: review fail", since: "2026-10-19T15:55:00.000Z" });
     });
 
-    it("is under repair while a repair Session runs, and queued while its repair is pending", () => {
+    it("is under repair while a repair Session runs, and queued while its repair is pending in the running production", () => {
       seedPath();
+      db.prepare("UPDATE production_policy SET desired_state = 'active' WHERE id = 'workspace'").run();
       insert("production_review_repairs", { request_id: "repair-q", action_key: KEY, policy_epoch: 2, round: 2, failed_session_id: "s3", failed_branch: "claude/demo-3", failed_head: HEAD.c, role: "code-review", verdict: "fail", summary: "Fix it.", findings_json: "[]", failed_checks_json: "[]", outcome: "pending", created_at: "2026-10-19T15:56:00.000Z", updated_at: "2026-10-19T15:56:00.000Z" });
       expect(activity()).toMatchObject({ phase: "repairing", headline: "Repair round queued" });
+      // A newer run, or production Off: the old pending row is no longer queued.
+      db.prepare("UPDATE production_policy SET epoch = 3 WHERE id = 'workspace'").run();
+      expect(activity().phase).not.toBe("repairing");
+      db.prepare("UPDATE production_policy SET epoch = 2, desired_state = 'inactive' WHERE id = 'workspace'").run();
+      expect(activity().phase).not.toBe("repairing");
+      db.prepare("UPDATE production_policy SET desired_state = 'active' WHERE id = 'workspace'").run();
       db.prepare("UPDATE production_review_repairs SET outcome = 'launched', repair_session_id = 's4' WHERE request_id = 'repair-q'").run();
       session("s4", "claude/demo-4", "2026-10-19T15:57:00.000Z", "running");
       expect(activity()).toMatchObject({ phase: "repairing", headline: "Under repair: round 2 of 3", since: "2026-10-19T15:57:00.000Z" });
@@ -220,11 +227,20 @@ describe("deriveJourney", () => {
       expect(activity()).toMatchObject({ phase: "waiting", headline: "Waiting to launch" });
       insert("production_launch_refusal_log", { action_key: KEY, dedupe_key: "d", message: "Launch refused: capacity window closed.\nmore", first_at: "2026-10-19T15:10:00.000Z", last_at: "2026-10-19T15:20:00.000Z" });
       expect(activity()).toMatchObject({ phase: "blocked", headline: "Stopped: launch refused", detail: "Launch refused: capacity window closed." });
-      // A refusal from before production was last switched belongs to an earlier run.
+      // Turning production Off after a refusal does not clear it; activating a new run after it does.
+      db.prepare("UPDATE production_policy SET desired_state = 'inactive', updated_at = ? WHERE id = 'workspace'").run("2026-10-19T15:25:00.000Z");
+      expect(deriveJourney(db, KEY, NOW).events.find((event) => event.source === "production_launch_refusal_log")?.kind).toBe("obstacle");
+      db.prepare("UPDATE production_policy SET desired_state = 'active' WHERE id = 'workspace'").run();
       db.prepare("UPDATE production_policy SET updated_at = ? WHERE id = 'workspace'").run("2026-10-19T15:25:00.000Z");
       expect(activity()).toMatchObject({ phase: "waiting", headline: "Waiting to launch" });
+      db.prepare("UPDATE production_policy SET epoch = 2 WHERE id = 'workspace'").run();
       insert("production_admissions", { action_key: KEY, project_slug: PROJECT, plan_slug: PLAN, provider: "claude-code-cli", epoch: 2, policy_revision: 2, status: "issued", issued_at: "2026-10-19T15:30:00.000Z", expires_at: "2026-10-19T16:30:00.000Z" });
       expect(activity()).toMatchObject({ phase: "launching", since: "2026-10-19T15:30:00.000Z" });
+      // An expired admission, or one from an earlier run, is not a launch under way.
+      db.prepare("UPDATE production_admissions SET expires_at = '2026-10-19T15:45:00.000Z' WHERE action_key = ?").run(KEY);
+      expect(activity()).toMatchObject({ phase: "waiting" });
+      db.prepare("UPDATE production_admissions SET expires_at = '2026-10-19T16:30:00.000Z', epoch = 1 WHERE action_key = ?").run(KEY);
+      expect(activity()).toMatchObject({ phase: "waiting" });
     });
 
     it("has arrived once merged", () => {

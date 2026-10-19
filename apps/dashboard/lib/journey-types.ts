@@ -49,7 +49,7 @@ export interface JourneyActivity {
   phase: JourneyPhase;
   headline: string;
   detail: string;
-  since: string;
+  since: string | null;
 }
 
 export interface Journey {

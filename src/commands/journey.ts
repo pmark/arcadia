@@ -63,7 +63,7 @@ export function renderJourneySuccess(response: CommandSuccess<Journey>): string[
   const journey = response.data;
   const lines = [
     `${journey.action.key}`,
-    `Now: ${journey.activity.headline} (since ${journey.activity.since.slice(0, 16).replace("T", " ")} UTC) — ${journey.activity.detail}`,
+    `Now: ${journey.activity.headline}${journey.activity.since ? ` (since ${journey.activity.since.slice(0, 16).replace("T", " ")} UTC)` : ""} — ${journey.activity.detail}`,
     `Destination: ${journey.destination.label}${journey.destination.reached ? " (reached)" : ""}`,
     ""
   ];

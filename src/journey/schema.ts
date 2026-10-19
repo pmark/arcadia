@@ -69,8 +69,8 @@ export interface JourneyActivity {
   /** A few words: "Under repair: round 2 of 3". */
   headline: string;
   detail: string;
-  /** When this phase began, as far as the records say. */
-  since: string;
+  /** When this phase began, as far as the records say; null when they do not say. */
+  since: string | null;
 }
 
 export interface Journey {

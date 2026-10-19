@@ -233,7 +233,7 @@ export function JourneyActivityLine({ journey, formatTime = utcTime }: { journey
       <p className="flex items-center gap-2 text-sm font-semibold text-ink">
         <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${PHASE_COLOR[activity.phase]} ${moving ? "journey-halo" : ""}`} aria-hidden="true" />
         {activity.headline}
-        <span className="text-xs font-normal text-muted">since {formatTime(activity.since)}</span>
+        {activity.since ? <span className="text-xs font-normal text-muted">since {formatTime(activity.since)}</span> : null}
       </p>
       <p className="mt-0.5 break-words text-xs text-muted">{activity.detail}</p>
     </div>
