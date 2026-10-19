@@ -45,12 +45,20 @@ function repository() {
   return { repo, git, write };
 }
 
-const ask = (requestId: string, candidate: string, targetRef = "action/write-report") => `${JSON.stringify({
+const ask = (requestId: string, candidate: string, targetRef = "action/write-report", options: { pretty?: boolean; note?: string } = {}) => `${JSON.stringify({
   agent_ask: "v1", request_id: requestId, project: "fixture", intent: "complete", target_ref: targetRef, candidate_revision: candidate,
-  evidence: [{ criterion: "The report exists.", status: "met", note: "Wrote the report and read it back." }], desired_result: "Mark write-report complete."
-})}\n`;
+  evidence: [{ criterion: "The report exists.", status: "met", note: options.note ?? "Wrote the report and read it back." }], desired_result: "Mark write-report complete."
+}, null, options.pretty ? 2 : undefined)}\n`;
 
-interface Repair { retire?: { env?: Record<string, string>; message?: (ids: string[]) => string; extra?: string; target?: string }; deleteRecord?: string }
+/**
+ * How the settlement archives the repair's draft. `rename`: git shows a
+ * rename. `split`: the draft is pretty-printed JSON and the archive its compact
+ * re-serialization with the bound revision, so git shows a deletion and a new
+ * file (live PR #1554). The other values are forged variants of `split`.
+ */
+type ArchiveShape = "rename" | "split" | "split-altered" | "split-no-archive" | "split-other-name" | "split-ungoverned";
+
+interface Repair { retire?: { env?: Record<string, string>; message?: (ids: string[]) => string; extra?: string; target?: string }; deleteRecord?: string; archive?: ArchiveShape }
 
 /** The failed work, the host retirement, the repair's change and its settlement; returns the format-patch series. */
 function repairedHead(options: Repair = {}): { patch: string; base: string } {
@@ -74,16 +82,21 @@ function repairedHead(options: Repair = {}): { patch: string; base: string } {
   // The repair Session's change, preserved with its own draft.
   const draftB = `.arcadia/asks/agent-ask-complete-write-report-${retired.slice(0, 12)}.yaml`;
   write(REPORT, "# Report\n\nRun stages, including #1512.\n");
-  write(draftB, ask(`complete-write-report-${retired.slice(0, 12)}`, retired));
+  const shape = options.archive ?? "rename";
+  const split = shape !== "rename";
+  write(draftB, ask(`complete-write-report-${retired.slice(0, 12)}`, retired, undefined, { pretty: split }));
   git(["add", "-A"]);
   git(["commit", "-q", "-m", PRESERVE("repair")], CONTROLLER);
   const preserved = git(["rev-parse", "HEAD"]);
   // The worker's auto-settle settlement.
-  const archive = `.arcadia/asks/archive/${path.basename(draftB)}`;
+  const archive = `.arcadia/asks/archive/${shape === "split-other-name" ? "agent-ask-complete-write-report-other.yaml" : path.basename(draftB)}`;
   mkdirSync(path.join(roots.at(-1)!, ".arcadia/asks/archive"), { recursive: true });
-  git(["mv", draftB, archive]);
-  const archived = ask(`complete-write-report-${retired.slice(0, 12)}`, preserved);
-  write(archive, archived);
+  if (split) git(["rm", "-q", draftB]);
+  else git(["mv", draftB, archive]);
+  if (shape === "split-ungoverned") git(["commit", "-q", "-m", "chore: tidy the asks"]);
+  const archived = ask(`complete-write-report-${retired.slice(0, 12)}`, preserved, undefined,
+    { note: shape === "split-altered" ? "Wrote the report, read it back and approved it." : undefined });
+  if (shape !== "split-no-archive") write(archive, archived);
   const requestId = autoSettleRequestId("fixture", "write-report", archived);
   const repo = roots.at(-1)!;
   write(PLAN, readFileSync(path.join(repo, PLAN), "utf8")
@@ -142,5 +155,24 @@ describe("the deterministic patch check on a review repair's candidate", () => {
   it("still refuses a trailer naming a request id the deleted draft does not carry", () => {
     const flagged = authority(repairedHead({ retire: { message: () => retiredCompletionDraftMessage("write-report", ["complete-someone-else"]) } }).patch);
     expect(flagged.some((file) => file.path.includes("agent-ask-complete-write-report-"))).toBe(true);
+  });
+
+  it("classifies a settlement that archives a re-serialized draft as a deletion plus its archive copy as governed records (#1556, live PR #1554)", () => {
+    const { patch } = repairedHead({ archive: "split" });
+    expect(patch).toMatch(/deleted file mode 100644\nindex [0-9a-f]+\.\.0+\n--- a\/\.arcadia\/asks\/agent-ask-complete-write-report-/);
+    const result = classifyPatchApplicability(patch);
+    expect(result.problems).toEqual([]);
+    expect(authority(patch)).toEqual([]);
+    expect(result.inert).toBe(true);
+  });
+
+  it.each([
+    ["an archive copy whose content differs beyond candidate_revision", "split-altered"],
+    ["a deleted draft with no archive copy", "split-no-archive"],
+    ["an archive copy under another name", "split-other-name"],
+    ["a deletion by a commit that carries no attestation", "split-ungoverned"]
+  ] as const)("still refuses %s", (_label, archive) => {
+    const flagged = authority(repairedHead({ archive }).patch);
+    expect(flagged.some((file) => /^\.arcadia\/asks\/agent-ask-complete-write-report-/.test(file.path))).toBe(true);
   });
 });

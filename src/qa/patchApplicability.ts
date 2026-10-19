@@ -32,8 +32,12 @@
  * classification above alone decides whether any claim can be accepted.
  *
  * Residual: a forged attestation can still make shape-limited governed edits
- * pass this check (add Agent Ask data files or archive them, append to the
- * Mission Log, mark the current Action done and move current_action to any
+ * pass this check (add Agent Ask data files or archive them, by rename or as a
+ * deletion beside a same-Ask archive copy differing only in candidate_revision,
+ * append to the Mission Log and move its front-matter `updated:` forward to
+ * the date an appended entry heading carries (front matter is inferred from
+ * the hunk's context, so a body line shaped exactly like it within the first
+ * lines would pass too), mark the current Action done and move current_action to any
  * well-formed Action id, which can skip Actions or change which Actions are
  * dependency-ready, and rewrite that same done Action's own `next_action` to
  * its exact canonical completed form naming any Agent Ask id this same patch
@@ -132,6 +136,8 @@ interface ParsedFile {
   copied: boolean;
   /** Each hunk's body lines, prefix included (` `, `+`, `-`, `\`). */
   hunks: string[][];
+  /** Each hunk's old-side start line, parallel to `hunks`. */
+  hunkStarts: number[];
   /** The new blob id from the `index <old>..<new>` header line (abbreviated), when shown. */
   newBlob: string | null;
   /** The old blob id from the same `index` line, when shown. */
@@ -194,8 +200,9 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
   const governedCommit = commits.map((commit, index) => commit.attested &&
     files.filter((file) => file.commit === index).every((file) => !file.special && !file.executableMode && file.paths.every(isGovernedRecordPath)));
   const retired = retiredCompletionDrafts(files, commits);
-  const shapeViolations = governedShapeViolations(files, retired);
-  const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired);
+  const splitArchives = splitArchiveMoves(files, governedCommit);
+  const shapeViolations = governedShapeViolations(files, retired, splitArchives);
+  const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired, splitArchives);
   const byPath = new Map<string, PathEntry>();
   for (const file of files) {
     for (const filePath of file.paths) {
@@ -311,7 +318,7 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
   let messageLines: string[] | null = null;
   let current: ParsedFile | null = null;
   let inExtendedHeader = false;
-  let hunk: { lines: string[]; old: number; new: number } | null = null;
+  let hunk: { lines: string[]; old: number; new: number; start: number } | null = null;
   const finishMessage = () => {
     if (messageLines === null) return;
     const message = messageLines.join("\n");
@@ -362,6 +369,7 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
         if (prefix !== "-") hunk.new -= 1;
         if (hunk.old === 0 && hunk.new === 0) {
           current.hunks.push(hunk.lines);
+          current.hunkStarts.push(hunk.start);
           hunk = null;
         }
         continue;
@@ -382,6 +390,7 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
         renamed: false,
         copied: false,
         hunks: [],
+        hunkStarts: [],
         newBlob: null,
         oldBlob: null
       };
@@ -393,7 +402,7 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
     const hunkHeader = HUNK_HEADER.exec(line);
     if (hunkHeader) {
       inExtendedHeader = false;
-      hunk = { lines: [], old: Number(hunkHeader[2] ?? "1"), new: Number(hunkHeader[4] ?? "1") };
+      hunk = { lines: [], old: Number(hunkHeader[2] ?? "1"), new: Number(hunkHeader[4] ?? "1"), start: Number(hunkHeader[1]) };
       if (hunk.old === 0 && hunk.new === 0) hunk = null;
       continue;
     }
@@ -515,6 +524,57 @@ function retiredCompletionDrafts(files: ParsedFile[], commits: ParsedCommit[]): 
 }
 
 /**
+ * A settlement's archive of a completion draft that git shows as a deletion
+ * plus a new archive file rather than a rename: settlement rewrites the
+ * archived copy with the revision it bound (src/ask/settlement.ts
+ * pushAskArchiveMutations re-serializes a JSON draft compactly), so a
+ * pretty-printed or short draft shares too little text for rename detection
+ * (live repair PR #1554). Recognized only when one governed-only commit deletes
+ * a top-level `agent-ask-*.yaml` draft and creates
+ * `.arcadia/asks/archive/<the same name>`, both whole contents verified
+ * against their blob ids, and the two Asks are identical apart from
+ * `candidate_revision` (a hex revision on both sides). Returns the deletions.
+ */
+function splitArchiveMoves(files: ParsedFile[], governedCommit: boolean[]): Set<ParsedFile> {
+  const moves = new Set<ParsedFile>();
+  const plain = (file: ParsedFile) => file.paths.length === 1 && !file.special && !file.executableMode;
+  for (const deleted of files) {
+    const draft = deleted.oldPath;
+    if (!deleted.deleted || !draft || !plain(deleted) || !COMPLETION_DRAFT_PATH.test(draft) || governedCommit[deleted.commit] !== true) continue;
+    const archivePath = `.arcadia/asks/archive/${basename(draft)}`;
+    const copies = files.filter((file) => file.commit === deleted.commit && file.paths.includes(archivePath));
+    const archive = copies.length === 1 && copies[0].created && plain(copies[0]) ? copies[0] : null;
+    if (!archive) continue;
+    const before = verifiedOldContent(deleted);
+    const after = verifiedNewContent(archive);
+    if (before === null || after === null) continue;
+    const left = askWithoutCandidate(before);
+    if (left !== null && left === askWithoutCandidate(after)) moves.add(deleted);
+  }
+  return moves;
+}
+
+const CANDIDATE_REVISION_VALUE = /^[0-9a-f]{7,40}$/;
+const CANDIDATE_REVISION_LINE = /^(\s*candidate_revision\s*:\s*)(.*)$/m;
+
+/** An Ask's content with its `candidate_revision` blanked (a JSON object or simple YAML), or null when it has no hex one. */
+function askWithoutCandidate(content: string): string | null {
+  if (content.trimStart().startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(content);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const { candidate_revision: revision, ...rest } = parsed as Record<string, unknown>;
+      return typeof revision === "string" && CANDIDATE_REVISION_VALUE.test(revision) ? JSON.stringify(rest) : null;
+    } catch {
+      return null;
+    }
+  }
+  const match = CANDIDATE_REVISION_LINE.exec(content);
+  const value = match?.[2].trim().replace(/^["']|["']$/g, "");
+  return match && value && CANDIDATE_REVISION_VALUE.test(value) ? content.replace(CANDIDATE_REVISION_LINE, "$1") : null;
+}
+
+/**
  * The creations of a candidate's own completion draft that its host
  * settlement consumed: a top-level `.arcadia/asks/agent-ask-<id>.yaml` created
  * in this series (so absent at its base) by an attested commit (host
@@ -524,16 +584,19 @@ function retiredCompletionDrafts(files: ParsedFile[], commits: ParsedCommit[]): 
  * head. Only that creation is excused from the governed-only rule; a draft
  * left in place, archived otherwise or touched again is not.
  */
-function consumedCompletionDraftCreations(files: ParsedFile[], commits: ParsedCommit[], governedCommit: boolean[], retired: Map<ParsedFile, string>): Set<ParsedFile> {
+function consumedCompletionDraftCreations(
+  files: ParsedFile[], commits: ParsedCommit[], governedCommit: boolean[], retired: Map<ParsedFile, string>, splitArchives: Set<ParsedFile>
+): Set<ParsedFile> {
   const consumed = new Set<ParsedFile>();
   for (const created of files) {
     const draft = created.newPath;
     if (!created.created || !draft || !COMPLETION_DRAFT_PATH.test(draft) || created.special || created.executableMode || created.paths.length !== 1) continue;
     const touching = files.filter((file) => file.paths.includes(draft));
-    // Archived by its own settlement, or retired by a review repair's host retirement commit.
+    // Archived by its own settlement (as a rename, or as a deletion beside its
+    // re-serialized archive copy), or retired by a review repair's host retirement commit.
     const archived = touching.find((file) => file !== created && file.renamed && file.oldPath === draft
       && file.newPath === `.arcadia/asks/archive/${basename(draft)}` && governedCommit[file.commit] === true)
-      ?? touching.find((file) => file !== created && retired.has(file));
+      ?? touching.find((file) => file !== created && (retired.has(file) || splitArchives.has(file)));
     if (!archived || touching.length !== 2 || archived.commit <= created.commit) continue;
     if (commits[created.commit]?.attested !== true) continue;
     // Its creating commit may otherwise hold only inert documents and governed
@@ -618,7 +681,9 @@ const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent A
  * claims. A path is mapped to its first violation; consistency across files
  * (the pointer leaves only the Action marked done) is checked here too.
  */
-function governedShapeViolations(files: ParsedFile[], retired: Map<ParsedFile, string> = new Map()): Map<string, string> {
+function governedShapeViolations(
+  files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set()
+): Map<string, string> {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
   const done = new Map<string, string[]>();
@@ -649,7 +714,7 @@ function governedShapeViolations(files: ParsedFile[], retired: Map<ParsedFile, s
     const violateFile = (reason: string) => { for (const filePath of file.paths) violate(filePath, reason); };
     const removed = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("-")).map((line) => line.slice(1)));
     const added = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("+")).map((line) => line.slice(1)));
-    if (file.deleted && retired.has(file)) continue;
+    if (file.deleted && (retired.has(file) || splitArchives.has(file))) continue;
     if (file.copied || file.deleted) {
       violateFile("a governed record may not be copied or deleted");
       continue;
@@ -681,12 +746,20 @@ function governedShapeViolations(files: ParsedFile[], retired: Map<ParsedFile, s
       // Appends only, at the end of the file. The compare patch carries three
       // lines of trailing context, so added lines followed by no context are
       // at the end of the file; a patch made with less context would defeat
-      // this inference, but GitHub's compare patch is not.
-      const trailingOnly = file.hunks.length <= 1 && file.hunks.every((lines) => {
+      // this inference, but GitHub's compare patch is not. A settlement on a
+      // later day than the last one also bumps the front matter's `updated:`
+      // to the date of the entry it appends (#1555): that one replacement, in
+      // its own leading hunk, is the only other change allowed.
+      const bump = !file.created && file.hunks.length === 2 ? frontMatterUpdatedBump(file.hunks[0], file.hunkStarts[0]) : null;
+      const appends = bump ? file.hunks.slice(1) : file.hunks;
+      const appended = appends.flatMap((lines) => lines.filter((line) => line.startsWith("+")).map((line) => line.slice(1)));
+      const trailingOnly = appends.length <= 1 && appends.every((lines) => {
         const firstAdded = lines.findIndex((line) => line.startsWith("+"));
         return firstAdded === -1 || lines.slice(firstAdded).every((line) => line.startsWith("+") || line.startsWith("\\"));
       });
-      if (removed.length > 0 || !trailingOnly) violateFile("the Mission Log may only be appended to, at its end");
+      const appendRemoves = appends.some((lines) => lines.some((line) => line.startsWith("-")));
+      const datedEntry = !bump || appended.some((line) => line.startsWith(`## ${bump} `));
+      if (appendRemoves || !trailingOnly || !datedEntry) violateFile("the Mission Log may only be appended to, at its end");
       continue;
     }
     // `next_action` is recognized generically here (any single-line value, old
@@ -807,6 +880,32 @@ function governedShapeViolations(files: ParsedFile[], retired: Map<ParsedFile, s
     }
   }
   return violations;
+}
+
+const DATED_UPDATED = /^updated: (\d{4}-\d{2}-\d{2})$/;
+const FRONT_MATTER_KEY = /^ [A-Za-z_][\w-]*:(?: .*)?$/;
+/** The front matter's `updated:` sits within the first lines of a managed document. */
+const FRONT_MATTER_MAX_LINE = 20;
+
+/**
+ * The new date when a hunk is exactly one front-matter `updated:` replacement
+ * moving to a later date: one removed line immediately followed by its added
+ * replacement, near the top of the file, with only `key: value` context
+ * around it (and the opening fence when the hunk starts at line 1) and the
+ * closing `---` fence after it. Null for anything else.
+ */
+function frontMatterUpdatedBump(lines: string[], oldStart: number | undefined): string | null {
+  if (oldStart === undefined || lines.filter((line) => line.startsWith("+") || line.startsWith("-")).length !== 2) return null;
+  const at = lines.findIndex((line) => line.startsWith("-"));
+  const from = at === -1 ? null : DATED_UPDATED.exec(lines[at].slice(1));
+  const to = lines[at + 1]?.startsWith("+") ? DATED_UPDATED.exec(lines[at + 1].slice(1)) : null;
+  if (!from || !to || to[1] <= from[1] || oldStart + at > FRONT_MATTER_MAX_LINE) return null;
+  const before = lines.slice(0, at);
+  const after = lines.slice(at + 2);
+  const opening = oldStart === 1 && before[0] === " ---" ? 1 : 0;
+  const closing = after.indexOf(" ---");
+  if (!before.slice(opening).every((line) => FRONT_MATTER_KEY.test(line))) return null;
+  return closing !== -1 && after.slice(0, closing).every((line) => FRONT_MATTER_KEY.test(line)) ? to[1] : null;
 }
 
 function sameMembers(left: string[], right: string[]): boolean {
