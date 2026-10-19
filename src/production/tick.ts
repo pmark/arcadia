@@ -12,7 +12,7 @@ import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, listActionableReviewItems, updateReviewItemStatus } from "../db/repositories.js";
-import { queueOperatorPing } from "../ping/operatorPing.js";
+import { OPERATOR_PING_MESSAGE_MAX, queueOperatorPing } from "../ping/operatorPing.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -2155,6 +2155,12 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
 /** A review repair launch withheld by a guard (sign-in hold, repair budget); never a launch failure. */
 class RepairLaunchHeld extends Error {}
 
+/** The review-repair ping text: the first line of the escalation, cut to the operator ping bound. */
+export function reviewRepairPingMessage(actionKey: string, kind: string, message: string): string {
+  const text = `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`;
+  return text.length <= OPERATOR_PING_MESSAGE_MAX ? text : `${text.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
+}
+
 /** One deduped review-repair escalation, logged and pinged once per kind. */
 function escalateReviewRepair(db: Database.Database, input: { actionKey: string; kind: string; message: string; remedy: string; now: Date; log?: (message: string) => void }): void {
   const { actionKey, kind, message } = input;
@@ -2163,7 +2169,7 @@ function escalateReviewRepair(db: Database.Database, input: { actionKey: string;
   if (newlyDetected || previous?.kind !== kind) {
     input.log?.(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
     try {
-      queueOperatorPing(db, { message: `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`, kind: "attention", agent: "production-tick", now: input.now });
+      queueOperatorPing(db, { message: reviewRepairPingMessage(actionKey, kind, message), kind: "attention", agent: "production-tick", now: input.now });
     } catch (error) {
       input.log?.(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     }

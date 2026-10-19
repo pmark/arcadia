@@ -64,6 +64,8 @@ export interface ReviewRepairRow {
   notify_failures: number;
   created_at: string;
   updated_at: string;
+  /** The verdict attempt (request id) this row was judged on; NULL on rows from before it was recorded. */
+  verdict_request_id: string | null;
 }
 
 export function ensureReviewRepairTable(db: Database.Database): void {
@@ -99,6 +101,7 @@ export function ensureReviewRepairTable(db: Database.Database): void {
   `);
   const present = new Set((db.prepare("PRAGMA table_info(production_review_repairs)").all() as Array<{ name: string }>).map((column) => column.name));
   if (!present.has("closed_at")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN closed_at TEXT");
+  if (!present.has("verdict_request_id")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN verdict_request_id TEXT");
   if (!present.has("notify_failures")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN notify_failures INTEGER NOT NULL DEFAULT 0");
 }
 
