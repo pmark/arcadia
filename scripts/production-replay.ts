@@ -307,6 +307,17 @@ export function unconfinedPaths(databaseFile: string, root: string): string[] {
   return [...found];
 }
 
+function clearPreservationClaims(databaseFile: string): number {
+  const db = new Database(databaseFile);
+  try {
+    return db.prepare("DELETE FROM candidate_preservation_claims").run().changes;
+  } catch {
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
 function latestGrantReceipt(databaseFile: string, prefix: string): GrantReceipt {
   const db = new Database(databaseFile, { readonly: true, fileMustExist: true });
   try {
@@ -450,7 +461,7 @@ function which(name: string): string | null {
 export function installGuards(root: string, effectsLog: string): string {
   const bin = path.join(root, "bin");
   mkdirSync(bin, { recursive: true });
-  const record = (kind: string) => `printf '{"kind":"%s","detail":"%s"}\\n' ${shellQuote(kind)} "$(printf '%s' "$(pwd -P): $*" | tr -d '"\\\\' | tr '\\n' ' ')" >> ${shellQuote(effectsLog)}`;
+  const record = (kind: string) => `printf '{"kind":"%s","detail":"%s"}\\n' ${shellQuote(kind)} "$(printf '%s' "$(pwd -P): $replay_args" | tr -d '"\\\\' | tr '\\n' ' ')" >> ${shellQuote(effectsLog)}`;
   // Providers answer the launch preflight's read-only probes like an installed,
   // signed-in CLI (the real flags and sign-in are not replayed); anything else is refused.
   const probes: Record<string, string> = {
@@ -462,9 +473,10 @@ export function installGuards(root: string, effectsLog: string): string {
     opencode: `  --version) echo "0.0.0 (production replay)"; exit 0 ;;`
   };
   for (const [name, answers] of Object.entries(probes)) {
-    writeExecutable(path.join(bin, name), `#!/bin/sh\ncase "$1" in\n${answers}\nesac\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
+    writeExecutable(path.join(bin, name), `#!/bin/sh\nreplay_args="$*"\ncase "$1" in\n${answers}\nesac\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
   }
   writeExecutable(path.join(bin, "tmux"), `#!/bin/sh
+replay_args="$*"
 case "$1" in
   -V) echo "tmux 3.4 (production replay)"; exit 0 ;;
   has-session) exit 1 ;;
@@ -479,37 +491,59 @@ exit 97
   const roots = [...new Set([root, realpathSync(root)])];
   writeExecutable(path.join(bin, "git"), `#!/bin/sh
 # production replay git guard: only the temporary root (cwd, -C, --git-dir,
-# --work-tree, GIT_DIR and friends, absolute remote or worktree paths), never a network remote.
-inside() { case "$1" in ${roots.map((entry) => `${shellQuote(entry)}|${shellQuote(entry)}/*`).join("|")}) return 0 ;; esac; return 1; }
+# --work-tree, GIT_DIR and friends, path-valued -c keys, --output/-o, remote,
+# worktree and clone paths), never a network remote.
+replay_args="$*"
+inside() { case "$1" in */../*|*/..|../*|..) return 1 ;; esac; case "$1" in ${roots.map((entry) => `${shellQuote(entry)}|${shellQuote(entry)}/*`).join("|")}) return 0 ;; esac; return 1; }
 resolve() {
   case "$1" in /*) t="$1" ;; *) t="$dir/$1" ;; esac
   if r=$(cd "$t" 2>/dev/null && pwd -P); then printf '%s' "$r"; return; fi
   if r=$(cd "$(dirname "$t")" 2>/dev/null && pwd -P); then printf '%s/%s' "$r" "$(basename "$t")"; return; fi
+  # Unresolvable: returned raw, and inside() refuses any ".." in it.
   printf '%s' "$t"
 }
 outside() { ${record("git:outside")}; echo "production replay: refused git outside the replay root ($1)" >&2; exit 97; }
-network() { ${record("git:network")}; echo "production replay: refused git toward a network remote" >&2; exit 97; }
+network() { ${record("git:network")}; echo "production replay: refused git toward a network remote ($1)" >&2; exit 97; }
+check() { resolved=$(resolve "$1"); inside "$resolved" || outside "$resolved"; }
 dir=$(pwd -P)
 for value in "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_INDEX_FILE" "$GIT_COMMON_DIR" "$GIT_OBJECT_DIRECTORY"; do
-  if [ -n "$value" ]; then resolved=$(resolve "$value"); inside "$resolved" || outside "$resolved"; fi
+  [ -n "$value" ] && check "$value"
 done
 prev=""
 sub=""
+positional=0
 for arg in "$@"; do
   case "$prev" in
     -C) dir=$(resolve "$arg") ;;
-    --git-dir|--work-tree) resolved=$(resolve "$arg"); inside "$resolved" || outside "$resolved" ;;
+    --git-dir|--work-tree|-o|--output) check "$arg" ;;
+    -c)
+      key=$(printf '%s' "\${arg%%=*}" | tr '[:upper:]' '[:lower:]')
+      value="\${arg#*=}"
+      case "$key" in
+        *.insteadof|*.pushinsteadof|remote.*.url|remote.*.pushurl|core.sshcommand|core.gitproxy) network "$arg" ;;
+        core.hookspath|core.worktree|core.excludesfile|core.attributesfile) [ "$value" = "/dev/null" ] || check "$value" ;;
+      esac ;;
   esac
-  case "$arg" in --git-dir=*|--work-tree=*) resolved=$(resolve "\${arg#*=}"); inside "$resolved" || outside "$resolved" ;; esac
+  case "$arg" in --git-dir=*|--work-tree=*|--output=*) check "\${arg#*=}" ;; esac
   if [ -z "$sub" ]; then
     case "$prev" in -C|-c|--git-dir|--work-tree) ;; *) case "$arg" in -*) ;; *) sub="$arg" ;; esac ;; esac
   else
-    case "$sub" in
-      push|fetch|pull|clone|ls-remote|remote|worktree|submodule|archive)
-        case "$arg" in
-          *://*|git@*:*) network ;;
-          /*) resolved=$(resolve "$arg"); inside "$resolved" || outside "$resolved" ;;
-        esac ;;
+    case "$arg" in -*) ;; *)
+      positional=$((positional + 1))
+      case "$sub" in push|fetch|pull|clone|ls-remote|remote|submodule) case "$arg" in *://*|git@*:*) network "$arg" ;; esac ;; esac
+      case "$sub" in
+        push|fetch|pull|clone|ls-remote)
+          # The remote: a named remote, or a local path that must be inside the root; host:path is the network.
+          if [ "$positional" = 1 ]; then
+            case "$arg" in
+              */*|.*) check "$arg" ;;
+              *:*) network "$arg" ;;
+            esac
+          fi
+          [ "$sub" = clone ] && check "$arg" ;;
+        remote|worktree|submodule|archive|bundle|format-patch)
+          case "$arg" in /*|.*|*/*) check "$arg" ;; esac ;;
+      esac ;;
     esac
   fi
   prev="$arg"
@@ -647,6 +681,9 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (rewrite.remaining.length > 0) {
       throw new Error(`Path rewrite incomplete; refusing to run a tick that could reach a source path: ${JSON.stringify(rewrite.remaining.slice(0, 5))}`);
     }
+    // A live claim names a live host process; it would hold the replay's preservation for its whole lease.
+    const claims = clearPreservationClaims(databaseFile);
+    if (claims > 0) fidelity.push(`${claims} preservation claim(s) from the source were cleared; the replay's own worker claims afresh.`);
     const unconfined = unconfinedPaths(databaseFile, root);
     if (unconfined.length > 0) {
       throw new Error(`Refusing to run: these existing paths in the snapshot are outside the replay root and no mapping covers them: ${unconfined.slice(0, 5).join(", ")}`);
@@ -909,7 +946,7 @@ async function runPrepared(manifestFile: string): Promise<void> {
     try {
       serviced = withDatabase(workspace, (db) => processPreservationRequests(db, workspace));
       if (serviced) {
-        lines.push("(worker) a host operation (preservation, go or enrollment request) is in flight; the managed tick is skipped this iteration");
+        lines.push("(worker) a preservation request is in flight; the managed tick is skipped this iteration (go and enrollment workers are not awaited; their effects surface as late effects)");
       } else {
         const result = withDatabase(workspace, (db) => runManagedProductionTick(db, workspace, {
           profiles: registries.codingAgents.profiles,

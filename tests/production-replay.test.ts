@@ -145,9 +145,23 @@ describe("production replay guards", () => {
     expect(run("git", ["-C", path.join(root, "repo"), "push", "https://github.com/pmark/arcadia.git", "HEAD"]).status).toBe(97);
     // A URL in a commit message is not a remote.
     expect(run("git", ["-C", path.join(root, "repo"), "-c", "user.name=r", "-c", "user.email=r@r", "commit", "-q", "--allow-empty", "-m", "see https://example.com"]).status).toBe(0);
-    expect(existsSync(path.join(outside, ".git"))).toBe(false);
-    expect(effects().filter((effect) => effect.kind.startsWith("git:")).map((effect) => effect.kind))
-      .toEqual(["git:outside", "git:outside", "git:outside", "git:outside", "git:outside", "git:network"]);
+    // Round-2 review bypasses: a ".." path, a relative worktree path, a scp-style remote, --output, path- and URL-valued -c keys.
+    const repo = path.join(root, "repo");
+    expect(run("git", ["-C", repo, "worktree", "add", path.join(root, "..", path.basename(outside), "a", "b")]).status).toBe(97);
+    expect(run("git", ["worktree", "add", path.relative(repo, path.join(outside, "c"))], repo).status).toBe(97);
+    expect(run("git", ["-C", repo, "push", "host.example:repo.git", "HEAD"]).status).toBe(97);
+    expect(run("git", ["-C", repo, "diff", `--output=${path.join(outside, "f")}`]).status).toBe(97);
+    expect(run("git", ["-c", `core.hooksPath=${outside}`, "-C", repo, "status"]).status).toBe(97);
+    expect(run("git", ["-c", "url.https://github.com/.insteadOf=x:", "-C", repo, "status"]).status).toBe(97);
+    expect(run("git", ["-c", "core.hooksPath=/dev/null", "-C", repo, "status"]).status).toBe(0);
+    expect(run("git", ["-C", repo, "worktree", "add", "-q", "-b", "claude/x", path.join(root, "wt")]).status).toBe(0);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(effects().filter((effect) => effect.kind.startsWith("git:")).map((effect) => effect.kind)).toEqual([
+      "git:outside", "git:outside", "git:outside", "git:outside", "git:outside", "git:network",
+      "git:outside", "git:outside", "git:network", "git:outside", "git:outside", "git:network"
+    ]);
+    // The effect names the refused command, not only the directory.
+    expect(effects().find((effect) => effect.kind === "git:network")?.detail).toContain("push https://github.com/pmark/arcadia.git HEAD");
   });
 
   it("refuses and records every GitHub write, a provider, tmux and the network; an unrecorded read is its own kind", () => {
