@@ -110,9 +110,22 @@ describe("Agent Ask isolation", () => {
   });
   it("preserves real index, staged peer changes and HEAD on commit failure", () => {
     const f = fixture(); writeFileSync(path.join(f.candidate, "peer.md"), "peer staged\n"); git(f.candidate, "add", "peer.md");
-    writeFileSync(path.join(f.candidate, "record.md"), "record\n"); git(f.candidate, "config", "user.name", ""); const before = snapshot(f.candidate); const held = reserveAskGitIndex(f.candidate);
+    writeFileSync(path.join(f.candidate, "record.md"), "record\n"); git(f.candidate, "config", "user.name", ""); vi.stubEnv("GIT_AUTHOR_NAME", ""); const before = snapshot(f.candidate); const held = reserveAskGitIndex(f.candidate);
     try { expect(held.commit(["record.md"], "record")).toMatch(/ident/); } finally { held.release(); }
     expect(snapshot(f.candidate)).toEqual(before);
+  });
+  it("commits a governed record as the Arcadia Controller when no identity is resolved, never host git config (#1557)", () => {
+    const f = fixture(); for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) { vi.stubEnv(key, "x"); delete process.env[key]; }
+    writeFileSync(path.join(f.candidate, "record.md"), "record\n");
+    const held = reserveAskGitIndex(f.candidate); try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
+    expect(git(f.candidate, "log", "-1", "--format=%an <%ae>|%cn <%ce>")).toBe("Arcadia Controller <controller@arcadia.local>|Arcadia Controller <controller@arcadia.local>");
+  });
+  it("keeps a resolved agent identity on a governed record commit", () => {
+    const f = fixture(); vi.stubEnv("GIT_AUTHOR_NAME", "Claudia Atlas"); vi.stubEnv("GIT_AUTHOR_EMAIL", "claudia.atlas@agents.arcadia.local");
+    vi.stubEnv("GIT_COMMITTER_NAME", "Claudia Atlas"); vi.stubEnv("GIT_COMMITTER_EMAIL", "claudia.atlas@agents.arcadia.local");
+    writeFileSync(path.join(f.candidate, "record.md"), "record\n");
+    const held = reserveAskGitIndex(f.candidate); try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
+    expect(git(f.candidate, "log", "-1", "--format=%an|%cn")).toBe("Claudia Atlas|Claudia Atlas");
   });
   it("preserves foreign index locks exactly and refuses before work", () => {
     const f = fixture(); const lock = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "index") + ".lock"; writeFileSync(lock, "peer lock"); const before = snapshot(f.candidate);

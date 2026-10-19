@@ -9,8 +9,26 @@ import { preservationProcessLimits } from "../sessions/preservationStages.js";
 import { isolatedGitEnvironment } from "./isolatedGitEnvironment.js";
 export { isolatedGitEnvironment as askGitEnvironment } from "./isolatedGitEnvironment.js";
 
-export function askGit(root: string, args: string[], index?: string, trim = true): string {
-  const env = isolatedGitEnvironment();
+/**
+ * The identity a governed record is committed under when the caller resolved
+ * none (#1557): a worker applying settlement has no agent identity in its
+ * environment, and falling through to host git config would author Arcadia's
+ * own record as the operator. Same identity as every other Controller commit.
+ * A resolved identity (GIT_AUTHOR_* / GIT_COMMITTER_*) always wins.
+ */
+export function controllerIdentityDefaults(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const defaults: Record<string, string> = {
+    GIT_AUTHOR_NAME: "Arcadia Controller",
+    GIT_AUTHOR_EMAIL: "controller@arcadia.local",
+    GIT_COMMITTER_NAME: "Arcadia Controller",
+    GIT_COMMITTER_EMAIL: "controller@arcadia.local"
+  };
+  for (const key of Object.keys(defaults)) if (env[key] !== undefined) delete defaults[key];
+  return defaults;
+}
+
+export function askGit(root: string, args: string[], index?: string, trim = true, extraEnv?: Record<string, string | undefined>): string {
+  const env = { ...isolatedGitEnvironment(), ...extraEnv };
   // core.worktree must name the physical checkout, not an invocation subdirectory.
   let checkout = path.resolve(root);
   for (let current = checkout; ; current = path.dirname(current)) {
@@ -138,8 +156,8 @@ export function reserveAskGitIndex(root: string): { commit: (paths: string[], me
         const tree = askGit(root, ["write-tree"], build);
         if (tree === askGit(root, ["rev-parse", `${head}^{tree}`])) return null;
         // Plumbing intentionally invokes no user hooks: hooks can mutate arbitrary peer checkouts.
-        // Author/committer identity remains inherited from Arcadia's resolved identity environment.
-        const commit = askGit(root, ["commit-tree", tree, "-p", head, "-m", message], build);
+        // A resolved identity in the environment is inherited; otherwise the Arcadia Controller, never host git config (#1557).
+        const commit = askGit(root, ["commit-tree", tree, "-p", head, "-m", message], build, true, controllerIdentityDefaults());
         if (existsSync(index)) copyFileSync(index, reconcile);
         else askGit(root, ["read-tree", head], reconcile);
         for (const entry of entries) {
