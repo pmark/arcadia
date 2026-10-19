@@ -73,6 +73,16 @@ export interface JourneyActivity {
   since: string | null;
 }
 
+/**
+ * Where the Action sits in its Project, from the checked-in documents: the
+ * Project's goal, outcome and milestone, and the Action's place in its Plan.
+ */
+export interface JourneyContext {
+  project: { name: string; goal: string; outcome: string | null; milestone: string | null } | null;
+  plan: { slug: string; milestone: string | null; active: boolean; position: number | null; total: number; done: number } | null;
+  action: { title: string; why: string | null; status: string } | null;
+}
+
 export interface Journey {
   schema: typeof JOURNEY_SCHEMA;
   generatedAt: string;
@@ -85,6 +95,8 @@ export interface Journey {
   };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
   activity: JourneyActivity;
+  /** Null when the Project's documents could not be read (a warning says why). */
+  context: JourneyContext | null;
   /** Chronological. Open obstacles (`kind: "obstacle"`) still block the way ahead. */
   events: JourneyEvent[];
   /** Where the rover is now; null once the destination is reached. */

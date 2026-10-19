@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
-import { currentActionOf, gitIntegration } from "../src/commands/journey.js";
+import { currentActionOf, gitIntegration, journeyContext } from "../src/commands/journey.js";
 import { classifyObstacle } from "../src/journey/classify.js";
 import { deriveJourney, firstLine } from "../src/journey/derive.js";
 import { applyInitialSchema } from "../src/db/schema.js";
@@ -326,6 +326,32 @@ describe("gitIntegration", () => {
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
+  });
+});
+
+describe("journeyContext", () => {
+  const planAction = (id: string, status: string, why: string | null = null) => ({ id, title: `Do ${id}`, status, why, milestone: null }) as never;
+  const documents = {
+    slug: "demo",
+    project: { slug: "demo", name: "Demo", goal: "Ship it.", outcome: "Shipped.", milestone: "M1", activePlan: "p2" } as never,
+    plans: [
+      { slug: "p1", milestone: "M0", actions: [planAction("a", "done")] } as never,
+      { slug: "p2", milestone: null, actions: [planAction("x", "done"), planAction("y", "done"), planAction("z", "open", "Because.")] } as never
+    ]
+  };
+
+  it("places the Action in the Plan it ran under, else the active one, with the Project's goal and milestone", () => {
+    expect(journeyContext(documents, null, "z")).toEqual({
+      project: { name: "Demo", goal: "Ship it.", outcome: "Shipped.", milestone: "M1" },
+      plan: { slug: "p2", milestone: "M1", active: true, position: 3, total: 3, done: 2 },
+      action: { title: "Do z", why: "Because.", status: "open" }
+    });
+    expect(journeyContext(documents, "p1", "a").plan).toEqual({ slug: "p1", milestone: "M0", active: false, position: 1, total: 1, done: 1 });
+  });
+
+  it("finds the Plan that holds the Action when no Plan is known, and says nothing of an unknown Action", () => {
+    expect(journeyContext({ ...documents, project: null }, null, "a").plan?.slug).toBe("p1");
+    expect(journeyContext(documents, null, "nope")).toMatchObject({ plan: { slug: "p2", position: null }, action: null });
   });
 });
 

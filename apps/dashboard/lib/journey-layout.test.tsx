@@ -16,6 +16,7 @@ function journey(overrides: Partial<Journey> = {}): Journey {
     generatedAt: "2026-10-19T16:20:00.000Z",
     action: { key: "arcadia/demo", project: "arcadia", plan: "plan", id: "demo", title: "Demo" },
     destination: { label: "PR merged", reached: false, at: null, ref: pr("1577") },
+    context: null,
     activity: { phase: "repairing", headline: "Under repair: round 2 of 3", detail: "Session s4 is fixing the failed code-review.", since: "2026-10-19T16:20:00.000Z" },
     events: [
       event("launch", "launched", "2026-10-18T21:48:00.000Z"),

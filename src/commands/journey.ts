@@ -9,7 +9,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { projectRepositoryRoot } from "../scheduling/schedule.js";
 import { deriveJourney, splitActionKey, type IntegrationLookup } from "../journey/derive.js";
-import type { Journey, JourneyEvent } from "../journey/schema.js";
+import type { Journey, JourneyContext, JourneyEvent } from "../journey/schema.js";
 
 /**
  * `arcadia journey <project>/<action>`: one Action's rover journey (past,
@@ -30,8 +30,21 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const data = withReadOnlyDatabase(workspacePath, (db) => {
     const [project, action] = splitActionKey(options.actionKey);
-    const actionKey = action === CURRENT ? `${getProjectBySlug(db, project)?.slug ?? project}/${currentActionOf(db, project)}` : options.actionKey;
-    return deriveJourney(db, actionKey, options.now ?? new Date(), { integration: gitIntegration });
+    const current = action === CURRENT;
+    // `current` needs the documents; any other key reads them only for context, and does without when they cannot be read.
+    let documents: ProjectDocuments | null = null;
+    let contextWarning: string | null = null;
+    try {
+      documents = readProjectDocuments(db, project);
+    } catch (error) {
+      if (current) throw error;
+      contextWarning = `No Project context: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    const actionKey = current && documents ? `${documents.slug}/${currentActionIn(documents)}` : options.actionKey;
+    const journey = deriveJourney(db, actionKey, options.now ?? new Date(), { integration: gitIntegration });
+    journey.context = documents ? journeyContext(documents, journey.action.plan, journey.action.id) : null;
+    if (contextWarning) journey.warnings.push(contextWarning);
+    return journey;
   });
   return createSuccess({ command: "journey", workspace: workspacePath, data, warnings: data.warnings });
 }
@@ -39,22 +52,66 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
 /** The action segment that means "the Project's current Action" (so an Action literally named `current` is reachable only through the pointer). */
 export const CURRENT = "current";
 
-/** The Project's `current_action` pointer, or its active Plan's; read-only. */
-export function currentActionOf(db: Database.Database, projectSlug: string): string {
+/** A Project's checked-in documents, read the way the scheduler reads them; read-only. */
+export interface ProjectDocuments {
+  /** The Project record's own slug: the lookup ignores case, the documents do not. */
+  slug: string;
+  project: ProjectDoc | null;
+  plans: PlanDoc[];
+}
+
+export function readProjectDocuments(db: Database.Database, projectSlug: string): ProjectDocuments {
   const project = getProjectBySlug(db, projectSlug);
   if (!project) throw validationError(`No Project "${projectSlug}" in this workspace.`);
   const root = projectRepositoryRoot(db, project);
-  if (!root) throw validationError(`Project "${projectSlug}" has no usable repository path, so its current Action cannot be read.`);
-  // The record's own slug: the lookup above ignores case, the documents do not.
+  if (!root) throw validationError(`Project "${projectSlug}" has no usable repository path, so its documents cannot be read.`);
   const slug = project.slug ?? projectSlug;
   const docs = discoverDocs(root).docs;
-  const projectDoc = docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === slug) ?? null;
-  const plan = projectDoc?.activePlan
-    ? docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === slug && doc.slug === projectDoc.activePlan) ?? null
-    : null;
-  const current = projectDoc?.currentAction ?? plan?.currentAction ?? null;
-  if (!current) throw validationError(`Project "${projectSlug}" has no current Action.`);
+  return {
+    slug,
+    project: docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === slug) ?? null,
+    plans: docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === slug)
+  };
+}
+
+/** The Project's `current_action` pointer, or its active Plan's. */
+export function currentActionIn(documents: ProjectDocuments): string {
+  const active = documents.plans.find((plan) => plan.slug === documents.project?.activePlan) ?? null;
+  const current = documents.project?.currentAction ?? active?.currentAction ?? null;
+  if (!current) throw validationError(`Project "${documents.slug}" has no current Action.`);
   return current;
+}
+
+export function currentActionOf(db: Database.Database, projectSlug: string): string {
+  return currentActionIn(readProjectDocuments(db, projectSlug));
+}
+
+/**
+ * Where the Action sits in its Project: the Project's goal, outcome and
+ * milestone, and the Action's place in its Plan (the Plan the Sessions ran
+ * under, else the active one).
+ */
+export function journeyContext(documents: ProjectDocuments, planSlug: string | null, actionId: string): JourneyContext {
+  const project = documents.project;
+  const plan = documents.plans.find((candidate) => candidate.slug === (planSlug ?? project?.activePlan))
+    ?? documents.plans.find((candidate) => candidate.actions.some((action) => action.id === actionId))
+    ?? null;
+  const index = plan ? plan.actions.findIndex((action) => action.id === actionId) : -1;
+  const action = plan && index >= 0 ? plan.actions[index] : null;
+  return {
+    project: project ? { name: project.name, goal: project.goal, outcome: project.outcome, milestone: project.milestone } : null,
+    plan: plan
+      ? {
+          slug: plan.slug,
+          milestone: action?.milestone ?? plan.milestone ?? project?.milestone ?? null,
+          active: plan.slug === project?.activePlan,
+          position: index >= 0 ? index + 1 : null,
+          total: plan.actions.length,
+          done: plan.actions.filter((candidate) => candidate.status === "done").length
+        }
+      : null,
+    action: action ? { title: action.title, why: action.why, status: action.status } : null
+  };
 }
 
 const GLYPH: Record<JourneyEvent["kind"], string> = { launch: "•", victory: "◆", cleared: "△", obstacle: "▲", gate: "○", now: "◉" };
