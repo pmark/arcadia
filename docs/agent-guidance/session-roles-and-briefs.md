@@ -19,6 +19,8 @@ The registered IDs are `lead`, `planner`, `plan-critic`, `implementer`,
 Reviewer must resolve to plan-critic, code-reviewer or qa for the actual task.
 Replayer is a deterministic script, not a registered role. Observer automation
 remains deferred. Supervisor is a relationship, not an eighth role.
+Process Critic is a plan-critic specialization, not an eighth role.
+Read [its standing brief](process-critic-brief.md) before use.
 
 Decision 0112 allows the Lead to do routine development. Lead and implementer
 never write concurrently. Native-app sessions retain their scoped Lead/Driver
