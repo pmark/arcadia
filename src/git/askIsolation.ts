@@ -16,8 +16,8 @@ export { isolatedGitEnvironment as askGitEnvironment } from "./isolatedGitEnviro
  * own record as the operator. Same identity as every other Controller commit.
  * A resolved identity (GIT_AUTHOR_* / GIT_COMMITTER_*) always wins.
  */
-export function controllerIdentityDefaults(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const defaults: NodeJS.ProcessEnv = {
+export function controllerIdentityDefaults(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const defaults: Record<string, string> = {
     GIT_AUTHOR_NAME: "Arcadia Controller",
     GIT_AUTHOR_EMAIL: "controller@arcadia.local",
     GIT_COMMITTER_NAME: "Arcadia Controller",
