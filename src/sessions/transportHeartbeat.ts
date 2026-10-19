@@ -32,10 +32,18 @@ export function readTransportHeartbeat(workspace: string): TransportHeartbeatRea
   return JSON.parse(readFileSync(path.join(workspace, HEARTBEAT_FILE), "utf8")) as TransportHeartbeatReading;
 }
 
-export function preservationTransportReady(workspace: string): boolean {
+/**
+ * Extra age a launch preflight tolerates (#1558). The worker re-stamps every
+ * 5s, so a heartbeat just past the limit means one delayed tick on a loaded
+ * host, not a dead worker. Only the launch preflight passes it; the broker
+ * and `worker status` keep the strict window.
+ */
+export const LAUNCH_PREFLIGHT_JITTER_MS = 15_000;
+
+export function preservationTransportReady(workspace: string, graceMs = 0): boolean {
   try {
     const value = readTransportHeartbeat(workspace);
-    return value.schema === "arcadia-preservation-transport-v1" && Date.now() - value.at >= 0 && Date.now() - value.at < TRANSPORT_FRESHNESS_MS;
+    return value.schema === "arcadia-preservation-transport-v1" && Date.now() - value.at >= 0 && Date.now() - value.at < TRANSPORT_FRESHNESS_MS + graceMs;
   } catch { return false; }
 }
 
@@ -60,10 +68,10 @@ export type AgentGoTransportState = "ready" | "busy" | "unavailable";
  * the go route, to be within the same freshness window. A fresh heartbeat with a
  * stale `goRequestsAt` is `busy`, not `ready`.
  */
-export function agentGoTransportState(workspace: string): AgentGoTransportState {
+export function agentGoTransportState(workspace: string, graceMs = 0): AgentGoTransportState {
   let heartbeat: TransportHeartbeatReading;
   try {
-    if (!preservationTransportReady(workspace)) return "unavailable";
+    if (!preservationTransportReady(workspace, graceMs)) return "unavailable";
     heartbeat = readTransportHeartbeat(workspace);
   } catch { return "unavailable"; }
   if (heartbeat.goRequests !== true || typeof heartbeat.goRequestsAt !== "number") return "unavailable";

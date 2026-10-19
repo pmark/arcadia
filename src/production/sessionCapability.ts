@@ -2,7 +2,7 @@ import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
+import { LAUNCH_PREFLIGHT_JITTER_MS, agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
 
 /**
  * An environment wall is a missing capability a coding Session needs to finish
@@ -86,9 +86,9 @@ export function probeWorkerCapability(workspace: string, profileSandbox?: string
   } catch (error) {
     walls.push({ wallClass: "workspace_write", evidence: clip(error instanceof Error ? error.message : String(error)), remedy: WALL_REMEDY.workspace_write });
   }
-  if (!preservationTransportReady(workspace)) {
+  if (!preservationTransportReady(workspace, LAUNCH_PREFLIGHT_JITTER_MS)) {
     walls.push({ wallClass: "preservation", evidence: clip(transportHeartbeatDiagnostic(workspace, "preservation")), remedy: WALL_REMEDY.preservation });
-  } else if (agentGoTransportState(workspace) === "unavailable") {
+  } else if (agentGoTransportState(workspace, LAUNCH_PREFLIGHT_JITTER_MS) === "unavailable") {
     walls.push({ wallClass: "host_validation", evidence: clip(transportHeartbeatDiagnostic(workspace, "go")), remedy: WALL_REMEDY.host_validation });
   }
   return walls;
