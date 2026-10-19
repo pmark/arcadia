@@ -35,7 +35,9 @@
  * pass this check (add Agent Ask data files or archive them, by rename or as a
  * deletion beside a same-Ask archive copy differing only in candidate_revision,
  * append to the Mission Log and move its front-matter `updated:` forward to
- * the date an appended entry heading carries, mark the current Action done and move current_action to any
+ * the date an appended entry heading carries (front matter is inferred from
+ * the hunk's context, so a body line shaped exactly like it within the first
+ * lines would pass too), mark the current Action done and move current_action to any
  * well-formed Action id, which can skip Actions or change which Actions are
  * dependency-ready, and rewrite that same done Action's own `next_action` to
  * its exact canonical completed form naming any Agent Ask id this same patch

@@ -51,7 +51,10 @@ describe("the deterministic patch check on a live review-repair candidate settle
     ["moves updated: backwards", BUMP, "-updated: 2026-10-18\n+updated: 2026-10-17\n"],
     ["bumps updated: to a date no appended entry carries", BUMP, "-updated: 2026-10-18\n+updated: 2026-10-20\n"],
     ["changes another front-matter field beside updated:", " project: arcadia\n-updated", "-project: arcadia\n+project: other\n-updated"],
-    ["replaces an updated: line outside the front matter", "@@ -3,7 +3,7 @@ arcadia: v1", "@@ -2603,7 +2603,7 @@ arcadia: v1"]
+    ["replaces an updated: line outside the front matter", "@@ -3,7 +3,7 @@ arcadia: v1", "@@ -2603,7 +2603,7 @@ arcadia: v1"],
+    ["replaces updated: with prose context around it", " project: arcadia\n-updated", " Project notes follow.\n-updated"],
+    ["replaces updated: with no closing fence after it", "+updated: 2026-10-19\n ---\n", "+updated: 2026-10-19\n ===\n"],
+    ["replaces two updated: lines", " project: arcadia\n-updated: 2026-10-18\n+updated: 2026-10-19\n", "-updated: 2026-10-17\n+updated: 2026-10-19\n-updated: 2026-10-18\n+updated: 2026-10-19\n"]
   ])("still refuses a Mission Log change that %s", (_label, from, to) => {
     expect(classOf(edit(from, to))["MISSION_LOG.md"]).toMatchObject({ class: "authority", reason: expect.stringContaining("only be appended to") });
   });
@@ -70,8 +73,9 @@ describe("the deterministic patch check on a live review-repair candidate settle
     expect(classOf(bumpOnly)["MISSION_LOG.md"]).toMatchObject({ class: "authority", reason: expect.stringContaining("only be appended to") });
   });
 
-  it("still refuses the repair draft's deletion when its archive copy is not the same Ask", () => {
-    // Any byte change breaks the archive copy's blob id, so its content is no longer proven.
+  it("still refuses the repair draft's deletion when its archive copy's content is not proven", () => {
+    // Any byte change breaks the archive copy's blob id, so its content is no longer proven; the
+    // same-Ask comparison itself is pinned by the review-repair suite's split-altered case.
     const forged = edit('"candidate_revision":"f3abf652f420ffe0564ae644e2f86c40b62635e8"',
       '"candidate_revision":"f3abf652f420ffe0564ae644e2f86c40b62635e8","approved":"yes"');
     expect(classOf(forged)[DRAFT]).toMatchObject({ class: "authority" });
