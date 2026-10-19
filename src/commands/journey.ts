@@ -2,7 +2,8 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { deriveJourney, splitActionKey } from "../journey/derive.js";
+import { execFileSync } from "node:child_process";
+import { deriveJourney, splitActionKey, type IntegrationLookup } from "../journey/derive.js";
 import type { Journey, JourneyEvent } from "../journey/schema.js";
 
 /**
@@ -18,7 +19,7 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
     throw validationError(error instanceof Error ? error.message : String(error));
   }
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withReadOnlyDatabase(workspacePath, (db) => deriveJourney(db, options.actionKey, options.now ?? new Date()));
+  const data = withReadOnlyDatabase(workspacePath, (db) => deriveJourney(db, options.actionKey, options.now ?? new Date(), { integration: gitIntegration }));
   return createSuccess({ command: "journey", workspace: workspacePath, data, warnings: data.warnings });
 }
 
@@ -40,3 +41,35 @@ function line(event: JourneyEvent): string {
   const tag = event.class ? ` [${event.class}]` : "";
   return `${GLYPH[event.kind]} ${event.at.slice(0, 16).replace("T", " ")}  ${event.label}${tag} — ${event.detail}`;
 }
+
+/**
+ * Read-only local Git: is `head` in the repository's local base branch, and
+ * which first-parent commit brought it there? No fetch and no network: the
+ * worker's base-branch sync keeps the local branch current. A squash or
+ * rebase merge never makes the head an ancestor, so such an arrival is only
+ * seen through the worker's own merge record. Returns null when the head is
+ * not in the base branch; throws when Git itself cannot answer.
+ */
+export const gitIntegration: IntegrationLookup = ({ repositoryPath, head, baseBranch }) => {
+  const git = (args: string[]) => execFileSync("git", ["-C", repositoryPath, ...args], {
+    encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10_000, maxBuffer: 64 * 1024 * 1024
+  }).trim();
+  const base = `refs/heads/${baseBranch}`;
+  try {
+    git(["merge-base", "--is-ancestor", head, base]);
+  } catch (error) {
+    // Exit 1 is Git's "not an ancestor"; anything else is Git failing to answer.
+    if ((error as { status?: number }).status === 1) return null;
+    throw new Error(`git merge-base in ${repositoryPath} failed: ${String((error as { stderr?: unknown }).stderr ?? error).trim()}`, { cause: error });
+  }
+  // The oldest first-parent commit of the base that descends from head is the
+  // one that landed it. It is among head's descendants, so the walk is bounded
+  // by their count rather than by the length of the base's history.
+  const descendants = new Set(git(["rev-list", "--ancestry-path", `${head}..${base}`]).split("\n").filter(Boolean));
+  let commit = head;
+  for (const candidate of git(["rev-list", "--first-parent", `--max-count=${descendants.size + 1}`, base]).split("\n")) {
+    if (!descendants.has(candidate)) break;
+    commit = candidate;
+  }
+  return { commit, at: new Date(git(["log", "-1", "--format=%cI", commit])).toISOString() };
+};

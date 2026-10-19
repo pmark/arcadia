@@ -431,7 +431,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "time list": ALLOWED,
   activity: ALLOWED,
   todo: exempt("Reads the resolved workspace database read-only and the Projects' checked-in Decisions; writes and records nothing."),
-  journey: exempt("Reads the resolved workspace database read-only for one Action's rover journey; writes and records nothing (the dashboard polls it)."),
+  journey: exempt("Reads the resolved workspace database read-only and the Action's repository with read-only Git for one rover journey; writes and records nothing (the dashboard polls it)."),
   timeline: exempt("Reads the resolved workspace database read-only and its repositories with read-only Git; writes and records nothing."),
   "mission-control overview": ALLOWED,
   "mission-control node": ALLOWED,
