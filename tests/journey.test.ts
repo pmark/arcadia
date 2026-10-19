@@ -347,6 +347,8 @@ describe("journeyContext", () => {
       action: { title: "Do z", why: "Because.", status: "open" }
     });
     expect(journeyContext(documents, "p1", "a").plan).toEqual({ slug: "p1", milestone: "M0", active: false, position: 1, total: 1, done: 1 });
+    // No Session yet: the Plan that holds the Action, not the active one.
+    expect(journeyContext(documents, null, "a")).toMatchObject({ plan: { slug: "p1", position: 1 }, action: { title: "Do a" } });
   });
 
   it("finds the Plan that holds the Action when no Plan is known, and says nothing of an unknown Action", () => {

@@ -89,12 +89,16 @@ export function currentActionOf(db: Database.Database, projectSlug: string): str
 /**
  * Where the Action sits in its Project: the Project's goal, outcome and
  * milestone, and the Action's place in its Plan (the Plan the Sessions ran
- * under, else the active one).
+ * under, else the Plan that holds it, else the active one).
  */
 export function journeyContext(documents: ProjectDocuments, planSlug: string | null, actionId: string): JourneyContext {
   const project = documents.project;
-  const plan = documents.plans.find((candidate) => candidate.slug === (planSlug ?? project?.activePlan))
-    ?? documents.plans.find((candidate) => candidate.actions.some((action) => action.id === actionId))
+  // The Plan the Sessions ran under; else the Plan holding the Action (the active one first); else the active Plan.
+  const holds = (candidate: PlanDoc) => candidate.actions.some((action) => action.id === actionId);
+  const activePlan = documents.plans.find((candidate) => candidate.slug === project?.activePlan) ?? null;
+  const plan = (planSlug ? documents.plans.find((candidate) => candidate.slug === planSlug) : undefined)
+    ?? (activePlan && holds(activePlan) ? activePlan : documents.plans.find(holds))
+    ?? activePlan
     ?? null;
   const index = plan ? plan.actions.findIndex((action) => action.id === actionId) : -1;
   const action = plan && index >= 0 ? plan.actions[index] : null;

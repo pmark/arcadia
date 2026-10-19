@@ -20,10 +20,7 @@ export default async function JourneyPage({ params }: { params: Promise<{ projec
   const { project, action } = await params;
   // The North Star and its gates give the trip its context; the page stands without them,
   // and never waits on them longer than PATH_WAIT_MS.
-  const pathRead = Promise.race([
-    loadPathBrief().then((response) => response.data, () => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), PATH_WAIT_MS))
-  ]);
+  const pathRead = withinMs(loadPathBrief().then((response) => response.data, () => null), PATH_WAIT_MS);
   const loaded = await loadJourney(project, action).then(
     (response) => ({ journey: response.data, error: null }),
     (error: unknown) => ({ journey: null, error: error instanceof ArcadiaCliError || error instanceof Error ? error.message : String(error) })
@@ -43,4 +40,13 @@ export default async function JourneyPage({ params }: { params: Promise<{ projec
       <main className="mx-auto w-full max-w-4xl px-4 pb-10 pt-7">{content}</main>
     </div>
   );
+}
+
+/** `promise`, or null once `ms` pass first; the timer is cleared whichever wins. */
+function withinMs<T>(promise: Promise<T | null>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
