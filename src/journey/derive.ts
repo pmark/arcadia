@@ -35,7 +35,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   const has = (table: string) => tableExists(db, table);
 
   const sessions = has("agent_sessions")
-    ? (db.prepare(`SELECT id, plan_slug, work_item_id, repository_path, status, branch, prepared_at, started_at, ended_at
+    ? (db.prepare(`SELECT id, plan_slug, work_item_id, repository_path, base_revision, status, branch, prepared_at, started_at, ended_at
         FROM agent_sessions WHERE project_slug = ? AND action_id = ? AND is_simulated = 0
         ORDER BY prepared_at, id`).all(project, actionId) as SessionRow[])
     : [];
@@ -205,10 +205,15 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
 
   // A head merged any other way (the operator's merge, a fast-forward) is
   // already in the base branch: the destination is reached all the same.
-  if (merged === null && latestHead && latestSession && deps.integration) {
+  // A head equal to the Session's own base revision changed nothing and proves no arrival.
+  if (merged === null && latestHead && latestSession && latestHead !== latestSession.base_revision && deps.integration) {
     const baseBranch = preservations.at(-1)?.base_branch ?? "main";
-    const integrated = deps.integration({ repositoryPath: latestSession.repository_path, head: latestHead, baseBranch });
-    if (integrated) merged = { at: integrated.at, ref: prByHead.get(latestHead) ?? sessionPr(latestSession.id) };
+    try {
+      const integrated = deps.integration({ repositoryPath: latestSession.repository_path, head: latestHead, baseBranch });
+      if (integrated) merged = { at: integrated.at, ref: prByHead.get(latestHead) ?? sessionPr(latestSession.id) };
+    } catch (error) {
+      warnings.push(`Could not tell whether ${short(latestHead)} reached ${baseBranch}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   // Once there, every obstacle met on the way was got past.
   const arrival = merged;
@@ -429,7 +434,7 @@ function tableExists(db: Database.Database, table: string): boolean {
   return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== undefined;
 }
 
-interface SessionRow { id: string; plan_slug: string; work_item_id: string; repository_path: string; status: string; branch: string; prepared_at: string; started_at: string | null; ended_at: string | null }
+interface SessionRow { id: string; plan_slug: string; work_item_id: string; repository_path: string; base_revision: string; status: string; branch: string; prepared_at: string; started_at: string | null; ended_at: string | null }
 interface PreservationRow { branch: string; base_branch: string; commit_sha: string; pull_request_number: number | null; pull_request_url: string | null; created_at: string }
 interface StepRow { request_id: string; session_id: string; target_head: string; pull_request_url: string; failures: number; total_failures: number; failure_step: string | null; last_error: string | null; last_outcome_json: string | null; created_at: string; updated_at: string }
 interface RepairRow { request_id: string; policy_epoch: number; round: number; failed_session_id: string; failed_head: string; pull_request_url: string | null; role: string; verdict: string; summary: string; repair_session_id: string | null; outcome: string; reason: string | null; created_at: string; updated_at: string; closed_at: string | null }

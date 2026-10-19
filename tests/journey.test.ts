@@ -172,9 +172,20 @@ describe("deriveJourney", () => {
     expect(journey.ahead).toEqual([]);
   });
 
-  it("stays on the way when the head is not in the base branch", () => {
+  it("stays on the way when the head is not in the base branch, and warns when Git cannot answer", () => {
     seedPath();
     expect(deriveJourney(db, KEY, NOW, { integration: () => null }).destination.reached).toBe(false);
+    const failed = deriveJourney(db, KEY, NOW, { integration: () => { throw new Error("not a git repository"); } });
+    expect(failed.destination.reached).toBe(false);
+    expect(failed.warnings).toEqual([expect.stringContaining("not a git repository")]);
+  });
+
+  it("never counts a head equal to the Session's base revision as an arrival", () => {
+    seedPath();
+    db.prepare("UPDATE agent_sessions SET base_revision = ? WHERE id = 's3'").run(HEAD.c);
+    let asked = false;
+    expect(deriveJourney(db, KEY, NOW, { integration: () => { asked = true; return { commit: HEAD.c, at: "2026-10-01T00:00:00.000Z" }; } }).destination.reached).toBe(false);
+    expect(asked).toBe(false);
   });
 
   it("returns an empty journey for an Action that never launched", () => {
@@ -233,10 +244,23 @@ describe("gitIntegration", () => {
       git(["merge", "-q", "--no-ff", "-m", "Merge candidate", "candidate"], "2026-10-19T12:00:00Z");
       const landing = git(["rev-parse", "HEAD"]);
       writeFileSync(path.join(repo, "d"), "d"); git(["add", "d"]); git(["commit", "-qm", "later"], "2026-10-19T13:00:00Z");
+      // A squash merge lands the change but never the head itself.
+      git(["checkout", "-qb", "squashed", "main"]);
+      writeFileSync(path.join(repo, "e"), "e"); git(["add", "e"]); git(["commit", "-qm", "squash me"]);
+      const squashedHead = git(["rev-parse", "HEAD"]);
+      git(["checkout", "-q", "main"]);
+      git(["merge", "-q", "--squash", "squashed"]); git(["commit", "-qm", "Squashed"], "2026-10-19T14:00:00Z");
+      // A fast-forward lands the head as itself.
+      git(["checkout", "-qb", "ff", "main"]);
+      writeFileSync(path.join(repo, "f"), "f"); git(["add", "f"]); git(["commit", "-qm", "ff"], "2026-10-19T15:00:00Z");
+      const ffHead = git(["rev-parse", "HEAD"]);
+      git(["checkout", "-q", "main"]); git(["merge", "-q", "--ff-only", "ff"]);
 
       expect(gitIntegration({ repositoryPath: repo, head, baseBranch: "main" })).toEqual({ commit: landing, at: "2026-10-19T12:00:00.000Z" });
       expect(gitIntegration({ repositoryPath: repo, head: unmerged, baseBranch: "main" })).toBeNull();
-      expect(gitIntegration({ repositoryPath: path.join(repo, "missing"), head, baseBranch: "main" })).toBeNull();
+      expect(gitIntegration({ repositoryPath: repo, head: squashedHead, baseBranch: "main" })).toBeNull();
+      expect(gitIntegration({ repositoryPath: repo, head: ffHead, baseBranch: "main" })).toEqual({ commit: ffHead, at: "2026-10-19T15:00:00.000Z" });
+      expect(() => gitIntegration({ repositoryPath: path.join(repo, "missing"), head, baseBranch: "main" })).toThrow(/merge-base/);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
