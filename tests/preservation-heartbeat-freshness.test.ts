@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ projects: vi.fn(), metadata: vi.fn() }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
+import { probeWorkerCapability } from "../src/production/sessionCapability.js";
 import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../src/sessions/preservationTransport.js";
 
 describe("preservation transport heartbeat freshness", () => {
@@ -35,6 +36,19 @@ describe("preservation transport heartbeat freshness", () => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("launch preflight tolerates tick jitter beyond the limit but still walls a genuinely stale worker (#1558)", () => {
+    processPreservationRequests(db, workspace);
+    const walls = () => probeWorkerCapability(workspace, null).filter((wall) => wall.wallClass === "preservation");
+    expect(walls()).toEqual([]);
+    // 16s old: past the strict limit (a loaded host delayed one 5s refresh) but within normal jitter.
+    vi.setSystemTime(new Date(Date.now() + 16_000));
+    expect(preservationTransportReady(workspace)).toBe(false);
+    expect(walls()).toEqual([]);
+    // A worker that stopped refreshing is still a wall.
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    expect(walls()).toHaveLength(1);
   });
 
   it("re-stamps a fresh at for preservation while go serviceability ages out across a stuck tick", () => {
