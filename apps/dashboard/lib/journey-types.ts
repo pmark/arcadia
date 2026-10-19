@@ -52,12 +52,19 @@ export interface JourneyActivity {
   since: string | null;
 }
 
+export interface JourneyContext {
+  project: { name: string; goal: string; outcome: string | null; milestone: string | null } | null;
+  plan: { slug: string; milestone: string | null; active: boolean; position: number | null; total: number; done: number } | null;
+  action: { title: string; why: string | null; status: string } | null;
+}
+
 export interface Journey {
   schema: "arcadia-journey-v1";
   generatedAt: string;
   action: { key: string; project: string; plan: string | null; id: string; title: string | null };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
   activity: JourneyActivity;
+  context: JourneyContext | null;
   events: JourneyEvent[];
   now: JourneyEvent | null;
   gate: JourneyEvent | null;

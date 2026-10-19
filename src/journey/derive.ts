@@ -316,6 +316,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     action: { key: actionKey, project, plan, id: actionId, title },
     destination,
     activity,
+    context: null,
     events,
     now: nowEvent,
     gate,

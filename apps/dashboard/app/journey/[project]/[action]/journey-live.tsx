@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { JourneyActivityLine, JourneyLegend, JourneyLog, JourneyMap, utcTime } from "../../../../components/journey-map";
+import { JourneyMission } from "../../../../components/journey-mission";
 import type { Journey } from "../../../../lib/journey-types";
+import type { PathBrief } from "../../../../lib/path-types";
+
+/** The North Star moves slowly; its path is refetched far less often than the journey. */
+const PATH_REFRESH_MS = 5 * 60_000;
 
 /**
  * The server-rendered journey, kept current: refetches every
@@ -11,8 +16,32 @@ import type { Journey } from "../../../../lib/journey-types";
  * `follow` is the route's action segment: an Action id, or `current`, which
  * keeps following the Project's current Action as its pointer moves.
  */
-export function JourneyLive({ initial, follow, refreshSeconds }: { initial: Journey; follow: string; refreshSeconds: number }) {
+export function JourneyLive({ initial, initialPath, follow, refreshSeconds }: { initial: Journey; initialPath: PathBrief | null; follow: string; refreshSeconds: number }) {
   const [journey, setJourney] = useState(initial);
+  const [path, setPath] = useState(initialPath);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let last = Date.now();
+    const refresh = () => {
+      if (document.hidden) return;
+      last = Date.now();
+      fetch("/api/path", { cache: "no-store", signal: controller.signal })
+        .then(async (response) => (response.ok ? setPath((await response.json()) as PathBrief) : undefined))
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, PATH_REFRESH_MS);
+    // Back on a tab that was hidden through a refresh: catch up at once.
+    const onVisible = () => {
+      if (!document.hidden && Date.now() - last >= PATH_REFRESH_MS) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
   const [stale, setStale] = useState<string | null>(null);
   const scrolled = useRef(false);
   // The server renders UTC; once in the browser, times read in the viewer's own zone.
@@ -74,6 +103,7 @@ export function JourneyLive({ initial, follow, refreshSeconds }: { initial: Jour
         {journey.destination.reached ? " — reached" : ""}
         <span className="ml-2">· updated {updated}{stale ? ` · refresh failed: ${stale}` : ""}</span>
       </p>
+      <JourneyMission journey={journey} path={path} />
       <JourneyActivityLine journey={journey} formatTime={formatTime} />
       <JourneyMap journey={journey} />
       <JourneyLegend />
