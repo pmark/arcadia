@@ -12,6 +12,7 @@ const REFRESH_SECONDS = 30;
  * the way ahead, rendered on the server from `arcadia journey --json` so the
  * map is complete with JavaScript off, then refreshed every 30 seconds. Pure
  * projection: nothing here writes, and no agent runs per update.
+ * `/journey/<project>/current` follows the Project's current Action.
  */
 export default async function JourneyPage({ params }: { params: Promise<{ project: string; action: string }> }) {
   const { project, action } = await params;
@@ -20,7 +21,7 @@ export default async function JourneyPage({ params }: { params: Promise<{ projec
     (error: unknown) => ({ journey: null, error: error instanceof ArcadiaCliError || error instanceof Error ? error.message : String(error) })
   );
   const content = loaded.journey ? (
-    <JourneyLive initial={loaded.journey} refreshSeconds={REFRESH_SECONDS} />
+    <JourneyLive initial={loaded.journey} follow={action} refreshSeconds={REFRESH_SECONDS} />
   ) : (
     <>
       <h1 className="text-base font-semibold">{action}</h1>

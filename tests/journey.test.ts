@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
-import { gitIntegration } from "../src/commands/journey.js";
+import { currentActionOf, gitIntegration } from "../src/commands/journey.js";
 import { classifyObstacle } from "../src/journey/classify.js";
 import { deriveJourney, firstLine } from "../src/journey/derive.js";
 import { applyInitialSchema } from "../src/db/schema.js";
@@ -261,6 +261,30 @@ describe("gitIntegration", () => {
       expect(gitIntegration({ repositoryPath: repo, head: squashedHead, baseBranch: "main" })).toBeNull();
       expect(gitIntegration({ repositoryPath: repo, head: ffHead, baseBranch: "main" })).toEqual({ commit: ffHead, at: "2026-10-19T15:00:00.000Z" });
       expect(() => gitIntegration({ repositoryPath: path.join(repo, "missing"), head, baseBranch: "main" })).toThrow(/merge-base/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("currentActionOf", () => {
+  const projectDoc = (pointer: string | null) => `---\narcadia: v1\ntype: project\nslug: demo\nname: Demo\nstatus: active\ngoal: Demo goal\nupdated: 2026-10-19\nactive_plan: demo-plan\n${pointer ? `current_action: ${pointer}\n` : ""}---\n\n# Demo\n`;
+  const planDoc = (pointer: string) => `---\narcadia: v1\ntype: plan\nslug: demo-plan\nproject: demo\nstatus: active\nactions:\n  - id: a1\n    title: First\n    status: done\n  - id: a2\n    title: Second\n    status: open\ncurrent_action: ${pointer}\n---\n\n# Demo plan\n`;
+
+  it("follows the Project's pointer, and refuses a Project with no pointer or no record", () => {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "journey-current-"));
+    try {
+      mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
+      writeFileSync(path.join(repo, "docs", "plans", "demo-plan.md"), planDoc("a1"));
+      writeFileSync(path.join(repo, "PROJECT.md"), projectDoc("a2"));
+      insert("projects", { id: "project-demo", slug: "demo", name: "Demo", mission: "m", status: "active", created_at: NOW.toISOString(), updated_at: NOW.toISOString() });
+      insert("project_metadata", { project_id: "project-demo", repo_path: repo, created_at: NOW.toISOString(), updated_at: NOW.toISOString() });
+
+      expect(currentActionOf(db, "demo")).toBe("a2");
+      // The fixture Plan is not a valid managed Plan, so there is no fallback pointer either.
+      writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(null));
+      expect(() => currentActionOf(db, "demo")).toThrow(/has no current Action/);
+      expect(() => currentActionOf(db, "nosuch")).toThrow(/No Project "nosuch"/);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
