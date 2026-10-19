@@ -120,7 +120,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
 
   // Independent verdicts.
   const attempts = plan && has("session_role_attempts")
-    ? (db.prepare(`SELECT role, ordinal, status, target_head, terminal_receipt_json, created_at, updated_at
+    ? (db.prepare(`SELECT role, ordinal, status, input_revision, target_head, terminal_receipt_json, created_at, updated_at
         FROM session_role_attempts WHERE requirement_id = ? ORDER BY created_at, ordinal`).all(`${project}/${plan}/${actionId}`) as AttemptRow[])
     : [];
   const developments = attempts.filter((attempt) => attempt.role === "development");
@@ -136,7 +136,8 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     }
     if (verdict.status !== "failed") continue;
     const receipt = parseJson(verdict.terminal_receipt_json);
-    const outcome = typeof receipt.verdict === "string" ? receipt.verdict : "fail";
+    // A verdict recorded on a binding that changed while it ran is failed as stale, whatever it said.
+    const outcome = receipt.stale === true ? "stale" : typeof receipt.verdict === "string" ? receipt.verdict : "fail";
     const repair = repairs.find((candidate) => candidate.failed_head === verdict.target_head && candidate.role === verdict.role);
     const detail = `Independent ${verdict.role} attempt ${verdict.ordinal} on ${short(verdict.target_head)}: ${outcome}.${repair ? ` ${repair.summary}` : ""}`;
     const cleared = developments.some((development) => development.created_at > at)
@@ -210,16 +211,21 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   events.sort((left, right) => left.at.localeCompare(right.at) || KIND_ORDER[left.kind] - KIND_ORDER[right.kind]);
 
   // Budgets.
+  // Verdict attempts are budgeted per role per requirement input revision
+  // (MAX_VERDICT_ATTEMPTS); the tightest role is the one that ends the loop.
+  const inputRevision = developments.at(-1)?.input_revision ?? verdicts.at(-1)?.input_revision ?? null;
   const latestVerdictRole = (["code-review", "qa"] as const)
-    .map((role) => verdicts.filter((attempt) => attempt.role === role))
+    .map((role) => verdicts.filter((attempt) => attempt.role === role && attempt.input_revision === inputRevision))
     .sort((left, right) => right.length - left.length)[0] ?? [];
   const reviewAttempts: JourneyBudget = {
     spent: latestVerdictRole.filter((attempt) => attempt.status === "passed" || attempt.status === "failed").length,
     inUse: latestVerdictRole.filter((attempt) => attempt.status === "pending" || attempt.status === "running").length,
     limit: MAX_VERDICT_ATTEMPTS
   };
-  const epoch = repairs.reduce((max, repair) => Math.max(max, repair.policy_epoch), 0);
-  const launchedRepairs = repairs.filter((repair) => repair.policy_epoch === epoch && repair.outcome === "launched");
+  // Repair rounds are counted per production epoch (the run), as launchedRepairRounds does.
+  const policy = has("production_policy") ? (db.prepare("SELECT epoch FROM production_policy WHERE id = 'workspace'").get() as { epoch: number } | undefined) : undefined;
+  const epoch = policy?.epoch ?? repairs.reduce((max, repair) => Math.max(max, repair.policy_epoch), 0);
+  const launchedRepairs = repairs.filter((repair) => repair.policy_epoch === epoch && repair.repair_session_id !== null);
   const repairRounds: JourneyBudget = {
     spent: launchedRepairs.length,
     inUse: launchedRepairs.filter((repair) => sessions.some((session) => session.id === repair.repair_session_id && isLive(session))).length,
@@ -408,7 +414,7 @@ interface PreservationRow { branch: string; commit_sha: string; pull_request_num
 interface StepRow { request_id: string; session_id: string; target_head: string; pull_request_url: string; failures: number; total_failures: number; failure_step: string | null; last_error: string | null; last_outcome_json: string | null; created_at: string; updated_at: string }
 interface RepairRow { request_id: string; policy_epoch: number; round: number; failed_session_id: string; failed_head: string; pull_request_url: string | null; role: string; verdict: string; summary: string; repair_session_id: string | null; outcome: string; reason: string | null; created_at: string; updated_at: string; closed_at: string | null }
 interface ExitRow { session_id: string; outcome: string; reason: string; created_at: string }
-interface AttemptRow { role: string; ordinal: number; status: string; target_head: string | null; terminal_receipt_json: string | null; created_at: string; updated_at: string }
+interface AttemptRow { role: string; ordinal: number; status: string; input_revision: string; target_head: string | null; terminal_receipt_json: string | null; created_at: string; updated_at: string }
 interface AlertRow { id: string; trigger: string; detail: string; status: string; first_seen_at: string }
 interface MergeRow { head: string; pull_request_url: string | null; outcome: string; code: string | null; reason: string; updated_at: string }
 interface EscalationRow { kind: string; message: string; first_detected_at: string; last_seen_at: string }

@@ -47,11 +47,12 @@ function session(id: string, branch: string, at: string, status = "completed"): 
   insert("session_exit_receipts", { session_id: id, outcome: "accepted_completion", reason: "Settled.", created_at: at, next_action_json: "{}" });
 }
 
-function attempt(role: string, ordinal: number, status: string, head: string, at: string, verdict = "fail"): void {
-  insert("session_role_attempts", { requirement_id: REQUIREMENT, input_revision: "rev", role, ordinal, status, target_head: head, terminal_receipt_json: JSON.stringify({ verdict }), created_at: at, updated_at: at, mutation_owner: 0 });
+function attempt(role: string, ordinal: number, status: string, head: string, at: string, verdict = "fail", inputRevision = "rev", extra: Record<string, unknown> = {}): void {
+  insert("session_role_attempts", { requirement_id: REQUIREMENT, input_revision: inputRevision, role, ordinal, status, target_head: head, terminal_receipt_json: JSON.stringify({ verdict, ...extra }), created_at: at, updated_at: at, mutation_owner: 0 });
 }
 
 function seedPath(): void {
+  db.prepare("UPDATE production_policy SET epoch = 2 WHERE id = 'workspace'").run();
   insert("work_items", { id: "work-1", title: "Write the report", raw_input: "x", queue: "work_queue", work_classification: "agent", next_action: "x", status: "done", created_at: NOW.toISOString(), updated_at: NOW.toISOString() });
   insert("production_admissions", { action_key: KEY, project_slug: PROJECT, plan_slug: PLAN, provider: "claude-code-cli", epoch: 1, policy_revision: 1, status: "released", issued_at: "2026-10-18T21:48:00.000Z", expires_at: "2026-10-19T21:48:00.000Z", committed_at: "2026-10-18T21:48:00.000Z" });
 
@@ -136,6 +137,21 @@ describe("deriveJourney", () => {
     expect(journey.now).toBeNull();
     expect(journey.gate).toBeNull();
     expect(journey.ahead).toEqual([]);
+  });
+
+  it("budgets verdict attempts per input revision and labels a stale verdict", () => {
+    seedPath();
+    attempt("code-review", 1, "failed", HEAD.a, "2026-10-17T10:00:00.000Z", "fail", "older-rev");
+    attempt("code-review", 3, "failed", HEAD.c, "2026-10-19T15:55:00.000Z", "passed", "rev", { stale: true });
+    const journey = deriveJourney(db, KEY, NOW);
+    expect(journey.budget.reviewAttempts).toEqual({ spent: 3, inUse: 0, limit: 5 });
+    expect(journey.events.at(-1)).toMatchObject({ kind: "obstacle", label: "review stale" });
+  });
+
+  it("counts repair rounds in the current production epoch only", () => {
+    seedPath();
+    db.prepare("UPDATE production_policy SET epoch = 3 WHERE id = 'workspace'").run();
+    expect(deriveJourney(db, KEY, NOW).budget.repairRounds.spent).toBe(0);
   });
 
   it("returns an empty journey for an Action that never launched", () => {
