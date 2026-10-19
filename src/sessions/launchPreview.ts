@@ -79,12 +79,14 @@ export function buildLaunchPreview(input: {
   adapters: ProviderAdapterRegistry;
   tmux?: Pick<TmuxAdapter, "hasSession">;
   now?: Date;
+  /** A review repair launch only: the failed candidate's own completion Ask ids that must not gate it. */
+  supersededCompletionAskIds?: ReadonlySet<string>;
 }): LaunchPreview {
   const prerequisites: string[] = [];
   const repoRoot = path.resolve(input.repoRoot);
   const now = input.now ?? new Date();
 
-  const transition = resolveProjectTransition({ repoRoot, projectSlug: input.projectSlug, db: input.db, tmux: input.tmux });
+  const transition = resolveProjectTransition({ repoRoot, projectSlug: input.projectSlug, db: input.db, tmux: input.tmux, supersededCompletionAskIds: input.supersededCompletionAskIds });
   if (transition.kind === "wait" || transition.kind === "reconcile") {
     prerequisites.push(`conflicting execution: ${transition.reason}`);
   } else if (transition.kind !== "launch") {

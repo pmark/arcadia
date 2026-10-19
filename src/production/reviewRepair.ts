@@ -590,6 +590,7 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     failedSessionId: session.id,
     actionId: session.action_id,
     failedWorktreePath: session.worktree_path,
+    failedHead: row.failed_head,
     startRevision: row.start_revision,
     baseRevision: session.base_revision,
     supersedesDevelopmentAttempt: failed.developerRequestId

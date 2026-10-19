@@ -119,6 +119,8 @@ export interface GuardedLaunchInput {
     /** The failed candidate's Action: the pointer must still name it, or nothing launches. */
     actionId: string;
     failedWorktreePath: string;
+    /** The failed candidate's head: its own completion Ask is read from the history it added to the base. */
+    failedHead: string;
     startRevision: string;
     baseRevision: string;
     supersedesDevelopmentAttempt: string;
@@ -255,7 +257,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     profiles: input.profiles,
     adapters: input.adapters,
     tmux,
-    now
+    now,
+    ...(input.repair ? { supersededCompletionAskIds: candidateCompletionAskIds(repoRoot, input.repair.baseRevision, input.repair.failedHead, input.repair.actionId) } : {})
   });
 
   if (input.repair && preview.actionId !== input.repair.actionId) {
@@ -1068,6 +1071,33 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
     preview.packet !== null &&
     session.packet_sha256 === preview.packet.sha256
   );
+}
+
+/**
+ * The request ids of every `complete` Ask for `actionId` that the failed
+ * candidate added to the base (its own, and any an earlier repair round
+ * retired), read from the history `baseRevision..failedHead` rather than from
+ * the head tree, which a retirement commit may have emptied. Unreadable
+ * history yields nothing, so the gate stays closed.
+ */
+function candidateCompletionAskIds(repoRoot: string, baseRevision: string, failedHead: string, actionId: string): Set<string> {
+  const ids = new Set<string>();
+  const log = tryGit(repoRoot, ["log", "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
+  if (!log) return ids;
+  let commit = "";
+  for (const line of log.split("\n")) {
+    if (line.startsWith("@")) { commit = line.slice(1).trim(); continue; }
+    const file = line.trim();
+    if (!file || !commit || !/\.ya?ml$/.test(file)) continue;
+    const content = tryGit(repoRoot, ["show", `${commit}:${file}`]);
+    if (content === null) continue;
+    try {
+      const ask = normalizeAgentAsk({ request: content });
+      const target = ask.targetRef;
+      if (ask.intent === "complete" && target !== null && (target === `action/${actionId}` || target.endsWith(`#${actionId}`))) ids.add(ask.requestId);
+    } catch { /* not an Ask */ }
+  }
+  return ids;
 }
 
 /**
