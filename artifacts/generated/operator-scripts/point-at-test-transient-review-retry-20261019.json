@@ -1,0 +1,31 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "point-at-test-transient-review-retry-20261019",
+  "title": "Move the Arcadia pointer to test-transient-review-retry-after-exhaustion (press AFTER the first-unattended-run amendment, BEFORE the next-run Grant)",
+  "script": "point-at-test-transient-review-retry-20261019.sh",
+  "repeatable": false,
+  "problem": "PROJECT.md and the Plan point at first-unattended-run, which is outside the next-run Grant's scope. If production is activated like that, the scheduler moves the pointer to test-transient-review-retry-after-exhaustion itself with a commit on the local main checkout that no pull request reviews; it then sits in the next candidate's base and breaks that PR's 'touches only' criterion (Process Critic pre-mortem, 2026-10-19).",
+  "desired_effect": "Through the canonical arcadia advance queue make-next (preview, then apply with that exact fingerprint) move both current_action pointers from first-unattended-run to test-transient-review-retry-after-exhaustion, and publish that one make-next commit to origin/main with a normal push, so production starts with nothing to re-point.",
+  "operator_command": "artifacts/generated/operator-scripts/point-at-test-transient-review-retry-20261019.sh run",
+  "authority": {
+    "does": [
+      "Runs only when launched through the operator-action library, with its script and descriptor tracked and unmodified at the main checkout's HEAD, until 2026-10-26",
+      "Requires main clean and level with origin, the Plan active, production Inactive, both pointers on first-unattended-run, and first-unattended-run already depending on the three next-run Actions (the accept-first-unattended-run-depends-on-next-run-actions-20261019 amendment on main)",
+      "Previews make-next for arcadia/test-transient-review-retry-after-exhaustion at the current queue revision, requires exactly first-unattended-run -> test-transient-review-retry-after-exhaustion at main's HEAD, applies with that fingerprint, and checks the commit touches only PROJECT.md and the Plan",
+      "Pushes that one commit to origin main without force and confirms origin carries it; a press after a failed push publishes only that exact recognised commit"
+    ],
+    "never_does": [
+      "Settle or amend any Ask, Action, Decision or queue order, or edit a document by hand",
+      "Activate production, start or stop a Session, restart a service, or force-push"
+    ]
+  },
+  "success": {
+    "effect": "PROJECT.md and the Plan name test-transient-review-retry-after-exhaustion on origin/main; first-unattended-run waits for the three next-run Actions.",
+    "next": "Press grant-production-unattended-claude-next-run-20261019 when ready. Each Action's completion then advances the pointer inside its own pull request."
+  },
+  "failure": {
+    "effect": "Before the apply nothing changes. After the apply, an unconfirmed push leaves the pointer commit on local main only.",
+    "next": "Read the failure handoff. Fix the named condition (press the amendment card first if it says so) and press again; do not press the next-run Grant while origin/main still points at first-unattended-run."
+  },
+  "expires_at": "2026-10-26T00:00:00Z"
+}

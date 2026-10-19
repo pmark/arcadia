@@ -132,7 +132,12 @@ function planDocument(done: string[], missing: string[] = []): string {
   let text = readFileSync(path.join(repoRoot, "docs", "plans", `${PLAN}.md`), "utf8");
   for (const key of ACTIONS) {
     const id = key.slice(key.indexOf("/") + 1);
-    if (missing.includes(key) || text.includes(`  - id: ${id}\n`)) continue;
+    if (missing.includes(key)) {
+      // Hermetic once the amendment is on main: drop the Action the case names as missing.
+      text = text.replace(new RegExp(`  - id: ${id}\\n(?:    .*\\n|      .*\\n)*`), "");
+      continue;
+    }
+    if (text.includes(`  - id: ${id}\n`)) continue;
     text = text.replace("questions: []\n", [
       `  - id: ${id}`, `    title: Implement ${id}.`, "    status: open", "    responsibility: agent", "    effort: session",
       `    next_action: Implement ${id}.`, `    expected_artifact: Evidence satisfying Agent Ask ${id}`, "    clarification: clarified",

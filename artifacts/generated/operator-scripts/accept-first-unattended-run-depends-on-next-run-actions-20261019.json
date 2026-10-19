@@ -1,0 +1,137 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-first-unattended-run-depends-on-next-run-actions-20261019",
+  "title": "Approve: first-unattended-run waits for the three next-run Actions (press BEFORE the next-run Grant)",
+  "script": "accept-first-unattended-run-depends-on-next-run-actions-20261019.sh",
+  "repeatable": false,
+  "problem": "first-unattended-run is queued first and is outside the next-run Grant's scope, and nothing makes it wait for the three in-scope Actions. When one of them completes, the pointer advances onto first-unattended-run, and the Active scheduler then re-points to the next in-scope Action with an unreviewed local commit on main that lands in the next candidate's base and breaks that PR's 'touches only' criterion (Process Critic pre-mortem, NO-GO).",
+  "desired_effect": "Accept Agent Ask amend-first-unattended-run-depends-on-next-run-actions-20261019 and change only first-unattended-run's depends_on, adding test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake and guard-repair-gate-upsert-role to its three existing dependencies (and its source line). Its title, next action, criteria and status, every other Action, the queue order and both current_action pointers stay unchanged. Completing each in-scope Action then advances the pointer to the next in-scope Action inside that Action's own PR; first-unattended-run becomes eligible only after all three are done.",
+  "operator_command": "artifacts/generated/operator-scripts/accept-first-unattended-run-depends-on-next-run-actions-20261019.sh run",
+  "planAmendment": {
+    "schema": "arcadia-plan-amendment-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "47b694bb998241bfa0b7d146f386e2528ca8a77c"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-amend-first-unattended-run-depends-on-next-run-actions-20261019.yaml",
+      "sha256": "dbf6a67f23c0eb47bc9bbfd78c3d77b473c735afdda495030a33633519f161bf",
+      "proposal": "amend-first-unattended-run-depends-on-next-run-actions-20261019"
+    },
+    "settlement": {
+      "requestId": "accept-first-unattended-run-depends-on-next-run-actions-20261019",
+      "disposition": "accepted",
+      "operator": true
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+      "action": "first-unattended-run",
+      "projectUnchanged": {
+        "slug": "arcadia",
+        "active_plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "current_action": "first-unattended-run"
+      },
+      "planUnchanged": {
+        "slug": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "first-unattended-run",
+        "milestone": "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+      },
+      "actionBefore": {
+        "id": "first-unattended-run",
+        "title": "Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.",
+        "expected_artifact": "Evidence satisfying Agent Ask first-unattended-run",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask plan-autonomous-production-on-arcadia-2026-10-14-v2",
+        "why": "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision.",
+        "acceptance_criteria": [
+          "A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.",
+          "The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.",
+          "docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed."
+        ],
+        "depends_on": [
+          "worker-review-and-merge",
+          "production-spend-budget",
+          "credential-preflight"
+        ],
+        "decisions": [],
+        "references": []
+      },
+      "actionAfter": {
+        "id": "first-unattended-run",
+        "title": "Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.",
+        "expected_artifact": "Evidence satisfying Agent Ask first-unattended-run",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-first-unattended-run-depends-on-next-run-actions-20261019",
+        "why": "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision.",
+        "acceptance_criteria": [
+          "A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.",
+          "The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.",
+          "docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed."
+        ],
+        "depends_on": [
+          "worker-review-and-merge",
+          "production-spend-budget",
+          "credential-preflight",
+          "test-transient-review-retry-after-exhaustion",
+          "refresh-decision-0130-status-and-1559-fake",
+          "guard-repair-gate-upsert-role"
+        ],
+        "decisions": [],
+        "references": []
+      },
+      "noChange": [
+        "id",
+        "title",
+        "status",
+        "responsibility",
+        "effort",
+        "next_action",
+        "expected_artifact",
+        "clarification",
+        "confidence",
+        "why",
+        "acceptance_criteria",
+        "decisions",
+        "references"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  },
+  "authority": {
+    "does": [
+      "Through the shared Plan-amendment runner: verify the exact checkout, base, Ask bytes, Project/Plan pointers and the first-unattended-run before-image, then accept this one Ask",
+      "Replace only first-unattended-run's depends_on (adding the three next-run Actions) and its source line, commit that settlement on main and publish it with a normal push",
+      "Keep the runner receipt"
+    ],
+    "never_does": [
+      "Change any other Action, the active Plan, either current_action pointer, the queue order or any Decision",
+      "Activate production, start a Session, move the pointer, settle any other Ask, or force-push"
+    ]
+  },
+  "success": {
+    "effect": "first-unattended-run now depends on the three next-run Actions and is not eligible until they are done. The pointer still names first-unattended-run.",
+    "next": "Press point-at-test-transient-review-retry-20261019 next to move the pointer to the first in-scope Action, then the next-run Grant."
+  },
+  "failure": {
+    "effect": "Any drift in the checkout, Ask bytes, pointers or the Action refuses before settlement; the runner keeps its receipt.",
+    "next": "Read the runner receipt. Drift needs a fresh reviewed descriptor; never retry with edited state, and do not press the next-run Grant until this amendment is on main."
+  }
+}

@@ -280,6 +280,7 @@
   "tests/next-plan-selector-active-plan.test.ts": 0,
   "tests/next-plan-selector-live.test.ts": 0,
   "tests/next-plan-selector.test.ts": 0,
+  "tests/next-run-pointer-preparation-operator-scripts.test.ts": 15,
   "tests/north-star-now.test.ts": 2.5,
   "tests/north-star-path.test.ts": 2.8,
   "tests/notes-to-self.test.ts": 0,
