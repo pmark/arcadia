@@ -227,7 +227,7 @@ const SETTLEMENT_RECORD_PATH =/^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]
 
 /**
  * The candidate's own completion drafts that its settlement commit consumed:
- * a top-level `.arcadia/asks/<file>.yaml` the candidate added after the base
+ * a top-level `.arcadia/asks/agent-ask-<id>.yaml` the candidate added after the base
  * (a sandboxed agent's draft, committed by host preservation) that the
  * settlement commit renames to `.arcadia/asks/archive/<file>.yaml` under the
  * same name, so it is gone at the head. It never reaches the base: only its
@@ -238,9 +238,12 @@ function consumedCompletionDrafts(repoRoot: string, baseRevision: string, parent
   const consumed = new Set<string>();
   const renames = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--find-renames", "--name-status", "--diff-filter=R", parent, head])
     .split("\n").map((line) => line.split("\t")).filter((fields) => fields.length === 3);
+  // Absent at the base tip AND where the candidate branched from it: a draft the
+  // candidate inherited (and main removed later) is not the candidate's own.
+  const mergeBase = git(repoRoot, ["merge-base", baseRevision, parent]).trim();
   for (const [, from, to] of renames) {
-    if (!/^\.arcadia\/asks\/[^/]+\.ya?ml$/.test(from) || to !== `.arcadia/asks/archive/${from.slice(".arcadia/asks/".length)}`) continue;
-    if (tryGit(repoRoot, ["cat-file", "-e", `${baseRevision}:${from}`]) !== null) continue;
+    if (!/^\.arcadia\/asks\/agent-ask-[^/]+\.ya?ml$/.test(from) || to !== `.arcadia/asks/archive/${from.slice(".arcadia/asks/".length)}`) continue;
+    if ([baseRevision, mergeBase].some((revision) => tryGit(repoRoot, ["cat-file", "-e", `${revision}:${from}`]) !== null)) continue;
     if (tryGit(repoRoot, ["cat-file", "-e", `${head}:${from}`]) !== null) continue;
     consumed.add(from);
   }

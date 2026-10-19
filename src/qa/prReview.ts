@@ -1236,6 +1236,8 @@ const NOT_EVERY_CRITERION_PASSED_REASON = "the reviewer did not pass every decla
 export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 /** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */
 export const NOT_APPLICABLE_CHECK_NAME = "Not-applicable claims";
+/** The fixed recommendation of the refused not-applicable finding; the repair loop recognizes that deterministic finding by it. */
+export const REFUSED_NOT_APPLICABLE_RECOMMENDATION = "Judge each refused criterion pass or fail against the patch, or report it not-checked; not-applicable is accepted only for a criterion the change demonstrably cannot affect.";
 
 function evaluateDeterministicEvidence(
   pullRequest: RawPullRequest,
@@ -1373,7 +1375,7 @@ function evaluateDeterministicEvidence(
       severity: "high",
       title: `${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: ${notApplicable.refused.map((claim) => claim.name).join(", ")}`,
       evidence: notApplicable.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" "),
-      recommendation: "Judge each refused criterion pass or fail against the patch, or report it not-checked; not-applicable is accepted only for a criterion the change demonstrably cannot affect."
+      recommendation: REFUSED_NOT_APPLICABLE_RECOMMENDATION
     });
   }
   const acceptedNotApplicable = new Set(notApplicable.accepted);

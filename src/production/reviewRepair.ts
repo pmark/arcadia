@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
-import { NOT_APPLICABLE_CHECK_NAME, REFUSED_NOT_APPLICABLE_FINDING_TITLE, runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
+import { CODE_REVIEW_PR_CRITERIA, NOT_APPLICABLE_CHECK_NAME, QA_PR_REVIEW_CRITERIA, REFUSED_NOT_APPLICABLE_FINDING_TITLE, REFUSED_NOT_APPLICABLE_RECOMMENDATION, runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 import type { AgentSession } from "../sessions/index.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
@@ -96,28 +96,48 @@ function agentChangedPaths(repoRoot: string, from: string, to: string): string[]
 
 const AUTHORITY_TEXT = /\b(authority|authori[sz]ation|approval[- ]boundar|credential|secret|permission|privilege|branch protection)/i;
 
+/** The authority criteria (prReview's VARIANCE_EXCLUDED_CRITERIA minus Correctness): any non-pass of one is never repaired unattended. */
+const AUTHORITY_CRITERION = /^(security and authority|approval boundaries)$/i;
+const isAuthorityCriterion = (name: string) => AUTHORITY_CRITERION.test(name.trim());
+const KNOWN_CRITERIA: ReadonlySet<string> = new Set([...CODE_REVIEW_PR_CRITERIA, ...QA_PR_REVIEW_CRITERIA].map((criterion) => criterion.name));
+
+/**
+ * The criterion names a deterministic refused not-applicable finding refused,
+ * or null when the finding is not that finding. It must be exactly what
+ * src/qa/prReview.ts writes: its title prefix, its fixed recommendation, and
+ * only known criterion names, so a reviewer-authored finding that borrows the
+ * title is judged like any other finding.
+ */
+function refusedNotApplicableCriteria(finding: ReviewRepairFinding): string[] | null {
+  const prefix = `${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: `;
+  if (!finding.title.startsWith(prefix) || finding.recommendation !== REFUSED_NOT_APPLICABLE_RECOMMENDATION) return null;
+  const names = finding.title.slice(prefix.length).split(", ").map((name) => name.trim());
+  return names.length > 0 && names.every((name) => KNOWN_CRITERIA.has(name)) ? names : null;
+}
+
 /**
  * Whether the reviewer flagged the verdict authority-adjacent (Decision 0098:
  * "the review flags authority"): a finding that names authority, credentials
- * or approval boundaries, or ANY failed Security-and-authority or
- * Approval-boundaries check, whatever else failed with it.
+ * or approval boundaries; a deterministic refusal of a not-applicable claim on
+ * Security and authority or Approval boundaries; or ANY non-pass (failed,
+ * not-checked or not-applicable) Security-and-authority or Approval-boundaries
+ * check, whatever else failed with it.
  */
 export function verdictIsAuthorityAdjacent(findings: ReviewRepairFinding[], checks: ReviewRepairCheck[]): string | null {
-  // The deterministic gate's refused not-applicable finding titles itself with
-  // the NAMES of the criteria it refused ("..., Security and authority, ..."):
-  // that list is no authority flag. A failed authority criterion still gates
-  // below, and the candidate's own authority paths gate in candidateChangeGate.
-  const flagged = findings.find((finding) => AUTHORITY_TEXT.test(isRefusedNotApplicableFinding(finding)
-    ? finding.recommendation
-    : `${finding.title} ${finding.recommendation}`));
-  if (flagged) return `the reviewer's finding "${flagged.title}" concerns authority`;
-  const failed = checks.find((check) => /security and authority|approval boundar/i.test(check.name) && check.status === "fail");
-  if (failed) return `the reviewer failed the ${failed.name} criterion`;
+  for (const finding of findings) {
+    const refused = refusedNotApplicableCriteria(finding);
+    if (refused) {
+      // Its title lists criterion names, not the reviewer's words: judge the names.
+      const authority = refused.find(isAuthorityCriterion);
+      if (authority) return `the deterministic patch check refused the reviewer's not-applicable claim on the ${authority} criterion`;
+      continue;
+    }
+    if (AUTHORITY_TEXT.test(`${finding.title} ${finding.recommendation}`)) return `the reviewer's finding "${finding.title}" concerns authority`;
+  }
+  const failed = checks.find((check) => isAuthorityCriterion(check.name) && check.status !== "pass");
+  if (failed) return `the reviewer did not pass the ${failed.name} criterion (${failed.status})`;
   return null;
 }
-
-/** The deterministic patch check's own finding refusing the reviewer's not-applicable claims (src/qa/prReview.ts). */
-const isRefusedNotApplicableFinding = (finding: ReviewRepairFinding) => finding.title.startsWith(`${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: `);
 
 /**
  * Whether a repair Session could change the verdict: some reviewer finding
@@ -126,8 +146,17 @@ const isRefusedNotApplicableFinding = (finding: ReviewRepairFinding) => finding.
  * the candidate's work, so a repair round could only spend a Session on it.
  */
 export function verdictIsRepairable(findings: ReviewRepairFinding[], checks: ReviewRepairCheck[]): boolean {
-  return findings.some((finding) => !isRefusedNotApplicableFinding(finding))
+  return findings.some((finding) => refusedNotApplicableCriteria(finding) === null)
     || checks.some((check) => check.status === "fail" && check.name !== NOT_APPLICABLE_CHECK_NAME);
+}
+
+/** Why an unrepairable verdict ({@link verdictIsRepairable} false) stops the loop. */
+export function unrepairableReason(findings: ReviewRepairFinding[], checks: ReviewRepairCheck[]): string {
+  const refusal = findings.some((finding) => refusedNotApplicableCriteria(finding) !== null)
+    || checks.some((check) => check.name === NOT_APPLICABLE_CHECK_NAME && check.status === "fail");
+  return refusal
+    ? "The verdict's only failure is the deterministic patch check refusing the reviewer's not-applicable claims; a repair Session cannot change the reviewer's claim, so the repair loop stops for the operator."
+    : "The verdict records no reviewer finding or failed criterion a repair could address (an empty or unreadable report, or only not-checked criteria), so the repair loop stops for the operator.";
 }
 
 /**
@@ -253,7 +282,12 @@ function reviewContext(db: Database.Database, receiptJson: string | null): {
       summary: context.summary ?? "(no summary recorded)",
       reportPath: context.reportPath ?? null,
       findings: Array.isArray(context.findings) ? context.findings : [],
-      checks: Array.isArray(context.checks) ? context.checks.filter((check) => check.status !== "pass" && check.status !== "not-applicable") : []
+      // Every non-pass check, except a not-applicable one that is not an authority
+      // criterion: a not-applicable Security-and-authority or Approval-boundaries
+      // check gates (verdictIsAuthorityAdjacent), as it is never variance in prReview.
+      checks: Array.isArray(context.checks)
+        ? context.checks.filter((check) => check.status !== "pass" && (check.status !== "not-applicable" || isAuthorityCriterion(check.name)))
+        : []
     };
   } catch {
     return { verdict, summary: "(the reviewer's report could not be read)", reportPath: null, findings: [], checks: [] };
@@ -405,7 +439,7 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     } else if (gate) {
       outcome = "gated"; reason = `The candidate is on Decision 0098's gate list: ${gate}. The repair loop stops for the operator.`;
     } else if (!verdictIsRepairable(context.findings, context.checks)) {
-      outcome = "gated"; reason = "The verdict's only failure is the deterministic patch check refusing the reviewer's not-applicable claims; a repair Session cannot change the reviewer's claim, so the repair loop stops for the operator.";
+      outcome = "gated"; reason = unrepairableReason(context.findings, context.checks);
     } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
       outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
     }

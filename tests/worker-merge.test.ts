@@ -445,6 +445,53 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(github.mergeCalls).toEqual([]);
   });
 
+  it("still refuses archiving a draft that was on the candidate's merge base, even after main later removed it", () => {
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, DRAFT), ASK);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "a stale draft on main"]);
+    git(repo, ["checkout", "-q", "-b", branch]);
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["rm", "-q", DRAFT]);
+    git(repo, ["commit", "-q", "-m", "main removes the stale draft"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(repo, ["checkout", "-q", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    git(repo, ["mv", DRAFT, `.arcadia/asks/archive/${path.basename(DRAFT)}`]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
+  it("only treats an agent-ask-*.yaml draft as a consumed completion draft", () => {
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "docs/reports"), { recursive: true });
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, SAFE), "feature\n");
+    writeFileSync(path.join(repo, ".arcadia/asks/other.yaml"), ASK);
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    git(repo, ["mv", ".arcadia/asks/other.yaml", ".arcadia/asks/archive/other.yaml"]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+    expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(github.mergeCalls).toEqual([]);
+  });
+
   it("reports a merged PR whose local base could not be synced, without an operator merge command", () => {
     candidate({ [SAFE]: "feature\n" });
     const outcome = merge({ syncFails: true });
