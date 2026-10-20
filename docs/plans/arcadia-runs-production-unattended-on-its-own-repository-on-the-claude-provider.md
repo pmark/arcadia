@@ -268,12 +268,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask guard-repair-gate-upsert-role
     clarification: clarified
     confidence: high
-    source: Agent Ask add-next-unattended-run-actions-20261019
+    source: Agent Ask amend-guard-repair-gate-test-file-20261020
     why: "Issue #1574 item 3: the DO UPDATE can overwrite the summary and reason of a non-gate review-repair row that shares its request id."
     acceptance_criteria:
       - In src/production/reviewRepair.ts, the INSERT INTO production_review_repairs ... ON CONFLICT(request_id) DO UPDATE statement that writes REPAIR_CANDIDATE_GATE_ROLE has a WHERE clause that also requires production_review_repairs.role to equal REPAIR_CANDIDATE_GATE_ROLE.
-      - A hermetic test in tests/review-repair-loop.test.ts seeds a production_review_repairs row with the gate path's request id and a role other than REPAIR_CANDIDATE_GATE_ROLE, runs the gate path, and asserts that row's summary, reason and role are unchanged; the test fails without the guard.
-      - The change touches only src/production/reviewRepair.ts and tests/review-repair-loop.test.ts; the focused vitest run of tests/review-repair-loop.test.ts, pnpm lint, tsc and pnpm build pass.
+      - A hermetic test in tests/review-repair-gate-upsert-role.test.ts seeds a production_review_repairs row with the gate path's request id and a role other than REPAIR_CANDIDATE_GATE_ROLE, runs the gate path, and asserts that row's summary, reason and role are unchanged; the test fails without the guard.
+      - The change touches only src/production/reviewRepair.ts and tests/review-repair-gate-upsert-role.test.ts; the focused vitest run of tests/review-repair-gate-upsert-role.test.ts, pnpm lint, tsc and pnpm build pass.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1574"]
