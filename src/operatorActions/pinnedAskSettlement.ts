@@ -36,7 +36,6 @@ function atomic(file: string, value: unknown): void {
   renameSync(temporary, file);
 }
 
-/** Arcadia's own library, beside this module: the default home for run state of a Project's library. */
 /** Arcadia's checkout root from either src/ (tsx) or dist/src/ (built): the nearest ancestor holding the shared runner. */
 function arcadiaRoot(): string {
   let directory = import.meta.dirname;
@@ -47,6 +46,7 @@ function arcadiaRoot(): string {
     directory = parent;
   }
 }
+/** Arcadia's own library: the default home for run state of a Project's library. */
 const ARCADIA_LIBRARY = path.join(arcadiaRoot(), OPERATOR_LIBRARY_RELATIVE);
 export function arcadiaOwnLibrary(): string { return ARCADIA_LIBRARY; }
 

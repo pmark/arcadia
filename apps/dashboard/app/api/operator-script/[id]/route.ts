@@ -20,7 +20,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (!script) return NextResponse.json({ error: "That operator action is not available." }, { status: 404 });
     return NextResponse.json({ script });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error instanceof OperatorScriptContractError && error.reason === "UNPUBLISHED_PROJECT_ENTRY")) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error instanceof OperatorScriptContractError && ["UNPUBLISHED_PROJECT_ENTRY", "UNSUPPORTED_PROJECT_ENTRY"].includes(error.reason))) {
       return NextResponse.json({ error: "That operator action is not available." }, { status: 404 });
     }
     console.error(`Could not read operator script ${id}.`, error);

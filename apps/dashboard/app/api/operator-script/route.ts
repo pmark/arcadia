@@ -214,8 +214,8 @@ export async function GET() {
         try {
           return await describeScript(key, runReceipts.get(id) ?? null);
         } catch (error) {
-          // A Project's unpublished entry (no matching `project`) is skipped quietly; anything else is logged.
-          if (!(error instanceof OperatorScriptContractError && error.reason === "UNPUBLISHED_PROJECT_ENTRY")) {
+          // A Project's unpublished or unsupported entry is skipped quietly; anything else is logged.
+          if (!(error instanceof OperatorScriptContractError && ["UNPUBLISHED_PROJECT_ENTRY", "UNSUPPORTED_PROJECT_ENTRY"].includes(error.reason))) {
             console.error(`Ignoring invalid operator-script library entry ${key}.`, error);
           }
           return null;
