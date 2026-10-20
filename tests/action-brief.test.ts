@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -183,7 +183,9 @@ describe("renderActionBrief", () => {
       reason: "The Session's drafted complete Ask was not settled: the Action's declared validation did not pass on the candidate. Scope check refused the completion: ..." } });
     expect(resumed).toContain("Revert every change outside the scope that reason names (never widen it)");
 
-    const unscoped = renderActionBrief({ ...input, repoRoot: briefRepo() });
+    // Its own base revision: two fixture repos share a sha only when committed in the same second.
+    const unscopedRepo = briefRepo();
+    const unscoped = renderActionBrief({ ...input, repoRoot: unscopedRepo, baseRevision: head(unscopedRepo) });
     expect(unscoped).not.toContain("Scope — ");
   });
 
@@ -217,10 +219,14 @@ describe("renderActionBrief", () => {
       repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
       worktreePath: repo, branch: `${agent}/define-contract`, agent, baseRevision: head(repo), headless: isHeadless
     });
-    const draftCommand = (text: string): { dir: string; json: string } => {
-      const match = /^ {5}arcadia agent-ask draft --dir '([^']*)' '(.*)'$/m.exec(text);
-      if (!match) throw new Error(`no draft command in brief:\n${text}`);
-      return { dir: match[1], json: match[2].replaceAll("'\\''", "'") };
+    // Codex: one quoted command. Claude (#1619): a JSON line to write with the Write tool, then `draft --file`.
+    const draftCommand = (text: string): { dir: string; json: string; file?: string } => {
+      const inline = /^ {5}arcadia agent-ask draft --dir '([^']*)' '(.*)'$/m.exec(text);
+      if (inline) return { dir: inline[1], json: inline[2].replaceAll("'\\''", "'") };
+      const line = /^ {5}(\{.*\})$/m.exec(text);
+      const command = /^ {5}arcadia agent-ask draft --dir '([^']*)' --file '([^']*)'$/m.exec(text);
+      if (!line || !command) throw new Error(`no draft recipe in brief:\n${text}`);
+      return { dir: command[1], json: line[1], file: command[2] };
     };
 
     it("opens with the in-Session environment probe as the first step when a workspace is given", () => {
@@ -234,17 +240,26 @@ describe("renderActionBrief", () => {
       expect(renderActionBrief(base)).not.toContain("environment probe");
     });
 
-    it("replaces the generic steps 2-3 for headless Claude with the host-owned statement and one exact draft command", () => {
+    it("replaces the generic steps 2-3 for headless Claude with the host-owned statement, the checks' real verifiers and a Write-tool draft", () => {
       const repo = briefRepo();
       const brief = headless(repo, "claude");
       const protocol = brief.slice(brief.indexOf("Completion protocol"));
       expect(protocol).toContain("git add, git commit, git push and arcadia-preserve-broker-claude are host-owned in this Session and");
       expect(protocol).toContain("will be refused. Do not run them or try to change permissions");
-      expect(protocol).toContain("do not write Ask files by hand");
       expect(protocol).not.toContain("If your sandbox cannot commit");
+      // #1619: no instruction to run checks the allow list refuses, and what verifies them instead.
+      expect(protocol).toContain("Test, lint, type-check, build and dependency-setup commands are refused here");
+      expect(protocol).toContain("never write helper scripts or extra files");
+      expect(protocol).toContain("the host runs every test file your criteria name");
+      expect(protocol).toContain("required CI runs lint, tsc and build before anything integrates");
+      expect(protocol).toContain("With your Write tool (never Bash, echo, a heredoc or a script)");
+      expect(protocol).toContain(`add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`);
+      expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
+      expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");
       expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
-      const { dir, json } = draftCommand(protocol);
+      const { dir, json, file } = draftCommand(protocol);
       expect(dir).toBe(repo);
+      expect(file).toBe(`${repo}/.arcadia/asks/agent-ask-complete-define-contract-${head(repo).slice(0, 12)}.yaml`);
       const ask = JSON.parse(json);
       expect(ask).toMatchObject({
         agent_ask: "v1", request_id: `complete-define-contract-${head(repo).slice(0, 12)}`, project: "test-project",
@@ -270,6 +285,25 @@ describe("renderActionBrief", () => {
       expect(headless(repo, "claude", false)).toContain("arcadia-preserve-broker-claude");
       expect(headless(repo, "opencode")).toContain("arcadia-preserve-broker-opencode");
       expect(headless(repo, "opencode")).not.toContain("host-owned in this Session");
+    });
+
+    it("round-trips a criterion with apostrophes: the Write-tool file validates in place with draft --file, quotes intact", () => {
+      const repo = candidateBriefRepo();
+      const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("      - The contract is published.", "      - \"The test named 'issue #1559: a 401 never refreshes' still passes.\""));
+      execFileSync("git", ["-c", "user.email=brief@example.invalid", "-c", "user.name=Brief", "commit", "-qam", "criterion with quotes"], { cwd: repo });
+      const { dir, json, file } = draftCommand(headless(repo, "claude"));
+      const ask = JSON.parse(json) as { evidence: Array<{ criterion: string; note: string }> };
+      expect(ask.evidence[1].criterion).toBe("The test named 'issue #1559: a 401 never refreshes' still passes.");
+      // The exact words the brief recommends, so they must survive inside the one-line JSON.
+      for (const entry of ask.evidence) entry.note = `Inspected git diff; ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`;
+      mkdirSync(path.dirname(file!), { recursive: true });
+      writeFileSync(file!, `${JSON.stringify(ask)}\n`);
+
+      const drafted = runAgentAskDraftCommand({ dir, file: file!, workspace: path.join(repo, "no-workspace") });
+
+      expect(drafted.data.path ?? file).toBe(file);
+      expect(readFileSync(file!, "utf8")).toContain("'issue #1559: a 401 never refreshes'");
     });
 
     it("uses the completion request id the Action text names", () => {
@@ -316,10 +350,14 @@ describe("renderActionBrief", () => {
       if (!line) throw new Error("no draft command");
       const out = execFileSync("sh", ["-c", `arcadia() { for a in "$@"; do printf '%s\\0' "$a"; done; }; ${line}`], { encoding: "utf8" });
       const args = out.split("\0").slice(0, -1);
+      // #1619: the shell sees only the two paths; the criterion travels in the Write-tool JSON line, unquoted.
       expect(args.slice(0, 3)).toEqual(["agent-ask", "draft", "--dir"]);
       expect(args[3]).toBe(tricky);
-      expect(JSON.parse(args[4]).evidence[0].criterion).toBe("The contract doesn't exist yet.");
-      expect(args).toHaveLength(5);
+      expect(args[4]).toBe("--file");
+      expect(args[5]).toBe(`${tricky}/.arcadia/asks/agent-ask-complete-define-contract-${head(repo).slice(0, 12)}.yaml`);
+      expect(args).toHaveLength(6);
+      const jsonLine = /^ {5}(\{.*\})$/m.exec(brief)?.[1];
+      expect(JSON.parse(jsonLine ?? "null").evidence[0].criterion).toBe("The contract doesn't exist yet.");
     });
 
     it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
