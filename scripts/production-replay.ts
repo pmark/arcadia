@@ -121,7 +121,9 @@ export interface ReplayOptions {
   /**
    * SIMULATION ONLY: `gh pr ready`, `ready --undo`, `comment`, `close`, `edit`
    * and `merge` succeed without reaching GitHub; later `gh pr view` reads see
-   * the simulated draft/state. Every other write is still refused.
+   * the simulated draft/state. `gh project item-edit` (the tick's board status
+   * sync) also succeeds, with no board state kept. Every other write is still
+   * refused.
    */
   simulateGithubWrites?: boolean;
 }
@@ -736,6 +738,11 @@ if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "pr" && SI
   effect("simulated:github-write", "gh " + args.join(" "));
   process.exit(0);
 }
+// The tick's board status sync edits a Project item; nothing parses its stdout.
+if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "project" && args[1] === "item-edit") {
+  effect("simulated:github-write", "gh " + args.join(" "));
+  process.exit(0);
+}
 const overlaid = (stdout) => {
   if (args[0] !== "pr" || args[1] !== "view" || !overlayFile) return stdout;
   try {
@@ -964,8 +971,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       fidelity.push(`SIMULATION: reviewer verdicts are simulated as "${options.simulateVerdict}" (--simulate-verdict); they predict what the worker does with such a verdict, not the verdict. \`git remote get-url origin\` in a replay repository answers the source's GitHub URL so the review command can match the PR.`);
     }
     if (options.simulateGithubWrites) {
-      print("SIMULATION: gh pr ready/comment/close/edit/merge succeed without GitHub; later PR reads see the simulated state.");
-      fidelity.push("SIMULATION: pull-request writes (ready, comment, close, edit, merge) were simulated (--simulate-github-writes); GitHub's own response (checks re-running, branch protection, merge conflicts) is not.");
+      print("SIMULATION: gh pr ready/comment/close/edit/merge and gh project item-edit succeed without GitHub; later PR reads see the simulated state.");
+      fidelity.push("SIMULATION: pull-request writes (ready, comment, close, edit, merge) and project item-edit were simulated (--simulate-github-writes); GitHub's own response (checks re-running, branch protection, merge conflicts) is not.");
     }
     // cwd is the replay root, never a checkout: a cwd-relative operation cannot reach the source.
     const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), SCRIPT, "--run-prepared", manifestFile], { cwd: root, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });

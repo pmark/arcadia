@@ -296,6 +296,20 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     expect(effects().map((effect) => effect.kind)).toEqual(["simulated:github-write", "simulated:github-write", "github:write"]);
   });
 
+  it("simulates gh project item-edit as a recorded success and still refuses other project writes", () => {
+    writeFileSync(effectsLog, "");
+    const run = (args: string[], runEnv = env) => spawnSync("gh", args, { cwd: root, env: runEnv, encoding: "utf8" });
+    const edit = ["project", "item-edit", "--project-id", "P", "--id", "I", "--field-id", "F", "--single-select-option-id", "O"];
+    expect(run(edit).status).toBe(0);
+    expect(run(["project", "item-add", "3", "--url", url]).status).toBe(1);
+    expect(run(edit, { ...env, REPLAY_SIMULATE_GH_WRITES: "" }).status).toBe(1);
+    expect(effects()).toEqual([
+      { kind: "simulated:github-write", detail: `gh ${edit.join(" ")}` },
+      { kind: "github:write", detail: expect.stringContaining("project item-add") },
+      { kind: "github:write", detail: expect.stringContaining("project item-edit") }
+    ]);
+  });
+
   it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {
     writeFileSync(effectsLog, "");
     const bare = { PATH: env.PATH };
