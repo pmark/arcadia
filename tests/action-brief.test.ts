@@ -291,7 +291,7 @@ describe("renderActionBrief", () => {
       const repo = candidateBriefRepo();
       const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
       writeFileSync(planPath, readFileSync(planPath, "utf8").replace("      - The contract is published.", "      - \"The test named 'issue #1559: a 401 never refreshes' still passes.\""));
-      execFileSync("git", ["commit", "-qam", "criterion with quotes"], { cwd: repo });
+      execFileSync("git", ["-c", "user.email=brief@example.invalid", "-c", "user.name=Brief", "commit", "-qam", "criterion with quotes"], { cwd: repo });
       const { dir, json, file } = draftCommand(headless(repo, "claude"));
       const ask = JSON.parse(json) as { evidence: Array<{ criterion: string; note: string }> };
       expect(ask.evidence[1].criterion).toBe("The test named 'issue #1559: a 401 never refreshes' still passes.");
