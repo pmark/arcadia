@@ -341,7 +341,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   });
   // The worker records what would unblock an escalation; it is the operator's move unless it says none is needed.
   const remedy = escalation?.remedy?.trim() ?? "";
-  activity.yourMove = !reached && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !/^no operator step/i.test(remedy)
+  activity.yourMove = !reached && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !NO_OPERATOR_STEP.test(remedy)
     ? firstLine(remedy, 300)
     : null;
   const run = runPosition(db, has, actionKey);
@@ -450,6 +450,9 @@ function currentActivity(input: {
   }
   return { phase: "waiting", headline: "Waiting to launch", detail: "In scope of the running production; the worker launches it on a coming tick.", since: policy.updated_at };
 }
+
+/** Remedy wording the worker uses when it resolves the wait itself. */
+const NO_OPERATOR_STEP = /^(no operator step|nothing to do)|resumes on its own/i;
 
 /** The Action's place in the running production's ordered scope; null when production is Off or does not name it. */
 function runPosition(db: Database.Database, has: (table: string) => boolean, actionKey: string): Journey["run"] {

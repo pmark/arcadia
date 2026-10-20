@@ -107,6 +107,7 @@ describe("JourneyMap", () => {
     expect(elapsed("in-review", "2026-10-19T16:00:00.000Z", Date.parse("2026-10-19T19:05:00.000Z"))).toEqual({ text: "3 h 5 min", long: true });
     expect(elapsed("blocked", "2026-10-19T16:00:00.000Z", Date.parse("2026-10-20T16:00:00.000Z"))?.long).toBe(false);
     expect(elapsed("driving", null, 0)).toBeNull();
+    expect(elapsed("driving", "not a time", 0)).toBeNull();
     const base = journey();
     const html = renderToStaticMarkup(<JourneyActivityLine journey={{ ...base, activity: { ...base.activity, yourMove: "Rerun the review." }, run: { position: 1, total: 3, next: "arcadia/b" } }} now={Date.parse("2026-10-19T18:00:00.000Z")} />);
     expect(html).toContain("Your move: </span>Rerun the review.");

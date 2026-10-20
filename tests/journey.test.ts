@@ -251,6 +251,8 @@ describe("deriveJourney", () => {
       expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBe("Rerun the review with --rerun.");
       db.prepare("UPDATE production_operator_escalations SET remedy = 'No operator step is needed: the worker retries.' WHERE action_key = ?").run(KEY);
       expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBeNull();
+      db.prepare("UPDATE production_operator_escalations SET remedy = 'Rate limited: the tick resumes on its own after the reset.' WHERE action_key = ?").run(KEY);
+      expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBeNull();
       expect(deriveJourney(db, KEY, NOW).run).toBeNull();
       db.prepare("UPDATE production_policy SET desired_state = 'active', scope_json = ? WHERE id = 'workspace'").run(JSON.stringify({ actions: ["arcadia/first", KEY, "arcadia/last"] }));
       expect(deriveJourney(db, KEY, NOW).run).toEqual({ position: 2, total: 3, next: "arcadia/last" });
