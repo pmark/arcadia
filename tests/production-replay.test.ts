@@ -406,6 +406,31 @@ describe("production replay of a card never pressed (--card)", () => {
     expect(() => cardGrantReceipt("computed", "2026-10-20T00:00:00Z", cardDir)).toThrow(/computed, not pinned/);
   });
 
+  it("refuses an expired card exactly as the card would", () => {
+    writeFileSync(path.join(cardDir, "expired.sh"), cardScript(source).replace('INTENT=', 'CARD_EXPIRES_AT="2026-10-26T00:00:00Z"\nINTENT='));
+    writeFileSync(path.join(cardDir, "expired.json"), JSON.stringify({ id: "expired", kind: "grant" }));
+    expect(() => cardGrantReceipt("expired", "2026-10-26T00:00:00Z", cardDir)).toThrow(/expired at 2026-10-26T00:00:00Z/);
+    expect(cardGrantReceipt("expired", "2026-10-25T23:59:59Z", cardDir).scope.projects).toEqual([source.projectSlug]);
+  });
+
+  it("resolves a pinned --concurrency variable and fails loudly on one it cannot resolve", () => {
+    const withConcurrency = (value: string, pin: string) => cardScript(source).replace("--concurrency 1", `--concurrency ${value}`).replace('INTENT=', `${pin}INTENT=`);
+    writeFileSync(path.join(cardDir, "conc.json"), JSON.stringify({ id: "conc", kind: "grant" }));
+    writeFileSync(path.join(cardDir, "conc.sh"), withConcurrency('"$CAP"', "CAP=2\n"));
+    expect(cardGrantReceipt("conc", "2026-10-20T00:00:00Z", cardDir).scope.maxConcurrentSessions).toBe(2);
+    writeFileSync(path.join(cardDir, "conc.sh"), withConcurrency('"$UNPINNED"', ""));
+    expect(() => cardGrantReceipt("conc", "2026-10-20T00:00:00Z", cardDir)).toThrow(/does not resolve to a pinned positive integer/);
+  });
+
+  it("reads flags only from the invocation lines, not from decoys", () => {
+    writeFileSync(path.join(cardDir, "decoy.json"), JSON.stringify({ id: "decoy", kind: "grant" }));
+    writeFileSync(path.join(cardDir, "decoy.sh"), cardScript(source) + 'echo "never pass --remote-preservation or --integration-grant-merge-pull-request or --concurrency 9"\nif false; then refuse "--integration-grant-action \"x\""; fi\n');
+    const scope = cardGrantReceipt("decoy", "2026-10-20T00:00:00Z", cardDir).scope;
+    expect(scope.remotePreservation).toBeUndefined();
+    expect(scope.integrationGrant?.mergeThroughPullRequest).toBeUndefined();
+    expect(scope.maxConcurrentSessions).toBe(1);
+  });
+
   it("parses the real next-run card in this checkout", () => {
     const receipt = cardGrantReceipt("grant-production-unattended-claude-next-run-20261019", "2026-10-20T00:00:00.000Z");
     expect(receipt.scope).toMatchObject({

@@ -389,13 +389,30 @@ export function cardGrantReceipt(card: string, now: string, cardDir?: string): G
   const descriptor = JSON.parse(readFileSync(descriptorFile, "utf8")) as { id?: string; kind?: string };
   if (descriptor.id !== card) throw new Error(`Card ${card}: its descriptor names id "${descriptor.id}".`);
   if (descriptor.kind !== "grant") throw new Error(`Card ${card} is a "${descriptor.kind}" card; only a grant card activates production.`);
-  const { values, actions, code } = cardScriptFields(readFileSync(scriptFile, "utf8"));
+  const { values, actions, code: allCode } = cardScriptFields(readFileSync(scriptFile, "utf8"));
+  // Flags count only on the card's real invocation: `ARGS=(...)`/`ARGS+=(...)` lines and `production preview|activate` lines.
+  const code = allCode.split("\n").filter((line) => /^\s*ARGS\+?=\(/.test(line) || /\bproduction\s+(preview|activate)\b/.test(line)).join("\n");
+  if (values.CARD_EXPIRES_AT) {
+    const expires = Date.parse(values.CARD_EXPIRES_AT);
+    if (Number.isNaN(expires)) throw new Error(`Card ${card}: CARD_EXPIRES_AT "${values.CARD_EXPIRES_AT}" is not a date.`);
+    if (new Date(now).getTime() >= expires) throw new Error(`Card ${card} expired at ${values.CARD_EXPIRES_AT}; the card itself would refuse ("ask for a fresh card").`);
+  }
   for (const name of ["PROJECT", "PLAN", "PROVIDER", "TRANSITIONS"]) {
     if (!values[name]) throw new Error(`Card ${card}: its script does not pin ${name} as a plain quoted value.`);
     if (/[$`\\]/.test(values[name])) throw new Error(`Card ${card}: ${name} is computed, not pinned.`);
   }
   if (code.includes('--integration-grant-action "')) throw new Error(`Card ${card} names integration-grant Actions; the replay does not model them.`);
-  const concurrency = /--concurrency\s+(\d+)/.exec(code);
+  let concurrencyValue = 1;
+  const concurrencyFlag = /--concurrency\s+("?)([^\s")]+)\1/.exec(code);
+  if (concurrencyFlag) {
+    const raw = concurrencyFlag[2];
+    const variable = /^\$\{?([A-Z][A-Z0-9_]*)\}?$/.exec(raw);
+    const resolved = variable ? values[variable[1]] : raw;
+    if (resolved === undefined || !/^\d+$/.test(resolved) || Number(resolved) < 1) {
+      throw new Error(`Card ${card}: --concurrency ${raw} does not resolve to a pinned positive integer.`);
+    }
+    concurrencyValue = Number(resolved);
+  }
   const decision = values.INTEGRATION_DECISION;
   const hours = Number(values.PACKET_APPROVAL_HOURS ?? 24);
   if (!(hours > 0)) throw new Error(`Card ${card}: PACKET_APPROVAL_HOURS is not positive.`);
@@ -408,7 +425,7 @@ export function cardGrantReceipt(card: string, now: string, cardDir?: string): G
     plans: [`${values.PROJECT}/${values.PLAN}`],
     ...(actions.length ? { actions: actions.map((id) => `${values.PROJECT}/${id}`) } : {}),
     providers: [values.PROVIDER],
-    maxConcurrentSessions: concurrency ? Number(concurrency[1]) : 1,
+    maxConcurrentSessions: concurrencyValue,
     mechanicalTransitions: transitions,
     ...(code.includes("--remote-preservation") ? { remotePreservation: true } : {}),
     ...(code.includes("--integration-grant-decision") ? {
