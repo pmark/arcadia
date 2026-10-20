@@ -1512,7 +1512,7 @@ function buildProviderLaunch(
       validationCommands: decodeStringArray(metadata?.validation_commands),
       probeCommand: probe?.command,
       acceptanceCriteria: actionAcceptanceCriteria({
-        repoRoot: session.worktree_path, projectSlug: session.project_slug, planSlug: session.plan_slug, actionId: session.action_id
+        repoRoot: session.worktree_path, projectSlug: session.project_slug, planSlug: session.plan_slug, actionId: session.action_id, baseRevision: session.base_revision
       })
     });
     args = [

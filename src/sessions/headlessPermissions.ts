@@ -17,7 +17,8 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *     Claude matches each simple command of a compound separately); and
  *   - the test files the Action's own acceptance criteria name (the same
  *     `namedTestFiles` the completion validator runs), each as the exact
- *     `pnpm exec vitest run <file>` / `pnpm vitest run <file>` command, plus
+ *     `pnpm exec vitest run <file>` / `pnpm vitest run <file>` command (and
+ *     the same followed by trailing arguments, `... <file> *`), plus
  *     the exact `node scripts/bridge-worktree-deps.mjs` a fresh worktree needs
  *     before any test can resolve its imports; no vitest or pnpm wildcard; and
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
@@ -35,10 +36,12 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  * inspection (`git status`, `git diff`, file reads) stays on Claude's built-in
  * read-only allowance.
  *
- * Matching is exact per simple command, so `pnpm vitest run <file> 2>&1 | head`
- * is split at the pipe and matches through its `pnpm vitest run <file> 2>&1`
- * part only if Claude ignores the `2>&1` redirect when matching (unverified);
- * extra vitest flags are not allowed. Two honest limits. `acceptEdits` also auto-approves file-system commands
+ * Matching is per simple command: an exact rule refuses added arguments or a
+ * `2>&1`, which is why a named test also gets a `<file> *` rule (trailing
+ * arguments only; `&&` chaining still needs each part to match on its own, and
+ * `head` or `cd` into the working directory are read-only allowed by Claude).
+ *
+ * Two honest limits. `acceptEdits` also auto-approves file-system commands
  * (mkdir, rm, mv, cp, sed) inside the working directory, and the allow list is
  * not a security boundary: validation commands run project code the agent can
  * edit, so it narrows what the agent is asked to do, not what it can reach.
@@ -96,7 +99,11 @@ export function headlessClaudeAllowList(validationCommands: readonly string[], p
   for (const command of validationCommands) {
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
   }
-  for (const command of namedTestCommands(acceptanceCriteria)) rules.add(exactBashRule(command));
+  for (const command of namedTestCommands(acceptanceCriteria)) {
+    rules.add(exactBashRule(command));
+    // Only a vitest run of the named file also takes trailing arguments (`2>&1`, `--reporter=...`); the bridge stays exact.
+    if (command !== HEADLESS_BRIDGE_DEPS_COMMAND) rules.add(`${exactBashRule(command).slice(0, -1)} *)`);
+  }
   for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
   // The brief's first step: the in-Session capability probe, pinned to the one
   // exact command string (path, arguments and this Session's nonce).
