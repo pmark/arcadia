@@ -2645,3 +2645,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/tick-independent-review.test.ts gains a case where a reviewer call fails with a transient error while the Action's verdict attempts are below MAX_VERDICT_ATTEMPTS, and a later tick runs the reviewer again with no review_attempts_exhausted escalation recorded."; "tests/tick-independent-review.test.ts gains a case where, after a review_attempts_exhausted escalation is recorded, calling resetProductionRepairBudget for that Action leaves the escalation with kind review_attempts_exhausted in place and runs no reviewer."; "The change touches only tests/tick-independent-review.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-test-transient-review-retry-after-exhaustion-tests-only-20261020).
+
+## 2026-10-20 — Completed arcadia/refresh-decision-0130-status-and-1559-fake
+
+- **Did:** Completed Action arcadia/refresh-decision-0130-status-and-1559-fake from accepted evidence (Candidate 55b9f7699130bf3b447427fb8dfc5ba6b2838aec).
+- **Result:** Every declared acceptance criterion was accepted as met: "In docs/managed-production-readiness.md, the Claude usage credential and window cap row (near line 101) states that Decision 0130 is approved and no longer says it is raised and unanswered; no other line of that file changes."; "In tests/claude-capacity-preadmission.test.ts, the loadCredentials fake inside the test named 'issue #1559: a 401 through the capacity-observer refresh never contacts the OAuth token endpoint' returns no refreshToken field, and that test still passes."; "The change touches only those two files; the focused vitest run of tests/claude-capacity-preadmission.test.ts, pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-refresh-decision-0130-status-and-1559-fake-897fbd92d9f0).
