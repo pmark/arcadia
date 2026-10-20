@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 const REPLAY_TIMEOUT_MS = 240_000;
@@ -311,5 +311,107 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     expect(effects()).toEqual([{ kind: "simulated:reviewer", detail: "code-review fail" }]);
     // Anything else is still a refused provider run.
     expect(spawnSync("codex", ["login"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
+  });
+});
+
+const cardScript = (source: Rehearsal) => `#!/usr/bin/env bash
+# comment lines never count: --remote-preservation --integration-grant-action "x"
+set -Eeuo pipefail
+SCRIPT_ID="grant-replay-fixture-card"
+PROJECT="${source.projectSlug}"
+PLAN="${source.planSlug}"
+ACTIONS=(
+  write-marker-a
+  write-marker-b
+)
+PROVIDER="${source.provider}"
+TRANSITIONS="validation,acceptance,pointer,packet_approval"
+PACKET_APPROVAL_HOURS=12
+INTEGRATION_DECISION="0058"
+SPEND_DECISION="0130"
+INTENT="Fixture card intent."
+ARGS+=(--provider "$PROVIDER" --concurrency 1 --transitions "$TRANSITIONS" --packet-approval-expires-at "$EXPIRES" --intent "$INTENT")
+ARGS+=(--integration-grant-decision "$INTEGRATION_DECISION" --integration-grant-expires-at "$EXPIRES")
+`;
+
+describe("production replay of a card never pressed (--card)", () => {
+  let source: Rehearsal;
+  let parent: string;
+  let cardDir: string;
+  let before: ReturnType<typeof fingerprint>;
+  let report: ReplayReport;
+  const printed: string[] = [];
+
+  beforeAll(() => {
+    source = new Rehearsal({ withOrigin: true });
+    source.createFixtureRepository();
+    source.approve(source.registerProject());
+    // No activation receipt exists in this workspace: the card was never pressed.
+    before = fingerprint(source);
+    parent = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-card-test-")));
+    cardDir = path.join(parent, "cards");
+    mkdirSync(cardDir);
+    writeFileSync(path.join(cardDir, "grant-replay-fixture-card.sh"), cardScript(source));
+    writeFileSync(path.join(cardDir, "grant-replay-fixture-card.json"), JSON.stringify({ id: "grant-replay-fixture-card", kind: "grant" }));
+    report = runProductionReplay({ sourceWorkspace: source.workspace, card: "grant-replay-fixture-card", cardDir, ticks: 4, github: "offline", parent, keep: true, print: (line) => printed.push(line) });
+  }, REPLAY_TIMEOUT_MS);
+
+  afterAll(() => {
+    source?.dispose();
+    if (parent) rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("refuses --grant for the same unpressed card (the gap this closes)", () => {
+    expect(() => runProductionReplay({ sourceWorkspace: source.workspace, grant: "grant-replay-fixture-card", parent, print: () => undefined })).toThrow(/No activation receipt/);
+  });
+
+  it("activates from the card's pinned scope, labelled as not a press receipt, and predicts the launch", () => {
+    expect(report.activation).toMatchObject({ ok: true, source: "card-descriptor" });
+    expect(report.stop.reason).toBe("launched");
+    expect(report.stop.detail).toContain(source.actionA);
+    const text = printed.join("\n");
+    expect(text).toContain("built from card descriptor, not a press receipt");
+    expect(report.fidelity.join("\n")).toContain("NOT A PRESS RECEIPT");
+    expect(report.status).toContain("Actions in scope: 2");
+    expect(report.status).toContain("Intent: Fixture card intent.");
+  });
+
+  it("leaves the source untouched", () => {
+    expect(fingerprint(source)).toEqual(before);
+  });
+
+  it("reads scope, expiries and flags only from the script's code lines", () => {
+    const receipt = cardGrantReceipt("grant-replay-fixture-card", "2026-10-20T00:00:00.000Z", cardDir);
+    expect(receipt.scope).toEqual({
+      intent: "Fixture card intent.",
+      projects: [source.projectSlug],
+      plans: [`${source.projectSlug}/${source.planSlug}`],
+      actions: [source.actionA, source.actionB],
+      providers: [source.provider],
+      maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      integrationGrant: { decisionRef: "0058", expiresAt: "2026-10-20T12:00:00.000Z" },
+      packetApprovalExpiresAt: "2026-10-20T12:00:00.000Z"
+    });
+    expect(receipt.authority).toMatchObject({ decisionRef: "0130" });
+  });
+
+  it("refuses a non-grant card, a bad id and a card whose scope is computed", () => {
+    writeFileSync(path.join(cardDir, "off-card.sh"), "#!/usr/bin/env bash\n");
+    writeFileSync(path.join(cardDir, "off-card.json"), JSON.stringify({ id: "off-card", kind: "restore" }));
+    expect(() => cardGrantReceipt("off-card", "2026-10-20T00:00:00Z", cardDir)).toThrow(/only a grant card/);
+    expect(() => cardGrantReceipt("../x", "2026-10-20T00:00:00Z", cardDir)).toThrow(/plain operator-script id/);
+    writeFileSync(path.join(cardDir, "computed.sh"), 'PROJECT="$X"\nPLAN="p"\nPROVIDER="c"\nTRANSITIONS="validation"\n');
+    writeFileSync(path.join(cardDir, "computed.json"), JSON.stringify({ id: "computed", kind: "grant" }));
+    expect(() => cardGrantReceipt("computed", "2026-10-20T00:00:00Z", cardDir)).toThrow(/computed, not pinned/);
+  });
+
+  it("parses the real next-run card in this checkout", () => {
+    const receipt = cardGrantReceipt("grant-production-unattended-claude-next-run-20261019", "2026-10-20T00:00:00.000Z");
+    expect(receipt.scope).toMatchObject({
+      projects: ["arcadia"], providers: ["claude-code-cli"], maxConcurrentSessions: 1, remotePreservation: true,
+      integrationGrant: { decisionRef: "0058", mergeThroughPullRequest: true, expiresAt: "2026-10-21T00:00:00.000Z" },
+      actions: ["arcadia/test-transient-review-retry-after-exhaustion", "arcadia/refresh-decision-0130-status-and-1559-fake", "arcadia/guard-repair-gate-upsert-role"]
+    });
   });
 });
