@@ -62,7 +62,7 @@ describe("review-repair-gate-upsert-role", () => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?)
         ON CONFLICT(request_id) DO UPDATE SET summary = excluded.summary, reason = excluded.reason, updated_at = excluded.updated_at
           WHERE production_review_repairs.repair_session_id IS NULL AND production_review_repairs.outcome = 'gated'
-            AND production_review_repairs.reason IS NOT excluded.reason
+            AND production_review_repairs.reason != excluded.reason
             AND production_review_repairs.role = ?
       `).run(
         requestId, "test/action", newPolicyEpoch, 1, sessionId, "test-branch",

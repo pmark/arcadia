@@ -1043,7 +1043,7 @@ export function gateRepairCandidate(db: Database.Database, input: {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?)
     ON CONFLICT(request_id) DO UPDATE SET summary = excluded.summary, reason = excluded.reason, updated_at = excluded.updated_at
       WHERE production_review_repairs.repair_session_id IS NULL AND production_review_repairs.outcome = 'gated'
-        AND production_review_repairs.reason IS NOT excluded.reason
+        AND production_review_repairs.reason != excluded.reason
         AND production_review_repairs.role = ?`)
     .run(requestId, actionKey, repair.policy_epoch, repair.round, session.id, session.branch, head, parent ?? head,
       workerPullRequestUrl(db, session.id), REPAIR_CANDIDATE_GATE_ROLE, gate, repair.report_path, repair.findings_json, repair.failed_checks_json, reason, at, at, REPAIR_CANDIDATE_GATE_ROLE);
