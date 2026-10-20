@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import { CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -100,6 +100,24 @@ describe("renderActionBrief", () => {
       expect(render("claude", "sonnet")).not.toContain("Calling in help");
       expect(render("claude", null)).not.toContain("Calling in help");
     });
+  });
+
+  it("tells a headless Claude Session the exact named-test command, and a non-headless one nothing", () => {
+    const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", "The contract exists and tests/contract.test.ts passes."));
+    execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "named test"]);
+    const input = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: "/w", branch: "claude/x", agent: "claude" as const, baseRevision: head(repo) };
+    const plain = renderActionBrief(input);
+    const headless = renderActionBrief({ ...input, headless: true });
+    expect(plain).not.toContain("Run the named test exactly as");
+    expect(renderActionBrief({ ...input, agent: "codex", headless: true })).not.toContain("Run the named test exactly as");
+    expect(headless).toContain("Run the named test exactly as `pnpm exec vitest run tests/contract.test.ts` (after `node scripts/bridge-worktree-deps.mjs` if node_modules is missing)");
+    expect(actionAcceptanceCriteria(input)).toEqual(["The contract exists and tests/contract.test.ts passes.", "The contract is published."]);
+    expect(actionAcceptanceCriteria({ ...input, baseRevision: "0".repeat(40) })).toEqual([]);
+    // The agent-editable worktree copy cannot widen what the base revision allows.
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract is published.", "tests/evil.test.ts passes."));
+    expect(actionAcceptanceCriteria(input)).toEqual(["The contract exists and tests/contract.test.ts passes.", "The contract is published."]);
   });
 
   it.each([

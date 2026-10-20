@@ -1,6 +1,9 @@
 import { renderRoleBlock } from "../agentRoles/brief.js";
 import { getRole, loadRoleRegistry } from "../agentRoles/registry.js";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { parseDoc } from "../docs/parse.js";
+import { namedTestCommands } from "./headlessPermissions.js";
 import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
@@ -203,6 +206,34 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
 }
 
 /**
+ * The acceptance criteria of one Action as committed at the Session's base
+ * revision (never the agent-editable worktree copy), or none when the plan,
+ * Action or revision cannot be read (the brief render refuses those).
+ */
+export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot" | "projectSlug" | "planSlug" | "actionId" | "baseRevision">): string[] {
+  try {
+    const relativePath = `docs/plans/${input.planSlug}.md`;
+    const content = execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${relativePath}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const doc = parseDoc(relativePath, path.join(input.repoRoot, relativePath), content).doc;
+    if (!doc || doc.type !== "plan" || doc.project.toLowerCase() !== input.projectSlug.toLowerCase()) return [];
+    return doc.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Tell a headless agent the exact named-test commands its allow list permits; everything else is refused. */
+function renderNamedTestCommands(criteria: readonly string[], headless: boolean): string[] {
+  if (!headless) return [];
+  const files = namedTestCommands(criteria).filter((command) => command.startsWith("pnpm exec vitest run "));
+  if (files.length === 0) return [];
+  return [
+    "",
+    ...files.map((command) => `Run the named test exactly as \`${command}\` (after \`node scripts/bridge-worktree-deps.mjs\` if node_modules is missing); other test commands need approval and will be refused.`)
+  ];
+}
+
+/**
  * Render one Action brief. Fails closed with a named validation error when the
  * recorded plan or Action is missing, or when the Action declares no acceptance
  * criteria, so a Session can never launch with a brief that does not state what
@@ -272,6 +303,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "Acceptance criteria (verbatim, in the plan's order):",
     ...numbered(action.acceptanceCriteria),
     ...renderScopeConstraint(action.acceptanceCriteria),
+    ...renderNamedTestCommands(action.acceptanceCriteria, input.headless === true && input.agent === "claude"),
     "",
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
     "branches, or edit the Project pointer; those remain operator gates."

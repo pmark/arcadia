@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { namedTestFiles } from "./completionValidation.js";
 import { validationError } from "../cli/errors.js";
 import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.js";
 
@@ -14,6 +15,12 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *   - the Action's Project's declared validation commands, each exactly as
  *     declared (a compound command is split into its simple commands, since
  *     Claude matches each simple command of a compound separately); and
+ *   - the test files the Action's own acceptance criteria name (the same
+ *     `namedTestFiles` the completion validator runs), each as the exact
+ *     `pnpm exec vitest run <file>` / `pnpm vitest run <file>` command (and
+ *     the same followed by trailing arguments, `... <file> *`), plus
+ *     the exact `node scripts/bridge-worktree-deps.mjs` a fresh worktree needs
+ *     before any test can resolve its imports; no vitest or pnpm wildcard; and
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
  *
@@ -28,6 +35,11 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  * a headless Session loads no user or project settings or hooks. Read-only
  * inspection (`git status`, `git diff`, file reads) stays on Claude's built-in
  * read-only allowance.
+ *
+ * Matching is per simple command: an exact rule refuses added arguments or a
+ * `2>&1`, which is why a named test also gets a `<file> *` rule (trailing
+ * arguments only; `&&` chaining still needs each part to match on its own, and
+ * `head` or `cd` into the working directory are read-only allowed by Claude).
  *
  * Two honest limits. `acceptEdits` also auto-approves file-system commands
  * (mkdir, rm, mv, cp, sed) inside the working directory, and the allow list is
@@ -71,11 +83,26 @@ export function exactBashRule(command: string): string {
   return `Bash(${command.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("*", "\\*")})`;
 }
 
+/** A fresh worktree has no installed dependencies; a named test cannot import anything until this runs. */
+export const HEADLESS_BRIDGE_DEPS_COMMAND = "node scripts/bridge-worktree-deps.mjs";
+
+/** The exact commands an agent runs to try one named test file; nothing broader. */
+export function namedTestCommands(criteria: readonly string[]): string[] {
+  const files = namedTestFiles(criteria);
+  if (files.length === 0) return [];
+  return [HEADLESS_BRIDGE_DEPS_COMMAND, ...files.flatMap((file) => [`pnpm exec vitest run ${file}`, `pnpm vitest run ${file}`])];
+}
+
 /** The complete allow list for a Session whose Project declares `validationCommands`. */
-export function headlessClaudeAllowList(validationCommands: readonly string[], probeCommand?: string | null): string[] {
+export function headlessClaudeAllowList(validationCommands: readonly string[], probeCommand?: string | null, acceptanceCriteria: readonly string[] = []): string[] {
   const rules = new Set<string>();
   for (const command of validationCommands) {
     for (const simple of simpleCommands(command)) rules.add(exactBashRule(simple));
+  }
+  for (const command of namedTestCommands(acceptanceCriteria)) {
+    rules.add(exactBashRule(command));
+    // Only a vitest run of the named file also takes trailing arguments (`2>&1`, `--reporter=...`); the bridge stays exact.
+    if (command !== HEADLESS_BRIDGE_DEPS_COMMAND) rules.add(`${exactBashRule(command).slice(0, -1)} *)`);
   }
   for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
   // The brief's first step: the in-Session capability probe, pinned to the one
@@ -96,9 +123,10 @@ export function writeHeadlessClaudeSettings(input: {
   sessionId: string;
   validationCommands: readonly string[];
   probeCommand?: string | null;
+  acceptanceCriteria?: readonly string[];
 }): string {
   const file = sessionSettingsPath(input.workspace, input.sessionId);
-  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands, input.probeCommand) } };
+  const settings = { permissions: { defaultMode: "acceptEdits", allow: headlessClaudeAllowList(input.validationCommands, input.probeCommand, input.acceptanceCriteria) } };
   try {
     mkdirSync(sessionRecordDirectory(input.workspace), { recursive: true });
     writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });

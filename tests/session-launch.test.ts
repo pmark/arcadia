@@ -1935,6 +1935,29 @@ describe("launch preflight and headless permission posture", () => {
     ]);
   });
 
+  it("allows exactly an Action's named test commands and the dependency bridge, nothing broader", () => {
+    const criteria = [
+      "the focused vitest run of tests/review-repair-gate-upsert-role.test.ts passes",
+      "tests/old.test.ts is deleted",
+      "tests/../escape.test.ts passes and tests/second.test.ts passes"
+    ];
+    const base = headlessClaudeAllowList(["pnpm test"]);
+    const rules = headlessClaudeAllowList(["pnpm test"], null, criteria);
+    expect(rules.filter((rule) => !base.includes(rule))).toEqual([
+      "Bash(node scripts/bridge-worktree-deps.mjs)",
+      "Bash(pnpm exec vitest run tests/review-repair-gate-upsert-role.test.ts)",
+      "Bash(pnpm exec vitest run tests/review-repair-gate-upsert-role.test.ts *)",
+      "Bash(pnpm vitest run tests/review-repair-gate-upsert-role.test.ts)",
+      "Bash(pnpm vitest run tests/review-repair-gate-upsert-role.test.ts *)",
+      "Bash(pnpm exec vitest run tests/second.test.ts)",
+      "Bash(pnpm exec vitest run tests/second.test.ts *)",
+      "Bash(pnpm vitest run tests/second.test.ts)",
+      "Bash(pnpm vitest run tests/second.test.ts *)"
+    ]);
+    expect(rules.some((rule) => /old\.test|escape|\.\./.test(rule))).toBe(false);
+    expect(headlessClaudeAllowList(["pnpm test"], null, ["no test file is named here"])).toEqual(base);
+  });
+
   it("go --launch is headless by default and the explicit --interactive opt-in keeps the TUI, unrecorded", () => {
     const headless = preparedFixture();
     const headlessTmux = new FakeTmux();
