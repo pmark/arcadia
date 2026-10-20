@@ -166,4 +166,41 @@ describe("operator-action settle-ask and the shared pinned settlement runner", (
     }) }).data.proposal;
     expect(() => generate(f, "amend-first-here", amendment.fingerprint)).toThrow(/Plan-amendment runner/);
   });
+
+  it("refuses to pin a complete-intent Ask, which its proving agent settles", () => {
+    const f = fixture();
+    const complete = runAgentAskPreviewCommand({ workspace: f.workspace, dir: f.repo, request: JSON.stringify({
+      agent_ask: "v1", request_id: "complete-first-here", project: "demo", intent: "complete", target_ref: "action/first", desired_result: "Record first as done",
+      candidate_revision: f.git("rev-parse", "HEAD"), evidence: [{ criterion: "The runner receipt contains a real newline.", status: "met", note: "Verified." }],
+      requested_authority: "apply_if_approved"
+    }) }).data.proposal;
+    expect(() => generate(f, "complete-first-here", complete.fingerprint)).toThrow(/complete-intent Ask/);
+    expect(f.settlements()).toBe(0);
+  });
+
+  it("refuses, at settlement, an entry of another Project that names this Project's Ask by request id", () => {
+    const f = fixture();
+    const proposal = f.register("log-cross-project");
+    // Hand-written entries in Project "other"'s library: request ids alone, with no pin binding the Project.
+    const library = path.join(f.root, "other/artifacts/generated/operator-scripts");
+    mkdirSync(library, { recursive: true });
+    const base = { schema: "arcadia-operator-script-v1", title: "Settle it", problem: "Waiting", desired_effect: "Settle", project: "other", repeatable: false,
+      authority: { does: ["Settle one Ask"], never_does: ["Merge"] }, success: { effect: "Settled", next: "None" }, failure: { effect: "Refused", next: "Read it" } };
+    const write = (id: string, extra: Record<string, unknown>) => {
+      writeFileSync(path.join(library, `${id}.json`), JSON.stringify({ ...base, id, script: `${id}.sh`, ...extra }));
+      writeFileSync(path.join(library, `${id}.sh`), "#!/bin/sh\narcadia agent-ask settle --apply\n", { mode: 0o755 });
+      return path.join(library, `${id}.json`);
+    };
+    /** Run the canonical settle path inside that entry's execution context, as its press would. */
+    const attempt = (descriptorPath: string, disposition: "accepted" | "rejected") => () => {
+      vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", path.basename(descriptorPath, ".json"));
+      vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", descriptorPath);
+      return runAgentAskSettleCommand({ workspace: f.workspace, proposal: "log-cross-project", requestId: `cross-${disposition}`, disposition, cwd: f.repo });
+    };
+    const plain = write("settle-demo-ask", { agentAsk: { proposal: "log-cross-project", intent: "log", targetRef: null } });
+    expect(attempt(plain, "accepted")).toThrow(/belongs to Project other; it cannot settle a demo Agent Ask/);
+    const rejections = write("reject-demo-asks", { agentAskRejections: { manifest: "manifest.json", sha256: "b".repeat(64), proposals: [proposal.id] } });
+    expect(attempt(rejections, "rejected")).toThrow(/belongs to Project other; it cannot settle a demo Agent Ask/);
+    expect(f.settlements()).toBe(0);
+  });
 });

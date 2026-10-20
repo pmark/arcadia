@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { pinnedAskSettlementLauncher } from "../../../../../src/operatorActions/libraryContract.js";
 
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -95,6 +96,30 @@ describe("/api/operator-script reads every registered Project's own library", ()
     const response = await post(POST, "alpha--claims-beta");
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ reason: "UNPUBLISHED_PROJECT_ENTRY" });
+  });
+
+  it("never lists or launches a Project entry that names an Ask by request id alone, and shows a pinned entry's pin", async () => {
+    const f = fixture();
+    const settleScript = "#!/bin/sh\narcadia agent-ask settle --apply\n";
+    // beta's Ask named from alpha's library: a plain agentAsk scope and a rejection list.
+    entry(f.alpha, "settle-beta-ask", { project: "alpha", repeatable: false, agentAsk: { proposal: "beta-ask", intent: "decision", targetRef: null } }, settleScript);
+    entry(f.alpha, "reject-beta-asks", { project: "alpha", repeatable: false, agentAskRejections: { manifest: "m.json", sha256: "b".repeat(64), proposals: ["agentask_0123abcd"] } }, settleScript);
+    entry(f.alpha, "settle-alpha-ask", {
+      project: "alpha", repeatable: false, title: "Accept alpha Ask",
+      agentAsk: { proposal: "alpha-ask", intent: "decision", targetRef: null },
+      agentAskSettlement: { schema: "arcadia-agent-ask-settlement-v1", project: "alpha", proposalFingerprint: "a".repeat(64), requestId: "reject-alpha-ask", disposition: "rejected", placement: null }
+    }, pinnedAskSettlementLauncher("settle-alpha-ask"));
+    const { GET, POST } = await import("./route");
+    const listing = await (await GET()).json() as { scripts: { id: string; pinnedSettlement: unknown }[] };
+    expect(listing.scripts.map((script) => script.id).sort()).toEqual(["alpha--publish-me", "alpha--settle-alpha-ask", "beta--beta-action", "own-action"]);
+    // The card reads the pin, so an "Accept" title cannot hide a pinned rejection.
+    expect(listing.scripts.find((script) => script.id === "alpha--settle-alpha-ask")?.pinnedSettlement).toEqual({ project: "alpha", proposal: "alpha-ask", disposition: "rejected", placement: null });
+    expect(listing.scripts.find((script) => script.id === "alpha--publish-me")?.pinnedSettlement).toBeNull();
+    for (const key of ["alpha--settle-beta-ask", "alpha--reject-beta-asks"]) {
+      const response = await post(POST, key);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ reason: "UNSUPPORTED_PROJECT_ENTRY" });
+    }
   });
 
   it("redirects /actions?q=<project key> to its single-action page", async () => {

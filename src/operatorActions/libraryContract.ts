@@ -129,6 +129,8 @@ function validateAgentAskSettlement(d: OperatorScriptDescriptor, id: string, scr
   if (d.agentAsk === undefined) fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must also declare its agentAsk proposal, intent and targetRef.");
   if (d.project !== p.project) fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must name the same project at the top level and in its pin.");
   if (p.requestId === d.agentAsk!.proposal) fail("INVALID_AGENT_ASK_SETTLEMENT", "The settlement requestId must differ from the proposal's request id.");
+  // The runner passes no operator, so a complete-intent settlement would be recorded as deterministic proof.
+  if (d.agentAsk!.intent === "complete") fail("INVALID_AGENT_ASK_SETTLEMENT", "A complete-intent Ask is settled by the agent that proves it, not by a pinned operator button.");
   if (d.repeatable === true || d.kind !== undefined || d.expires_at !== undefined || d.next_after !== undefined) {
     fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement is one-shot: no repeatable, kind, expires_at or next_after.");
   }
@@ -157,13 +159,19 @@ const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\
  * when it names that Project. It may not use a runner whose launcher resolves `$library_dir/../../..`
  * (Plan amendment, Plan activation, workspace-config edit): in a Project checkout that would run the
  * Project's file of the same name instead of Arcadia's governed runner. Its `next_after` would name
- * another library's ids. Call it on the raw descriptor before full validation.
+ * another library's ids. It may settle an Agent Ask only through the pinned `agentAskSettlement`, whose
+ * runner binds the Ask to this Project: a plain `agentAsk` scope or an `agentAskRejections` list names
+ * request ids only, so it could settle another Project's Asks under this Project's badge.
+ * Call it on the raw descriptor before full validation.
  */
 export function assertProjectLibraryEntry(value: unknown, project: string): void {
   const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
   if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
   if (d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
     fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit or next_after; those runners and hints exist only in Arcadia's library.");
+  }
+  if (d.agentAskRejections !== undefined || (d.agentAsk !== undefined && d.agentAskSettlement === undefined)) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry settles an Agent Ask only through a pinned agentAskSettlement (arcadia operator-action settle-ask); a plain agentAsk scope or agentAskRejections is refused there.");
   }
 }
 

@@ -191,6 +191,11 @@ export async function describeScript(key: string, runReceipt: RunReceiptSummary 
     failure: descriptor.failure,
     repeatable: descriptor.repeatable === true,
     nextAfter: descriptor.next_after ?? null,
+    // The pin itself, not the descriptor's prose: what the press actually settles.
+    pinnedSettlement: descriptor.agentAskSettlement && descriptor.agentAsk
+      ? { project: descriptor.agentAskSettlement.project, proposal: descriptor.agentAsk.proposal,
+          disposition: descriptor.agentAskSettlement.disposition, placement: descriptor.agentAskSettlement.placement }
+      : null,
     lastRunReceipt: runReceipt,
     state: state?.status === "running" ? state : receipt
       ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,

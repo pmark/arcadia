@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { OperatorScriptContractError, pinnedAskSettlementLauncher, planAmendmentLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
+import { assertProjectLibraryEntry, OperatorScriptContractError, pinnedAskSettlementLauncher, planAmendmentLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { discoverProjectOperatorLibraries, parseOperatorScriptKey } from "../src/operatorActions/projectLibraries.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -46,11 +46,30 @@ describe("the pinned Agent Ask settlement contract", () => {
     const short = pinned(); short.agentAskSettlement = { ...short.agentAskSettlement!, proposalFingerprint: "abc" };
     expect(reason(() => validateOperatorScriptContract(short, "settle-demo-ask", launcher))).toBe("INVALID_AGENT_ASK_SETTLEMENT");
   });
-  it("refuses the shared launcher without a pin, and an existing-Plan amendment pin", () => {
+  it("refuses the shared launcher without a pin, an existing-Plan amendment pin and a complete-intent pin", () => {
     const unpinned = pinned(); delete unpinned.agentAskSettlement;
     expect(reason(() => validateOperatorScriptContract(unpinned, "settle-demo-ask", launcher))).toBe("AGENT_ASK_SETTLEMENT_RUNNER_REQUIRED");
     const amendment = pinned(); amendment.agentAsk = { proposal: "demo-ask", intent: "plan", targetRef: "plan/demo" };
     expect(reason(() => validateOperatorScriptContract(amendment, "settle-demo-ask", launcher))).toBe("PLAN_AMENDMENT_RUNNER_REQUIRED");
+    const complete = pinned(); complete.agentAsk = { proposal: "demo-ask", intent: "complete", targetRef: "action/first" };
+    expect(reason(() => validateOperatorScriptContract(complete, "settle-demo-ask", launcher))).toBe("INVALID_AGENT_ASK_SETTLEMENT");
+  });
+});
+
+describe("a Project library entry's Ask scope", () => {
+  /** A hand-written entry in Project demo's library that names an Ask by request id only. */
+  const unpinnedScope = (extra: Partial<OperatorScriptDescriptor>): OperatorScriptDescriptor => {
+    const d = { ...pinned(), id: "settle-other", script: "settle-other.sh", ...extra };
+    delete d.agentAskSettlement;
+    return d;
+  };
+  it("is only a pinned agentAskSettlement: a plain agentAsk or an agentAskRejections list is refused, whatever Project its Ask is in", () => {
+    expect(reason(() => assertProjectLibraryEntry(pinned(), "demo"))).toBeNull();
+    const plain = unpinnedScope({ agentAsk: { proposal: "other-project-ask", intent: "decision", targetRef: null } });
+    expect(reason(() => validateOperatorScriptContract(plain, "settle-other", "#!/bin/sh\narcadia agent-ask settle --apply\n"))).toBeNull();
+    expect(reason(() => assertProjectLibraryEntry(plain, "demo"))).toBe("UNSUPPORTED_PROJECT_ENTRY");
+    const rejections = unpinnedScope({ agentAsk: undefined, agentAskRejections: { manifest: "m.json", sha256: "b".repeat(64), proposals: ["agentask_0123abcd"] } });
+    expect(reason(() => assertProjectLibraryEntry(rejections, "demo"))).toBe("UNSUPPORTED_PROJECT_ENTRY");
   });
 });
 
@@ -95,5 +114,25 @@ describe("Project library discovery and checking", () => {
     const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts"), "--project", "demo", repo], { encoding: "utf8" });
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stderr.trim().split("\n")[0])).toMatchObject({ id: "demo--amend-here", reason: "UNSUPPORTED_PROJECT_ENTRY" });
+  });
+
+  it("fails a published Project entry that names another Project's Ask by request id, through agentAsk or agentAskRejections", () => {
+    const repo = temp("arcadia-project-cross-ask-");
+    const library = path.join(repo, "artifacts/generated/operator-scripts");
+    mkdirSync(library, { recursive: true });
+    const write = (d: OperatorScriptDescriptor) => {
+      writeFileSync(path.join(library, `${d.id}.json`), JSON.stringify(d));
+      writeFileSync(path.join(library, d.script), "#!/bin/sh\narcadia agent-ask settle --apply\n", { mode: 0o755 });
+    };
+    write({ ...pinned(), id: "settle-other", script: "settle-other.sh", agentAskSettlement: undefined, agentAsk: { proposal: "other-project-ask", intent: "decision", targetRef: null } });
+    write({ ...pinned(), id: "reject-others", script: "reject-others.sh", agentAskSettlement: undefined, agentAsk: undefined,
+      agentAskRejections: { manifest: "m.json", sha256: "b".repeat(64), proposals: ["agentask_0123abcd"] } });
+    const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts"), "--project", "demo", repo], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    const failures = result.stderr.trim().split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line) as { id: string; reason: string });
+    expect(failures.map(({ id, reason: why }) => [id, why]).sort()).toEqual([
+      ["demo--reject-others", "UNSUPPORTED_PROJECT_ENTRY"],
+      ["demo--settle-other", "UNSUPPORTED_PROJECT_ENTRY"]
+    ]);
   });
 });

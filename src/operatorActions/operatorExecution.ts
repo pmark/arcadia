@@ -41,6 +41,11 @@ export function assertOperatorSettlementContract(
     return refuse(error instanceof OperatorScriptContractError ? error.reason : "INVALID_OPERATOR_CONTEXT",
       error instanceof Error ? error.message : String(error));
   }
+  // An entry that names its Project settles only that Project's Asks, whatever scope it declares;
+  // request ids alone are not Project-bound, and the card shows this Project's badge.
+  if (descriptor.project !== undefined && ask.project !== descriptor.project) {
+    refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", `This operator action belongs to Project ${descriptor.project}; it cannot settle a ${ask.project} Agent Ask.`);
+  }
   if (descriptor.agentAskRejections) {
     // Rejection-only scope: exactly the pinned proposals, each only rejected. Checked before the
     // intent branches, so a pinned Plan-amendment Ask may be rejected but never accepted here.

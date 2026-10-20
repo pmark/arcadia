@@ -22,6 +22,8 @@ export interface OperatorScript {
   state: { status: ScriptStatus; startedAt?: string; finishedAt?: string; exitCode?: number | null; message?: string; runId?: string };
   failure?: { effect: string; next: string };
   nextAfter?: NextAfterRule | null;
+  /** A pinned Agent Ask settlement, read from the pin rather than the descriptor's prose. */
+  pinnedSettlement?: { project: string; proposal: string; disposition: "accepted" | "rejected"; placement: "top" | null } | null;
   lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null; succeededAt?: string | null } | null;
   modifiedAt: string;
 }
@@ -84,6 +86,7 @@ export function OperatorActionCard({ script, launching, onLaunch, muted = false,
         <StatusPill status={script.state.status} />
       </div>
 
+      {script.pinnedSettlement ? <PinnedSettlementLine pin={script.pinnedSettlement} /> : null}
       <p className="mt-4 text-sm text-muted">{script.desiredEffect}</p>
       <details className="mt-4 rounded-md border border-line/70 px-3 py-2 text-sm">
         <summary className="cursor-pointer font-semibold">What this action does</summary>
@@ -127,6 +130,16 @@ export function OperatorActionCard({ script, launching, onLaunch, muted = false,
         </span>
       </div>
     </article>
+  );
+}
+
+/** States what the press settles from the structured pin, so a title cannot hide a pinned rejection. */
+export function PinnedSettlementLine({ pin }: { pin: NonNullable<OperatorScript["pinnedSettlement"]> }) {
+  const accepted = pin.disposition === "accepted";
+  return (
+    <p className={`mt-4 rounded-md border px-3 py-2 text-sm font-semibold ${accepted ? "border-moss/40 text-moss" : "border-clay/40 text-clay"}`} data-testid="operator-action-pin">
+      Pressing settles {pin.project} Ask <code className="break-all">{pin.proposal}</code> as {accepted ? "ACCEPTED" : "REJECTED"}{pin.placement === "top" ? ", at the top of the queue" : ""}.
+    </p>
   );
 }
 

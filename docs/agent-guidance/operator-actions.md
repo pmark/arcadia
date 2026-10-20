@@ -148,6 +148,13 @@ descriptor names its Project (`"project": "<slug>"`); the card shows that name
 and opens at `/actions/<slug>--<id>`. The same contract, validation, one-shot
 lifecycle and receipts apply. Run state and receipts for a Project entry are
 kept on the host beside Arcadia's library, never inside the Project checkout.
+A Project entry may not use `planAmendment`, `planActivation`,
+`workspaceConfigEdit`, `next_after`, `agentAskRejections`, or an `agentAsk`
+scope without the pinned `agentAskSettlement` below: those runners and hints
+exist only in Arcadia's library, and a bare request id is not bound to the
+Project, so it could settle another Project's Ask under this one's name. The
+dashboard and the check refuse such an entry (`UNSUPPORTED_PROJECT_ENTRY`), and
+the settle path refuses any entry that names a Project other than the Ask's.
 Check a Project library with
 `node --import tsx scripts/check-operator-scripts.ts --project <slug> <repository>`
 from Arcadia's checkout (or `pnpm check:operator-scripts` there, which checks
@@ -166,15 +173,27 @@ Run it from your own worktree of that Project. It checks the recorded proposal,
 its full fingerprint and that nobody has settled it, previews the settlement
 (writing nothing), and writes `settle-<request_id>.json` and `.sh` into this
 checkout's library. Commit both and include them in your PR; the button appears
-once the PR is in the Project's main checkout. The press runs Arcadia's shared
+once the PR is in the Project's main checkout. Arcadia's own repository is the
+exception: `artifacts/generated/` is git-ignored there, so there is nothing to
+commit. For a Project whose registered repository is Arcadia's, pass
+`--dir <Arcadia's main checkout>` so the pair lands in the host-local library
+`/actions` reads, as Arcadia's other buttons do. The card states the pinned
+Project, proposal, disposition and placement from the pin itself. The press runs Arcadia's shared
 runner, which re-checks the pin, refuses a stale fingerprint, another proposal
 or an Ask settled another way, applies exactly the previewed settlement through
 the canonical settle path, and replays rather than settling twice. It never
 pushes, merges or answers the Decision a settlement opens; its settlement commit
-stays local to the main checkout until published. An existing-Plan amendment
-(`intent: plan` with `target_ref`) is refused here: it needs the shared
-Plan-amendment runner. Handing the operator a terminal command for any of this
-is a defect, not a fallback.
+stays local to the main checkout until published.
+
+Two kinds of Ask are refused here. A `complete` Ask is settled by the agent
+that proves it, in its candidate (`arcadia agent-ask settle`), not by an
+operator button. An existing-Plan amendment (`intent: plan` with `target_ref`)
+needs the shared Plan-amendment runner, which only Arcadia's library can run,
+and no generator writes one for a Project yet. For that amendment, keep the
+submitted Ask. In your handoff, name its request id and fingerprint as waiting
+for the operator. Submit a proposal Agent Ask asking for its Plan-amendment
+button. Handing the operator a terminal command for any of this is a defect,
+not a fallback.
 
 ### Retiring a library entry
 

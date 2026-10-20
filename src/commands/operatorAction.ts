@@ -75,6 +75,9 @@ export function runOperatorActionSettleAskCommand(options: {
   if (ask.intent === "plan" && ask.targetRef !== null) {
     throw validationError("An existing-Plan amendment settles only through the shared Plan-amendment runner (planAmendment), which this command does not generate. File it as a proposal or ask the operator.", { reason: "PLAN_AMENDMENT_RUNNER_REQUIRED" });
   }
+  if (ask.intent === "complete") {
+    throw validationError("A complete-intent Ask is settled by the agent that proves it (arcadia agent-ask settle in its candidate), not by an operator button: the pinned runner would record the press as deterministic proof, not operator acceptance.", { reason: "COMPLETE_INTENT_NOT_PINNABLE" });
+  }
 
   // The caller's own checkout (main or a worktree) of the Project's repository receives the pair.
   let callerRoot: string;
@@ -178,7 +181,10 @@ export function renderOperatorActionSettleAskSuccess(response: CommandSuccess<Op
     `${data.written ? "Wrote" : "Already present"}: ${data.descriptorPath}`,
     `Script: ${data.scriptPath}`,
     `Pins ${data.project} Ask ${data.proposal} -> ${data.disposition}${data.placement ? " (--top)" : ""}. Previewed effects: ${data.previewEffects.join("; ") || "none"}.`,
-    `Commit both files in this checkout and open a PR. Once it is in ${data.project}'s main checkout, /actions shows it at ${data.actionsPath}.`,
+    // Arcadia's own library (bare key) is git-ignored and host-local: nothing to commit there.
+    data.key === data.id
+      ? `Arcadia's library is git-ignored: nothing to commit. /actions shows it at ${data.actionsPath} once this pair is in Arcadia's main checkout (pass --dir <main checkout>).`
+      : `Commit both files in this checkout and open a PR. Once it is in ${data.project}'s main checkout, /actions shows it at ${data.actionsPath}.`,
     "Generating a button grants nothing: only the operator's press settles."
   ];
 }
