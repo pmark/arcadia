@@ -29,7 +29,7 @@ import { packetSha256 } from "../execution/planningAuthorization.js";
 import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
-import { renderActionBrief } from "./actionBrief.js";
+import { actionAcceptanceCriteria, renderActionBrief } from "./actionBrief.js";
 import { bindRepairSession, getSessionRepair } from "./reviewRepair.js";
 import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
@@ -1510,7 +1510,10 @@ function buildProviderLaunch(
       workspace,
       sessionId: session.id,
       validationCommands: decodeStringArray(metadata?.validation_commands),
-      probeCommand: probe?.command
+      probeCommand: probe?.command,
+      acceptanceCriteria: actionAcceptanceCriteria({
+        repoRoot: session.worktree_path, projectSlug: session.project_slug, planSlug: session.plan_slug, actionId: session.action_id
+      })
     });
     args = [
       "--print", "--output-format", "stream-json", "--verbose",

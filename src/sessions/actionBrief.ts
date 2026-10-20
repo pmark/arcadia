@@ -202,6 +202,17 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
   ];
 }
 
+/** The recorded acceptance criteria of one Action, or none when its plan or Action cannot be found (the brief render refuses those). */
+export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot" | "projectSlug" | "planSlug" | "actionId">): string[] {
+  const plan = discoverDocs(input.repoRoot).docs.find(
+    (doc): doc is PlanDoc =>
+      doc.type === "plan" &&
+      doc.slug.toLowerCase() === input.planSlug.toLowerCase() &&
+      doc.project.toLowerCase() === input.projectSlug.toLowerCase()
+  );
+  return plan?.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
+}
+
 /**
  * Render one Action brief. Fails closed with a named validation error when the
  * recorded plan or Action is missing, or when the Action declares no acceptance
