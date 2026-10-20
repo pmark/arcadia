@@ -111,7 +111,7 @@ export function scopeViolations(criteria: readonly string[], changed: readonly s
  * governed file is the Session's own completion draft. Every other path --
  * a Plan, a Decision, PROJECT.md -- is the Session's own change and judged.
  */
-const isPreSettlementDraftPath = (file: string) => file.startsWith(".arcadia/asks/");
+const isPreSettlementDraftPath = (file: string) => /^\.arcadia\/asks\/[^/]+\.ya?ml$/i.test(file);
 
 /** The records a governed settlement writes (reconciliation.ts `isSettlementRecordPath`), never the Session's own change. */
 export function isGovernedRecordPath(file: string): boolean {

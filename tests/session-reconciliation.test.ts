@@ -738,6 +738,8 @@ it("asserts the contract", () => {
       writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
       mkdirSync(path.join(worktreePath, "docs", "decisions"), { recursive: true });
       writeFileSync(path.join(worktreePath, "docs", "decisions", "9999-self-approved.md"), "smuggled\n");
+      mkdirSync(path.join(worktreePath, ".arcadia", "asks", "nested"), { recursive: true });
+      writeFileSync(path.join(worktreePath, ".arcadia", "asks", "nested", "payload.ts"), "smuggled\n");
       draftCompleteInWorktree(worktreePath, "contract.md exists.");
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "preserve candidate"]);
@@ -750,6 +752,8 @@ it("asserts the contract", () => {
       expect(result.receipt.reason).toContain("Scope check refused the completion");
       expect(result.receipt.reason).toContain("docs/plans/copy-proof.md");
       expect(result.receipt.reason).toContain("docs/decisions/9999-self-approved.md");
+      // Only a completion draft directly in .arcadia/asks/ is exempt.
+      expect(result.receipt.reason).toContain(".arcadia/asks/nested/payload.ts");
     });
 
     it("accepts the drafted completion when only the scoped file and the Session's own completion draft change", () => {
