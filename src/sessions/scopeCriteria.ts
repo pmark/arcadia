@@ -122,6 +122,18 @@ export function isGovernedRecordPath(file: string): boolean {
     || file.startsWith(".arcadia/asks/");
 }
 
+/**
+ * Of the files a genuine settlement commit touched, those that are governed
+ * records and not the Session's own top-level `.arcadia/asks/*.yaml` draft
+ * (which the settlement deletes) or an authority-changing `docs/decisions/`
+ * file. The caller must supply only a verified settlement commit's files
+ * (reconciliation.ts `settlementCommitRecordFiles`); this uses the same
+ * `isGovernedRecordPath` as the host scope check, but is narrower than it.
+ */
+export function settlementRecordPaths(settlementFiles: readonly string[]): string[] {
+  return settlementFiles.filter((file) => isGovernedRecordPath(file) && !isPreSettlementDraftPath(file) && !file.startsWith("docs/decisions/"));
+}
+
 const MAX_LISTED = 10;
 const MAX_PATH_CHARS = 200;
 

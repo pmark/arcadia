@@ -19,7 +19,7 @@ import { getSessionRepair } from "./reviewRepair.js";
 import { getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
-import { candidateScopeRefusal, isGovernedRecordPath } from "./scopeCriteria.js";
+import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
 import { parseDoc } from "../docs/parse.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
@@ -356,7 +356,7 @@ export function findCandidateSettledCompletion(
   db: Database.Database,
   session: AgentSession,
   candidateRevision: string | null
-): { id: string; documentsCommit: string } | null {
+): { id: string; documentsCommit: string; evidenceRevision: string } | null {
   if (!existsSync(session.worktree_path) || !candidateRevision) return null;
   const worktree = session.worktree_path;
   try {
@@ -392,12 +392,44 @@ export function findCandidateSettledCompletion(
       const changedSince = git(worktree, ["diff", "--name-only", normalized.candidateRevision, candidateRevision])
         .split("\n").map((line) => line.trim()).filter(Boolean);
       if (changedSince.some((file) => !isSettlementRecordPath(file))) continue;
-      return { id: row.id, documentsCommit: receipt.documentsCommit };
+      return { id: row.id, documentsCommit: receipt.documentsCommit, evidenceRevision: normalized.candidateRevision };
     } catch {
       continue;
     }
   }
   return null;
+}
+
+/**
+ * Issue #1625: the governed records a genuine settlement commit wrote, which a
+ * reviewer's "touches only <paths>" scope judgement must not count. Only the
+ * files the settlement commit itself touched qualify, only when it sits on the
+ * evidence revision (or on it plus governed records alone), and never a file
+ * changed again after it. Anything unverifiable excuses nothing.
+ */
+export function settlementCommitRecordFiles(
+  worktree: string,
+  settlement: { documentsCommit: string; evidenceRevision: string },
+  head: string
+): string[] {
+  const lines = (output: string) => output.split("\n").map((line) => line.trim()).filter(Boolean);
+  try {
+    const parent = git(worktree, ["rev-parse", `${settlement.documentsCommit}^`]).trim();
+    const between = lines(git(worktree, ["diff", "--name-only", settlement.evidenceRevision, parent]));
+    if (between.some((file) => !isSettlementRecordPath(file))) return [];
+    // A record hand-edited between the evidence and the settlement stays judged, even though the settlement rewrote it.
+    const after = new Set([...between, ...lines(git(worktree, ["diff", "--name-only", settlement.documentsCommit, head]))]);
+    return settlementRecordPaths(lines(git(worktree, ["-c", "core.quotepath=false", "diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", settlement.documentsCommit])))
+      .filter((file) => !after.has(file));
+  } catch {
+    return [];
+  }
+}
+
+/** The records of this Session's accepted settlement on `head` for the reviewer, or none when no settlement verifies. */
+export function settlementRecordFilesForReview(db: Database.Database, session: AgentSession, head: string): string[] {
+  const settlement = findCandidateSettledCompletion(db, session, head);
+  return settlement ? settlementCommitRecordFiles(session.worktree_path, settlement, head) : [];
 }
 
 /** A completed worker Session whose exact settled candidate still exists. */

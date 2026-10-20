@@ -43,8 +43,10 @@ export const CODE_REVIEW_PR_CRITERIA = [
  * 1: implicit, every verdict before the revision existed.
  * 2: PR #1563 (#1555 Mission Log date-rollover bump, #1556
  *    retire-completion-draft attestation).
+ * 3: #1625, the reviewer prompt names a settled head's governed settlement
+ *    records so a "touches only" scope criterion does not count them.
  */
-export const JUDGEMENT_REVISION = 2;
+export const JUDGEMENT_REVISION = 3;
 
 export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 /** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */

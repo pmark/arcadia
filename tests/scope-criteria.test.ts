@@ -45,3 +45,4 @@ describe("scope criteria", () => {
     expect(scopeIntersection(["No scope here."])).toBeNull();
   });
 });
+
