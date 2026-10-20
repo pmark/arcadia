@@ -424,7 +424,7 @@ describe("production replay of a card never pressed (--card)", () => {
 
   it("reads flags only from the invocation lines, not from decoys", () => {
     writeFileSync(path.join(cardDir, "decoy.json"), JSON.stringify({ id: "decoy", kind: "grant" }));
-    writeFileSync(path.join(cardDir, "decoy.sh"), cardScript(source) + 'echo "never pass --remote-preservation or --integration-grant-merge-pull-request or --concurrency 9"\nif false; then refuse "--integration-grant-action \"x\""; fi\n');
+    writeFileSync(path.join(cardDir, "decoy.sh"), cardScript(source) + 'echo "never pass --remote-preservation or --integration-grant-merge-pull-request or --concurrency 9"\nif false; then refuse "--integration-grant-action "x""; fi\n');
     const scope = cardGrantReceipt("decoy", "2026-10-20T00:00:00Z", cardDir).scope;
     expect(scope.remotePreservation).toBeUndefined();
     expect(scope.integrationGrant?.mergeThroughPullRequest).toBeUndefined();
