@@ -32,13 +32,13 @@ describe("review-repair-gate-upsert-role", () => {
           request_id, action_key, policy_epoch, round, failed_session_id, failed_branch,
           failed_head, start_revision, pull_request_url, role, verdict, summary,
           report_path, findings_json, failed_checks_json, repair_session_id, outcome,
-          reason, last_error, drafted_at, commented_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          reason, last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?)
       `).run(
         requestId, "test/action", 1, 1, sessionId, "test-branch",
         head, "base123", null, otherRole, "fail", originalSummary,
-        null, "[]", "[]", null, "gated",
-        originalReason, null, null, null, now, now
+        null, "[]", "[]", "gated",
+        originalReason, now, now, null
       );
 
       // Verify the row was created with the other role
@@ -58,8 +58,8 @@ describe("review-repair-gate-upsert-role", () => {
           request_id, action_key, policy_epoch, round, failed_session_id, failed_branch,
           failed_head, start_revision, pull_request_url, role, verdict, summary,
           report_path, findings_json, failed_checks_json, repair_session_id, outcome,
-          reason, last_error, drafted_at, commented_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?)
+          reason, last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?, ?)
         ON CONFLICT(request_id) DO UPDATE SET summary = excluded.summary, reason = excluded.reason, updated_at = excluded.updated_at
           WHERE production_review_repairs.repair_session_id IS NULL AND production_review_repairs.outcome = 'gated'
             AND production_review_repairs.reason != excluded.reason
@@ -68,7 +68,7 @@ describe("review-repair-gate-upsert-role", () => {
         requestId, "test/action", newPolicyEpoch, 1, sessionId, "test-branch",
         head, "base123", null, REPAIR_CANDIDATE_GATE_ROLE, newSummary,
         null, "[]", "[]",
-        newReason, now, now,
+        newReason, now, now, null,
         REPAIR_CANDIDATE_GATE_ROLE
       );
 
