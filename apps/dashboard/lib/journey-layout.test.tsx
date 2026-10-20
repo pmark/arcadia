@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { JourneyActivityLine, JourneyLog, JourneyMap, describe as describeJourney } from "../components/journey-map";
+import { JourneyActivityLine, elapsed, JourneyLog, JourneyMap, describe as describeJourney } from "../components/journey-map";
 import { layoutJourney, pathData, placeLabels } from "./journey-layout";
 import type { Journey, JourneyEvent } from "./journey-types";
 
@@ -17,6 +17,7 @@ function journey(overrides: Partial<Journey> = {}): Journey {
     action: { key: "arcadia/demo", project: "arcadia", plan: "plan", id: "demo", title: "Demo" },
     destination: { label: "PR merged", reached: false, at: null, ref: pr("1577") },
     context: null,
+    run: null,
     activity: { phase: "repairing", headline: "Under repair: round 2 of 3", detail: "Session s4 is fixing the failed code-review.", since: "2026-10-19T16:20:00.000Z" },
     events: [
       event("launch", "launched", "2026-10-18T21:48:00.000Z"),
@@ -99,6 +100,19 @@ describe("JourneyMap", () => {
     expect(html).toContain("bg-gold");
     expect(html).toContain("journey-halo");
     expect(renderToStaticMarkup(<JourneyActivityLine journey={journey()} formatTime={() => "9:20 AM"} />)).toContain("since 9:20 AM");
+  });
+
+  it("shows elapsed time (amber past the phase bound), the operator's move and the run position", () => {
+    expect(elapsed("in-review", "2026-10-19T16:00:00.000Z", Date.parse("2026-10-19T16:47:00.000Z"))).toEqual({ text: "47 min", long: false });
+    expect(elapsed("in-review", "2026-10-19T16:00:00.000Z", Date.parse("2026-10-19T19:05:00.000Z"))).toEqual({ text: "3 h 5 min", long: true });
+    expect(elapsed("blocked", "2026-10-19T16:00:00.000Z", Date.parse("2026-10-20T16:00:00.000Z"))?.long).toBe(false);
+    expect(elapsed("driving", null, 0)).toBeNull();
+    const base = journey();
+    const html = renderToStaticMarkup(<JourneyActivityLine journey={{ ...base, activity: { ...base.activity, yourMove: "Rerun the review." }, run: { position: 1, total: 3, next: "arcadia/b" } }} now={Date.parse("2026-10-19T18:00:00.000Z")} />);
+    expect(html).toContain("Your move: </span>Rerun the review.");
+    expect(html).toContain("Action 1 of 3 in this production run · next: b");
+    expect(html).toContain("longer than usual");
+    expect(renderToStaticMarkup(<JourneyActivityLine journey={base} />)).not.toContain("min");
   });
 
   it("logs the gate first, then events newest first, with PR links and classes", () => {

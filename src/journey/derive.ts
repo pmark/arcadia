@@ -229,7 +229,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
 
   // Operator escalations that need a person are open obstacles; waiting ones only describe "now".
   const escalation = has("production_operator_escalations")
-    ? (db.prepare("SELECT kind, message, first_detected_at, last_seen_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as EscalationRow | undefined)
+    ? (db.prepare("SELECT kind, message, remedy, first_detected_at, last_seen_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as EscalationRow | undefined)
     : undefined;
   // A repair escalation is already told by its review-repair row above.
   const repairTold = REVIEW_REPAIR_ESCALATION_KINDS.has(escalation?.kind ?? "")
@@ -309,6 +309,12 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   const activity = currentActivity({
     db, has, actionKey, now, reached, latestSession, latestPr, steps, repairs, events, escalation, repairRounds
   });
+  // The worker records what would unblock an escalation; it is the operator's move unless it says none is needed.
+  const remedy = escalation?.remedy?.trim() ?? "";
+  activity.yourMove = !reached && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !/^no operator step/i.test(remedy)
+    ? firstLine(remedy, 300)
+    : null;
+  const run = runPosition(db, has, actionKey);
 
   return {
     schema: JOURNEY_SCHEMA,
@@ -316,6 +322,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     action: { key: actionKey, project, plan, id: actionId, title },
     destination,
     activity,
+    run,
     context: null,
     events,
     now: nowEvent,
@@ -412,6 +419,19 @@ function currentActivity(input: {
     return { phase: "launching", headline: "Launching", detail: "The worker admitted this Action and is starting its Session.", since: admission.issued_at };
   }
   return { phase: "waiting", headline: "Waiting to launch", detail: "In scope of the running production; the worker launches it on a coming tick.", since: policy.updated_at };
+}
+
+/** The Action's place in the running production's ordered scope; null when production is Off or does not name it. */
+function runPosition(db: Database.Database, has: (table: string) => boolean, actionKey: string): Journey["run"] {
+  const policy = has("production_policy")
+    ? (db.prepare("SELECT desired_state, scope_json FROM production_policy WHERE id = 'workspace'").get() as { desired_state: string; scope_json: string | null } | undefined)
+    : undefined;
+  if (policy?.desired_state !== "active") return null;
+  const actions = parseJson(policy.scope_json).actions;
+  if (!Array.isArray(actions)) return null;
+  const keys = actions.filter((key): key is string => typeof key === "string");
+  const index = keys.indexOf(actionKey);
+  return index < 0 ? null : { position: index + 1, total: keys.length, next: keys[index + 1] ?? null };
 }
 
 /** Escalation kinds that describe an ordinary wait the worker resolves itself. */
@@ -536,4 +556,4 @@ interface ExitRow { session_id: string; outcome: string; reason: string; created
 interface AttemptRow { role: string; ordinal: number; status: string; input_revision: string; target_head: string | null; terminal_receipt_json: string | null; created_at: string; updated_at: string }
 interface AlertRow { id: string; trigger: string; detail: string; status: string; first_seen_at: string }
 interface MergeRow { head: string; pull_request_url: string | null; outcome: string; code: string | null; reason: string; updated_at: string }
-interface EscalationRow { kind: string; message: string; first_detected_at: string; last_seen_at: string }
+interface EscalationRow { kind: string; message: string; remedy: string | null; first_detected_at: string; last_seen_at: string }

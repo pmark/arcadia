@@ -243,6 +243,18 @@ describe("deriveJourney", () => {
       expect(activity()).toMatchObject({ phase: "waiting" });
     });
 
+    it("names the operator's move from the escalation's remedy, unless the worker needs no one, and the run position", () => {
+      seedPath();
+      expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBeNull();
+      db.prepare("UPDATE production_operator_escalations SET kind = 'review_repair_gated', remedy = 'Rerun the review with --rerun.\nmore' WHERE action_key = ?").run(KEY);
+      expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBe("Rerun the review with --rerun.");
+      db.prepare("UPDATE production_operator_escalations SET remedy = 'No operator step is needed: the worker retries.' WHERE action_key = ?").run(KEY);
+      expect(deriveJourney(db, KEY, NOW).activity.yourMove).toBeNull();
+      expect(deriveJourney(db, KEY, NOW).run).toBeNull();
+      db.prepare("UPDATE production_policy SET desired_state = 'active', scope_json = ? WHERE id = 'workspace'").run(JSON.stringify({ actions: ["arcadia/first", KEY, "arcadia/last"] }));
+      expect(deriveJourney(db, KEY, NOW).run).toEqual({ position: 2, total: 3, next: "arcadia/last" });
+    });
+
     it("has arrived once merged", () => {
       seedPath();
       expect(deriveJourney(db, KEY, NOW, { integration: () => ({ commit: "m".repeat(40), at: "2026-10-19T15:58:00.000Z" }) }).activity)

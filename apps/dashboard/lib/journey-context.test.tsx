@@ -11,6 +11,7 @@ const journey = (plan: string | null): Journey => ({
   action: { key: "arcadia/a13", project: "arcadia", plan, id: "a13", title: "Thirteen" },
   destination: { label: "PR merged", reached: false, at: null, ref: null },
   activity: { phase: "parked", headline: "Parked: production is Off", detail: "x", since: null },
+  run: null,
   context: {
     project: { name: "Arcadia", goal: "Turn outcomes into work.", outcome: "The operator states an outcome.", milestone: "Production runs unattended." },
     plan: { slug: "run-plan", milestone: "Production runs unattended.", active: true, position: 13, total: 15, done: 11 },
