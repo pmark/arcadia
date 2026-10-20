@@ -48,7 +48,7 @@ describe("review-repair-gate-upsert-role", () => {
       expect(row.reason).toBe(originalReason);
 
       // Simulate the ON CONFLICT DO UPDATE that happens in gateRepairCandidate
-      // This mimics the SQL statement at lines 1040-1048 of src/production/reviewRepair.ts
+      // This mimics the SQL statement at lines 1040-1049 of src/production/reviewRepair.ts
       const newSummary = "New gate summary";
       const newReason = "New gate reason";
       const newPolicyEpoch = 2;
@@ -59,16 +59,16 @@ describe("review-repair-gate-upsert-role", () => {
           failed_head, start_revision, pull_request_url, role, verdict, summary,
           report_path, findings_json, failed_checks_json, repair_session_id, outcome,
           reason, last_error, drafted_at, commented_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?)
         ON CONFLICT(request_id) DO UPDATE SET summary = excluded.summary, reason = excluded.reason, updated_at = excluded.updated_at
           WHERE production_review_repairs.repair_session_id IS NULL AND production_review_repairs.outcome = 'gated'
             AND production_review_repairs.reason IS NOT excluded.reason
             AND production_review_repairs.role = ?
       `).run(
         requestId, "test/action", newPolicyEpoch, 1, sessionId, "test-branch",
-        head, "base123", null, REPAIR_CANDIDATE_GATE_ROLE, "gated", newSummary,
-        null, "[]", "[]", null, "gated",
-        newReason, null, null, null, now, now,
+        head, "base123", null, REPAIR_CANDIDATE_GATE_ROLE, newSummary,
+        null, "[]", "[]",
+        newReason, now, now,
         REPAIR_CANDIDATE_GATE_ROLE
       );
 
