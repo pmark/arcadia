@@ -163,6 +163,30 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("  2. The contract is published.");
   });
 
+  // Issues #1603/#1608: a scope criterion is restated as a hard constraint
+  // with what to do instead of widening it; an unscoped Action gets no such line.
+  it("restates a readable scope criterion as a hard constraint, and says to stop and ask instead of widening it", () => {
+    const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace("      - The contract is published.", "      - The change touches only docs/contract.md; lint passes."));
+    const input = {
+      repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+      worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode" as const, baseRevision: head(repo)
+    };
+    const brief = renderActionBrief(input);
+    expect(brief).toContain("Scope — a hard constraint the host checks against your diff before accepting a completion (only your completion draft in .arcadia/asks/ is exempt): the change may touch only docs/contract.md.");
+    expect(brief).toContain("never change a file outside that scope to make a test pass");
+    expect(brief).toContain("draft no completion: submit an Agent Ask with `intent: proposal`");
+    expect(brief.indexOf("Scope — ")).toBeGreaterThan(brief.indexOf("  2. The change touches only docs/contract.md; lint passes."));
+
+    const resumed = renderActionBrief({ ...input, continuation: { sessionId: "session_prev", candidateRevision: head(repo),
+      reason: "The Session's drafted complete Ask was not settled: the Action's declared validation did not pass on the candidate. Scope check refused the completion: ..." } });
+    expect(resumed).toContain("Revert every change outside the scope that reason names (never widen it)");
+
+    const unscoped = renderActionBrief({ ...input, repoRoot: briefRepo() });
+    expect(unscoped).not.toContain("Scope — ");
+  });
+
   it("states the standing constraints and the exact completion protocol", () => {
     const repo = briefRepo();
     const brief = renderActionBrief({

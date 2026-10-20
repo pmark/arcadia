@@ -479,7 +479,8 @@ Disposable fixture plan.
         },
         agentWorktreeRoot: this.worktrees,
         log: (message) => this.log.push(`[tick ${this.tickCount}] ${message}`),
-        ...(Object.keys(preserve).length ? { handoff: { preserve } } : {}),
+        // Without host Seatbelt, pre-acceptance validation (#1599) runs its identical checks unconfined, as preservation does.
+        handoff: { ...(Object.keys(preserve).length ? { preserve } : {}), ...(HOST_SEATBELT ? {} : { completionValidation: { unconfinedForTests: true } }) },
         ...(tickReviews ? { review: { runCommand: this.github.runCommand, selectReviewer: () => hostReviewer(), ...this.options.review } } : {})
       })
     );

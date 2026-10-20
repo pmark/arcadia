@@ -9,13 +9,18 @@ import type { PlanDoc } from "../docs/types.js";
 import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
 import { sessionLogPath } from "./sessionRecording.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
-import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_EVIDENCE_INCOMPLETE, AUTO_SETTLE_NO_DRAFT, AUTO_SETTLE_REVISION_CHANGED, AUTO_SETTLE_STALE_REVISION } from "../ask/autoSettleBeforeDispatch.js";
+import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_EVIDENCE_INCOMPLETE, AUTO_SETTLE_NO_DRAFT, AUTO_SETTLE_REVISION_CHANGED, AUTO_SETTLE_STALE_REVISION, AUTO_SETTLE_VALIDATION_REFUSED } from "../ask/autoSettleBeforeDispatch.js";
 import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getSession, hasWorktreeReservationTable, type AgentSession } from "./index.js";
 import { settleDevelopmentAttemptForExit } from "./roleLineage.js";
 import { getSessionRepair } from "./reviewRepair.js";
+import { getProjectMetadata } from "../db/repositories.js";
+import { decodeStringArray } from "../projects/setup.js";
+import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
+import { candidateScopeRefusal, isGovernedRecordPath } from "./scopeCriteria.js";
+import { parseDoc } from "../docs/parse.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
 function hasRoleAttemptTable(db: Database.Database): boolean {
@@ -418,14 +423,20 @@ export function findAcceptedTerminalCompletion(
   return { exitId: exit.id, candidateHead, settlementId: settlement.id };
 }
 
-/** The managed records a `complete` settlement writes and commits. */
-function isSettlementRecordPath(file: string): boolean {
-  return file === "PROJECT.md"
-    || file === "MISSION_LOG.md"
-    || file.startsWith("docs/plans/")
-    || file.startsWith("docs/decisions/")
-    || file.startsWith(".arcadia/asks/");
+/** The Session's Action's acceptance criteria as its base revision declares them, or null when they cannot be read there. */
+function actionCriteriaAtBase(session: AgentSession, planPath: string): string[] | null {
+  try {
+    const content = git(session.worktree_path, ["show", `${session.base_revision}:${planPath}`]);
+    const doc = parseDoc(planPath, path.join(session.worktree_path, planPath), content).doc;
+    if (doc?.type !== "plan") return null;
+    return doc.actions.find((candidate) => candidate.id === session.action_id)?.acceptanceCriteria ?? null;
+  } catch {
+    return null;
+  }
 }
+
+/** The managed records a `complete` settlement writes and commits. */
+const isSettlementRecordPath = isGovernedRecordPath;
 
 /**
  * A Session inside a provider sandbox (Codex `workspace-write`, Claude Code's
@@ -443,7 +454,7 @@ function isSettlementRecordPath(file: string): boolean {
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): DraftedCompletionSettlement | null {
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions): DraftedCompletionSettlement | null {
   if (!evidence.worktreeExists) return null;
   const worktree = session.worktree_path;
   const plan = discoverDocs(worktree).docs.find(
@@ -451,6 +462,27 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   );
   const action = plan?.actions.find((candidate) => candidate.id === session.action_id);
   if (!action || action.status === "done" || action.acceptanceCriteria.length === 0) return null;
+  // Issue #1599: the Action's declared validation runs against the candidate
+  // before its drafted completion settles -- at most once per reconciliation,
+  // however many drafts are tried, since every draft judges the same tree.
+  // Issue #1608: a scope criterion ("touches only <paths>") is judged first
+  // against the candidate's own diff -- deterministic, and cheaper than the tests.
+  // The criteria are the base's: a candidate that edits its own Plan copy
+  // cannot drop or widen the scope it is judged against.
+  const baseCriteria = actionCriteriaAtBase(session, plan!.relativePath);
+  const scopeRefusal = baseCriteria === null
+    ? `Scope check refused the completion: the Action's acceptance criteria at the base ${session.base_revision.slice(0, 12)} could not be read.`
+    : candidateScopeRefusal(worktree, session.base_revision, evidence.candidateRevision ?? "HEAD", baseCriteria);
+  let validation: CompletionValidationResult | null = null;
+  const validateBeforeSettle = () => {
+    if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
+    validation ??= validateCompletionCandidate({
+      repository: session.repository_path, worktree, base: session.base_revision, workspace,
+      commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),
+      acceptanceCriteria: action.acceptanceCriteria
+    }, validationOptions);
+    return validation.status === "refused" ? { ok: false as const, reason: validation.reason } : { ok: true as const };
+  };
   const result = attemptAutoSettlePendingCompletion(db, {
     repoRoot: worktree,
     projectSlug: session.project_slug,
@@ -460,12 +492,13 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     // left, draft included, so that commit is what its evidence describes.
     evidencedRevision: evidence.candidateRevision,
     // A review repair Session settles only a completion it drafted itself.
-    excludeDraftsAt: getSessionRepair(db, session.id)?.start_revision ?? null
+    excludeDraftsAt: getSessionRepair(db, session.id)?.start_revision ?? null,
+    validateBeforeSettle
   });
   if (!result.settled) {
     // The Session drafted a completion that was refused: say why, so the
     // receipt (and the resumed Session's brief) names what to fix.
-    return result.reason === AUTO_SETTLE_NO_DRAFT ? null : { kind: "refused", reason: draftedCompletionRefusal(worktree, result.reason, result.askPath) };
+    return result.reason === AUTO_SETTLE_NO_DRAFT ? null : { kind: "refused", reason: draftedCompletionRefusal(worktree, result.reason, result.askPath, result.detail) };
   }
   const settlementId = result.receiptId ?? "unknown";
   // Issue #1518: a settlement can be recorded while its commit is not on the
@@ -517,7 +550,7 @@ type DraftedCompletionSettlement =
  * a raw error message nor an agent-chosen file name is echoed beyond a plain
  * `.arcadia/asks/<safe name>.yaml` path.
  */
-function draftedCompletionRefusal(worktree: string, code: string, askPath: string | undefined): string {
+function draftedCompletionRefusal(worktree: string, code: string, askPath: string | undefined, detail?: string): string {
   const relative = askPath ? path.relative(worktree, askPath).split(path.sep).join("/") : "";
   const where = /^\.arcadia\/asks\/[A-Za-z0-9._-]{1,120}\.ya?ml$/.test(relative) ? ` (${relative})` : "";
   const why = code === AUTO_SETTLE_EVIDENCE_INCOMPLETE
@@ -526,7 +559,10 @@ function draftedCompletionRefusal(worktree: string, code: string, askPath: strin
       ? "its candidate_revision is not an ancestor of the candidate's HEAD"
       : code === AUTO_SETTLE_REVISION_CHANGED
         ? "commits after its candidate_revision changed more than governance records, so its evidence no longer describes HEAD"
-        : "its preview or settlement was refused; the worker log records the exact error";
+        : code === AUTO_SETTLE_VALIDATION_REFUSED && detail
+          // Bounded and neutralized by the validation itself (completionValidation.ts).
+          ? `the Action's declared validation did not pass on the candidate. ${detail.replace(/\.$/, "")}`
+          : "its preview or settlement was refused; the worker log records the exact error";
   return `The Session's drafted complete Ask${where} was not settled: ${why}.`;
 }
 
@@ -598,6 +634,8 @@ export interface ReconcileSessionExitInput {
   suppressLeaseHandoff?: { reason: string };
   /** The workspace, so the Session's provider log can be read to name a provider sign-in failure. */
   workspace?: string;
+  /** Bounds and dependency root for the pre-acceptance validation of a drafted completion (Issue #1599); defaults apply when omitted. */
+  completionValidation?: CompletionValidationOptions;
   /** Extra receipt accounting, committed atomically with terminal state and the receipt.
    * Called once for a new receipt inside its SQLite transaction; never on replay. */
   onReceiptWrite?: (receipt: SessionExitReceipt) => void;
@@ -648,7 +686,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   let settlementNotInCandidate: { settlementId: string; reason: string } | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
-    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence);
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, input.completionValidation);
     const attempt = settled
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
       : drafted?.kind === "settled"

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
@@ -584,6 +584,188 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).not.toBe("accepted_completion");
     expect(existsSync(path.join(worktreePath, "contract.md"))).toBe(false);
     expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+  });
+
+  // Issue #1599, the live shape of 2026-10-19: a sandboxed Session drafted a
+  // complete Ask with verbatim `met` evidence for a criterion naming its own
+  // new test file, the host preserved it, and reconciliation accepted it
+  // although that test failed -- no test ran before acceptance. The named
+  // test now runs (under Seatbelt, with the Arcadia checkout's installed
+  // vitest standing in for the Project's) before the draft settles. Under
+  // ARCADIA_PRESERVATION_HOST_TEST=1 on macOS (outside any agent sandbox,
+  // since Seatbelt cannot nest) the checks run confined; otherwise the same
+  // checks run unconfined, the harness's convention for preservation.
+  describe("pre-acceptance validation of the named test files (#1599)", () => {
+    const criterion = "tests/contract.test.ts passes and asserts the contract.";
+    const confined = process.platform === "darwin" && process.env.ARCADIA_PRESERVATION_HOST_TEST === "1";
+    const completionValidation = { dependencyRoot: process.cwd(), ...(confined ? {} : { unconfinedForTests: true }) };
+
+    function namedTestCandidate(testBody: string | ((workspace: string) => string)) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      writeFileSync(path.join(worktreePath, "package.json"), `${JSON.stringify({ name: "fixture", private: true, type: "module", devDependencies: { vitest: "*" } })}\n`);
+      mkdirSync(path.join(worktreePath, "tests"), { recursive: true });
+      writeFileSync(path.join(worktreePath, "tests", "contract.test.ts"), `import { expect, it } from "vitest";\n${typeof testBody === "string" ? testBody : testBody(fixture.workspace)}\n`);
+      draftCompleteInWorktree(worktreePath, criterion);
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      return { fixture, sessionId: launched.data.session.id, worktreePath };
+    }
+
+    it("does not accept a drafted completion whose named test fails: resumable, and the reason names the failing test", () => {
+      const { fixture, sessionId, worktreePath } = namedTestCandidate(`it("asserts the contract @here \`x\`", () => { expect(1 + 1).toBe(3); });`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-fails", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(1);
+      expect(result.receipt.reason).toContain("the Action's declared validation did not pass on the candidate");
+      expect(result.receipt.reason).toContain("tests/contract.test.ts > asserts the contract");
+      // Untrusted test text is neutralized: no mention, no code span.
+      expect(result.receipt.reason).not.toMatch(/@here|`x`/);
+      expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+      const handoff = withReadOnlyDatabase(fixture.workspace, (db) => getResumableLeaseHandoff(db, fixture.repo));
+      expect(handoff?.session.id).toBe(sessionId);
+      expect(handoff?.receipt.reason).toContain("tests/contract.test.ts > asserts the contract");
+    });
+
+    it("accepts the drafted completion once its named test passes", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(2); });`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-passes", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+      );
+
+      expect(result.receipt.outcome).toBe("accepted_completion");
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    });
+
+    // Candidate test code must not read the workspace (its database) or the
+    // host user's home (~/.arcadia, other checkouts): a test that asserts both
+    // reads are refused passes only inside the confinement.
+    it.runIf(confined)("keeps the workspace database and the host home unreadable to candidate tests", () => {
+      const databaseIn = (workspace: string) => {
+        const database = readdirSync(workspace, { recursive: true, withFileTypes: true })
+          .find((entry) => entry.isFile() && /\.(?:db|sqlite3?)$/.test(entry.name));
+        if (!database) throw new Error("fixture workspace has no database file");
+        return path.join(database.parentPath, database.name);
+      };
+      const { fixture, sessionId } = namedTestCandidate((workspace) => `import { readFileSync, readdirSync } from "node:fs";
+it("asserts the contract", () => {
+  expect(() => readFileSync(${JSON.stringify(databaseIn(workspace))})).toThrow();
+  expect(() => readdirSync(${JSON.stringify(homedir())})).toThrow();
+  expect(() => readdirSync(${JSON.stringify(path.join(homedir(), ".arcadia"))})).toThrow();
+});`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-reads", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+      );
+
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+      expect(result.receipt.outcome).toBe("accepted_completion");
+    });
+
+    it("refuses, never passes, a named test that does not finish within the bound", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => new Promise(() => {}), 600_000);`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-hangs", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation: { ...completionValidation, timeoutMs: 15_000 } })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("did not finish within 15s");
+      expect(result.receipt.reason).toContain("tests/contract.test.ts (timed out)");
+    });
+  });
+
+  // Issue #1608, the live shape of 2026-10-20: the drafted evidence marked
+  // "touches only <test file>" met while the candidate also changed product
+  // code, and it settled. The scope clause is now judged against the
+  // candidate's own diff (governed records excluded) before the draft settles.
+  describe("scope criterion check against the candidate's diff (#1608)", () => {
+    const criterion = "contract.md exists; the change touches only contract.md.";
+
+    function scopedCandidate(extra: Record<string, string>) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      for (const [file, body] of Object.entries(extra)) {
+        mkdirSync(path.dirname(path.join(worktreePath, file)), { recursive: true });
+        writeFileSync(path.join(worktreePath, file), body);
+      }
+      draftCompleteInWorktree(worktreePath, criterion);
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      return { fixture, sessionId: launched.data.session.id, worktreePath };
+    }
+
+    it("does not accept a drafted completion whose diff leaves the scope it marks met: resumable, naming the out-of-scope file", () => {
+      const { fixture, sessionId, worktreePath } = scopedCandidate({ "src/product.ts": "export const changed = true;\n", "src/`@here`.ts": "x\n" });
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-scope-violated", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(1);
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toContain("allows only contract.md, but the candidate also changes");
+      expect(result.receipt.reason).toContain("src/product.ts");
+      // A candidate-chosen file name is neutralized: no mention, no code span.
+      expect(result.receipt.reason).not.toMatch(/@here|`/);
+      expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+    });
+
+    it("judges the base's criteria: a candidate that drops its own scope criterion from its Plan copy is still refused", () => {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      const planPath = path.join(worktreePath, "docs", "plans", "copy-proof.md");
+      const plan = readFileSync(planPath, "utf8");
+      expect(plan).toContain(criterion);
+      writeFileSync(planPath, plan.replace(criterion, "contract.md exists."));
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      mkdirSync(path.join(worktreePath, "docs", "decisions"), { recursive: true });
+      writeFileSync(path.join(worktreePath, "docs", "decisions", "9999-self-approved.md"), "smuggled\n");
+      mkdirSync(path.join(worktreePath, ".arcadia", "asks", "nested"), { recursive: true });
+      writeFileSync(path.join(worktreePath, ".arcadia", "asks", "nested", "payload.ts"), "smuggled\n");
+      draftCompleteInWorktree(worktreePath, "contract.md exists.");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-scope-plan-edited", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toContain("docs/plans/copy-proof.md");
+      expect(result.receipt.reason).toContain("docs/decisions/9999-self-approved.md");
+      // Only a completion draft directly in .arcadia/asks/ is exempt.
+      expect(result.receipt.reason).toContain(".arcadia/asks/nested/payload.ts");
+    });
+
+    it("accepts the drafted completion when only the scoped file and the Session's own completion draft change", () => {
+      const { fixture, sessionId } = scopedCandidate({});
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-scope-held", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("accepted_completion");
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    });
   });
 
   it("refuses to settle a self-completion whose verbatim met evidence is false because the declared Artifact is missing (contract 20, #555)", () => {
