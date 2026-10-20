@@ -276,6 +276,14 @@ describe("deriveJourney", () => {
     expect(() => deriveJourney(db, "no-slash", NOW)).toThrow(/<project>\/<action>/);
   });
 
+  it("logs an escalation once per kind, however often its message is rebuilt", () => {
+    const append = (kind: string, message: string, at: string) => appendJourneyLog(db, { actionKey: KEY, source: "escalation", kind, message, remedy: null, at });
+    expect(append("awaiting_independent_verdicts", "Now: polling (last: 3 checks pending).", "2026-10-19T15:31:00.000Z")).toBe(true);
+    expect(append("awaiting_independent_verdicts", "Now: polling (last: 1 check pending).", "2026-10-19T15:32:00.000Z")).toBe(false);
+    expect(append("review_repair_gated", "Gated.", "2026-10-19T15:33:00.000Z")).toBe(true);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM action_journey_log").get() as { n: number }).n).toBe(2);
+  });
+
   it("keeps an overwritten escalation, refusal and gated repair as cleared obstacles from the journey log", () => {
     seedPath();
     // An earlier escalation the per-Action row has since overwritten with the current (waiting) one.
@@ -324,7 +332,8 @@ describe("appendJourneyLog", () => {
     expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:00:04.000Z" })).toBe(false);
     expect(rows()).toHaveLength(1);
 
-    expect(appendJourneyLog(db, { ...entry, remedy: "Answer it now.", at: "2026-10-19T10:01:00.000Z" })).toBe(true);
+    // An escalation's text is rebuilt each tick; only a change of kind is a new entry.
+    expect(appendJourneyLog(db, { ...entry, remedy: "Answer it now.", at: "2026-10-19T10:01:00.000Z" })).toBe(false);
     expect(appendJourneyLog(db, { ...entry, kind: "terminal_candidate_refused", at: "2026-10-19T10:02:00.000Z" })).toBe(true);
     // Back to the first state: a change from the latest row, so it is history too.
     expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:03:00.000Z" })).toBe(true);
@@ -333,7 +342,6 @@ describe("appendJourneyLog", () => {
 
     expect(rows()).toEqual([
       { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:00:00.000Z" },
-      { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it now.", at: "2026-10-19T10:01:00.000Z" },
       { source: "escalation", kind: "terminal_candidate_refused", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:02:00.000Z" },
       { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:03:00.000Z" },
       { source: "launch_refusal", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:04:00.000Z" }

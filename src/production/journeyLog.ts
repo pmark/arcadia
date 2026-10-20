@@ -13,8 +13,8 @@ import type Database from "better-sqlite3";
 export type JourneyLogSource = "escalation" | "launch_refusal" | "review_repair";
 
 /**
- * Created by `applyInitialSchema` (so a read-only `arcadia journey` open sees
- * it) and by the tick and review-repair table ensures (so a writer whose
+ * Created by the schema migrations `applyInitialSchema` runs (so a read-only
+ * `arcadia journey` open sees it) and by the tick and review-repair table ensures (so a writer whose
  * database predates it gains it on its next writable open).
  */
 export function ensureActionJourneyLogTable(db: Database.Database): void {
@@ -33,8 +33,16 @@ export function ensureActionJourneyLogTable(db: Database.Database): void {
   `);
 }
 
-export function journeyLogFingerprint(kind: string, message: string, remedy: string | null): string {
-  return createHash("sha256").update(JSON.stringify([kind, message, remedy])).digest("hex");
+/**
+ * What makes an entry new. An escalation's message is rebuilt every tick and
+ * can carry the latest poll ("Now: … (last: …)"), so escalations count as new
+ * only when their kind changes; the first message of a kind is the one kept.
+ * Growth is bounded by distinct state changes per Action; there is no pruning
+ * yet (revisit if the table passes ~100k rows).
+ */
+export function journeyLogFingerprint(source: JourneyLogSource, kind: string, message: string, remedy: string | null): string {
+  const parts = source === "escalation" ? [kind] : [kind, message, remedy];
+  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
 
 /**
@@ -49,7 +57,7 @@ export function appendJourneyLog(
 ): boolean {
   try {
     const remedy = input.remedy ?? null;
-    const fingerprint = journeyLogFingerprint(input.kind, input.message, remedy);
+    const fingerprint = journeyLogFingerprint(input.source, input.kind, input.message, remedy);
     const latest = db.prepare(`SELECT fingerprint FROM action_journey_log WHERE action_key = ? AND source = ?
       ORDER BY at DESC, rowid DESC LIMIT 1`).get(input.actionKey, input.source) as { fingerprint: string } | undefined;
     if (latest?.fingerprint === fingerprint) return false;
