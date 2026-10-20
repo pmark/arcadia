@@ -2173,8 +2173,7 @@ class RepairLaunchHeld extends Error {}
 
 /** The review-repair ping text: the first line of the escalation, cut to the operator ping bound. */
 export function reviewRepairPingMessage(actionKey: string, kind: string, message: string): string {
-  const text = `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`;
-  return text.length <= OPERATOR_PING_MESSAGE_MAX ? text : `${text.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
+  return boundedPingMessage(`Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`);
 }
 
 /** One deduped review-repair escalation, logged and pinged once per kind. */
@@ -2630,7 +2629,11 @@ function attemptProjectLaunch(
         if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
-              message: `Production cannot launch ${actionKey}: ${error.message}${claudeUsageRemedy ? ` ${claudeUsageRemedy}` : ""}`,
+              // Issue #1616: the full capacity explanation runs past the ping
+              // limit and the ping was never queued; lead with the remedy.
+              message: boundedPingMessage(claudeUsageRemedy
+                ? `Production cannot launch ${actionKey}: ${claudeUsageRemedy} ${error.message}`
+                : `Production cannot launch ${actionKey}: ${error.message}`),
               kind: "attention",
               agent: "production-tick",
               now: input.now
@@ -2930,6 +2933,11 @@ export function getProductionOperatorEscalationKind(db: Database.Database, actio
  * Every escalation kind this module can record, assembled from the constants the recording sites use, so
  * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
  */
+/** A ping message cut to the queue's limit (it refuses longer ones outright), keeping its start. */
+export function boundedPingMessage(message: string): string {
+  return message.length <= OPERATOR_PING_MESSAGE_MAX ? message : `${message.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
+}
+
 export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   ENVIRONMENT_WALL_ESCALATION_KIND,
   BUDGET_EXHAUSTED_ESCALATION_KIND,
