@@ -236,7 +236,7 @@ describe("worker pre-admission Claude usage refresh (Decision 0130)", () => {
       unmeteredProvider: null,
       claudeUsageRefreshDeps: {
         snapshotPath,
-        loadCredentials: async () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+        loadCredentials: async () => ({ accessToken: "access-token" }),
         requestUsage
       }
     });
