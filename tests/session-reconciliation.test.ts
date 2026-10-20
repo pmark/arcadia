@@ -684,6 +684,59 @@ it("asserts the contract", () => {
     });
   });
 
+  // Issue #1608, the live shape of 2026-10-20: the drafted evidence marked
+  // "touches only <test file>" met while the candidate also changed product
+  // code, and it settled. The scope clause is now judged against the
+  // candidate's own diff (governed records excluded) before the draft settles.
+  describe("scope criterion check against the candidate's diff (#1608)", () => {
+    const criterion = "contract.md exists; the change touches only contract.md.";
+
+    function scopedCandidate(extra: Record<string, string>) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      for (const [file, body] of Object.entries(extra)) {
+        mkdirSync(path.dirname(path.join(worktreePath, file)), { recursive: true });
+        writeFileSync(path.join(worktreePath, file), body);
+      }
+      draftCompleteInWorktree(worktreePath, criterion);
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      return { fixture, sessionId: launched.data.session.id, worktreePath };
+    }
+
+    it("does not accept a drafted completion whose diff leaves the scope it marks met: resumable, naming the out-of-scope file", () => {
+      const { fixture, sessionId, worktreePath } = scopedCandidate({ "src/product.ts": "export const changed = true;\n", "src/`@here`.ts": "x\n" });
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-scope-violated", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(1);
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toContain("allows only contract.md, but the candidate also changes");
+      expect(result.receipt.reason).toContain("src/product.ts");
+      // A candidate-chosen file name is neutralized: no mention, no code span.
+      expect(result.receipt.reason).not.toMatch(/@here|`/);
+      expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+    });
+
+    it("accepts the drafted completion when only the scoped file and governed records change", () => {
+      const { fixture, sessionId } = scopedCandidate({});
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-scope-held", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("accepted_completion");
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    });
+  });
+
   it("refuses to settle a self-completion whose verbatim met evidence is false because the declared Artifact is missing (contract 20, #555)", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();

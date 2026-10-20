@@ -19,6 +19,7 @@ import { getSessionRepair } from "./reviewRepair.js";
 import { getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
+import { candidateScopeRefusal, isGovernedRecordPath } from "./scopeCriteria.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
 function hasRoleAttemptTable(db: Database.Database): boolean {
@@ -422,13 +423,7 @@ export function findAcceptedTerminalCompletion(
 }
 
 /** The managed records a `complete` settlement writes and commits. */
-function isSettlementRecordPath(file: string): boolean {
-  return file === "PROJECT.md"
-    || file === "MISSION_LOG.md"
-    || file.startsWith("docs/plans/")
-    || file.startsWith("docs/decisions/")
-    || file.startsWith(".arcadia/asks/");
-}
+const isSettlementRecordPath = isGovernedRecordPath;
 
 /**
  * A Session inside a provider sandbox (Codex `workspace-write`, Claude Code's
@@ -457,8 +452,12 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   // Issue #1599: the Action's declared validation runs against the candidate
   // before its drafted completion settles -- at most once per reconciliation,
   // however many drafts are tried, since every draft judges the same tree.
+  // Issue #1608: a scope criterion ("touches only <paths>") is judged first
+  // against the candidate's own diff -- deterministic, and cheaper than the tests.
+  const scopeRefusal = candidateScopeRefusal(worktree, session.base_revision, evidence.candidateRevision ?? "HEAD", action.acceptanceCriteria);
   let validation: CompletionValidationResult | null = null;
   const validateBeforeSettle = () => {
+    if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
     validation ??= validateCompletionCandidate({
       repository: session.repository_path, worktree, base: session.base_revision, workspace,
       commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),

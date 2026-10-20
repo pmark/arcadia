@@ -11,6 +11,7 @@ import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity,
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
 import { renderRepairBrief, type ReviewRepairRow } from "./reviewRepair.js";
+import { scopeAllowances } from "./scopeCriteria.js";
 
 /**
  * The actionable brief handed to a managed-production Session at launch.
@@ -232,6 +233,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "",
     "Acceptance criteria (verbatim, in the plan's order):",
     ...numbered(action.acceptanceCriteria),
+    ...renderScopeConstraint(action.acceptanceCriteria),
     "",
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
     "branches, or edit the Project pointer; those remain operator gates."
@@ -241,7 +243,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
       "", "Continuation — this is a resumed Session, not the first Session for this Action:",
       `Previous Session: ${input.continuation.sessionId} (incomplete_resumable).`,
       `Previous preserved candidate revision: ${input.continuation.candidateRevision ?? "unavailable"}.`,
-      ...(input.continuation.reason ? [`Previous exit reason: ${input.continuation.reason}`, /Pre-acceptance validation refused/.test(input.continuation.reason) ? "Fix the code or tests that reason names so the named tests and validation pass, then refresh the same draft's candidate_revision before finishing again." : "Fix what that reason names (for a refused completion draft, correct the same draft's evidence) before finishing again."] : []),
+      ...(input.continuation.reason ? [`Previous exit reason: ${input.continuation.reason}`, /Scope check refused/.test(input.continuation.reason) ? "Revert every change outside the scope that reason names (never widen it), then refresh the same draft's candidate_revision before finishing again; if the criteria cannot be met within that scope, stop and ask as the scope constraint above says." : /Pre-acceptance validation refused/.test(input.continuation.reason) ? "Fix the code or tests that reason names so the named tests and validation pass, then refresh the same draft's candidate_revision before finishing again." : "Fix what that reason names (for a refused completion draft, correct the same draft's evidence) before finishing again."] : []),
       "The host reused that Session's candidate worktree and branch. Inspect its existing work before editing.",
       "First-Session-only instructions apply to the prior Session where the candidate evidence confirms them.",
       "Continue the remaining acceptance criteria; do not repeat a deliberate first-Session partial exit.",
@@ -381,6 +383,23 @@ export function renderCallingInHelp(input: {
     "Do not guess past what you can verify."
   );
   return lines;
+}
+
+/**
+ * Issues #1603/#1608: a scope criterion is a hard constraint, not a grade the
+ * Session gives itself. The host refuses a completion whose diff leaves it;
+ * the brief says so before any work, and what to do instead of widening it.
+ */
+function renderScopeConstraint(criteria: string[]): string[] {
+  const allowances = scopeAllowances(criteria);
+  if (allowances.length === 0) return [];
+  const allowed = [...new Set(allowances.flatMap((allowance) => allowance.allowed))];
+  return [
+    "",
+    `Scope — a hard constraint the host checks against your diff before accepting a completion (governed records excluded): the change may touch only ${allowed.join(", ")}.`,
+    "If a test and the product code disagree, decide against the criteria which one is wrong; never change a file outside that scope to make a test pass.",
+    "If the criteria cannot be met within it, draft no completion: submit an Agent Ask with `intent: proposal` and `requested_authority: propose` that names the conflict, then exit."
+  ];
 }
 
 function numbered(values: string[]): string[] {
