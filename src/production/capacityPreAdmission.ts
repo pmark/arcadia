@@ -151,14 +151,22 @@ export const runClaudeCliHeadless: ClaudeCliRunner = (args, timeoutMs) => new Pr
     return;
   }
   const finish = (result: { ok: boolean; detail: string }) => {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     rmSync(cwd, { recursive: true, force: true });
     resolve(result);
   };
   let stderr = "";
-  const child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
+  let timer: NodeJS.Timeout | undefined;
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
+  } catch (error) {
+    // A synchronous spawn failure (EINVAL, E2BIG) still removes the private cwd.
+    finish({ ok: false, detail: `spawn failed: ${error instanceof Error ? error.message : String(error)}` });
+    return;
+  }
   child.stderr?.on("data", (chunk: Buffer) => { if (stderr.length < MAX_SELF_REFRESH_DETAIL_CHARS) stderr += chunk.toString("utf8"); });
-  const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+  timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
   child.once("error", (error) => finish({ ok: false, detail: error.message }));
   child.once("exit", (code, signal) => {
     const why = signal ? `signal ${signal}` : `exit ${String(code)}`;
