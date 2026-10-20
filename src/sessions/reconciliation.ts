@@ -511,16 +511,22 @@ type DraftedCompletionSettlement =
   | { kind: "not_in_candidate"; settlementId: string; reason: string }
   | { kind: "refused"; reason: string };
 
-/** One sentence naming why the Session's own drafted complete Ask was not settled. */
+/**
+ * One sentence naming why the Session's own drafted complete Ask was not
+ * settled. Fixed text only: it reaches the resumed Session's brief, so neither
+ * a raw error message nor an agent-chosen file name is echoed beyond a plain
+ * `.arcadia/asks/<safe name>.yaml` path.
+ */
 function draftedCompletionRefusal(worktree: string, code: string, askPath: string | undefined): string {
-  const where = askPath ? ` (${path.relative(worktree, askPath).split(path.sep).join("/")})` : "";
+  const relative = askPath ? path.relative(worktree, askPath).split(path.sep).join("/") : "";
+  const where = /^\.arcadia\/asks\/[A-Za-z0-9._-]{1,120}\.ya?ml$/.test(relative) ? ` (${relative})` : "";
   const why = code === AUTO_SETTLE_EVIDENCE_INCOMPLETE
     ? "its evidence does not verbatim-cover every declared acceptance criterion: each evidence `criterion` must be one declared criterion's exact text, every criterion needs an entry, and every entry must be `met`"
     : code === AUTO_SETTLE_STALE_REVISION
       ? "its candidate_revision is not an ancestor of the candidate's HEAD"
       : code === AUTO_SETTLE_REVISION_CHANGED
         ? "commits after its candidate_revision changed more than governance records, so its evidence no longer describes HEAD"
-        : code;
+        : "its preview or settlement was refused; the worker log records the exact error";
   return `The Session's drafted complete Ask${where} was not settled: ${why}.`;
 }
 

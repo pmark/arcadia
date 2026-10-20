@@ -16,7 +16,7 @@ import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listRe
 import { getSession } from "../src/sessions/index.js";
 import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
-import { candidateCompletionAskIds } from "../src/sessions/launch.js";
+import { candidateCompletionAskIds, resumedSessionSupersededAskIds } from "../src/sessions/launch.js";
 import { runAgentAskDraftCommand, runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 
 /**
@@ -168,7 +168,7 @@ describe("a resumed Session's own pending completion draft", () => {
   // incomplete_resumable, and the resume was then held by that same draft.
   const draftUncovered = (rehearsal: Rehearsal, session: AgentSession, requestId: string, target = `action/${session.action_id}`): void => {
     rehearsal.agentEdit(session, "MARKER.md", `${LINE_A}\n`);
-    rehearsal.agentEdit(session, "WORK.md", `${session.id}\n`);
+    rehearsal.agentEdit(session, "WORK.md", `${session.id} ${requestId}\n`);
     git(session.worktree_path, ["add", "-A"]);
     git(session.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work"]);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
@@ -241,6 +241,67 @@ describe("a resumed Session's own pending completion draft", () => {
     rehearsal.tick();
     expect(rehearsal.lease()).toBeNull();
     expect(pending(rehearsal)).toContain("complete-someone-else");
+  });
+
+  const exempted = (rehearsal: Rehearsal) => [...(withReadOnlyDatabase(rehearsal.workspace, (db) => resumedSessionSupersededAskIds(db, rehearsal.repo, rehearsal.projectSlug, rehearsal.tmux)) ?? [])];
+  const commitIn = (worktree: string, message: string) => git(worktree, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message]);
+
+  it("still gates the resume on another Session's complete draft for the same Action that a base merge brought into the candidate", () => {
+    const { rehearsal, a } = launchFirst();
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "work");
+    const branch = a.branch.replace(/^refs\/heads\//, "");
+    const request = JSON.stringify({
+      agent_ask: "v1", request_id: "complete-via-base-merge", project: rehearsal.projectSlug, intent: "complete", target_ref: `action/${a.action_id}`,
+      desired_result: "Done.", candidate_revision: a.base_revision,
+      evidence: [{ criterion: "x", status: "met", note: "n" }], requested_authority: "apply_if_approved"
+    });
+    runAgentAskPreviewCommand({ workspace: rehearsal.workspace, dir: rehearsal.repo, request });
+    // Another line from the base carries that draft; the candidate merges it.
+    git(a.worktree_path, ["switch", "-q", "-c", "other-line", a.base_revision]);
+    mkdirSync(path.join(a.worktree_path, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(a.worktree_path, ".arcadia", "asks", "agent-ask-complete-via-base-merge.yaml"), request);
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "another Session's draft");
+    git(a.worktree_path, ["switch", "-q", branch]);
+    git(a.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "merge", "-q", "--no-ff", "-m", "merge base line", "other-line"]);
+    exitIncomplete(rehearsal, a);
+    expect(exempted(rehearsal)).not.toContain("complete-via-base-merge");
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toContain("complete-via-base-merge");
+  });
+
+  it("does not exempt the Session's own draft for a different Action", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-other-action", `action/${rehearsal.actionB.split("/").at(-1)}`);
+    exitIncomplete(rehearsal, a);
+    expect(pending(rehearsal)).toContain("complete-other-action");
+    expect(exempted(rehearsal)).toEqual([]);
+  });
+
+  it("exempts only the redraft after the Session archived its first draft, so the archived one still gates", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-first-draft");
+    const asks = path.join(a.worktree_path, ".arcadia", "asks");
+    mkdirSync(path.join(asks, "archive"), { recursive: true });
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "first draft");
+    git(a.worktree_path, ["mv", ".arcadia/asks/agent-ask-complete-first-draft.yaml", ".arcadia/asks/archive/agent-ask-complete-first-draft.yaml"]);
+    commitIn(a.worktree_path, "archive the first draft");
+    draftUncovered(rehearsal, a, "complete-redraft");
+    exitIncomplete(rehearsal, a);
+    expect(exempted(rehearsal)).toEqual(["complete-redraft"]);
+    // A handoff the launch would not resume (its branch moved) exempts nothing.
+    git(a.worktree_path, ["switch", "-q", "-c", "moved-away"]);
+    expect(exempted(rehearsal)).toEqual([]);
+    git(a.worktree_path, ["switch", "-q", a.branch.replace(/^refs\/heads\//, "")]);
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toEqual(expect.arrayContaining(["complete-first-draft", "complete-redraft"]));
   });
 
   it("still gates the resume on a non-complete pending Ask the Session drafted", () => {

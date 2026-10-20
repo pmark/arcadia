@@ -260,7 +260,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     now,
     ...(input.repair
       ? { supersededCompletionAskIds: candidateCompletionAskIds(repoRoot, input.projectSlug, input.repair.baseRevision, input.repair.failedHead, input.repair.actionId) }
-      : (() => { const resumed = resumedSessionSupersededAskIds(input.db, repoRoot, input.projectSlug); return resumed ? { supersededCompletionAskIds: resumed } : {}; })())
+      : (() => { const resumed = resumedSessionSupersededAskIds(input.db, repoRoot, input.projectSlug, tmux); return resumed ? { supersededCompletionAskIds: resumed } : {}; })())
   });
 
   if (input.repair && preview.actionId !== input.repair.actionId) {
@@ -1091,11 +1091,23 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
  *
  * Every other pending item still gates. Undefined when there is no handoff.
  */
-export function resumedSessionSupersededAskIds(db: Database.Database, repoRoot: string, projectSlug: string): ReadonlySet<string> | undefined {
+export function resumedSessionSupersededAskIds(db: Database.Database, repoRoot: string, projectSlug: string, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux): ReadonlySet<string> | undefined {
   const root = path.resolve(repoRoot);
   const handoff = getResumableLeaseHandoff(db, root);
   if (!handoff) return undefined;
   const session = handoff.session;
+  // Only when the next launch would actually resume this handoff: the
+  // governed pointer names its Plan and Action (the launch resumes a stale
+  // handoff only for the Action it dispatches).
+  const context = resolveDispatch(root, projectSlug).context;
+  if (!context || context.activePlan !== session.plan_slug || context.action.id !== session.action_id) return undefined;
+  // The same resumability probes the launch runs before reusing the handoff
+  // (no live tmux Session, a readable worktree HEAD on the handoff's branch):
+  // a handoff the launch would not resume exempts nothing.
+  if (tmux.hasSession(session.tmux_session_name)) return undefined;
+  const headProbe = tryGit(session.worktree_path, ["rev-parse", "HEAD"]);
+  const branchProbe = tryGit(session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
+  if (headProbe === null || branchProbe === null || branchProbe.trim() !== session.branch.replace(/^refs\/heads\//, "")) return undefined;
   const ids = new Set<string>();
   const repair = getSessionRepair(db, session.id);
   if (repair) for (const id of candidateCompletionAskIds(root, projectSlug, session.base_revision, repair.failed_head, session.action_id)) ids.add(id);
@@ -1130,8 +1142,11 @@ export function candidateCompletionAskIds(repoRoot: string, projectSlug: string,
   // Exactly the selected Plan's target: a same-named Action in another Plan is a different Action.
   const planSlug = resolveDispatch(repoRoot, projectSlug).context?.activePlan;
   const targets = new Set([`action/${actionId}`, ...(planSlug ? [`plan/${planSlug}#${actionId}`] : [])]);
-  // `firstParent`: only the candidate's own line, never a base merged into it.
-  const log = tryGit(repoRoot, ["log", ...(options.firstParent ? ["--first-parent"] : []), "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
+  // `firstParent`: only commits on the candidate's own line, and never a merge
+  // commit's diff (since Git 2.31 `--first-parent` implies
+  // `--diff-merges=first-parent`, which would show a base merged into the
+  // candidate as files the merge added).
+  const log = tryGit(repoRoot, ["log", ...(options.firstParent ? ["--first-parent", "--diff-merges=off"] : []), "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
   if (!log) return ids;
   let commit = "";
   for (const line of log.split("\n")) {
