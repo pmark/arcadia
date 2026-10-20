@@ -4,10 +4,11 @@ import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
-import { ensureReviewRepairTable, getReviewRepair, reviewRepairRequestId } from "../sessions/reviewRepair.js";
+import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
   classifyPullRequestChecks,
+  readPullRequestChecks,
   runHostCommand,
   runQaPrReviewCommand,
   type PullRequestCheckRun,
@@ -99,7 +100,30 @@ export type ReviewStepOutcome =
    * head (never reviewer unavailability or variance): the trigger of the review
    * repair loop (src/production/reviewRepair.ts).
    */
-  | { kind: "blocked"; code: ReviewBlockCode; reason: string; remedy: string; failedRole?: IndependentVerdictRole };
+  | { kind: "blocked"; code: ReviewBlockCode; reason: string; remedy: string; failedRole?: IndependentVerdictRole; checkFailure?: RequiredChecksFailure };
+
+/**
+ * The evidence behind a `required_checks_failed` outcome: every gating check
+ * on the exact head that is not a completed success, as GitHub reported it.
+ * The review repair loop (src/production/reviewRepair.ts) judges from it
+ * whether the failure is the candidate's own; nothing here judges that.
+ */
+export interface RequiredChecksFailure {
+  head: string;
+  pullRequestUrl: string;
+  /** The PR's base revision, against which an inherited failure is told apart. */
+  baseRefOid: string | null;
+  checks: Array<{ name: string; status: string | null; conclusion: string | null; url: string | null; unknown: boolean }>;
+  /** The review step's own remedy for these checks, kept in the repair loop's escalation. */
+  remedy?: string;
+}
+
+/** The non-success gating checks of a rollup, as {@link RequiredChecksFailure} records them. */
+function nonSuccessChecks(rollup: ReadonlyArray<PullRequestCheckRun>): RequiredChecksFailure["checks"] {
+  return readPullRequestChecks(rollup).gating
+    .filter((check) => check.shape === "unknown" || check.status?.toUpperCase() !== "COMPLETED" || check.conclusion?.toUpperCase() !== "SUCCESS")
+    .map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion, url: check.url, unknown: check.shape === "unknown" }));
+}
 
 export interface IndependentReviewDeps {
   /** The GitHub CLI and reviewer process runner; defaults to the one `arcadia qa pr` uses. */
@@ -494,6 +518,24 @@ export function advanceIndependentReview(db: Database.Database, input: {
       };
     }
 
+    // The repair loop returned this PR to draft itself for red required checks
+    // it attributed to the candidate's own change, and its repair has not
+    // launched yet (a held launch): while those checks are still red that is
+    // the same failure, never a person pausing the review.
+    if ((pr.isDraft || pr.state.toUpperCase() !== "OPEN") && classifyPullRequestChecks(pr.statusCheckRollup).state === "failed") {
+      ensureReviewRepairTable(db);
+      const checksRepair = getReviewRepair(db, requiredChecksRepairRequestId(session.id, head));
+      if (checksRepair && checksRepair.outcome === "pending" && checksRepair.drafted_at !== null && checksRepair.repair_session_id === null) {
+        return {
+          kind: "blocked",
+          code: "required_checks_failed",
+          checkFailure: { head, pullRequestUrl: url, baseRefOid: typeof pr.baseRefOid === "string" ? pr.baseRefOid : null, checks: nonSuccessChecks(pr.statusCheckRollup) },
+          reason: `Required checks on ${url} at ${head.slice(0, 12)} failed in the candidate's own change; the review repair loop returned it to draft and its repair waits to launch.`,
+          remedy: "No operator step is needed while the repair can launch; the escalation names anything that holds it."
+        };
+      }
+    }
+
     // The base host preservation opened the PR on (Issue #987: possibly a
     // stacked candidate branch); its Operator QA plan describes that base.
     const opened = workerPreservationReceipt(db, session)?.prBase ?? null;
@@ -593,7 +635,23 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return { kind: "advanced", step: "pushed", reason: `Pushed the settled head ${head.slice(0, 12)} to ${url}.` };
     }
 
-    if (pr.isDraft && step.ready_at && !workerDraftedSupersededVerdict()) {
+    /**
+     * Whether the repair loop drafted this PR for red required checks that are
+     * green now, before its repair launched: that repair is released (it can
+     * never launch) and the PR is readied again, never left as a person's pause.
+     */
+    const releasedGreenChecksDraft = (): boolean => {
+      if (!pr.isDraft || classifyPullRequestChecks(pr.statusCheckRollup).state === "failed") return false;
+      ensureReviewRepairTable(db);
+      const released = db.prepare(`UPDATE production_review_repairs SET outcome = 'released', reason = ?, updated_at = ?
+        WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL AND drafted_at IS NOT NULL`)
+        .run(`The required checks on ${head.slice(0, 12)} are no longer failing; this repair is never launched.`, at, requiredChecksRepairRequestId(session.id, head)).changes > 0;
+      if (released) input.log?.(`Released the pending required-checks repair for ${actionKey} at ${head.slice(0, 12)}: its checks are no longer failing.`);
+      const row = getReviewRepair(db, requiredChecksRepairRequestId(session.id, head));
+      return row !== null && row.outcome === "released" && row.drafted_at !== null && row.repair_session_id === null;
+    };
+
+    if (pr.isDraft && step.ready_at && !workerDraftedSupersededVerdict() && !releasedGreenChecksDraft()) {
       // The tick readied it once; someone converted it back to draft. That is
       // a person pausing the review, never something to undo every minute.
       // The one exception is the repair loop's own return to draft for a
@@ -641,6 +699,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return {
         kind: "blocked",
         code: "required_checks_failed",
+        checkFailure: { head, pullRequestUrl: url, baseRefOid: typeof pr.baseRefOid === "string" ? pr.baseRefOid : null, checks: nonSuccessChecks(pr.statusCheckRollup), remedy: unknown.trim() || undefined },
         reason: `Required checks on ${url} at ${head.slice(0, 12)} did not succeed: ${checks.blockers.join(" ")}`,
         remedy: `A failed check needs a fix (a new candidate head) or a GitHub re-run of the check; the tick keeps polling and reviews as soon as every check is green. No reviewer runs meanwhile.${unknown}`
       };

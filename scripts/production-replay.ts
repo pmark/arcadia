@@ -601,8 +601,12 @@ exec ${shellQuote(realGit)} "$@"
  * and appends to the recording. Anything else is a write: recorded as an
  * effect and refused.
  */
-const GH_GUARD = String.raw`import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+const GH_GUARD = String.raw`import { appendFileSync, existsSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+// Written synchronously: process.exit() right after an async pipe write drops
+// whatever is still buffered (a large "gh run view --log-failed" was cut off).
+const writeOut = (text) => { if (text) writeSync(1, text); };
+const writeErr = (text) => { if (text) writeSync(2, text); };
 const args = process.argv.slice(2);
 const env = process.env;
 const effect = (kind, detail) => appendFileSync(env.REPLAY_EFFECTS_LOG, JSON.stringify({ kind, detail }) + "\n");
@@ -653,7 +657,7 @@ const overlaid = (stdout) => {
 };
 if (!isRead()) {
   effect("github:write", "gh " + args.join(" "));
-  process.stderr.write("production replay: refused GitHub write (gh " + args.join(" ") + ")\n");
+  writeErr("production replay: refused GitHub write (gh " + args.join(" ") + ")\n");
   process.exit(1);
 }
 const key = JSON.stringify(args);
@@ -661,18 +665,18 @@ if (env.REPLAY_GH_MODE === "live" && env.REPLAY_REAL_GH) {
   const real = spawnSync(env.REPLAY_REAL_GH, args, { encoding: "utf8", env: { PATH: env.REPLAY_REAL_PATH, HOME: env.REPLAY_REAL_HOME, GH_REPO: env.REPLAY_GH_REPO ?? "", GH_PROMPT_DISABLED: "1" }, maxBuffer: 64 * 1024 * 1024 });
   const entry = { args, status: real.status ?? 1, stdout: real.stdout ?? "", stderr: real.stderr ?? "" };
   appendFileSync(env.REPLAY_GH_RECORDING, JSON.stringify(entry) + "\n");
-  process.stdout.write(overlaid(entry.stdout));
-  process.stderr.write(entry.stderr);
+  writeOut(overlaid(entry.stdout));
+  writeErr(entry.stderr);
   process.exit(entry.status);
 }
 const recorded = existsSync(env.REPLAY_GH_RECORDING ?? "") ? readFileSync(env.REPLAY_GH_RECORDING, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((entry) => JSON.stringify(entry.args) === key).at(-1) : null;
 if (!recorded) {
   effect("github:unrecorded-read", "gh " + args.join(" "));
-  process.stderr.write("production replay: no recorded answer for gh " + args.join(" ") + "\n");
+  writeErr("production replay: no recorded answer for gh " + args.join(" ") + "\n");
   process.exit(1);
 }
-process.stdout.write(overlaid(recorded.stdout));
-process.stderr.write(recorded.stderr);
+writeOut(overlaid(recorded.stdout));
+writeErr(recorded.stderr);
 process.exit(recorded.status);
 `;
 

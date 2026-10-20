@@ -14,7 +14,7 @@ import {
 import type { AgentSession } from "../sessions/index.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
-import { MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
 import type { GuardedLaunchInput, GuardedLaunchResult } from "../sessions/launch.js";
 import {
   ensureReviewRepairTable,
@@ -23,14 +23,16 @@ import {
   launchedRepairRounds,
   MAX_REVIEW_REPAIR_ROUNDS,
   renderRepairFindings,
+  REQUIRED_CHECKS_ROLE,
+  requiredChecksRepairRequestId,
   reviewRepairRequestId,
   type ReviewRepairCheck,
   type ReviewRepairFinding,
   type ReviewRepairOutcome,
   type ReviewRepairRow
 } from "../sessions/reviewRepair.js";
-import { realFailedVerdict } from "./independentReview.js";
-import { policyAuthorizesPullRequestReadiness, readProductionPolicySafely } from "./policy.js";
+import { realFailedVerdict, type RequiredChecksFailure } from "./independentReview.js";
+import { policyAuthorizesPullRequestReadiness, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 
 /**
  * The production worker's review repair loop.
@@ -101,6 +103,11 @@ export interface ReviewRepairInput {
   launch: (repair: NonNullable<GuardedLaunchInput["repair"]>) => GuardedLaunchResult;
   /** Records (deduped) the one operator escalation when the loop stops. */
   escalate: (kind: string, message: string, remedy: string) => void;
+  /**
+   * Set when the trigger is red required checks on the candidate's exact head
+   * (`required_checks_failed`) rather than a reviewer's failed verdict.
+   */
+  checkFailure?: RequiredChecksFailure;
 }
 
 /** Paths the candidate's own commits change, with the completion Ask records themselves left out. */
@@ -341,12 +348,16 @@ export function renderFailedVerdictComment(row: ReviewRepairRow): string {
   return [
     row.role === REPAIR_CANDIDATE_GATE_ROLE
       ? `Arcadia worker: this repair candidate \`${row.failed_head}\` is on Decision 0098's gate list, so it stays a draft, is not reviewed and never integrates unattended.`
-      : `Arcadia worker: the independent ${row.role} verdict on \`${row.failed_head}\` is **${row.verdict}**, so this candidate is returned to draft and never integrates.`,
+      : row.role === REQUIRED_CHECKS_ROLE
+        ? `Arcadia worker: required checks on \`${row.failed_head}\` **${row.verdict}** in the candidate's own change (they pass on the base), so this candidate is returned to draft and never integrates.`
+        : `Arcadia worker: the independent ${row.role} verdict on \`${row.failed_head}\` is **${row.verdict}**, so this candidate is returned to draft and never integrates.`,
     "",
     `Summary: ${row.summary}`,
     "",
-    `Findings, in the reviewer's order (report Artifact \`${row.report_path ?? "unavailable"}\` in the Arcadia workspace):`,
-    ...renderRepairFindings(row),
+    row.role === REQUIRED_CHECKS_ROLE
+      ? "Failing tests, from the failed CI logs (`gh run view --log-failed`, bounded):"
+      : `Findings, in the reviewer's order (report Artifact \`${row.report_path ?? "unavailable"}\` in the Arcadia workspace):`,
+    ...(row.role === REQUIRED_CHECKS_ROLE ? ["```text", ...renderRepairFindings(row), "```"] : renderRepairFindings(row)),
     "",
     next
   ].join("\n");
@@ -413,6 +424,7 @@ function notifyPullRequest(db: Database.Database, row: ReviewRepairRow, input: {
  * repository. At most one launch.
  */
 export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep {
+  if (input.checkFailure) return attemptChecksRepair(input, input.checkFailure);
   const { db, repoRoot, session, now } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
   const exit = getSessionExitReceipt(db, session.id);
@@ -428,24 +440,9 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     releaseStalePendingRepair(db, { session, repoRoot, now, log: input.log });
     return { kind: "not_applicable", reason: "No real failed independent verdict is recorded on the candidate's current head." };
   }
-  const policyRead = readProductionPolicySafely(db);
-  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
-    return { kind: "not_applicable", reason: "Managed production is not Active." };
-  }
-  const policy = policyRead.policy;
-  const scope = policy.scope!;
-  if (!scope.projects.includes(session.project_slug) || !scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) || !scope.actions.includes(actionKey)) {
-    return { kind: "not_applicable", reason: `${actionKey} is outside the Active production scope.` };
-  }
-  const authorizedNow = (): string | null => {
-    const current = readProductionPolicySafely(db);
-    if (current.status !== "ok" || current.policy.desiredState !== "active") return "managed production is Off";
-    if (current.policy.epoch !== policy.epoch) return `the production epoch changed (${policy.epoch} -> ${current.policy.epoch})`;
-    const authorized = policyAuthorizesPullRequestReadiness(current.policy, actionKey, now);
-    return authorized.authorized ? null : authorized.reason;
-  };
-  const unauthorized = authorizedNow();
-  if (unauthorized) return { kind: "not_applicable", reason: `The worker may not repair this candidate: ${unauthorized}` };
+  const authority = repairAuthority(db, session, now);
+  if ("notApplicable" in authority) return { kind: "not_applicable", reason: authority.notApplicable };
+  const { policy, authorizedNow } = authority;
 
   ensureReviewRepairTable(db);
   const requestId = reviewRepairRequestId(session.id, failed.head);
@@ -498,35 +495,71 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     row = getReviewRepair(db, requestId)!;
     input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}${rejudge ? " re-judged from a newer verdict" : ""}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
   }
+  return finishRepairStep(input, row, {
+    policyEpoch: policy.epoch,
+    authorizedNow,
+    requirement: failed.attempt,
+    developerRequestId: failed.developerRequestId,
+    describe: (r) => `The independent ${r.role} verdict on ${r.failed_head.slice(0, 12)} is ${r.verdict};`,
+    findingsLabel: (r) => `Findings (report ${r.report_path ?? "unavailable"})`,
+    stoppedRemedy: (r) => `Read the report and the findings above; fix the candidate yourself (a new head is reviewed afresh), or, after judging the verdict wrong, mark ${r.pull_request_url ?? "its PR"} ready and rerun it with \`arcadia ${r.role === "qa" ? "qa pr" : "qa code-review"} ${r.pull_request_url ?? "<PR>"} --rerun\`. Nothing integrates meanwhile.`
+  });
+}
+
+/** What differs between a failed-verdict repair and a red-required-checks repair in their shared last steps. */
+interface RepairStepContext {
+  policyEpoch: number;
+  authorizedNow: () => string | null;
+  /** The requirement input whose verdict attempts a repaired head would need. */
+  requirement: { requirement_id: string; input_revision: string };
+  developerRequestId: string;
+  /** The failure in one clause, ending with ";". */
+  describe: (row: ReviewRepairRow) => string;
+  findingsLabel: (row: ReviewRepairRow) => string;
+  /** The operator remedy when the loop stops on a gated or escalated row. */
+  stoppedRemedy: (row: ReviewRepairRow) => string;
+}
+
+/**
+ * The steps every repair row shares once it is decided: re-judging a pending
+ * row under a new production epoch and against the remaining verdict
+ * attempts, returning the PR to draft with its one comment, stopping once for
+ * the operator, or launching the one repair Session.
+ */
+function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, context: RepairStepContext): ReviewRepairStep {
+  const { db, repoRoot, session, now } = input;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const requestId = decided.request_id;
+  let row = decided;
   // A pending row decided under an earlier production run (epoch) is
   // re-judged against THIS run's round count before it can launch, so a new
   // run never exceeds its own bound; fenced on the row never having launched.
-  if (row.outcome === "pending" && row.policy_epoch !== policy.epoch) {
-    const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
+  if (row.outcome === "pending" && row.policy_epoch !== context.policyEpoch) {
+    const rounds = launchedRepairRounds(db, actionKey, context.policyEpoch);
     const exhausted = rounds >= MAX_REVIEW_REPAIR_ROUNDS;
     db.prepare(`UPDATE production_review_repairs SET policy_epoch = ?, round = ?, outcome = ?, reason = ?, updated_at = ?
       WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`)
-      .run(policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), exhausted ? "escalated" : "pending",
-        exhausted ? `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.` : null,
+      .run(context.policyEpoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), exhausted ? "escalated" : "pending",
+        exhausted ? `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${context.policyEpoch}) are spent, and the latest repaired head still failed.` : null,
         now.toISOString(), requestId);
     row = getReviewRepair(db, requestId)!;
-    input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)} re-judged under production epoch ${policy.epoch}: ${row.outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : row.outcome}.`);
+    input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)} re-judged under production epoch ${context.policyEpoch}: ${row.outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : row.outcome}.`);
   }
   // Re-judged every tick while pending: the repaired head needs a fresh code
   // review and QA, and the role lineage bounds both per requirement input.
   if (row.outcome === "pending") {
-    const verdicts = verdictAttemptsRemaining(db, failed.attempt);
+    const verdicts = verdictAttemptsRemaining(db, context.requirement);
     if (verdicts.remaining < 1) {
       const reason = `No independent ${verdicts.role} attempt remains for this Action input (${MAX_VERDICT_ATTEMPTS} per role), so a repaired head could never be reviewed.`;
       db.prepare("UPDATE production_review_repairs SET outcome = 'escalated', reason = ?, updated_at = ? WHERE request_id = ? AND repair_session_id IS NULL")
         .run(reason, now.toISOString(), requestId);
       row = getReviewRepair(db, requestId)!;
-      input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}: escalated: ${reason}`);
+      input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)}: escalated: ${reason}`);
     }
   }
 
   // Visible on GitHub before anything else: draft and one comment per failed head.
-  const notifyError = notifyPullRequest(db, row, { repoRoot, now, runCommand: input.runCommand ?? runHostCommand, authorized: authorizedNow });
+  const notifyError = notifyPullRequest(db, row, { repoRoot, now, runCommand: input.runCommand ?? runHostCommand, authorized: context.authorizedNow });
   row = getReviewRepair(db, requestId)!;
   if (notifyError) {
     const failures = row.notify_failures + 1;
@@ -542,8 +575,8 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   if (row.outcome === "gated" || row.outcome === "escalated") {
     const escalation = row.outcome === "gated" ? REVIEW_REPAIR_GATED : REVIEW_REPAIR_ROUNDS_EXHAUSTED;
     input.escalate(escalation,
-      `The independent ${row.role} verdict on ${row.failed_head.slice(0, 12)} is ${row.verdict}; ${row.reason ?? "the repair loop stopped"} Findings (report ${row.report_path ?? "unavailable"}):\n${findings}`,
-      `Read the report and the findings above; fix the candidate yourself (a new head is reviewed afresh), or, after judging the verdict wrong, mark ${row.pull_request_url ?? "its PR"} ready and rerun it with \`arcadia ${row.role === "qa" ? "qa pr" : "qa code-review"} ${row.pull_request_url ?? "<PR>"} --rerun\`. Nothing integrates meanwhile.`);
+      `${context.describe(row)} ${row.reason ?? "the repair loop stopped"} ${context.findingsLabel(row)}:\n${findings}`,
+      context.stoppedRemedy(row));
     return { kind: "stopped", escalation, reason: row.reason ?? row.outcome };
   }
   if (row.outcome !== "pending") return { kind: "not_applicable", reason: `The repair for this failed head is already ${row.outcome}.` };
@@ -566,7 +599,7 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
       if (row.last_error !== error || exhausted) input.log?.(`Review repair for ${actionKey}: ${error}; ${exhausted ? "stopping for the operator" : "retried next tick"}.`);
       if (!exhausted) return { kind: "waiting", reason: error };
       input.escalate(REVIEW_REPAIR_GATED,
-        `The independent ${row.role} verdict on ${row.failed_head.slice(0, 12)} is ${row.verdict}; ${reason} Findings (report ${row.report_path ?? "unavailable"}):\n${findings}`,
+        `${context.describe(row)} ${reason} ${context.findingsLabel(row)}:\n${findings}`,
         `Check that the GitHub CLI can read ${row.pull_request_url}, then decide the candidate yourself; nothing integrates meanwhile.`);
       return { kind: "stopped", escalation: REVIEW_REPAIR_GATED, reason };
     }
@@ -574,12 +607,12 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     try { state = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "UNKNOWN").toUpperCase(); } catch { /* UNKNOWN */ }
     if (state !== "OPEN") {
       const reason = state === "MERGED"
-        ? `PR ${row.pull_request_url} was MERGED although its independent ${row.role} verdict failed; the failed head may already be on the base.`
+        ? `PR ${row.pull_request_url} was MERGED although ${row.role === REQUIRED_CHECKS_ROLE ? "its required checks failed" : `its independent ${row.role} verdict failed`}; the failed head may already be on the base.`
         : `PR ${row.pull_request_url} is ${state}: the failed PR is no longer open, so the repair loop stops for the operator.`;
       db.prepare("UPDATE production_review_repairs SET outcome = 'gated', reason = ?, updated_at = ? WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL")
         .run(reason, now.toISOString(), requestId);
       input.escalate(REVIEW_REPAIR_GATED,
-        `The independent ${row.role} verdict on ${row.failed_head.slice(0, 12)} is ${row.verdict}; ${reason} Findings (report ${row.report_path ?? "unavailable"}):\n${findings}`,
+        `${context.describe(row)} ${reason} ${context.findingsLabel(row)}:\n${findings}`,
         `Check ${row.pull_request_url} and the base branch; the worker launches no repair for a PR that is no longer open. Nothing integrates meanwhile.`);
       return { kind: "stopped", escalation: REVIEW_REPAIR_GATED, reason };
     }
@@ -593,10 +626,301 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     failedHead: row.failed_head,
     startRevision: row.start_revision,
     baseRevision: session.base_revision,
-    supersedesDevelopmentAttempt: failed.developerRequestId
+    supersedesDevelopmentAttempt: context.developerRequestId
   });
   input.log?.(`Launched repair Session ${result.session.id} for ${actionKey} (round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}) from ${row.start_revision.slice(0, 12)}, the work under head ${row.failed_head.slice(0, 12)} before its completion settlement.`);
   return { kind: "launched", sessionId: result.session.id, round: row.round, reason: `Repair round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS} launched.` };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Red required checks attributed to the candidate's own change.             */
+/* ------------------------------------------------------------------------ */
+
+/** Bounds on the CI evidence carried into the PR comment, the escalation and the repair brief. */
+const MAX_CHECK_FINDINGS = 10;
+const MAX_EVIDENCE_LINES = 12;
+const MAX_EVIDENCE_CHARS = 1_500;
+
+// Control characters are exactly what this strips from CI logs; `gh run view
+// --log-failed` prints ESC as the two characters `^[` when not on a terminal.
+// eslint-disable-next-line no-control-regex
+const ANSI = /(?:\u001b|\^\[)\[[0-9;?]*[A-Za-z]/g;
+const LOG_TIMESTAMP = /^\uFEFF?\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/;
+/** Vitest's per-test failure header: `FAIL  <file> > <suite> > <test>`. */
+const FAILED_TEST = /\bFAIL\s+(\S+\.(?:test|spec)\.[cm]?[jt]sx?)\s+>\s+(.+?)\s*$/;
+const FAILURE_BLOCK_END = /^\s*⎯|\bFAIL\s+\S+\.(?:test|spec)\.|^\s*Test Files\b/;
+
+/**
+ * CI log text is untrusted data (test names and assertion values are whatever
+ * the code under test printed): neutralized before it reaches a PR comment, a
+ * ping or a repair brief, so it can neither mention anyone (`@`), open or
+ * close code spans (backticks), nor carry control characters.
+ */
+export function neutralizeCiText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").replaceAll("`", "'").replaceAll("@", "@\u200b");
+}
+
+export interface FailingTest {
+  check: string;
+  file: string;
+  name: string;
+  /** The assertion, expected/received and location lines that follow the header, bounded. */
+  evidence: string;
+}
+
+/**
+ * The failing vitest tests in `gh run view --log-failed` output, per job (the
+ * log's first tab-separated column is the job, i.e. the check's name). Lines
+ * without a job column continue the previous job's output.
+ */
+export function parseFailedTestLog(log: string): FailingTest[] {
+  const byJob = new Map<string, string[]>();
+  let job = "";
+  for (const raw of log.split("\n")) {
+    const parts = raw.split("\t");
+    const text = (parts.length >= 3 ? parts.slice(2).join("\t") : raw).replace(ANSI, "").replace(LOG_TIMESTAMP, "");
+    if (parts.length >= 3) job = parts[0];
+    if (!job) continue;
+    const lines = byJob.get(job) ?? [];
+    lines.push(text);
+    byJob.set(job, lines);
+  }
+  const tests: FailingTest[] = [];
+  for (const [check, lines] of byJob) {
+    const seen = new Set<string>();
+    lines.forEach((line, index) => {
+      const match = FAILED_TEST.exec(line);
+      if (!match) return;
+      const key = `${match[1]}\n${match[2]}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const evidence: string[] = [];
+      for (const next of lines.slice(index + 1, index + 60)) {
+        if (FAILURE_BLOCK_END.test(next)) break;
+        if (next.trim()) evidence.push(next.trim());
+        if (evidence.length >= MAX_EVIDENCE_LINES) break;
+      }
+      const text = neutralizeCiText(evidence.join(" | "));
+      tests.push({ check, file: neutralizeCiText(match[1]), name: neutralizeCiText(match[2]), evidence: text.length > MAX_EVIDENCE_CHARS ? `${text.slice(0, MAX_EVIDENCE_CHARS - 1)}…` : text });
+    });
+  }
+  return tests;
+}
+
+export type ChecksJudgement =
+  | { kind: "waiting"; reason: string }
+  | { kind: "judged"; repairable: boolean; reason: string | null; summary: string; findings: ReviewRepairFinding[]; checks: ReviewRepairCheck[] };
+
+const runIdOf = (url: string | null) => /\/actions\/runs\/(\d+)/.exec(url ?? "")?.[1] ?? null;
+
+/**
+ * Whether red required checks on a candidate's exact head are the candidate's
+ * own failure, which the repair loop may repair. Conservative and
+ * deterministic, from GitHub's own records only:
+ *
+ * 1. every non-success check finished: none is still running (wait), and each
+ *    is a plain FAILURE, or CANCELLED inside a workflow run that has a
+ *    FAILURE (a downstream gate job cancelled by it). A timeout, startup
+ *    failure, action-required, stale, conflicting or unreadable check is
+ *    infrastructure, never repaired;
+ * 2. a failing check is the candidate's own only if the same check passed on
+ *    the PR's base revision; one that failed, was cancelled or is missing
+ *    there is inherited from the base and never triggers a repair;
+ * 3. an own failing check must be attributed: its failed log names a failing
+ *    test in a file the candidate itself changed. An own check with no such
+ *    test (a test the candidate did not touch, a lint or build failure) may
+ *    be a flake or an interaction and never triggers a repair on its own.
+ *
+ * A repair runs when at least one failing check is own and attributed;
+ * inherited and unattributed failures are named beside it, never hidden.
+ * Any GitHub read that fails stops the loop for the operator.
+ */
+export function judgeRequiredChecksFailure(input: {
+  failure: RequiredChecksFailure;
+  /** Paths the candidate's own commits change (base...pre-settlement work). */
+  changedPaths: readonly string[];
+  repoRoot: string;
+  runCommand: RunCommand;
+}): ChecksJudgement {
+  const { failure, runCommand } = input;
+  const stop = (reason: string, summary = `Required checks on ${failure.head.slice(0, 12)} failed.`): Extract<ChecksJudgement, { kind: "judged" }> =>
+    ({ kind: "judged", repairable: false, reason, summary, findings: [], checks: failure.checks.map((check) => ({ name: check.name, status: (check.conclusion ?? check.status ?? "unknown").toLowerCase(), evidence: check.url ?? "" })) });
+  const running = failure.checks.filter((check) => !check.unknown && check.status?.toUpperCase() !== "COMPLETED");
+  if (running.length > 0) return { kind: "waiting", reason: `Required checks still running beside a failure: ${running.map((check) => check.name).join(", ")}.` };
+  const failed = failure.checks.filter((check) => !check.unknown && check.conclusion?.toUpperCase() === "FAILURE");
+  const failedRuns = new Set(failed.map((check) => runIdOf(check.url)).filter((id): id is string => id !== null));
+  const infrastructure = failure.checks.filter((check) => !failed.includes(check)
+    && !(check.conclusion?.toUpperCase() === "CANCELLED" && failedRuns.has(runIdOf(check.url) ?? "")));
+  if (failed.length === 0 || infrastructure.length > 0) {
+    const names = (infrastructure.length > 0 ? infrastructure : failure.checks).map((check) => `${check.name} (${check.unknown ? "unreadable" : (check.conclusion ?? check.status ?? "unknown").toLowerCase()})`);
+    return stop(`A required check did not fail on a test: ${names.join(", ")}; that is CI infrastructure or an unreadable check, never repaired unattended.`);
+  }
+  const repository = /github\.com\/([^/]+\/[^/]+)\/pull\/\d+/.exec(failure.pullRequestUrl)?.[1];
+  if (!repository || !failure.baseRefOid) return stop("The PR's repository or base revision is unknown, so an inherited failure cannot be told apart.");
+  const baseRead = runCommand({ command: "gh", args: ["api", `repos/${repository}/commits/${failure.baseRefOid}/check-runs?per_page=100`], cwd: input.repoRoot, timeoutMs: 30_000 });
+  let baseRuns: Array<{ name?: unknown; status?: unknown; conclusion?: unknown }> = [];
+  try {
+    if (baseRead.status !== 0) throw new Error(commandError(baseRead));
+    const parsed = JSON.parse(baseRead.stdout) as { check_runs?: unknown };
+    if (!Array.isArray(parsed.check_runs)) throw new Error("no check_runs array");
+    baseRuns = parsed.check_runs as typeof baseRuns;
+  } catch (error) {
+    return stop(`The base revision ${failure.baseRefOid.slice(0, 12)}'s checks could not be read (${error instanceof Error ? error.message : String(error)}), so an inherited failure cannot be told apart.`);
+  }
+  const passedOnBase = (name: string) => {
+    const same = baseRuns.filter((run) => run.name === name);
+    return same.length > 0 && same.every((run) => String(run.status).toLowerCase() === "completed" && String(run.conclusion).toLowerCase() === "success");
+  };
+  // A same-named check still queued or running on the base is no verdict
+  // either way: wait for it rather than calling the failure inherited.
+  const unsettled = failed.flatMap((check) => baseRuns.filter((run) => run.name === check.name && String(run.status).toLowerCase() !== "completed")
+    .map((run) => `${check.name} is still ${String(run.status).toLowerCase()} on the base ${failure.baseRefOid!.slice(0, 12)}`));
+  if (unsettled.length > 0) return { kind: "waiting", reason: `Waiting for the base's checks before judging the failure: ${[...new Set(unsettled)].join("; ")}.` };
+  const own = failed.filter((check) => passedOnBase(check.name));
+  const inherited = failed.filter((check) => !own.includes(check));
+  const base = failure.baseRefOid.slice(0, 12);
+  const inheritedChecks: ReviewRepairCheck[] = inherited.map((check) => ({ name: check.name, status: "inherited", evidence: `also not passing on the base ${base}; not this candidate's to fix (${check.url ?? "no URL"})` }));
+  if (own.length === 0) {
+    return { ...stop(`Every failing required check (${inherited.map((check) => check.name).join(", ")}) also fails or did not pass on the base ${base}: the failure is inherited from the base, so no repair is launched.`), checks: inheritedChecks };
+  }
+  const tests: FailingTest[] = [];
+  for (const runId of [...new Set(own.map((check) => runIdOf(check.url)).filter((id): id is string => id !== null))]) {
+    const log = runCommand({ command: "gh", args: ["run", "view", runId, "-R", repository, "--log-failed"], cwd: input.repoRoot, timeoutMs: 60_000 });
+    if (log.status !== 0) return stop(`The failed log of CI run ${runId} could not be read (${commandError(log)}), so the failure cannot be attributed to the candidate.`);
+    tests.push(...parseFailedTestLog(log.stdout).filter((test) => own.some((check) => check.name === test.check)));
+  }
+  const changed = new Set(input.changedPaths);
+  const attributed = tests.filter((test) => changed.has(test.file));
+  const ownChecks: ReviewRepairCheck[] = own.map((check) => {
+    const mine = attributed.filter((test) => test.check === check.name);
+    return mine.length > 0
+      ? { name: check.name, status: "fail", evidence: `passes on the base ${base}; fails in ${[...new Set(mine.map((test) => test.file))].join(", ")}, which the candidate changed (${check.url ?? "no URL"})` }
+      : { name: check.name, status: "unattributed", evidence: `passes on the base ${base}; its failed log names no failing test in a file the candidate changed (${check.url ?? "no URL"})` };
+  });
+  const findings: ReviewRepairFinding[] = tests.slice(0, MAX_CHECK_FINDINGS).map((test) => ({
+    severity: "blocker",
+    title: `${test.check}: ${test.file} > ${test.name}`,
+    evidence: test.evidence || "(no assertion lines in the failed log)",
+    recommendation: changed.has(test.file)
+      ? "Make this test pass by fixing the candidate's code or the test's own defect; never skip, delete or weaken it."
+      : "This test file is not one the candidate changed: confirm the candidate's change caused it before fixing it."
+  }));
+  const checks = [...ownChecks, ...inheritedChecks];
+  const summary = `Required check(s) ${own.map((check) => check.name).join(", ")} failed on ${failure.head.slice(0, 12)} and pass on the base ${base}`
+    + (attributed.length > 0 ? `; failing tests in files the candidate changed: ${[...new Set(attributed.map((test) => test.file))].join(", ")}.` : ".")
+    + (inherited.length > 0 ? ` Also red, inherited from the base (not this candidate's to fix): ${inherited.map((check) => check.name).join(", ")}.` : "");
+  if (attributed.length === 0) {
+    return { kind: "judged", repairable: false, summary, findings, checks,
+      reason: "No failing test in the failed CI logs is in a file the candidate changed (a flake, an interaction or a non-test failure is possible), so no repair is launched unattended." };
+  }
+  return { kind: "judged", repairable: true, reason: null, summary, findings, checks };
+}
+
+/**
+ * One repair step for a terminal candidate whose required checks failed on its
+ * exact head (`required_checks_failed` with its evidence): the same bounded
+ * loop as a failed verdict, under the same authority, rounds and gates, but
+ * only for a failure {@link judgeRequiredChecksFailure} attributes to the
+ * candidate's own change. Judged once per head (its row records the
+ * judgement); an inherited or unattributed failure stops once for the
+ * operator without touching the PR.
+ */
+function attemptChecksRepair(input: ReviewRepairInput, failure: RequiredChecksFailure): ReviewRepairStep {
+  const { db, repoRoot, session, now } = input;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const exit = getSessionExitReceipt(db, session.id);
+  if (exit?.outcome !== "accepted_completion" || exit.superseded_by_session_id !== null) {
+    return { kind: "not_applicable", reason: `The candidate's exit is ${exit ? `${exit.outcome}${exit.superseded_by_session_id ? `, superseded by ${exit.superseded_by_session_id}` : ""}` : "unrecorded"}, not an unsuperseded accepted completion.` };
+  }
+  const readiness = independentVerdictReadiness(db, { session, repoRoot });
+  if (!readiness.ready) return { kind: "not_applicable", reason: `The candidate is not ready for verdicts: ${readiness.reasons.join(" ")}` };
+  const head = readiness.binding.targetHead;
+  if (head !== failure.head) return { kind: "not_applicable", reason: `The failed checks were read on ${failure.head.slice(0, 12)}, not the candidate's current head ${head.slice(0, 12)}.` };
+  const authority = repairAuthority(db, session, now);
+  if ("notApplicable" in authority) return { kind: "not_applicable", reason: authority.notApplicable };
+  const { policy, authorizedNow } = authority;
+
+  ensureReviewRepairTable(db);
+  const requestId = requiredChecksRepairRequestId(session.id, head);
+  let row = getReviewRepair(db, requestId);
+  if (!row) {
+    const start = tryGit(repoRoot, ["rev-parse", "--verify", `${head}^1`]);
+    if (!start || !isAncestor(repoRoot, session.base_revision, start)) {
+      return { kind: "not_applicable", reason: `The failed head ${head.slice(0, 12)} has no pre-settlement parent descending from the candidate's base ${session.base_revision.slice(0, 12)}.` };
+    }
+    let outcome: ReviewRepairOutcome = "pending";
+    let reason: string | null = null;
+    const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
+    const judgement = judgeRequiredChecksFailure({ failure, changedPaths: agentChangedPaths(repoRoot, session.base_revision, start) ?? [], repoRoot, runCommand: input.runCommand ?? runHostCommand });
+    if (judgement.kind === "waiting") return { kind: "waiting", reason: judgement.reason };
+    const judged = judgement;
+    // Not the candidate's own failure (inherited, unattributed, infrastructure):
+    // the repair loop never decides it. The row only caches the judgement for
+    // this head ('released', never launched) so GitHub is read once; the
+    // review step's ordinary required_checks_failed handling stands and clears
+    // when the checks go green.
+    const gate = judgement.repairable ? candidateChangeGate(repoRoot, session.base_revision, start) : null;
+    if (!judgement.repairable) {
+      outcome = "released"; reason = judgement.reason;
+    } else if (gate) {
+      outcome = "gated"; reason = `The candidate is on Decision 0098's gate list: ${gate}. The repair loop stops for the operator.`;
+    } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
+      outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
+    }
+    // Only a failure attributed to the candidate drafts and comments on its PR.
+    const touchesPullRequest = judged.repairable && !gate;
+    const at = now.toISOString();
+    db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+        start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
+        last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, NULL) ON CONFLICT(request_id) DO NOTHING`)
+      .run(requestId, actionKey, policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), session.id, session.branch, head, start,
+        touchesPullRequest ? workerPullRequestUrl(db, session.id) ?? failure.pullRequestUrl : null, REQUIRED_CHECKS_ROLE,
+        // The candidate's own failing checks when judged; every failing check otherwise.
+        `failed (${(judged?.repairable ? judged.checks.filter((check) => check.status === "fail" || check.status === "unattributed").map((check) => check.name)
+          : failure.checks.filter((check) => check.conclusion?.toUpperCase() === "FAILURE").map((check) => check.name)).join(", ") || "see checks"})`,
+        judged?.summary ?? `Required checks on ${head.slice(0, 12)} failed on ${failure.pullRequestUrl}.`,
+        JSON.stringify(judged?.findings ?? []), JSON.stringify(judged?.checks ?? failure.checks.map((check) => ({ name: check.name, status: (check.conclusion ?? check.status ?? "unknown").toLowerCase(), evidence: check.url ?? "" }))),
+        outcome, reason, at, at);
+    row = getReviewRepair(db, requestId)!;
+    input.log?.(`Required-checks repair for ${actionKey} at ${head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : outcome === "released" ? `not the candidate's own failure, no repair: ${reason}` : `${outcome}: ${reason}`}.`);
+  }
+  if (row.outcome === "released") return { kind: "not_applicable", reason: `No unattended repair for these red checks: ${row.reason ?? "released"}` };
+  return finishRepairStep(input, row, {
+    policyEpoch: policy.epoch,
+    authorizedNow,
+    requirement: { requirement_id: readiness.requirement.requirementId, input_revision: readiness.requirement.inputRevision },
+    developerRequestId: readiness.developer.request_id,
+    describe: (r) => `Required checks on ${r.failed_head.slice(0, 12)} of ${failure.pullRequestUrl} are ${r.verdict};`,
+    findingsLabel: () => "Failing checks and tests (from the CI logs)",
+    stoppedRemedy: () => `${failure.remedy ? `${failure.remedy} ` : ""}Read the failing checks on ${failure.pullRequestUrl}; fix the candidate yourself (a new head is checked and reviewed afresh), or, for a failure inherited from the base or a flaky check, fix the base or re-run the check on GitHub. The tick resumes the review once every required check is green; nothing integrates meanwhile.`
+  });
+}
+
+/** The Active production authority a repair needs, or why it does not apply. */
+function repairAuthority(db: Database.Database, session: AgentSession, now: Date):
+  { policy: ProductionPolicyRecord; authorizedNow: () => string | null } | { notApplicable: string } {
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
+    return { notApplicable: "Managed production is not Active." };
+  }
+  const policy = policyRead.policy;
+  const scope = policy.scope!;
+  if (!scope.projects.includes(session.project_slug) || !scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) || !scope.actions.includes(actionKey)) {
+    return { notApplicable: `${actionKey} is outside the Active production scope.` };
+  }
+  const authorizedNow = (): string | null => {
+    const current = readProductionPolicySafely(db);
+    if (current.status !== "ok" || current.policy.desiredState !== "active") return "managed production is Off";
+    if (current.policy.epoch !== policy.epoch) return `the production epoch changed (${policy.epoch} -> ${current.policy.epoch})`;
+    const authorized = policyAuthorizesPullRequestReadiness(current.policy, actionKey, now);
+    return authorized.authorized ? null : authorized.reason;
+  };
+  const unauthorized = authorizedNow();
+  if (unauthorized) return { notApplicable: `The worker may not repair this candidate: ${unauthorized}` };
+  return { policy, authorizedNow };
 }
 
 /**
@@ -646,7 +970,7 @@ export function releaseStalePendingRepair(db: Database.Database, input: { sessio
   const { session } = input;
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_review_repairs'").get() === undefined) return false;
   const pending = db.prepare(`SELECT * FROM production_review_repairs
-    WHERE failed_session_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`).all(session.id) as ReviewRepairRow[];
+    WHERE failed_session_id = ? AND outcome = 'pending' AND repair_session_id IS NULL AND role <> ?`).all(session.id, REQUIRED_CHECKS_ROLE) as ReviewRepairRow[];
   if (pending.length === 0) return false;
   const failed = realFailedVerdict(db, { session, repoRoot: input.repoRoot });
   let released = false;

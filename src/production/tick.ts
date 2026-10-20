@@ -73,8 +73,10 @@ import {
   resetReviewSteps,
   reviewApplicability,
   type IndependentReviewDeps,
+  type RequiredChecksFailure,
   type ReviewStepOutcome
 } from "./independentReview.js";
+import { getReviewRepair, requiredChecksRepairRequestId } from "../sessions/reviewRepair.js";
 import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
@@ -452,6 +454,11 @@ function escalatingVerdictGate(
   if (blocked) {
     kind = blocked.code;
     message = `${gate.reason} ${blocked.reason}`;
+    // Red checks the repair loop judged not to be the candidate's own: say why
+    // the worker does not repair them (the escalation stays the worker's own).
+    const notRepaired = blocked.code === "required_checks_failed" && blocked.checkFailure
+      ? getReviewRepair(db, requiredChecksRepairRequestId(session.id, blocked.checkFailure.head)) : null;
+    if (notRepaired?.outcome === "released" && notRepaired.reason) message = `${message} Not repaired unattended: ${notRepaired.reason}`;
     remedy = `${blocked.remedy} ${fallback}`;
   } else if (applicability?.applicable) {
     const progress = input.review && input.review.kind !== "not_applicable" ? ` Now: ${input.review.reason}` : "";
@@ -2070,12 +2077,16 @@ export function runManagedProductionTick(
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
-    } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession
-      && handoffReview?.kind === "blocked" && handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole) {
-      // A reviewer's real non-pass judgment of the exact settled head: the review
-      // repair loop (src/production/reviewRepair.ts) returns the PR to draft with
-      // its findings and launches one bounded repair Session, or stops once.
-      launch = attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log });
+    } else if (mayLaunch && handoff !== null && reconciled.length === 0 && handoffSession && handoffReview?.kind === "blocked"
+      && ((handoffReview.code === "independent_verdict_failed" && handoffReview.failedRole)
+        || (handoffReview.code === "required_checks_failed" && handoffReview.checkFailure))) {
+      // A reviewer's real non-pass judgment of the exact settled head, or red
+      // required checks on it: the review repair loop
+      // (src/production/reviewRepair.ts) returns the PR to draft with its
+      // findings and launches one bounded repair Session, or stops once. Red
+      // checks are repaired only when attributed to the candidate's own change.
+      launch = attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log,
+        checkFailure: handoffReview.code === "required_checks_failed" ? handoffReview.checkFailure : undefined });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       // Logged once per (Session, head, reason), not on every ~3 s tick: the
@@ -2197,6 +2208,8 @@ function attemptReviewRepairLaunch(
     tmux: TmuxAdapter;
     now: Date;
     log: (message: string) => void;
+    /** Red required checks on the candidate's head: the trigger instead of a failed verdict. */
+    checkFailure?: RequiredChecksFailure;
   }
 ): ManagedProductionLaunchAttempt {
   const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
@@ -2230,6 +2243,7 @@ function attemptReviewRepairLaunch(
     const step = attemptReviewRepair({
       db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
       runCommand: input.options.review?.runCommand,
+      checkFailure: input.checkFailure,
       escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
       // Asked before the pre-launch PR read, and again inside the launch.
       canLaunch: launchGuard,

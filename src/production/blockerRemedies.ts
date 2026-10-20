@@ -94,7 +94,7 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       worker("review_head_moved", "The candidate head moved after review started."),
       worker("review_pull_request_unavailable", "The candidate's pull request could not be read."),
       worker("review_paused_as_draft", "The candidate's pull request is a draft."),
-      worker("required_checks_failed", "A required check failed on the candidate head."),
+      worker("required_checks_failed", "A required check failed on the candidate head; a failing test the candidate changed, in a check that passes on the base, starts a bounded repair round; any other red check (inherited from the base, unattributed, CI infrastructure) waits for a fix or a green re-run."),
       worker("review_rate_limited", "The reviewer provider is rate limited."),
       step("required_checks_timeout", "Required checks did not finish in time; reset the review budget with `arcadia production reset-repair-budget` once they can."),
       step("review_budget_exhausted", "The unattended review used its per-head budget; reset it with `arcadia production reset-repair-budget`."),
