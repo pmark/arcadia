@@ -150,13 +150,14 @@ export const runClaudeCliHeadless: ClaudeCliRunner = (args, timeoutMs) => new Pr
     resolve({ ok: false, detail: `no private cwd: ${error instanceof Error ? error.message : String(error)}` });
     return;
   }
+  // The kill timer exists only once the child does; finish may run before that.
+  const kill: { timer?: NodeJS.Timeout } = {};
   const finish = (result: { ok: boolean; detail: string }) => {
-    if (timer) clearTimeout(timer);
+    if (kill.timer) clearTimeout(kill.timer);
     rmSync(cwd, { recursive: true, force: true });
     resolve(result);
   };
   let stderr = "";
-  let timer: NodeJS.Timeout | undefined;
   let child: ReturnType<typeof spawn>;
   try {
     child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
@@ -166,7 +167,7 @@ export const runClaudeCliHeadless: ClaudeCliRunner = (args, timeoutMs) => new Pr
     return;
   }
   child.stderr?.on("data", (chunk: Buffer) => { if (stderr.length < MAX_SELF_REFRESH_DETAIL_CHARS) stderr += chunk.toString("utf8"); });
-  timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+  kill.timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
   child.once("error", (error) => finish({ ok: false, detail: error.message }));
   child.once("exit", (code, signal) => {
     const why = signal ? `signal ${signal}` : `exit ${String(code)}`;
