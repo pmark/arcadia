@@ -2950,7 +2950,7 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
   // review_attempts_exhausted means the verdict attempts are exhausted, not the review budget:
   // resetProductionRepairBudget only clears the review budget, not verdict attempts.
   let reviewStepsCleared = 0;
-  if (existing?.kind !== "review_attempts_exhausted") {
+  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
     // The unattended review's per-head budget and checks deadline start afresh too.
     reviewStepsCleared = resetReviewSteps(db, actionKey);
   }
