@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-19
+updated: 2026-10-20
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -225,10 +225,10 @@ actions:
     references: []
   - id: test-transient-review-retry-after-exhaustion
     title: Implement hermetic tests that a transient reviewer error still retries after the review_attempts_exhausted branch and that resetProductionRepairBudget leaves that escalation in place.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement hermetic tests that a transient reviewer error still retries after the review_attempts_exhausted branch and that resetProductionRepairBudget leaves that escalation in place.
+    next_action: Completed via Agent Ask auto-settle-arcadia-test-transient-review-retry-after-exhaustion-da5077497958; no further action.
     expected_artifact: Evidence satisfying Agent Ask test-transient-review-retry-after-exhaustion
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: test-transient-review-retry-after-exhaustion
+current_action: refresh-decision-0130-status-and-1559-fake
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
