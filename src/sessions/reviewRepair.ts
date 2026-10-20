@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { appendReviewRepairJourneyLog, ensureActionJourneyLogTable } from "../production/journeyLog.js";
 import { validationError } from "../cli/errors.js";
 
 /**
@@ -103,6 +104,7 @@ export function ensureReviewRepairTable(db: Database.Database): void {
   if (!present.has("closed_at")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN closed_at TEXT");
   if (!present.has("verdict_request_id")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN verdict_request_id TEXT");
   if (!present.has("notify_failures")) db.exec("ALTER TABLE production_review_repairs ADD COLUMN notify_failures INTEGER NOT NULL DEFAULT 0");
+  ensureActionJourneyLogTable(db);
 }
 
 function hasTable(db: Database.Database): boolean {
@@ -181,6 +183,7 @@ export function bindRepairSession(db: Database.Database, input: { requestId: str
   }
   db.prepare("UPDATE production_review_repairs SET repair_session_id = ?, outcome = 'launched', last_error = NULL, updated_at = ? WHERE request_id = ?")
     .run(input.sessionId, at, input.requestId);
+  appendReviewRepairJourneyLog(db, input.requestId, at);
 }
 
 /**
@@ -197,6 +200,7 @@ export function releaseRepairSession(db: Database.Database, input: { requestId: 
     .run(at, row.failed_session_id, input.sessionId);
   db.prepare("UPDATE production_review_repairs SET repair_session_id = NULL, outcome = 'pending', updated_at = ? WHERE request_id = ? AND repair_session_id = ?")
     .run(at, input.requestId, input.sessionId);
+  appendReviewRepairJourneyLog(db, input.requestId, at);
 }
 
 export function parseRepairFindings(row: Pick<ReviewRepairRow, "findings_json">): ReviewRepairFinding[] {

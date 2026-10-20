@@ -8,6 +8,7 @@ import { ensureOperatorPingTable } from "../ping/operatorPing.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
 import { ensureProductionLaunchBlockersTable } from "../production/tick.js";
 import { ensureRedAlertTables } from "../production/redAlerts.js";
+import { ensureActionJourneyLogTable } from "../production/journeyLog.js";
 import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
@@ -111,6 +112,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureSchedulingTables(db);
   ensureRecurringScheduleTables(db);
   ensureProductionOperatorEscalationsTable(db);
+  ensureActionJourneyLogTable(db);
   ensureRedAlertTables(db);
   ensureNativeMailTables(db);
   applyCapabilityMigrations(db);

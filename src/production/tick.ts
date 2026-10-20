@@ -41,6 +41,7 @@ import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDE
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
+import { appendJourneyLog, ensureActionJourneyLogTable } from "./journeyLog.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
 import {
   BUDGET_EXHAUSTED_ESCALATION_KIND,
@@ -553,6 +554,7 @@ export function ensureProductionTickTables(db: Database.Database): void {
   ensureProductionLaunchRefusalDedupeKeyColumn(db);
   ensureProductionReviewStepTable(db);
   ensureRedAlertTables(db);
+  ensureActionJourneyLogTable(db);
 }
 
 /**
@@ -609,6 +611,8 @@ function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, dedu
                     THEN production_launch_refusal_log.first_at ELSE @at END,
        last_at = @at`
   ).run({ action_key: actionKey, dedupe_key: dedupeKey, message, at });
+  // Only a new episode is history: an `admission_expired` message changes every tick.
+  if (isNewEpisode) appendJourneyLog(db, { actionKey, source: "launch_refusal", kind: dedupeKey || "refused", message, at });
   return isNewEpisode;
 }
 
@@ -929,6 +933,7 @@ function recordOperatorEscalation(
      ON CONFLICT(action_key) DO UPDATE SET
        kind = @kind, message = @message, remedy = @remedy, last_seen_at = @at`
   ).run({ action_key: input.actionKey, kind: input.kind, message: input.message, remedy: input.remedy, at });
+  appendJourneyLog(db, { actionKey: input.actionKey, source: "escalation", kind: input.kind, message: input.message, remedy: input.remedy, at });
   return !existing;
 }
 

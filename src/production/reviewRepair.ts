@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { appendReviewRepairJourneyLog } from "./journeyLog.js";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
@@ -397,6 +398,7 @@ function notifyPullRequest(db: Database.Database, row: ReviewRepairRow, input: {
         : `PR ${url} is ${state}, so the worker cannot return it to draft or comment on it.`;
       db.prepare("UPDATE production_review_repairs SET outcome = 'gated', reason = ?, notify_failures = ?, updated_at = ? WHERE request_id = ? AND repair_session_id IS NULL")
         .run(reason, MAX_NOTIFY_FAILURES, at, row.request_id);
+      appendReviewRepairJourneyLog(db, row.request_id, at);
       return null;
     }
     if (!isDraft) {
@@ -492,6 +494,7 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
         .run(policy.epoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), failed.role, context.verdict, context.summary, context.reportPath,
           JSON.stringify(context.findings), JSON.stringify(context.checks), outcome, reason, verdictRequestId, at, requestId);
     }
+    appendReviewRepairJourneyLog(db, requestId, at);
     row = getReviewRepair(db, requestId)!;
     input.log?.(`Review repair for ${actionKey} at ${failed.head.slice(0, 12)}${rejudge ? " re-judged from a newer verdict" : ""}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
   }
@@ -542,6 +545,7 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
       .run(context.policyEpoch, Math.min(rounds + 1, MAX_REVIEW_REPAIR_ROUNDS), exhausted ? "escalated" : "pending",
         exhausted ? `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${context.policyEpoch}) are spent, and the latest repaired head still failed.` : null,
         now.toISOString(), requestId);
+    appendReviewRepairJourneyLog(db, requestId, now.toISOString());
     row = getReviewRepair(db, requestId)!;
     input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)} re-judged under production epoch ${context.policyEpoch}: ${row.outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : row.outcome}.`);
   }
@@ -553,6 +557,7 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
       const reason = `No independent ${verdicts.role} attempt remains for this Action input (${MAX_VERDICT_ATTEMPTS} per role), so a repaired head could never be reviewed.`;
       db.prepare("UPDATE production_review_repairs SET outcome = 'escalated', reason = ?, updated_at = ? WHERE request_id = ? AND repair_session_id IS NULL")
         .run(reason, now.toISOString(), requestId);
+      appendReviewRepairJourneyLog(db, requestId, now.toISOString());
       row = getReviewRepair(db, requestId)!;
       input.log?.(`Review repair for ${actionKey} at ${row.failed_head.slice(0, 12)}: escalated: ${reason}`);
     }
@@ -566,6 +571,7 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
     const exhausted = failures >= MAX_NOTIFY_FAILURES;
     db.prepare(`UPDATE production_review_repairs SET last_error = ?, notify_failures = ?, updated_at = ?${exhausted ? ", outcome = CASE WHEN repair_session_id IS NULL THEN 'gated' ELSE outcome END, reason = ?" : ""} WHERE request_id = ?`)
       .run(...[notifyError, failures, now.toISOString(), ...(exhausted ? [`The failed PR could not be returned to draft and commented on after ${failures} attempts: ${notifyError}`] : []), requestId]);
+    if (exhausted) appendReviewRepairJourneyLog(db, requestId, now.toISOString());
     if (row.last_error !== notifyError || exhausted) input.log?.(`Review repair for ${actionKey}: ${notifyError}; ${exhausted ? "stopping for the operator" : "retried next tick"}.`);
     row = getReviewRepair(db, requestId)!;
     if (!exhausted) return { kind: "waiting", reason: notifyError };
@@ -596,6 +602,7 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
       const reason = `The failed PR's state could not be read before the repair launch after ${failures} attempts: ${error}`;
       db.prepare(`UPDATE production_review_repairs SET last_error = ?, notify_failures = ?, updated_at = ?${exhausted ? ", outcome = 'gated', reason = ?" : ""}
         WHERE request_id = ? AND repair_session_id IS NULL`).run(...[error, failures, now.toISOString(), ...(exhausted ? [reason] : []), requestId]);
+      if (exhausted) appendReviewRepairJourneyLog(db, requestId, now.toISOString());
       if (row.last_error !== error || exhausted) input.log?.(`Review repair for ${actionKey}: ${error}; ${exhausted ? "stopping for the operator" : "retried next tick"}.`);
       if (!exhausted) return { kind: "waiting", reason: error };
       input.escalate(REVIEW_REPAIR_GATED,
@@ -611,6 +618,7 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
         : `PR ${row.pull_request_url} is ${state}: the failed PR is no longer open, so the repair loop stops for the operator.`;
       db.prepare("UPDATE production_review_repairs SET outcome = 'gated', reason = ?, updated_at = ? WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL")
         .run(reason, now.toISOString(), requestId);
+      appendReviewRepairJourneyLog(db, requestId, now.toISOString());
       input.escalate(REVIEW_REPAIR_GATED,
         `${context.describe(row)} ${reason} ${context.findingsLabel(row)}:\n${findings}`,
         `Check ${row.pull_request_url} and the base branch; the worker launches no repair for a PR that is no longer open. Nothing integrates meanwhile.`);
@@ -883,6 +891,7 @@ function attemptChecksRepair(input: ReviewRepairInput, failure: RequiredChecksFa
         judged?.summary ?? `Required checks on ${head.slice(0, 12)} failed on ${failure.pullRequestUrl}.`,
         JSON.stringify(judged?.findings ?? []), JSON.stringify(judged?.checks ?? failure.checks.map((check) => ({ name: check.name, status: (check.conclusion ?? check.status ?? "unknown").toLowerCase(), evidence: check.url ?? "" }))),
         outcome, reason, at, at);
+    appendReviewRepairJourneyLog(db, requestId, at);
     row = getReviewRepair(db, requestId)!;
     input.log?.(`Required-checks repair for ${actionKey} at ${head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : outcome === "released" ? `not the candidate's own failure, no repair: ${reason}` : `${outcome}: ${reason}`}.`);
   }
@@ -980,6 +989,7 @@ export function releaseStalePendingRepair(db: Database.Database, input: { sessio
       WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL`)
       .run(`The failed verdict on ${row.failed_head.slice(0, 12)} no longer stands (a newer verdict, head or Action input); this repair is never launched.`, input.now.toISOString(), row.request_id).changes;
     if (changed > 0) {
+      appendReviewRepairJourneyLog(db, row.request_id, input.now.toISOString());
       released = true;
       input.log?.(`Released the pending review repair for ${row.action_key} at ${row.failed_head.slice(0, 12)}: its failed verdict no longer stands.`);
     }
@@ -1036,6 +1046,7 @@ export function gateRepairCandidate(db: Database.Database, input: {
         AND production_review_repairs.reason IS NOT excluded.reason`)
     .run(requestId, actionKey, repair.policy_epoch, repair.round, session.id, session.branch, head, parent ?? head,
       workerPullRequestUrl(db, session.id), REPAIR_CANDIDATE_GATE_ROLE, gate, repair.report_path, repair.findings_json, repair.failed_checks_json, reason, at, at);
+  appendReviewRepairJourneyLog(db, requestId, at);
   let row = getReviewRepair(db, requestId)!;
   const policy = readProductionPolicySafely(db);
   const epoch = policy.status === "ok" ? policy.policy.epoch : null;
