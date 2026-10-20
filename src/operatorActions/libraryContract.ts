@@ -42,6 +42,28 @@ export interface OperatorScriptDescriptor {
    * `manifest` and `sha256` name the reviewed list the ids were taken from.
    */
   agentAskRejections?: AgentAskRejections;
+  /**
+   * The registered Project slug that publishes this entry. Required for an
+   * entry in a Project's own library (it is how that library opts an entry in
+   * to /actions); optional in Arcadia's library.
+   */
+  project?: string;
+  /**
+   * A pinned one-shot settlement of exactly the `agentAsk` it declares: the
+   * Project, the proposal's full preview fingerprint, the settlement request
+   * id, the disposition and the queue placement. It runs only through the
+   * shared `pinnedAskSettlementLauncher`; the runner refuses a stale
+   * fingerprint, another proposal and an Ask someone else already settled.
+   */
+  agentAskSettlement?: AgentAskSettlementPin;
+}
+export interface AgentAskSettlementPin {
+  schema: "arcadia-agent-ask-settlement-v1";
+  project: string;
+  proposalFingerprint: string;
+  requestId: string;
+  disposition: "accepted" | "rejected";
+  placement: "top" | null;
 }
 export interface AgentAskRejections {
   manifest: string;
@@ -83,6 +105,40 @@ export function planAmendmentLauncher(id: string): string {
   return '#!/usr/bin/env bash\nset -euo pipefail\nlibrary_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nrepo="$(cd "$library_dir/../../.." && pwd)"\nexec mise exec -- node "$repo/scripts/run-plan-amendment.mjs" "$library_dir/' + id + '.json" "${1:-}"\n';
 }
 
+/**
+ * Exact executable shape for a pinned Agent Ask settlement. It works from any
+ * Project's library: it runs Arcadia's shared runner from Arcadia's checkout
+ * (`ARCADIA_REPO`, defaulting to the same path the `arcadia` launcher uses),
+ * and passes only this entry's own descriptor. No settlement logic lives here.
+ */
+export function pinnedAskSettlementLauncher(id: string): string {
+  if (!slug.test(id)) fail("INVALID_OPERATOR_CONTRACT", "Operator action id must be a lowercase slug.");
+  return '#!/usr/bin/env bash\nset -euo pipefail\nlibrary_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\narcadia_repo="${ARCADIA_REPO:-$HOME/Dev/MR/Arcadia/arcadia}"\ncd "$arcadia_repo"\nexec mise exec -- node --import tsx "$arcadia_repo/scripts/settle-pinned-ask.ts" "$library_dir/' + id + '.json" "${1:-}"\n';
+}
+
+const settlementPinKeys = ["disposition", "placement", "project", "proposalFingerprint", "requestId", "schema"];
+function validateAgentAskSettlement(d: OperatorScriptDescriptor, id: string, script: string): void {
+  const p = d.agentAskSettlement as AgentAskSettlementPin;
+  if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join(",") !== settlementPinKeys.join(",") ||
+      p.schema !== "arcadia-agent-ask-settlement-v1" || !slug.test(p.project) || typeof p.proposalFingerprint !== "string" ||
+      !/^[0-9a-f]{64}$/.test(p.proposalFingerprint) || !slug.test(p.requestId) ||
+      (p.disposition !== "accepted" && p.disposition !== "rejected") || (p.placement !== null && p.placement !== "top") ||
+      (p.disposition === "rejected" && p.placement !== null)) {
+    fail("INVALID_AGENT_ASK_SETTLEMENT", "agentAskSettlement needs exactly schema arcadia-agent-ask-settlement-v1, a Project slug, the proposal's 64-hex preview fingerprint, a settlement requestId slug, disposition accepted or rejected, and placement null or \"top\" (null when rejected).");
+  }
+  if (d.agentAsk === undefined) fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must also declare its agentAsk proposal, intent and targetRef.");
+  if (d.project !== p.project) fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must name the same project at the top level and in its pin.");
+  if (p.requestId === d.agentAsk!.proposal) fail("INVALID_AGENT_ASK_SETTLEMENT", "The settlement requestId must differ from the proposal's request id.");
+  // The runner passes no operator, so a complete-intent settlement would be recorded as deterministic proof.
+  if (d.agentAsk!.intent === "complete") fail("INVALID_AGENT_ASK_SETTLEMENT", "A complete-intent Ask is settled by the agent that proves it, not by a pinned operator button.");
+  if (d.repeatable === true || d.kind !== undefined || d.expires_at !== undefined || d.next_after !== undefined) {
+    fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement is one-shot: no repeatable, kind, expires_at or next_after.");
+  }
+  if (script.replace(/\r\n/g, "\n") !== pinnedAskSettlementLauncher(id)) {
+    fail("AGENT_ASK_SETTLEMENT_RUNNER_REQUIRED", "Pinned Agent Ask settlement scripts must be exactly the shared launcher; bespoke commands are refused.");
+  }
+}
+
 const nextAfterKeys = new Set(["id", "within_minutes", "voided_by", "when_production"]);
 function validateNextAfter(value: unknown, id: string): void {
   const n = value as NextAfter;
@@ -98,6 +154,27 @@ function validateNextAfter(value: unknown, id: string): void {
 /** A UTC ISO 8601 instant, e.g. 2026-10-25T00:00:00Z or 2026-10-02T18:45:00.000Z. */
 const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v) && !Number.isNaN(Date.parse(v));
 
+/**
+ * The extra rule for an entry in a registered Project's own library (not Arcadia's). It is published only
+ * when it names that Project. It may not use a runner whose launcher resolves `$library_dir/../../..`
+ * (Plan amendment, Plan activation, workspace-config edit): in a Project checkout that would run the
+ * Project's file of the same name instead of Arcadia's governed runner. Its `next_after` would name
+ * another library's ids. It may settle an Agent Ask only through the pinned `agentAskSettlement`, whose
+ * runner binds the Ask to this Project: a plain `agentAsk` scope or an `agentAskRejections` list names
+ * request ids only, so it could settle another Project's Asks under this Project's badge.
+ * Call it on the raw descriptor before full validation.
+ */
+export function assertProjectLibraryEntry(value: unknown, project: string): void {
+  const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
+  if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
+  if (d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit or next_after; those runners and hints exist only in Arcadia's library.");
+  }
+  if (d.agentAskRejections !== undefined || (d.agentAsk !== undefined && d.agentAskSettlement === undefined)) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry settles an Agent Ask only through a pinned agentAskSettlement (arcadia operator-action settle-ask); a plain agentAsk scope or agentAskRejections is refused there.");
+  }
+}
+
 /** Read-only contract shared by /runs and the library-wide CI gate. */
 export function validateOperatorScriptContract(value: unknown, id: string, script: string): OperatorScriptDescriptor {
   if (!value || typeof value !== "object") fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor must be an object.");
@@ -110,6 +187,19 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
+  if (d.project !== undefined && (typeof d.project !== "string" || !slug.test(d.project))) {
+    fail("INVALID_OPERATOR_CONTRACT", "project must be a registered Project slug.");
+  }
+  if (d.agentAskSettlement === undefined && script.includes("settle-pinned-ask")) {
+    fail("AGENT_ASK_SETTLEMENT_RUNNER_REQUIRED", "The shared Agent Ask settlement runner requires a pinned agentAskSettlement descriptor.");
+  }
+  if (d.agentAskSettlement !== undefined && (d.workspaceConfigEdit !== undefined || d.agentAskRejections !== undefined ||
+      d.planAmendment !== undefined || d.planActivation !== undefined)) {
+    fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned Agent Ask settlement cannot be combined with another settlement or edit scope.");
+  }
+  if (d.agentAskSettlement !== undefined && d.agentAsk === undefined) {
+    fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must also declare its agentAsk proposal, intent and targetRef.");
+  }
   if (d.workspaceConfigEdit !== undefined) {
     if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskRejections !== undefined) {
       fail("INVALID_OPERATOR_CONTRACT", "A workspace-config edit cannot be combined with a settlement scope.");
@@ -154,6 +244,7 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
       if (!a || Object.keys(a).sort().join(",") !== "intent,proposal,targetRef" || !slug.test(a.proposal) || !intents.includes(a.intent) ||
           !(a.targetRef === null || text(a.targetRef))) fail("INVALID_OPERATOR_CONTRACT", "Agent Ask declaration needs the exact proposal, intent and targetRef.");
       if (a.intent === "plan" && a.targetRef !== null) fail("PLAN_AMENDMENT_RUNNER_REQUIRED", "Existing-Plan amendments require planAmendment (or planActivation) and the shared runner.");
+      if (d.agentAskSettlement !== undefined) validateAgentAskSettlement(d, id, script);
     } else if (/agent[-_]ask|runAgentAskSettleCommand|settleAgentAsk/.test(script)) {
       fail("UNDECLARED_OPERATOR_SETTLEMENT", "Agent Ask operator scripts must declare their proposal, intent and targetRef; Plan amendments must use the shared runner.");
     }

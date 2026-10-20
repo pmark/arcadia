@@ -464,6 +464,14 @@ interactive without loading the whole library; pressing Run then checks, once,
 whether it is your next action, shows a confirmation when it is not or cannot be
 confirmed, and starts nothing if the actions cannot be read. `/actions` lists everything, and its decision
 cards load only after you tap **Show decision cards**.
+`/actions` also lists every registered Project's own published buttons, read
+from that Project's main checkout (`artifacts/generated/operator-scripts/`
+entries that name their `project`); each card carries the Project's name and
+opens at `/actions/<project>--<id>`. A Project agent that needs you to settle
+one of its Agent Asks publishes a one-shot **Accept … Ask** button with
+`arcadia operator-action settle-ask` instead of handing you a command; pressing
+it settles exactly the pinned proposal and fingerprint, and refuses a stale or
+already-settled one.
 Operator-action authors must run `mise exec -- pnpm check:operator-scripts`
 before publishing a button. CI checks every library entry. `/runs` refuses an
 altered Plan-amendment launcher with `PLAN_AMENDMENT_RUNNER_REQUIRED`; repair

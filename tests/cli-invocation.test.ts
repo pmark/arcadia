@@ -173,6 +173,10 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "raise --repo",
       "reconcile --repo",
       "select-next --repo",
+      // `operator-action settle-ask --dir` writes the pinned button into the
+      // caller's own checkout of the Project's library, so it must resolve
+      // against the operator's directory, never Arcadia's runtime checkout.
+      "settle-ask --dir",
       "setup-context --repo",
       "show --repo",
       "tidy --repo",

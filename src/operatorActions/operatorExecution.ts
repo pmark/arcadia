@@ -12,6 +12,14 @@ export function withinPlanAmendmentRunner<T>(descriptorPath: string, run: () => 
   try { return run(); } finally { activeRunnerDescriptor = previous; }
 }
 
+let activeSettlementDescriptor: string | null = null;
+/** The same in-process scope for the shared pinned Agent Ask settlement runner. */
+export function withinPinnedAskSettlementRunner<T>(descriptorPath: string, run: () => T): T {
+  const previous = activeSettlementDescriptor;
+  activeSettlementDescriptor = path.resolve(descriptorPath);
+  try { return run(); } finally { activeSettlementDescriptor = previous; }
+}
+
 /** Called before previews, applies and replay returns in the canonical settlement path. */
 export function assertOperatorSettlementContract(
   ask: NormalizedAgentAsk,
@@ -33,6 +41,11 @@ export function assertOperatorSettlementContract(
     return refuse(error instanceof OperatorScriptContractError ? error.reason : "INVALID_OPERATOR_CONTEXT",
       error instanceof Error ? error.message : String(error));
   }
+  // An entry that names its Project settles only that Project's Asks, whatever scope it declares;
+  // request ids alone are not Project-bound, and the card shows this Project's badge.
+  if (descriptor.project !== undefined && ask.project !== descriptor.project) {
+    refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", `This operator action belongs to Project ${descriptor.project}; it cannot settle a ${ask.project} Agent Ask.`);
+  }
   if (descriptor.agentAskRejections) {
     // Rejection-only scope: exactly the pinned proposals, each only rejected. Checked before the
     // intent branches, so a pinned Plan-amendment Ask may be rejected but never accepted here.
@@ -53,6 +66,15 @@ export function assertOperatorSettlementContract(
     const declared = descriptor.agentAsk;
     if (!declared || ask.requestId !== declared.proposal || ask.intent !== declared.intent || ask.targetRef !== declared.targetRef) {
       refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "The actual Agent Ask differs from the operator descriptor's declared scope.");
+    }
+    const pinned = descriptor.agentAskSettlement;
+    if (pinned) {
+      if (activeSettlementDescriptor !== file) {
+        refuse("AGENT_ASK_SETTLEMENT_RUNNER_REQUIRED", "A pinned Agent Ask settlement must settle through the shared runner.");
+      }
+      if (ask.project !== pinned.project || !settlement || settlement.disposition !== pinned.disposition) {
+        refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "The actual settlement differs from the pinned Project or disposition.");
+      }
     }
   }
 }

@@ -1,7 +1,7 @@
 import { access, open, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { claimLaunch, LIBRARY_PATH, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
+import { claimLaunch, processIsRunning, resolveLibraryEntry, SAFE_KEY, type OperatorScriptRun } from "../../../route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,14 +46,16 @@ export async function GET(
 ) {
   try {
     const { id, runId } = await context.params;
-    if (!SAFE_ID.test(id) || !SAFE_RUN_ID.test(runId)) {
+    if (!SAFE_KEY.test(id) || !SAFE_RUN_ID.test(runId)) {
       return NextResponse.json({ error: "A valid operator-script and run id are required." }, { status: 400 });
     }
 
-    const library = await realpath(LIBRARY_PATH);
-    const runDirectory = path.join(LIBRARY_PATH, "runs", "operator", id, runId);
+    // Runs live in the entry's own state library: Arcadia's library, or the Project's state beside it.
+    const entry = resolveLibraryEntry(id);
+    const library = await realpath(entry.stateLibrary);
+    const runDirectory = path.join(entry.stateLibrary, "runs", "operator", entry.id, runId);
     const resolvedRunDirectory = await realpath(runDirectory);
-    if (!resolvedRunDirectory.startsWith(`${library}${path.sep}runs${path.sep}operator${path.sep}${id}${path.sep}`)) {
+    if (!resolvedRunDirectory.startsWith(`${library}${path.sep}runs${path.sep}operator${path.sep}${entry.id}${path.sep}`)) {
       return NextResponse.json({ error: "The requested run is outside the operator-script library." }, { status: 404 });
     }
     await access(path.join(resolvedRunDirectory, "run.json"));

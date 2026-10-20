@@ -47,7 +47,11 @@ export default defineConfig({
       // on (src/workspace/resolve.ts). Fixtures resolve temporary defaults on
       // purpose, so the suite starts with the mode off; tests of the mode
       // turn it on themselves.
-      ARCADIA_REQUIRE_INLINE_WORKSPACE: ""
+      ARCADIA_REQUIRE_INLINE_WORKSPACE: "",
+      // The dashboard and check:operator-scripts also read every registered
+      // Project's operator library from the live registry. Tests name their
+      // fixture Projects explicitly; none reads the developer's live Projects.
+      ARCADIA_OPERATOR_SCRIPT_PROJECT_LIBRARIES: "off"
     },
     exclude: [
       "**/node_modules/**",
