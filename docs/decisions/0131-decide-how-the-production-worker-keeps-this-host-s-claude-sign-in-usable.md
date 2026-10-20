@@ -4,7 +4,7 @@ type: decision
 id: "0131"
 slug: decide-how-the-production-worker-keeps-this-host-s-claude-sign-in-usable
 project: arcadia
-status: open
+status: approved
 question: Decide how the production worker keeps this host's Claude sign-in usable through idle periods without the operator at the host, amending Decision 0130's read-only credential use.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-20
+answer: Let the worker run the Claude CLI's own minimal call so the CLI refreshes its own sign-in
+decided: 2026-10-20
 ---
 
 # Decision 0131: Decide how the production worker keeps this host's Claude sign-in usable through idle periods without the operator at the host, amending Decision 0130's read-only credential use.
