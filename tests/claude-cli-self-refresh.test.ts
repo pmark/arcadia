@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { listPendingOperatorPings, OPERATOR_PING_MESSAGE_MAX } from "../src/ping/operatorPing.js";
 import {
   CLAUDE_CLI_SELF_REFRESH_ARGS,
+  CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST,
   CLAUDE_CLI_SELF_REFRESH_INTERVAL_MS,
   refreshClaudeCapacityBeforeAdmission,
   runClaudeCliHeadless,
@@ -122,29 +123,48 @@ describe("worker Claude CLI self-refresh on a 401 (#1616)", () => {
     expect(readClaudeUsageRefreshState(snapshotPath)).toBe("ok");
   });
 
-  it.runIf(process.platform !== "win32")("the worker's runner runs `claude` with stdin closed and no API key or injected token", async () => {
+  function fakeClaude(script: string): string {
     const bin = path.join(root, "bin");
-    const record = path.join(root, "record.json");
-    mkdirSync(bin);
-    writeFileSync(path.join(bin, "claude"), `#!/bin/sh
-stdin=open; read -t 1 line || stdin=closed
-printf '{"args":"%s","key":"%s","auth":"%s","oauth":"%s","stdin":"%s","cwd":"%s"}' "$*" "\${ANTHROPIC_API_KEY-unset}" "\${ANTHROPIC_AUTH_TOKEN-unset}" "\${CLAUDE_CODE_OAUTH_TOKEN-unset}" "$stdin" "$PWD" > ${JSON.stringify(record)}
-`);
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(path.join(bin, "claude"), `#!/bin/sh\n${script}\n`);
     chmodSync(path.join(bin, "claude"), 0o755);
     vi.stubEnv("PATH", `${bin}:${process.env.PATH ?? ""}`);
-    vi.stubEnv("ANTHROPIC_API_KEY", "sk-should-never-reach");
-    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "should-never-reach");
-    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "should-never-reach");
+    return bin;
+  }
+
+  it.runIf(process.platform !== "win32")("the worker's runner runs `claude` with stdin on /dev/null, a private empty cwd and only allowlisted environment", async () => {
+    const record = path.join(root, "record.json");
+    fakeClaude(`if [ -p /dev/stdin ]; then stdin=pipe; elif [ -t 0 ]; then stdin=tty; else stdin=devnull; fi
+printf '{"args":"%s","key":"%s","auth":"%s","oauth":"%s","base":"%s","bedrock":"%s","aws":"%s","stdin":"%s","cwd":"%s","files":"%s","home":"%s"}' "$*" "\${ANTHROPIC_API_KEY-unset}" "\${ANTHROPIC_AUTH_TOKEN-unset}" "\${CLAUDE_CODE_OAUTH_TOKEN-unset}" "\${ANTHROPIC_BASE_URL-unset}" "\${CLAUDE_CODE_USE_BEDROCK-unset}" "\${AWS_ACCESS_KEY_ID-unset}" "$stdin" "$PWD" "$(ls -A | wc -l | tr -d ' ')" "\${HOME-unset}" > ${JSON.stringify(record)}`);
+    for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "AWS_ACCESS_KEY_ID"]) vi.stubEnv(name, "should-never-reach");
 
     const result = await runClaudeCliHeadless(CLAUDE_CLI_SELF_REFRESH_ARGS, 10_000);
 
     expect(result.ok).toBe(true);
-    expect(existsSync(record)).toBe(true);
     const seen = JSON.parse(readFileSync(record, "utf8")) as Record<string, string>;
     expect(seen.args).toBe(CLAUDE_CLI_SELF_REFRESH_ARGS.join(" "));
-    expect([seen.key, seen.auth, seen.oauth]).toEqual(["unset", "unset", "unset"]);
-    expect(seen.stdin).toBe("closed");
-    expect(seen.cwd).not.toContain(workspace);
+    expect([seen.key, seen.auth, seen.oauth, seen.base, seen.bedrock, seen.aws]).toEqual(["unset", "unset", "unset", "unset", "unset", "unset"]);
+    expect(seen.home).toBe(process.env.HOME);
+    expect(seen.stdin).toBe("devnull");
+    expect(realpathSync(path.dirname(seen.cwd))).toBe(realpathSync(tmpdir()));
+    expect(path.basename(seen.cwd)).toMatch(/^arcadia-claude-refresh-/);
+    expect(seen.files).toBe("0");
+    expect(existsSync(seen.cwd)).toBe(false);
+    expect(CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it.runIf(process.platform !== "win32")("kills a CLI call at its bound and reports why", async () => {
+    fakeClaude("echo 'stuck waiting' >&2; sleep 30");
+    const result = await runClaudeCliHeadless(CLAUDE_CLI_SELF_REFRESH_ARGS, 500);
+    expect(result).toEqual({ ok: false, detail: "signal SIGKILL: stuck waiting" });
+  });
+
+  it("records a failed refresh's bounded detail for diagnosis", async () => {
+    const runner = vi.fn<ClaudeCliRunner>(async () => ({ ok: false, detail: "exit 1: Not logged in \u001b[31m" }));
+    await refresh({ snapshotPath, loadCredentials: async () => ({ accessToken: "expired" }), requestUsage: async () => ({ status: 401, body: null }) }, runner);
+    const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as Record<string, unknown>;
+    expect(snapshot.arcadia_cli_self_refresh_outcome).toBe("failed");
+    expect(snapshot.arcadia_cli_self_refresh_detail).toBe("exit 1: Not logged in  [31m");
   });
 
   it("bounds the tick's sign-in ping to the queue's limit so it is actually queued", () => {

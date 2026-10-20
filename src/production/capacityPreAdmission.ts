@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   lastClaudeCliSelfRefreshAt,
@@ -38,9 +40,23 @@ export type ClaudeCliRunner = (args: readonly string[], timeoutMs: number) => Pr
 export const CLAUDE_CLI_SELF_REFRESH_INTERVAL_MS = 30 * 60_000;
 export const CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS = 60_000;
 /** The whole call: the smallest model, one turn, no tools. Its only purpose is the CLI's own token refresh. */
-export const CLAUDE_CLI_SELF_REFRESH_ARGS: readonly string[] = ["-p", "Reply with the single word ok.", "--model", "haiku", "--max-turns", "1", "--tools", ""];
-/** Never handed to the call: an API key would bill it, and an injected token would bypass the CLI's own stored sign-in. */
-const CLAUDE_CLI_SELF_REFRESH_STRIPPED_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
+/**
+ * Only project settings load, from an empty private cwd, so user hooks, an
+ * apiKeyHelper and user MCP servers never run; no slash commands, MCP or
+ * transcript either.
+ */
+export const CLAUDE_CLI_SELF_REFRESH_ARGS: readonly string[] = [
+  "-p", "Reply with the single word ok.", "--model", "haiku", "--max-turns", "1", "--tools", "",
+  "--setting-sources", "project", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands"
+];
+/**
+ * The only environment the call receives. Everything else -- an API key or
+ * auth token (which would bill it), an injected OAuth token (which would bypass
+ * the CLI's own stored sign-in), a base URL, Bedrock/Vertex or cloud
+ * credentials -- never reaches it.
+ */
+export const CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST: readonly string[] = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"];
+const MAX_SELF_REFRESH_DETAIL_CHARS = 300;
 
 /**
  * Decision 0130: before an unattended launch the worker refreshes the Claude
@@ -109,7 +125,7 @@ async function selfRefreshClaudeSignIn(input: PreAdmissionRefreshInput, deadline
   if (last && now.getTime() - Date.parse(last) < CLAUDE_CLI_SELF_REFRESH_INTERVAL_MS) return;
   recordClaudeCliSelfRefresh(now, "started", snapshotPath);
   const result = await runner(CLAUDE_CLI_SELF_REFRESH_ARGS, CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS).catch(() => ({ ok: false, detail: "spawn failed" }));
-  recordClaudeCliSelfRefresh(now, result.ok ? "ok" : "failed", snapshotPath);
+  recordClaudeCliSelfRefresh(now, result.ok ? "ok" : "failed", snapshotPath, result.detail);
   if (!result.ok) return;
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs); });
@@ -125,16 +141,33 @@ async function selfRefreshClaudeSignIn(input: PreAdmissionRefreshInput, deadline
 
 /** The worker's runner: the installed `claude`, stdin closed, a private cwd, killed at the bound. */
 export const runClaudeCliHeadless: ClaudeCliRunner = (args, timeoutMs) => new Promise((resolve) => {
-  const env = { ...process.env };
-  for (const name of CLAUDE_CLI_SELF_REFRESH_STRIPPED_ENV) delete env[name];
-  const child = spawn("claude", [...args], { cwd: os.tmpdir(), env, stdio: ["ignore", "ignore", "ignore"] });
+  const env: NodeJS.ProcessEnv = {};
+  for (const name of CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST) if (process.env[name] !== undefined) env[name] = process.env[name];
+  let cwd: string;
+  try {
+    cwd = mkdtempSync(path.join(os.tmpdir(), "arcadia-claude-refresh-"));
+  } catch (error) {
+    resolve({ ok: false, detail: `no private cwd: ${error instanceof Error ? error.message : String(error)}` });
+    return;
+  }
+  const finish = (result: { ok: boolean; detail: string }) => {
+    clearTimeout(timer);
+    rmSync(cwd, { recursive: true, force: true });
+    resolve(result);
+  };
+  let stderr = "";
+  const child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
+  child.stderr?.on("data", (chunk: Buffer) => { if (stderr.length < MAX_SELF_REFRESH_DETAIL_CHARS) stderr += chunk.toString("utf8"); });
   const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-  child.once("error", (error) => { clearTimeout(timer); resolve({ ok: false, detail: error.message }); });
-  child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ ok: code === 0, detail: signal ? `signal ${signal}` : `exit ${String(code)}` }); });
+  child.once("error", (error) => finish({ ok: false, detail: error.message }));
+  child.once("exit", (code, signal) => {
+    const why = signal ? `signal ${signal}` : `exit ${String(code)}`;
+    finish({ ok: code === 0, detail: code === 0 ? why : `${why}${stderr.trim() ? `: ${stderr.trim()}` : ""}` });
+  });
 });
 
 export const CLAUDE_UNAUTHORIZED_PING =
-  "Claude sign-in on the worker host needs renewing: Claude's usage service rejected the stored access token, and the worker's own Claude CLI refresh did not restore it, so unattended Claude launches are refused. Sign in to Claude Code once on the host.";
+  "Claude sign-in on the worker host needs renewing: Claude's usage service rejected the stored access token, so unattended Claude launches are refused. The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if this persists, sign in to Claude Code once on the host.";
 
 function signalClaudeUnauthorizedOnce(input: PreAdmissionRefreshInput): void {
   const snapshotPath = input.deps?.snapshotPath;

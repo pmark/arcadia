@@ -420,9 +420,15 @@ export function lastClaudeCliSelfRefreshAt(snapshotPath = claudeStatusLinePath()
 }
 
 /** Record a Claude CLI self-refresh attempt and, once known, its outcome. */
-export function recordClaudeCliSelfRefresh(at: Date, outcome: "started" | "ok" | "failed", snapshotPath = claudeStatusLinePath()): void {
+export function recordClaudeCliSelfRefresh(at: Date, outcome: "started" | "ok" | "failed", snapshotPath = claudeStatusLinePath(), detail?: string): void {
   const current = readJsonRecord(snapshotPath) ?? {};
-  writeClaudeSnapshot(snapshotPath, { ...current, arcadia_cli_self_refresh_at: at.toISOString(), arcadia_cli_self_refresh_outcome: outcome });
+  writeClaudeSnapshot(snapshotPath, {
+    ...current,
+    arcadia_cli_self_refresh_at: at.toISOString(),
+    arcadia_cli_self_refresh_outcome: outcome,
+    // The CLI's own words, bounded and plain: the only diagnosis a failed refresh leaves.
+    arcadia_cli_self_refresh_detail: detail === undefined ? null : detail.replace(/[^\x20-\x7e]/g, " ").slice(0, 300),
+  });
 }
 
 /** The last recorded outcome of a Claude usage refresh, or null when none is recorded. */

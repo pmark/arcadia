@@ -2594,7 +2594,7 @@ function attemptProjectLaunch(
         : null;
       const claudeUsageUnreadable = claudeUsageRefreshState === "no_credentials" || claudeUsageRefreshState === "unauthorized";
       const claudeUsageRemedy = claudeUsageUnreadable
-        ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) Sign in to Claude Code again on this host; the worker only reads the access token and never refreshes it.`
+        ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
       if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
@@ -2929,15 +2929,15 @@ export function getProductionOperatorEscalationKind(db: Database.Database, actio
   return row?.kind ?? null;
 }
 
-/**
- * Every escalation kind this module can record, assembled from the constants the recording sites use, so
- * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
- */
 /** A ping message cut to the queue's limit (it refuses longer ones outright), keeping its start. */
 export function boundedPingMessage(message: string): string {
   return message.length <= OPERATOR_PING_MESSAGE_MAX ? message : `${message.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
 }
 
+/**
+ * Every escalation kind this module can record, assembled from the constants the recording sites use, so
+ * `blockerRemedies.test.ts` fails when a kind exists with no registered remedy (src/production/blockerRemedies.ts).
+ */
 export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   ENVIRONMENT_WALL_ESCALATION_KIND,
   BUDGET_EXHAUSTED_ESCALATION_KIND,
