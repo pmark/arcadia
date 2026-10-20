@@ -12,7 +12,7 @@ import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { normalizeAgentAsk } from "../ask/agentAsk.js";
 import { retiredCompletionDraftMessage } from "../qa/patchApplicability.js";
-import { draftPathsAt } from "../ask/autoSettleBeforeDispatch.js";
+import { draftPathsAt, requestIdsOfDraftsAt } from "../ask/autoSettleBeforeDispatch.js";
 import { commitTreeAt } from "./candidateSnapshot.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
@@ -45,7 +45,7 @@ import {
   voidDraftHandoutIfUnlaunched,
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
-import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
+import { getResumableLeaseHandoff, getSessionContinuation, restoreLeaseHandoffIfSupersededBy, type SessionExitReceipt } from "./reconciliation.js";
 import { getSessionRepair, releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
@@ -260,7 +260,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     now,
     ...(input.repair
       ? { supersededCompletionAskIds: candidateCompletionAskIds(repoRoot, input.projectSlug, input.repair.baseRevision, input.repair.failedHead, input.repair.actionId) }
-      : (() => { const resumed = resumedRepairSupersededAskIds(input.db, repoRoot, input.projectSlug); return resumed ? { supersededCompletionAskIds: resumed } : {}; })())
+      : (() => { const resumed = resumedSessionSupersededAskIds(input.db, repoRoot, input.projectSlug, tmux); return resumed ? { supersededCompletionAskIds: resumed } : {}; })())
   });
 
   if (input.repair && preview.actionId !== input.repair.actionId) {
@@ -1076,18 +1076,58 @@ function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean 
 }
 
 /**
- * The superseded candidate's completion Ask ids for a launch that RESUMES a
- * repair Session's incomplete candidate (the stale handoff the next launch
- * would pick up), so the failed candidate's pending Ask gates the resume no
- * more than it gated the first repair launch. Undefined when the handoff is
- * not a repair Session's.
+ * The completion Ask ids that must not gate a launch that RESUMES an
+ * incomplete candidate (the stale handoff the next launch would pick up):
+ *
+ * - for a repair Session, the failed candidate's own completion Asks, so they
+ *   gate the resume no more than they gated the first repair launch;
+ * - for any Session, the `complete` Asks for its Action that the candidate's
+ *   own Sessions drafted: added by a commit on the candidate's first-parent
+ *   line between the start of its first Session on that worktree and the
+ *   handoff's preserved revision, and still an unsettled draft there (not
+ *   archived by a settlement the candidate already carries). That draft is
+ *   the very thing the resumed Session must correct (its evidence was
+ *   refused), so it cannot hold it.
+ *
+ * Every other pending item still gates. Undefined when there is no handoff.
  */
-export function resumedRepairSupersededAskIds(db: Database.Database, repoRoot: string, projectSlug: string): ReadonlySet<string> | undefined {
-  const handoff = getResumableLeaseHandoff(db, path.resolve(repoRoot));
+export function resumedSessionSupersededAskIds(db: Database.Database, repoRoot: string, projectSlug: string, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux): ReadonlySet<string> | undefined {
+  const root = path.resolve(repoRoot);
+  const handoff = getResumableLeaseHandoff(db, root);
   if (!handoff) return undefined;
-  const repair = getSessionRepair(db, handoff.session.id);
-  if (!repair) return undefined;
-  return candidateCompletionAskIds(path.resolve(repoRoot), projectSlug, handoff.session.base_revision, repair.failed_head, handoff.session.action_id);
+  const session = handoff.session;
+  // Only when the next launch would actually resume this handoff: the
+  // governed pointer names its Plan and Action (the launch resumes a stale
+  // handoff only for the Action it dispatches).
+  const context = resolveDispatch(root, projectSlug).context;
+  if (!context || context.activePlan !== session.plan_slug || context.action.id !== session.action_id) return undefined;
+  // The same resumability probes the launch runs before reusing the handoff
+  // (no live tmux Session, a readable worktree HEAD on the handoff's branch):
+  // a handoff the launch would not resume exempts nothing.
+  if (tmux.hasSession(session.tmux_session_name)) return undefined;
+  const headProbe = tryGit(session.worktree_path, ["rev-parse", "HEAD"]);
+  const branchProbe = tryGit(session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
+  if (headProbe === null || branchProbe === null || branchProbe.trim() !== session.branch.replace(/^refs\/heads\//, "")) return undefined;
+  const ids = new Set<string>();
+  const repair = getSessionRepair(db, session.id);
+  if (repair) for (const id of candidateCompletionAskIds(root, projectSlug, session.base_revision, repair.failed_head, session.action_id)) ids.add(id);
+  // The first Session on this candidate: walk back through the continuation
+  // receipts, each of which is proven to share this worktree and branch.
+  let first: AgentSession = session;
+  for (let guard = 0; guard < 50; guard += 1) {
+    let previous: SessionExitReceipt | null;
+    try { previous = getSessionContinuation(db, first); } catch { previous = null; }
+    const earlier = previous ? getSession(db, previous.session_id) : null;
+    if (!earlier) break;
+    first = earlier;
+  }
+  const start = first.launch_revision ?? first.base_revision;
+  const end = handoff.receipt.candidate_revision ?? `refs/heads/${session.branch}`;
+  const stillDrafted = requestIdsOfDraftsAt(root, end);
+  for (const id of candidateCompletionAskIds(root, projectSlug, start, end, session.action_id, { firstParent: true })) {
+    if (stillDrafted.has(id)) ids.add(id);
+  }
+  return ids.size > 0 ? ids : undefined;
 }
 
 /**
@@ -1097,12 +1137,16 @@ export function resumedRepairSupersededAskIds(db: Database.Database, repoRoot: s
  * the head tree, which a retirement commit may have emptied. Unreadable
  * history yields nothing, so the gate stays closed.
  */
-export function candidateCompletionAskIds(repoRoot: string, projectSlug: string, baseRevision: string, failedHead: string, actionId: string): Set<string> {
+export function candidateCompletionAskIds(repoRoot: string, projectSlug: string, baseRevision: string, failedHead: string, actionId: string, options: { firstParent?: boolean } = {}): Set<string> {
   const ids = new Set<string>();
   // Exactly the selected Plan's target: a same-named Action in another Plan is a different Action.
   const planSlug = resolveDispatch(repoRoot, projectSlug).context?.activePlan;
   const targets = new Set([`action/${actionId}`, ...(planSlug ? [`plan/${planSlug}#${actionId}`] : [])]);
-  const log = tryGit(repoRoot, ["log", "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
+  // `firstParent`: only commits on the candidate's own line, and never a merge
+  // commit's diff (since Git 2.31 `--first-parent` implies
+  // `--diff-merges=first-parent`, which would show a base merged into the
+  // candidate as files the merge added).
+  const log = tryGit(repoRoot, ["log", ...(options.firstParent ? ["--first-parent", "--diff-merges=off"] : []), "--diff-filter=A", "--name-only", "--format=@%H", `${baseRevision}..${failedHead}`, "--", ".arcadia/asks"]);
   if (!log) return ids;
   let commit = "";
   for (const line of log.split("\n")) {

@@ -16,7 +16,8 @@ import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listRe
 import { getSession } from "../src/sessions/index.js";
 import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
-import { candidateCompletionAskIds } from "../src/sessions/launch.js";
+import { candidateCompletionAskIds, resumedSessionSupersededAskIds } from "../src/sessions/launch.js";
+import { runAgentAskDraftCommand, runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 
 /**
  * The production worker's review repair loop (src/production/reviewRepair.ts),
@@ -157,6 +158,170 @@ describe("the failed candidate's own pending completion Ask", () => {
     expect(rehearsal.lease()).toBeNull();
     expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["pending"]);
     expect(exitReceiptOf(rehearsal, a.id).superseded_by_session_id).toBeNull();
+  });
+});
+
+describe("a resumed Session's own pending completion draft", () => {
+  // Live shape (2026-10-20, session_14f7a0249c3b494d8f): the Session drafted its
+  // complete Ask through a reachable workspace (registered as a pending proposal),
+  // its evidence did not verbatim-cover the criteria, so the exit was
+  // incomplete_resumable, and the resume was then held by that same draft.
+  const draftUncovered = (rehearsal: Rehearsal, session: AgentSession, requestId: string, target = `action/${session.action_id}`): void => {
+    rehearsal.agentEdit(session, "MARKER.md", `${LINE_A}\n`);
+    rehearsal.agentEdit(session, "WORK.md", `${session.id} ${requestId}\n`);
+    git(session.worktree_path, ["add", "-A"]);
+    git(session.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work"]);
+    const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    runAgentAskDraftCommand({
+      workspace: rehearsal.workspace, dir: session.worktree_path,
+      request: JSON.stringify({
+        agent_ask: "v1", request_id: requestId, project: rehearsal.projectSlug, intent: "complete", target_ref: target,
+        desired_result: `Record ${session.action_id} complete.`, candidate_revision: head,
+        evidence: [{ criterion: "A paraphrase that is not the declared criterion.", status: "met", note: "n" }],
+        requested_authority: "apply_if_approved"
+      })
+    });
+  };
+  const pending = (rehearsal: Rehearsal) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
+    (db.prepare(`SELECT p.request_id FROM agent_ask_proposals p LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id WHERE s.id IS NULL`).all() as Array<{ request_id: string }>).map((row) => row.request_id));
+  const launchFirst = (): { rehearsal: Rehearsal; a: AgentSession } => {
+    const rehearsal = new Rehearsal();
+    rehearsals.push(rehearsal);
+    rehearsal.createFixtureRepository();
+    rehearsal.approve(rehearsal.registerProject());
+    rehearsal.activate();
+    rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
+    return { rehearsal, a: rehearsal.lease()! };
+  };
+  const exitIncomplete = (rehearsal: Rehearsal, session: AgentSession): void => {
+    rehearsal.tmux.exit(session.tmux_session_name);
+    expect(rehearsal.tick().reconciled[0]?.outcome).toBe("incomplete_resumable");
+  };
+
+  it("does not gate the resume of the Session that drafted it, and the resumed brief names why its evidence was refused", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-own-uncovered");
+    expect(pending(rehearsal)).toContain("complete-own-uncovered");
+    exitIncomplete(rehearsal, a);
+    rehearsal.tickUntil(() => { const lease = rehearsal.lease(); return lease !== null && lease.id !== a.id; }, 3);
+    const resumed = rehearsal.lease();
+    expect(resumed?.id).not.toBe(a.id);
+    expect(resumed?.worktree_path).toBe(a.worktree_path);
+    expect(escalation(rehearsal)).toBeUndefined();
+    const brief = rehearsal.tmux.launches.at(-1)!.args.at(-1)!;
+    expect(brief).toContain("Previous exit reason:");
+    expect(brief).toContain("does not verbatim-cover every declared acceptance criterion");
+  });
+
+  it("does not gate the resume of a repair Session that drafted it", () => {
+    const { rehearsal } = failedReview();
+    const repair = rehearsal.lease()!;
+    draftUncovered(rehearsal, repair, "complete-repair-uncovered");
+    exitIncomplete(rehearsal, repair);
+    rehearsal.tickUntil(() => { const lease = rehearsal.lease(); return lease !== null && lease.id !== repair.id; }, 3);
+    expect(rehearsal.lease()?.worktree_path).toBe(repair.worktree_path);
+  });
+
+  it("still gates the resume on a complete Ask for the same Action that the Session did not draft", () => {
+    const { rehearsal, a } = launchFirst();
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    git(a.worktree_path, ["add", "-A"]);
+    git(a.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work"]);
+    // Previewed from the main checkout, never committed by this Session's candidate.
+    runAgentAskPreviewCommand({
+      workspace: rehearsal.workspace, dir: rehearsal.repo,
+      request: JSON.stringify({
+        agent_ask: "v1", request_id: "complete-someone-else", project: rehearsal.projectSlug, intent: "complete", target_ref: `action/${a.action_id}`,
+        desired_result: "Done.", candidate_revision: git(rehearsal.repo, ["rev-parse", "HEAD"]).trim(),
+        evidence: [{ criterion: "x", status: "met", note: "n" }], requested_authority: "apply_if_approved"
+      })
+    });
+    exitIncomplete(rehearsal, a);
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toContain("complete-someone-else");
+  });
+
+  const exempted = (rehearsal: Rehearsal) => [...(withReadOnlyDatabase(rehearsal.workspace, (db) => resumedSessionSupersededAskIds(db, rehearsal.repo, rehearsal.projectSlug, rehearsal.tmux)) ?? [])];
+  const commitIn = (worktree: string, message: string) => git(worktree, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message]);
+
+  it("still gates the resume on another Session's complete draft for the same Action that a base merge brought into the candidate", () => {
+    const { rehearsal, a } = launchFirst();
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "work");
+    const branch = a.branch.replace(/^refs\/heads\//, "");
+    const request = JSON.stringify({
+      agent_ask: "v1", request_id: "complete-via-base-merge", project: rehearsal.projectSlug, intent: "complete", target_ref: `action/${a.action_id}`,
+      desired_result: "Done.", candidate_revision: a.base_revision,
+      evidence: [{ criterion: "x", status: "met", note: "n" }], requested_authority: "apply_if_approved"
+    });
+    runAgentAskPreviewCommand({ workspace: rehearsal.workspace, dir: rehearsal.repo, request });
+    // Another line from the base carries that draft; the candidate merges it.
+    git(a.worktree_path, ["switch", "-q", "-c", "other-line", a.base_revision]);
+    mkdirSync(path.join(a.worktree_path, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(a.worktree_path, ".arcadia", "asks", "agent-ask-complete-via-base-merge.yaml"), request);
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "another Session's draft");
+    git(a.worktree_path, ["switch", "-q", branch]);
+    git(a.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "merge", "-q", "--no-ff", "-m", "merge base line", "other-line"]);
+    exitIncomplete(rehearsal, a);
+    expect(exempted(rehearsal)).not.toContain("complete-via-base-merge");
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toContain("complete-via-base-merge");
+  });
+
+  it("does not exempt the Session's own draft for a different Action", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-other-action", `action/${rehearsal.actionB.split("/").at(-1)}`);
+    exitIncomplete(rehearsal, a);
+    expect(pending(rehearsal)).toContain("complete-other-action");
+    expect(exempted(rehearsal)).toEqual([]);
+  });
+
+  it("exempts only the redraft after the Session archived its first draft, so the archived one still gates", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-first-draft");
+    const asks = path.join(a.worktree_path, ".arcadia", "asks");
+    mkdirSync(path.join(asks, "archive"), { recursive: true });
+    git(a.worktree_path, ["add", "-A"]);
+    commitIn(a.worktree_path, "first draft");
+    git(a.worktree_path, ["mv", ".arcadia/asks/agent-ask-complete-first-draft.yaml", ".arcadia/asks/archive/agent-ask-complete-first-draft.yaml"]);
+    commitIn(a.worktree_path, "archive the first draft");
+    draftUncovered(rehearsal, a, "complete-redraft");
+    exitIncomplete(rehearsal, a);
+    expect(exempted(rehearsal)).toEqual(["complete-redraft"]);
+    // A handoff the launch would not resume (its branch moved) exempts nothing.
+    git(a.worktree_path, ["switch", "-q", "-c", "moved-away"]);
+    expect(exempted(rehearsal)).toEqual([]);
+    git(a.worktree_path, ["switch", "-q", a.branch.replace(/^refs\/heads\//, "")]);
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toEqual(expect.arrayContaining(["complete-first-draft", "complete-redraft"]));
+  });
+
+  it("still gates the resume on a non-complete pending Ask the Session drafted", () => {
+    const { rehearsal, a } = launchFirst();
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    git(a.worktree_path, ["add", "-A"]);
+    git(a.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work"]);
+    runAgentAskDraftCommand({
+      workspace: rehearsal.workspace, dir: a.worktree_path,
+      request: JSON.stringify({
+        agent_ask: "v1", request_id: "split-own", project: rehearsal.projectSlug, intent: "split", target_ref: `action/${a.action_id}`,
+        desired_result: "Split this Action.", requested_authority: "apply_if_approved", candidate_revision: git(a.worktree_path, ["rev-parse", "HEAD"]).trim(), acceptance: ["x"], evidence: [{ criterion: "x", status: "met", note: "n" }],
+        actions: [{ id: "remainder-of-a", desired_result: "Finish the rest.", acceptance: ["The rest is done."] }]
+      })
+    });
+    exitIncomplete(rehearsal, a);
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.lease()).toBeNull();
+    expect(pending(rehearsal)).toContain("split-own");
   });
 });
 

@@ -1437,7 +1437,7 @@ function buildProviderLaunch(
     branch: session.branch,
     agent,
     baseRevision: session.base_revision,
-    continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision } : undefined,
+    continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision, reason: continuation.reason } : undefined,
     repair: getSessionRepair(db, session.id),
     // The same identity the launch environment below commits under, so the
     // name the agent is told and the name on its commits cannot diverge.
