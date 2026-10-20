@@ -360,7 +360,9 @@ function mergeClaudeUsageWindow(
   if (!latest || typeof latest.utilization !== "number") return current;
   return {
     ...(current ?? {}),
-    used_percentage: latest.utilization <= 1 ? latest.utilization * 100 : latest.utilization,
+    // Issue #1620: the usage service reports a percentage (live: 59 for 59%,
+    // 1.0 for 1%); reading <= 1 as a fraction showed a fresh window as spent.
+    used_percentage: latest.utilization,
     ...(latest.resets_at ? { resets_at: latest.resets_at } : {}),
   };
 }
