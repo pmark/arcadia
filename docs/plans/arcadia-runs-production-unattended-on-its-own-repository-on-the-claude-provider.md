@@ -261,10 +261,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1585"]
   - id: guard-repair-gate-upsert-role
     title: Implement a role guard on the gated review-repair upsert in src/production/reviewRepair.ts so its ON CONFLICT DO UPDATE changes only a row whose role is REPAIR_CANDIDATE_GATE_ROLE, with a hermetic test.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a role guard on the gated review-repair upsert in src/production/reviewRepair.ts so its ON CONFLICT DO UPDATE changes only a row whose role is REPAIR_CANDIDATE_GATE_ROLE, with a hermetic test.
+    next_action: Completed via Agent Ask auto-settle-arcadia-guard-repair-gate-upsert-role-5c6c22a76403; no further action.
     expected_artifact: Evidence satisfying Agent Ask guard-repair-gate-upsert-role
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: guard-repair-gate-upsert-role
+current_action: first-unattended-run
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
