@@ -243,10 +243,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1582"]
   - id: refresh-decision-0130-status-and-1559-fake
     title: "Implement the two stale-text corrections from Issue #1585: record Decision 0130 as approved in docs/managed-production-readiness.md and remove the refreshToken field from the issue #1559 test's injected credentials."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement the two stale-text corrections from Issue #1585: record Decision 0130 as approved in docs/managed-production-readiness.md and remove the refreshToken field from the issue #1559 test's injected credentials."
+    next_action: Completed via Agent Ask auto-settle-arcadia-refresh-decision-0130-status-and-1559-fake-897fbd92d9f0; no further action.
     expected_artifact: Evidence satisfying Agent Ask refresh-decision-0130-status-and-1559-fake
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: refresh-decision-0130-status-and-1559-fake
+current_action: guard-repair-gate-upsert-role
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
