@@ -138,6 +138,44 @@ script. The script must state those effects plainly and must never hide manual
 Git reconciliation, governance settlement, or another unsupported shortcut
 inside automation.
 
+### Every Project has its own library
+
+You never need Arcadia's checkout to give the operator a button. The dashboard's
+`/actions` page reads Arcadia's library and, for every registered Project, that
+Project's own `artifacts/generated/operator-scripts/` in its **main checkout**
+(the registered repository path). An entry there is published only when its
+descriptor names its Project (`"project": "<slug>"`); the card shows that name
+and opens at `/actions/<slug>--<id>`. The same contract, validation, one-shot
+lifecycle and receipts apply. Run state and receipts for a Project entry are
+kept on the host beside Arcadia's library, never inside the Project checkout.
+Check a Project library with
+`node --import tsx scripts/check-operator-scripts.ts --project <slug> <repository>`
+from Arcadia's checkout (or `pnpm check:operator-scripts` there, which checks
+every registered Project's published entries too).
+
+**Agent Ask settlement is a button, never a command.** When an Ask you
+submitted needs the operator's settlement, publish a pinned one-shot button
+instead of telling the operator to run `arcadia agent-ask settle`:
+
+```sh
+arcadia operator-action settle-ask --project <slug> --proposal <request_id> \
+  --fingerprint <proposal preview fingerprint> --disposition accepted [--top]
+```
+
+Run it from your own worktree of that Project. It checks the recorded proposal,
+its full fingerprint and that nobody has settled it, previews the settlement
+(writing nothing), and writes `settle-<request_id>.json` and `.sh` into this
+checkout's library. Commit both and include them in your PR; the button appears
+once the PR is in the Project's main checkout. The press runs Arcadia's shared
+runner, which re-checks the pin, refuses a stale fingerprint, another proposal
+or an Ask settled another way, applies exactly the previewed settlement through
+the canonical settle path, and replays rather than settling twice. It never
+pushes, merges or answers the Decision a settlement opens; its settlement commit
+stays local to the main checkout until published. An existing-Plan amendment
+(`intent: plan` with `target_ref`) is refused here: it needs the shared
+Plan-amendment runner. Handing the operator a terminal command for any of this
+is a defect, not a fallback.
+
 ### Retiring a library entry
 
 A legacy local entry that `pnpm check:operator-scripts` refuses, and that can

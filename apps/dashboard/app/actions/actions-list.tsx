@@ -95,7 +95,7 @@ export function ActionsList() {
     const normalized = query.trim().toLowerCase();
     return scripts
       .filter((script) => script.id !== nextScript?.id)
-      .filter((script) => !normalized || [script.id, script.title, script.problem, script.desiredEffect].some((value) => value.toLowerCase().includes(normalized)))
+      .filter((script) => !normalized || [script.id, script.project ?? "", script.title, script.problem, script.desiredEffect].some((value) => value.toLowerCase().includes(normalized)))
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
   }, [query, scripts, nextScript?.id]);
 

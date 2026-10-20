@@ -12,6 +12,7 @@ import { isSameOriginRequest } from "../../../lib/originGuard";
 import { loadOperatorScriptReceipt } from "../../../lib/operatorScriptReceipt";
 import { loadLatestRunReceipts, type RunReceiptSummary } from "../../../lib/operatorRunReceipts";
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
+import { discoverProjectOperatorLibraries, parseOperatorScriptKey, projectLibraryKey, projectLibraryStateDir } from "../../../../../src/operatorActions/projectLibraries.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,9 +21,36 @@ export const runtime = "nodejs";
 export const LIBRARY_PATH =
   process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY?.trim() ||
   path.join(os.homedir(), "Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts");
-const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
-const LAUNCHES_PATH = path.join(LIBRARY_PATH, "runs", "operator");
 export const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** A bare id (Arcadia's library) or `<project>--<id>` (that registered Project's own library). */
+export const SAFE_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)?$/;
+
+/**
+ * One library entry, resolved from its key. `library` holds the descriptor and script; `stateLibrary`
+ * holds run state, launches and receipts (`runs/`). For Arcadia's library they are the same directory;
+ * a Project's state lives beside Arcadia's library, never inside the Project's checkout.
+ */
+export interface LibraryEntry { key: string; id: string; project: string | null; library: string; stateLibrary: string }
+
+/** Every library the dashboard reads: Arcadia's, then each registered Project's own. */
+export function operatorLibraries(): { project: string | null; library: string; stateLibrary: string }[] {
+  const projects = discoverProjectOperatorLibraries(LIBRARY_PATH).libraries
+    .map(({ project, path: library }) => ({ project, library, stateLibrary: projectLibraryStateDir(LIBRARY_PATH, project) }));
+  return [{ project: null, library: LIBRARY_PATH, stateLibrary: LIBRARY_PATH }, ...projects];
+}
+
+/** Resolve a key to its own library only; an unknown Project or malformed key is a missing entry. */
+export function resolveLibraryEntry(key: string): LibraryEntry {
+  const parsed = SAFE_KEY.test(key) ? parseOperatorScriptKey(key) : null;
+  if (!parsed) throw new Error("Invalid operator-script id.");
+  if (parsed.project === null) return { key, id: parsed.id, project: null, library: LIBRARY_PATH, stateLibrary: LIBRARY_PATH };
+  const found = discoverProjectOperatorLibraries(LIBRARY_PATH).libraries.find((library) => library.project === parsed.project);
+  if (!found) throw Object.assign(new Error(`No registered Project library for ${parsed.project}.`), { code: "ENOENT" });
+  return { key, id: parsed.id, project: parsed.project, library: found.path, stateLibrary: projectLibraryStateDir(LIBRARY_PATH, parsed.project) };
+}
+
+const statePath = (entry: LibraryEntry) => path.join(entry.stateLibrary, "runs", "state");
+const launchesPath = (entry: LibraryEntry) => path.join(entry.stateLibrary, "runs", "operator");
 const STALE_LOCK_MS = 30_000;
 
 export interface OperatorScriptState {
@@ -59,39 +87,47 @@ export interface OperatorScriptRun {
 const RETIREMENTS = parseRetirementManifest(retirementManifest);
 
 /** True for a legacy entry pinned by hash in legacyRetirements.json: it is intentionally never listed or run, so it is not an error. */
-async function isRetired(id: string): Promise<boolean> {
-  if (!RETIREMENTS.has(id)) return false;
+async function isRetired(entry: LibraryEntry): Promise<boolean> {
+  // The retirement manifest pins Arcadia's own legacy entries only.
+  if (entry.project !== null || !RETIREMENTS.has(entry.id)) return false;
+  const id = entry.id;
   try {
-    return matchRetirement(RETIREMENTS, id, await readFile(path.join(LIBRARY_PATH, `${id}.json`)), await readFile(path.join(LIBRARY_PATH, `${id}.sh`))) !== undefined;
+    return matchRetirement(RETIREMENTS, id, await readFile(path.join(entry.library, `${id}.json`)), await readFile(path.join(entry.library, `${id}.sh`))) !== undefined;
   } catch {
     return false;
   }
 }
 
 /** Load and validate an operator-script descriptor and its executable path. */
-export async function loadDescriptor(id: string): Promise<{ descriptor: ReturnType<typeof validateOperatorScriptContract>; scriptPath: string }> {
-  if (!SAFE_ID.test(id)) throw new Error("Invalid operator-script id.");
-  const descriptorPath = path.join(LIBRARY_PATH, `${id}.json`);
-  const scriptPath = await realpath(path.join(LIBRARY_PATH, `${id}.sh`));
-  const libraryPath = await realpath(LIBRARY_PATH);
-  if (path.dirname(scriptPath) !== libraryPath) throw new Error("Operator script resolves outside the library.");
+export async function loadDescriptor(key: string): Promise<{ descriptor: ReturnType<typeof validateOperatorScriptContract>; scriptPath: string; entry: LibraryEntry }> {
+  const entry = resolveLibraryEntry(key);
+  const { id, library } = entry;
+  const libraryPath = await realpath(library);
+  const descriptorPath = await realpath(path.join(library, `${id}.json`));
+  const scriptPath = await realpath(path.join(library, `${id}.sh`));
+  if (path.dirname(scriptPath) !== libraryPath || path.dirname(descriptorPath) !== libraryPath) throw new Error("Operator script resolves outside the library.");
   await access(scriptPath, constants.X_OK);
   const descriptor = validateOperatorScriptContract(JSON.parse(await readFile(descriptorPath, "utf8")), id, await readFile(scriptPath, "utf8"));
-  return { descriptor, scriptPath };
+  // A Project library publishes an entry to /actions only by naming its own Project.
+  if (entry.project !== null && descriptor.project !== entry.project) {
+    throw new OperatorScriptContractError("UNPUBLISHED_PROJECT_ENTRY", `${id} does not declare project "${entry.project}", so it is not published to /actions.`);
+  }
+  return { descriptor, scriptPath, entry };
 }
 
-export async function loadState(id: string): Promise<OperatorScriptState | null> {
+export async function loadState(key: string): Promise<OperatorScriptState | null> {
+  const entry = resolveLibraryEntry(key);
   try {
-    return JSON.parse(await readFile(path.join(STATE_PATH, `${id}.json`), "utf8")) as OperatorScriptState;
+    return JSON.parse(await readFile(path.join(statePath(entry), `${entry.id}.json`), "utf8")) as OperatorScriptState;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }
 
-async function writeStateAtomically(id: string, state: OperatorScriptState): Promise<void> {
-  const destination = path.join(STATE_PATH, `${id}.json`);
-  const temporary = path.join(STATE_PATH, `${id}.tmp-${process.pid}-${Date.now()}.json`);
+async function writeStateAtomically(entry: LibraryEntry, state: OperatorScriptState): Promise<void> {
+  const destination = path.join(statePath(entry), `${entry.id}.json`);
+  const temporary = path.join(statePath(entry), `${entry.id}.tmp-${process.pid}-${Date.now()}.json`);
   await writeFile(temporary, JSON.stringify(state) + "\n");
   await rename(temporary, destination);
 }
@@ -106,9 +142,10 @@ export function processIsRunning(pid: number | undefined): boolean {
   }
 }
 
-export async function claimLaunch(id: string): Promise<string> {
-  await mkdir(STATE_PATH, { recursive: true });
-  const lockPath = path.join(STATE_PATH, `${id}.lock`);
+export async function claimLaunch(key: string): Promise<string> {
+  const entry = resolveLibraryEntry(key);
+  await mkdir(statePath(entry), { recursive: true });
+  const lockPath = path.join(statePath(entry), `${entry.id}.lock`);
   try {
     const handle = await open(lockPath, "wx");
     await handle.close();
@@ -117,7 +154,7 @@ export async function claimLaunch(id: string): Promise<string> {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     const age = Date.now() - (await stat(lockPath)).mtimeMs;
     if (age <= STALE_LOCK_MS) throw new Error("OPERATOR_SCRIPT_ALREADY_CLAIMED", { cause: error });
-    const state = await loadState(id);
+    const state = await loadState(key);
     if (state?.status === "running" && processIsRunning(state.pid)) throw new Error("OPERATOR_SCRIPT_ALREADY_CLAIMED", { cause: error });
     await unlink(lockPath);
     const handle = await open(lockPath, "wx");
@@ -130,18 +167,21 @@ export async function claimLaunch(id: string): Promise<string> {
  * One library entry as the list and the single-action page show it, or null when it is retired.
  * Shared so /actions and /actions/<id> can never disagree about an action's state.
  */
-export async function describeScript(id: string, runReceipt: RunReceiptSummary | null) {
-  if (await isRetired(id)) return null;
-  const { descriptor } = await loadDescriptor(id);
-  const recorded = await loadState(id);
-  const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+export async function describeScript(key: string, runReceipt: RunReceiptSummary | null) {
+  const target = resolveLibraryEntry(key);
+  if (await isRetired(target)) return null;
+  const { descriptor, entry } = await loadDescriptor(key);
+  const recorded = await loadState(key);
+  const receipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);
   const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
     ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
     : recorded;
-  const scriptMtime = (await stat(path.join(LIBRARY_PATH, `${id}.sh`))).mtime.toISOString();
+  const scriptMtime = (await stat(path.join(entry.library, `${entry.id}.sh`))).mtime.toISOString();
   const updatedAt = state?.finishedAt ?? state?.startedAt ?? scriptMtime;
   return {
-    id: descriptor.id,
+    // The key is what /actions links and POSTs; for Arcadia's own library it is the bare id.
+    id: entry.key,
+    project: entry.project,
     kind: descriptor.kind,
     title: descriptor.title,
     problem: descriptor.problem,
@@ -165,17 +205,31 @@ export async function describeScript(id: string, runReceipt: RunReceiptSummary |
 /** List every valid operator script currently available in the library. */
 export async function GET() {
   try {
-    const entries = await readdir(LIBRARY_PATH);
-    const ids = entries.filter((entry) => entry.endsWith(".json")).map((entry) => entry.slice(0, -5)).filter((id) => SAFE_ID.test(id));
-    const runReceipts = await loadLatestRunReceipts(LIBRARY_PATH);
-    const scripts = await Promise.all(ids.map(async (id) => {
-      try {
-        return await describeScript(id, runReceipts.get(id) ?? null);
-      } catch (error) {
-        console.error(`Ignoring invalid operator-script library entry ${id}.`, error);
-        return null;
-      }
-    }));
+    const [arcadia, ...projects] = operatorLibraries();
+    const listLibrary = async ({ project, library, stateLibrary }: typeof arcadia) => {
+      const ids = (await readdir(library)).filter((entry) => entry.endsWith(".json")).map((entry) => entry.slice(0, -5)).filter((id) => SAFE_ID.test(id));
+      const runReceipts = await loadLatestRunReceipts(stateLibrary);
+      return Promise.all(ids.map(async (id) => {
+        const key = project === null ? id : projectLibraryKey(project, id);
+        try {
+          return await describeScript(key, runReceipts.get(id) ?? null);
+        } catch (error) {
+          // A Project's unpublished entry (no matching `project`) is skipped quietly; anything else is logged.
+          if (!(error instanceof OperatorScriptContractError && error.reason === "UNPUBLISHED_PROJECT_ENTRY")) {
+            console.error(`Ignoring invalid operator-script library entry ${key}.`, error);
+          }
+          return null;
+        }
+      }));
+    };
+    // Arcadia's library must be readable; one unreadable Project library never blanks the page.
+    const scripts = [
+      ...(await listLibrary(arcadia)),
+      ...(await Promise.all(projects.map((project) => listLibrary(project).catch((error) => {
+        console.error(`Could not read the ${project.project} operator-script library.`, error);
+        return [];
+      })))).flat()
+    ];
     return NextResponse.json({ scripts: scripts.filter((entry): entry is NonNullable<typeof entry> => entry !== null).sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)) });
   } catch (error) {
     console.error("Could not read the operator-script library.", error);
@@ -198,13 +252,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid JSON body is required." }, { status: 400 });
   }
   const id = typeof body.id === "string" ? body.id : "";
-  if (!SAFE_ID.test(id)) {
+  if (!SAFE_KEY.test(id) || !parseOperatorScriptKey(id)) {
     return NextResponse.json({ error: "A valid operator-script id is required." }, { status: 400 });
   }
+  let entry: LibraryEntry | null = null;
   try {
-    const { descriptor, scriptPath } = await loadDescriptor(id);
+    const loaded = await loadDescriptor(id);
+    const { descriptor, scriptPath } = loaded;
+    entry = loaded.entry;
     const state = await loadState(id);
-    const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+    const receipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);
     if ((state?.status === "running" && processIsRunning(state.pid)) || (receipt?.status === "running" && processIsRunning(receipt.pid))) {
       return NextResponse.json({ error: `${descriptor.title} is already running.` }, { status: 409 });
     }
@@ -213,7 +270,7 @@ export async function POST(request: Request) {
     }
     lockPath = await claimLaunch(id);
     const latestState = await loadState(id);
-    const latestReceipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+    const latestReceipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);
     if ((latestState?.status === "running" && processIsRunning(latestState.pid)) || (latestReceipt?.status === "running" && processIsRunning(latestReceipt.pid))) {
       await unlink(lockPath);
       lockPath = null;
@@ -225,12 +282,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
     }
     const runId = `${new Date().toISOString().replace(/[-:.TZ]/g, "").toLowerCase()}-${randomUUID()}`;
-    const runDirectory = path.join(LAUNCHES_PATH, id, runId);
+    const runDirectory = path.join(launchesPath(entry), entry.id, runId);
     await mkdir(runDirectory, { recursive: true });
     const descriptorSnapshotPath = path.join(runDirectory, "descriptor.json");
     runRecordPath = path.join(runDirectory, "run.json");
-    const scriptStatePath = path.join(STATE_PATH, `${id}.json`);
-    const relativeRunDirectory = path.relative(LIBRARY_PATH, runDirectory);
+    const scriptStatePath = path.join(statePath(entry), `${entry.id}.json`);
+    const relativeRunDirectory = path.relative(entry.stateLibrary, runDirectory);
     const descriptorSnapshot = {
       title: descriptor.title,
       problem: descriptor.problem,
@@ -252,7 +309,10 @@ export async function POST(request: Request) {
     };
     await writeFile(descriptorSnapshotPath, JSON.stringify({ ...descriptor, authority: descriptor.authority }, null, 2) + "\n");
     await writeFile(runRecordPath, JSON.stringify(initialRun, null, 2) + "\n");
-    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, runRecordPath, scriptStatePath, lockPath, runDirectory, runId, descriptorSnapshotPath], { detached: true, stdio: "ignore" });
+    // Shared runners keep their receipts in this entry's state library (outside any Project checkout).
+    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, runRecordPath, scriptStatePath, lockPath, runDirectory, runId, descriptorSnapshotPath], {
+      detached: true, stdio: "ignore", env: { ...process.env, ARCADIA_OPERATOR_SCRIPT_STATE_DIR: entry.stateLibrary }
+    });
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);
       child.once("error", reject);
@@ -263,8 +323,8 @@ export async function POST(request: Request) {
     if (runRecordPath && initialRun) {
       await writeFile(runRecordPath, JSON.stringify({ ...initialRun, status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." }, null, 2) + "\n").catch(() => undefined);
     }
-    if (lockPath) {
-      await writeStateAtomically(id, { status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." });
+    if (lockPath && entry) {
+      await writeStateAtomically(entry, { status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." });
       await unlink(lockPath).catch(() => undefined);
     }
     if (error instanceof Error && error.message === "OPERATOR_SCRIPT_ALREADY_CLAIMED") {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { OperatorScriptContractError } from "../../../../../../src/operatorActions/libraryContract.js";
 import { loadLatestRunReceiptFor } from "../../../../lib/operatorRunReceipts";
-import { LIBRARY_PATH, SAFE_ID, describeScript } from "../route";
+import { SAFE_KEY, describeScript, resolveLibraryEntry } from "../route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,13 +13,16 @@ export const runtime = "nodejs";
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  if (!SAFE_ID.test(id)) return NextResponse.json({ error: "A valid operator-script id is required." }, { status: 400 });
+  if (!SAFE_KEY.test(id)) return NextResponse.json({ error: "A valid operator-script id is required." }, { status: 400 });
   try {
-    const script = await describeScript(id, await loadLatestRunReceiptFor(LIBRARY_PATH, id));
+    const entry = resolveLibraryEntry(id);
+    const script = await describeScript(id, await loadLatestRunReceiptFor(entry.stateLibrary, entry.id));
     if (!script) return NextResponse.json({ error: "That operator action is not available." }, { status: 404 });
     return NextResponse.json({ script });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return NextResponse.json({ error: "That operator action is not available." }, { status: 404 });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error instanceof OperatorScriptContractError && error.reason === "UNPUBLISHED_PROJECT_ENTRY")) {
+      return NextResponse.json({ error: "That operator action is not available." }, { status: 404 });
+    }
     console.error(`Could not read operator script ${id}.`, error);
     return NextResponse.json({ error: "That operator action could not be read." }, { status: 500 });
   }

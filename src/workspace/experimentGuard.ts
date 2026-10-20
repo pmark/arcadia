@@ -144,6 +144,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "agent-ask pending": ALLOWED,
   "agent-ask notifications": ALLOWED,
   "agent-ask notification-sent": DELIVERY_RECEIPT,
+  "operator-action settle-ask": ALLOWED,
   // Queueing is an outbox write, like `agent-ask settle`; only the live bot ever delivers.
   "ping send": ALLOWED,
   "ping pending": ALLOWED,

@@ -8,7 +8,10 @@ import { shortName, type NextAfterRule } from "../lib/nextOperatorAction";
 export type ScriptStatus = "available" | "running" | "succeeded" | "failed";
 
 export interface OperatorScript {
+  /** The library key: a bare id for Arcadia's library, `<project>--<id>` for a Project's own. */
   id: string;
+  /** The registered Project whose library publishes this action; null or absent for Arcadia's. */
+  project?: string | null;
   kind?: "grant";
   title: string;
   problem: string;
@@ -74,6 +77,7 @@ export function OperatorActionCard({ script, launching, onLaunch, muted = false,
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={primary ? "text-lg font-semibold" : "font-semibold"}>{script.title}</h3>
             {script.kind === "grant" ? <span className="rounded-full bg-gold/10 px-2 py-1 text-xs font-semibold text-gold">Grant</span> : null}
+            {script.project ? <span className="rounded-full bg-steel/10 px-2 py-1 text-xs font-semibold text-steel" data-testid="operator-action-project">{script.project}</span> : null}
           </div>
           <p className="mt-1 break-all text-xs text-muted">{script.id}</p>
         </div>

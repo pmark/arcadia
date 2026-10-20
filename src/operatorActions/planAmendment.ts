@@ -1,6 +1,7 @@
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { equal, fieldsMatch, hash, pinnedFieldsMatch, Refusal, refuse, validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 import { withinPlanAmendmentRunner } from "./operatorExecution.js";
+import { claimRunnerLock } from "./runnerLock.js";
 export type { PlanActivationInput, PlanAmendmentInput } from "./planAmendmentContract.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -151,36 +152,8 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
   let repo = "";
   const git = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8", timeout: 30_000, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }).trimEnd();
   try {
-    mkdirSync(path.dirname(lock), { recursive: true });
-    try { writeFileSync(lock, String(process.pid), { flag: "wx" }); locked = true; }
-    catch {
-      // All stale reapers share this local SQLite write interlock. Normal wx
-      // claimants may win the unlink/create interval, but can never be removed
-      // by a second stale reaper. This file stores no governance or work state.
-      const reclamation = new Database(path.join(path.dirname(lock), "lock-reclamation.sqlite3"));
-      try {
-        reclamation.pragma("busy_timeout = 5000");
-        reclamation.transaction(() => {
-          let observed: string;
-          try { observed = readFileSync(lock, "utf8"); }
-          catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-            try { writeFileSync(lock, String(process.pid), { flag: "wx" }); locked = true; return; }
-            catch { refuse("ALREADY_RUNNING", "Another invocation claimed the amendment.", "Wait for that exact invocation to finish."); }
-          }
-          const owner = Number(observed);
-          if (!Number.isSafeInteger(owner) || owner < 1) refuse("ALREADY_RUNNING", "The amendment lock has no valid owner.", "Preserve the lock and receipt; repair the invalid host lock before retrying.");
-          try { process.kill(owner, 0); refuse("ALREADY_RUNNING", "This amendment is already running.", "Wait for the current invocation to finish; it owns the exact proposal."); }
-          catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-            if (readFileSync(lock, "utf8") !== observed) refuse("ALREADY_RUNNING", "Lock ownership changed during recovery.", "Wait for the new owner; its lock is preserved.");
-            unlinkSync(lock);
-            try { writeFileSync(lock, String(process.pid), { flag: "wx" }); locked = true; }
-            catch { refuse("ALREADY_RUNNING", "Another invocation won the recovered claim.", "Wait for that invocation; its lock is preserved."); }
-          }
-        }).immediate();
-      } finally { reclamation.close(); }
-    }
+    claimRunnerLock(lock);
+    locked = true;
     const descriptorBytes = readFileSync(descriptorPath);
     result.descriptorSha256 = hash(descriptorBytes);
     const descriptor = JSON.parse(descriptorBytes.toString()) as { schema: string; id: string; script: string; planAmendment?: PlanAmendmentInput; planActivation?: PlanActivationInput };

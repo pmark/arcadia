@@ -62,6 +62,7 @@ import {
   runAgentAskPreviewCommand,
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
+import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1099,6 +1100,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   ).action((options: { workspace: string; settlement: string; messageId: string; json?: boolean }) =>
     runCliAction("agent-ask.notification-sent", options, () => runAgentAskNotificationSentCommand(options), renderAgentAskNotificationSentSuccess)
   );
+
+  const operatorAction = program.command("operator-action").description("Generate validated /actions operator buttons; generating one grants nothing");
+  addJsonOption(operatorAction.command("settle-ask")
+    .description("Write a pinned one-shot button that settles exactly one recorded Agent Ask into this checkout's Project library")
+    .requiredOption("--project <slug>", "Registered Project that owns the Ask and this library")
+    .requiredOption("--proposal <id>", "Agent Ask request id (or agentask_ proposal id)")
+    .requiredOption("--fingerprint <sha256>", "The proposal's full preview fingerprint, as agent-ask preview printed it")
+    .requiredOption("--disposition <accepted|rejected>", "Disposition the button applies")
+    .option("--top", "Place an accepted Action bundle at the top of the queue")
+    .option("--id <id>", "Action id (default settle-<request id> or reject-<request id>)")
+    .option("--dir <path>", "A checkout of the Project's repository; the pair is written to its operator library", resolveInvocationPath, invocationRoot())
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { project: string; proposal: string; fingerprint: string; disposition: string; top?: boolean; id?: string; dir: string; workspace: string; json?: boolean }) =>
+    runCliAction("operator-action.settle-ask", options, () => runOperatorActionSettleAskCommand(options), renderOperatorActionSettleAskSuccess));
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
