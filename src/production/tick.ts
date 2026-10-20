@@ -35,7 +35,7 @@ import {
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
 import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
-import { launchGuardedHostSession, resumedRepairSupersededAskIds } from "../sessions/launch.js";
+import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
@@ -2328,7 +2328,7 @@ function attemptProjectLaunch(
     return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey: null };
   }
 
-  let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedRepairSupersededAskIds(db, input.repoRoot, input.projectSlug) });
+  let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedSessionSupersededAskIds(db, input.repoRoot, input.projectSlug) });
   if (transition.kind === "activate" && transition.activation?.candidate) {
     // Decision 0048: the active Plan cannot continue, but the explicit queue
     // names exactly one approved Plan and Action. Activate it in this same tick
@@ -2353,7 +2353,7 @@ function attemptProjectLaunch(
       input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
       return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
     }
-    transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedRepairSupersededAskIds(db, input.repoRoot, input.projectSlug) });
+    transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedSessionSupersededAskIds(db, input.repoRoot, input.projectSlug) });
   }
   // Issue #1512: an Action-scoped Active policy selects only Actions it names.
   // The scheduling pass already points at the first ready in-scope queued

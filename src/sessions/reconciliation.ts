@@ -9,7 +9,7 @@ import type { PlanDoc } from "../docs/types.js";
 import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
 import { sessionLogPath } from "./sessionRecording.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
-import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
+import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_EVIDENCE_INCOMPLETE, AUTO_SETTLE_NO_DRAFT, AUTO_SETTLE_REVISION_CHANGED, AUTO_SETTLE_STALE_REVISION } from "../ask/autoSettleBeforeDispatch.js";
 import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
@@ -462,7 +462,11 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     // A review repair Session settles only a completion it drafted itself.
     excludeDraftsAt: getSessionRepair(db, session.id)?.start_revision ?? null
   });
-  if (!result.settled) return null;
+  if (!result.settled) {
+    // The Session drafted a completion that was refused: say why, so the
+    // receipt (and the resumed Session's brief) names what to fix.
+    return result.reason === AUTO_SETTLE_NO_DRAFT ? null : { kind: "refused", reason: draftedCompletionRefusal(worktree, result.reason, result.askPath) };
+  }
   const settlementId = result.receiptId ?? "unknown";
   // Issue #1518: a settlement can be recorded while its commit is not on the
   // candidate (its Git commit failed, leaving the settled documents in the
@@ -504,7 +508,21 @@ export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_PREFIX = "Completion settlem
 
 type DraftedCompletionSettlement =
   | { kind: "settled"; settlementId: string }
-  | { kind: "not_in_candidate"; settlementId: string; reason: string };
+  | { kind: "not_in_candidate"; settlementId: string; reason: string }
+  | { kind: "refused"; reason: string };
+
+/** One sentence naming why the Session's own drafted complete Ask was not settled. */
+function draftedCompletionRefusal(worktree: string, code: string, askPath: string | undefined): string {
+  const where = askPath ? ` (${path.relative(worktree, askPath).split(path.sep).join("/")})` : "";
+  const why = code === AUTO_SETTLE_EVIDENCE_INCOMPLETE
+    ? "its evidence does not verbatim-cover every declared acceptance criterion: each evidence `criterion` must be one declared criterion's exact text, every criterion needs an entry, and every entry must be `met`"
+    : code === AUTO_SETTLE_STALE_REVISION
+      ? "its candidate_revision is not an ancestor of the candidate's HEAD"
+      : code === AUTO_SETTLE_REVISION_CHANGED
+        ? "commits after its candidate_revision changed more than governance records, so its evidence no longer describes HEAD"
+        : code;
+  return `The Session's drafted complete Ask${where} was not settled: ${why}.`;
+}
 
 function terminalStatusFor(outcome: SessionExitOutcome): AgentSession["status"] {
   switch (outcome) {
@@ -629,7 +647,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
       : drafted?.kind === "settled"
         ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted.settlementId}).` }
-        : drafted?.kind === "not_in_candidate"
+        : drafted?.kind === "not_in_candidate" || drafted?.kind === "refused"
           ? { completed: false, reason: drafted.reason }
           : { completed: false, reason: "Completion requires a canonical settlement or a drafted complete Ask with criterion-level evidence; a Run alone does not prove acceptance." };
     if (attempt.completed) {
