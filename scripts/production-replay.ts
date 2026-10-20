@@ -4,6 +4,14 @@
  * live workspace, its repositories, GitHub, tmux or any provider.
  *
  *   pnpm production-replay --source-workspace <live workspace> --grant <grant request-id prefix>
+ *   pnpm production-replay --source-workspace <live workspace> --card <operator-script id>
+ *
+ * `--card` predicts a card that was never pressed: the activation is built
+ * from the card's script (its pinned scope, provider, transitions, integration
+ * grant and concurrency; expiries are press-time plus the card's hours) and
+ * activated exactly as a press would. It is labelled "built from card
+ * descriptor, not a press receipt" and is no evidence the card would pass its
+ * own preconditions.
  *
  * Phase 1 (this process, read-only on the source):
  *   - `sqlite3 .backup` of the source database opened `mode=ro` into a fresh
@@ -84,8 +92,12 @@ const HOST_OPERATION_DEADLINE_MS = 180_000;
 
 export interface ReplayOptions {
   sourceWorkspace: string;
-  /** Request-id prefix of the activation receipt to replay (the grant card). */
-  grant: string;
+  /** Request-id prefix of the activation receipt to replay (the grant card). Exactly one of `grant` and `card`. */
+  grant?: string;
+  /** Id of a Grant operator-script card never pressed: the activation is built from its script. */
+  card?: string;
+  /** Directory holding the card's `<id>.sh`; defaults to this checkout's operator-script library. */
+  cardDir?: string;
   ticks?: number;
   /** `offline` answers `gh` reads only from `githubRecording`; `live` runs real read-only `gh` and records it. */
   github?: "offline" | "live";
@@ -142,7 +154,7 @@ export interface ReplayTick {
 export interface ReplayReport {
   root: string;
   grantReceipt: string;
-  activation: { ok: boolean; detail: string; warnings: string[] };
+  activation: { ok: boolean; detail: string; warnings: string[]; source?: "press-receipt" | "card-descriptor" };
   ticks: ReplayTick[];
   stop: {
     reason: "launched" | "integrated" | "external_effect" | "unrecorded_github_read" | "steady_state" | "host_operation_timeout" | "tick_limit" | "activation_refused" | "error";
@@ -177,6 +189,8 @@ interface GrantReceipt {
     packetApprovalExpiresAt?: string;
   };
   authority: { grantedAt: string; grantedBy?: string; decisionRef?: string };
+  /** `card-descriptor`: synthesized from an unpressed card's script, not read from a press receipt. */
+  source?: "press-receipt" | "card-descriptor";
 }
 
 interface Manifest {
@@ -347,6 +361,85 @@ function latestGrantReceipt(databaseFile: string, prefix: string): GrantReceipt 
   } finally {
     db.close();
   }
+}
+
+/** The scalar `NAME="value"` assignments and the `ACTIONS=( ... )` array of a card script's code lines. */
+function cardScriptFields(script: string): { values: Record<string, string>; actions: string[]; code: string } {
+  const code = script.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
+  const values: Record<string, string> = {};
+  for (const match of code.matchAll(/^([A-Z][A-Z0-9_]*)=(?:"([^"\n]*)"|(\d+))\s*$/gm)) values[match[1]] = match[2] ?? match[3];
+  const actions: string[] = [];
+  const block = /^ACTIONS=\(\s*\n([\s\S]*?)^\)/m.exec(code);
+  if (block) for (const line of block[1].split("\n")) if (line.trim()) actions.push(line.trim());
+  return { values, actions, code };
+}
+
+/**
+ * The scope a card's press would activate, read from its script's pinned
+ * fields (the descriptor JSON only carries prose). Expiries are `now` plus the
+ * card's packet-approval hours, as the card computes them at press time.
+ * Refuses anything it cannot read faithfully rather than guessing.
+ */
+export function cardGrantReceipt(card: string, now: string, cardDir?: string): GrantReceipt {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(card)) throw new Error(`Card id "${card}" is not a plain operator-script id.`);
+  const dir = cardDir ? path.resolve(cardDir) : path.join(REPO_ROOT, "artifacts", "generated", "operator-scripts");
+  const scriptFile = path.join(dir, `${card}.sh`);
+  const descriptorFile = path.join(dir, `${card}.json`);
+  if (!existsSync(scriptFile) || !existsSync(descriptorFile)) throw new Error(`Card ${card}: ${card}.sh and ${card}.json must both exist in ${dir}.`);
+  const descriptor = JSON.parse(readFileSync(descriptorFile, "utf8")) as { id?: string; kind?: string };
+  if (descriptor.id !== card) throw new Error(`Card ${card}: its descriptor names id "${descriptor.id}".`);
+  if (descriptor.kind !== "grant") throw new Error(`Card ${card} is a "${descriptor.kind}" card; only a grant card activates production.`);
+  const { values, actions, code: allCode } = cardScriptFields(readFileSync(scriptFile, "utf8"));
+  // Flags count only on the card's real invocation: `ARGS=(...)`/`ARGS+=(...)` lines and `production preview|activate` lines.
+  const code = allCode.split("\n").filter((line) => /^\s*ARGS\+?=\(/.test(line) || /\bproduction\s+(preview|activate)\b/.test(line)).join("\n");
+  if (values.CARD_EXPIRES_AT) {
+    const expires = Date.parse(values.CARD_EXPIRES_AT);
+    if (Number.isNaN(expires)) throw new Error(`Card ${card}: CARD_EXPIRES_AT "${values.CARD_EXPIRES_AT}" is not a date.`);
+    if (new Date(now).getTime() >= expires) throw new Error(`Card ${card} expired at ${values.CARD_EXPIRES_AT}; the card itself would refuse ("ask for a fresh card").`);
+  }
+  for (const name of ["PROJECT", "PLAN", "PROVIDER", "TRANSITIONS"]) {
+    if (!values[name]) throw new Error(`Card ${card}: its script does not pin ${name} as a plain quoted value.`);
+    if (/[$`\\]/.test(values[name])) throw new Error(`Card ${card}: ${name} is computed, not pinned.`);
+  }
+  if (code.includes('--integration-grant-action "')) throw new Error(`Card ${card} names integration-grant Actions; the replay does not model them.`);
+  let concurrencyValue = 1;
+  const concurrencyFlag = /--concurrency\s+("?)([^\s")]+)\1/.exec(code);
+  if (concurrencyFlag) {
+    const raw = concurrencyFlag[2];
+    const variable = /^\$\{?([A-Z][A-Z0-9_]*)\}?$/.exec(raw);
+    const resolved = variable ? values[variable[1]] : raw;
+    if (resolved === undefined || !/^\d+$/.test(resolved) || Number(resolved) < 1) {
+      throw new Error(`Card ${card}: --concurrency ${raw} does not resolve to a pinned positive integer.`);
+    }
+    concurrencyValue = Number(resolved);
+  }
+  const decision = values.INTEGRATION_DECISION;
+  const hours = Number(values.PACKET_APPROVAL_HOURS ?? 24);
+  if (!(hours > 0)) throw new Error(`Card ${card}: PACKET_APPROVAL_HOURS is not positive.`);
+  const expiresAt = new Date(new Date(now).getTime() + hours * 3_600_000).toISOString();
+  const transitions = values.TRANSITIONS.split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (code.includes("--integration-grant-decision") && !decision) throw new Error(`Card ${card}: an integration grant without a pinned INTEGRATION_DECISION.`);
+  const scope: GrantReceipt["scope"] = {
+    ...(values.INTENT ? { intent: values.INTENT } : {}),
+    projects: [values.PROJECT],
+    plans: [`${values.PROJECT}/${values.PLAN}`],
+    ...(actions.length ? { actions: actions.map((id) => `${values.PROJECT}/${id}`) } : {}),
+    providers: [values.PROVIDER],
+    maxConcurrentSessions: concurrencyValue,
+    mechanicalTransitions: transitions,
+    ...(code.includes("--remote-preservation") ? { remotePreservation: true } : {}),
+    ...(code.includes("--integration-grant-decision") ? {
+      integrationGrant: { decisionRef: decision, expiresAt, ...(code.includes("--integration-grant-merge-pull-request") ? { mergeThroughPullRequest: true } : {}) }
+    } : {}),
+    ...(code.includes("--packet-approval-expires-at") ? { packetApprovalExpiresAt: expiresAt } : {})
+  };
+  return {
+    requestId: `${card}-card-descriptor`,
+    createdAt: now,
+    scope,
+    authority: { grantedAt: now, ...(values.SPEND_DECISION ? { decisionRef: values.SPEND_DECISION } : {}), grantedBy: "production-replay" },
+    source: "card-descriptor"
+  };
 }
 
 function projectRepositories(databaseFile: string): Array<{ slug: string; repoPath: string }> {
@@ -757,8 +850,15 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     }
     for (const dir of ["projects", "artifacts", "skills", "reports", "inbox", ".arcadia"]) mkdirSync(path.join(workspace, dir), { recursive: true });
 
-    const receipt = latestGrantReceipt(databaseFile, options.grant);
-    print(`Grant receipt: ${receipt.requestId} (${receipt.createdAt})`);
+    let receipt: GrantReceipt;
+    if (options.card) {
+      receipt = cardGrantReceipt(options.card, options.now ?? new Date().toISOString(), options.cardDir);
+      print(`Activation built from card descriptor ${options.card}, not a press receipt: its pinned scope is activated as a press would, but none of the card's own preconditions (Decisions, capacity gate, sign-in, release) were checked.`);
+      fidelity.push(`ACTIVATION BUILT FROM CARD DESCRIPTOR ${options.card}, NOT A PRESS RECEIPT: scope read from the card's script; expiries are the replay clock plus the card's hours; the card's preconditions were not run.`);
+    } else {
+      receipt = latestGrantReceipt(databaseFile, options.grant!);
+      print(`Grant receipt: ${receipt.requestId} (${receipt.createdAt})`);
+    }
     const inScope = new Set(receipt.scope.projects);
     const repositories = projectRepositories(databaseFile);
     const repos: Record<string, string> = {};
@@ -973,6 +1073,33 @@ async function runPrepared(manifestFile: string): Promise<void> {
     for (const entry of report.fidelity) out(`  - ${entry}`);
   };
 
+  const activationSource = manifest.receipt.source ?? "press-receipt";
+  // A card's scope names every pinned Action; like the card, only those still open in the Plan are scoped.
+  if (activationSource === "card-descriptor" && scope.actions?.length && scope.plans?.length) {
+    try {
+      const { discoverDocs } = await import("../src/docs/discover.js");
+      const [projectSlug, planSlug] = scope.plans[0].split("/");
+      const repo = path.join(manifest.root, "repos", projectSlug);
+      const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.project === projectSlug && doc.slug === planSlug) as { actions: Array<{ id: string; status: string }> } | undefined;
+      if (!plan) throw new Error(`Plan ${scope.plans[0]} is not in the replay repository.`);
+      const known = new Set(plan.actions.map((action) => action.id));
+      const missing = scope.actions.filter((key) => !known.has(key.slice(key.indexOf("/") + 1)));
+      if (missing.length) throw new Error(`pinned Action(s) not in the Plan at the replay repository's checkout, where the card would refuse: ${missing.join(", ")}`);
+      const open = new Set(plan.actions.filter((action) => action.status !== "done").map((action) => action.id));
+      const kept = scope.actions.filter((key) => open.has(key.slice(key.indexOf("/") + 1)));
+      if (!kept.length) throw new Error("every pinned Action is already done; the card would refuse.");
+      if (kept.length !== scope.actions.length) manifest.fidelity.push(`Card scope narrowed to the still-open pinned Actions (${kept.length} of ${scope.actions.length}), as the card does at press time.`);
+      scope.actions = kept;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      report.activation = { ok: false, detail: message, warnings: [], source: activationSource };
+      report.stop = { reason: "activation_refused", detail: message };
+      predicted.add(`activation refused: ${message}`);
+      out(`Activation (built from card descriptor, not a press receipt): REFUSED -- ${message}`);
+      finish();
+      return;
+    }
+  }
   // Activation, as the grant card does it: preview, then activate against the previewed revision.
   const base = {
     workspace,
@@ -1001,15 +1128,15 @@ async function runPrepared(manifestFile: string): Promise<void> {
       ...(manifest.receipt.authority.decisionRef ? { decision: manifest.receipt.authority.decisionRef } : {}),
       expectedRevision: String(preview.data.preview.expectedRevision)
     });
-    report.activation = { ok: true, detail: `${activated.data.result.transition} revision ${activated.data.result.policy.revision}`, warnings: [...preview.warnings, ...activated.warnings] };
-    out(`Activation: ok (${report.activation.detail})`);
+    report.activation = { ok: true, detail: `${activated.data.result.transition} revision ${activated.data.result.policy.revision}`, warnings: [...preview.warnings, ...activated.warnings], source: activationSource };
+    out(`Activation: ok (${report.activation.detail})${activationSource === "card-descriptor" ? " -- built from card descriptor, not a press receipt" : ""}`);
     for (const warning of report.activation.warnings) { out(`  warning: ${warning}`); predicted.add(`activation warning: ${warning}`); }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    report.activation = { ok: false, detail: message, warnings: [] };
+    report.activation = { ok: false, detail: message, warnings: [], source: activationSource };
     report.stop = { reason: "activation_refused", detail: message };
     predicted.add(`activation refused: ${message}`);
-    out(`Activation: REFUSED -- ${message}`);
+    out(`Activation: REFUSED -- ${message}${activationSource === "card-descriptor" ? " (built from card descriptor, not a press receipt)" : ""}`);
     finish();
     return;
   }
@@ -1192,6 +1319,7 @@ function parseArgs(argv: string[]): ReplayOptions {
     switch (flag) {
       case "--source-workspace": options.sourceWorkspace = value(); break;
       case "--grant": options.grant = value(); break;
+      case "--card": options.card = value(); break;
       case "--ticks": options.ticks = Number(value()); break;
       case "--github": {
         const mode = value();
@@ -1212,7 +1340,7 @@ function parseArgs(argv: string[]): ReplayOptions {
       }
       case "--simulate-github-writes": options.simulateGithubWrites = true; break;
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> --grant <request-id prefix> [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes]\n`
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes]\n`
           + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n");
         process.exit(0);
         break;
@@ -1220,7 +1348,8 @@ function parseArgs(argv: string[]): ReplayOptions {
     }
   }
   if (!options.sourceWorkspace) throw new Error("--source-workspace is required (name the workspace explicitly; nothing is resolved from user config).");
-  if (!options.grant) throw new Error("--grant is required: the request-id prefix of the activation receipt to replay.");
+  if (!options.grant && !options.card) throw new Error("--grant (the request-id prefix of the activation receipt to replay) or --card (a Grant card never pressed) is required.");
+  if (options.grant && options.card) throw new Error("--grant and --card are alternatives; give one.");
   if (options.ticks !== undefined && !(Number.isInteger(options.ticks) && options.ticks > 0)) throw new Error("--ticks must be a positive integer.");
   return options as ReplayOptions;
 }

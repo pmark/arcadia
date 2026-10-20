@@ -397,6 +397,61 @@ describe("tick-driven independent review", () => {
     expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"], [2, "failed"], [3, "failed"], [4, "passed"]]);
   });
 
+  it("retries a transient reviewer error while verdict attempts are below MAX_VERDICT_ATTEMPTS, and runs the reviewer again on a later tick with no review_attempts_exhausted escalation", () => {
+    const { rehearsal, a } = finishedA();
+    let calls = 0;
+    rehearsal.github.reviewerExit = () => (calls++ === 0 ? 1 : 0);
+    exitTick(rehearsal);
+    const candidate = head(rehearsal, a);
+    rehearsal.tick(); // ready
+    rehearsal.tick(); // code review: transient error
+    expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
+    expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"]]);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "awaiting_independent_verdicts" });
+
+    rehearsal.tick(); // retry code review after transient error
+    expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review"]);
+    expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"], [2, "passed"]]);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "awaiting_independent_verdicts" });
+    expect(escalation(rehearsal)?.kind).not.toBe("review_attempts_exhausted");
+
+    const { integrated } = rehearsal.tickThroughReview();
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(candidate);
+  });
+
+  it("after review_attempts_exhausted is recorded, calling resetProductionRepairBudget leaves the escalation in place and runs no reviewer", () => {
+    const { rehearsal, a } = finishedA();
+    exitTick(rehearsal);
+    const candidate = head(rehearsal, a);
+    // Pre-populate exhausted verdict attempts for this Action.
+    const development = rehearsal.attempts("write-marker-a").find((attempt) => attempt.role === "development")!;
+    withDatabase(rehearsal.workspace, (db) => {
+      for (let ordinal = 1; ordinal <= MAX_VERDICT_ATTEMPTS; ordinal += 1) {
+        db.prepare(`INSERT INTO session_role_attempts (id, requirement_id, input_revision, role, ordinal, request_id, actor_id, mutation_owner, status,
+          target_head, criteria_fingerprint, evidence_fingerprint, terminal_receipt_json, created_at, updated_at)
+          VALUES (?, ?, ?, 'code-review', ?, ?, 'code-review-reviewer:earlier', 0, 'failed', ?, 'c', 'e', '{"verdict":"fail"}', ?, ?)`)
+          .run(`attempt_earlier_${ordinal}`, development.requirement_id, development.input_revision, ordinal, `earlier-review-${ordinal}`,
+            "0".repeat(40), "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+      }
+    });
+    rehearsal.tick(); // ready
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_attempts_exhausted" });
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    expect(verdicts(rehearsal, "code-review").filter((attempt) => attempt.target_head === candidate)).toEqual([]);
+
+    // The reset restarts the review step's checks deadline as documented; the lineage budget it cannot restore.
+    const reset = runProductionResetRepairBudgetCommand({ workspace: rehearsal.workspace, actionKey: rehearsal.actionA });
+    expect(reset.data.reviewStepsCleared).toBe(1);
+    // Escalation remains review_attempts_exhausted, not cleared
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_attempts_exhausted" });
+    // Later tick still doesn't run the reviewer
+    rehearsal.tick();
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    expect(verdicts(rehearsal, "code-review").filter((attempt) => attempt.target_head === candidate)).toEqual([]);
+  });
+
   it("re-runs a reviewer-unavailable verdict once, but never re-runs or integrates the real failed verdict that follows", () => {
     const { rehearsal } = finishedA();
     let calls = 0;

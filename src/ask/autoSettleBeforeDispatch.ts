@@ -35,6 +35,13 @@ export interface AutoSettlePendingCompletionInput {
    * the repair's completion must be a fresh Ask it drafted itself.
    */
   excludeDraftsAt?: string | null;
+  /**
+   * Issue #1599: the host's pre-acceptance validation, run once a draft has
+   * passed every evidence and revision check and before anything is settled.
+   * A refusal leaves the draft unsettled with `AUTO_SETTLE_VALIDATION_REFUSED`
+   * and the returned reason. Omitted where no such check applies.
+   */
+  validateBeforeSettle?: () => { ok: true } | { ok: false; reason: string };
 }
 
 export interface AutoSettlePendingCompletionResult {
@@ -42,6 +49,8 @@ export interface AutoSettlePendingCompletionResult {
   /** Machine-checkable reason code; see the constants this module exports. */
   reason: string;
   askPath?: string;
+  /** With `AUTO_SETTLE_VALIDATION_REFUSED`: the validation's own bounded reason. */
+  detail?: string;
   receiptId?: string;
   nextActionKey?: string | null;
 }
@@ -50,6 +59,7 @@ export const AUTO_SETTLE_NO_DRAFT = "no_drafted_complete_ask_for_current_pointer
 export const AUTO_SETTLE_EVIDENCE_INCOMPLETE = "evidence_does_not_verbatim_cover_declared_criteria";
 export const AUTO_SETTLE_STALE_REVISION = "candidate_revision_is_stale_and_not_an_ancestor_of_head";
 export const AUTO_SETTLE_REVISION_CHANGED = "candidate_revision_is_stale_and_later_commits_changed_more_than_governance_records";
+export const AUTO_SETTLE_VALIDATION_REFUSED = "pre_acceptance_validation_refused";
 export const AUTO_SETTLE_SETTLED = "settled_from_drafted_complete_ask";
 
 /**
@@ -236,6 +246,10 @@ function attemptSettleOneDraft(
   effectiveContent = withRequestId(effectiveContent, requestId);
 
   const settlementRequestId = `settle-${requestId}`.slice(0, 120);
+  const validation = input.validateBeforeSettle?.();
+  if (validation && !validation.ok) {
+    return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: validation.reason, askPath: draft.path };
+  }
   try {
     previewAgentAskRequest(db, { request: effectiveContent, requestId, sourcePath: draft.path });
     // Two-phase, exactly like a human's `preview` then `settle --apply`: the

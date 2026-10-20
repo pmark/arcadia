@@ -811,7 +811,7 @@ export function judgeRequiredChecksFailure(input: {
     title: `${test.check}: ${test.file} > ${test.name}`,
     evidence: test.evidence || "(no assertion lines in the failed log)",
     recommendation: changed.has(test.file)
-      ? "Make this test pass by fixing the candidate's code or the test's own defect; never skip, delete or weaken it."
+      ? "Make this test pass by fixing the candidate's code or the test's own defect, within the Action's declared scope; never skip, delete or weaken it."
       : "This test file is not one the candidate changed: confirm the candidate's change caused it before fixing it."
   }));
   const checks = [...ownChecks, ...inheritedChecks];
