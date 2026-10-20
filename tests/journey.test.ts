@@ -8,6 +8,7 @@ import { currentActionOf, gitIntegration, journeyContext } from "../src/commands
 import { classifyObstacle } from "../src/journey/classify.js";
 import { deriveJourney, firstLine } from "../src/journey/derive.js";
 import { applyInitialSchema } from "../src/db/schema.js";
+import { appendJourneyLog } from "../src/production/journeyLog.js";
 import { ensureRedAlertTables } from "../src/production/redAlerts.js";
 import { ensureProductionPolicyTables } from "../src/production/policy.js";
 import { ensureProductionReviewStepTable } from "../src/production/independentReview.js";
@@ -273,11 +274,73 @@ describe("deriveJourney", () => {
     expect(() => deriveJourney(db, "no-slash", NOW)).toThrow(/<project>\/<action>/);
   });
 
+  it("keeps an overwritten escalation, refusal and gated repair as cleared obstacles from the journey log", () => {
+    seedPath();
+    // An earlier escalation the per-Action row has since overwritten with the current (waiting) one.
+    appendJourneyLog(db, { actionKey: KEY, source: "escalation", kind: "operator_gate_pending", message: "Launch of x is held by pending Decision 0900: Write marker A now?", remedy: "Answer it.", at: "2026-10-19T03:00:00.000Z" });
+    appendJourneyLog(db, { actionKey: KEY, source: "escalation", kind: "awaiting_independent_verdicts", message: "Integration waits on current independent verdicts.", remedy: null, at: "2026-10-19T15:31:00.000Z" });
+    // repair-1 was gated before it later launched; its outcome column was overwritten.
+    appendJourneyLog(db, { actionKey: KEY, source: "review_repair", kind: "gated", message: "The candidate is on Decision 0098's gate list.", at: "2026-10-19T02:30:00.000Z" });
+    appendJourneyLog(db, { actionKey: KEY, source: "review_repair", kind: "launched", message: "The report omits #1512.", at: "2026-10-19T05:12:00.000Z" });
+    // A refusal episode that ended (the refusal row was deleted on admission).
+    appendJourneyLog(db, { actionKey: KEY, source: "launch_refusal", kind: "capacity", message: "Launch refused: provider at capacity.", at: "2026-10-19T04:00:00.000Z" });
+
+    const journey = deriveJourney(db, KEY, NOW);
+    const fromLog = journey.events.filter((event) => event.source === "action_journey_log");
+    expect(fromLog.map((event) => `${event.kind}:${event.label}`)).toEqual(["cleared:repair gated", "cleared:operator gate pending", "cleared:launch refused"]);
+    expect(journey.events.some((event) => event.kind === "obstacle")).toBe(false);
+  });
+
+  it("does not repeat a logged state that is still current or already told from its own table", () => {
+    seedPath();
+    insert("production_launch_refusal_log", { action_key: KEY, dedupe_key: "capacity", message: "Launch refused: provider at capacity.", first_at: "2026-10-19T15:52:00.000Z", last_at: "2026-10-19T15:59:00.000Z" });
+    appendJourneyLog(db, { actionKey: KEY, source: "launch_refusal", kind: "capacity", message: "Launch refused: provider at capacity.", at: "2026-10-19T15:52:00.000Z" });
+    db.prepare("UPDATE production_operator_escalations SET kind = 'operator_gate_pending', message = 'Held by Decision 0900.', remedy = 'Answer it.'").run();
+    appendJourneyLog(db, { actionKey: KEY, source: "escalation", kind: "operator_gate_pending", message: "Held by Decision 0900.", remedy: "Answer it.", at: "2026-10-19T15:31:00.000Z" });
+
+    const journey = deriveJourney(db, KEY, NOW);
+    expect(journey.events.filter((event) => event.source === "action_journey_log")).toEqual([]);
+    expect(journey.events.filter((event) => event.label === "launch refused")).toHaveLength(1);
+    expect(journey.events.filter((event) => event.label === "operator gate pending")).toHaveLength(1);
+  });
+
   it("never writes to the database", () => {
     seedPath();
     const before = db.prepare("SELECT total_changes() AS n").get() as { n: number };
     deriveJourney(db, KEY, NOW);
     expect((db.prepare("SELECT total_changes() AS n").get() as { n: number }).n).toBe(before.n);
+  });
+});
+
+describe("appendJourneyLog", () => {
+  const rows = () => db.prepare("SELECT source, kind, message, remedy, at FROM action_journey_log ORDER BY rowid").all() as Array<Record<string, unknown>>;
+  const entry = { actionKey: KEY, source: "escalation" as const, kind: "operator_gate_pending", message: "Held.", remedy: "Answer it." };
+
+  it("writes nothing for an unchanged repeat, appends on a change, and never updates a row", () => {
+    expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:00:00.000Z" })).toBe(true);
+    expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:00:02.000Z" })).toBe(false);
+    expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:00:04.000Z" })).toBe(false);
+    expect(rows()).toHaveLength(1);
+
+    expect(appendJourneyLog(db, { ...entry, remedy: "Answer it now.", at: "2026-10-19T10:01:00.000Z" })).toBe(true);
+    expect(appendJourneyLog(db, { ...entry, kind: "terminal_candidate_refused", at: "2026-10-19T10:02:00.000Z" })).toBe(true);
+    // Back to the first state: a change from the latest row, so it is history too.
+    expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:03:00.000Z" })).toBe(true);
+    // Another source of the same Action dedupes on its own latest row.
+    expect(appendJourneyLog(db, { ...entry, source: "launch_refusal", at: "2026-10-19T10:04:00.000Z" })).toBe(true);
+
+    expect(rows()).toEqual([
+      { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:00:00.000Z" },
+      { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it now.", at: "2026-10-19T10:01:00.000Z" },
+      { source: "escalation", kind: "terminal_candidate_refused", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:02:00.000Z" },
+      { source: "escalation", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:03:00.000Z" },
+      { source: "launch_refusal", kind: "operator_gate_pending", message: "Held.", remedy: "Answer it.", at: "2026-10-19T10:04:00.000Z" }
+    ]);
+  });
+
+  it("never throws, even without its table", () => {
+    db.exec("DROP TABLE action_journey_log");
+    expect(appendJourneyLog(db, { ...entry, at: "2026-10-19T10:00:00.000Z" })).toBe(false);
   });
 });
 

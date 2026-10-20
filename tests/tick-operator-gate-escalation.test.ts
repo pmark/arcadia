@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runDecisionApproveCommand } from "../src/commands/decision.js";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { renderProductionStatusSuccess, runProductionStatusCommand } from "../src/commands/production.js";
+import { withReadOnlyDatabase } from "../src/db/connection.js";
 import { git, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 /**
@@ -61,6 +62,10 @@ describe("the worker tick's operator gate escalation (Issue #997)", () => {
     const text = renderProductionStatusSuccess(runProductionStatusCommand({ workspace: rehearsal.workspace })).join("\n");
     expect(text).toContain(`${rehearsal.actionA} [operator_gate_pending]`);
     expect(gateLines(rehearsal)).toHaveLength(1);
+    // The escalation upsert also journals it, once however many ticks it holds.
+    const journal = () => withReadOnlyDatabase(rehearsal.workspace, (db) =>
+      db.prepare("SELECT source, kind, message FROM action_journey_log WHERE action_key = ? ORDER BY at, rowid").all(rehearsal.actionA)) as Array<{ source: string; kind: string; message: string }>;
+    expect(journal().filter((row) => row.source === "escalation")).toEqual([{ source: "escalation", kind: "operator_gate_pending", message: entry.message }]);
 
     // Off: the tick launches nothing at all, so no gate holds a launch and the entry clears.
     rehearsal.deactivate("gate-off");

@@ -20,7 +20,8 @@ import {
  * admissions (launch), candidate preservation receipts (each PR is a victory),
  * independent-verdict attempts (failed reviews are obstacles, cleared once a
  * repair round launches), review-repair rows, red alerts, launch refusals,
- * review-step errors, operator escalations and worker merges.
+ * review-step errors, operator escalations and worker merges, plus the
+ * append-only `action_journey_log` for the history those overwrite.
  */
 /**
  * Where the reviewed head landed, when it is already part of the base branch:
@@ -239,6 +240,35 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
       latestHead ? (prByHead.get(latestHead) ?? null) : null, "production_operator_escalations"));
   }
 
+  // History the current-state tables overwrote: every logged escalation,
+  // refusal or stopped repair that is no longer current was got past.
+  if (has("action_journey_log")) {
+    const logged = db.prepare(`SELECT source, kind, message, remedy, at FROM action_journey_log
+      WHERE action_key = ? ORDER BY at, rowid`).all(actionKey) as JourneyLogRow[];
+    const currentRefusal = has("production_launch_refusal_log")
+      ? (db.prepare("SELECT message FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as { message: string } | undefined)
+      : undefined;
+    for (const row of logged) {
+      // Already told from its own table at the same moment: never twice.
+      const table = JOURNEY_LOG_TABLES[row.source];
+      if (!table || events.some((event) => event.source === table && event.at === row.at)) continue;
+      const source = "action_journey_log";
+      if (row.source === "escalation") {
+        // Waiting escalations are never obstacles; a repair stop is told by its review_repair entry.
+        if (WAITING_ESCALATIONS.has(row.kind) || REVIEW_REPAIR_ESCALATION_KINDS.has(row.kind)) continue;
+        if (escalation && escalation.kind === row.kind && escalation.message === row.message && (escalation.remedy ?? null) === row.remedy) continue;
+        events.push(obstacle(row.at, true, row.kind.replaceAll("_", " "), row.message, null, source));
+      } else if (row.source === "launch_refusal") {
+        if (currentRefusal?.message === row.message) continue;
+        events.push(obstacle(row.at, true, "launch refused", row.message, null, source));
+      } else {
+        if (row.kind !== "gated" && row.kind !== "escalated") continue;
+        if (repairs.some((repair) => repair.outcome === row.kind && (repair.reason ?? repair.summary) === row.message)) continue;
+        events.push(obstacle(row.at, true, `repair ${row.kind}`, row.message, null, source));
+      }
+    }
+  }
+
   events.sort((left, right) => left.at.localeCompare(right.at) || KIND_ORDER[left.kind] - KIND_ORDER[right.kind]);
 
   // Budgets.
@@ -437,6 +467,12 @@ function runPosition(db: Database.Database, has: (table: string) => boolean, act
 /** Escalation kinds that describe an ordinary wait the worker resolves itself. */
 const WAITING_ESCALATIONS: ReadonlySet<string> = new Set(["awaiting_independent_verdicts"]);
 const REVIEW_REPAIR_ESCALATION_KINDS: ReadonlySet<string> = new Set(["review_repair_gated", "review_repair_rounds_exhausted"]);
+/** The current-state table each `action_journey_log` source journals. */
+const JOURNEY_LOG_TABLES: Record<string, string> = {
+  escalation: "production_operator_escalations",
+  launch_refusal: "production_launch_refusal_log",
+  review_repair: "production_review_repairs"
+};
 
 const KIND_ORDER: Record<JourneyEvent["kind"], number> = { launch: 0, obstacle: 1, cleared: 1, victory: 2, gate: 3, now: 4 };
 
@@ -556,4 +592,5 @@ interface ExitRow { session_id: string; outcome: string; reason: string; created
 interface AttemptRow { role: string; ordinal: number; status: string; input_revision: string; target_head: string | null; terminal_receipt_json: string | null; created_at: string; updated_at: string }
 interface AlertRow { id: string; trigger: string; detail: string; status: string; first_seen_at: string }
 interface MergeRow { head: string; pull_request_url: string | null; outcome: string; code: string | null; reason: string; updated_at: string }
+interface JourneyLogRow { source: string; kind: string; message: string; remedy: string | null; at: string }
 interface EscalationRow { kind: string; message: string; remedy: string | null; first_detected_at: string; last_seen_at: string }

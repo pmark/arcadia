@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { appendReviewRepairJourneyLog } from "./journeyLog.js";
 import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
@@ -646,6 +647,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
       const released = db.prepare(`UPDATE production_review_repairs SET outcome = 'released', reason = ?, updated_at = ?
         WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL AND drafted_at IS NOT NULL`)
         .run(`The required checks on ${head.slice(0, 12)} are no longer failing; this repair is never launched.`, at, requiredChecksRepairRequestId(session.id, head)).changes > 0;
+      if (released) appendReviewRepairJourneyLog(db, requiredChecksRepairRequestId(session.id, head), at);
       if (released) input.log?.(`Released the pending required-checks repair for ${actionKey} at ${head.slice(0, 12)}: its checks are no longer failing.`);
       const row = getReviewRepair(db, requiredChecksRepairRequestId(session.id, head));
       return row !== null && row.outcome === "released" && row.drafted_at !== null && row.repair_session_id === null;
