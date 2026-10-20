@@ -586,6 +586,75 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
   });
 
+  // Issue #1599, the live shape of 2026-10-19: a sandboxed Session drafted a
+  // complete Ask with verbatim `met` evidence for a criterion naming its own
+  // new test file, the host preserved it, and reconciliation accepted it
+  // although that test failed -- no test ran before acceptance. The named
+  // test now runs (under Seatbelt, with the Arcadia checkout's installed
+  // vitest standing in for the Project's) before the draft settles.
+  describe.runIf(process.platform === "darwin")("pre-acceptance validation of the named test files (#1599)", () => {
+    const criterion = "tests/contract.test.ts passes and asserts the contract.";
+    const completionValidation = { dependencyRoot: process.cwd() };
+
+    function namedTestCandidate(testBody: string) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      writeFileSync(path.join(worktreePath, "package.json"), `${JSON.stringify({ name: "fixture", private: true, type: "module", devDependencies: { vitest: "*" } })}\n`);
+      mkdirSync(path.join(worktreePath, "tests"), { recursive: true });
+      writeFileSync(path.join(worktreePath, "tests", "contract.test.ts"), `import { expect, it } from "vitest";\n${testBody}\n`);
+      draftCompleteInWorktree(worktreePath, criterion);
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      return { fixture, sessionId: launched.data.session.id, worktreePath };
+    }
+
+    it("does not accept a drafted completion whose named test fails: resumable, and the reason names the failing test", () => {
+      const { fixture, sessionId, worktreePath } = namedTestCandidate(`it("asserts the contract @here \`x\`", () => { expect(1 + 1).toBe(3); });`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-fails", repoRoot: fixture.repo, completionValidation })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(1);
+      expect(result.receipt.reason).toContain("the Action's declared validation did not pass on the candidate");
+      expect(result.receipt.reason).toContain("tests/contract.test.ts > asserts the contract");
+      // Untrusted test text is neutralized: no mention, no code span.
+      expect(result.receipt.reason).not.toMatch(/@here|`x`/);
+      expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+      const handoff = withReadOnlyDatabase(fixture.workspace, (db) => getResumableLeaseHandoff(db, fixture.repo));
+      expect(handoff?.session.id).toBe(sessionId);
+      expect(handoff?.receipt.reason).toContain("tests/contract.test.ts > asserts the contract");
+    });
+
+    it("accepts the drafted completion once its named test passes", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(2); });`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-passes", repoRoot: fixture.repo, completionValidation })
+      );
+
+      expect(result.receipt.outcome).toBe("accepted_completion");
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    });
+
+    it("refuses, never passes, a named test that does not finish within the bound", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => new Promise(() => {}), 600_000);`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-hangs", repoRoot: fixture.repo, completionValidation: { ...completionValidation, testTimeoutMs: 15_000 } })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("did not finish within 15s");
+      expect(result.receipt.reason).toContain("tests/contract.test.ts (timed out)");
+    });
+  });
+
   it("refuses to settle a self-completion whose verbatim met evidence is false because the declared Artifact is missing (contract 20, #555)", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
