@@ -109,6 +109,9 @@ function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+/** The words a headless Claude note adds for a check it cannot run (#1619): no quotes, so it is safe inside the one-line JSON. */
+export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verified by host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+
 /**
  * The draft-only completion block for a Session that cannot commit: one exact
  * `arcadia agent-ask draft` invocation carrying a prefilled strict `complete`
@@ -176,15 +179,15 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     "     try them, and never write helper scripts or extra files to get around that (a file outside the Action's",
     "     scope refuses the completion). Before accepting it, the host runs every test file your criteria name; the",
     "     pull request's required CI runs lint, tsc and build before anything integrates. In the note of a",
-    "     criterion that names such a check, say what you inspected and add: \"not run in this Session; verified by",
-    "     host pre-acceptance validation (named tests) and required CI (lint, tsc, build)\".",
+    `     criterion that names such a check, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
     "  3. Record completion without any shell quoting, in two steps:",
     "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",
-    `     ${draftPath}`,
+    `     \`${draftPath}\``,
     "",
     "        Its entire content is this one JSON line, with each `note` placeholder replaced by real evidence",
-    "        (keep every `criterion` and `status` exactly as given, quotes included; change nothing else):",
+    "        (keep every `criterion` and `status` exactly as given, quotes included; change nothing else; inside a",
+    "        note use no double quote, or write it as \\\"):",
     "",
     `     ${JSON.stringify(ask)}`,
     "",
@@ -193,7 +196,8 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} --file ${shellSingleQuote(draftPath)}`,
     "",
     "     Leave that one file in place and do not commit it: the host settles it after preserving the candidate.",
-    "     If another complete draft for this Action is in .arcadia/asks/ (not the archive), delete it.",
+    `     If .arcadia/asks/ (not the archive) also holds a complete draft you did not write whose target_ref is`,
+    `     action/${action.id}, delete only that file; leave every other file there alone.`,
     "  4. Exit. The host reconciles the Session only once its process has ended."
   ];
 }

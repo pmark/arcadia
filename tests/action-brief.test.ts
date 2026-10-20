@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -253,6 +253,9 @@ describe("renderActionBrief", () => {
       expect(protocol).toContain("the host runs every test file your criteria name");
       expect(protocol).toContain("required CI runs lint, tsc and build before anything integrates");
       expect(protocol).toContain("With your Write tool (never Bash, echo, a heredoc or a script)");
+      expect(protocol).toContain(`add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`);
+      expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
+      expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");
       expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
       const { dir, json, file } = draftCommand(protocol);
       expect(dir).toBe(repo);
@@ -292,7 +295,8 @@ describe("renderActionBrief", () => {
       const { dir, json, file } = draftCommand(headless(repo, "claude"));
       const ask = JSON.parse(json) as { evidence: Array<{ criterion: string; note: string }> };
       expect(ask.evidence[1].criterion).toBe("The test named 'issue #1559: a 401 never refreshes' still passes.");
-      for (const entry of ask.evidence) entry.note = "Inspected git diff; not run in this Session; verified by host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+      // The exact words the brief recommends, so they must survive inside the one-line JSON.
+      for (const entry of ask.evidence) entry.note = `Inspected git diff; ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`;
       mkdirSync(path.dirname(file!), { recursive: true });
       writeFileSync(file!, `${JSON.stringify(ask)}\n`);
 
