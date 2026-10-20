@@ -146,14 +146,12 @@ describe("tick-driven independent review", () => {
     rehearsal.tick();
     rehearsal.tick();
     rehearsal.tick(); // first poll after ready: failed checks
-    // Red checks with no CI log naming a test the candidate changed: the repair
-    // loop stops once for the operator (src/production/reviewRepair.ts).
-    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("No failing test in the failed CI logs") });
-    const escalated = rehearsal.log.filter((line) => line.includes("(review_repair_gated)")).length;
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
+    const escalated = rehearsal.log.filter((line) => line.includes("(required_checks_failed)")).length;
     rehearsal.tick();
     rehearsal.tick();
-    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
-    expect(rehearsal.log.filter((line) => line.includes("(review_repair_gated)"))).toHaveLength(escalated);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
+    expect(rehearsal.log.filter((line) => line.includes("(required_checks_failed)"))).toHaveLength(escalated);
     expect(rehearsal.github.reviewerCalls).toEqual([]);
   });
 
@@ -228,8 +226,7 @@ describe("tick-driven independent review", () => {
 
     rehearsal.github.checks = () => FAILED;
     rehearsal.tick();
-    // Not attributable to the candidate's own tests: no repair, one stop for the operator.
-    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("No failing test in the failed CI logs") });
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
     expect(rehearsal.github.reviewerCalls).toEqual([]);
     expect(verdicts(rehearsal, "code-review")).toEqual([]);
 
@@ -287,16 +284,15 @@ describe("tick-driven independent review", () => {
     rehearsal.github.checks = () => rollup("unknownEntryShape");
     rehearsal.tick();
     const steps = () => withDatabase(rehearsal.workspace, (db) => listReviewSteps(db, rehearsal.actionA));
-    // An unreadable check is never repaired: the repair loop stops once, keeping the review step's remedy.
     expect(escalation(rehearsal)).toMatchObject({
-      kind: "review_repair_gated",
+      kind: "required_checks_failed",
       remedy: expect.stringContaining("Unknown check entry shape(s) unnamed FutureCheckSuite")
     });
     expect(steps()[0].last_outcome_json).toContain("unnamed FutureCheckSuite is an unknown check entry shape (FutureCheckSuite with fields result, title)");
 
     rehearsal.github.checks = () => rollup("failedNonAdvisoryStatusContext");
     rehearsal.tick();
-    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
     expect(steps()[0].last_outcome_json).toContain("external/gate validation did not succeed: FAILURE.");
     expect(steps()[0].last_outcome_json).not.toContain("CodeRabbit");
     expect(rehearsal.github.reviewerCalls).toEqual([]);
@@ -574,11 +570,11 @@ describe("tick-driven independent review", () => {
     exitTick(rehearsal);
     rehearsal.tick(); // ready
     rehearsal.tick();
-    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
     rehearsal.github.viewFailures = ["API rate limit exceeded"];
     for (let i = 0; i < 3; i += 1) {
       rehearsal.tick();
-      expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated" });
+      expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
     }
   });
 

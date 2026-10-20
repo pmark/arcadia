@@ -357,7 +357,7 @@ export function renderFailedVerdictComment(row: ReviewRepairRow): string {
     row.role === REQUIRED_CHECKS_ROLE
       ? "Failing tests, from the failed CI logs (`gh run view --log-failed`, bounded):"
       : `Findings, in the reviewer's order (report Artifact \`${row.report_path ?? "unavailable"}\` in the Arcadia workspace):`,
-    ...renderRepairFindings(row),
+    ...(row.role === REQUIRED_CHECKS_ROLE ? ["```text", ...renderRepairFindings(row), "```"] : renderRepairFindings(row)),
     "",
     next
   ].join("\n");
@@ -650,6 +650,17 @@ const LOG_TIMESTAMP = /^\uFEFF?\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/;
 const FAILED_TEST = /\bFAIL\s+(\S+\.(?:test|spec)\.[cm]?[jt]sx?)\s+>\s+(.+?)\s*$/;
 const FAILURE_BLOCK_END = /^\s*⎯|\bFAIL\s+\S+\.(?:test|spec)\.|^\s*Test Files\b/;
 
+/**
+ * CI log text is untrusted data (test names and assertion values are whatever
+ * the code under test printed): neutralized before it reaches a PR comment, a
+ * ping or a repair brief, so it can neither mention anyone (`@`), open or
+ * close code spans (backticks), nor carry control characters.
+ */
+export function neutralizeCiText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").replaceAll("`", "'").replaceAll("@", "@\u200b");
+}
+
 export interface FailingTest {
   check: string;
   file: string;
@@ -690,8 +701,8 @@ export function parseFailedTestLog(log: string): FailingTest[] {
         if (next.trim()) evidence.push(next.trim());
         if (evidence.length >= MAX_EVIDENCE_LINES) break;
       }
-      const text = evidence.join(" | ");
-      tests.push({ check, file: match[1], name: match[2], evidence: text.length > MAX_EVIDENCE_CHARS ? `${text.slice(0, MAX_EVIDENCE_CHARS - 1)}…` : text });
+      const text = neutralizeCiText(evidence.join(" | "));
+      tests.push({ check, file: neutralizeCiText(match[1]), name: neutralizeCiText(match[2]), evidence: text.length > MAX_EVIDENCE_CHARS ? `${text.slice(0, MAX_EVIDENCE_CHARS - 1)}…` : text });
     });
   }
   return tests;
@@ -761,6 +772,11 @@ export function judgeRequiredChecksFailure(input: {
     const same = baseRuns.filter((run) => run.name === name);
     return same.length > 0 && same.every((run) => String(run.status).toLowerCase() === "completed" && String(run.conclusion).toLowerCase() === "success");
   };
+  // A same-named check still queued or running on the base is no verdict
+  // either way: wait for it rather than calling the failure inherited.
+  const unsettled = failed.flatMap((check) => baseRuns.filter((run) => run.name === check.name && String(run.status).toLowerCase() !== "completed")
+    .map((run) => `${check.name} is still ${String(run.status).toLowerCase()} on the base ${failure.baseRefOid!.slice(0, 12)}`));
+  if (unsettled.length > 0) return { kind: "waiting", reason: `Waiting for the base's checks before judging the failure: ${[...new Set(unsettled)].join("; ")}.` };
   const own = failed.filter((check) => passedOnBase(check.name));
   const inherited = failed.filter((check) => !own.includes(check));
   const base = failure.baseRefOid.slice(0, 12);
@@ -835,24 +851,25 @@ function attemptChecksRepair(input: ReviewRepairInput, failure: RequiredChecksFa
     }
     let outcome: ReviewRepairOutcome = "pending";
     let reason: string | null = null;
-    let judged: Extract<ChecksJudgement, { kind: "judged" }> | null = null;
-    const gate = candidateChangeGate(repoRoot, session.base_revision, start);
     const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
-    if (gate) {
+    const judgement = judgeRequiredChecksFailure({ failure, changedPaths: agentChangedPaths(repoRoot, session.base_revision, start) ?? [], repoRoot, runCommand: input.runCommand ?? runHostCommand });
+    if (judgement.kind === "waiting") return { kind: "waiting", reason: judgement.reason };
+    const judged = judgement;
+    // Not the candidate's own failure (inherited, unattributed, infrastructure):
+    // the repair loop never decides it. The row only caches the judgement for
+    // this head ('released', never launched) so GitHub is read once; the
+    // review step's ordinary required_checks_failed handling stands and clears
+    // when the checks go green.
+    const gate = judgement.repairable ? candidateChangeGate(repoRoot, session.base_revision, start) : null;
+    if (!judgement.repairable) {
+      outcome = "released"; reason = judgement.reason;
+    } else if (gate) {
       outcome = "gated"; reason = `The candidate is on Decision 0098's gate list: ${gate}. The repair loop stops for the operator.`;
-    } else {
-      const judgement = judgeRequiredChecksFailure({ failure, changedPaths: agentChangedPaths(repoRoot, session.base_revision, start) ?? [], repoRoot, runCommand: input.runCommand ?? runHostCommand });
-      if (judgement.kind === "waiting") return { kind: "waiting", reason: judgement.reason };
-      judged = judgement;
-      if (!judgement.repairable) {
-        outcome = "gated"; reason = judgement.reason;
-      } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
-        outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
-      }
+    } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
+      outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
     }
-    // Only a failure attributed to the candidate drafts and comments on its PR;
-    // a gate, an inherited or an unattributed failure is the operator's alone.
-    const touchesPullRequest = judged?.repairable === true;
+    // Only a failure attributed to the candidate drafts and comments on its PR.
+    const touchesPullRequest = judged.repairable && !gate;
     const at = now.toISOString();
     db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
         start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
@@ -867,8 +884,9 @@ function attemptChecksRepair(input: ReviewRepairInput, failure: RequiredChecksFa
         JSON.stringify(judged?.findings ?? []), JSON.stringify(judged?.checks ?? failure.checks.map((check) => ({ name: check.name, status: (check.conclusion ?? check.status ?? "unknown").toLowerCase(), evidence: check.url ?? "" }))),
         outcome, reason, at, at);
     row = getReviewRepair(db, requestId)!;
-    input.log?.(`Required-checks repair for ${actionKey} at ${head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : `${outcome}: ${reason}`}.`);
+    input.log?.(`Required-checks repair for ${actionKey} at ${head.slice(0, 12)}: ${outcome === "pending" ? `round ${row.round} of ${MAX_REVIEW_REPAIR_ROUNDS}` : outcome === "released" ? `not the candidate's own failure, no repair: ${reason}` : `${outcome}: ${reason}`}.`);
   }
+  if (row.outcome === "released") return { kind: "not_applicable", reason: `No unattended repair for these red checks: ${row.reason ?? "released"}` };
   return finishRepairStep(input, row, {
     policyEpoch: policy.epoch,
     authorizedNow,

@@ -635,7 +635,23 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return { kind: "advanced", step: "pushed", reason: `Pushed the settled head ${head.slice(0, 12)} to ${url}.` };
     }
 
-    if (pr.isDraft && step.ready_at && !workerDraftedSupersededVerdict()) {
+    /**
+     * Whether the repair loop drafted this PR for red required checks that are
+     * green now, before its repair launched: that repair is released (it can
+     * never launch) and the PR is readied again, never left as a person's pause.
+     */
+    const releasedGreenChecksDraft = (): boolean => {
+      if (!pr.isDraft || classifyPullRequestChecks(pr.statusCheckRollup).state === "failed") return false;
+      ensureReviewRepairTable(db);
+      const released = db.prepare(`UPDATE production_review_repairs SET outcome = 'released', reason = ?, updated_at = ?
+        WHERE request_id = ? AND outcome = 'pending' AND repair_session_id IS NULL AND drafted_at IS NOT NULL`)
+        .run(`The required checks on ${head.slice(0, 12)} are no longer failing; this repair is never launched.`, at, requiredChecksRepairRequestId(session.id, head)).changes > 0;
+      if (released) input.log?.(`Released the pending required-checks repair for ${actionKey} at ${head.slice(0, 12)}: its checks are no longer failing.`);
+      const row = getReviewRepair(db, requiredChecksRepairRequestId(session.id, head));
+      return row !== null && row.outcome === "released" && row.drafted_at !== null && row.repair_session_id === null;
+    };
+
+    if (pr.isDraft && step.ready_at && !workerDraftedSupersededVerdict() && !releasedGreenChecksDraft()) {
       // The tick readied it once; someone converted it back to draft. That is
       // a person pausing the review, never something to undo every minute.
       // The one exception is the repair loop's own return to draft for a

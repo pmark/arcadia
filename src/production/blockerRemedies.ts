@@ -94,14 +94,14 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       worker("review_head_moved", "The candidate head moved after review started."),
       worker("review_pull_request_unavailable", "The candidate's pull request could not be read."),
       worker("review_paused_as_draft", "The candidate's pull request is a draft."),
-      worker("required_checks_failed", "A required check failed on the candidate head; a failing test the candidate changed, in a check that passes on the base, starts a bounded repair round."),
+      worker("required_checks_failed", "A required check failed on the candidate head; a failing test the candidate changed, in a check that passes on the base, starts a bounded repair round; any other red check (inherited from the base, unattributed, CI infrastructure) waits for a fix or a green re-run."),
       worker("review_rate_limited", "The reviewer provider is rate limited."),
       step("required_checks_timeout", "Required checks did not finish in time; reset the review budget with `arcadia production reset-repair-budget` once they can."),
       step("review_budget_exhausted", "The unattended review used its per-head budget; reset it with `arcadia production reset-repair-budget`."),
       step("review_attempts_exhausted", "The Action's independent verdict attempts for its current requirement input revision are spent, so no reviewer runs unattended; revise the Action through a governed Plan amendment or decide the candidate yourself."),
       step("independent_verdict_failed", "An independent verdict failed on the candidate head; fix the finding or rerun the review."),
       step("review_repair_rounds_exhausted", "The review repair loop stopped because it cannot run another round for this Action: its repair rounds for this production run are spent, or no independent verdict attempt is left to review a repaired head. The escalation entry names the exact reason; the draft PR's findings comment lists what failed. Fix the candidate, or rerun the review after judging the verdict wrong."),
-      step("review_repair_gated", "A gate stopped the review repair loop: an authority-adjacent verdict, a change to checked-in authority paths or to launch-authority or repair-loop code, deleted, skipped or fewer tests, a changed check threshold, a failed PR no longer open, repeated draft or comment failures, red required checks that are inherited from the base, unattributed to the candidate's own tests or CI infrastructure, or a repair candidate that itself hit one of these gates. The escalation entry names the exact reason; the draft PR's findings comment lists what failed. Decide and act on the candidate yourself.")
+      step("review_repair_gated", "A gate stopped the review repair loop: an authority-adjacent verdict, a change to checked-in authority paths or to launch-authority or repair-loop code, deleted, skipped or fewer tests, a changed check threshold, a failed PR no longer open, repeated draft or comment failures, or a repair candidate that itself hit one of these gates. The escalation entry names the exact reason; the draft PR's findings comment lists what failed. Decide and act on the candidate yourself.")
     ].map((entry) => [entry.kind, entry] as const)
   )
 );

@@ -76,6 +76,7 @@ import {
   type RequiredChecksFailure,
   type ReviewStepOutcome
 } from "./independentReview.js";
+import { getReviewRepair, requiredChecksRepairRequestId } from "../sessions/reviewRepair.js";
 import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
@@ -453,6 +454,11 @@ function escalatingVerdictGate(
   if (blocked) {
     kind = blocked.code;
     message = `${gate.reason} ${blocked.reason}`;
+    // Red checks the repair loop judged not to be the candidate's own: say why
+    // the worker does not repair them (the escalation stays the worker's own).
+    const notRepaired = blocked.code === "required_checks_failed" && blocked.checkFailure
+      ? getReviewRepair(db, requiredChecksRepairRequestId(session.id, blocked.checkFailure.head)) : null;
+    if (notRepaired?.outcome === "released" && notRepaired.reason) message = `${message} Not repaired unattended: ${notRepaired.reason}`;
     remedy = `${blocked.remedy} ${fallback}`;
   } else if (applicability?.applicable) {
     const progress = input.review && input.review.kind !== "not_applicable" ? ` Now: ${input.review.reason}` : "";
