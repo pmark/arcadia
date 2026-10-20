@@ -1474,12 +1474,12 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(0);
     const blockers = withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db));
     expect(blockers[0]).toMatchObject({ projectSlug: "test-project", code: "capacity_refused" });
-    expect(blockers[0]?.reason).toContain("never refreshes it");
+    expect(blockers[0]?.reason).toContain("asks the Claude CLI to refresh its own sign-in");
     const pings = withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT message FROM operator_pings").all() as { message: string }[]
     );
     expect(pings).toHaveLength(1);
-    expect(pings[0]?.message).toContain("Sign in to Claude Code again");
+    expect(pings[0]?.message).toContain("sign in to Claude Code again");
   });
 
   it("surfaces a signed-out provider's refusal in arcadia production status as the Project launch blocker, and clears it once sign-in is restored", () => {

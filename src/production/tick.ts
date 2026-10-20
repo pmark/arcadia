@@ -2178,8 +2178,7 @@ class RepairLaunchHeld extends Error {}
 
 /** The review-repair ping text: the first line of the escalation, cut to the operator ping bound. */
 export function reviewRepairPingMessage(actionKey: string, kind: string, message: string): string {
-  const text = `Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`;
-  return text.length <= OPERATOR_PING_MESSAGE_MAX ? text : `${text.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
+  return boundedPingMessage(`Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`);
 }
 
 /** One deduped review-repair escalation, logged and pinged once per kind. */
@@ -2600,7 +2599,7 @@ function attemptProjectLaunch(
         : null;
       const claudeUsageUnreadable = claudeUsageRefreshState === "no_credentials" || claudeUsageRefreshState === "unauthorized";
       const claudeUsageRemedy = claudeUsageUnreadable
-        ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) Sign in to Claude Code again on this host; the worker only reads the access token and never refreshes it.`
+        ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
       if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
@@ -2635,7 +2634,11 @@ function attemptProjectLaunch(
         if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
-              message: `Production cannot launch ${actionKey}: ${error.message}${claudeUsageRemedy ? ` ${claudeUsageRemedy}` : ""}`,
+              // Issue #1616: the full capacity explanation runs past the ping
+              // limit and the ping was never queued; lead with the remedy.
+              message: boundedPingMessage(claudeUsageRemedy
+                ? `Production cannot launch ${actionKey}: ${claudeUsageRemedy} ${error.message}`
+                : `Production cannot launch ${actionKey}: ${error.message}`),
               kind: "attention",
               agent: "production-tick",
               now: input.now
@@ -2929,6 +2932,11 @@ export function getProductionOperatorEscalationKind(db: Database.Database, actio
   ensureProductionTickTables(db);
   const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
   return row?.kind ?? null;
+}
+
+/** A ping message cut to the queue's limit (it refuses longer ones outright), keeping its start. */
+export function boundedPingMessage(message: string): string {
+  return message.length <= OPERATOR_PING_MESSAGE_MAX ? message : `${message.slice(0, OPERATOR_PING_MESSAGE_MAX - 1)}…`;
 }
 
 /**

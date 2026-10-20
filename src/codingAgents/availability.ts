@@ -413,6 +413,26 @@ export function markClaudeUnauthorizedEpisodeSignalled(since: string, snapshotPa
   writeClaudeSnapshot(snapshotPath, { ...current, arcadia_usage_unauthorized_signalled: since });
 }
 
+/**
+ * When the worker last asked the Claude CLI to refresh its own sign-in
+ * (issue #1616), recorded before the call so a crash mid-call cannot repeat it.
+ */
+export function lastClaudeCliSelfRefreshAt(snapshotPath = claudeStatusLinePath()): string | null {
+  return stringValue(readJsonRecord(snapshotPath)?.arcadia_cli_self_refresh_at);
+}
+
+/** Record a Claude CLI self-refresh attempt and, once known, its outcome. */
+export function recordClaudeCliSelfRefresh(at: Date, outcome: "started" | "ok" | "failed", snapshotPath = claudeStatusLinePath(), detail?: string): void {
+  const current = readJsonRecord(snapshotPath) ?? {};
+  writeClaudeSnapshot(snapshotPath, {
+    ...current,
+    arcadia_cli_self_refresh_at: at.toISOString(),
+    arcadia_cli_self_refresh_outcome: outcome,
+    // The CLI's own words, bounded and plain: the only diagnosis a failed refresh leaves.
+    arcadia_cli_self_refresh_detail: detail === undefined ? null : detail.replace(/[^\x20-\x7e]/g, " ").slice(0, 300),
+  });
+}
+
 /** The last recorded outcome of a Claude usage refresh, or null when none is recorded. */
 export function readClaudeUsageRefreshState(snapshotPath = claudeStatusLinePath()): ClaudeUsageRefreshState | null {
   return stringValue(readJsonRecord(snapshotPath)?.arcadia_usage_refresh_state) as ClaudeUsageRefreshState | null;
