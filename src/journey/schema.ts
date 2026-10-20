@@ -71,6 +71,8 @@ export interface JourneyActivity {
   detail: string;
   /** When this phase began, as far as the records say; null when they do not say. */
   since: string | null;
+  /** What the operator can do to unblock the rover, when the worker says a person is needed. */
+  yourMove?: string | null;
 }
 
 /**
@@ -95,6 +97,8 @@ export interface Journey {
   };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
   activity: JourneyActivity;
+  /** Place in the running production's ordered scope; null when production is Off or does not name the Action. */
+  run: { position: number; total: number; next: string | null } | null;
   /** Null when the Project's documents could not be read (a warning says why). */
   context: JourneyContext | null;
   /** Chronological. Open obstacles (`kind: "obstacle"`) still block the way ahead. */

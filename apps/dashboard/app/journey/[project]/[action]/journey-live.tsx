@@ -104,7 +104,7 @@ export function JourneyLive({ initial, initialPath, follow, refreshSeconds }: { 
         <span className="ml-2">· updated {updated}{stale ? ` · refresh failed: ${stale}` : ""}</span>
       </p>
       <JourneyMission journey={journey} path={path} />
-      <JourneyActivityLine journey={journey} formatTime={formatTime} />
+      <JourneyActivityLine journey={journey} formatTime={formatTime} now={local ? Date.now() : null} />
       <JourneyMap journey={journey} />
       <JourneyLegend />
       <JourneyLog journey={journey} formatTime={formatTime} />

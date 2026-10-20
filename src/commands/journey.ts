@@ -125,6 +125,8 @@ export function renderJourneySuccess(response: CommandSuccess<Journey>): string[
   const lines = [
     `${journey.action.key}`,
     `Now: ${journey.activity.headline}${journey.activity.since ? ` (since ${journey.activity.since.slice(0, 16).replace("T", " ")} UTC)` : ""} — ${journey.activity.detail}`,
+    ...(journey.activity.yourMove ? [`Your move: ${journey.activity.yourMove}`] : []),
+    ...(journey.run ? [`Run: Action ${journey.run.position} of ${journey.run.total}${journey.run.next ? ` · next ${journey.run.next}` : ""}`] : []),
     `Destination: ${journey.destination.label}${journey.destination.reached ? " (reached)" : ""}`,
     ""
   ];

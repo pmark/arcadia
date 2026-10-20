@@ -224,9 +224,30 @@ const PHASE_COLOR: Record<Journey["activity"]["phase"], string> = {
   "in-review": "bg-ink", blocked: "bg-clay", waiting: "bg-muted", parked: "bg-muted"
 };
 
-/** What the rover is doing now, in one line, with how long it has been so. */
-export function JourneyActivityLine({ journey, formatTime = utcTime }: { journey: Journey; formatTime?: (iso: string) => string }) {
-  const { activity } = journey;
+/** Minutes after which a phase reads as long-running (amber): slow, maybe stuck. */
+export const STALL_MINUTES: Partial<Record<Journey["activity"]["phase"], number>> = {
+  launching: 15, driving: 90, repairing: 90, "in-review": 60, waiting: 30
+};
+
+/** "47 min" / "3 h 5 min", and whether that is past the phase's stall bound. */
+export function elapsed(phase: Journey["activity"]["phase"], since: string | null, now: number | null): { text: string; long: boolean } | null {
+  const start = since ? Date.parse(since) : Number.NaN;
+  if (!Number.isFinite(start) || now === null) return null;
+  const minutes = Math.max(0, Math.floor((now - start) / 60_000));
+  const text = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  const bound = STALL_MINUTES[phase];
+  return { text, long: bound !== undefined && minutes >= bound };
+}
+
+/**
+ * What the rover is doing now, in one line, with how long it has been so
+ * (amber past the phase's usual bound), its place in the running production,
+ * and the operator's move when the worker says a person is needed. `now` is
+ * the browser's clock, null on the server, so elapsed time renders only there.
+ */
+export function JourneyActivityLine({ journey, formatTime = utcTime, now = null }: { journey: Journey; formatTime?: (iso: string) => string; now?: number | null }) {
+  const { activity, run } = journey;
+  const age = elapsed(activity.phase, activity.since, now);
   const moving = activity.phase === "driving" || activity.phase === "repairing" || activity.phase === "launching";
   return (
     <div className="mb-3 rounded-md border border-line bg-panel px-3 py-2" aria-live="polite">
@@ -234,8 +255,15 @@ export function JourneyActivityLine({ journey, formatTime = utcTime }: { journey
         <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${PHASE_COLOR[activity.phase]} ${moving ? "journey-halo" : ""}`} aria-hidden="true" />
         {activity.headline}
         {activity.since ? <span className="text-xs font-normal text-muted">since {formatTime(activity.since)}</span> : null}
+        {age ? <span className={`text-xs font-normal ${age.long ? "rounded bg-gold/15 px-1 text-gold" : "text-muted"}`}>{age.long ? `${age.text}, longer than usual` : age.text}</span> : null}
       </p>
       <p className="mt-0.5 break-words text-xs text-muted">{activity.detail}</p>
+      {activity.yourMove ? (
+        <p className="mt-1.5 break-words rounded bg-clay/10 px-2 py-1 text-xs text-clay"><span className="font-semibold">Your move: </span>{activity.yourMove}</p>
+      ) : null}
+      {run ? (
+        <p className="mt-1 text-xs text-muted">Action {run.position} of {run.total} in this production run{run.next ? ` · next: ${run.next.split("/").pop() ?? run.next}` : " · the last one"}</p>
+      ) : null}
     </div>
   );
 }

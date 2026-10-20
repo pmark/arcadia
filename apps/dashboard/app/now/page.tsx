@@ -168,6 +168,13 @@ export default function NowPage() {
 
         <Distance brief={brief} />
 
+        <Link
+          href="/journey/arcadia/current#now"
+          className="rounded-lg border border-line bg-panel p-4 text-sm font-semibold text-ink shadow-soft hover:bg-line/50"
+        >
+          Journey — watch the current Action
+        </Link>
+
         <Reality reality={brief.reality} narrating={narrating} driftLine={brief.drift.line} driftClass={drift.text} />
 
         <OneThing one={brief.theOneThing} />

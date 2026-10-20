@@ -50,6 +50,7 @@ export interface JourneyActivity {
   headline: string;
   detail: string;
   since: string | null;
+  yourMove?: string | null;
 }
 
 export interface JourneyContext {
@@ -64,6 +65,7 @@ export interface Journey {
   action: { key: string; project: string; plan: string | null; id: string; title: string | null };
   destination: { label: string; reached: boolean; at: string | null; ref: JourneyRef | null };
   activity: JourneyActivity;
+  run: { position: number; total: number; next: string | null } | null;
   context: JourneyContext | null;
   events: JourneyEvent[];
   now: JourneyEvent | null;
