@@ -895,6 +895,11 @@ export class FakeGitHub {
   /** Every reviewer-model invocation, with the PR head it judged. */
   reviewerCalls: Array<{ role: "code-review" | "qa"; url: string; head: string }> = [];
   checks: (pr: FakePullRequest) => PullRequestCheckRun[] = () => GREEN_CHECKS;
+  /** `gh api repos/<repo>/commits/<sha>/check-runs`: the base revision's checks (REST shape). */
+  baseCheckRuns: (sha: string) => Array<{ name: string; status: string; conclusion: string | null }> = () =>
+    GREEN_CHECKS.map((check) => ({ name: String(check.name), status: "completed", conclusion: "success" }));
+  /** `gh run view <id> --log-failed`: the failed jobs' log (job<TAB>step<TAB>line), or null to fail the read. */
+  failedLog: (runId: string) => string | null = () => "";
   /** GitHub's mergeStateStatus; branch protection reports BLOCKED while required checks run. */
   mergeState: (pr: FakePullRequest) => string = () => "CLEAN";
   /** Every push, with the exact commit it named (null: the local tip). */
@@ -1075,6 +1080,15 @@ export class FakeGitHub {
       if (this.commentFailures.length > 0) return { status: 1, stdout: "", stderr: this.commentFailures.shift()!, error: null };
       this.comments.push({ url: pr.url, body: args[args.indexOf("--body") + 1] ?? "" });
       return ok("");
+    }
+    if (command === "gh" && args[0] === "api" && /\/commits\/([0-9a-f]{40})\/check-runs/.test(args[1] ?? "")) {
+      const sha = /\/commits\/([0-9a-f]{40})\/check-runs/.exec(args[1])![1];
+      const runs = this.baseCheckRuns(sha);
+      return ok(`${JSON.stringify({ total_count: runs.length, check_runs: runs })}\n`);
+    }
+    if (command === "gh" && args[0] === "run" && args[1] === "view") {
+      const log = this.failedLog(args[2]);
+      return log === null ? { status: 1, stdout: "", stderr: `could not read the log of run ${args[2]}`, error: null } : ok(log);
     }
     if (command === "gh" && args[0] === "api") return ok(this.comparePatch(args));
     if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");

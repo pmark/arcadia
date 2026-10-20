@@ -9,7 +9,7 @@ import { createReviewItem } from "../src/db/repositories.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "../src/production/policy.js";
 import { getProductionRepairAttempts, reviewRepairPingMessage } from "../src/production/tick.js";
 import { ESCALATION_REMEDIES } from "../src/production/blockerRemedies.js";
-import { candidateChangeGate, renderFailedVerdictComment, testWeakeningGates, unrepairableReason, verdictIsAuthorityAdjacent, verdictIsRepairable } from "../src/production/reviewRepair.js";
+import { candidateChangeGate, judgeRequiredChecksFailure, parseFailedTestLog, renderFailedVerdictComment, testWeakeningGates, unrepairableReason, verdictIsAuthorityAdjacent, verdictIsRepairable } from "../src/production/reviewRepair.js";
 import { listPendingTerminalCandidates } from "../src/production/terminalCandidates.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
@@ -773,5 +773,214 @@ describe("review repair pure parts", () => {
     expect(testWeakeningGates(root, base, commit("swap a case for a regex call")).join(" | ")).toMatch(/removes test cases \(tests\/c\.test\.ts: 2 -> 1\)/);
     writeFileSync(path.join(root, "src", "sessions", "worktreePreparation.ts"), "export const x = 1;\n");
     expect(candidateChangeGate(root, base, commit("touch sessions"))).toMatch(/src\/sessions\/worktreePreparation\.ts/);
+  });
+});
+
+/**
+ * Red required checks (live gap 2026-10-19, PR #1595): the candidate's own new
+ * test failed in CI, the review never ran on red checks, and the worker only
+ * escalated `required_checks_failed`. A failure attributed to the candidate's
+ * own change now gets the same bounded repair as a failed verdict; one that
+ * is inherited from the base, unattributed or CI infrastructure never does.
+ */
+const RUN_URL = "https://github.com/pmark/rehearsal/actions/runs/4242/job/1";
+const OWN_TEST = "tests/own.test.mjs";
+const ESC = "\u001b";
+/** A trimmed `gh run view --log-failed` in vitest's real shape (ANSI, timestamps, a job column). */
+const failedLog = (file: string) => [
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9094040Z ${ESC}[31m⎯⎯⎯⎯⎯⎯⎯${ESC}[39m${ESC}[1m${ESC}[41m Failed Tests 1 ${ESC}[49m${ESC}[22m`,
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9098075Z ${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${file}${ESC}[2m > ${ESC}[22mmarker${ESC}[2m > ${ESC}[22mruns no reviewer after the reset`,
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9104629Z ${ESC}[31m${ESC}[1mAssertionError${ESC}[22m: expected 1 to be +0 // Object.is equality${ESC}[39m`,
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9106890Z ${ESC}[36m ${ESC}[2m❯${ESC}[22m ${file}:${ESC}[2m446:43${ESC}[22m${ESC}[39m`,
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9307464Z ${ESC}[31m${ESC}[2m⎯⎯⎯⎯⎯⎯⎯[1/1]⎯${ESC}[22m${ESC}[39m`,
+  `unit-shard-7\tRun this shard's test files\t2026-10-19T23:17:27.9320516Z ${ESC}[2m Test Files ${ESC}[22m 1 failed | 40 passed (41)`,
+  "unit-1\tRequire every unit shard to pass\t2026-10-19T23:17:57.1871682Z unit shards: failure",
+  ""
+].join("\n");
+const RED_CHECKS = [
+  { name: "unit-shard-7", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: RUN_URL, workflowName: "CI" },
+  { name: "unit-1", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://github.com/pmark/rehearsal/actions/runs/4242/job/2", workflowName: "CI" },
+  { name: "unit-2", status: "COMPLETED", conclusion: "CANCELLED", detailsUrl: "https://github.com/pmark/rehearsal/actions/runs/4242/job/3", workflowName: "CI" },
+  { name: "lint", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://github.com/pmark/rehearsal/actions/runs/4242/job/4", workflowName: "CI" }
+];
+const GREEN_BASE = RED_CHECKS.map((check) => ({ name: check.name, status: "completed", conclusion: "success" }));
+
+/** Action A finished with its own new test, preserved and readied; its candidate's required checks are red. */
+function redChecks(configure: (rehearsal: Rehearsal, a: AgentSession) => void = () => {}): { rehearsal: Rehearsal; a: AgentSession; head: string } {
+  const rehearsal = new Rehearsal({ independentReviewers: "tick" });
+  rehearsals.push(rehearsal);
+  rehearsal.createFixtureRepository();
+  rehearsal.approve(rehearsal.registerProject());
+  rehearsal.activate();
+  rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
+  const a = rehearsal.lease()!;
+  rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+  rehearsal.agentEdit(a, OWN_TEST, "import { it } from \"node:test\";\nit(\"marker\", () => { throw new Error(\"red\"); });\n");
+  rehearsal.agentFinish(a, CRITERIA_A);
+  rehearsal.tmux.exit(a.tmux_session_name);
+  rehearsal.github.checks = (pr) => (pr.branch === a.branch ? RED_CHECKS : [{ name: "lint", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/fast", workflowName: "CI" }]);
+  rehearsal.github.baseCheckRuns = () => GREEN_BASE;
+  rehearsal.github.failedLog = () => failedLog(OWN_TEST);
+  configure(rehearsal, a);
+  expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion"); // exit tick: preserved behind a draft PR
+  rehearsal.tick(); // ready
+  rehearsal.tick(); // required checks red; the repair step runs in this same tick
+  return { rehearsal, a, head: git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim() };
+}
+
+describe("red required checks from the candidate's own change", () => {
+  it("returns the PR to draft with one comment naming the failing check, test and assertion, and launches one repair Session", () => {
+    const { rehearsal, a, head } = redChecks();
+    const repair = rehearsal.lease()!;
+    expect(repair.id).not.toBe(a.id);
+    expect(repair.action_id).toBe(a.action_id);
+    expect(repair.launch_revision).toBe(git(rehearsal.repo, ["rev-parse", `${head}^`]).trim());
+    // No reviewer ever runs on red checks.
+    expect(rehearsal.github.reviewerCalls).toHaveLength(0);
+    const pr = rehearsal.github.prs[0];
+    expect(pr.isDraft).toBe(true);
+    expect(rehearsal.github.undoReadyCalls).toEqual([pr.url]);
+    expect(rehearsal.github.comments).toHaveLength(1);
+    const body = rehearsal.github.comments[0].body;
+    expect(body).toContain(`required checks on \`${head}\``);
+    expect(body).toContain(`unit-shard-7: ${OWN_TEST} > marker > runs no reviewer after the reset`);
+    expect(body).toContain("AssertionError: expected 1 to be +0");
+    expect(body).toContain(`${OWN_TEST}:446:43`);
+    expect(body).toContain("Do not merge: the repair loop will push a fixed head (round 1 of 3)");
+    expect(body).not.toContain("\u001b[");
+    // The base's checks were read for the exact base revision, and the failed log once.
+    expect(rehearsal.github.ghCalls.filter((call) => /commits\/[0-9a-f]{40}\/check-runs/.test(call))).toHaveLength(1);
+    expect(rehearsal.github.ghCalls.filter((call) => call.startsWith("gh run view 4242 -R pmark/rehearsal --log-failed"))).toHaveLength(1);
+    const brief = rehearsal.tmux.launches.at(-1)!.args.at(-1)!;
+    expect(brief).toContain("own required checks failed in CI (repair round 1 of 3)");
+    expect(brief).toContain("AssertionError: expected 1 to be +0");
+    expect(repairs(rehearsal).map((row) => [row.role, row.round, row.outcome, row.repair_session_id])).toEqual([["required-checks", 1, "launched", repair.id]]);
+    expect(escalation(rehearsal)).toBeUndefined();
+    // Later ticks repeat nothing while the repair runs.
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.github.comments).toHaveLength(1);
+    expect(rehearsal.tmux.launches).toHaveLength(2);
+  });
+
+  it("escalates a failure that also fails on the base (inherited) and launches no repair, leaving the PR alone", () => {
+    const { rehearsal } = redChecks((r) => {
+      r.github.baseCheckRuns = () => GREEN_BASE.map((check) => (check.name === "unit-shard-7" || check.name === "unit-1" ? { ...check, conclusion: "failure" } : check));
+    });
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    expect(rehearsal.github.undoReadyCalls).toHaveLength(0);
+    expect(rehearsal.github.comments).toHaveLength(0);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("inherited from the base") });
+    expect(repairs(rehearsal).map((row) => [row.role, row.outcome, row.pull_request_url])).toEqual([["required-checks", "gated", null]]);
+    // Judged once per head: no further GitHub reads of the base or the log, one escalation line.
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.ghCalls.filter((call) => /check-runs/.test(call))).toHaveLength(1);
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    expect(rehearsal.log.filter((line) => line.includes("(review_repair_gated)"))).toHaveLength(1);
+  });
+
+  it("launches no repair when the failing test is not in a file the candidate changed", () => {
+    const { rehearsal } = redChecks((r) => { r.github.failedLog = () => failedLog("tests/someone-elses.test.ts"); });
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.github.comments).toHaveLength(0);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("No failing test in the failed CI logs is in a file the candidate changed") });
+  });
+
+  it("treats a timed-out check as CI infrastructure and launches no repair", () => {
+    const { rehearsal } = redChecks((r) => {
+      r.github.checks = (pr) => (pr.branch === r.github.prs[0]?.branch
+        ? [...RED_CHECKS, { name: "e2e", status: "COMPLETED", conclusion: "TIMED_OUT", detailsUrl: "https://github.com/pmark/rehearsal/actions/runs/4242/job/9", workflowName: "CI" }]
+        : RED_CHECKS);
+    });
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.github.ghCalls.filter((call) => /check-runs|run view/.test(call))).toHaveLength(0);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("e2e (timed_out)") });
+  });
+
+  it("stops once the run's three repair rounds are spent, shared with verdict repairs", () => {
+    const { rehearsal, head } = redChecks((r) => {
+      withDatabase(r.workspace, (db) => {
+        ensureReviewRepairTable(db);
+        const epoch = (readProductionPolicySafely(db) as { policy: { epoch: number } }).policy.epoch;
+        for (const round of [1, 2, 3]) {
+          db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+            start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome,
+            created_at, updated_at) VALUES (?, ?, ?, ?, 's', 'b', 'h', 'r', NULL, ?, 'fail', 'x', NULL, '[]', '[]', ?, 'launched', ?, ?)`)
+            .run(`earlier-${round}`, r.actionA, epoch, round, round === 2 ? "code-review" : "required-checks", `earlier-session-${round}`, r.now.toISOString(), r.now.toISOString());
+        }
+      });
+    });
+    expect(rehearsal.lease()).toBeNull();
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_rounds_exhausted", message: expect.stringContaining("AssertionError: expected 1 to be +0") });
+    expect(rehearsal.github.comments).toHaveLength(1);
+    expect(rehearsal.github.comments[0].body).toContain(head);
+    expect(rehearsal.github.comments[0].body).toContain("Do not merge: escalated to the operator.");
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.comments).toHaveLength(1);
+    expect(rehearsal.tmux.launches).toHaveLength(1);
+  });
+
+  it("keeps a drafted pending repair standing after a failed launch, and launches it on a later tick", () => {
+    const { rehearsal } = redChecks((r) => {
+      const launch = r.tmux.launch.bind(r.tmux);
+      let failures = 1;
+      r.tmux.launch = (...args: Parameters<typeof launch>) => {
+        if (failures-- > 0) throw new Error("tmux could not start the Session (simulated)");
+        return launch(...args);
+      };
+    });
+    // The PR is the worker's own draft now; that is the same red-checks failure, never a person's pause.
+    expect(rehearsal.github.prs[0].isDraft).toBe(true);
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["pending"]);
+    rehearsal.tickUntil(() => rehearsal.lease() !== null, 6);
+    expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["launched"]);
+    expect(rehearsal.github.comments).toHaveLength(1);
+    expect(escalation(rehearsal)?.kind).not.toBe("review_paused_as_draft");
+  });
+});
+
+describe("red required checks pure parts", () => {
+  it("reads failing vitest tests per job from a --log-failed log, without ANSI or timestamps", () => {
+    const tests = parseFailedTestLog(failedLog(OWN_TEST));
+    expect(tests).toEqual([{
+      check: "unit-shard-7",
+      file: OWN_TEST,
+      name: "marker > runs no reviewer after the reset",
+      evidence: `AssertionError: expected 1 to be +0 // Object.is equality | ❯ ${OWN_TEST}:446:43`
+    }]);
+  });
+
+  it("reads the log as gh prints it off a terminal, with ESC spelled as ^[", () => {
+    const tests = parseFailedTestLog(failedLog(OWN_TEST).replaceAll(ESC, "^["));
+    expect(tests.map((test) => [test.check, test.file, test.evidence])).toEqual([["unit-shard-7", OWN_TEST, `AssertionError: expected 1 to be +0 // Object.is equality | ❯ ${OWN_TEST}:446:43`]]);
+  });
+
+  it("waits while a check still runs beside the failure, reading nothing", () => {
+    const calls: string[] = [];
+    const judgement = judgeRequiredChecksFailure({
+      failure: { head: "a".repeat(40), pullRequestUrl: "https://github.com/o/r/pull/1", baseRefOid: "b".repeat(40), checks: [
+        { name: "unit-shard-7", status: "COMPLETED", conclusion: "FAILURE", url: RUN_URL, unknown: false },
+        { name: "e2e", status: "IN_PROGRESS", conclusion: null, url: null, unknown: false }
+      ] },
+      changedPaths: [OWN_TEST],
+      repoRoot: "/nonexistent",
+      runCommand: ({ args }) => { calls.push(args.join(" ")); return { status: 1, stdout: "", stderr: "", error: null }; }
+    });
+    expect(judgement.kind).toBe("waiting");
+    expect(calls).toEqual([]);
+  });
+
+  it("stops when the base's checks cannot be read, never guessing ownership", () => {
+    const judgement = judgeRequiredChecksFailure({
+      failure: { head: "a".repeat(40), pullRequestUrl: "https://github.com/o/r/pull/1", baseRefOid: "b".repeat(40), checks: [
+        { name: "unit-shard-7", status: "COMPLETED", conclusion: "FAILURE", url: RUN_URL, unknown: false }
+      ] },
+      changedPaths: [OWN_TEST],
+      repoRoot: "/nonexistent",
+      runCommand: () => ({ status: 1, stdout: "", stderr: "HTTP 502", error: null })
+    });
+    expect(judgement).toMatchObject({ kind: "judged", repairable: false, reason: expect.stringContaining("could not be read (HTTP 502)") });
   });
 });
