@@ -1,0 +1,8 @@
+{
+  "agent_ask":"v1",
+  "request_id":"proposal-refresh-decision-0130-scope-reset",
+  "project":"arcadia",
+  "intent":"proposal",
+  "requested_authority":"propose",
+  "desired_result":"Reset the branch to commit 56ee895a2 (the in-scope candidate with only docs/managed-production-readiness.md and tests/claude-capacity-preadmission.test.ts changes) so that the scope check can be satisfied. Subsequent preservation commits 90ff0ca27 and 81a75c6bf added out-of-scope files."
+}
