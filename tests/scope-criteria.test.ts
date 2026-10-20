@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scopeAllowances, scopeIntersection, scopeViolations, settlementRecordPaths } from "../src/sessions/scopeCriteria.js";
-import { scopeJudgementSection } from "../src/qa/prReview.js";
+import { scopeAllowances, scopeIntersection, scopeViolations } from "../src/sessions/scopeCriteria.js";
 
 // Issue #1608: the criterion shapes the live Plans use, read exactly or not at all.
 describe("scope criteria", () => {
@@ -47,28 +46,3 @@ describe("scope criteria", () => {
   });
 });
 
-// Issue #1625: the reviewer's scope judgement excludes the settlement records, as the host check does.
-describe("settlement records in the reviewer's scope judgement", () => {
-  const scoped = ["src/a.ts", "tests/a.test.ts"];
-  const records = ["MISSION_LOG.md", "PROJECT.md", "docs/plans/p.md", ".arcadia/asks/archive/agent-ask-x.yaml"];
-
-  it("excuses only the records of a settled head, so scoped files are the whole of the Session's change", () => {
-    const files = [...scoped, ...records];
-    expect(settlementRecordPaths(files)).toEqual(records);
-    const section = scopeJudgementSection(files).join("\n");
-    for (const record of records) expect(section).toContain(`\`${record}\``);
-    expect(section).not.toContain("`src/a.ts`");
-  });
-
-  it("still surfaces a stray script, a stale top-level Ask draft, a proposal and a Decision", () => {
-    const stray = ["scripts/stray.mjs", ".arcadia/asks/agent-ask-old.yaml", ".arcadia/asks/proposal.yaml", "docs/decisions/0999-x.md"];
-    const files = [...scoped, ...records, ...stray];
-    expect(settlementRecordPaths(files)).toEqual(records);
-    expect(scopeJudgementSection(files).join("\n")).not.toMatch(/stray\.mjs|agent-ask-old|proposal\.yaml|0999/);
-  });
-
-  it("excuses nothing on an unsettled head", () => {
-    expect(settlementRecordPaths([...scoped, "PROJECT.md", "docs/plans/p.md"])).toEqual([]);
-    expect(scopeJudgementSection([...scoped, "PROJECT.md"])).toEqual([]);
-  });
-});

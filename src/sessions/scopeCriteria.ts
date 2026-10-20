@@ -123,17 +123,15 @@ export function isGovernedRecordPath(file: string): boolean {
 }
 
 /**
- * The governed records `arcadia agent-ask settle --apply` writes on a settled
- * head, found by the same rule as the host scope check: a governed record
- * outside the Session's own top-level `.arcadia/asks/*.yaml` draft or proposal
- * and outside `docs/decisions/` (an authority change, never inert). Empty
- * unless the head carries an archived Ask, the settlement's own marker, so an
- * unsettled change never has a path excused.
+ * Of the files a genuine settlement commit touched, those that are governed
+ * records and not the Session's own top-level `.arcadia/asks/*.yaml` draft
+ * (which the settlement deletes) or an authority-changing `docs/decisions/`
+ * file. The caller must supply only a verified settlement commit's files
+ * (reconciliation.ts `settlementCommitRecordFiles`); this uses the same
+ * `isGovernedRecordPath` as the host scope check, but is narrower than it.
  */
-export function settlementRecordPaths(files: readonly string[]): string[] {
-  const settled = files.some((file) => /^\.arcadia\/asks\/archive\/[^/]+$/.test(file));
-  if (!settled) return [];
-  return files.filter((file) => isGovernedRecordPath(file) && !isPreSettlementDraftPath(file) && !file.startsWith("docs/decisions/"));
+export function settlementRecordPaths(settlementFiles: readonly string[]): string[] {
+  return settlementFiles.filter((file) => isGovernedRecordPath(file) && !isPreSettlementDraftPath(file) && !file.startsWith("docs/decisions/"));
 }
 
 const MAX_LISTED = 10;
