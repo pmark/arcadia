@@ -152,6 +152,21 @@ function validateNextAfter(value: unknown, id: string): void {
 /** A UTC ISO 8601 instant, e.g. 2026-10-25T00:00:00Z or 2026-10-02T18:45:00.000Z. */
 const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v) && !Number.isNaN(Date.parse(v));
 
+/**
+ * The extra rule for an entry in a registered Project's own library (not Arcadia's). It is published only
+ * when it names that Project. It may not use a runner whose launcher resolves `$library_dir/../../..`
+ * (Plan amendment, Plan activation, workspace-config edit): in a Project checkout that would run the
+ * Project's file of the same name instead of Arcadia's governed runner. Its `next_after` would name
+ * another library's ids. Call it on the raw descriptor before full validation.
+ */
+export function assertProjectLibraryEntry(value: unknown, project: string): void {
+  const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
+  if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
+  if (d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit or next_after; those runners and hints exist only in Arcadia's library.");
+  }
+}
+
 /** Read-only contract shared by /runs and the library-wide CI gate. */
 export function validateOperatorScriptContract(value: unknown, id: string, script: string): OperatorScriptDescriptor {
   if (!value || typeof value !== "object") fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor must be an object.");

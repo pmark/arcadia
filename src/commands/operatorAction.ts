@@ -84,7 +84,8 @@ export function runOperatorActionSettleAskCommand(options: {
     throw validationError(`${callerRoot} is not a checkout of ${options.project}'s repository (${found.repoPath}). Run this from that Project's worktree.`, { reason: "WRONG_REPOSITORY" });
   }
 
-  const requestId = `settle-${ask.requestId}`;
+  // Disposition-specific, so an accept and a reject button for one Ask can never share a settlement request id.
+  const requestId = `${disposition === "accepted" ? "settle" : "reject"}-${ask.requestId}`;
   const id = options.id ?? `${disposition === "accepted" ? "settle" : "reject"}-${ask.requestId}`;
   if (!SLUG.test(id) || id.length > 120) throw validationError("The action id must be a lowercase slug of at most 120 characters; pass --id.");
 
@@ -104,7 +105,7 @@ export function runOperatorActionSettleAskCommand(options: {
     project: options.project,
     repeatable: false,
     problem: clip(`Agent Ask ${ask.requestId} (${ask.intent}) waits for your settlement. ${ask.desiredResult}${ask.rationale ? ` Why: ${ask.rationale}` : ""}`, 900),
-    desired_effect: clip(`Settle ${ask.requestId} as ${disposition}${placement ? " at the top of the queue" : ""} through the canonical settle path. Previewed effects: ${preview.effects.join("; ") || "none"}.`, 600),
+    desired_effect: clip(`Settle ${ask.requestId} as ${disposition}${placement ? " at the top of the queue" : ""} through the canonical settle path, which re-previews at the press. Effects previewed when this button was generated: ${preview.effects.join("; ") || "none"}.`, 600),
     agentAsk: { proposal: ask.requestId, intent: ask.intent, targetRef: ask.targetRef },
     agentAskSettlement: {
       schema: "arcadia-agent-ask-settlement-v1",

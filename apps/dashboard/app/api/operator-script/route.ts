@@ -1,4 +1,4 @@
-import { OperatorScriptContractError, validateOperatorScriptContract } from "../../../../../src/operatorActions/libraryContract.js";
+import { assertProjectLibraryEntry, OperatorScriptContractError, validateOperatorScriptContract } from "../../../../../src/operatorActions/libraryContract.js";
 import { matchRetirement, parseRetirementManifest } from "../../../../../src/operatorActions/libraryRetirements.js";
 import retirementManifest from "../../../../../src/operatorActions/legacyRetirements.json";
 import { constants } from "node:fs";
@@ -107,11 +107,11 @@ export async function loadDescriptor(key: string): Promise<{ descriptor: ReturnT
   const scriptPath = await realpath(path.join(library, `${id}.sh`));
   if (path.dirname(scriptPath) !== libraryPath || path.dirname(descriptorPath) !== libraryPath) throw new Error("Operator script resolves outside the library.");
   await access(scriptPath, constants.X_OK);
-  const descriptor = validateOperatorScriptContract(JSON.parse(await readFile(descriptorPath, "utf8")), id, await readFile(scriptPath, "utf8"));
-  // A Project library publishes an entry to /actions only by naming its own Project.
-  if (entry.project !== null && descriptor.project !== entry.project) {
-    throw new OperatorScriptContractError("UNPUBLISHED_PROJECT_ENTRY", `${id} does not declare project "${entry.project}", so it is not published to /actions.`);
-  }
+  const raw = JSON.parse(await readFile(descriptorPath, "utf8")) as unknown;
+  // A Project library publishes an entry only by naming its own Project, and only with runners that are
+  // Arcadia's wherever the entry lives; checked first, so an unpublished legacy entry is never validated.
+  if (entry.project !== null) assertProjectLibraryEntry(raw, entry.project);
+  const descriptor = validateOperatorScriptContract(raw, id, await readFile(scriptPath, "utf8"));
   return { descriptor, scriptPath, entry };
 }
 

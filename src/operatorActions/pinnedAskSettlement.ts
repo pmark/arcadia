@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ArcadiaError, normalizeError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -37,7 +37,17 @@ function atomic(file: string, value: unknown): void {
 }
 
 /** Arcadia's own library, beside this module: the default home for run state of a Project's library. */
-const ARCADIA_LIBRARY = path.resolve(import.meta.dirname, "../..", OPERATOR_LIBRARY_RELATIVE);
+/** Arcadia's checkout root from either src/ (tsx) or dist/src/ (built): the nearest ancestor holding the shared runner. */
+function arcadiaRoot(): string {
+  let directory = import.meta.dirname;
+  for (;;) {
+    if (existsSync(path.join(directory, "scripts", "settle-pinned-ask.ts"))) return directory;
+    const parent = path.dirname(directory);
+    if (parent === directory) return path.resolve(import.meta.dirname, "../..");
+    directory = parent;
+  }
+}
+const ARCADIA_LIBRARY = path.join(arcadiaRoot(), OPERATOR_LIBRARY_RELATIVE);
 export function arcadiaOwnLibrary(): string { return ARCADIA_LIBRARY; }
 
 /**

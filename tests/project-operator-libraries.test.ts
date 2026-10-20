@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { OperatorScriptContractError, pinnedAskSettlementLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
+import { OperatorScriptContractError, pinnedAskSettlementLauncher, planAmendmentLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { discoverProjectOperatorLibraries, parseOperatorScriptKey } from "../src/operatorActions/projectLibraries.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -83,5 +83,17 @@ describe("Project library discovery and checking", () => {
     result = check();
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stderr.trim().split("\n")[0])).toMatchObject({ id: "demo--broken" });
+  });
+
+  it("refuses a published Project entry that would run a same-named Project file instead of Arcadia's runner", () => {
+    const repo = temp("arcadia-project-runner-");
+    const library = path.join(repo, "artifacts/generated/operator-scripts");
+    mkdirSync(library, { recursive: true });
+    const d = { ...pinned(), id: "amend-here", script: "amend-here.sh", agentAsk: undefined, agentAskSettlement: undefined, planAmendment: {} } as unknown as OperatorScriptDescriptor;
+    writeFileSync(path.join(library, "amend-here.json"), JSON.stringify(d));
+    writeFileSync(path.join(library, "amend-here.sh"), planAmendmentLauncher("amend-here"), { mode: 0o755 });
+    const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts"), "--project", "demo", repo], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stderr.trim().split("\n")[0])).toMatchObject({ id: "demo--amend-here", reason: "UNSUPPORTED_PROJECT_ENTRY" });
   });
 });

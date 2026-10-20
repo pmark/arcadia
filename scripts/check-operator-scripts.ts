@@ -1,6 +1,6 @@
 import { accessSync, constants, existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { OperatorScriptContractError, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
+import { assertProjectLibraryEntry, OperatorScriptContractError, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { matchRetirement, parseRetirementManifest } from "../src/operatorActions/libraryRetirements.js";
 import { confinedProjectLibrary, discoverProjectOperatorLibraries } from "../src/operatorActions/projectLibraries.js";
 
@@ -44,9 +44,10 @@ function checkLibrary(library: string, project: string | null): LibraryResult {
     try {
       const descriptorBytes = readFileSync(path.join(library, entry));
       if (project !== null) {
-        let declared: unknown;
-        try { declared = (JSON.parse(descriptorBytes.toString("utf8")) as { project?: unknown }).project; } catch { declared = undefined; }
-        if (declared !== project) { result.unpublished.push(id); continue; }
+        let raw: unknown;
+        try { raw = JSON.parse(descriptorBytes.toString("utf8")); } catch { raw = undefined; }
+        if ((raw as { project?: unknown } | undefined)?.project !== project) { result.unpublished.push(id); continue; }
+        assertProjectLibraryEntry(raw, project);
       }
       const script = realpathSync(path.join(library, `${id}.sh`));
       if (path.dirname(script) !== library) throw new Error("Executable resolves outside the library.");
