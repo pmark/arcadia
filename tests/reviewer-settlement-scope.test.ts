@@ -77,6 +77,19 @@ describe("settlement records in the reviewer's scope judgement", () => {
       .toEqual(RECORDS.filter((file) => file !== "docs/plans/p.md"));
   });
 
+  it("does not excuse a record hand-edited between the evidence and the settlement on a file the settlement also touches", () => {
+    const r = repo();
+    r.write("PROJECT.md", "a"); r.write("docs/plans/p.md", "a"); r.write("src/a.ts", "a");
+    r.commit("base");
+    r.write("src/a.ts", "b");
+    const evidence = r.commit("work");
+    r.write("docs/plans/p.md", "hand edit");
+    r.commit("hand edit");
+    r.write("docs/plans/p.md", "settled"); r.write("PROJECT.md", "s");
+    const settlement = r.commit("settle");
+    expect(settlementCommitRecordFiles(r.root, { documentsCommit: settlement, evidenceRevision: evidence }, settlement)).toEqual(["PROJECT.md"]);
+  });
+
   it("renders the section only for verified records, keeping their content judged", () => {
     const section = scopeJudgementSection(RECORDS).join("\n");
     for (const file of RECORDS) expect(section).toContain(JSON.stringify(file));

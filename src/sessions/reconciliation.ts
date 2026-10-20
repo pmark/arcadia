@@ -415,8 +415,10 @@ export function settlementCommitRecordFiles(
   const lines = (output: string) => output.split("\n").map((line) => line.trim()).filter(Boolean);
   try {
     const parent = git(worktree, ["rev-parse", `${settlement.documentsCommit}^`]).trim();
-    if (lines(git(worktree, ["diff", "--name-only", settlement.evidenceRevision, parent])).some((file) => !isSettlementRecordPath(file))) return [];
-    const after = new Set(lines(git(worktree, ["diff", "--name-only", settlement.documentsCommit, head])));
+    const between = lines(git(worktree, ["diff", "--name-only", settlement.evidenceRevision, parent]));
+    if (between.some((file) => !isSettlementRecordPath(file))) return [];
+    // A record hand-edited between the evidence and the settlement stays judged, even though the settlement rewrote it.
+    const after = new Set([...between, ...lines(git(worktree, ["diff", "--name-only", settlement.documentsCommit, head]))]);
     return settlementRecordPaths(lines(git(worktree, ["-c", "core.quotepath=false", "diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", settlement.documentsCommit])))
       .filter((file) => !after.has(file));
   } catch {

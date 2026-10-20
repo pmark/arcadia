@@ -440,7 +440,8 @@ export function runQaPrReviewCommand(
     });
     return {
       session,
-      settlementRecords: settlementRecordFilesForReview(db, session, candidate.headSha),
+      // A scope aid only: any failure reading the settlement must never abort the review.
+      settlementRecords: (() => { try { return settlementRecordFilesForReview(db, session, candidate.headSha); } catch { return []; } })(),
       requestId: begun.attempt.request_id,
       attemptId: begun.attempt.id,
       ordinal: begun.attempt.ordinal,
