@@ -446,7 +446,7 @@ function isSettlementRecordPath(file: string): boolean {
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, validationOptions?: CompletionValidationOptions): DraftedCompletionSettlement | null {
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions): DraftedCompletionSettlement | null {
   if (!evidence.worktreeExists) return null;
   const worktree = session.worktree_path;
   const plan = discoverDocs(worktree).docs.find(
@@ -460,7 +460,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   let validation: CompletionValidationResult | null = null;
   const validateBeforeSettle = () => {
     validation ??= validateCompletionCandidate({
-      repository: session.repository_path, worktree, base: session.base_revision,
+      repository: session.repository_path, worktree, base: session.base_revision, workspace,
       commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),
       acceptanceCriteria: action.acceptanceCriteria
     }, validationOptions);
@@ -669,7 +669,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   let settlementNotInCandidate: { settlementId: string; reason: string } | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
-    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.completionValidation);
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, input.completionValidation);
     const attempt = settled
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
       : drafted?.kind === "settled"

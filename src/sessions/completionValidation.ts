@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { normalizeError } from "../cli/errors.js";
@@ -14,19 +14,26 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * Ask is settled, the Action's declared validation against the candidate's
  * exact tree: the Project's configured validation commands and every test
  * file the Action's acceptance criteria name, through the Project's own test
- * runner (vitest), under the same macOS Seatbelt confinement preservation
- * uses (immutable source tree, private scratch, no network). The only
- * additional read it grants is the Project checkout's installed dependency
- * trees, so the named tests can resolve their imports.
+ * runner (vitest when its package.json declares it, otherwise `node --test`
+ * for plain JavaScript test files), under the same macOS Seatbelt
+ * confinement preservation uses (immutable source tree, private scratch, no
+ * network, the workspace, repository and worktree unreadable). The only
+ * additional read it grants is the installed `node_modules` trees, so the
+ * named tests can resolve their imports.
  *
  * It runs only when the criteria name a test file: the configured commands
  * alone are already preservation's gate. Anything that is not a clean pass --
- * a failing test or command, a missing runner, a timeout, an unsupported
- * host, a named file the candidate does not carry -- is a refusal with a
- * named reason, never a pass.
+ * a failing test or command, a missing or unsupported runner, a timeout, an
+ * unsupported host, a named file the candidate does not carry -- is a refusal
+ * with a named reason, never a pass.
+ *
+ * Trust boundary: this catches a candidate whose named tests honestly fail
+ * (the live #1595 shape). It does not defend against a candidate that rigs
+ * its own runner configuration, which it controls just as it controls the
+ * named test file; the independent review gate remains that defense.
  */
 
-export const COMPLETION_TEST_TIMEOUT_MS = 300_000;
+export const COMPLETION_VALIDATION_TIMEOUT_MS = 300_000;
 export const COMPLETION_COMMAND_TIMEOUT_MS = 120_000;
 export const MAX_NAMED_TEST_FILES = 10;
 const MAX_REPORTED_FAILURES = 10;
@@ -41,14 +48,23 @@ function spawnTimedOut(error: Error | undefined): boolean {
 export interface CompletionValidationOptions {
   /** The checkout whose installed `node_modules` trees the named tests resolve against. Defaults to the Session's repository. */
   dependencyRoot?: string;
-  /** Bound on the named-test run. */
-  testTimeoutMs?: number;
+  /** Bound on the whole validation (configured commands and named tests together). */
+  timeoutMs?: number;
+  /**
+   * Tests only, never production: run the identical checks against the
+   * identical materialized tree without the Seatbelt profile around them, for
+   * hosts where `sandbox-exec` is unavailable or cannot nest -- the same seam
+   * the rehearsal harness's `unsandboxedValidator` gives preservation.
+   */
+  unconfinedForTests?: boolean;
 }
 
 export interface CompletionValidationCandidate {
   repository: string;
   worktree: string;
   base: string;
+  /** The workspace; candidate code must never read it. */
+  workspace: string | undefined;
   /** The Project's configured validation commands (host-managed metadata). */
   commands: string[];
   acceptanceCriteria: string[];
@@ -60,14 +76,17 @@ export type CompletionValidationResult =
   | { status: "refused"; namedTests: string[]; reason: string; failures: string[] };
 
 // A repository-relative test file path: under `tests/`, `test/` or a
-// workspace package's `tests/`, ending `.test.<ts|tsx|mts|js|mjs>`, made only
-// of plain path characters. Anything looser is not treated as a named file.
-const NAMED_TEST_FILE = /(?<![\w./-])((?:tests?|apps\/[A-Za-z0-9._-]+\/tests?|packages\/[A-Za-z0-9._-]+\/tests?)\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*\.test\.(?:ts|tsx|mts|js|mjs))(?![\w/-])/g;
+// workspace package's `tests/`, ending `.test.<ts|tsx|mts|js|mjs|cjs>`, made
+// only of plain path characters. Anything looser is not treated as a named file.
+const NAMED_TEST_FILE = /(?<![\w./-])((?:tests?|apps\/[A-Za-z0-9._-]+\/tests?|packages\/[A-Za-z0-9._-]+\/tests?)\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*\.test\.(?:ts|tsx|mts|js|mjs|cjs))(?![\w/-])/g;
+/** A criterion about removing a file names it without requiring it to pass. */
+const REMOVAL = /\b(?:remov(?:e|es|ed|ing|al)|delet(?:e|es|ed|ing|ion))\b/i;
 
-/** The test files an Action's acceptance criteria name explicitly, in first-mention order. */
+/** The test files an Action's acceptance criteria name explicitly (and do not remove), in first-mention order. */
 export function namedTestFiles(criteria: readonly string[]): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
+    if (REMOVAL.test(criterion)) continue;
     for (const match of criterion.matchAll(NAMED_TEST_FILE)) {
       const file = match[1];
       if (file.split("/").some((segment) => segment === "." || segment === "..")) continue;
@@ -86,7 +105,7 @@ export function namedTestFiles(criteria: readonly string[]): string[] {
  */
 function untrusted(text: string, max = MAX_NAME_CHARS): string {
   // eslint-disable-next-line no-control-regex
-  const clean = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").replaceAll("`", "'").replaceAll("@", "@\u200b").replace(/\s+/g, " ").trim();
+  const clean = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").replaceAll("`", "'").replaceAll("@", "@​").replace(/\s+/g, " ").trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
@@ -97,6 +116,19 @@ function refused(namedTests: string[], why: string, failures: string[] = []): Co
   const reason = `${why}${detail}`;
   return { status: "refused", namedTests, failures: listed,
     reason: reason.length > MAX_REASON_CHARS ? `${reason.slice(0, MAX_REASON_CHARS - 1)}…` : reason };
+}
+
+function inside(parent: string, child: string): boolean {
+  return child === parent || child.startsWith(`${parent}${path.sep}`);
+}
+
+/** Refuse a path below `source` that passes through a symlink: the candidate chose every symlink in its tree. */
+function assertNoSymlinkBelow(source: string, relative: string): void {
+  let current = source;
+  for (const segment of relative.split("/").filter(Boolean)) {
+    current = path.join(current, segment);
+    if (lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`the candidate's ${relative} passes through a symlink`);
+  }
 }
 
 /** pnpm's own module-resolution metadata: the only dotfiles bridged (a tool cache such as `.vite-temp` stays private to the run). */
@@ -121,29 +153,36 @@ function workspaceMembers(root: string): string[] {
  * (so a runner's cache lands there, never in the Project checkout), linked
  * from the materialized source, holding symlinks to the installed entries. A
  * workspace self-reference is retargeted at the materialized member, so the
- * candidate's own package code is what resolves. Returns the real paths the
- * sandbox may read.
+ * candidate's own package code is what resolves. Only entries that resolve
+ * inside a `node_modules` tree (never into the workspace) are linked. Returns
+ * the real paths the sandbox may read.
  */
-function bridgeDependencies(dependencyRoot: string, source: string, scratch: string): string[] {
+function bridgeDependencies(dependencyRoot: string, source: string, scratch: string, forbidden: string[]): string[] {
   const root = realpathSync(dependencyRoot);
   const members = workspaceMembers(root);
   const memberRoots = new Map(members.map((member) => [path.join(root, member), member]));
   const readable = new Set<string>();
+  const allowed = (resolved: string) => resolved.split(path.sep).includes("node_modules") && !forbidden.some((dir) => inside(dir, resolved));
   for (const member of members) {
     const installed = path.join(root, member, "node_modules");
     if (!existsSync(installed)) continue;
+    // These writes run outside the sandbox: never through a candidate symlink.
+    assertNoSymlinkBelow(source, path.posix.join(member, "node_modules"));
     const sourceMember = path.join(source, member);
     if (member && !existsSync(sourceMember)) continue;
+    if (!inside(source, realpathSync(sourceMember))) throw new Error(`the candidate's ${member} resolves outside its tree`);
     const linkPath = path.join(sourceMember, "node_modules");
-    if (lstatSync(linkPath, { throwIfNoEntry: false })) throw new Error(`the candidate tracks ${path.join(member, "node_modules")}`);
+    if (lstatSync(linkPath, { throwIfNoEntry: false })) throw new Error(`the candidate tracks ${path.posix.join(member, "node_modules")}`);
     const bridged = path.join(scratch, "dependencies", member, "node_modules");
     mkdirSync(bridged, { recursive: true });
-    readable.add(realpathSync(installed));
+    const installedReal = realpathSync(installed);
+    if (allowed(installedReal)) readable.add(installedReal);
     const link = (from: string, to: string) => {
       let resolved: string;
       try { resolved = realpathSync(from); } catch { return; }
       const self = memberRoots.get(resolved);
       if (self !== undefined) { symlinkSync(path.join(source, self), to); return; }
+      if (!allowed(resolved)) return;
       symlinkSync(resolved, to);
       // pnpm's virtual store holds every resolved package; allow it whole.
       const store = resolved.lastIndexOf(`${path.sep}.pnpm${path.sep}`);
@@ -164,7 +203,7 @@ function bridgeDependencies(dependencyRoot: string, source: string, scratch: str
   return [...readable];
 }
 
-/** Whether the candidate's own manifest declares vitest, the one test runner this check supports. */
+/** Whether the candidate's own manifest declares vitest. */
 function declaresVitest(source: string): boolean {
   try {
     const manifest = JSON.parse(readFileSync(path.join(source, "package.json"), "utf8")) as Record<string, unknown>;
@@ -182,32 +221,30 @@ interface VitestReport {
     assertionResults?: Array<{ fullName?: string; title?: string; status?: string }> }>;
 }
 
-// Runs the sandboxed command in its own process group and kills the whole
-// group at the bound, so a runner's worker processes cannot outlive it.
+// Runs the command in its own process group, output discarded so no
+// descendant holds the host's pipes, and kills the whole group at the bound.
 const WATCHDOG = String.raw`
 const { spawn } = require("node:child_process");
 const { writeFileSync } = require("node:fs");
 const [marker, timeoutMs, ...argv] = process.argv.slice(1);
-const child = spawn(argv[0], argv.slice(1), { stdio: "inherit", detached: true });
+const child = spawn(argv[0], argv.slice(1), { stdio: "ignore", detached: true });
 const kill = () => { try { process.kill(-child.pid, "SIGKILL"); } catch {} };
 const timer = setTimeout(() => { writeFileSync(marker, "timeout"); kill(); }, Number(timeoutMs));
 child.on("error", (error) => { clearTimeout(timer); process.stderr.write(String(error && error.message)); process.exit(127); });
-child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(code === null ? 128 : code); });
+child.on("exit", (code) => { clearTimeout(timer); kill(); process.exit(code === null ? 128 : code); });
 `;
 
-/**
- * Run the Action's declared validation against the candidate's exact tree.
- * Synchronous and bounded: the configured commands at preservation's own
- * per-command bound, the named tests at `testTimeoutMs`.
- */
+/** Run the Action's declared validation against the candidate's exact tree. Synchronous, bounded by `timeoutMs` in total. */
 export function validateCompletionCandidate(candidate: CompletionValidationCandidate, options: CompletionValidationOptions = {}): CompletionValidationResult {
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
   if (namedTests.length === 0) return { status: "not_required" };
   const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
   if (namedTests.length > MAX_NAMED_TEST_FILES) return deny(`the acceptance criteria name ${namedTests.length} test files; at most ${MAX_NAMED_TEST_FILES} run before acceptance.`);
-  if (process.platform !== "darwin") return deny("protected candidate validation requires the macOS Seatbelt host.");
+  if (process.platform !== "darwin" && !options.unconfinedForTests) return deny("protected candidate validation requires the macOS Seatbelt host.");
+  if (!candidate.workspace) return deny("the workspace was not given, so candidate code could not be kept from reading it.");
   if (!candidate.commands.length) return deny("the Project declares no validation commands.");
-  const testTimeoutMs = options.testTimeoutMs ?? COMPLETION_TEST_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? COMPLETION_VALIDATION_TIMEOUT_MS;
+  const deadline = performance.now() + timeoutMs;
 
   let tree: string;
   try {
@@ -231,57 +268,95 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     }
     const missing = namedTests.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
-    if (!declaresVitest(source)) return deny("the Project's package.json declares no supported test runner (vitest).");
-    let readable: string[];
-    try {
-      readable = bridgeDependencies(options.dependencyRoot ?? candidate.repository, source, scratch);
-    } catch (error) {
-      return deny(`the Project's installed dependencies could not be linked (${untrusted(normalizeError(error).message, 300)}).`);
+    const vitest = declaresVitest(source);
+    if (!vitest && !namedTests.every((file) => /\.(?:js|mjs|cjs)$/.test(file))) {
+      return deny("the Project's package.json declares no supported test runner for its named TypeScript tests (vitest).");
+    }
+    const forbidden = [candidate.workspace, candidate.repository, candidate.worktree].map((dir) => realpathSync(dir));
+    let readable: string[] = [];
+    if (vitest) {
+      try {
+        readable = bridgeDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
+      } catch (error) {
+        return deny(`the Project's installed dependencies could not be linked (${untrusted(normalizeError(error).message, 300)}).`);
+      }
     }
     const runner = path.join(source, "node_modules", "vitest", "vitest.mjs");
-    if (!existsSync(runner)) return deny("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
+    if (vitest && !existsSync(runner)) return deny("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
 
     const quote = (value: string) => JSON.stringify(value);
-    const denied = [candidate.repository, candidate.worktree, options.dependencyRoot ?? candidate.repository]
-      .map((dir) => `(require-not (subpath ${quote(realpathSync(dir))}))`).join(" ");
+    // Unreadable: the workspace, repository, worktree, dependency checkout and
+    // the host user's whole home directory (other checkouts, ~/.arcadia,
+    // credentials). Re-allowed below only: the installed dependency trees and
+    // the running Node installation, should it live under the home.
+    const home = realpathSync(homedir());
+    const denied = [...forbidden, realpathSync(options.dependencyRoot ?? candidate.repository), home]
+      .map((dir) => `(require-not (subpath ${quote(dir)}))`).join(" ");
+    const nodePrefix = path.dirname(path.dirname(realpathSync(process.execPath)));
+    if (inside(home, nodePrefix) && nodePrefix !== home) readable.push(nodePrefix);
+    if (readable.some((dir) => forbidden.slice(0, 1).some((workspace) => inside(workspace, dir)))) return deny("a dependency tree resolves inside the workspace.");
+    // `signal (target same-sandbox)`: a runner terminates its own workers;
+    // nothing outside this sandbox (the watchdog included) is reachable.
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all ${denied})) `
-      + `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) `
+      + (readable.length ? `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) ` : "")
       + `(allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target same-sandbox)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const env = { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1" };
-    const run = (argv: string[], timeoutMs: number) => {
+    const env: NodeJS.ProcessEnv = { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1" };
+    const run = (argv: string[], bound: number) => {
+      const remaining = Math.floor(deadline - performance.now());
+      if (remaining <= 0) return { status: null, timedOut: true, error: null };
+      const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
-      const result = spawnSync(process.execPath, ["-e", WATCHDOG, marker, String(timeoutMs), "/usr/bin/sandbox-exec", "-p", profile, ...argv], {
-        cwd: source, env, encoding: "utf8", timeout: timeoutMs + 30_000, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024
+      const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
+      const result = spawnSync(process.execPath, ["-e", WATCHDOG, marker, String(limit), ...confined], {
+        cwd: source, env, encoding: "utf8", stdio: ["ignore", "ignore", "pipe"], timeout: limit + 30_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
       });
-      return { status: result.status, timedOut: existsSync(marker) || spawnTimedOut(result.error), error: result.error ? normalizeError(result.error).message : null };
+      const timedOut = existsSync(marker) || spawnTimedOut(result.error);
+      const error = result.error && !timedOut ? normalizeError(result.error).message : result.status === 127 ? (result.stderr || "the command could not start") : null;
+      return { status: result.status, timedOut, error };
     };
+    const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
 
     for (const command of candidate.commands) {
       const result = run(["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
-      if (result.timedOut) return deny(`the configured validation command timed out after ${COMPLETION_COMMAND_TIMEOUT_MS / 1000}s.`, [command]);
+      if (result.timedOut) return deny(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return deny(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.`, [command]);
     }
 
+    if (!vitest) {
+      // Plain JavaScript tests: Node's own runner, one file at a time so each
+      // proves it ran and passed at least one test.
+      for (const file of namedTests) {
+        const report = path.join(scratch, `completion-node-test-${namedTests.indexOf(file)}.tap`);
+        const result = run([process.execPath, "--test", "--test-reporter=tap", `--test-reporter-destination=${report}`, file], COMPLETION_VALIDATION_TIMEOUT_MS);
+        if (result.timedOut) return deny(timedOutWhy, [`${file} (timed out)`]);
+        if (result.error) return deny(`the named tests could not run (${untrusted(result.error, 200)}).`);
+        let tap = "";
+        try { tap = readFileSync(report, "utf8"); } catch { tap = ""; }
+        const failing = [...tap.matchAll(/^\s*not ok \d+ - (.+)$/gm)].map((match) => `${file} > ${match[1]}`);
+        if (result.status !== 0) return deny(`the named tests failed (node --test exited ${result.status}).`, failing.length ? failing : [file]);
+        if (!/^# pass [1-9]\d*$/m.test(tap) || !/^# fail 0$/m.test(tap)) return deny("node --test exited 0 but did not report a passing test for every named file.", [file]);
+      }
+      return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
+    }
+
     const report = path.join(scratch, "completion-vitest-report.json");
-    const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=default", "--reporter=json", `--outputFile.json=${report}`], testTimeoutMs);
-    if (result.error && !result.timedOut) return deny(`the named tests could not run (${untrusted(result.error, 200)}).`);
-    if (result.timedOut) return deny(`the named tests did not finish within ${Math.round(testTimeoutMs / 1000)}s.`, namedTests.map((file) => `${file} (timed out)`));
+    const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=json", `--outputFile.json=${report}`], COMPLETION_VALIDATION_TIMEOUT_MS);
+    if (result.timedOut) return deny(timedOutWhy, namedTests.map((file) => `${file} (timed out)`));
+    if (result.error) return deny(`the named tests could not run (${untrusted(result.error, 200)}).`);
     let parsed: VitestReport | null = null;
     try { parsed = JSON.parse(readFileSync(report, "utf8")) as VitestReport; } catch { parsed = null; }
+    const relativeName = (name: string | undefined) => name ? path.relative(source, name).split(path.sep).join("/") : "(unknown file)";
     const failures: string[] = [];
     for (const file of parsed?.testResults ?? []) {
-      const relative = file.name ? path.relative(source, file.name).split(path.sep).join("/") : "(unknown file)";
       const failed = (file.assertionResults ?? []).filter((test) => test.status === "failed");
-      for (const test of failed) failures.push(`${relative} > ${test.fullName ?? test.title ?? "(unnamed test)"}`);
-      if (!failed.length && file.status === "failed") failures.push(`${relative} (${file.message ? untrusted(file.message, 120) : "failed to run"})`);
+      for (const test of failed) failures.push(`${relativeName(file.name)} > ${test.fullName ?? test.title ?? "(unnamed test)"}`);
+      if (!failed.length && file.status === "failed") failures.push(`${relativeName(file.name)} (${file.message ? untrusted(file.message, 120) : "failed to run"})`);
     }
-    if (result.status !== 0) {
-      return deny(`the named tests failed (vitest exited ${result.status}).`, failures.length ? failures : namedTests);
-    }
+    if (result.status !== 0) return deny(`the named tests failed (vitest exited ${result.status}).`, failures.length ? failures : namedTests);
     // A zero exit proves only that nothing failed: every named file must
     // also have run and passed at least one test.
-    const ran = new Map((parsed?.testResults ?? []).map((file) => [file.name ? path.relative(source, file.name).split(path.sep).join("/") : "", file]));
+    const ran = new Map((parsed?.testResults ?? []).map((file) => [relativeName(file.name), file]));
     const unproven = namedTests.filter((file) => {
       const entry = ran.get(file);
       return !entry || entry.status !== "passed" || !(entry.assertionResults ?? []).some((test) => test.status === "passed");

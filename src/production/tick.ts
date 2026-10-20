@@ -64,6 +64,7 @@ import {
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
+import type { CompletionValidationOptions } from "../sessions/completionValidation.js";
 import { createId } from "../utils/id.js";
 import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
@@ -128,7 +129,7 @@ export interface ManagedProductionTickOptions {
   /** Override how a Project's GitHub board is reached; tests pass an in-memory board. */
   boardFactory?: BoardFactory;
   /** Test overrides for the terminal-session preservation/integration handoff. */
-  handoff?: { preserve?: PreserveSessionDeps; integrate?: IntegrateSessionDeps };
+  handoff?: { preserve?: PreserveSessionDeps; integrate?: IntegrateSessionDeps; completionValidation?: CompletionValidationOptions };
   /**
    * Overrides for the unattended review of a preserved candidate PR (the
    * GitHub CLI and reviewer runner, the reviewer selection, deadlines). The
@@ -1920,6 +1921,7 @@ export function runManagedProductionTick(
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
+          ...(options.handoff?.completionValidation ? { completionValidation: options.handoff.completionValidation } : {}),
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
             : settledOnCandidate

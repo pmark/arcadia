@@ -241,7 +241,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
       "", "Continuation — this is a resumed Session, not the first Session for this Action:",
       `Previous Session: ${input.continuation.sessionId} (incomplete_resumable).`,
       `Previous preserved candidate revision: ${input.continuation.candidateRevision ?? "unavailable"}.`,
-      ...(input.continuation.reason ? [`Previous exit reason: ${input.continuation.reason}`, "Fix what that reason names (for a refused completion draft, correct the same draft's evidence) before finishing again."] : []),
+      ...(input.continuation.reason ? [`Previous exit reason: ${input.continuation.reason}`, /Pre-acceptance validation refused/.test(input.continuation.reason) ? "Fix the code or tests that reason names so the named tests and validation pass, then refresh the same draft's candidate_revision before finishing again." : "Fix what that reason names (for a refused completion draft, correct the same draft's evidence) before finishing again."] : []),
       "The host reused that Session's candidate worktree and branch. Inspect its existing work before editing.",
       "First-Session-only instructions apply to the prior Session where the candidate evidence confirms them.",
       "Continue the remaining acceptance criteria; do not repeat a deliberate first-Session partial exit.",

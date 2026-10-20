@@ -24,25 +24,31 @@ describe("namedTestFiles", () => {
       "src/sessions/reconciliation.ts changes; tests/helpers/rehearsalHarness.ts is a helper.",
       "../tests/escape.test.ts and tests/../escape.test.ts and /abs/tests/x.test.ts are not named.",
       "foo/tests/x.test.ts belongs to no recognized root; tests/x.test.tsfoo is not a test file.",
-      "No test files are mentioned here."
+      "No test files are mentioned here.",
+      "tests/old.test.ts is removed; the deletion of tests/older.test.ts is recorded."
     ])).toEqual([]);
   });
 });
 
 describe("validateCompletionCandidate", () => {
   it("is not required when the criteria name no test file", () => {
-    expect(validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", commands: ["true"], acceptanceCriteria: ["The contract exists."] }))
+    expect(validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", workspace: "/nonexistent", commands: ["true"], acceptanceCriteria: ["The contract exists."] }))
       .toEqual({ status: "not_required" });
   });
 
   it("refuses, never passes, when more files are named than run before acceptance", () => {
     const criteria = Array.from({ length: 11 }, (_, index) => `tests/n${index}.test.ts passes.`);
-    const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", commands: ["true"], acceptanceCriteria: criteria });
+    const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", workspace: "/nonexistent", commands: ["true"], acceptanceCriteria: criteria });
     expect(result.status).toBe("refused");
   });
 
+  it("refuses, never passes, when no workspace is given to keep unreadable", () => {
+    const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", workspace: undefined, commands: ["true"], acceptanceCriteria: ["tests/x.test.ts passes."] }, { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", reason: expect.stringContaining("workspace was not given") });
+  });
+
   it.runIf(process.platform !== "darwin")("refuses on a host without the macOS Seatbelt sandbox rather than running unconfined", () => {
-    const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", commands: ["true"], acceptanceCriteria: ["tests/x.test.ts passes."] });
+    const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", workspace: "/nonexistent", commands: ["true"], acceptanceCriteria: ["tests/x.test.ts passes."] });
     expect(result).toMatchObject({ status: "refused", reason: expect.stringContaining("macOS Seatbelt") });
   });
 });

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
@@ -591,12 +591,16 @@ describe("reconcileSessionExit automatic production completion", () => {
   // new test file, the host preserved it, and reconciliation accepted it
   // although that test failed -- no test ran before acceptance. The named
   // test now runs (under Seatbelt, with the Arcadia checkout's installed
-  // vitest standing in for the Project's) before the draft settles.
-  describe.runIf(process.platform === "darwin")("pre-acceptance validation of the named test files (#1599)", () => {
+  // vitest standing in for the Project's) before the draft settles. Under
+  // ARCADIA_PRESERVATION_HOST_TEST=1 on macOS (outside any agent sandbox,
+  // since Seatbelt cannot nest) the checks run confined; otherwise the same
+  // checks run unconfined, the harness's convention for preservation.
+  describe("pre-acceptance validation of the named test files (#1599)", () => {
     const criterion = "tests/contract.test.ts passes and asserts the contract.";
-    const completionValidation = { dependencyRoot: process.cwd() };
+    const confined = process.platform === "darwin" && process.env.ARCADIA_PRESERVATION_HOST_TEST === "1";
+    const completionValidation = { dependencyRoot: process.cwd(), ...(confined ? {} : { unconfinedForTests: true }) };
 
-    function namedTestCandidate(testBody: string) {
+    function namedTestCandidate(testBody: string | ((workspace: string) => string)) {
       const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
       const tmux = new FakeTmux();
       const launched = launchCompletionFixture(fixture, tmux);
@@ -605,7 +609,7 @@ describe("reconcileSessionExit automatic production completion", () => {
       writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
       writeFileSync(path.join(worktreePath, "package.json"), `${JSON.stringify({ name: "fixture", private: true, type: "module", devDependencies: { vitest: "*" } })}\n`);
       mkdirSync(path.join(worktreePath, "tests"), { recursive: true });
-      writeFileSync(path.join(worktreePath, "tests", "contract.test.ts"), `import { expect, it } from "vitest";\n${testBody}\n`);
+      writeFileSync(path.join(worktreePath, "tests", "contract.test.ts"), `import { expect, it } from "vitest";\n${typeof testBody === "string" ? testBody : testBody(fixture.workspace)}\n`);
       draftCompleteInWorktree(worktreePath, criterion);
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "preserve candidate"]);
@@ -616,7 +620,7 @@ describe("reconcileSessionExit automatic production completion", () => {
       const { fixture, sessionId, worktreePath } = namedTestCandidate(`it("asserts the contract @here \`x\`", () => { expect(1 + 1).toBe(3); });`);
 
       const result = withDatabase(fixture.workspace, (db) =>
-        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-fails", repoRoot: fixture.repo, completionValidation })
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-fails", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
       );
 
       expect(result.receipt.outcome).toBe("incomplete_resumable");
@@ -635,18 +639,43 @@ describe("reconcileSessionExit automatic production completion", () => {
       const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(2); });`);
 
       const result = withDatabase(fixture.workspace, (db) =>
-        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-passes", repoRoot: fixture.repo, completionValidation })
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-passes", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
       );
 
       expect(result.receipt.outcome).toBe("accepted_completion");
       expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
     });
 
+    // Candidate test code must not read the workspace (its database) or the
+    // host user's home (~/.arcadia, other checkouts): a test that asserts both
+    // reads are refused passes only inside the confinement.
+    it.runIf(confined)("keeps the workspace database and the host home unreadable to candidate tests", () => {
+      const databaseIn = (workspace: string) => {
+        const database = readdirSync(workspace, { recursive: true, withFileTypes: true })
+          .find((entry) => entry.isFile() && /\.(?:db|sqlite3?)$/.test(entry.name));
+        if (!database) throw new Error("fixture workspace has no database file");
+        return path.join(database.parentPath, database.name);
+      };
+      const { fixture, sessionId } = namedTestCandidate((workspace) => `import { readFileSync, readdirSync } from "node:fs";
+it("asserts the contract", () => {
+  expect(() => readFileSync(${JSON.stringify(databaseIn(workspace))})).toThrow();
+  expect(() => readdirSync(${JSON.stringify(homedir())})).toThrow();
+  expect(() => readdirSync(${JSON.stringify(path.join(homedir(), ".arcadia"))})).toThrow();
+});`);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-reads", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+      );
+
+      expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+      expect(result.receipt.outcome).toBe("accepted_completion");
+    });
+
     it("refuses, never passes, a named test that does not finish within the bound", () => {
       const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => new Promise(() => {}), 600_000);`);
 
       const result = withDatabase(fixture.workspace, (db) =>
-        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-hangs", repoRoot: fixture.repo, completionValidation: { ...completionValidation, testTimeoutMs: 15_000 } })
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-hangs", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation: { ...completionValidation, timeoutMs: 15_000 } })
       );
 
       expect(result.receipt.outcome).toBe("incomplete_resumable");
