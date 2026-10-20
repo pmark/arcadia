@@ -33,7 +33,15 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * named test file; the independent review gate remains that defense.
  */
 
-export const COMPLETION_VALIDATION_TIMEOUT_MS = 300_000;
+/**
+ * Bound on the whole validation. One named file runs in one vitest worker
+ * however many are allowed, so the bound must exceed the slowest single file
+ * an Action names: tests/review-repair-loop.test.ts took 360s on the host
+ * (2026-10-20 pre-mortem), so 300s refused every honest completion of an
+ * Action naming it. It stays well under the worker's tick ceiling
+ * (MAX_TICK_DURATION_MS, 30 minutes), which this synchronous step counts toward.
+ */
+export const COMPLETION_VALIDATION_TIMEOUT_MS = 900_000;
 export const COMPLETION_COMMAND_TIMEOUT_MS = 120_000;
 export const MAX_NAMED_TEST_FILES = 10;
 const MAX_REPORTED_FAILURES = 10;

@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
 // live criterion shapes come from the Plan of Action
 // test-transient-review-retry-after-exhaustion.
+// 2026-10-20 pre-mortem: one named file (tests/review-repair-loop.test.ts)
+// takes 360s on the host, so the bound must clear it with headroom while the
+// synchronous validation stays well inside one tick's ceiling.
+describe("COMPLETION_VALIDATION_TIMEOUT_MS", () => {
+  it("clears the slowest named test file with headroom and stays within half the tick ceiling", () => {
+    expect(COMPLETION_VALIDATION_TIMEOUT_MS).toBeGreaterThanOrEqual(2 * 360_000);
+    expect(COMPLETION_VALIDATION_TIMEOUT_MS).toBeLessThanOrEqual(MAX_TICK_DURATION_MS / 2);
+  });
+});
+
 describe("namedTestFiles", () => {
   it("finds the test files the live criteria named, once each, in first-mention order", () => {
     expect(namedTestFiles([
