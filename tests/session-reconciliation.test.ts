@@ -725,7 +725,34 @@ it("asserts the contract", () => {
       expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
     });
 
-    it("accepts the drafted completion when only the scoped file and governed records change", () => {
+    it("judges the base's criteria: a candidate that drops its own scope criterion from its Plan copy is still refused", () => {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      const planPath = path.join(worktreePath, "docs", "plans", "copy-proof.md");
+      const plan = readFileSync(planPath, "utf8");
+      expect(plan).toContain(criterion);
+      writeFileSync(planPath, plan.replace(criterion, "contract.md exists."));
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      mkdirSync(path.join(worktreePath, "docs", "decisions"), { recursive: true });
+      writeFileSync(path.join(worktreePath, "docs", "decisions", "9999-self-approved.md"), "smuggled\n");
+      draftCompleteInWorktree(worktreePath, "contract.md exists.");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-scope-plan-edited", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toContain("docs/plans/copy-proof.md");
+      expect(result.receipt.reason).toContain("docs/decisions/9999-self-approved.md");
+    });
+
+    it("accepts the drafted completion when only the scoped file and the Session's own completion draft change", () => {
       const { fixture, sessionId } = scopedCandidate({});
 
       const result = withDatabase(fixture.workspace, (db) =>

@@ -11,7 +11,7 @@ import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity,
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
 import { renderRepairBrief, type ReviewRepairRow } from "./reviewRepair.js";
-import { scopeAllowances } from "./scopeCriteria.js";
+import { scopeIntersection } from "./scopeCriteria.js";
 
 /**
  * The actionable brief handed to a managed-production Session at launch.
@@ -391,14 +391,13 @@ export function renderCallingInHelp(input: {
  * the brief says so before any work, and what to do instead of widening it.
  */
 function renderScopeConstraint(criteria: string[]): string[] {
-  const allowances = scopeAllowances(criteria);
-  if (allowances.length === 0) return [];
-  const allowed = [...new Set(allowances.flatMap((allowance) => allowance.allowed))];
+  const allowed = scopeIntersection(criteria);
+  if (allowed === null) return [];
   return [
     "",
-    `Scope — a hard constraint the host checks against your diff before accepting a completion (governed records excluded): the change may touch only ${allowed.join(", ")}.`,
+    `Scope — a hard constraint the host checks against your diff before accepting a completion (only your completion draft in .arcadia/asks/ is exempt): the change may touch only ${allowed.length ? allowed.join(", ") : "nothing the criteria allow together"}.`,
     "If a test and the product code disagree, decide against the criteria which one is wrong; never change a file outside that scope to make a test pass.",
-    "If the criteria cannot be met within it, draft no completion: submit an Agent Ask with `intent: proposal` and `requested_authority: propose` that names the conflict, then exit."
+    "If the criteria cannot be met within it, draft no completion: submit an Agent Ask with `intent: proposal` and `requested_authority: propose` that names the conflict (if no workspace is reachable, name it in your final message instead), then exit."
   ];
 }
 

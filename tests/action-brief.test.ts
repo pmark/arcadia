@@ -174,7 +174,7 @@ describe("renderActionBrief", () => {
       worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode" as const, baseRevision: head(repo)
     };
     const brief = renderActionBrief(input);
-    expect(brief).toContain("Scope — a hard constraint the host checks against your diff before accepting a completion (governed records excluded): the change may touch only docs/contract.md.");
+    expect(brief).toContain("Scope — a hard constraint the host checks against your diff before accepting a completion (only your completion draft in .arcadia/asks/ is exempt): the change may touch only docs/contract.md.");
     expect(brief).toContain("never change a file outside that scope to make a test pass");
     expect(brief).toContain("draft no completion: submit an Agent Ask with `intent: proposal`");
     expect(brief.indexOf("Scope — ")).toBeGreaterThan(brief.indexOf("  2. The change touches only docs/contract.md; lint passes."));

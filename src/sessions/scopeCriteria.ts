@@ -89,6 +89,13 @@ export function scopeAllowances(criteria: readonly string[]): ScopeAllowance[] {
   return allowances;
 }
 
+/** The paths every readable scope criterion allows at once (each is enforced on its own), or null when none is readable. */
+export function scopeIntersection(criteria: readonly string[]): string[] | null {
+  const allowances = scopeAllowances(criteria);
+  if (allowances.length === 0) return null;
+  return allowances.slice(1).reduce((kept, allowance) => kept.filter((entry) => within(entry, allowance.allowed)), allowances[0].allowed);
+}
+
 const within = (file: string, allowed: readonly string[]) =>
   allowed.some((entry) => (entry.endsWith("/") ? file.startsWith(entry) : file === entry));
 
@@ -98,6 +105,13 @@ export function scopeViolations(criteria: readonly string[], changed: readonly s
     .map((allowance) => ({ ...allowance, outside: changed.filter((file) => !within(file, allowance.allowed)) }))
     .filter((violation) => violation.outside.length > 0);
 }
+
+/**
+ * Before settlement the candidate carries no settlement writes: its only
+ * governed file is the Session's own completion draft. Every other path --
+ * a Plan, a Decision, PROJECT.md -- is the Session's own change and judged.
+ */
+const isPreSettlementDraftPath = (file: string) => file.startsWith(".arcadia/asks/");
 
 /** The records a governed settlement writes (reconciliation.ts `isSettlementRecordPath`), never the Session's own change. */
 export function isGovernedRecordPath(file: string): boolean {
@@ -113,22 +127,24 @@ const MAX_PATH_CHARS = 200;
 
 /** A changed path is whatever name the candidate chose: only plain path characters reach a receipt or a resumed brief. */
 function shown(file: string): string {
-  const plain = file.replace(/[^A-Za-z0-9_./ -]/g, "?");
+  const plain = file.replace(/[^A-Za-z0-9_./-]/g, "?");
   return plain.length > MAX_PATH_CHARS ? `${plain.slice(0, MAX_PATH_CHARS - 1)}…` : plain;
 }
 
 /**
  * The candidate's own change (`base...revision`, the same diff the review
- * repair change gate reads, governed records left out) judged against the
- * Action's scope criteria: null when every readable one holds, otherwise the
- * refusal reason. A diff that cannot be read is a refusal, never a pass.
+ * repair change gate reads, the Session's completion draft left out) judged
+ * against the Action's scope criteria -- the criteria as the base declares
+ * them, never the candidate's own copy, which the candidate could edit. Null
+ * when every readable one holds, otherwise the refusal reason. A diff that
+ * cannot be read is a refusal, never a pass.
  */
 export function candidateScopeRefusal(repoRoot: string, base: string, revision: string, criteria: readonly string[]): string | null {
   if (scopeAllowances(criteria).length === 0) return null;
   let changed: string[];
   try {
-    changed = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", `${base}...${revision}`])
-      .split("\n").map((line) => line.trim()).filter((line) => line && !isGovernedRecordPath(line));
+    changed = git(repoRoot, ["-c", "core.quotepath=false", "diff", "-z", "--no-renames", "--name-only", `${base}...${revision}`])
+      .split("\0").filter((file) => file && !isPreSettlementDraftPath(file));
   } catch {
     return `Scope check refused the completion: the candidate's diff ${base.slice(0, 12)}...${revision.slice(0, 12)} could not be read.`;
   }

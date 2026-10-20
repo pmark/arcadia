@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scopeAllowances, scopeViolations } from "../src/sessions/scopeCriteria.js";
+import { scopeAllowances, scopeIntersection, scopeViolations } from "../src/sessions/scopeCriteria.js";
 
 // Issue #1608: the criterion shapes the live Plans use, read exactly or not at all.
 describe("scope criteria", () => {
@@ -37,5 +37,11 @@ describe("scope criteria", () => {
     expect(scopeViolations(criteria, ["tests/tick-independent-review.test.ts", "src/production/tick.ts"]).map((violation) => violation.outside))
       .toEqual([["src/production/tick.ts"]]);
     expect(scopeViolations(["It touches only src/c/."], ["src/c/d.ts", "src/cd.ts"])[0].outside).toEqual(["src/cd.ts"]);
+  });
+
+  it("tells the brief only what every scope criterion allows at once", () => {
+    expect(scopeIntersection(["It touches only src/a.ts and src/b.ts.", "It touches only src/."])).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(scopeIntersection(["It touches only src/a.ts.", "It touches only src/b.ts."])).toEqual([]);
+    expect(scopeIntersection(["No scope here."])).toBeNull();
   });
 });

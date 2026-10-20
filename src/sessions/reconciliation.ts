@@ -20,6 +20,7 @@ import { getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
 import { candidateScopeRefusal, isGovernedRecordPath } from "./scopeCriteria.js";
+import { parseDoc } from "../docs/parse.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
 function hasRoleAttemptTable(db: Database.Database): boolean {
@@ -422,6 +423,18 @@ export function findAcceptedTerminalCompletion(
   return { exitId: exit.id, candidateHead, settlementId: settlement.id };
 }
 
+/** The Session's Action's acceptance criteria as its base revision declares them, or null when they cannot be read there. */
+function actionCriteriaAtBase(session: AgentSession, planPath: string): string[] | null {
+  try {
+    const content = git(session.worktree_path, ["show", `${session.base_revision}:${planPath}`]);
+    const doc = parseDoc(planPath, path.join(session.worktree_path, planPath), content).doc;
+    if (doc?.type !== "plan") return null;
+    return doc.actions.find((candidate) => candidate.id === session.action_id)?.acceptanceCriteria ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The managed records a `complete` settlement writes and commits. */
 const isSettlementRecordPath = isGovernedRecordPath;
 
@@ -454,7 +467,12 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   // however many drafts are tried, since every draft judges the same tree.
   // Issue #1608: a scope criterion ("touches only <paths>") is judged first
   // against the candidate's own diff -- deterministic, and cheaper than the tests.
-  const scopeRefusal = candidateScopeRefusal(worktree, session.base_revision, evidence.candidateRevision ?? "HEAD", action.acceptanceCriteria);
+  // The criteria are the base's: a candidate that edits its own Plan copy
+  // cannot drop or widen the scope it is judged against.
+  const baseCriteria = actionCriteriaAtBase(session, plan!.relativePath);
+  const scopeRefusal = baseCriteria === null
+    ? `Scope check refused the completion: the Action's acceptance criteria at the base ${session.base_revision.slice(0, 12)} could not be read.`
+    : candidateScopeRefusal(worktree, session.base_revision, evidence.candidateRevision ?? "HEAD", baseCriteria);
   let validation: CompletionValidationResult | null = null;
   const validateBeforeSettle = () => {
     if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
