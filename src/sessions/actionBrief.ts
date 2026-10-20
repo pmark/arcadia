@@ -149,17 +149,51 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     : [
         `  2. git add, git commit, git push and arcadia-preserve-broker-${input.agent} are host-owned in this Session and`,
         "     will be refused. Do not run them or try to change permissions; the host commits and preserves your",
-        "     candidate when you exit.",
-        "  3. Record completion by running exactly this one command, with each `note` placeholder replaced by real",
-        "     evidence (keep every `criterion` and `status` as given; change nothing else):"
+        "     candidate when you exit."
       ];
+  if (input.agent === "codex") {
+    return [
+      ...preservation,
+      "",
+      `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} ${shellSingleQuote(JSON.stringify(ask))}`,
+      "",
+      "     It validates the Ask and writes .arcadia/asks/agent-ask-<request_id>.yaml. Leave that file in place and",
+      "     do not write Ask files by hand or commit it: the host settles it after preserving the candidate.",
+      "  4. Exit. The host reconciles the Session only once its process has ended."
+    ];
+  }
+  // Issue #1619 (live 2026-10-20): headless Claude may run only the Project's
+  // declared validation and this draft command, so a Session told to run the
+  // tests, lint and tsc its criteria name either self-certified them or
+  // stalled; and a long single-quoted command retyped by a light model lost
+  // the criterion's own apostrophes. The checks are named for what verifies
+  // them, and the draft is written with the Write tool and validated in place.
+  const draftPath = `${input.worktreePath.replace(/\/+$/, "")}/.arcadia/asks/agent-ask-${ask.request_id}.yaml`;
   return [
     ...preservation,
+    "     Checks: the only Bash you may run besides the command in step 3 is the Project's declared validation,",
+    "     exactly as declared. Test, lint, type-check, build and dependency-setup commands are refused here: do not",
+    "     try them, and never write helper scripts or extra files to get around that (a file outside the Action's",
+    "     scope refuses the completion). Before accepting it, the host runs every test file your criteria name; the",
+    "     pull request's required CI runs lint, tsc and build before anything integrates. In the note of a",
+    "     criterion that names such a check, say what you inspected and add: \"not run in this Session; verified by",
+    "     host pre-acceptance validation (named tests) and required CI (lint, tsc, build)\".",
+    "  3. Record completion without any shell quoting, in two steps:",
+    "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",
-    `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} ${shellSingleQuote(JSON.stringify(ask))}`,
+    `     ${draftPath}`,
     "",
-    "     It validates the Ask and writes .arcadia/asks/agent-ask-<request_id>.yaml. Leave that file in place and",
-    "     do not write Ask files by hand or commit it: the host settles it after preserving the candidate.",
+    "        Its entire content is this one JSON line, with each `note` placeholder replaced by real evidence",
+    "        (keep every `criterion` and `status` exactly as given, quotes included; change nothing else):",
+    "",
+    `     ${JSON.stringify(ask)}`,
+    "",
+    "     b. Validate it in place with exactly this command; on an error, fix the file with your Edit tool and rerun:",
+    "",
+    `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} --file ${shellSingleQuote(draftPath)}`,
+    "",
+    "     Leave that one file in place and do not commit it: the host settles it after preserving the candidate.",
+    "     If another complete draft for this Action is in .arcadia/asks/ (not the archive), delete it.",
     "  4. Exit. The host reconciles the Session only once its process has ended."
   ];
 }
