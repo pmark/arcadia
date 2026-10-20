@@ -231,8 +231,9 @@ export const STALL_MINUTES: Partial<Record<Journey["activity"]["phase"], number>
 
 /** "47 min" / "3 h 5 min", and whether that is past the phase's stall bound. */
 export function elapsed(phase: Journey["activity"]["phase"], since: string | null, now: number | null): { text: string; long: boolean } | null {
-  if (!since || now === null) return null;
-  const minutes = Math.max(0, Math.floor((now - Date.parse(since)) / 60_000));
+  const start = since ? Date.parse(since) : Number.NaN;
+  if (!Number.isFinite(start) || now === null) return null;
+  const minutes = Math.max(0, Math.floor((now - start) / 60_000));
   const text = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   const bound = STALL_MINUTES[phase];
   return { text, long: bound !== undefined && minutes >= bound };
