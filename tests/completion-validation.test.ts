@@ -25,8 +25,15 @@ describe("namedTestFiles", () => {
       "../tests/escape.test.ts and tests/../escape.test.ts and /abs/tests/x.test.ts are not named.",
       "foo/tests/x.test.ts belongs to no recognized root; tests/x.test.tsfoo is not a test file.",
       "No test files are mentioned here.",
-      "tests/old.test.ts is removed; the deletion of tests/older.test.ts is recorded."
+      "tests/old.test.ts is removed; the deletion of tests/older.test.ts is recorded; it removes `tests/oldest.test.ts`."
     ])).toEqual([]);
+  });
+
+  it("still requires a named file when a removal verb governs something else", () => {
+    expect(namedTestFiles([
+      "tests/review-repair-loop.test.ts asserts a patch that deletes test files is refused.",
+      "Removing the stale fixture leaves tests/fixture.test.ts passing."
+    ])).toEqual(["tests/review-repair-loop.test.ts", "tests/fixture.test.ts"]);
   });
 });
 

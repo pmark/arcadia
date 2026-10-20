@@ -79,17 +79,23 @@ export type CompletionValidationResult =
 // workspace package's `tests/`, ending `.test.<ts|tsx|mts|js|mjs|cjs>`, made
 // only of plain path characters. Anything looser is not treated as a named file.
 const NAMED_TEST_FILE = /(?<![\w./-])((?:tests?|apps\/[A-Za-z0-9._-]+\/tests?|packages\/[A-Za-z0-9._-]+\/tests?)\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*\.test\.(?:ts|tsx|mts|js|mjs|cjs))(?![\w/-])/g;
-/** A criterion about removing a file names it without requiring it to pass. */
-const REMOVAL = /\b(?:remov(?:e|es|ed|ing|al)|delet(?:e|es|ed|ing|ion))\b/i;
+const REMOVAL_VERB = String.raw`(?:remov(?:e|es|ed|ing|al)|delet(?:e|es|ed|ing|ion))`;
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Whether the criterion removes this very file ("removes tests/x.test.ts", "tests/x.test.ts is deleted"), which names it without requiring it to pass. */
+function removes(criterion: string, file: string): boolean {
+  const name = escapeRegExp(file);
+  return new RegExp(String.raw`\b${REMOVAL_VERB}\s+(?:of\s+)?(?:the\s+)?(?:file\s+)?['"\x60]?${name}`, "i").test(criterion)
+    || new RegExp(String.raw`${name}['"\x60]?\s+(?:is|are|was|were|gets|will\s+be)\s+${REMOVAL_VERB}\b`, "i").test(criterion);
+}
 
 /** The test files an Action's acceptance criteria name explicitly (and do not remove), in first-mention order. */
 export function namedTestFiles(criteria: readonly string[]): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
-    if (REMOVAL.test(criterion)) continue;
     for (const match of criterion.matchAll(NAMED_TEST_FILE)) {
       const file = match[1];
       if (file.split("/").some((segment) => segment === "." || segment === "..")) continue;
+      if (removes(criterion, file)) continue;
       if (!found.includes(file)) found.push(file);
     }
   }
@@ -235,7 +241,9 @@ child.on("exit", (code) => { clearTimeout(timer); kill(); process.exit(code === 
 `;
 
 /** Run the Action's declared validation against the candidate's exact tree. Synchronous, bounded by `timeoutMs` in total. */
-export function validateCompletionCandidate(candidate: CompletionValidationCandidate, options: CompletionValidationOptions = {}): CompletionValidationResult {
+export function validateCompletionCandidate(candidate: CompletionValidationCandidate, given: CompletionValidationOptions = {}): CompletionValidationResult {
+  // The unconfined seam exists for test runs only; anywhere else it is ignored.
+  const options = given.unconfinedForTests && !process.env.VITEST ? { ...given, unconfinedForTests: false } : given;
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
   if (namedTests.length === 0) return { status: "not_required" };
   const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
@@ -293,7 +301,9 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     const denied = [...forbidden, realpathSync(options.dependencyRoot ?? candidate.repository), home]
       .map((dir) => `(require-not (subpath ${quote(dir)}))`).join(" ");
     const nodePrefix = path.dirname(path.dirname(realpathSync(process.execPath)));
-    if (inside(home, nodePrefix) && nodePrefix !== home) readable.push(nodePrefix);
+    // Only a Node-specific prefix (a version manager's `.../node/<version>` or
+    // a `node`/`nodejs` directory), never a general one such as `~/.local`.
+    if (inside(home, nodePrefix) && /^(?:node|nodejs|v?\d+(?:\.\d+){0,2})$/.test(path.basename(nodePrefix))) readable.push(nodePrefix);
     if (readable.some((dir) => forbidden.slice(0, 1).some((workspace) => inside(workspace, dir)))) return deny("a dependency tree resolves inside the workspace.");
     // `signal (target same-sandbox)`: a runner terminates its own workers;
     // nothing outside this sandbox (the watchdog included) is reachable.
