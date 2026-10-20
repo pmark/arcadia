@@ -2944,11 +2944,16 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
 export function resetProductionRepairBudget(db: Database.Database, actionKey: string): { reviewStepsCleared: number } {
   ensureProductionTickTables(db);
   resetRepairAttempts(db, actionKey);
-  // The unattended review's per-head budget and checks deadline start afresh too.
-  const reviewStepsCleared = resetReviewSteps(db, actionKey);
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
     | { kind: string }
     | undefined;
+  // review_attempts_exhausted means the verdict attempts are exhausted, not the review budget:
+  // resetProductionRepairBudget only clears the review budget, not verdict attempts.
+  let reviewStepsCleared = 0;
+  if (existing?.kind !== "review_attempts_exhausted") {
+    // The unattended review's per-head budget and checks deadline start afresh too.
+    reviewStepsCleared = resetReviewSteps(db, actionKey);
+  }
   if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
     clearOperatorEscalation(db, actionKey);
   }
