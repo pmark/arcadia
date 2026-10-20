@@ -1,86 +1,96 @@
-import { describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureReviewRepairTable, getReviewRepair, reviewRepairRequestId } from "../src/sessions/reviewRepair.js";
-import { REPAIR_CANDIDATE_GATE_ROLE } from "../src/production/reviewRepair.js";
-import { tmpdir } from "os";
-import { mkdtempSync, rmSync } from "fs";
-import { join } from "path";
+import { afterEach, describe, expect, it } from "vitest";
+import { gateRepairCandidate, REPAIR_CANDIDATE_GATE_ROLE } from "../src/production/reviewRepair.js";
+import type { AgentSession } from "../src/sessions/index.js";
+import { ensureReviewRepairTable, reviewRepairRequestId, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
+import { git } from "./helpers/rehearsalHarness.js";
 
-describe("review-repair-gate-upsert-role", () => {
-  it("guards the ON CONFLICT DO UPDATE against changing a row with a non-REPAIR_CANDIDATE_GATE_ROLE role", () => {
-    // Setup: create a temp database
-    const tmpDir = mkdtempSync(join(tmpdir(), "arcadia-test-"));
-    const dbPath = join(tmpDir, "test.db");
-    const db = new Database(dbPath);
+/**
+ * The repair-candidate gate upserts its row by request id. A row another path
+ * wrote under that id (a different role) must never be rewritten by the gate;
+ * an eligible gate-role row still is, including one whose reason is NULL.
+ */
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
-    try {
-      // Ensure the table exists
-      ensureReviewRepairTable(db);
+const SESSION_ID = "repair-session-1";
 
-      // Seed a production_review_repairs row with the gate path's request id
-      // and a role OTHER than REPAIR_CANDIDATE_GATE_ROLE
-      const sessionId = "test-session-123";
-      const head = "abc123def456";
-      const requestId = reviewRepairRequestId(sessionId, head);
-      const otherRole = "code-review"; // Not REPAIR_CANDIDATE_GATE_ROLE
-      const originalSummary = "Original summary";
-      const originalReason = "Original reason";
+/** A real repository whose candidate changes a gated path (src/sessions/), so the gate path fires. */
+function gatedFixture(): { repoRoot: string; head: string; base: string; db: Database.Database; session: AgentSession } {
+  const repoRoot = mkdtempSync(path.join(tmpdir(), "gate-upsert-role-"));
+  roots.push(repoRoot);
+  const run = (args: string[]) => git(repoRoot, ["-c", "user.name=Test", "-c", "user.email=test@example.test", "-c", "commit.gpgsign=false", ...args]);
+  run(["init", "-q", "-b", "main"]);
+  writeFileSync(path.join(repoRoot, "README.md"), "base\n");
+  run(["add", "-A"]);
+  run(["commit", "-q", "-m", "base"]);
+  const base = run(["rev-parse", "HEAD"]).trim();
+  mkdirSync(path.join(repoRoot, "src/sessions"), { recursive: true });
+  writeFileSync(path.join(repoRoot, "src/sessions/launch.ts"), "export const x = 1;\n");
+  run(["add", "-A"]);
+  run(["commit", "-q", "-m", "repair"]);
+  // The gate judges the repair's change up to its settlement commit's parent.
+  writeFileSync(path.join(repoRoot, "README.md"), "settled\n");
+  run(["add", "-A"]);
+  run(["commit", "-q", "-m", "settlement"]);
+  const head = run(["rev-parse", "HEAD"]).trim();
+  const db = new Database(":memory:");
+  ensureReviewRepairTable(db);
+  const session = { id: SESSION_ID, branch: "repair-branch", project_slug: "proj", action_id: "act", base_revision: base } as unknown as AgentSession;
+  return { repoRoot, head, base, db, session };
+}
 
-      const now = new Date().toISOString();
-      db.prepare(`
-        INSERT INTO production_review_repairs (
-          request_id, action_key, policy_epoch, round, failed_session_id, failed_branch,
-          failed_head, start_revision, pull_request_url, role, verdict, summary,
-          report_path, findings_json, failed_checks_json, repair_session_id, outcome,
-          reason, last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?)
-      `).run(
-        requestId, "test/action", 1, 1, sessionId, "test-branch",
-        head, "base123", null, otherRole, "fail", originalSummary,
-        null, "[]", "[]", "gated",
-        originalReason, now, now, null
-      );
+function insertRow(db: Database.Database, values: { requestId: string; role: string; summary: string; reason: string | null; repairSessionId: string | null; round?: number; base: string; head: string }): void {
+  db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+      start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, reason,
+      created_at, updated_at)
+    VALUES (?, 'proj/act', 1, ?, ?, 'repair-branch', ?, ?, NULL, ?, 'gated', ?, NULL, '[]', '[]', ?, 'gated', ?, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')`)
+    .run(values.requestId, values.round ?? 1, SESSION_ID, values.head, values.base, values.role, values.summary, values.repairSessionId, values.reason);
+}
 
-      // Verify the row was created with the other role
-      let row = getReviewRepair(db, requestId)!;
-      expect(row.role).toBe(otherRole);
-      expect(row.summary).toBe(originalSummary);
-      expect(row.reason).toBe(originalReason);
+function runGate(f: ReturnType<typeof gatedFixture>): string | null {
+  return gateRepairCandidate(f.db, {
+    repoRoot: f.repoRoot, session: f.session, head: f.head, now: new Date("2026-10-20T12:00:00.000Z"), escalate: () => {}
+  });
+}
 
-      // Simulate the ON CONFLICT DO UPDATE that happens in gateRepairCandidate
-      // This mimics the SQL statement at lines 1040-1049 of src/production/reviewRepair.ts
-      const newSummary = "New gate summary";
-      const newReason = "New gate reason";
-      const newPolicyEpoch = 2;
+const rowOf = (db: Database.Database, requestId: string) =>
+  db.prepare("SELECT * FROM production_review_repairs WHERE request_id = ?").get(requestId) as ReviewRepairRow;
 
-      db.prepare(`
-        INSERT INTO production_review_repairs (
-          request_id, action_key, policy_epoch, round, failed_session_id, failed_branch,
-          failed_head, start_revision, pull_request_url, role, verdict, summary,
-          report_path, findings_json, failed_checks_json, repair_session_id, outcome,
-          reason, last_error, drafted_at, commented_at, created_at, updated_at, verdict_request_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gated', ?, ?, ?, ?, NULL, 'gated', ?, NULL, NULL, NULL, ?, ?, ?)
-        ON CONFLICT(request_id) DO UPDATE SET summary = excluded.summary, reason = excluded.reason, updated_at = excluded.updated_at
-          WHERE production_review_repairs.repair_session_id IS NULL AND production_review_repairs.outcome = 'gated'
-            AND production_review_repairs.reason != excluded.reason
-            AND production_review_repairs.role = ?
-      `).run(
-        requestId, "test/action", newPolicyEpoch, 1, sessionId, "test-branch",
-        head, "base123", null, REPAIR_CANDIDATE_GATE_ROLE, newSummary,
-        null, "[]", "[]",
-        newReason, now, now, null,
-        REPAIR_CANDIDATE_GATE_ROLE
-      );
+describe("gateRepairCandidate upsert role guard", () => {
+  it("leaves a conflicting row written under another role unchanged", () => {
+    const f = gatedFixture();
+    // The repair's own row, found through repair_session_id.
+    insertRow(f.db, { requestId: "worker-tick-repair-original", role: "code-review", summary: "orig", reason: "orig", repairSessionId: SESSION_ID, base: f.base, head: f.head });
+    const requestId = reviewRepairRequestId(SESSION_ID, f.head);
+    insertRow(f.db, { requestId, role: "code-review", summary: "Original summary", reason: "Original reason", repairSessionId: null, base: f.base, head: f.head });
 
-      // After the ON CONFLICT DO UPDATE, the row should still have the original role, summary, and reason
-      // because the WHERE clause should prevent the update (role is otherRole, not REPAIR_CANDIDATE_GATE_ROLE)
-      row = getReviewRepair(db, requestId)!;
-      expect(row.role).toBe(otherRole, "Role should not be changed to REPAIR_CANDIDATE_GATE_ROLE");
-      expect(row.summary).toBe(originalSummary, "Summary should remain unchanged because role guard prevented update");
-      expect(row.reason).toBe(originalReason, "Reason should remain unchanged because role guard prevented update");
-    } finally {
-      db.close();
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const reason = runGate(f);
+
+    expect(reason).toContain("Decision 0098's gate list");
+    const row = rowOf(f.db, requestId);
+    expect(row.role).toBe("code-review");
+    expect(row.summary).toBe("Original summary");
+    expect(row.reason).toBe("Original reason");
+  });
+
+  it("still updates an eligible gate-role row, including one with a NULL reason", () => {
+    const f = gatedFixture();
+    insertRow(f.db, { requestId: "worker-tick-repair-original", role: "code-review", summary: "orig", reason: "orig", repairSessionId: SESSION_ID, base: f.base, head: f.head });
+    const requestId = reviewRepairRequestId(SESSION_ID, f.head);
+    insertRow(f.db, { requestId, role: REPAIR_CANDIDATE_GATE_ROLE, summary: "stale", reason: null, repairSessionId: null, base: f.base, head: f.head });
+
+    const reason = runGate(f);
+
+    const row = rowOf(f.db, requestId);
+    expect(row.role).toBe(REPAIR_CANDIDATE_GATE_ROLE);
+    expect(row.reason).toBe(reason);
+    expect(row.summary).not.toBe("stale");
+    expect(row.updated_at).toBe("2026-10-20T12:00:00.000Z");
   });
 });
