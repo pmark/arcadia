@@ -456,6 +456,40 @@ export function findAcceptedTerminalCompletion(
   return { exitId: exit.id, candidateHead, settlementId: settlement.id };
 }
 
+/**
+ * Issue #1615: judge a completion the Session settled on its own candidate by the
+ * same checks `settleCandidateDraftedCompletion` runs before a host settlement:
+ * the base's scope criteria against the candidate's diff (the settlement's own
+ * verified records excused) and the declared validation commands. Null when both
+ * hold, otherwise the refusal reason. Unreadable criteria refuse, never pass.
+ */
+function selfSettledCompletionRefusal(
+  db: Database.Database,
+  session: AgentSession,
+  settled: { documentsCommit: string; evidenceRevision: string },
+  evidence: ExitEvidenceProbe,
+  workspace: string | undefined,
+  validationOptions?: CompletionValidationOptions
+): string | null {
+  const worktree = session.worktree_path;
+  const head = evidence.candidateRevision ?? "HEAD";
+  const plan = discoverDocs(worktree).docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
+  );
+  const baseCriteria = plan ? actionCriteriaAtBase(session, plan.relativePath) : null;
+  if (baseCriteria === null) {
+    return `Scope check refused the completion: the Action's acceptance criteria at the base ${session.base_revision.slice(0, 12)} could not be read.`;
+  }
+  const scopeRefusal = candidateScopeRefusal(worktree, session.base_revision, head, baseCriteria, settlementCommitRecordFiles(worktree, settled, head));
+  if (scopeRefusal) return scopeRefusal;
+  const validation = validateCompletionCandidate({
+    repository: session.repository_path, worktree, base: session.base_revision, workspace,
+    commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),
+    acceptanceCriteria: baseCriteria
+  }, validationOptions);
+  return validation.status === "refused" ? validation.reason : null;
+}
+
 /** The Session's Action's acceptance criteria as its base revision declares them, or null when they cannot be read there. */
 function actionCriteriaAtBase(session: AgentSession, planPath: string): string[] | null {
   try {
@@ -757,8 +791,12 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   let completionHold: CompletionHold | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
+    // Issue #1615: a completion the Session settled itself faces the same scope and named-test checks a host-settled draft does.
+    const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, input.completionValidation) : null;
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, input.completionValidation);
-    const attempt = settled
+    const attempt = settledRefusal
+      ? { completed: false, reason: settledRefusal }
+      : settled
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
       : drafted?.kind === "settled"
         ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted.settlementId}).` }

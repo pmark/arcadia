@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
-import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
+import { commitTreeAt, PRESERVATION_TRAILER, snapshotCandidate } from "./candidateSnapshot.js";
 import { assertNoStrayAskFiles } from "./strayAskFiles.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
@@ -208,7 +208,6 @@ export type PullRequestBaseSelection =
 /** Marks the refusal so callers and the escalation can recognize it. */
 export const STACKED_BASE_UNAVAILABLE = "stacked_pull_request_base_unavailable";
 
-const PRESERVATION_TRAILER = "Arcadia-Preservation-Request";
 const FINGERPRINT_TRAILER = "Arcadia-Candidate-Fingerprint";
 
 export function ensureCandidatePreservationTable(db: Database.Database): void {

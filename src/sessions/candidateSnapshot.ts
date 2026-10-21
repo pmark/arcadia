@@ -98,6 +98,9 @@ function privilegedRead<T>(script: string, root: string, input: unknown, label: 
   }
 }
 
+/** The commit trailer naming the request that produced a host preservation commit. */
+export const PRESERVATION_TRAILER = "Arcadia-Preservation-Request";
+
 /** Capture raw bytes into Git's existing immutable object store, without running
  * candidate hooks, clean filters, export attributes or sharing a worktree index.
  * The candidate's own index is only read, never written.
