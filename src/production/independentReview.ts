@@ -4,7 +4,7 @@ import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
-import { independentVerdictReadiness, MAX_VARIANCE_REVIEW_ATTEMPTS, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { independentVerdictReadiness, MAX_VARIANCE_REVIEW_ATTEMPTS, MAX_VERDICT_ATTEMPTS, verdictAttemptLimit } from "../sessions/roleLineage.js";
 import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
@@ -799,10 +799,11 @@ export function advanceIndependentReview(db: Database.Database, input: {
           // The lineage budget is spent for this requirement input revision:
           // no retry can succeed, so it is named for the operator, never
           // counted as a transient step failure (whose reset cannot help).
+          const limit = verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
           return {
             kind: "blocked",
             code: "review_attempts_exhausted",
-            reason: `The independent ${role} of ${actionKey} at ${head.slice(0, 12)} cannot start: this Action's ${role} attempts are spent (${MAX_VERDICT_ATTEMPTS} of ${MAX_VERDICT_ATTEMPTS} per requirement input revision, every head and rerun counted); no reviewer runs unattended.`,
+            reason: `The independent ${role} of ${actionKey} at ${head.slice(0, 12)} cannot start: this Action's ${role} verdict attempts are spent (${limit} of ${limit}: ${MAX_VERDICT_ATTEMPTS} verdicts, not counting reviewer-unavailable attempts, per requirement input revision, every head and rerun counted); no reviewer runs unattended.`,
             remedy: `Read the earlier ${role} report Artifacts for ${url}; revise the Action through a governed Plan amendment (a new requirement input revision restarts the budget), or decide the candidate yourself. \`arcadia production reset-repair-budget\` does not restore lineage attempts.`
           };
         }

@@ -262,7 +262,7 @@ describe("tick-driven independent review", () => {
     expect(verdicts(rehearsal, "code-review").filter((attempt) => attempt.target_head === candidate)).toEqual([]);
     expect(escalation(rehearsal)).toMatchObject({
       kind: "review_attempts_exhausted",
-      message: expect.stringContaining(`${MAX_VERDICT_ATTEMPTS} of ${MAX_VERDICT_ATTEMPTS}`),
+      message: expect.stringContaining(`${MAX_VERDICT_ATTEMPTS} of ${MAX_VERDICT_ATTEMPTS}: ${MAX_VERDICT_ATTEMPTS} verdicts, not counting reviewer-unavailable attempts`),
       remedy: expect.stringContaining("Plan amendment")
     });
     expect(rehearsal.log.some((line) => line.includes("Review step code-review") && line.includes("failed ("))).toBe(false);
