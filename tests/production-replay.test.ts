@@ -302,13 +302,34 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     const run = (args: string[], runEnv = env) => spawnSync("gh", args, { cwd: root, env: runEnv, encoding: "utf8" });
     const edit = ["project", "item-edit", "--project-id", "P", "--id", "I", "--field-id", "F", "--single-select-option-id", "O"];
     expect(run(edit).status).toBe(0);
-    expect(run(["project", "item-add", "3", "--url", url]).status).toBe(1);
+    expect(run(["project", "item-delete", "3", "--id", "I"]).status).toBe(1);
     expect(run(edit, { ...env, REPLAY_SIMULATE_GH_WRITES: "" }).status).toBe(1);
     expect(effects()).toEqual([
       { kind: "simulated:github-write", detail: `gh ${edit.join(" ")}` },
-      { kind: "github:write", detail: expect.stringContaining("project item-add") },
+      { kind: "github:write", detail: expect.stringContaining("project item-delete") },
       { kind: "github:write", detail: expect.stringContaining("project item-edit") }
     ]);
+  });
+
+  it("simulates the Action mirror Issue writes (issue create returns a fake URL, project item-add a fake id) and writes nothing", () => {
+    writeFileSync(effectsLog, "");
+    const run = (args: string[], runEnv = env) => spawnSync("gh", args, { cwd: root, env: runEnv, encoding: "utf8" });
+    const create = ["issue", "create", "--repo", "acme/widgets", "--title", "T", "--body", "B"];
+    const first = run(create);
+    const second = run(create);
+    expect(first.status).toBe(0);
+    const urls = [first, second].map((r) => r.stdout.trim());
+    expect(urls[0]).toMatch(/^https:\/\/github\.com\/acme\/widgets\/issues\/\d+$/);
+    expect(urls[1]).not.toBe(urls[0]);
+    const added = run(["project", "item-add", "3", "--owner", "acme", "--url", urls[0], "--format", "json"]);
+    expect(added.status).toBe(0);
+    expect(JSON.parse(added.stdout).id).toEqual(expect.stringContaining("SIMULATED"));
+    for (const sub of ["edit", "comment", "close"]) expect(run(["issue", sub, "7", "--repo", "acme/widgets"]).status).toBe(0);
+    const move = ["api", "graphql", "-f", "query=mutation($project: ID!, $item: ID!) { updateProjectV2ItemPosition(input: {projectId: $project, itemId: $item}) { items(first: 1) { totalCount } } }", "-F", "project=P", "-F", "item=I"];
+    expect(run(move).status).toBe(0);
+    expect(run(["api", "graphql", "-f", "query=mutation { deleteProjectV2(input: {projectId: \"P\"}) { clientMutationId } }"]).status).toBe(1);
+    expect(run(create, { ...env, REPLAY_SIMULATE_GH_WRITES: "" }).status).toBe(1);
+    expect(effects().map((effect) => effect.kind)).toEqual([...Array(7).fill("simulated:github-write"), "github:write", "github:write"]);
   });
 
   it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {
