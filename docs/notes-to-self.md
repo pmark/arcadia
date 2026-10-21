@@ -357,6 +357,8 @@ Live single-Action run on a fixture (operator Launch, 2026-10-09):
 
 ## Before announcing a production run as startable or hands-off
 
-keys: production, START, supervised run, hands-off, planning run, planStepsForWorkItem, unpublished settlement, main level, merge commit, 1277, 1284
+keys: production, START, press, pre-press, playbook, release manager, replay past launch, supervision, poll, supervised run, hands-off, planning run, planStepsForWorkItem, unpublished settlement, main level, merge commit, 1277, 1284
 
 Check each Action's route: `planStepsForWorkItem` sends text without "implement", "code" or "prototype" to a planning run (extra Decision, validation, acceptance; the validator flags "no approval" next to "implementation", #1277). Check the Plan file and pointer are on the remote main and that the checkout is level with it; a settlement can sit only in the local main, and a squash merge of it makes local main diverge, so merge it as a merge commit. Full report and plan: `docs/reports/first-supervised-production-run-learnings-2026-10-11.md`; sandbox write denial is covered by the SQLITE_WORKSPACE_WRITE_DENIED entries above.
+
+The full pre-press gate, supervision cadence and operator-communication rules are the Release Manager's [production run playbook](../.agents/skills/arcadia-release-manager/references/production-run-playbook.md); read it before any press and update it after every run.
