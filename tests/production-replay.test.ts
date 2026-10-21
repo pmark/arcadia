@@ -754,7 +754,15 @@ describe("production replay of the whole chain with a scripted executor", () => 
     expect(launched[0].executor).toContain("scripted executor finished");
     // A headless Session drafts at the base and leaves commits/settlement to the host.
     expect(launched[0].executor).toContain(", settlement none,");
-    expect(report.ticks.flatMap((tick) => tick.reconciled).map((entry) => entry.outcome)).toContain("accepted_completion");
+    const outcomes = report.ticks.flatMap((tick) => tick.reconciled).map((entry) => entry.outcome);
+    if (process.platform === "darwin") {
+      expect(outcomes).toContain("accepted_completion");
+    } else {
+      // Linux CI must refuse protected validation rather than accept the draft without it.
+      expect(outcomes).toEqual(["incomplete_resumable"]);
+      expect(printed.join("\n")).toContain("requires the macOS Seatbelt host");
+      expect(report.stop.reason).not.toBe("all_merged");
+    }
     expect(report.stop.reason).not.toBe("launched");
   });
 

@@ -11,11 +11,17 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
+  "review_rounds": 2,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
-  "frictions": [],
+  "frictions": [
+    {
+      "id": "ci-linux-protected-validator-refusal",
+      "cost_min": null,
+      "fix_ref": "tests/production-replay.test.ts"
+    }
+  ],
   "outcome": "complete",
-  "notes": "Replay now drafts uncommitted completion for host settlement. Failing-first regression; 31 replay tests, lint, tsc and build pass. Snapshot rehearsal and independent PR review recorded on the PR."
+  "notes": "Replay drafts for host settlement. macOS: 31 replay tests, lint, tsc and build pass. CI exposed Linux host refusal; regression now asserts refusal there. Review and snapshot results are on PR #1676."
 }
