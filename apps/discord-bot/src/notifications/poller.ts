@@ -76,7 +76,10 @@ export function evaluateNotifications(
   submissions: DiscordSubmissionState = emptyDiscordSubmissionState(now),
   dashboardUrl?: string
 ): NotificationEvaluation {
-  const reviewItems = snapshot.reviewItems ?? [];
+  // A Decision the production policy approves on its next tick is not an operator touch (Issue #1659); it is
+  // neither announced nor marked notified, so it is announced normally if the delegation ever stops covering it.
+  const listedReviewItems = snapshot.reviewItems ?? [];
+  const reviewItems = listedReviewItems.filter((item) => !item.delegatedApproval);
   const blockedWorkItems = snapshot.blockedWorkItems ?? [];
   const notableRunIds = snapshot.runs
     .filter((run) => run.status === "failed" || isRequiresReviewStatus(run.status))
@@ -150,7 +153,7 @@ export function evaluateNotifications(
   }
 
   if (
-    reviewItems.length === 0 &&
+    listedReviewItems.length === 0 &&
     previous.lastRequiresReviewCount === 0 &&
     snapshot.requiresReviewCount > 0
   ) {

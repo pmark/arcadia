@@ -1016,6 +1016,48 @@ function outOfScopePointerHold(
   }
 }
 
+/**
+ * The end of an Action-scoped run: every in-scope Action of this Project is
+ * done and the pointer has moved out of scope, so the worker will never
+ * launch again under this policy. One attention ping per policy revision (an
+ * event row is the dedup record) tells the operator to turn production Off.
+ */
+function announceScopeComplete(
+  db: Database.Database,
+  input: { repoRoot: string; projectSlug: string; planSlug: string | null; now: Date; log: (message: string) => void }
+): void {
+  try {
+    const read = readProductionPolicySafely(db);
+    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope || input.planSlug === null) return;
+    const scopeKeys = read.policy.scope.actions.filter((key) => key.startsWith(`${input.projectSlug}/`));
+    if (scopeKeys.length === 0) return;
+    const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === input.planSlug);
+    if (plan?.type !== "plan") return;
+    const done = new Set(plan.actions.filter((action) => action.status === "done").map((action) => `${input.projectSlug}/${action.id}`));
+    if (!scopeKeys.every((key) => done.has(key))) return;
+    const revision = read.policy.revision;
+    const already = db.prepare(
+      "SELECT 1 FROM events WHERE event_type = 'managed_production.scope_complete' AND json_extract(payload_json, '$.projectSlug') = ? AND json_extract(payload_json, '$.policyRevision') = ? LIMIT 1"
+    ).get(input.projectSlug, revision);
+    if (already) return;
+    const escalated = (db.prepare("SELECT action_key FROM production_operator_escalations").all() as Array<{ action_key: string }>)
+      .filter((row) => scopeKeys.includes(row.action_key)).length;
+    const message = boundedPingMessage(
+      `Production scope complete for ${input.projectSlug}: ${scopeKeys.length} merged, ${escalated} escalated. Nothing left in scope; turn production Off when ready.`
+    );
+    recordEvent(db, {
+      eventType: "managed_production.scope_complete",
+      projectId: null,
+      payload: { projectSlug: input.projectSlug, policyRevision: revision, merged: scopeKeys.length, escalated },
+      at: input.now.toISOString()
+    });
+    input.log(message);
+    queueOperatorPing(db, { message, kind: "attention", agent: "production-tick", now: input.now });
+  } catch (error) {
+    input.log(`Scope-complete check failed for ${input.projectSlug}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 /** Clear a previously recorded escalation once its Action launches or its refusal stops being non-self-resolving. */
 function clearOperatorEscalation(db: Database.Database, actionKey: string): void {
   db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(actionKey);
@@ -2250,6 +2292,20 @@ export function reviewRepairPingMessage(actionKey: string, kind: string, message
   return boundedPingMessage(`Production stopped the review repair loop for ${actionKey} (${kind}): ${message.split("\n")[0]}`);
 }
 
+/** The newest PR URL production recorded for an Action's candidate (repair row, then review step), or null. */
+function candidatePullRequestUrl(db: Database.Database, actionKey: string): string | null {
+  for (const sql of [
+    "SELECT pull_request_url AS url FROM production_review_repairs WHERE action_key = ? AND pull_request_url IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
+    "SELECT pull_request_url AS url FROM production_review_steps WHERE action_key = ? ORDER BY updated_at DESC LIMIT 1"
+  ]) {
+    try {
+      const row = db.prepare(sql).get(actionKey) as { url: string | null } | undefined;
+      if (row?.url) return row.url;
+    } catch { /* table not created yet */ }
+  }
+  return null;
+}
+
 /** One deduped review-repair escalation, logged and pinged once per kind. */
 function escalateReviewRepair(db: Database.Database, input: { actionKey: string; kind: string; message: string; remedy: string; now: Date; log?: (message: string) => void }): void {
   const { actionKey, kind, message } = input;
@@ -2258,7 +2314,7 @@ function escalateReviewRepair(db: Database.Database, input: { actionKey: string;
   if (newlyDetected || previous?.kind !== kind) {
     input.log?.(`Escalated ${actionKey} to the operator (${kind}): ${message.split("\n")[0]}`);
     try {
-      queueOperatorPing(db, { message: reviewRepairPingMessage(actionKey, kind, message), kind: "attention", agent: "production-tick", now: input.now });
+      queueOperatorPing(db, { message: reviewRepairPingMessage(actionKey, kind, message), kind: "attention", link: candidatePullRequestUrl(db, actionKey), agent: "production-tick", now: input.now });
     } catch (error) {
       input.log?.(`Could not queue the review-repair ping for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -2457,6 +2513,7 @@ function attemptProjectLaunch(
         .get(selectedKey, OPERATOR_GATE_ESCALATION);
       if (gateHeld && input.gate) input.gate.actionKey = selectedKey;
       const held = scopePointerHold(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, actionKey: selectedKey, actionId: selected.action.id, now: input.now, log: input.log });
+      if (!held) announceScopeComplete(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, planSlug: selected.activePlan, now: input.now, log: input.log });
       return {
         attempted: false,
         outcome: "skipped",
@@ -3129,6 +3186,43 @@ function clearBaseBranchObservationFailure(db: Database.Database, projectSlug: s
   db.prepare("DELETE FROM production_base_branch_observation_failures WHERE project_slug = ?").run(projectSlug);
 }
 
+export const BASE_NOT_SYNCED_ESCALATION = "base_not_synced";
+
+/**
+ * A fast-forward that is refused while the remote is ahead is a persistent
+ * stall (the pointer never advances), so it becomes one named operator
+ * escalation per episode -- shown by `production status` and pinged once --
+ * naming the checkout and the cause. A tick that syncs, or finds nothing to
+ * sync, clears it.
+ */
+function reportBaseSyncStatus(
+  db: Database.Database,
+  input: { repoRoot: string; projectSlug: string; baseBranch: string; merged: boolean; now: Date; log: (message: string) => void }
+): void {
+  const actionKey = `base-branch/${input.projectSlug}`;
+  const behind = Number.parseInt(tryGit(input.repoRoot, ["rev-list", "--count", `${input.baseBranch}..origin/${input.baseBranch}`])?.trim() ?? "0", 10);
+  if (input.merged || !(behind > 0)) {
+    db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ? AND kind = ?").run(actionKey, BASE_NOT_SYNCED_ESCALATION);
+    return;
+  }
+  const branch = tryGit(input.repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"])?.trim() ?? "unknown";
+  const dirty = (tryGit(input.repoRoot, ["status", "--porcelain"]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  const causes: string[] = [];
+  if (branch !== input.baseBranch) causes.push(`the checkout is on ${branch}, not ${input.baseBranch}`);
+  if (dirty.length > 0) causes.push(`it has uncommitted changes (${dirty.slice(0, 5).join("; ")}${dirty.length > 5 ? `; +${dirty.length - 5} more` : ""})`);
+  const why = causes.length > 0 ? causes.join(" and ") : `${input.baseBranch} has diverged from origin/${input.baseBranch}`;
+  const message = `${input.projectSlug}'s primary checkout ${input.repoRoot} cannot fast-forward onto origin/${input.baseBranch} (${behind} commit${behind === 1 ? "" : "s"} behind): ${why}. Production's pointer cannot advance past merged work until it can.`;
+  const remedy = `In ${input.repoRoot}: ${branch !== input.baseBranch ? `\`git switch ${input.baseBranch}\`, ` : ""}commit, stash or remove the listed changes, then \`git merge --ff-only origin/${input.baseBranch}\`. The next tick clears this entry.`;
+  if (recordOperatorEscalation(db, { actionKey, kind: BASE_NOT_SYNCED_ESCALATION, message, remedy, now: input.now })) {
+    input.log(`Escalated ${actionKey} to the operator (${BASE_NOT_SYNCED_ESCALATION}): ${message}`);
+    try {
+      queueOperatorPing(db, { message: boundedPingMessage(`Production cannot fast-forward ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${why}. Fix: ${input.repoRoot}.`), kind: "attention", agent: "production-tick", now: input.now });
+    } catch (error) {
+      input.log(`Could not queue the ${BASE_NOT_SYNCED_ESCALATION} ping: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 function detectBaseBranchAdvance(
   db: Database.Database,
   input: {
@@ -3154,7 +3248,8 @@ function detectBaseBranchAdvance(
   // SHAs, so a manual reset it undid is named rather than just gone (#608).
   if (input.fastForward && tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
     const headBefore = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
-    tryGit(input.repoRoot, ["merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
+    const merged = tryGit(input.repoRoot, ["merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
+    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: merged !== null, now: input.now, log: input.log });
     const headAfter = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
     if (headBefore && headAfter && headBefore !== headAfter) {
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);

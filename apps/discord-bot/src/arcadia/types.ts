@@ -279,6 +279,8 @@ export interface ReviewItem {
   options: string[];
   sourceInput: string;
   resultingAskRequestId: string | null;
+  /** The Active production policy approves this Decision on its next tick; not announced (Issue #1659). */
+  delegatedApproval?: boolean;
 }
 
 export interface ReviewData {

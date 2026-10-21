@@ -62,6 +62,7 @@ import {
   writeProjectIdeaPromotionDocuments,
   type ProjectIdeaPromotionReceipt
 } from "../projects/planningPromotion.js";
+import { policyDelegatesPacketApproval, resolveWorkItemPolicyIdentity } from "../production/policy.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
@@ -99,6 +100,8 @@ export interface RequiresReviewPacket {
   createdAt: string;
   updatedAt: string;
   resultingAskRequestId: string | null;
+  /** True when the Active policy's packet_approval delegation will approve this Decision on its next tick (Issue #1659): not announced to the operator. */
+  delegatedApproval?: boolean;
   packetArtifactId: string | null;
   codexInvocationId: string | null;
   artifactPath: string | null;
@@ -109,7 +112,17 @@ export interface RequiresReviewPacket {
 
 export interface ReviewRequiredCommandOptions {
   workspace: string;
+  /** Clock for the delegated-approval suppression window; tests only. */
+  now?: Date;
 }
+
+/**
+ * A build-packet Decision is withheld from the operator only this long while the
+ * policy's packet_approval delegation is expected to approve it on the next
+ * tick; past it the tick evidently never reached it (pointer elsewhere, paused,
+ * a second prerequisite, worker down) and it is announced normally (Issue #1659).
+ */
+export const DELEGATED_APPROVAL_SUPPRESSION_MS = 5 * 60_000;
 
 export interface ReviewRequiredCommandData {
   count: number;
@@ -271,7 +284,17 @@ export function runReviewRequiredCommand(
 ): CommandSuccess<ReviewRequiredCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const items = withDatabase(workspacePath, (db) => {
-    return listActionableReviewItems(db).map(reviewPacketForReviewItem);
+    return listActionableReviewItems(db).map((item) => {
+      const packet = reviewPacketForReviewItem(item);
+      if (item.resolved_intent === "CodexBuildPacketApproval" && item.work_item_id) {
+        const workItem = getWorkItem(db, item.work_item_id);
+        const identity = workItem ? resolveWorkItemPolicyIdentity(db, workItem) : null;
+        const now = options.now ?? new Date();
+        const age = now.getTime() - Date.parse(item.created_at);
+        if (identity && age < DELEGATED_APPROVAL_SUPPRESSION_MS && policyDelegatesPacketApproval(db, identity, now)) packet.delegatedApproval = true;
+      }
+      return packet;
+    });
   });
 
   return createSuccess({
