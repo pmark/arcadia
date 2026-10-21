@@ -24,6 +24,9 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
  */
 const sourceRoot = path.resolve(import.meta.dirname, "..");
 const library = path.join(sourceRoot, "artifacts", "generated", "operator-scripts");
+// Frozen copies of PROJECT.md and the Plan as merged by PR #1588 (29e611580), so a later settlement of the live
+// Plan can never change what this 2026-10-19 proof builds on.
+const frozen = path.join(sourceRoot, "tests", "fixtures", "next-run-pointer-preparation");
 const AMEND_ID = "accept-first-unattended-run-depends-on-next-run-actions-20261019";
 const POINT_ID = "point-at-test-transient-review-retry-20261019";
 const PLAN = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
@@ -66,13 +69,13 @@ function fixture(options: { amended?: boolean } = {}) {
   git("init", "--bare", "-q", origin);
   git("remote", "add", "origin", origin);
 
-  // Before-images: the live documents with the pinned pointers, the pinned
+  // Before-images: the frozen documents with the pinned pointers, the pinned
   // first-unattended-run block, and the three in-scope Actions still open.
   const e = pinned.envelope;
-  const projectText = readFileSync(path.join(sourceRoot, "PROJECT.md"), "utf8");
+  const projectText = readFileSync(path.join(frozen, "PROJECT.fixture.md"), "utf8");
   const project = { ...frontmatter(projectText), ...e.projectUnchanged };
   writeFileSync(path.join(repo, "PROJECT.md"), `---\n${stringify(project)}---\n${body(projectText)}`);
-  const planText = readFileSync(path.join(sourceRoot, PLAN_FILE), "utf8");
+  const planText = readFileSync(path.join(frozen, "plan.fixture.md"), "utf8");
   const plan = frontmatter(planText);
   const actions = (plan.actions as Record<string, unknown>[]).map((action) =>
     action.id === e.action ? (options.amended ? e.actionAfter : e.actionBefore) : IN_SCOPE.includes(action.id as string) ? { ...action, status: "open" } : action);
