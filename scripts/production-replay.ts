@@ -152,6 +152,12 @@ export interface ReplayOptions {
    * replay's simulated pull-request evidence; tokens are spent and nothing is posted to GitHub.
    */
   reviewers?: "real" | "simulated";
+  /**
+   * Predict a change before it merges: a commit, branch or tag of the source repository (a fetched `pull/N/head`)
+   * is merged into the replay's `origin/<base>` (the local bare origin and the clone's remote-tracking ref only; no
+   * push to GitHub and no change to the source), so the tick runs on top of it.
+   */
+  mergeIntoBase?: string;
 }
 
 export type SimulatedVerdict = "pass" | "fail-repairable";
@@ -1066,6 +1072,18 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
         git(target, ["update-ref", "refs/replay/candidate", sha]);
         fidelity.push(`EXECUTOR candidate:${wanted}: each Session's branch is reset to ${sha.slice(0, 12)}; no Ask is drafted by the replay.`);
       }
+      if (options.mergeIntoBase) {
+        const sha = git(repoPath, ["rev-parse", "--verify", "-q", `${options.mergeIntoBase}^{commit}`]).trim();
+        const baseBranch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: repoPath, encoding: "utf8", env: GIT_READ_ENV }).stdout.trim() || "main";
+        const tip = refs[`refs/remotes/origin/${baseBranch}`] ?? refs[`refs/heads/${baseBranch}`];
+        if (!tip) throw new Error(`--merge-into-base: ${slug} has no origin/${baseBranch} to merge onto.`);
+        const tree = git(target, ["merge-tree", "--write-tree", tip, sha]).split("\n")[0].trim();
+        const merged = git(target, ["-c", "user.name=Production Replay", "-c", "user.email=production-replay@arcadia.invalid", "-c", "commit.gpgsign=false", "commit-tree", tree, "-p", tip, "-p", sha, "-m", `Production replay: merge ${options.mergeIntoBase} into origin/${baseBranch}`]).trim();
+        git(target, ["push", "-q", "--force", path.join(root, "remotes", `${slug}.git`), `${merged}:refs/heads/${baseBranch}`]);
+        git(target, ["update-ref", `refs/remotes/origin/${baseBranch}`, merged]);
+        fidelity.push(`MERGE-INTO-BASE: ${options.mergeIntoBase} (${sha.slice(0, 12)}) is merged into the replay's origin/${baseBranch} (${tip.slice(0, 12)} -> ${merged.slice(0, 12)}); nothing was pushed to GitHub.`);
+        print(`Merged ${options.mergeIntoBase} into the replay's origin/${baseBranch}.`);
+      }
       let recreated = 0;
       for (const session of sessions.filter((entry) => entry.projectSlug === slug)) {
         // Read before the rewrite: `worktree` is the source path.
@@ -1581,6 +1599,7 @@ function parseArgs(argv: string[]): ReplayOptions {
         break;
       }
       case "--executor-files": options.executorFiles = JSON.parse(readFileSync(value(), "utf8")) as ReplayOptions["executorFiles"]; break;
+      case "--merge-into-base": options.mergeIntoBase = value(); break;
       case "--reviewers": {
         const reviewers = value();
         if (reviewers !== "real" && reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
@@ -1588,7 +1607,7 @@ function parseArgs(argv: string[]): ReplayOptions {
         break;
       }
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated]\n`
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>]\n`
           + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n"
           + "  --executor continues past launch (Session result produced by the replay, simulated PR and merge); --reviewers real runs the real read-only reviewers over the simulated PR evidence (spends tokens).\n");
         process.exit(0);

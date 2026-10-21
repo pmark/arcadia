@@ -630,6 +630,41 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     expect(refused.status).toBe(1);
   });
 
+  it("merges a source commit into the replay's origin/main only (--merge-into-base) and leaves the source alone", () => {
+    const source = new Rehearsal({ withOrigin: true });
+    const sandboxParent = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-merge-")));
+    try {
+      source.createFixtureRepository();
+      source.approve(source.registerProject());
+      const mainTip = git(source.repo, ["rev-parse", "HEAD"]).trim();
+      git(source.repo, ["checkout", "-q", "-b", "side"]);
+      writeFileSync(path.join(source.repo, "SIDE.md"), "side\n");
+      git(source.repo, ["add", "-A"]);
+      git(source.repo, ["-c", "user.name=t", "-c", "user.email=t@t.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "side"]);
+      git(source.repo, ["checkout", "-q", "-"]);
+      source.activate("grant-replay-merge-20261018T000000Z");
+      source.deactivate("stop-replay-merge-20261018T000100Z");
+      const refs = git(source.repo, ["for-each-ref", "--format=%(objectname) %(refname)"]);
+      const services = new Database(path.join(source.workspace, "database", "arcadia.sqlite3"));
+      let report: ReplayReport;
+      try {
+        services.prepare("SELECT count(*) FROM sqlite_master").get();
+        report = runProductionReplay({ sourceWorkspace: source.workspace, grant: "grant-replay-merge", ticks: 1, github: "offline", parent: sandboxParent, keep: true, mergeIntoBase: "side", print: () => {} });
+      } finally {
+        services.close();
+      }
+      const replayRepo = path.join(report.root, "repos", source.projectSlug);
+      expect(git(replayRepo, ["ls-tree", "-r", "--name-only", "refs/remotes/origin/main"])).toContain("SIDE.md");
+      expect(git(path.join(report.root, "remotes", `${source.projectSlug}.git`), ["ls-tree", "-r", "--name-only", "refs/heads/main"])).toContain("SIDE.md");
+      expect(git(replayRepo, ["rev-parse", "refs/remotes/origin/main^1"]).trim()).toBe(mainTip);
+      expect(report.fidelity.join("\n")).toContain("MERGE-INTO-BASE");
+      expect(git(source.repo, ["for-each-ref", "--format=%(objectname) %(refname)"])).toBe(refs);
+    } finally {
+      source.dispose();
+      rmSync(sandboxParent, { recursive: true, force: true });
+    }
+  }, REPLAY_TIMEOUT_MS);
+
   it("refuses an executor it cannot resolve before building anything", () => {
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "candidate:" })).toThrow(/--executor/);
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "bogus" as never })).toThrow(/--executor/);
