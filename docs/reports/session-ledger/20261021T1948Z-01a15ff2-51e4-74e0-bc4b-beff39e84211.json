@@ -4,15 +4,20 @@
   "model": "configured-default (runtime id unavailable)",
   "effort": null,
   "action_id": "operator-directed:#1677",
-  "pr": null,
+  "pr": 1678,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "dependency-bridge-symlinks-dirty-replay",
+      "caught_by": "process critic and live snapshot"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -25,10 +30,15 @@
       "id": "candidate-mise-trust-link-sandbox-denied",
       "cost_min": null,
       "fix_ref": null
+    },
+    {
+      "id": "dependency-bridge-symlinks-dirty-replay",
+      "cost_min": null,
+      "fix_ref": "scripts/production-replay.ts"
     }
   ],
   "outcome": "split",
   "candidate_head": null,
   "evidence_source": "Codex release-manager session; PR holds subsequent exact-head review and CI receipts",
-  "notes": "Operator-directed replay repair; no Action settlement. Production Off; Action 1 review exhaustion preserved. Review and CI were pending at this source checkpoint."
+  "notes": "First review/CI passed; live snapshot found directory-ignore regression, now repaired. Round 2 and final CI are tracked in PR; production remains Off."
 }

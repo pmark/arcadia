@@ -58,6 +58,7 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync
@@ -1064,7 +1065,17 @@ export function snapshotReplayDependencies(repository: string, target: string, s
         const resolved = realpathSync(file);
         const mapped = mapPath(resolved, mappings);
         if (mapped !== resolved) { rmSync(file); symlinkSync(mapped, file); }
-      } else if (entry.isDirectory() && entry.name !== "installed") rewriteBridge(file);
+      } else if (entry.isDirectory()) {
+        rewriteBridge(file);
+        if (entry.name === "node_modules") {
+          // Git's node_modules/ pattern ignores real directories, not links.
+          // Move the private bridge into the checkout without changing any
+          // package targets; all of them remain under this replay root.
+          const exposed = path.join(target, path.relative(path.join(scratch, "dependencies"), file));
+          rmSync(exposed);
+          renameSync(file, exposed);
+        }
+      }
     }
   };
   rewriteBridge(path.join(scratch, "dependencies"));

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -79,10 +79,16 @@ describe("production replay installed dependency bridge", () => {
       writeFileSync(path.join(installed, "fixture-package", "version"), "snapshot-version");
       symlinkSync(path.join(installed, "fixture-package"), path.join(installed, "fixture-package", "cycle"));
       mkdirSync(replay);
+      git(replay, ["init", "-q"]);
+      writeFileSync(path.join(replay, ".gitignore"), "node_modules/\n");
+      git(replay, ["add", ".gitignore"]);
+      const statusBefore = git(replay, ["status", "--porcelain"]);
       writeFileSync(path.join(source, "private.txt"), "source-only");
       symlinkSync(source, path.join(installed, "self"));
       symlinkSync(path.join(source, "private.txt"), path.join(installed, "escape"));
       snapshotReplayDependencies(source, replay, path.join(root, "scratch"), []);
+      // Git's node_modules/ ignore pattern does not ignore a symlink.
+      expect(lstatSync(path.join(replay, "node_modules")).isDirectory()).toBe(true);
       expect(realpathSync(path.join(replay, "node_modules", "fixture-package"))).toContain(path.join(root, "scratch", "installed"));
       const copiedPackage = path.join(replay, "node_modules", "fixture-package");
       expect(realpathSync(path.join(copiedPackage, "cycle"))).toBe(realpathSync(copiedPackage));
@@ -96,6 +102,7 @@ describe("production replay installed dependency bridge", () => {
       mkdirSync(path.join(replay, "node_modules", ".vite-temp"));
       writeFileSync(path.join(replay, "node_modules", ".vite-temp", "cache"), "replay-only");
       expect(existsSync(path.join(installed, ".vite-temp", "cache"))).toBe(false);
+      expect(git(replay, ["status", "--porcelain"])).toBe(statusBefore);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
