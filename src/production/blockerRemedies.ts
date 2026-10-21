@@ -82,6 +82,7 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       step("planner_attempts_exhausted", "The planner used its attempts."),
       step("planning_required", "The Action needs a planning packet."),
       step("terminal_candidate_not_integrable", "A finished candidate cannot be integrated as it stands."),
+      step("self_settled_completion_refused", "The Session settled its own completion, but the host's scope or validation check fails on it; review the named failure and land or discard the candidate."),
       step("completion_settlement_not_in_candidate", "The completion was settled, but the candidate does not carry its settlement commit."),
       step("completion_validation_unavailable", "The pre-acceptance validation could not run on this host (a host fault, not a candidate defect); fix the host condition the message names, then reset with `arcadia production reset-repair-budget`."),
       step("completion_refused_repeatedly", "The same drafted-completion refusal repeated; repair what it names, then reset with `arcadia production reset-repair-budget`."),

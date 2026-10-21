@@ -43,13 +43,13 @@ export function listPendingTerminalCandidates(
   const hasExits = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_exit_receipts'").get();
   if (!hasExits) return null;
   const actionId = options.actionId ?? null;
-  const exits = db.prepare(`SELECT r.session_id, r.outcome FROM session_exit_receipts r
+  const exits = db.prepare(`SELECT r.session_id, r.outcome, r.evidence_json FROM session_exit_receipts r
     JOIN agent_sessions s ON s.id = r.session_id
     WHERE s.repository_path = ? AND s.project_slug = ?
       AND (? IS NULL OR s.action_id = ?)
       AND r.superseded_by_session_id IS NULL AND r.outcome IN ('accepted_completion', 'incomplete_resumable')
       AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
-    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug, actionId, actionId) as Array<{ session_id: string; outcome: string }>;
+    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug, actionId, actionId) as Array<{ session_id: string; outcome: string; evidence_json: string | null }>;
   if (exits.length === 0) return null;
 
   let baseBranch: string;
@@ -64,6 +64,8 @@ export function listPendingTerminalCandidates(
   for (const exit of exits) {
     const session = getSession(db, exit.session_id);
     if (!session) continue;
+    // Issue #1615: a settled completion the host refused is the operator's, never recovery's to integrate.
+    if (exit.evidence_json?.includes("completionSettlementNotInCandidate")) continue;
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
     const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
     if (action?.status === "done") continue;

@@ -787,7 +787,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   // merged. Resolve the next move against the worktree in that one case; every
   // other outcome keeps reading `repoRoot` exactly as before.
   let nextMoveRepoRoot = repoRoot;
-  let settlementNotInCandidate: { settlementId: string; reason: string } | null = null;
+  let settlementNotInCandidate: { settlementId: string; reason: string; cause?: "self_settled_refused" } | null = null;
   let completionHold: CompletionHold | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
@@ -818,7 +818,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       // any repair would only break the settlement's evidence and a relaunch
       // could never be accepted. Escalate once; the operator decides.
       const refused = `The Session already settled its own completion (settlement ${settled.id}) but it fails the host's checks: ${settledRefusal} Not resumable; the operator decides.`;
-      settlementNotInCandidate = { settlementId: settled.id, reason: refused };
+      settlementNotInCandidate = { settlementId: settled.id, reason: refused, cause: "self_settled_refused" };
       reason = refused;
     } else {
       if (drafted?.kind === "refused" && drafted.hold) completionHold = drafted.hold;

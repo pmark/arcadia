@@ -856,6 +856,7 @@ it("asserts the contract", () => {
       expect(result.receipt.lease_handoff).toBe(0);
       expect(result.receipt.reason).toContain("already settled");
       expect(result.receipt.evidence_json).toContain("completionSettlementNotInCandidate");
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
     });
 
     it("(#1615) accepts a self-settled completion that stays in scope, the settlement's own records excused", () => {
