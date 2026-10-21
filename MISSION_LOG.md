@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Mission Log: Arcadia
@@ -2659,3 +2659,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In src/production/reviewRepair.ts, the INSERT INTO production_review_repairs ... ON CONFLICT(request_id) DO UPDATE statement that writes REPAIR_CANDIDATE_GATE_ROLE has a WHERE clause that also requires production_review_repairs.role to equal REPAIR_CANDIDATE_GATE_ROLE."; "A hermetic test in tests/review-repair-gate-upsert-role.test.ts seeds a production_review_repairs row with the gate path's request id and a role other than REPAIR_CANDIDATE_GATE_ROLE, runs the gate path, and asserts that row's summary, reason and role are unchanged; the test fails without the guard."; "The change touches only src/production/reviewRepair.ts and tests/review-repair-gate-upsert-role.test.ts; the focused vitest run of tests/review-repair-gate-upsert-role.test.ts, pnpm lint, tsc and pnpm build pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-guard-repair-gate-upsert-role-5c6c22a76403).
+
+## 2026-10-21 — Completed arcadia/cover-mail-ack-receipt-kind-collision
+
+- **Did:** Completed Action arcadia/cover-mail-ack-receipt-kind-collision from accepted evidence (Candidate 5214ce2245c66fecbc8d237462125af066326d85).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."; "The same test asserts the message status is still acknowledged afterwards, and every other test in the file passes unchanged."; "The change touches only tests/native-mail.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-cover-mail-ack-receipt-kind-collision-171db36d57d9).
