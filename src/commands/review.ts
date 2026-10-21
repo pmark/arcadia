@@ -62,6 +62,7 @@ import {
   writeProjectIdeaPromotionDocuments,
   type ProjectIdeaPromotionReceipt
 } from "../projects/planningPromotion.js";
+import { policyDelegatesPacketApproval, resolveWorkItemPolicyIdentity } from "../production/policy.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { assertReusableApprovalAction, deleteApprovalClaim, releaseApprovalClaim } from "../ask/approvalClaim.js";
@@ -99,6 +100,8 @@ export interface RequiresReviewPacket {
   createdAt: string;
   updatedAt: string;
   resultingAskRequestId: string | null;
+  /** True when the Active policy's packet_approval delegation will approve this Decision on its next tick (Issue #1659): not announced to the operator. */
+  delegatedApproval?: boolean;
   packetArtifactId: string | null;
   codexInvocationId: string | null;
   artifactPath: string | null;
@@ -271,7 +274,15 @@ export function runReviewRequiredCommand(
 ): CommandSuccess<ReviewRequiredCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const items = withDatabase(workspacePath, (db) => {
-    return listActionableReviewItems(db).map(reviewPacketForReviewItem);
+    return listActionableReviewItems(db).map((item) => {
+      const packet = reviewPacketForReviewItem(item);
+      if (item.resolved_intent === "CodexBuildPacketApproval" && item.work_item_id) {
+        const workItem = getWorkItem(db, item.work_item_id);
+        const identity = workItem ? resolveWorkItemPolicyIdentity(db, workItem) : null;
+        if (identity && policyDelegatesPacketApproval(db, identity)) packet.delegatedApproval = true;
+      }
+      return packet;
+    });
   });
 
   return createSuccess({

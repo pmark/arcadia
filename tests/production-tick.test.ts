@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { runReviewRequiredCommand } from "../src/commands/review.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -278,6 +279,27 @@ describe("runManagedProductionTick", () => {
       expect(invocationsFor(fixture, "define-contract")).toBe(0);
       expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
       expect(readFileSync(path.join(fixture.repo, "PROJECT.md"), "utf8")).toContain("current_action: define-contract");
+    });
+
+    it("pings once per policy revision when every in-scope Action is done and the pointer is out of scope", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      const plan = readFileSync(planPath, "utf8");
+      const marker = "  - id: second-action";
+      const at = plan.indexOf(marker);
+      writeFileSync(planPath, plan.slice(0, at) + plan.slice(at).replace("status: open", "status: done"));
+      activateActions(fixture, ["test-project/second-action"]);
+      const pings = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT message, kind FROM operator_pings WHERE message LIKE 'Production scope complete%'").all()) as Array<{ message: string; kind: string }>;
+
+      const { launch } = tickOnce(fixture, tmux);
+      tickOnce(fixture, tmux);
+
+      expect(launch).toMatchObject({ outcome: "skipped", actionKey: null });
+      expect(pings()).toHaveLength(1);
+      expect(pings()[0].kind).toBe("attention");
+      expect(pings()[0].message).toContain("1 merged");
     });
 
     it.each(["repair_budget_exhausted", "operator_gate_pending", "environment_wall"])(
@@ -1065,6 +1087,8 @@ describe("runManagedProductionTick", () => {
       ).get(workItem.id) as { id: string; status: string; decision_note: string | null }
     );
     expect(approvalRow().status).toBe("open");
+    // Issue #1659: `arcadia review` (the Discord bot's feed) marks it as one the policy approves next tick.
+    expect(runReviewRequiredCommand({ workspace: fixture.workspace }).data.items.find((item) => item.id === approvalRow().id)).toMatchObject({ delegatedApproval: true });
 
     const approving = tick(30_000);
     expect(approving.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.reason).toMatch(/packet_approval delegation/);
@@ -1167,6 +1191,9 @@ describe("runManagedProductionTick", () => {
     expect(approvals.length).toBeGreaterThan(0);
     expect(approvals.every((row) => row.status !== "approved")).toBe(true);
     expect(tmux.launches).toHaveLength(0);
+    // An expired delegation approves nothing, so the operator must still be told.
+    expect(runReviewRequiredCommand({ workspace: fixture.workspace }).data.items.filter((item) => item.resolvedIntent === "CodexBuildPacketApproval")).not.toHaveLength(0);
+    expect(runReviewRequiredCommand({ workspace: fixture.workspace }).data.items.every((item) => !item.delegatedApproval)).toBe(true);
   });
 
   it("refuses packet_approval without an expiry, and an expiry without packet_approval", () => {
@@ -1802,6 +1829,41 @@ describe("runManagedProductionTick", () => {
     expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(remoteTip);
     const lines = log.mock.calls.map((call) => String(call[0]));
     expect(lines.some((line) => line.includes("Fast-forwarded test-project's checkout") && line.includes(`${resetTo} -> ${remoteTip}`))).toBe(true);
+  });
+
+  it("escalates once, with the exact remedy, when the in-scope checkout cannot fast-forward onto its remote", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const log = vi.fn();
+    const origin = path.join(fixture.root, "origin.git");
+    git(fixture.root, ["clone", "-q", "--bare", fixture.repo, origin]);
+    git(fixture.repo, ["remote", "add", "origin", origin]);
+    writeFileSync(path.join(fixture.repo, "REMOTE.md"), "on the remote\n");
+    git(fixture.repo, ["add", "REMOTE.md"]);
+    git(fixture.repo, ["commit", "-qm", "remote tip"]);
+    git(fixture.repo, ["push", "-q", "origin", "main"]);
+    git(fixture.repo, ["reset", "-q", "--hard", "HEAD~1"]);
+    // An untracked file the remote tip would overwrite: the fast-forward refuses on every tick.
+    writeFileSync(path.join(fixture.repo, "REMOTE.md"), "local scratch\n");
+    activatePolicy(fixture);
+
+    for (const offset of [0, 60_000, 120_000]) {
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offset), log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+      );
+    }
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toEqual([expect.objectContaining({ kind: "base_not_synced", message: expect.stringContaining("REMOTE.md"), remedy: expect.stringContaining(fixture.repo) })]);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT message, kind FROM operator_pings").all()) as Array<{ message: string; kind: string }>;
+    expect(pings.filter((ping) => ping.message.includes("fast-forward"))).toHaveLength(1);
+
+    // Clearing the cause clears the escalation on the next observation.
+    rmSync(path.join(fixture.repo, "REMOTE.md"));
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 180_000), log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
   });
 
   it("detects a base branch advance independent of its own completion signal and records one event with no Mission Log write or commit", () => {

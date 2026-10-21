@@ -998,6 +998,25 @@ function isWithinPolicyScope(scope: ProductionScope, identity: PolicyScopeIdenti
 }
 
 /**
+ * Whether the Active policy's packet_approval delegation covers this exact
+ * Action right now (named transition, unexpired, Project, Plan and Action in
+ * scope), mirroring the tick's own check in `attemptDelegatedPacketApproval`.
+ * Used only to withhold the operator notification for a Decision the tick is
+ * about to approve; it grants nothing.
+ */
+export function policyDelegatesPacketApproval(db: Database.Database, identity: PolicyScopeIdentity, now: Date = new Date()): boolean {
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return false;
+  const scope = read.policy.scope;
+  return scope.mechanicalTransitions.includes("packet_approval")
+    && Boolean(scope.packetApprovalExpiresAt)
+    && now.getTime() < Date.parse(scope.packetApprovalExpiresAt!)
+    && scope.projects.includes(identity.projectSlug)
+    && scope.plans.includes(identity.planKey)
+    && identity.actionKey != null && scope.actions.includes(identity.actionKey);
+}
+
+/**
  * The Project/Plan/Action identity of a work item with a managed `plan/<slug>#<id>`
  * document reference, for `selectPolicyPermittedProfileName`'s scope check. Returns
  * null when the work item has no resolvable managed document reference or Project --

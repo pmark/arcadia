@@ -524,6 +524,20 @@ describe("discord bot end-to-end fixture", () => {
   });
 });
 
+describe("discord bot requires-review notifications for delegated approvals (Issue #1659)", () => {
+  it("announces neither the Decision nor a transition for an item the production policy approves next tick, and a normal item still", () => {
+    const item = (id: string, extra: Record<string, unknown> = {}) => ({
+      id, slug: id, workItemId: null, project: "P", goal: null, decisionNeeded: "Approve the packet?", context: "CodexBuildPacketApproval: x",
+      recommendation: null, options: ["approve", "reject", "defer"], sourceInput: "x", resultingAskRequestId: null, ...extra
+    });
+    const state = { initializedAt: "2026-06-10T12:00:00.000Z", lastRequiresReviewCount: 0, notifiedReviewItemIds: [], notifiedRunIds: [], notifiedMilestoneIds: [], notifiedBlockedWorkItemIds: [], notifiedArtifactIds: [], codexTaskStatuses: {}, notifiedCodexTaskEvents: [] };
+    const base = { blockedWorkItems: [], runs: [], completedMilestones: [], codexTasks: [] };
+    const keys = (items: ReturnType<typeof item>[]) => evaluateNotifications({ ...base, requiresReviewCount: items.length, reviewItems: items }, state, "2026-06-10T12:05:00.000Z").messages.map((m) => m.key);
+    expect(keys([item("review_a", { delegatedApproval: true })])).toEqual([]);
+    expect(keys([item("review_a", { delegatedApproval: true }), item("review_b")])).toEqual(["requires-review:review_b"]);
+  });
+});
+
 describe("discord bot Agent Ask settlement notifications", () => {
   const settlement = (id: string, disposition: "accepted" | "rejected", extra: Record<string, unknown> = {}) => ({
     settlementId: id, requestId: `ask-${id}`, desiredResult: `Do ${id}.`, projectSlug: id.startsWith("p") ? "ppn" : "arcadia",

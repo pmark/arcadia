@@ -446,6 +446,10 @@ describe("the review repair bound and gates", () => {
     const { rehearsal } = failedReview((r) => { r.github.findingTitle = "Broadens the worker's merge authority"; });
     expect(rehearsal.lease()).toBeNull();
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("authority-adjacent") });
+    // The attention ping carries the candidate's PR URL so the operator can open it.
+    const pings = withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT message, link FROM operator_pings WHERE message LIKE 'Production stopped the review repair loop%'").all()) as Array<{ message: string; link: string | null }>;
+    expect(pings).toHaveLength(1);
+    expect(pings[0].link).toBe(rehearsal.github.prs[0].url);
     expect(rehearsal.github.prs[0].isDraft).toBe(true);
     expect(rehearsal.github.comments[0].body).toContain("Do not merge: escalated to the operator.");
   });
