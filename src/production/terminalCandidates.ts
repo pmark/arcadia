@@ -4,6 +4,7 @@ import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, isPatchEquivalent, resolveBaseBranch } from "../git/worktrees.js";
 import { canonicalPath, getSession, type AgentSession } from "../sessions/index.js";
 import { developedForSupersededInput } from "../sessions/roleLineage.js";
+import { REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The one definition of "a terminal Session candidate that terminal recovery
@@ -21,6 +22,21 @@ import { developedForSupersededInput } from "../sessions/roleLineage.js";
  * superseded (src/production/reviewRepair.ts) no longer qualifies: the repair
  * owns the Action now. Newest exit first. Read-only.
  */
+
+/**
+ * Operator decision 2026-10-21 (Release Manager session): an Action whose
+ * review repair stopped for the operator (`review_repair_rounds_exhausted`,
+ * `review_repair_gated`) is "held": its candidate stays preserved and
+ * un-integrated until the operator acts, and it must not block admission of
+ * in-scope Actions that do not depend on it. Returns that open escalation, or
+ * null. Read-only; a missing table answers null.
+ */
+export function operatorHeldEscalation(db: Database.Database, actionKey: string): { kind: string; firstDetectedAt: string } | null {
+  try {
+    const row = db.prepare("SELECT kind, first_detected_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string; first_detected_at: string } | undefined;
+    return row && REVIEW_REPAIR_ESCALATIONS.has(row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
+  } catch { return null; }
+}
 
 export interface PendingTerminalCandidates {
   baseBranch: string;
@@ -59,13 +75,21 @@ export function listPendingTerminalCandidates(
     if (options.strict) throw error;
     return null;
   }
-  const basePlans = discoverDocs(repoRoot).docs.filter((doc) => doc.type === "plan");
+  const docs = discoverDocs(repoRoot).docs;
+  const basePlans = docs.filter((doc) => doc.type === "plan");
+  // Recovery (no `actionId`) leaves a held Action's candidate to the operator
+  // once the pointer has moved past it, so it neither refuses the handoff of
+  // the Action now running nor makes two candidates "ambiguous". While the
+  // pointer still names it, it stays the candidate recovery refuses today.
+  const pointer = actionId === null ? docs.find((doc) => doc.type === "project" && doc.slug === projectSlug) : undefined;
+  const pointerAction = pointer?.type === "project" ? pointer.currentAction : null;
   const pending: AgentSession[] = [];
   for (const exit of exits) {
     const session = getSession(db, exit.session_id);
     if (!session) continue;
     // Issue #1615: a settled completion the host refused is the operator's, never recovery's to integrate.
     if (exit.evidence_json?.includes("completionSettlementNotInCandidate")) continue;
+    if (actionId === null && session.action_id !== pointerAction && operatorHeldEscalation(db, `${session.project_slug}/${session.action_id}`)) continue;
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
     const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
     if (action?.status === "done") continue;

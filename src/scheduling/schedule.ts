@@ -8,6 +8,7 @@ import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { Project } from "../domain/types.js";
 import { arrangeActionOrder, loadActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
 import { activeActionScopeGate } from "../production/policy.js";
+import { operatorHeldEscalation } from "../production/terminalCandidates.js";
 import { listActiveAgentSessions } from "../sessions/index.js";
 import { canonicalOrder, type OrderCandidate, type SchedulingClass } from "./order.js";
 import {
@@ -220,9 +221,14 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
   // reordered, so a coordination Action at the head never blocks a scoped run.
   const inScope = activeActionScopeGate(db, project.slug, base.planSlug);
   base.actionScoped = inScope !== null;
+  const eligible = (key: string): boolean => byKey.get(key)?.status === "ready" && (inScope === null || inScope(key));
+  // Operator decision 2026-10-21: an Action held by an operator escalation
+  // (review repair stopped, candidate preserved) is passed over for the next
+  // ready in-scope Action. Readiness already excludes anything that depends on
+  // it; when nothing else is eligible the held Action stays next, as before.
   base.next = record.pausedReason
     ? null
-    : base.queue.find((key) => byKey.get(key)?.status === "ready" && (inScope === null || inScope(key))) ?? null;
+    : base.queue.find((key) => eligible(key) && !operatorHeldEscalation(db, key)) ?? base.queue.find(eligible) ?? null;
   return base;
 }
 
