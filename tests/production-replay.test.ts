@@ -681,6 +681,18 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "real", simulateGithubWrites: false })).toThrow(/--simulate-github-writes/);
   });
 
+  it("refuses git config writes to remote.*, url.* and credential.* and still allows reads and other keys", () => {
+    const run = (...args: string[]) => spawnSync("git", args, { cwd: repo, env, encoding: "utf8" });
+    for (const key of ["remote.origin.url", "url.https://x/.insteadOf", "credential.helper", "REMOTE.origin.pushurl"]) {
+      expect(run("config", key, "value").status, key).toBe(97);
+    }
+    expect(run("config", "--add", "remote.origin.fetch", "+refs/*:refs/x/*").status).toBe(97);
+    expect(run("config", "--get", "remote.origin.url").status).toBe(0);
+    expect(run("config", "--list").status).toBe(0);
+    expect(run("config", "user.name", "replay").status).toBe(0);
+    expect(effects().filter((effect) => effect.kind === "git:network")).toHaveLength(5);
+  });
+
   it("refuses an executor it cannot resolve before building anything", () => {
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "candidate:" })).toThrow(/--executor/);
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "bogus" as never })).toThrow(/--executor/);

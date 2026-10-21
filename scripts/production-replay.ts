@@ -726,6 +726,12 @@ for arg in "$@"; do
             esac
           fi
           [ "$sub" = clone ] && check "$arg" ;;
+        config)
+          # A write to remote.*, url.* or credential.* could point a later push at the network or store a credential.
+          case "$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')" in
+            remote.*|url.*|credential.*)
+              case " $replay_args " in *" --get "*|*" --get-all "*|*" --get-regexp "*|*" --list "*|*" -l "*|*" --get-urlmatch "*) ;; *) network "$arg" ;; esac ;;
+          esac ;;
         remote|worktree|submodule|archive|bundle|format-patch)
           case "$arg" in /*|.*|*/*) check "$arg" ;; esac ;;
       esac ;;
@@ -1431,9 +1437,25 @@ async function runPrepared(manifestFile: string): Promise<void> {
         mkdirSync(realBin, { recursive: true });
         const link = path.join(realBin, "claude");
         if (!existsSync(link)) symlinkSync(manifest.realClaude!, link);
-        const env: NodeJS.ProcessEnv = { ...process.env, HOME: manifest.realHome!, PATH: `${realBin}${path.delimiter}${process.env.PATH ?? ""}`, NODE_OPTIONS: "" };
+        // The real HOME is the Session's sign-in only: no global Git config (identity comes from the launch's GIT_* variables),
+        // an empty gh config dir and no GitHub token, so the Session cannot reach GitHub; no Discord/ARCADIA variable is inherited
+        // (the child's environment was already reduced to a fixed list), and `arcadia ping` only writes an outbox row to the
+        // replay's database copy, which no bot drains.
+        const ghConfig = path.join(manifest.root, "gh-config-empty");
+        mkdirSync(ghConfig, { recursive: true });
+        const env: NodeJS.ProcessEnv = {
+          ...process.env, HOME: manifest.realHome!, PATH: `${realBin}${path.delimiter}${process.env.PATH ?? ""}`, NODE_OPTIONS: "",
+          GIT_CONFIG_GLOBAL: "/dev/null", GH_CONFIG_DIR: ghConfig, GH_TOKEN: "", GITHUB_TOKEN: ""
+        };
         const started = Date.now();
-        const result = spawnSync(launch.command, launch.args, { cwd: launch.cwd, env, encoding: "utf8", timeout: 60 * 60_000, maxBuffer: 256 * 1024 * 1024 });
+        // A detached supervisor owns the Session's process group, so the timeout kills every descendant, not just `claude`.
+        const supervisor = `const { spawn } = require("node:child_process");
+const [command, ...args] = JSON.parse(process.argv[1]);
+const child = spawn(command, args, { stdio: "inherit", detached: true });
+const kill = () => { try { process.kill(-child.pid, "SIGKILL"); } catch {} };
+const timer = setTimeout(() => { console.error("production replay: real Session timed out; killing its process group"); kill(); }, Number(process.argv[2]));
+child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(code ?? (signal ? 137 : 1)); });`;
+        const result = spawnSync(process.execPath, ["-e", supervisor, JSON.stringify([launch.command, ...launch.args]), String(60 * 60_000)], { cwd: launch.cwd, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
         const logFile = path.join(manifest.root, `real-session-${Date.now()}.log`);
         writeFileSync(logFile, `${result.stdout ?? ""}\n--- stderr ---\n${result.stderr ?? ""}`);
         return `real Session exited ${String(result.status ?? result.signal)} after ${Math.round((Date.now() - started) / 1000)}s (log ${logFile}); head ${spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: launch.cwd, encoding: "utf8" }).stdout.trim()}`;
