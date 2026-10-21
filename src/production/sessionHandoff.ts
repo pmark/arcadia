@@ -117,6 +117,22 @@ export function operatorMergeCommand(input: { repoRoot: string; branch: string; 
   return `git -C ${input.repoRoot} merge --ff-only ${input.branch}   # then push ${input.baseBranch}`;
 }
 
+/**
+ * The command that lands this exact candidate head given the base's state: the
+ * fast-forward only while the base is still an ancestor of the head; once the
+ * base has advanced past the candidate's merge base `--ff-only` would fail, so
+ * a candidate with a pull request is landed by GitHub's merge, pinned to the
+ * head that was reviewed (Issue #1632).
+ */
+export function candidateLandingCommand(input: { repoRoot: string; branch: string; baseBranch: string; head?: string | null; pullRequestUrl?: string | null }): string {
+  const fastForward = operatorMergeCommand(input);
+  if (!input.head || !input.pullRequestUrl) return fastForward;
+  try {
+    if (isAncestor(input.repoRoot, input.baseBranch, input.head)) return fastForward;
+  } catch { return fastForward; }
+  return `gh pr merge ${input.pullRequestUrl} --merge --match-head-commit ${input.head}`;
+}
+
 function hasCandidateChanges(session: AgentSession): { changes: boolean; reason: string } {
   let head: string;
   let status: string;

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { appendReviewRepairJourneyLog } from "./journeyLog.js";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
-import { isAncestor, tryGit } from "../git/worktrees.js";
+import { isAncestor, refExists, tryGit } from "../git/worktrees.js";
 import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 // A leaf module: importing these through prReview.js can see them undefined at
 // load time through an import cycle (prReview -> ... -> reviewRepair).
@@ -992,6 +992,44 @@ export function releaseStalePendingRepair(db: Database.Database, input: { sessio
       appendReviewRepairJourneyLog(db, row.request_id, input.now.toISOString());
       released = true;
       input.log?.(`Released the pending review repair for ${row.action_key} at ${row.failed_head.slice(0, 12)}: its failed verdict no longer stands.`);
+    }
+  }
+  return released;
+}
+
+/**
+ * A gated repair row never launched a repair; once its candidate branch is on
+ * the base (merged by an operator or CI), it no longer stands and is released
+ * rather than left `gated` for good (Issue #1632). Local Git only.
+ */
+export function releaseMergedReviewRepairs(db: Database.Database, input: { repoRoot: string; projectSlug?: string; baseBranch: string; now: Date; log?: (message: string) => void; runCommand?: RunCommand }): number {
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_review_repairs'").get() === undefined) return 0;
+  const rows = db.prepare("SELECT request_id, action_key, failed_branch, failed_head, pull_request_url FROM production_review_repairs WHERE outcome = 'gated' AND repair_session_id IS NULL")
+    .all().filter((row) => !input.projectSlug || (row as { action_key: string }).action_key.startsWith(`${input.projectSlug}/`)) as Array<{ request_id: string; action_key: string; failed_branch: string; failed_head: string; pull_request_url: string | null }>;
+  let released = 0;
+  for (const row of rows) {
+    let merged = false;
+    try {
+      merged = refExists(input.repoRoot, `refs/heads/${row.failed_branch}`) && isAncestor(input.repoRoot, `refs/heads/${row.failed_branch}`, input.baseBranch);
+      // A branch tip on the base is only a cheap filter, not proof (a candidate
+      // with no commits of its own is "on" the base); the PR must read MERGED.
+      if (merged) {
+        merged = false;
+        if (row.pull_request_url) {
+          const viewed = (input.runCommand ?? runHostCommand)({ command: "gh", args: ["pr", "view", row.pull_request_url, "--json", "state"], cwd: input.repoRoot, timeoutMs: 30_000 });
+          if (viewed.status === 0) merged = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "").toUpperCase() === "MERGED";
+        }
+      }
+    } catch { /* not provable this tick */ }
+    if (!merged) continue;
+    const at = input.now.toISOString();
+    const changed = db.prepare(`UPDATE production_review_repairs SET outcome = 'released', reason = ?, closed_at = COALESCE(closed_at, ?), updated_at = ?
+      WHERE request_id = ? AND outcome = 'gated' AND repair_session_id IS NULL`)
+      .run(`Candidate branch ${row.failed_branch} is merged into ${input.baseBranch}; this gated stop no longer stands.`, at, at, row.request_id).changes;
+    if (changed > 0) {
+      released += 1;
+      appendReviewRepairJourneyLog(db, row.request_id, at);
+      input.log?.(`Released the gated review repair for ${row.action_key}: ${row.failed_branch} is merged into ${input.baseBranch}.`);
     }
   }
   return released;
