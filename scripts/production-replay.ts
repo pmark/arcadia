@@ -688,7 +688,7 @@ check() { resolved=$(resolve "$1"); inside "$resolved" || outside "$resolved"; }
 dir=$(pwd -P)
 # SIMULATION ONLY: the review command matches a PR to its Project by origin's
 # GitHub URL; the replay's origin is a local bare clone, so name the source's.
-if [ -n "$REPLAY_SIMULATE_VERDICT" ] && [ -n "$REPLAY_GH_REPO" ] && [ "$replay_args" = "remote get-url origin" ] && inside "$dir"; then
+if [ -n "$REPLAY_SIMULATE_VERDICT$REPLAY_SIMULATE_PRS" ] && [ -n "$REPLAY_GH_REPO" ] && [ "$replay_args" = "remote get-url origin" ] && inside "$dir"; then
   echo "https://github.com/$REPLAY_GH_REPO.git"; exit 0
 fi
 for value in "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_INDEX_FILE" "$GIT_COMMON_DIR" "$GIT_OBJECT_DIRECTORY"; do
@@ -1176,7 +1176,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       REPLAY_REAL_GH: realGh,
       REPLAY_REAL_HOME: realHome,
       REPLAY_REAL_PATH: process.env.PATH ?? "",
-      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? "",
+      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? (options.executor ? "simulated/replay" : ""),
       REPLAY_SIMULATE_VERDICT: options.simulateVerdict ?? "",
       REPLAY_SIMULATE_GH_WRITES: options.simulateGithubWrites ? "1" : "",
       REPLAY_SIMULATE_PRS: options.executor ? "1" : "",
