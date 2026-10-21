@@ -765,6 +765,12 @@ if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "project" 
   writeOut(JSON.stringify({ id: "PVTI_SIMULATED_" + Date.now().toString(36) + Math.floor(Math.random() * 1e6) }) + "\n");
   process.exit(0);
 }
+// Board ordering sync: only the position mutation of an item is simulated; stdout is not parsed.
+if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "api" && args[1] === "graphql" && args.some((value) => /^query=mutation\b[^]*\bupdateProjectV2ItemPosition\(/.test(value))) {
+  effect("simulated:github-write", "gh " + args.join(" "));
+  writeOut(JSON.stringify({ data: { updateProjectV2ItemPosition: { items: { totalCount: 1 } } } }) + "\n");
+  process.exit(0);
+}
 const overlaid = (stdout) => {
   if (args[0] !== "pr" || args[1] !== "view" || !overlayFile) return stdout;
   try {

@@ -325,8 +325,11 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     expect(added.status).toBe(0);
     expect(JSON.parse(added.stdout).id).toEqual(expect.stringContaining("SIMULATED"));
     for (const sub of ["edit", "comment", "close"]) expect(run(["issue", sub, "7", "--repo", "acme/widgets"]).status).toBe(0);
+    const move = ["api", "graphql", "-f", "query=mutation($project: ID!, $item: ID!) { updateProjectV2ItemPosition(input: {projectId: $project, itemId: $item}) { items(first: 1) { totalCount } } }", "-F", "project=P", "-F", "item=I"];
+    expect(run(move).status).toBe(0);
+    expect(run(["api", "graphql", "-f", "query=mutation { deleteProjectV2(input: {projectId: \"P\"}) { clientMutationId } }"]).status).toBe(1);
     expect(run(create, { ...env, REPLAY_SIMULATE_GH_WRITES: "" }).status).toBe(1);
-    expect(effects().map((effect) => effect.kind)).toEqual([...Array(6).fill("simulated:github-write"), "github:write"]);
+    expect(effects().map((effect) => effect.kind)).toEqual([...Array(7).fill("simulated:github-write"), "github:write", "github:write"]);
   });
 
   it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {
