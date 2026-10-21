@@ -124,7 +124,8 @@ export interface ReplayOptions {
    * SIMULATION ONLY: `gh pr ready`, `ready --undo`, `comment`, `close`, `edit`
    * and `merge` succeed without reaching GitHub; later `gh pr view` reads see
    * the simulated draft/state. `gh project item-edit` (the tick's board status
-   * sync) also succeeds, with no board state kept. Every other write is still
+   * sync), `project item-add` and Action mirror `issue create/edit/comment/close`
+   * also succeed with fake ids/URLs and no state kept. Every other write is still
    * refused.
    */
   simulateGithubWrites?: boolean;
@@ -745,6 +746,25 @@ if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "project" 
   effect("simulated:github-write", "gh " + args.join(" "));
   process.exit(0);
 }
+// The tick mirrors an Action as a GitHub Issue: \`issue create\` (stdout parsed for the URL), then
+// \`project item-add\` (stdout parsed for the item id). Both answer fake, unique values; nothing is created.
+if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "issue" && ["create", "edit", "comment", "close"].includes(args[1])) {
+  effect("simulated:github-write", "gh " + args.join(" "));
+  if (args[1] === "create") {
+    const repo = args[args.indexOf("--repo") + 1] || env.REPLAY_GH_REPO || "simulated/replay";
+    const counter = (overlayFile || "") + ".issues";
+    let n = 900000;
+    try { n = Number(readFileSync(counter, "utf8")) + 1; } catch {}
+    try { writeFileSync(counter, String(n)); } catch {}
+    writeOut("https://github.com/" + repo + "/issues/" + n + "\n");
+  }
+  process.exit(0);
+}
+if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "project" && args[1] === "item-add") {
+  effect("simulated:github-write", "gh " + args.join(" "));
+  writeOut(JSON.stringify({ id: "PVTI_SIMULATED_" + Date.now().toString(36) + Math.floor(Math.random() * 1e6) }) + "\n");
+  process.exit(0);
+}
 const overlaid = (stdout) => {
   if (args[0] !== "pr" || args[1] !== "view" || !overlayFile) return stdout;
   try {
@@ -974,8 +994,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       fidelity.push(`SIMULATION: reviewer verdicts are simulated as "${options.simulateVerdict}" (--simulate-verdict); they predict what the worker does with such a verdict, not the verdict. \`git remote get-url origin\` in a replay repository answers the source's GitHub URL so the review command can match the PR.`);
     }
     if (options.simulateGithubWrites) {
-      print("SIMULATION: gh pr ready/comment/close/edit/merge and gh project item-edit succeed without GitHub; later PR reads see the simulated state.");
-      fidelity.push("SIMULATION: pull-request writes (ready, comment, close, edit, merge) and project item-edit were simulated (--simulate-github-writes); GitHub's own response (checks re-running, branch protection, merge conflicts) is not.");
+      print("SIMULATION: gh pr ready/comment/close/edit/merge and gh project item-edit/item-add and gh issue create/edit/comment/close (Action mirror Issues) succeed without GitHub; later PR reads see the simulated state.");
+      fidelity.push("SIMULATION: pull-request writes (ready, comment, close, edit, merge) project item-edit/item-add and Action mirror Issue writes (issue create/edit/comment/close) were simulated (--simulate-github-writes); GitHub's own response (checks re-running, branch protection, merge conflicts) is not.");
     }
     // cwd is the replay root, never a checkout: a cwd-relative operation cannot reach the source.
     const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), SCRIPT, "--run-prepared", manifestFile], { cwd: root, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
