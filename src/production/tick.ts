@@ -37,7 +37,8 @@ import {
 import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
-import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
+import { COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -1085,6 +1086,24 @@ function recordInterruptedCompletionSettlement(
   }
 }
 
+/**
+ * Issue #1613: a drafted completion held for the operator (validation unavailable on this host, or the same
+ * refusal repeated) is escalated by name, and the Action is not relaunched meanwhile. Shared by the tick and
+ * `arcadia session reconcile`, so every reconciliation path holds. True when the receipt carries a hold.
+ */
+export function recordCompletionHoldEscalation(
+  db: Database.Database,
+  input: { session: AgentSession; receipt: { evidence_json: string | null }; now: Date; log?: (message: string) => void }
+): boolean {
+  const hold = (JSON.parse(input.receipt.evidence_json ?? "{}") as { completionHold?: { kind: string; message: string; remedy: string } }).completionHold;
+  if (!hold) return false;
+  ensureProductionTickTables(db);
+  const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
+  recordOperatorEscalation(db, { actionKey, kind: hold.kind, message: hold.message, remedy: hold.remedy, now: input.now });
+  input.log?.(`Escalated ${actionKey} to the operator (${hold.kind}): ${hold.message}`);
+  return true;
+}
+
 /** A drafted completion settled without its commit on the candidate (Issue #1518). */
 export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_settlement_not_in_candidate";
 
@@ -1129,6 +1148,7 @@ function publishSettledCandidateHead(
       log(`Escalated ${actionKey} to the operator (${COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
       return;
     }
+    if (recordCompletionHoldEscalation(db, { session, receipt, now: input.now, log })) return;
     if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
       || preservation.state === "LOCAL ONLY") return;
     const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
@@ -1270,7 +1290,8 @@ function recordOperatorGateEscalation(
   if (previous?.kind === OPERATOR_GATE_ESCALATION && previous.message === message) return false;
   // A completion settled without its commit on the candidate (Issue #1518) is
   // the gate's cause and is recorded only once, at the exit tick: keep it.
-  if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION) return false;
+  if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION
+    || previous?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || previous?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) return false;
   const remedy = operatorGateRemedy(db, { ...input, label });
   if (previous) clearOperatorEscalation(db, actionKey);
   recordOperatorEscalation(db, { actionKey, kind: OPERATOR_GATE_ESCALATION, message, remedy, now: input.now });
@@ -2508,6 +2529,14 @@ function attemptProjectLaunch(
   const existingEscalation = db
     .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
     .get(actionKey) as { kind: string } | undefined;
+  if (existingEscalation?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existingEscalation?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
+    return {
+      attempted: false,
+      outcome: "skipped",
+      reason: `Awaiting operator: ${actionKey} is held (${existingEscalation.kind}); fix what the escalation names, then run \`arcadia production reset-repair-budget\`.`,
+      actionKey
+    };
+  }
   if (existingEscalation?.kind === "no_validation_commands") {
     const project = getProjectBySlug(db, input.projectSlug);
     const metadata = project ? getProjectMetadata(db, project.id) : null;
@@ -2952,6 +2981,8 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   OPERATOR_GATE_ESCALATION,
   TERMINAL_CANDIDATE_ESCALATION,
   COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
+  COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION,
+  COMPLETION_REFUSED_REPEATEDLY_ESCALATION,
   PLANNER_ATTEMPTS_EXHAUSTED,
   ...ATTEMPT_LINEAGE_ESCALATIONS,
   ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,
@@ -2978,8 +3009,11 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
     | { kind: string }
     | undefined;
-  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
+  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout"
+    || existing?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existing?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
     clearOperatorEscalation(db, actionKey);
+    clearPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey));
+    clearPreservationRefusal(db, draftedCompletionTimeoutSubject(actionKey));
   }
   return { reviewStepsCleared };
 }

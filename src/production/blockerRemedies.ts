@@ -83,6 +83,8 @@ export const ESCALATION_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Obje
       step("planning_required", "The Action needs a planning packet."),
       step("terminal_candidate_not_integrable", "A finished candidate cannot be integrated as it stands."),
       step("completion_settlement_not_in_candidate", "The completion was settled, but the candidate does not carry its settlement commit."),
+      step("completion_validation_unavailable", "The pre-acceptance validation could not run on this host (a host fault, not a candidate defect); fix the host condition the message names, then reset with `arcadia production reset-repair-budget`."),
+      step("completion_refused_repeatedly", "The same drafted-completion refusal repeated; repair what it names, then reset with `arcadia production reset-repair-budget`."),
       answer("operator_gate_pending", "Answer the Decision", "The Decision the card names is answered with its own button on /todo."),
       answer("planning_run_approval_pending", "Approve planning run", "The review item's own button on /todo queues the planning run; planning only."),
       answer("planning_artifact_validation_pending", "Retry planning", "The review item's own button on /todo creates a planning-retry approval."),
