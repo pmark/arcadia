@@ -181,7 +181,7 @@
       "trigger": "live run stopped, before production press, defect class recurs, authority Decision pending, process critic, pre-mortem, post-mortem",
       "path": "docs/agent-guidance/process-critic-brief.md",
       "read_before": "Before a post-mortem of a stopped live run, a pre-press or merge-batch pre-mortem, or an authority Decision reaching the operator; read-only plan-critic specialization, grants no authority.",
-      "sha256": "cb9cd7cc3055eb821d684ce2261e19344376a10b8fb10130259eb6e0291cd798"
+      "sha256": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8"
     }
   ]
 }
