@@ -566,6 +566,55 @@ function canReassessPlanQuestion(item: DashboardReviewItem): boolean {
   }
 }
 
+/** A Decision's lettered choices: one tap per letter, no typing. Not answerable yet shows its remedy instead. */
+function DecisionMenu({
+  item,
+  pendingAction,
+  onChoose
+}: {
+  item: DashboardReviewItem;
+  pendingAction?: string | null;
+  onChoose?: (item: DashboardReviewItem, reply: string) => void;
+}) {
+  const menu = item.answerMenu;
+  if (!menu) return null;
+  if (!menu.answerable) {
+    return (
+      <div role="status" className="mt-4 rounded-md border border-gold/40 bg-gold/10 p-3 text-sm leading-5 text-ink">
+        <p className="font-semibold">Not answerable yet</p>
+        <p className="mt-1">{menu.blocked?.message}</p>
+        {menu.blocked?.pullRequestsUrl ? (
+          <a href={menu.blocked.pullRequestsUrl} className="mt-2 inline-flex min-h-10 items-center rounded-md border border-steel/30 bg-steel/10 px-3 text-sm font-semibold text-steel">
+            Open the pull request
+          </a>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-4 grid gap-2 rounded-md border border-steel/30 bg-steel/5 p-3">
+      <p className="text-sm font-semibold text-ink">Choose one</p>
+      {menu.options.map((option) => (
+        <button
+          key={option.letter}
+          type="button"
+          aria-label={`Choice ${option.letter}: ${option.label}`}
+          disabled={!onChoose || Boolean(pendingAction)}
+          onClick={() => onChoose?.(item, option.letter)}
+          className="flex min-h-12 items-start gap-3 rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-left text-sm text-ink transition hover:border-moss disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="font-semibold text-moss">{option.letter}</span>
+          <span className="min-w-0 break-words">
+            <span className="font-semibold">{option.label}</span>
+            {option.recommended ? <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-moss">Recommended</span> : null}
+            {option.consequence ? <span className="mt-0.5 block text-xs text-muted">{option.consequence}</span> : null}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ReviewCard({
   item,
   pendingAction,
@@ -692,7 +741,10 @@ export function ReviewCard({
         {!isClarification ? <Field label="Choices" value={item.options.join(", ")} /> : null}
         <Field label="Created" value={`${formatDateTime(item.createdAt)} · ${item.statusLabel}`} />
       </dl>
-      {isClarification ? (
+      {isClarification && item.answerMenu ? (
+        <DecisionMenu item={item} pendingAction={pendingAction} onChoose={onResolveReply} />
+      ) : null}
+      {isClarification && !item.answerMenu ? (
         <form
           className="mt-4 rounded-md border border-steel/30 bg-steel/5 p-3"
           onSubmit={(event) => {

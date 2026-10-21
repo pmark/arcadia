@@ -36,7 +36,9 @@ export function formatRequiresReviewNotification(count: number): string {
 }
 
 export function formatRequiresReviewShow(item: ReviewItem): string {
-  const actionText = item.resolvedIntent === "ActionClarification"
+  const actionText = item.answerMenu?.answerable
+    ? `Reply with a letter: ${item.answerMenu.options.map((option) => option.letter).join(", ")}.`
+    : item.resolvedIntent === "ActionClarification"
     ? "Reply directly with your answer. Other actions: reject, defer."
     : `Actions: ${item.options.join(", ")}`;
   return [
@@ -121,7 +123,30 @@ function formatExecutionResult(reviewSlug: string, execution: ReviewExecutionDat
   return lines.join("\n");
 }
 
+/** A Decision raised from a Decision document: lettered choices, answered by replying with just the letter. */
+function formatDecisionMenu(item: ReviewItem): string | null {
+  const menu = item.answerMenu;
+  if (!menu) return null;
+  if (!menu.answerable) {
+    return [`**${item.slug} - Decision, not answerable yet**`, item.decisionNeeded, "", menu.blocked?.message ?? "Its document is not on the main branch yet.", "No reply is needed until then."].join("\n");
+  }
+  const number = /docs\/decisions\/(\d{3,5})-/.exec(item.sourceInput)?.[1];
+  return [
+    `**${item.slug} - Decision${number ? ` ${number}` : ""}**`,
+    item.decisionNeeded,
+    item.recommendation ? `Recommendation: ${item.recommendation}` : null,
+    "",
+    ...menu.options.map(
+      (option) => `**${option.letter})** ${option.label}${option.recommended ? " (recommended)" : ""}${option.consequence ? ` — ${option.consequence}` : ""}`
+    ),
+    "",
+    `Reply with just the letter${number ? ` (for example \`${menu.options[0]?.letter ?? "A"}\` to this message, or \`${number} ${menu.options[0]?.letter ?? "A"}\`)` : ""}.`
+  ].filter((line): line is string => line !== null).join("\n");
+}
+
 function formatRequiresReviewItem(item: ReviewItem): string {
+  const menu = formatDecisionMenu(item);
+  if (menu) return menu;
   if (item.resolvedIntent === "ActionClarification") {
     return [
       `**${item.slug} — Arcadia needs your answer**`,

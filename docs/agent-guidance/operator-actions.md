@@ -185,6 +185,23 @@ the canonical settle path, and replays rather than settling twice. It never
 pushes, merges or answers the Decision a settlement opens; its settlement commit
 stays local to the main checkout until published.
 
+### Answering a Decision: letters, and when it is not answerable
+
+Operator direction, 2026-10-21. A Decision is answered by choosing a letter, never by typing its wording.
+Every Decision raised from a Decision document carries an `answerMenu` (`src/decisions/answerMenu.ts`):
+A, B, C... from the document's own `options` (each with its consequence and the recommended marker), or
+Approve / Reject / Defer when the document offers none. Dashboard `/review` shows one button per letter,
+Discord lists the letters and accepts a reply of just `A` (or `0132 A` without replying), and the CLI is
+`arcadia review answer <id> <letter>`. An agent may only relay the letter the operator chose; it never picks one.
+An Agent Ask `decision` draft carries its choices as `options` so letters always exist.
+
+A Decision is answerable only when its document is on the Project's checkout, because the answer is written
+there. A settlement from a candidate worktree opens its review item before the candidate merges (or before its
+commit is even pushed), so the menu then reports `answerable: false` with the remedy ("merge the pull request
+for branch X", or "the settlement commit is not published") and every surface shows that instead of an answer
+form. It becomes answerable by itself once the document is on the main branch; nothing needs repairing. Never
+send the operator a path on disk.
+
 Two kinds of Ask are refused here. A `complete` Ask is settled by the agent
 that proves it, in its candidate (`arcadia agent-ask settle`), not by an
 operator button. An existing-Plan amendment (`intent: plan` with `target_ref`)

@@ -20,6 +20,8 @@ export interface ReviewResponseParseContext {
 export interface ParsedReviewResponse {
   reviewId: string | null;
   reviewSlug: string | null;
+  /** A Decision number (`0132`) that preceded a lettered answer (`0132 A`), when the reply named one. */
+  decisionNumber: string | null;
   value: string;
   decisionToken: ReviewDecisionToken | null;
   optionLetter: string | null;
@@ -37,6 +39,21 @@ export function parseReviewResponse(
 ): ParsedReviewResponse {
   const trimmed = input.trim();
   const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const numbered = tokens.length === 2 && /^\d{3,5}$/.test(tokens[0]) && /^[a-z][.,:;!?]?$/i.test(tokens[1]);
+  if (numbered) {
+    const letter = tokens[1].slice(0, 1).toUpperCase();
+    return {
+      reviewId: context.reviewId?.trim() || null,
+      reviewSlug: context.reviewSlug?.trim().toUpperCase() || null,
+      decisionNumber: tokens[0].padStart(4, "0"),
+      value: letter,
+      decisionToken: null,
+      optionLetter: letter,
+      feedbackType: null,
+      hasReviewReference: true,
+      hasResponse: true
+    };
+  }
   const leading = extractReference(tokens[0], 0);
   const trailing = extractReference(tokens[tokens.length - 1], tokens.length - 1);
   const reference = leading ?? trailing;
@@ -53,6 +70,7 @@ export function parseReviewResponse(
   return {
     reviewId,
     reviewSlug,
+    decisionNumber: null,
     value,
     decisionToken,
     optionLetter,

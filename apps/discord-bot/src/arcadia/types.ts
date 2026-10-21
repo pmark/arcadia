@@ -277,6 +277,12 @@ export interface ReviewItem {
   contextJson?: string | null;
   recommendation: string | null;
   options: string[];
+  answerMenu?: {
+    source: "decision_options" | "standard";
+    answerable: boolean;
+    options: Array<{ letter: string; label: string; consequence: string | null; recommended: boolean }>;
+    blocked: { message: string; pullRequestsUrl: string | null } | null;
+  } | null;
   sourceInput: string;
   resultingAskRequestId: string | null;
   /** The Active production policy approves this Decision on its next tick; not announced (Issue #1659). */

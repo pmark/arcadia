@@ -3226,8 +3226,8 @@ the `/runs` To-do section, which posts to `/api/approvals` (a Decision with
 dashboard, so none is listed. A Decision also gets the Discord reply path when
 `docs sync` raised a live review item from its document (`doc_ref`
 `decision/<slug>`, which is otherwise listed only as the Decision): reply to its
-requires-review notification, or run `arcadia review resolve-reply "<answer>" --id
-<review id>`; either writes the answer into the Decision document. An Agent Ask
+requires-review notification with just a letter (`A`, or `0132 A`), or run `arcadia review answer
+<review id> <letter>`; either writes the chosen option into the Decision document. An Agent Ask
 has no Discord reply path, so none is listed.
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time. A review item raised from a Decision document (`doc_ref`

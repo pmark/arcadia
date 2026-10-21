@@ -25,9 +25,11 @@ export async function handleArcadiaMessage(
   }
 
   const replyReviewId = await reviewIdFromReply(message, config.arcadiaWorkspace);
-  let operation = replyReviewId ? "Decision reply" : "ask";
+  // "0132 A": a Decision number and a letter, sent on its own, answers that Decision without a reply thread.
+  const numberedLetter = !replyReviewId && /^\s*\d{3,5}\s+[a-z]\s*$/i.test(message.content);
+  let operation = replyReviewId || numberedLetter ? "Decision reply" : "ask";
   try {
-    if (replyReviewId) {
+    if (replyReviewId || numberedLetter) {
       const response = await cli.reviewResolveReply(message.content, replyReviewId, { actor: message.author.id });
       let confirmation = response.data.confirmation;
       if (

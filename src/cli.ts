@@ -322,6 +322,7 @@ import {
   runReviewFlagAgentCommand,
   runReviewReassessCommand,
   runReviewRejectCommand,
+  runReviewAnswerCommand,
   runReviewRequiredCommand,
   runReviewShowCommand,
   runReviewWeeklyCommand
@@ -3845,6 +3846,22 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       "review.resolve-reply",
       reviewOptionsFromArgv(options),
       () => runReviewResolveReplyWithClarify({ ...reviewOptionsFromArgv(options), id: options.id, actor: options.actor, clarify: options.clarify, reply }),
+      renderReviewResolveReplyWithClarifySuccess
+    )
+  );
+  addJsonOption(
+    review
+      .command("answer")
+      .description("Record the operator's lettered choice (A, B, C...) on a Decision; relay the letter the operator chose, never pick one")
+      .argument("<id>", "Requires Review item id or slug")
+      .argument("<letter>", "The choice letter the operator picked")
+      .option("--actor <id>", "Caller-asserted, untrusted provenance id for the sender (max 128 chars); recorded in the capture envelope only")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, letter: string, options: { actor?: string; workspace: string; json?: boolean }) =>
+    runCliAction(
+      "review.answer",
+      reviewOptionsFromArgv(options),
+      () => runReviewAnswerCommand({ ...reviewOptionsFromArgv(options), id, letter, actor: options.actor }),
       renderReviewResolveReplyWithClarifySuccess
     )
   );

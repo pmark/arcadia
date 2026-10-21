@@ -8,6 +8,7 @@ import { refuseFixturePacket, verifyFixturePacketApproval } from "../sessions/fi
 import type { FetchDecisionFile } from "../sessions/fixtureStandingLaunch.js";
 import { createId } from "../utils/id.js";
 import { prepareDecisionAnswer, recordDecisionAnswer } from "./decision.js";
+import { buildAnswerMenu, optionForLetter, reviewItemIdForDecisionNumber, type ReviewAnswerMenu } from "../decisions/answerMenu.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
@@ -96,6 +97,11 @@ export interface RequiresReviewPacket {
   proposedAction: string;
   missingFields: string[];
   options: string[];
+  /**
+   * The lettered answer menu of a Decision raised from a Decision document, with whether it can be answered yet.
+   * Absent on any other review item. The operator picks a letter; nobody types a Decision's wording.
+   */
+  answerMenu?: ReviewAnswerMenu | null;
   sourceInput: string;
   createdAt: string;
   updatedAt: string;
@@ -285,7 +291,7 @@ export function runReviewRequiredCommand(
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const items = withDatabase(workspacePath, (db) => {
     return listActionableReviewItems(db).map((item) => {
-      const packet = reviewPacketForReviewItem(item);
+      const packet = withAnswerMenu(db, reviewPacketForReviewItem(item), item);
       if (item.resolved_intent === "CodexBuildPacketApproval" && item.work_item_id) {
         const workItem = getWorkItem(db, item.work_item_id);
         const identity = workItem ? resolveWorkItemPolicyIdentity(db, workItem) : null;
@@ -406,7 +412,7 @@ export function runReviewShowCommand(
   const item = withDatabase(workspacePath, (db) => {
     const reviewItem = getReviewItemByIdOrSlug(db, options.id);
     if (reviewItem) {
-      return reviewPacketForReviewItem(reviewItem);
+      return withAnswerMenu(db, reviewPacketForReviewItem(reviewItem), reviewItem);
     }
     throw validationError("Requires Review Decision was not found.", { id: options.id });
   });
@@ -651,8 +657,16 @@ function applyReviewReply(
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const parsed = parseReviewResponse(options.reply);
   const reviewItem = withDatabase(workspacePath, (db) => {
+    const numbered = parsed.decisionNumber && !options.id ? reviewItemIdForDecisionNumber(db, parsed.decisionNumber) : [];
+    if (numbered.length > 1) {
+      throw validationError(`More than one open Decision is numbered ${parsed.decisionNumber}; reply to its notification instead.`, {
+        decisionNumber: parsed.decisionNumber
+      });
+    }
     const item = options.id
       ? getReviewItem(db, options.id)
+      : numbered.length === 1
+        ? getReviewItem(db, numbered[0])
       : parsed.reviewId
         ? getReviewItem(db, parsed.reviewId)
         : parsed.reviewSlug
@@ -660,15 +674,24 @@ function applyReviewReply(
         : null;
     if (!item) {
       throw validationError("Requires Review Decision was not found.", {
-        id: options.id ?? parsed.reviewId ?? parsed.reviewSlug ?? null
+        id: options.id ?? parsed.reviewId ?? parsed.reviewSlug ?? parsed.decisionNumber ?? null
       });
     }
     if (item.status !== "open" && item.status !== "deferred") {
       throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
+    if (parsed.decisionNumber && options.id && !item.source_input.includes(`docs/decisions/${parsed.decisionNumber}-`)) {
+      throw validationError(
+        `Your reply names Decision ${parsed.decisionNumber}, but you replied to a different Decision. Nothing was recorded; reply with just the letter to answer this one, or reply to the notification for Decision ${parsed.decisionNumber}.`,
+        { id: item.id, decisionNumber: parsed.decisionNumber }
+      );
+    }
     return item;
   });
   const packet = reviewPacketForReviewItem(reviewItem);
+  const menu = withDatabase(workspacePath, (db) => buildAnswerMenu(db, reviewItem));
+  // A letter chooses from the Decision's lettered menu; refuse early, in the operator's terms, when it cannot be answered.
+  const letterChoice = menu && parsed.optionLetter && !parsed.feedbackType ? chooseLetter(menu, parsed.optionLetter, reviewItem.id) : null;
 
   const feedbackType = parsed.feedbackType;
   if (feedbackType) {
@@ -706,15 +729,17 @@ function applyReviewReply(
   // this command, so an ordinary sentence silently fell through to `ask`.
   if (packet.resolvedIntent === ACTION_CLARIFICATION_INTENT) {
     const explicitDecision =
-      parsed.decisionToken === "reject" || parsed.decisionToken === "defer"
-        ? parsed.decisionToken
-        : null;
+      letterChoice?.kind === "decision"
+        ? letterChoice.decision === "approve" ? null : letterChoice.decision
+        : parsed.decisionToken === "reject" || parsed.decisionToken === "defer"
+          ? parsed.decisionToken
+          : null;
 
     if (!explicitDecision) {
       const response = runReviewApproveCommand({
         workspace: workspacePath,
         id: reviewItem.id,
-        answer: options.reply
+        answer: letterChoice?.kind === "label" ? letterChoice.label : letterChoice?.kind === "decision" ? "Approved" : options.reply
       });
       const actionId = packet.actionId ?? packet.workItemId;
       const nextStep = actionId
@@ -1582,6 +1607,14 @@ function resolveClarificationDecision(
   // question, and for those the workspace database is the whole record — there
   // is no file to contradict, so there is nothing to refuse.
   const documentRef = decisionDocumentRef(decision);
+  const menu = documentRef && decision.project_id ? withDatabase(workspacePath, (db) => buildAnswerMenu(db, decision)) : null;
+  if (menu && !menu.answerable) {
+    throw validationError(menu.blocked?.message ?? "This Decision is not answerable yet.", {
+      id: decision.id,
+      reason: menu.blocked?.reason ?? "decision_document_not_on_base",
+      pullRequestsUrl: menu.blocked?.pullRequestsUrl ?? null
+    });
+  }
   if (documentRef && !decision.project_id) {
     throw validationError(
       "This clarification names a Decision document but no Project, so the document cannot be located.",
@@ -2020,6 +2053,66 @@ function parseStringArray(raw: string | null | undefined): string[] {
   }
 }
 
+/** What a letter chose on a Decision's menu: an offered option's exact label, or a standard Approve/Reject/Defer. */
+type LetterChoice = { kind: "label"; label: string } | { kind: "decision"; decision: "approve" | "reject" | "defer" };
+
+function chooseLetter(menu: ReviewAnswerMenu, letter: string, id: string): LetterChoice {
+  if (!menu.answerable) {
+    throw validationError(menu.blocked?.message ?? "This Decision is not answerable yet.", {
+      id,
+      reason: menu.blocked?.reason ?? "decision_document_not_on_base",
+      pullRequestsUrl: menu.blocked?.pullRequestsUrl ?? null
+    });
+  }
+  const option = optionForLetter(menu, letter);
+  if (!option) {
+    throw validationError(`${letter.toUpperCase()} is not one of this Decision's choices.`, {
+      id,
+      validLetters: menu.options.map((candidate) => candidate.letter)
+    });
+  }
+  return menu.source === "decision_options"
+    ? { kind: "label", label: option.label }
+    : { kind: "decision", decision: option.label.toLowerCase() as "approve" | "reject" | "defer" };
+}
+
+/** Attach the lettered answer menu to a packet whose review item came from a Decision document. */
+function withAnswerMenu(db: Parameters<typeof buildAnswerMenu>[0], packet: RequiresReviewPacket, item: ReviewItemSummary): RequiresReviewPacket {
+  const answerMenu = buildAnswerMenu(db, item);
+  return answerMenu ? { ...packet, answerMenu } : packet;
+}
+
+export interface ReviewAnswerCommandOptions {
+  workspace: string;
+  id: string;
+  /** The operator's chosen letter. An agent relays it verbatim and never chooses. */
+  letter: string;
+  actor?: string | null;
+}
+
+/** `arcadia review answer <id> <letter>`: record the operator's lettered choice on a Decision. */
+export function runReviewAnswerCommand(options: ReviewAnswerCommandOptions): CommandSuccess<ReviewResolveReplyCommandData> {
+  const letter = options.letter.trim();
+  if (!/^[a-z]$/i.test(letter)) {
+    throw validationError("Answer with a single choice letter (A, B, C...), exactly as the operator chose it.", { letter: options.letter });
+  }
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const menu = withDatabase(workspacePath, (db) => {
+    const item = getReviewItemByIdOrSlug(db, options.id);
+    if (!item) throw validationError("Requires Review Decision was not found.", { id: options.id });
+    return { id: item.id, menu: buildAnswerMenu(db, item) };
+  });
+  if (!menu.menu) {
+    throw validationError("This item has no lettered choices; answer it with `review approve`, `reject` or `defer`.", { id: options.id });
+  }
+  return runReviewResolveReplyCommand({
+    workspace: workspacePath,
+    id: menu.id,
+    reply: letter.toUpperCase(),
+    actor: options.actor
+  });
+}
+
 function resolveReplyDecision(parsed: ParsedReviewResponse, item: RequiresReviewPacket): "approve" | "reject" | "defer" | null {
   const normalized = normalizeReviewResponseValue(parsed.value);
   if (!normalized) {
@@ -2040,6 +2133,9 @@ function resolveReplyDecision(parsed: ParsedReviewResponse, item: RequiresReview
 }
 
 export function validRepliesForReview(item: RequiresReviewPacket): string[] {
+  if (item.answerMenu?.answerable) {
+    return item.answerMenu.options.map((option) => option.letter);
+  }
   if (item.resolvedIntent === ACTION_CLARIFICATION_INTENT) {
     return ["a direct answer", "reject", "defer", ...REVIEW_FEEDBACK_TYPES];
   }

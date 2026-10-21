@@ -836,6 +836,13 @@ export interface DashboardMilestone {
   updatedAt: string;
 }
 
+export interface DashboardAnswerMenu {
+  source: "decision_options" | "standard";
+  answerable: boolean;
+  options: Array<{ letter: string; label: string; consequence: string | null; recommended: boolean }>;
+  blocked: { reason: string; message: string; branch: string | null; pullRequestsUrl: string | null } | null;
+}
+
 export interface DashboardReviewItem {
   id: string;
   slug: string;
@@ -857,6 +864,7 @@ export interface DashboardReviewItem {
   proposedAction: string;
   missingFields: string[];
   options: string[];
+  answerMenu?: DashboardAnswerMenu | null;
   sourceInput: string;
   createdAt: string;
   updatedAt: string;

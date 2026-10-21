@@ -1684,8 +1684,8 @@ describe("arcadia todo: gate details and answer paths on Decisions and Agent Ask
     const gated = data.items.find((item) => item.key === "decision:demo/0001");
     expect(gated?.answerVia).toEqual([
       dashboardLine,
-      "Discord: reply to the requires-review notification for review item review-of-0001 (REVIEW-OF-0001) with your answer; review resolve-reply writes it into the Decision document",
-      'or: arcadia review resolve-reply "<answer>" --id review-of-0001'
+      "Discord: reply to the requires-review notification for review item review-of-0001 (REVIEW-OF-0001) with the letter of your choice (A, B, C...); review resolve-reply writes the chosen option into the Decision document",
+      'or: arcadia review answer review-of-0001 <letter>'
     ]);
     const other = data.items.find((item) => item.key === "decision:demo/0002");
     expect(other?.answerVia?.join(" ")).not.toContain("Discord");
