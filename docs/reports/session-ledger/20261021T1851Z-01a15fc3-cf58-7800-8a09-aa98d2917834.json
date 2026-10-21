@@ -1,0 +1,21 @@
+{
+  "session_id": "01a15fc3-cf58-7800-8a09-aa98d2917834",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "operator-directed:#1675",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "complete",
+  "notes": "Replay now drafts uncommitted completion for host settlement. Failing-first regression; 31 replay tests, lint, tsc and build pass. Snapshot rehearsal and independent PR review recorded on the PR."
+}

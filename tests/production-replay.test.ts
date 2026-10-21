@@ -752,6 +752,8 @@ describe("production replay of the whole chain with a scripted executor", () => 
     const launched = report.ticks.filter((tick) => tick.launch?.outcome === "launched");
     expect(launched[0].launch!.actionKey).toBe(source.actionA);
     expect(launched[0].executor).toContain("scripted executor finished");
+    // A headless Session drafts at the base and leaves commits/settlement to the host.
+    expect(launched[0].executor).toContain(", settlement none,");
     expect(report.ticks.flatMap((tick) => tick.reconciled).map((entry) => entry.outcome)).toContain("accepted_completion");
     expect(report.stop.reason).not.toBe("launched");
   });
