@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
+import { runSessionReconcileCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { createCodexInvocation, createReviewExecutionRun, createReviewItem, getWorkItemByDocRef, updateExecutionRunStatus, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
@@ -672,20 +673,65 @@ it("asserts the contract", () => {
       expect(result.receipt.outcome).toBe("accepted_completion");
     });
 
-    it("refuses, never passes, a named test that does not finish within the bound", () => {
+    it("refuses, never passes, a named test that does not finish within the bound; a repeated timeout holds for the operator", () => {
       const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => new Promise(() => {}), 600_000);`);
+      const reconcileAgain = (n: number) => {
+        withDatabase(fixture.workspace, (db) => {
+          db.prepare("DELETE FROM session_exit_receipts WHERE session_id = ?").run(sessionId);
+          db.prepare("UPDATE agent_sessions SET status = 'running', ended_at = NULL WHERE id = ?").run(sessionId);
+        });
+        return withDatabase(fixture.workspace, (db) =>
+          reconcileSessionExit({ db, sessionId, requestId: `reconcile-named-test-hangs-${n}`, repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation: { ...completionValidation, timeoutMs: 15_000 } })
+        ).receipt;
+      };
 
-      const result = withDatabase(fixture.workspace, (db) =>
-        reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-hangs", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation: { ...completionValidation, timeoutMs: 15_000 } })
-      );
+      // Issue #1613: one timeout may be load or one hung test: still resumable, no hold.
+      const first = reconcileAgain(1);
+      expect(first.outcome).toBe("incomplete_resumable");
+      expect(first.reason).toContain("did not finish within 15s");
+      expect(first.reason).toContain("tests/contract.test.ts (timed out)");
+      expect(first.lease_handoff).toBe(1);
+      expect(JSON.parse(first.evidence_json ?? "{}").completionHold).toBeUndefined();
+      // The second identical timeout is a host fault: one named hold, no resumable handoff.
+      const second = reconcileAgain(2);
+      expect(second.lease_handoff).toBe(0);
+      expect(JSON.parse(second.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_validation_unavailable" });
+    });
 
-      expect(result.receipt.outcome).toBe("incomplete_resumable");
-      expect(result.receipt.reason).toContain("did not finish within 15s");
-      expect(result.receipt.reason).toContain("tests/contract.test.ts (timed out)");
-      // Issue #1613: a timeout is a host fault, not a candidate defect: no resumable handoff
-      // whose brief says "fix the code or tests"; one named operator hold instead.
-      expect(result.receipt.lease_handoff).toBe(0);
-      expect(JSON.parse(result.receipt.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_validation_unavailable" });
+    // Issue #1613: errors from the candidate's own content stay ordinary resumable refusals.
+    it("keeps a candidate-content validation refusal resumable, never a host-fault hold", () => {
+      const noRunner = namedTestCandidate(`it("asserts the contract", () => { expect(1).toBe(1); });`);
+      writeFileSync(path.join(noRunner.worktreePath, "package.json"), `${JSON.stringify({ name: "fixture", private: true, type: "module" })}\n`);
+      git(noRunner.worktreePath, ["commit", "-qam", "drop the declared runner"]);
+      const tracked = namedTestCandidate(`it("asserts the contract", () => { expect(1).toBe(1); });`);
+      mkdirSync(path.join(tracked.worktreePath, "node_modules", "evil"), { recursive: true });
+      writeFileSync(path.join(tracked.worktreePath, "node_modules", "evil", "index.js"), "module.exports = 1;\n");
+      git(tracked.worktreePath, ["add", "-f", "node_modules"]);
+      git(tracked.worktreePath, ["commit", "-qm", "track node_modules"]);
+      for (const candidate of [noRunner, tracked]) {
+        const { receipt } = withDatabase(candidate.fixture.workspace, (db) =>
+          reconcileSessionExit({ db, sessionId: candidate.sessionId, requestId: "reconcile-candidate-content", repoRoot: candidate.fixture.repo, workspace: candidate.fixture.workspace, completionValidation })
+        );
+        expect(receipt.outcome).toBe("incomplete_resumable");
+        expect(receipt.reason).toContain("Pre-acceptance validation");
+        expect(receipt.lease_handoff).toBe(1);
+        expect(JSON.parse(receipt.evidence_json ?? "{}").completionHold).toBeUndefined();
+      }
+    });
+
+    // Issue #1613: `arcadia session reconcile` (not the tick) records the escalation too.
+    it("records the operator escalation when a host-fault hold is reconciled outside the tick", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1).toBe(1); });`);
+      withDatabase(fixture.workspace, (db) => {
+        const project = db.prepare("SELECT id FROM projects WHERE slug = 'test-project'").get() as { id: string };
+        upsertProjectMetadata(db, { projectId: project.id, repoPath: fixture.repo, validationCommands: [] });
+      });
+      const response = runSessionReconcileCommand({ workspace: fixture.workspace, repo: fixture.repo, session: sessionId, requestId: "reconcile-outside-tick" });
+      expect(response.data.receipt.lease_handoff).toBe(0);
+      const escalation = withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT kind, remedy FROM production_operator_escalations WHERE action_key = 'test-project/define-contract'").get()) as { kind: string; remedy: string } | undefined;
+      expect(escalation).toMatchObject({ kind: "completion_validation_unavailable" });
+      expect(escalation!.remedy).toContain("reset-repair-budget");
     });
 
     // Issue #1613: the same drafted-completion refusal, repeated across relaunches of one Action,

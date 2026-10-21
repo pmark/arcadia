@@ -537,7 +537,11 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     // Issue #1613: a validation that could not run here is not a candidate defect; relaunching
     // cannot fix it, so it is one operator hold with a named remedy, not a resumable handoff.
     const unavailable = result.reason === AUTO_SETTLE_VALIDATION_REFUSED ? validation as CompletionValidationResult | null : null;
-    if (unavailable?.status === "refused" && unavailable.hostFault) {
+    // A timeout may be load or one hung test: retry once (MAX_VALIDATION_TIMEOUTS) before it holds.
+    const timeouts = unavailable?.status === "refused" && unavailable.timedOut
+      ? recordPreservationRefusal(db, draftedCompletionTimeoutSubject(actionKey), fingerprintPreservationRefusal("validation-timeout", null), refusal, new Date()).attempts
+      : 0;
+    if (unavailable?.status === "refused" && unavailable.hostFault && (!unavailable.timedOut || timeouts >= MAX_VALIDATION_TIMEOUTS)) {
       const message = `Pre-acceptance validation could not run on this host, so the drafted completion was neither accepted nor refused on its merits: ${result.detail ?? refusal}`;
       return { kind: "refused", reason: message, hold: {
         kind: COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, message,
@@ -545,7 +549,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
       } };
     }
     // The same refusal repeating across relaunches of one Action is a stuck loop, not progress.
-    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprintPreservationRefusal(refusal, null), refusal, new Date());
+    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprintPreservationRefusal(refusal, { candidate: evidence.candidateRevision ?? null }), refusal, new Date());
     if (attempts >= MAX_IDENTICAL_PRESERVATION_REFUSALS) {
       const message = `${refusal} It was refused the same way ${attempts} times in a row, so it is not offered for automatic resumption.`;
       return { kind: "refused", reason: message, hold: {
@@ -556,6 +560,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     return { kind: "refused", reason: refusal };
   }
   clearPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey));
+  clearPreservationRefusal(db, draftedCompletionTimeoutSubject(actionKey));
   const settlementId = result.receiptId ?? "unknown";
   // Issue #1518: a settlement can be recorded while its commit is not on the
   // candidate (its Git commit failed, leaving the settled documents in the
@@ -605,6 +610,8 @@ export interface CompletionHold { kind: string; message: string; remedy: string 
 export const COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION = "completion_validation_unavailable";
 export const COMPLETION_REFUSED_REPEATEDLY_ESCALATION = "completion_refused_repeatedly";
 /** The identical-refusal count's subject for an Action; cleared when its completion settles or an operator resets the budget. */
+export const MAX_VALIDATION_TIMEOUTS = 2;
+export const draftedCompletionTimeoutSubject = (actionKey: string) => `drafted-completion-timeout:${actionKey}`;
 export const draftedCompletionRefusalSubject = (actionKey: string) => `drafted-completion:${actionKey}`;
 
 /**

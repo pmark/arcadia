@@ -38,7 +38,7 @@ import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux
 import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
-import { COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -1086,6 +1086,24 @@ function recordInterruptedCompletionSettlement(
   }
 }
 
+/**
+ * Issue #1613: a drafted completion held for the operator (validation unavailable on this host, or the same
+ * refusal repeated) is escalated by name, and the Action is not relaunched meanwhile. Shared by the tick and
+ * `arcadia session reconcile`, so every reconciliation path holds. True when the receipt carries a hold.
+ */
+export function recordCompletionHoldEscalation(
+  db: Database.Database,
+  input: { session: AgentSession; receipt: { evidence_json: string | null }; now: Date; log?: (message: string) => void }
+): boolean {
+  const hold = (JSON.parse(input.receipt.evidence_json ?? "{}") as { completionHold?: { kind: string; message: string; remedy: string } }).completionHold;
+  if (!hold) return false;
+  ensureProductionTickTables(db);
+  const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
+  recordOperatorEscalation(db, { actionKey, kind: hold.kind, message: hold.message, remedy: hold.remedy, now: input.now });
+  input.log?.(`Escalated ${actionKey} to the operator (${hold.kind}): ${hold.message}`);
+  return true;
+}
+
 /** A drafted completion settled without its commit on the candidate (Issue #1518). */
 export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_settlement_not_in_candidate";
 
@@ -1130,14 +1148,7 @@ function publishSettledCandidateHead(
       log(`Escalated ${actionKey} to the operator (${COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
       return;
     }
-    // Issue #1613: a drafted completion held for the operator (validation unavailable on this host, or the
-    // same refusal repeated) is escalated by name and the Action is not relaunched meanwhile.
-    const hold = (JSON.parse(receipt.evidence_json ?? "{}") as { completionHold?: { kind: string; message: string; remedy: string } }).completionHold;
-    if (hold) {
-      recordOperatorEscalation(db, { actionKey, kind: hold.kind, message: hold.message, remedy: hold.remedy, now: input.now });
-      log(`Escalated ${actionKey} to the operator (${hold.kind}): ${hold.message}`);
-      return;
-    }
+    if (recordCompletionHoldEscalation(db, { session, receipt, now: input.now, log })) return;
     if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
       || preservation.state === "LOCAL ONLY") return;
     const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
@@ -3002,6 +3013,7 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
     || existing?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existing?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
     clearOperatorEscalation(db, actionKey);
     clearPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey));
+    clearPreservationRefusal(db, draftedCompletionTimeoutSubject(actionKey));
   }
   return { reviewStepsCleared };
 }

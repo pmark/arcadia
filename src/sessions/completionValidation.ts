@@ -85,6 +85,8 @@ export type CompletionValidationResult =
       status: "refused"; namedTests: string[]; reason: string; failures: string[];
       /** Issue #1613: the validation could not run here (timeout, unsupported host, missing runner, unlinkable dependencies); the candidate may be fine, so only the operator can fix it. */
       hostFault: boolean;
+      /** With `hostFault`: the validation ran out of time rather than failing to start. */
+      timedOut?: boolean;
     };
 
 // A repository-relative test file path: under `tests/`, `test/` or a
@@ -259,7 +261,9 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
   if (namedTests.length === 0) return { status: "not_required" };
   const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
-  // A refusal the candidate cannot fix: the validation could not run on this host (Issue #1613).
+  // A timeout is host load or a hung test: counted on its own small budget before it holds (Issue #1613).
+  const timeout = (why: string, failures: string[] = []): CompletionValidationResult => ({ ...unavailable(why, failures) as Extract<CompletionValidationResult, { status: "refused" }>, timedOut: true });
+  // Host-side only (no workspace or commands, non-darwin, runner not installed, spawn error): the candidate cannot fix it (Issue #1613). Errors from the candidate's own content stay ordinary resumable denials.
   const unavailable = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures, true);
   if (namedTests.length > MAX_NAMED_TEST_FILES) return deny(`the acceptance criteria name ${namedTests.length} test files; at most ${MAX_NAMED_TEST_FILES} run before acceptance.`);
   if (process.platform !== "darwin" && !options.unconfinedForTests) return unavailable("protected candidate validation requires the macOS Seatbelt host.");
@@ -274,7 +278,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     // A check the candidate rewrote cannot judge it.
     bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
   } catch (error) {
-    return unavailable(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
+    return deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-completion-")));
   const source = path.join(root, "source");
@@ -286,13 +290,13 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     try {
       materializeCandidateTree(candidate.repository, tree, source);
     } catch (error) {
-      return unavailable(`the candidate tree could not be materialized (${untrusted(normalizeError(error).message, 300)}).`);
+      return deny(`the candidate tree could not be materialized (${untrusted(normalizeError(error).message, 300)}).`);
     }
     const missing = namedTests.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
     const vitest = declaresVitest(source);
     if (!vitest && !namedTests.every((file) => /\.(?:js|mjs|cjs)$/.test(file))) {
-      return unavailable("the Project's package.json declares no supported test runner for its named TypeScript tests (vitest).");
+      return deny("the Project's package.json declares no supported test runner for its named TypeScript tests (vitest).");
     }
     const forbidden = [candidate.workspace, candidate.repository, candidate.worktree].map((dir) => realpathSync(dir));
     let readable: string[] = [];
@@ -300,7 +304,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       try {
         readable = bridgeDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
       } catch (error) {
-        return unavailable(`the Project's installed dependencies could not be linked (${untrusted(normalizeError(error).message, 300)}).`);
+        return deny(`the Project's installed dependencies could not be linked (${untrusted(normalizeError(error).message, 300)}).`);
       }
     }
     const runner = path.join(source, "node_modules", "vitest", "vitest.mjs");
@@ -318,7 +322,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     // Only a Node-specific prefix (a version manager's `.../node/<version>` or
     // a `node`/`nodejs` directory), never a general one such as `~/.local`.
     if (inside(home, nodePrefix) && /^(?:node|nodejs|v?\d+(?:\.\d+){0,2})$/.test(path.basename(nodePrefix))) readable.push(nodePrefix);
-    if (readable.some((dir) => forbidden.slice(0, 1).some((workspace) => inside(workspace, dir)))) return unavailable("a dependency tree resolves inside the workspace.");
+    if (readable.some((dir) => forbidden.slice(0, 1).some((workspace) => inside(workspace, dir)))) return deny("a dependency tree resolves inside the workspace.");
     // `signal (target same-sandbox)`: a runner terminates its own workers;
     // nothing outside this sandbox (the watchdog included) is reachable.
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all ${denied})) `
@@ -342,7 +346,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
 
     for (const command of candidate.commands) {
       const result = run(["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
-      if (result.timedOut) return unavailable(timedOutWhy, [`${command} (timed out)`]);
+      if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.`, [command]);
     }
@@ -353,7 +357,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       for (const file of namedTests) {
         const report = path.join(scratch, `completion-node-test-${namedTests.indexOf(file)}.tap`);
         const result = run([process.execPath, "--test", "--test-reporter=tap", `--test-reporter-destination=${report}`, file], COMPLETION_VALIDATION_TIMEOUT_MS);
-        if (result.timedOut) return unavailable(timedOutWhy, [`${file} (timed out)`]);
+        if (result.timedOut) return timeout(timedOutWhy, [`${file} (timed out)`]);
         if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
         let tap = "";
         try { tap = readFileSync(report, "utf8"); } catch { tap = ""; }
@@ -366,7 +370,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
 
     const report = path.join(scratch, "completion-vitest-report.json");
     const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=json", `--outputFile.json=${report}`], COMPLETION_VALIDATION_TIMEOUT_MS);
-    if (result.timedOut) return unavailable(timedOutWhy, namedTests.map((file) => `${file} (timed out)`));
+    if (result.timedOut) return timeout(timedOutWhy, namedTests.map((file) => `${file} (timed out)`));
     if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
     let parsed: VitestReport | null = null;
     try { parsed = JSON.parse(readFileSync(report, "utf8")) as VitestReport; } catch { parsed = null; }

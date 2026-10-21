@@ -24,6 +24,7 @@ import {
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
 import { findOperatorLaunchAuthorization, type OperatorLaunchSource } from "../sessions/operatorLaunch.js";
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
+import { recordCompletionHoldEscalation } from "../production/tick.js";
 import { reconcileSessionExit, type ReconcileSessionExitResult } from "../sessions/reconciliation.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
@@ -121,9 +122,13 @@ export function runSessionReconcileCommand(options: {
 }): CommandSuccess<ReconcileSessionExitResult> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
-  const result = withDatabase(workspacePath, (db) =>
-    reconcileSessionExit({ db, sessionId: options.session, requestId: options.requestId, repoRoot, workspace: workspacePath })
-  );
+  const result = withDatabase(workspacePath, (db) => {
+    const reconciled = reconcileSessionExit({ db, sessionId: options.session, requestId: options.requestId, repoRoot, workspace: workspacePath });
+    // Issue #1613: a hold on the drafted completion is recorded here too, not only by the production tick.
+    const session = getSession(db, options.session);
+    if (reconciled.created && session) recordCompletionHoldEscalation(db, { session, receipt: reconciled.receipt, now: new Date() });
+    return reconciled;
+  });
   return createSuccess({ command: "session.reconcile", workspace: workspacePath, data: result });
 }
 
