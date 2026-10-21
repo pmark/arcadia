@@ -716,4 +716,24 @@ describe("native mail: round-5 review follow-ups (expired disposal, non-spoofabl
     const status = withDatabase(workspacePath, (db) => mailStatus(db, message.id));
     expect(status.selfReportedResult).toMatchObject({ selfReported: true, outcome: "done" });
   });
+
+  it("a self-report and a disposal reusing an acknowledged message's own acknowledgment receipt id are refused by the receipt-kind collision guards", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => sendMailMessage(db, baseOffer({ requestId: "req-ack-collision" })));
+    withDatabase(workspacePath, (db) => acknowledgeMailMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+
+    const ackReceiptId = `${message.id}:acknowledgment`;
+    expect(() =>
+      withDatabase(workspacePath, (db) =>
+        reportMailResult(db, { messageId: message.id, requestId: ackReceiptId, ...SCOPE, actor: "x", result: { outcome: "done" } })
+      )
+    ).toThrow(/already recorded as a different operation \(acknowledgment\)/);
+
+    expect(() =>
+      withDatabase(workspacePath, (db) => disposeMailMessage(db, { messageId: message.id, requestId: ackReceiptId, ...SCOPE, actor: "x" }))
+    ).toThrow(/already recorded as a different operation \(acknowledgment\)/);
+
+    const status = withDatabase(workspacePath, (db) => mailStatus(db, message.id));
+    expect(status.message.status).toBe("acknowledged");
+  });
 });
