@@ -282,11 +282,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: "Add a native-mail test that a self-report and a disposal reusing an acknowledged message's own acknowledgment receipt id are refused by the receipt-kind collision guards, closing Issue #1470."
+    next_action: "Implement a native-mail test that a self-report and a disposal reusing an acknowledged message's own acknowledgment receipt id are refused by the receipt-kind collision guards, closing Issue #1470."
     expected_artifact: Evidence satisfying Agent Ask cover-mail-ack-receipt-kind-collision
     clarification: clarified
     confidence: high
-    source: Agent Ask add-clean-run-actions-20261021-r4
+    source: Agent Ask retitle-clean-run-actions-implement-20261021
     why: "Issue #1470: the existing disposal-collision test is refused by the disposed-message guard first, so the kind-mismatch branch is not directly exercised."
     acceptance_criteria:
       - "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."
@@ -300,11 +300,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: "Stop tests/launch-preview.test.ts from consulting the host tmux server for its deterministic Session name, closing Issue #1628."
+    next_action: "Implement a tmux stub in tests/launch-preview.test.ts so its deterministic Session name no longer consults the host tmux server, closing Issue #1628."
     expected_artifact: Evidence satisfying Agent Ask isolate-launch-preview-tmux-name
     clarification: clarified
     confidence: high
-    source: Agent Ask add-clean-run-actions-20261021-r4
+    source: Agent Ask retitle-clean-run-actions-implement-20261021
     why: "Issue #1628: a fixed fixture clock yields a fixed tmux Session name, so a leftover host session fails the already-leased test with 'The tmux Session name already exists'."
     acceptance_criteria:
       - In tests/launch-preview.test.ts, the prepareSession call in the test named 'names an already-leased repository as a conflicting-execution prerequisite' passes a tmux stub whose available() returns true, whose hasSession returns false while recording each queried name, and whose launch is never called; the test asserts at least one name was recorded and every recorded name starts with arcadia-test-project-, so that prepareSession call no longer consults the host tmux server (the buildLaunchPreview call may also receive the stub via its tmux input).
@@ -318,11 +318,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: "Make the scratch-directory teardown in the agent-guidance test retry a transient ENOTEMPTY instead of failing the shard, closing Issue #1419."
+    next_action: "Implement bounded retries in the agent-guidance test's scratch-directory teardown so a transient ENOTEMPTY no longer fails the shard, closing Issue #1419."
     expected_artifact: Evidence satisfying Agent Ask bound-guidance-test-teardown-retries
     clarification: clarified
     confidence: high
-    source: Agent Ask add-clean-run-actions-20261021-r4
+    source: Agent Ask retitle-clean-run-actions-implement-20261021
     why: "Issue #1419: the suite failed CI in afterEach with ENOTEMPTY from an unbounded rmSync while a concurrent writer was still active."
     acceptance_criteria:
       - In tests/agent-guidance.test.ts, the afterEach rmSync of the scratch roots passes recursive true, force true, maxRetries of at least 3 and retryDelay of at least 50 milliseconds.
