@@ -4,7 +4,7 @@ type: decision
 id: "0133"
 slug: record-the-operator-s-2026-10-21-choice-on-whether-under-an-active-production
 project: arcadia
-status: open
+status: approved
 question: Record the operator's 2026-10-21 choice on whether, under an active production policy, an operator-escalated in-scope Action stops holding the pointer so the tick can admit other independent in-scope Actions.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-21
+answer: Continue with other independent in-scope Actions after an escalation
+decided: 2026-10-21
 ---
 
 # Decision 0133: Record the operator's 2026-10-21 choice on whether, under an active production policy, an operator-escalated in-scope Action stops holding the pointer so the tick can admit other independent in-scope Actions.

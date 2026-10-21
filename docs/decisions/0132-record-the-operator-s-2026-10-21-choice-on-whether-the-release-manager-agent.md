@@ -4,7 +4,7 @@ type: decision
 id: "0132"
 slug: record-the-operator-s-2026-10-21-choice-on-whether-the-release-manager-agent
 project: arcadia
-status: open
+status: approved
 question: Record the operator's 2026-10-21 choice on whether the Release Manager agent may merge fix PRs for managed-production run defects that touch src/production or src/sessions (the Decision 0098 gate list), only while production is Off.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-21
+answer: Release Manager may merge run-defect fix PRs while production is Off
+decided: 2026-10-21
 ---
 
 # Decision 0132: Record the operator's 2026-10-21 choice on whether the Release Manager agent may merge fix PRs for managed-production run defects that touch src/production or src/sessions (the Decision 0098 gate list), only while production is Off.
