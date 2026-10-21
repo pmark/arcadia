@@ -107,6 +107,8 @@ export interface ReplayOptions {
   /** Where to create the temporary root; defaults to the OS temporary directory. */
   parent?: string;
   keep?: boolean;
+  /** Extra source directories that hold Session worktrees (beyond `~/.<agent>/worktrees`), each recreated under the root. */
+  worktreeRoots?: string[];
   /** Where to write the JSON report; defaults to `<root>/report.json` (lost unless `keep`). */
   reportPath?: string;
   print?: (line: string) => void;
@@ -880,6 +882,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     for (const agent of ["claude", "codex", "opencode"]) {
       mappings.push({ from: path.join(realHome, `.${agent}`, "worktrees"), to: path.join(root, "agent-worktrees", agent) });
     }
+    (options.worktreeRoots ?? []).forEach((from, index) => mappings.push({ from: path.resolve(from), to: path.join(root, "agent-worktrees", `extra-${index}`) }));
     const sessions = sessionWorktrees(databaseFile, [...inScope]);
     const rewrite = rewriteSnapshotPaths(databaseFile, mappings);
     if (rewrite.remaining.length > 0) {

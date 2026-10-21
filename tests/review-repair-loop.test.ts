@@ -213,6 +213,38 @@ describe("a resumed Session's own pending completion draft", () => {
     expect(brief).toContain("does not verbatim-cover every declared acceptance criterion");
   });
 
+  // Live shape (2026-10-20, Issue #1640): several Sessions in a row each drafted a
+  // refused completion Ask on the same candidate; the resume was held by the earlier ones.
+  const resumeFresh = (rehearsal: Rehearsal, previous: AgentSession): AgentSession => {
+    rehearsal.tickUntil(() => { const lease = rehearsal.lease(); return lease !== null && lease.id !== previous.id; }, 3);
+    return rehearsal.lease()!;
+  };
+  it("does not gate the resume on an earlier Session's refused draft that the next Session left in place (#1640)", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-round-1");
+    exitIncomplete(rehearsal, a);
+    const b = resumeFresh(rehearsal, a);
+    draftUncovered(rehearsal, b, "complete-round-2");
+    exitIncomplete(rehearsal, b);
+    expect(pending(rehearsal)).toEqual(expect.arrayContaining(["complete-round-1", "complete-round-2"]));
+    resumeFresh(rehearsal, b);
+    expect(escalation(rehearsal)).toBeUndefined();
+  });
+
+  it("does not gate the resume on an earlier Session's refused draft that the next Session deleted (#1640)", () => {
+    const { rehearsal, a } = launchFirst();
+    draftUncovered(rehearsal, a, "complete-round-1");
+    exitIncomplete(rehearsal, a);
+    const b = resumeFresh(rehearsal, a);
+    // The next Session replaces the refused draft file with a corrected one.
+    git(b.worktree_path, ["rm", "-q", "-f", ".arcadia/asks/agent-ask-complete-round-1.yaml"]);
+    draftUncovered(rehearsal, b, "complete-round-2");
+    exitIncomplete(rehearsal, b);
+    expect(pending(rehearsal)).toEqual(expect.arrayContaining(["complete-round-1", "complete-round-2"]));
+    resumeFresh(rehearsal, b);
+    expect(escalation(rehearsal)).toBeUndefined();
+  });
+
   it("does not gate the resume of a repair Session that drafted it", () => {
     const { rehearsal } = failedReview();
     const repair = rehearsal.lease()!;

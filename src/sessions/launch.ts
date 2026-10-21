@@ -12,7 +12,7 @@ import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { normalizeAgentAsk } from "../ask/agentAsk.js";
 import { retiredCompletionDraftMessage } from "../qa/patchApplicability.js";
-import { draftPathsAt, requestIdsOfDraftsAt } from "../ask/autoSettleBeforeDispatch.js";
+import { draftPathsAt } from "../ask/autoSettleBeforeDispatch.js";
 import { commitTreeAt } from "./candidateSnapshot.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
@@ -1123,11 +1123,30 @@ export function resumedSessionSupersededAskIds(db: Database.Database, repoRoot: 
   }
   const start = first.launch_revision ?? first.base_revision;
   const end = handoff.receipt.candidate_revision ?? `refs/heads/${session.branch}`;
-  const stillDrafted = requestIdsOfDraftsAt(root, end);
+  // A draft the candidate archived was settled by a settlement it carries and
+  // keeps gating. One it merely left in place, or deleted when a later Session
+  // replaced it with a corrected draft (Issue #1640), is a refused draft all
+  // the same: its proposal stays pending and must not hold the resume.
+  const archived = requestIdsOfArchivedAsksAt(root, end);
   for (const id of candidateCompletionAskIds(root, projectSlug, start, end, session.action_id, { firstParent: true })) {
-    if (stillDrafted.has(id)) ids.add(id);
+    if (!archived.has(id)) ids.add(id);
   }
   return ids.size > 0 ? ids : undefined;
+}
+
+/** The request ids of the Agent Asks archived (below `.arcadia/asks/`, not drafts) at `revision`. */
+function requestIdsOfArchivedAsksAt(repoRoot: string, revision: string): Set<string> {
+  const ids = new Set<string>();
+  const listed = tryGit(repoRoot, ["ls-tree", "-r", "--name-only", revision, "--", ".arcadia/asks/"]);
+  if (!listed) return ids;
+  const drafts = new Set(draftPathsAt(repoRoot, revision));
+  for (const file of listed.split("\n").map((line) => line.trim())) {
+    if (!file || !/\.ya?ml$/i.test(file) || drafts.has(file)) continue;
+    const content = tryGit(repoRoot, ["show", `${revision}:${file}`]);
+    if (content === null) continue;
+    try { ids.add(normalizeAgentAsk({ request: content }).requestId); } catch { /* not an Agent Ask */ }
+  }
+  return ids;
 }
 
 /**
