@@ -66,6 +66,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
+import { bridgeCompletionDependencies } from "../src/sessions/completionValidation.js";
 import { CODE_REVIEW_PR_CRITERIA, QA_PR_REVIEW_CRITERIA } from "../src/qa/reviewCriteria.js";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -1017,6 +1018,58 @@ export function retirePreservedCandidates(databaseFile: string, projects: string
   }
 }
 
+/**
+ * Reuse the validator's filtered bridge, then pin its installed trees in the
+ * replay. Even a real executor must never get a writable link into source
+ * dependencies. Preserve package symlinks, remapping them without following
+ * cycles; refuse any installed link whose destination is outside this copy.
+ */
+export function snapshotReplayDependencies(repository: string, target: string, scratch: string, forbidden: string[]): void {
+  const readable = bridgeCompletionDependencies(repository, target, scratch, forbidden);
+  if (!readable.length) return;
+  const trees = readable.filter((dir) => !readable.some((other) => other !== dir && dir.startsWith(`${other}${path.sep}`)));
+  const mappings = trees.map((from, index) => ({ from, to: path.join(scratch, "installed", String(index), "node_modules") }));
+  const source = realpathSync(repository);
+  const remap = (resolved: string) => {
+    const mapped = mapPath(resolved, [...mappings, { from: source, to: target }]);
+    if (mapped === resolved) throw new Error(`Installed dependency link escapes the replay: ${resolved}`);
+    return mapped;
+  };
+  for (const mapping of mappings) {
+    cpSync(mapping.from, mapping.to, { recursive: true, verbatimSymlinks: true,
+      filter: (entry) => {
+        if ([".vite", ".vite-temp", ".cache"].includes(path.basename(entry))) return false;
+        if (!lstatSync(entry).isSymbolicLink()) return true;
+        try { remap(realpathSync(entry)); return true; } catch { return false; }
+      } });
+    const rewrite = (original: string, copied: string) => {
+      for (const entry of readdirSync(copied, { withFileTypes: true })) {
+        const from = path.join(original, entry.name);
+        const to = path.join(copied, entry.name);
+        if (entry.isSymbolicLink()) {
+          const destination = remap(realpathSync(from));
+          rmSync(to);
+          symlinkSync(destination, to);
+        } else if (entry.isDirectory()) rewrite(from, to);
+      }
+    };
+    rewrite(mapping.from, mapping.to);
+  }
+  // Only the bridge's own links need changing; workspace self-references already
+  // point into target. The copied packages above never link back to the host.
+  const rewriteBridge = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        const resolved = realpathSync(file);
+        const mapped = mapPath(resolved, mappings);
+        if (mapped !== resolved) { rmSync(file); symlinkSync(mapped, file); }
+      } else if (entry.isDirectory() && entry.name !== "installed") rewriteBridge(file);
+    }
+  };
+  rewriteBridge(path.join(scratch, "dependencies"));
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
@@ -1103,6 +1156,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       if (!existsSync(repoPath)) { fidelity.push(`${slug}: repository ${repoPath} is missing; the tick will skip it.`); continue; }
       const target = path.join(root, "repos", slug);
       cloneRepository(repoPath, target, path.join(root, "remotes", `${slug}.git`), fidelity);
+      snapshotReplayDependencies(repoPath, target, path.join(root, "dependency-bridges", slug), [source]);
+      fidelity.push(`${slug}: available installed dependencies are copied into the replay without install scripts or network; caches and workspace self-references stay in the replay.`);
       const refs = readRefs(repoPath);
       for (const [name, sha] of Object.entries(refs)) sourceRefs[`${slug}:${name}`] = sha;
       if (options.executor?.startsWith("candidate:")) {

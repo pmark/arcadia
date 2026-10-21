@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -64,6 +64,41 @@ describe("production replay path mapping", () => {
     expect(mapPath("/live/arcadia/.claude/worktrees/x", mappings)).toBe("/replay/nested/x");
     expect(mapPath("/live/arcadia-other/x", mappings)).toBe("/live/arcadia-other/x");
     expect(mapPath("/home/.claude/worktrees/run/arcadia", mappings)).toBe("/replay/agent-worktrees/claude/run/arcadia");
+  });
+});
+
+describe("production replay installed dependency bridge", () => {
+  it("keeps caches and workspace imports in the replay and excludes arbitrary source links", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-deps-")));
+    try {
+      const source = path.join(root, "source");
+      const replay = path.join(root, "replay");
+      const installed = path.join(source, "node_modules");
+      mkdirSync(path.join(installed, "fixture-package"), { recursive: true });
+      mkdirSync(path.join(installed, ".vite-temp"));
+      writeFileSync(path.join(installed, "fixture-package", "version"), "snapshot-version");
+      symlinkSync(path.join(installed, "fixture-package"), path.join(installed, "fixture-package", "cycle"));
+      mkdirSync(replay);
+      writeFileSync(path.join(source, "private.txt"), "source-only");
+      symlinkSync(source, path.join(installed, "self"));
+      symlinkSync(path.join(source, "private.txt"), path.join(installed, "escape"));
+      snapshotReplayDependencies(source, replay, path.join(root, "scratch"), []);
+      expect(realpathSync(path.join(replay, "node_modules", "fixture-package"))).toContain(path.join(root, "scratch", "installed"));
+      const copiedPackage = path.join(replay, "node_modules", "fixture-package");
+      expect(realpathSync(path.join(copiedPackage, "cycle"))).toBe(realpathSync(copiedPackage));
+      writeFileSync(path.join(installed, "fixture-package", "version"), "source-updated");
+      expect(readFileSync(path.join(copiedPackage, "version"), "utf8")).toBe("snapshot-version");
+      writeFileSync(path.join(replay, "node_modules", "fixture-package", "replay-only"), "private");
+      expect(existsSync(path.join(installed, "fixture-package", "replay-only"))).toBe(false);
+      expect(realpathSync(path.join(replay, "node_modules", "self"))).toBe(replay);
+      expect(existsSync(path.join(replay, "node_modules", "escape"))).toBe(false);
+      expect(existsSync(path.join(replay, "node_modules", ".vite-temp"))).toBe(false);
+      mkdirSync(path.join(replay, "node_modules", ".vite-temp"));
+      writeFileSync(path.join(replay, "node_modules", ".vite-temp", "cache"), "replay-only");
+      expect(existsSync(path.join(installed, ".vite-temp", "cache"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -700,7 +735,7 @@ describe("production replay past launch (--executor, --reviewers)", () => {
   });
 });
 
-describe("production replay of the whole chain with a scripted executor", () => {
+describe.each([false, true])("production replay of the whole chain with a scripted executor (Vitest: %s)", (vitest) => {
   let source: Rehearsal;
   let parent: string;
   let report: ReplayReport;
@@ -710,6 +745,14 @@ describe("production replay of the whole chain with a scripted executor", () => 
   beforeAll(() => {
     source = new Rehearsal({ withOrigin: true, workerMerge: true, independentReviewers: "tick" });
     source.createFixtureRepository();
+    if (vitest) {
+      writeFileSync(path.join(source.repo, "package.json"), JSON.stringify({ type: "module", devDependencies: { vitest: "*" } }));
+      writeFileSync(path.join(source.repo, ".gitignore"), "node_modules/\n");
+      git(source.repo, ["add", "package.json", ".gitignore"]);
+      git(source.repo, ["commit", "-qm", "Declare the fixture's installed Vitest runner"]);
+      git(source.repo, ["push", "-q", "origin", "main"]);
+      symlinkSync(path.resolve(import.meta.dirname, "../node_modules"), path.join(source.repo, "node_modules"));
+    }
     source.approve(source.registerProject());
     source.activate("grant-replay-chain-20261018T000000Z");
     source.deactivate("stop-replay-chain-20261018T000100Z");
@@ -729,7 +772,9 @@ describe("production replay of the whole chain with a scripted executor", () => 
         executorFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` }, "write-marker-b": {
           "MARKER.md": `${LINE_A}\n${LINE_B}\n`,
           // The Action's acceptance criteria name this test file; the host refuses a completion without it.
-          "tests/marker.test.mjs": `import { readFileSync } from "node:fs";\nimport test from "node:test";\nimport assert from "node:assert";\ntest("both lines in order", () => {\n  assert.deepEqual(readFileSync("MARKER.md", "utf8").trimEnd().split("\\n"), [${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}]);\n});\n`
+          "tests/marker.test.mjs": vitest
+            ? `import { readFileSync, writeFileSync } from "node:fs";\nimport { test, expect } from "vitest";\ntest("both lines in order using Vitest", () => {\n  expect(() => writeFileSync(${JSON.stringify(path.join(source.repo, "node_modules", ".replay-must-not-write"))}, "forbidden")).toThrow();\n  expect(readFileSync("MARKER.md", "utf8").trimEnd().split("\\n")).toEqual([${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}]);\n});\n`
+            : `import { readFileSync } from "node:fs";\nimport test from "node:test";\nimport assert from "node:assert";\ntest("both lines in order", () => {\n  assert.deepEqual(readFileSync("MARKER.md", "utf8").trimEnd().split("\\n"), [${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}]);\n});\n`
         } },
         reviewers: "simulated",
         simulateVerdict: "pass",
