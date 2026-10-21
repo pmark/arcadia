@@ -36,7 +36,11 @@ limits that operation, not independent work.
    the host's session tools. Revalidate its observations before acting. Read
    [the checkpoint contract](references/checkpoint.md) when creating or
    resuming the derived handoff.
-4. Recover the operator's existing coordination permissions, notification
+4. For a managed-production run, read
+   [the production run playbook](references/production-run-playbook.md)
+   before preparing a press and again before closing the run; update it with
+   what the run taught.
+5. Recover the operator's existing coordination permissions, notification
    cadence, and timer state. Starting this role does not start an automation.
   A stopped timer remains stopped unless the operator requests resumption.
 
