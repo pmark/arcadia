@@ -27,6 +27,7 @@ import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
 import {
   activateProduction,
+  deactivateProduction,
   fingerprintProductionScope,
   MECHANICAL_TRANSITIONS,
   normalizeProductionScope,
@@ -1088,7 +1089,24 @@ describe("runManagedProductionTick", () => {
     );
     expect(approvalRow().status).toBe("open");
     // Issue #1659: `arcadia review` (the Discord bot's feed) marks it as one the policy approves next tick.
-    expect(runReviewRequiredCommand({ workspace: fixture.workspace }).data.items.find((item) => item.id === approvalRow().id)).toMatchObject({ delegatedApproval: true });
+    const soon = new Date(); // review items are stamped with the wall clock
+    const feed = (now: Date) => runReviewRequiredCommand({ workspace: fixture.workspace, now }).data.items.find((item) => item.id === approvalRow().id);
+    expect(feed(soon)).toMatchObject({ delegatedApproval: true });
+    // A Decision the tick has not approved within the window is announced normally.
+    expect(feed(new Date(soon.getTime() + 10 * 60_000))?.delegatedApproval).toBeUndefined();
+    // Production Off: nothing will approve it, so it is announced.
+    withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "policy-off-1659", now: soon }));
+    expect(feed(soon)?.delegatedApproval).toBeUndefined();
+    // An Action outside the delegation's scope is announced too.
+    const elsewhere = normalizeProductionScope({ ...delegatingScope, actions: ["test-project/not-this-one"] });
+    withDatabase(fixture.workspace, (db) => activateProduction(db, {
+      requestId: "policy-grant-elsewhere", scope: elsewhere, scopeFingerprint: fingerprintProductionScope(elsewhere), grantedBy: "operator"
+    }));
+    expect(feed(soon)?.delegatedApproval).toBeUndefined();
+    withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "policy-off-1659-b", now: soon }));
+    withDatabase(fixture.workspace, (db) => activateProduction(db, {
+      requestId: "policy-grant-packet-approval-again", scope: delegatingScope, scopeFingerprint: fingerprintProductionScope(delegatingScope), grantedBy: "operator"
+    }));
 
     const approving = tick(30_000);
     expect(approving.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.reason).toMatch(/packet_approval delegation/);

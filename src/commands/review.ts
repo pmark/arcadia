@@ -112,7 +112,17 @@ export interface RequiresReviewPacket {
 
 export interface ReviewRequiredCommandOptions {
   workspace: string;
+  /** Clock for the delegated-approval suppression window; tests only. */
+  now?: Date;
 }
+
+/**
+ * A build-packet Decision is withheld from the operator only this long while the
+ * policy's packet_approval delegation is expected to approve it on the next
+ * tick; past it the tick evidently never reached it (pointer elsewhere, paused,
+ * a second prerequisite, worker down) and it is announced normally (Issue #1659).
+ */
+export const DELEGATED_APPROVAL_SUPPRESSION_MS = 5 * 60_000;
 
 export interface ReviewRequiredCommandData {
   count: number;
@@ -279,7 +289,9 @@ export function runReviewRequiredCommand(
       if (item.resolved_intent === "CodexBuildPacketApproval" && item.work_item_id) {
         const workItem = getWorkItem(db, item.work_item_id);
         const identity = workItem ? resolveWorkItemPolicyIdentity(db, workItem) : null;
-        if (identity && policyDelegatesPacketApproval(db, identity)) packet.delegatedApproval = true;
+        const now = options.now ?? new Date();
+        const age = now.getTime() - Date.parse(item.created_at);
+        if (identity && age < DELEGATED_APPROVAL_SUPPRESSION_MS && policyDelegatesPacketApproval(db, identity, now)) packet.delegatedApproval = true;
       }
       return packet;
     });
