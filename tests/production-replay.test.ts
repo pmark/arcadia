@@ -714,7 +714,11 @@ describe("production replay of the whole chain with a scripted executor", () => 
         parent,
         keep: true,
         executor: "scripted",
-        executorFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` }, "write-marker-b": { "MARKER.md": `${LINE_A}\n${LINE_B}\n` } },
+        executorFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` }, "write-marker-b": {
+          "MARKER.md": `${LINE_A}\n${LINE_B}\n`,
+          // The Action's acceptance criteria name this test file; the host refuses a completion without it.
+          "tests/marker.test.mjs": `import { readFileSync } from "node:fs";\nimport test from "node:test";\nimport assert from "node:assert";\ntest("both lines in order", () => {\n  assert.deepEqual(readFileSync("MARKER.md", "utf8").trimEnd().split("\\n"), [${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}]);\n});\n`
+        } },
         reviewers: "simulated",
         simulateVerdict: "pass",
         simulateGithubWrites: true,
