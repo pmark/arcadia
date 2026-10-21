@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
-import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
 const REPLAY_TIMEOUT_MS = 240_000;
@@ -549,5 +549,155 @@ describe("production replay of a false completion Ask (Issue #1640)", () => {
     expect(JSON.stringify(report.ticks)).not.toContain("operator_gate_pending");
     expect(report.stop.reason).toBe("launched");
     expect(report.stop.detail).toContain(source.actionA);
+  });
+});
+
+describe("production replay past launch (--executor, --reviewers)", () => {
+  let root: string;
+  let effectsLog: string;
+  let env: NodeJS.ProcessEnv;
+  let repo: string;
+  let origin: string;
+  const effects = () => readFileSync(effectsLog, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { kind: string; detail: string });
+  const sh = (cwd: string, ...args: string[]) => git(cwd, args).trim();
+
+  beforeAll(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-prs-")));
+    effectsLog = path.join(root, "effects.jsonl");
+    writeFileSync(effectsLog, "");
+    installGuards(root, effectsLog);
+    origin = path.join(root, "origin.git");
+    repo = path.join(root, "repo");
+    git(root, ["init", "-q", "--bare", "-b", "main", origin]);
+    git(root, ["init", "-q", "-b", "main", repo]);
+    const commit = (message: string) => git(repo, ["-c", "user.name=t", "-c", "user.email=t@t.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message]);
+    writeFileSync(path.join(repo, "a.txt"), "a\n");
+    git(repo, ["add", "-A"]);
+    commit("base");
+    git(repo, ["remote", "add", "origin", origin]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(repo, ["checkout", "-q", "-b", "candidate"]);
+    writeFileSync(path.join(repo, "b.txt"), "b\n");
+    git(repo, ["add", "-A"]);
+    commit("work");
+    git(repo, ["push", "-q", "origin", "candidate"]);
+    env = {
+      PATH: `${path.join(root, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
+      HOME: root,
+      REPLAY_EFFECTS_LOG: effectsLog,
+      REPLAY_GH_MODE: "offline",
+      REPLAY_GH_RECORDING: path.join(root, "recording.jsonl"),
+      REPLAY_GH_REPO: "acme/widgets",
+      REPLAY_SIMULATE_GH_WRITES: "1",
+      REPLAY_SIMULATE_PRS: "1",
+      REPLAY_GH_OVERLAY: path.join(root, "overlay.json")
+    };
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it("keeps a simulated pull request in a registry: create, view by branch, URL and number, patch, ready, merge into the local origin", () => {
+    const run = (args: string[]) => spawnSync("gh", args, { cwd: repo, env, encoding: "utf8" });
+    const created = run(["pr", "create", "--draft", "--repo", "acme/widgets", "--base", "main", "--head", "candidate", "--title", "T", "--body", "B"]);
+    expect(created.status).toBe(0);
+    const url = created.stdout.trim();
+    expect(url).toMatch(/^https:\/\/github\.com\/acme\/widgets\/pull\/\d+$/);
+    const head = sh(repo, "rev-parse", "candidate");
+    const base = sh(repo, "rev-parse", "main");
+    const byBranch = JSON.parse(run(["pr", "view", "candidate", "--repo", "acme/widgets", "--json", "number,url,baseRefName,state"]).stdout);
+    expect(byBranch).toMatchObject({ url, baseRefName: "main", state: "OPEN" });
+    const number = String(byBranch.number);
+    const view = JSON.parse(run(["pr", "view", number, "--repo", "acme/widgets", "--json", "number,title,url,state,isDraft,mergeStateStatus,headRefName,headRefOid,baseRefName,baseRefOid,body,files,statusCheckRollup,commits"]).stdout);
+    expect(view).toMatchObject({ title: "T", body: "B", isDraft: true, headRefOid: head, baseRefOid: base, mergeStateStatus: "CLEAN", headRefName: "candidate" });
+    expect(view.files).toEqual([{ path: "b.txt", additions: 1, deletions: 0 }]);
+    expect(view.statusCheckRollup.every((check: { conclusion: string }) => check.conclusion === "SUCCESS")).toBe(true);
+    expect(view.commits).toEqual([{ oid: head }]);
+    const patch = run(["api", "--method", "GET", `repos/acme/widgets/compare/${base}...${head}`, "-H", "Accept: application/vnd.github.patch"]);
+    expect(patch.status).toBe(0);
+    expect(patch.stdout).toContain(`From ${head}`);
+    expect(run(["pr", "edit", url, "--body", "B2"]).status).toBe(0);
+    expect(run(["pr", "ready", url]).status).toBe(0);
+    expect(JSON.parse(run(["pr", "view", url, "--json", "isDraft,body"]).stdout)).toEqual({ isDraft: false, body: "B2" });
+    // A stale head is refused; the exact head fast-forwards the local bare origin only.
+    expect(run(["pr", "merge", url, "--merge", "--match-head-commit", base]).status).toBe(1);
+    expect(run(["pr", "merge", url, "--merge", "--match-head-commit", head]).status).toBe(0);
+    expect(sh(origin, "rev-parse", "refs/heads/main")).toBe(head);
+    expect(JSON.parse(run(["pr", "view", url, "--json", "state"]).stdout)).toEqual({ state: "MERGED" });
+    expect(effects().every((effect) => effect.kind === "simulated:github-write")).toBe(true);
+  });
+
+  it("is off without REPLAY_SIMULATE_PRS: pr create stays a refused write", () => {
+    const refused = spawnSync("gh", ["pr", "create", "--title", "x"], { cwd: repo, env: { ...env, REPLAY_SIMULATE_PRS: "" }, encoding: "utf8" });
+    expect(refused.status).toBe(1);
+  });
+
+  it("refuses an executor it cannot resolve before building anything", () => {
+    expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "candidate:" })).toThrow(/--executor/);
+    expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "bogus" as never })).toThrow(/--executor/);
+    expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", reviewers: "maybe" as never })).toThrow(/--reviewers/);
+  });
+});
+
+describe("production replay of the whole chain with a scripted executor", () => {
+  let source: Rehearsal;
+  let parent: string;
+  let report: ReplayReport;
+  let before: ReturnType<typeof fingerprint>;
+  const printed: string[] = [];
+
+  beforeAll(() => {
+    source = new Rehearsal({ withOrigin: true, workerMerge: true, independentReviewers: "tick" });
+    source.createFixtureRepository();
+    source.approve(source.registerProject());
+    source.activate("grant-replay-chain-20261018T000000Z");
+    source.deactivate("stop-replay-chain-20261018T000100Z");
+    parent = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-chain-")));
+    const services = new Database(path.join(source.workspace, "database", "arcadia.sqlite3"));
+    try {
+      services.prepare("SELECT count(*) FROM sqlite_master").get();
+      before = fingerprint(source);
+      report = runProductionReplay({
+        sourceWorkspace: source.workspace,
+        grant: "grant-replay-chain",
+        ticks: 60,
+        github: "offline",
+        parent,
+        keep: true,
+        executor: "scripted",
+        executorFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` }, "write-marker-b": { "MARKER.md": `${LINE_A}\n${LINE_B}\n` } },
+        reviewers: "simulated",
+        simulateVerdict: "pass",
+        simulateGithubWrites: true,
+        print: (line) => printed.push(line)
+      });
+    } finally {
+      services.close();
+    }
+  }, 600_000);
+
+  afterAll(() => {
+    source?.dispose();
+    if (parent) rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("goes past launch: the executor produces the Session's result and the real tick reconciles its completion", () => {
+    expect(printed.join("\n")).not.toContain("Tick error");
+    const launched = report.ticks.filter((tick) => tick.launch?.outcome === "launched");
+    expect(launched[0].launch!.actionKey).toBe(source.actionA);
+    expect(launched[0].executor).toContain("scripted executor finished");
+    expect(report.ticks.flatMap((tick) => tick.reconciled).map((entry) => entry.outcome)).toContain("accepted_completion");
+    expect(report.stop.reason).not.toBe("launched");
+  });
+
+  // Needs real Seatbelt preservation validation (macOS, unsandboxed shell, ARCADIA_PRESERVATION_HOST_TEST=1).
+  it.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1" || process.platform !== "darwin")("runs the whole chain: preservation, simulated PR, review, simulated merge, the next Action, all merged", () => {
+    expect(report.ticks.filter((tick) => tick.launch?.outcome === "launched").map((tick) => tick.launch!.actionKey)).toEqual([source.actionA, source.actionB]);
+    expect(report.stop.reason).toBe("all_merged");
+    const kinds = report.ticks.flatMap((tick) => tick.effects.map((effect) => effect.kind));
+    expect(kinds).toContain("simulated:reviewer");
+    expect(kinds.filter((kind) => !kind.startsWith("simulated:"))).toEqual([]);
+  });
+
+  it("writes nothing to the source", () => {
+    expect(fingerprint(source)).toEqual(before);
   });
 });
