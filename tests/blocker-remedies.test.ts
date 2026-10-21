@@ -13,6 +13,12 @@ import { ENVIRONMENT_WALL_ESCALATION_KIND } from "../src/production/sessionCapab
 import { EMITTED_ESCALATION_KINDS } from "../src/production/tick.js";
 
 describe("blocker-kind remedy registry (#1284)", () => {
+  it("(#1615) names a refused self-settled completion as a scope or validation failure, not a missing settlement commit", () => {
+    const text = JSON.stringify(blockerRemedyFor("self_settled_completion_refused"));
+    expect(text).toMatch(/scope or validation/);
+    expect(text).not.toMatch(/does not carry its settlement commit/);
+  });
+
   it("registers a remedy for every escalation kind the tick code constants can emit", () => {
     const missing = EMITTED_ESCALATION_KINDS.filter((kind) => !ESCALATION_REMEDIES[kind]);
     expect(missing).toEqual([]);

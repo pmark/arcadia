@@ -378,6 +378,18 @@ describe("preserve-on-exit and integrate", () => {
     expect(pass.projects[0]?.pointer).toMatchObject({ moved: true, from: "define-contract", to: "second-action" });
   });
 
+  it("(#1615) never offers a refused self-settled candidate to recovery or the pointer hold", () => {
+    const { fixture, session } = completedWhileOff();
+    const sql = (statement: string, ...args: unknown[]) => withDatabase(fixture.workspace, (db) => db.prepare(statement).run(...args));
+    const pending = () => withDatabase(fixture.workspace, (db) => listPendingTerminalCandidates(db, fixture.repo, "test-project")?.pending.map((entry) => entry.id) ?? []);
+    sql("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable' WHERE session_id = ?", session.id);
+    expect(pending()).toEqual([session.id]);
+    sql("UPDATE session_exit_receipts SET evidence_json = ? WHERE session_id = ?",
+      JSON.stringify({ completionSettlementNotInCandidate: { settlementId: "s1", reason: "refused", cause: "self_settled_refused" } }), session.id);
+    expect(pending()).toEqual([]);
+    expect(withDatabase(fixture.workspace, (db) => pendingTerminalCandidateFor(db, fixture.repo, "test-project", "define-contract"))).toEqual({ kind: "none" });
+  });
+
   it("fails closed: an unanswerable terminal-candidate check holds the pointer and names the hold (Issue #1512)", () => {
     const { fixture, tmux, session } = completedWhileOff();
     const scope = normalizeProductionScope({

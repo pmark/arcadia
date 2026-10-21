@@ -1113,6 +1113,9 @@ export function recordCompletionHoldEscalation(
   return true;
 }
 
+/** A completion the Session settled itself that fails the host's scope or validation checks (Issue #1615). */
+export const SELF_SETTLED_COMPLETION_REFUSED_ESCALATION = "self_settled_completion_refused";
+
 /** A drafted completion settled without its commit on the candidate (Issue #1518). */
 export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_settlement_not_in_candidate";
 
@@ -1142,19 +1145,23 @@ function publishSettledCandidateHead(
   const { session, preservation, receipt, log } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
   try {
-    const notInCandidate = (JSON.parse(receipt.evidence_json ?? "{}") as { completionSettlementNotInCandidate?: { settlementId: string; reason: string } })
+    const notInCandidate = (JSON.parse(receipt.evidence_json ?? "{}") as { completionSettlementNotInCandidate?: { settlementId: string; reason: string; cause?: string } })
       .completionSettlementNotInCandidate;
     if (notInCandidate) {
+      const selfSettled = notInCandidate.cause === "self_settled_refused";
       recordOperatorEscalation(db, {
         actionKey,
-        kind: COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
+        kind: selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
         message: notInCandidate.reason,
-        remedy: `Inspect ${session.worktree_path} on ${session.branch}: settlement ${notInCandidate.settlementId} is recorded, but the candidate does not carry its commit. `
+        remedy: selfSettled
+          ? `Inspect ${session.worktree_path} on ${session.branch}: the Session settled its own completion (settlement ${notInCandidate.settlementId}) and the candidate carries it, but the host's scope or validation check fails. `
+            + "The candidate is not resumed or integrated automatically. Either review the named failure and land the pull request yourself if the change is acceptable, or discard the candidate and redo the Action."
+          : `Inspect ${session.worktree_path} on ${session.branch}: settlement ${notInCandidate.settlementId} is recorded, but the candidate does not carry its commit. `
           + "Commit the settled Plan, PROJECT.md, MISSION_LOG.md and archived Ask there (or redo the completion), push the branch to its pull request, and land it through that pull request; "
           + "do not merge a pull request whose diff lacks the Plan status change.",
         now: input.now
       });
-      log(`Escalated ${actionKey} to the operator (${COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
+      log(`Escalated ${actionKey} to the operator (${selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
       return;
     }
     if (recordCompletionHoldEscalation(db, { session, receipt, now: input.now, log })) return;
@@ -1299,7 +1306,7 @@ function recordOperatorGateEscalation(
   if (previous?.kind === OPERATOR_GATE_ESCALATION && previous.message === message) return false;
   // A completion settled without its commit on the candidate (Issue #1518) is
   // the gate's cause and is recorded only once, at the exit tick: keep it.
-  if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION
+  if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION || previous?.kind === SELF_SETTLED_COMPLETION_REFUSED_ESCALATION
     || previous?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || previous?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) return false;
   const remedy = operatorGateRemedy(db, { ...input, label });
   if (previous) clearOperatorEscalation(db, actionKey);
@@ -3024,6 +3031,7 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
   COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION,
   COMPLETION_REFUSED_REPEATEDLY_ESCALATION,
+  SELF_SETTLED_COMPLETION_REFUSED_ESCALATION,
   PLANNER_ATTEMPTS_EXHAUSTED,
   ...ATTEMPT_LINEAGE_ESCALATIONS,
   ...NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS,

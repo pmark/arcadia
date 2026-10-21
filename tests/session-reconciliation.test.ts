@@ -799,6 +799,84 @@ it("asserts the contract", () => {
       expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
     });
 
+    it("(#1615) names a scratch file the Session left uncommitted and host preservation swept in, still refusing it", () => {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      git(worktreePath, ["add", "contract.md"]);
+      git(worktreePath, ["commit", "-m", "define the contract"]);
+      draftCompleteInWorktree(worktreePath, criterion);
+      writeFileSync(path.join(worktreePath, "scratch-notes.txt"), "scratch\n");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "chore(candidate): preserve define-contract candidate for handoff\n\nArcadia-Preservation-Request: preserve-stray"]);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-stray-file", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toMatch(/Stray untracked file left uncommitted by the Session[^.]*: scratch-notes\.txt/);
+    });
+
+    it("(#1615) does not call a file the Session itself committed a stray", () => {
+      const { fixture, sessionId } = scopedCandidate({ "src/product.ts": "export const changed = true;\n" });
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "reconcile-not-stray", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+      expect(result.receipt.reason).toContain("src/product.ts");
+      expect(result.receipt.reason).not.toContain("Stray untracked");
+    });
+
+    it("(#1615) a completion the Session settled itself still faces the scope check against the base's criteria", () => {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      mkdirSync(path.join(worktreePath, "src"), { recursive: true });
+      writeFileSync(path.join(worktreePath, "src", "product.ts"), "export const changed = true;\n");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "define the contract and more"]);
+      settleCompleteFromWorktree(fixture, worktreePath, "self-settle-out-of-scope", criterion);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-self-settled-scope", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).not.toBe("accepted_completion");
+      expect(result.receipt.reason).toContain("Scope check refused the completion");
+      expect(result.receipt.reason).toContain("src/product.ts");
+      expect(result.receipt.reason).not.toContain("docs/plans");
+      // Governance already recorded the completion, so the Session cannot repair it: no relaunch, the operator decides.
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.reason).toContain("already settled");
+      expect(result.receipt.evidence_json).toContain("completionSettlementNotInCandidate");
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
+    });
+
+    it("(#1615) accepts a self-settled completion that stays in scope, the settlement's own records excused", () => {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "define the contract"]);
+      settleCompleteFromWorktree(fixture, worktreePath, "self-settle-in-scope", criterion);
+
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-self-settled-in-scope", repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+
+      expect(result.receipt.outcome).toBe("accepted_completion");
+    });
+
     it("judges the base's criteria: a candidate that drops its own scope criterion from its Plan copy is still refused", () => {
       const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
       const tmux = new FakeTmux();
@@ -1428,12 +1506,12 @@ function draftCompleteInWorktree(worktreePath: string, criterion: string): void 
 }
 
 /** What the Action brief tells an agent to do last: settle `complete` from inside its candidate. */
-function settleCompleteFromWorktree(fixture: ReturnType<typeof preparedFixture>, worktreePath: string, requestId: string): void {
+function settleCompleteFromWorktree(fixture: ReturnType<typeof preparedFixture>, worktreePath: string, requestId: string, criterion = "The contract exists."): void {
   const request = JSON.stringify({
     agent_ask: "v1", request_id: requestId, project: "test-project", intent: "complete",
     target_ref: "action/define-contract", desired_result: "Record define-contract complete.",
     candidate_revision: git(worktreePath, ["rev-parse", "HEAD"]).trim(),
-    evidence: [{ criterion: "The contract exists.", status: "met", note: "contract.md" }],
+    evidence: [{ criterion, status: "met", note: "contract.md" }],
     requested_authority: "apply_if_approved"
   });
   withDatabase(fixture.workspace, (db) => {

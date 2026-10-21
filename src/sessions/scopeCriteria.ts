@@ -1,4 +1,5 @@
 import { git } from "../git/worktrees.js";
+import { PRESERVATION_TRAILER } from "./candidateSnapshot.js";
 
 /**
  * Issue #1608: a Session's completion evidence marked "The change touches only
@@ -151,21 +152,39 @@ function shown(file: string): string {
  * when every readable one holds, otherwise the refusal reason. A diff that
  * cannot be read is a refusal, never a pass.
  */
-export function candidateScopeRefusal(repoRoot: string, base: string, revision: string, criteria: readonly string[]): string | null {
+export function candidateScopeRefusal(repoRoot: string, base: string, revision: string, criteria: readonly string[], excused: readonly string[] = []): string | null {
   if (scopeAllowances(criteria).length === 0) return null;
   let changed: string[];
   try {
     changed = git(repoRoot, ["-c", "core.quotepath=false", "diff", "-z", "--no-renames", "--name-only", `${base}...${revision}`])
-      .split("\0").filter((file) => file && !isPreSettlementDraftPath(file));
+      .split("\0").filter((file) => file && !isPreSettlementDraftPath(file) && !excused.includes(file));
   } catch {
     return `Scope check refused the completion: the candidate's diff ${base.slice(0, 12)}...${revision.slice(0, 12)} could not be read.`;
   }
   const violations = scopeViolations(criteria, changed);
   if (violations.length === 0) return null;
+  const uncommitted = new Set(filesAddedByPreservation(repoRoot, revision));
   const described = violations.map((violation) => {
     const listed = violation.outside.slice(0, MAX_LISTED).map(shown).join(", ");
     const more = violation.outside.length > MAX_LISTED ? ` (and ${violation.outside.length - MAX_LISTED} more)` : "";
     return `"${violation.criterion}" allows only ${violation.allowed.join(", ")}, but the candidate also changes ${listed}${more}`;
   });
-  return `Scope check refused the completion: ${described.join("; ")}. Revert the out-of-scope changes; if the criteria cannot be met within that scope, stop and ask instead of widening it.`;
+  // Issue #1615: a file the Session never committed (host preservation added it) may be a stray scratch file.
+  // Still refused -- it may equally be the Session's deliverable -- but named so the resumed Session deletes or commits it deliberately.
+  const strays = [...new Set(violations.flatMap((violation) => violation.outside))].filter((file) => uncommitted.has(file));
+  const strayNote = strays.length
+    ? ` Stray untracked file${strays.length > 1 ? "s" : ""} left uncommitted by the Session and swept into the candidate: ${strays.slice(0, MAX_LISTED).map(shown).join(", ")}${strays.length > MAX_LISTED ? ` (and ${strays.length - MAX_LISTED} more)` : ""}. Delete scratch files; commit only what the Action's scope allows.`
+    : "";
+  return `Scope check refused the completion: ${described.join("; ")}.${strayNote} Revert the out-of-scope changes; if the criteria cannot be met within that scope, stop and ask instead of widening it.`;
+}
+
+/** Paths a host preservation commit at `revision` newly added: files the Session left uncommitted. Empty when `revision` is not one. */
+function filesAddedByPreservation(repoRoot: string, revision: string): string[] {
+  try {
+    if (!git(repoRoot, ["log", "-1", "--format=%B", revision]).includes(`${PRESERVATION_TRAILER}:`)) return [];
+    return git(repoRoot, ["-c", "core.quotepath=false", "diff", "-z", "--no-renames", "--name-only", "--diff-filter=A", `${revision}^`, revision])
+      .split("\0").filter(Boolean);
+  } catch {
+    return [];
+  }
 }

@@ -179,7 +179,8 @@ export class FastRehearsal extends Rehearsal {
         providerSignIn: () => ({ signedIn: true, remedy: "" }),
         agentWorktreeRoot: this.worktrees,
         log: (message) => this.log.push(`[tick ${n}] ${message}`),
-        handoff: { preserve: { validate, remote: this.gh.remote } },
+        // Without host Seatbelt, pre-acceptance validation runs its identical checks unconfined (as rehearsalHarness.ts does).
+        handoff: { preserve: { validate, remote: this.gh.remote }, ...(this.validator === "seatbelt" ? {} : { completionValidation: { unconfinedForTests: true } }) },
         review: { runCommand: this.gh.runCommand, selectReviewer: () => hostReviewer() }
       }));
       const project = result.projects.find((entry) => entry.projectSlug === this.projectSlug);
