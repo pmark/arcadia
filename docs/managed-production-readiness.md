@@ -47,7 +47,7 @@ The second multi-Action run under the grant card `grant-production-unattended-cl
 | b | Headless Sessions could not run the Action's named test (allow-list = Project `validationCommands` only); four Sessions looped `incomplete_resumable`. | #1636, fixed #1637 |
 | c | The real validator's 900 s bound refused a slow test file (627 s alone); criteria had to be amended by hand. | #1633 (amended); Issue #1606 (synchronous tick work) is related |
 | d | Replay could not reach tick 2 (unsimulated `gh project item-edit`). | #1634 |
-| e | False "complete" Asks held launch as `operator_gate_pending`; rejected by hand. | no fix filed; see Next route |
+| e | False "complete" Asks held launch as `operator_gate_pending`; rejected by hand. | #1640; see Next route |
 | f | Hand repair of a candidate breaks canonical-settlement binding; the stale `review_repair_gated` escalation masks the terminal mismatch refusal and the ff-only remedy misleads. | #1632 (open) |
 | g | An agent-written candidate regressed a gate (`IS NOT` to `!= null`) with a test that copied the SQL. Caught by the worker's own review; repair gated by design. | #1635 (merged after RM repair) |
 | h | Claude usage parser read a 1% window as 100% spent. | #1620 (closed) |
@@ -60,12 +60,12 @@ The second multi-Action run under the grant card `grant-production-unattended-cl
 2. Repair of a gate-listed `src/production` candidate is never unattended by design (Decision 0098). An Action that touches `src/production` can therefore never satisfy criterion 2. The next run needs Actions outside gate-listed paths, or an explicit Decision to change the design (an operator authority decision, not taken here).
 3. The validation wall: the completion validator's 900 s bound versus slow test files and synchronous tick work (#1606, #1613). Actions must name focused test files.
 4. Stale-escalation masking after any hand repair (#1632), and the hand repair's loss of canonical-settlement binding.
-5. False completion Asks holding launch as `operator_gate_pending` (no Issue yet; file one).
+5. False completion Asks holding launch as `operator_gate_pending` (#1640).
 6. The live worker's loaded revision against the grant precondition (#1614) and services restart under load.
 
 ### Cheapest next route
 
-Do not press again with an Action that touches `src/production`. (1) Merge fixes for #1632, #1613 and #1615 (small, offline-reproducible; replay first per the checklist). (2) File the false-completion-Ask hold as an Issue and fix it so a rejected or superseded Ask does not hold launch. (3) Pick three Actions that touch only tests, docs or non-gated source with focused named tests under 900 s, run the Process Critic pre-mortem and replay (including a headless-test scenario), then one press. Success is criterion 2 with only activation and authority-adjacent merges. Replay obligation: failures b (headless named test) and e (false completion Ask) were predictable offline and have no hermetic replay scenario yet; #1637 carries its own unit test, but that is not a replay. This obligation stays **deferred** and is not done in this change.
+Do not press again with an Action that touches `src/production`. (1) Merge fixes for #1632, #1613 and #1615 (small, offline-reproducible; replay first per the checklist). (2) Fix the false-completion-Ask hold (#1640) so a rejected or superseded Ask does not hold launch. (3) Pick three Actions that touch only tests, docs or non-gated source with focused named tests under 900 s, run the Process Critic pre-mortem and replay (including a headless-test scenario), then one press. Success is criterion 2 with only activation and authority-adjacent merges. Replay obligation: failures b (headless named test) and e (false completion Ask) were predictable offline and have no hermetic replay scenario yet; #1637 carries its own unit test, but that is not a replay. This obligation stays **deferred** and is not done in this change.
 
 **Verdict: not yet proven unattended.** The second run merged all three Actions, but not unattended, so criterion 2 is not met.
 
