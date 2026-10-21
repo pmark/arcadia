@@ -138,12 +138,15 @@ export interface ReplayOptions {
    *   - `scripted`: the fast-rehearsal ScriptedExecutor (tests/fast-rehearsal/helpers/executor.ts)
    *     writes `executorFiles[actionId]` (default: one marker file), commits under the
    *     launch identity and drafts and settles a complete `complete` Agent Ask in the worktree.
+   *   - `real`: the REAL agent CLI Session the tick asked tmux to start runs (same command and brief) in the replay's
+   *     candidate worktree, against the replay's local repository and workspace; provider tokens are spent. The
+   *     replay's git/gh/tmux guards stay first on its PATH; only the Session's own sign-in (the real HOME) is exposed.
    *   - `candidate:<ref>`: the Session's worktree branch is reset to a commit that exists in the
    *     source repository (a branch, tag or sha, e.g. a preserved PR commit); nothing is drafted.
    * Pull requests are then simulated (`gh pr create`/`view`/`list`/compare patch/`ready`/`edit`/`merge`)
    * with a green required-check rollup on the exact head, which needs `simulateGithubWrites`.
    */
-  executor?: "scripted" | `candidate:${string}`;
+  executor?: "scripted" | "real" | `candidate:${string}`;
   /** Files the scripted executor writes, per Action id (the part of the key after the Project slug). */
   executorFiles?: Record<string, Record<string, string>>;
   /**
@@ -158,6 +161,12 @@ export interface ReplayOptions {
    * push to GitHub and no change to the source), so the tick runs on top of it.
    */
   mergeIntoBase?: string;
+  /**
+   * Retire stale preserved candidates in the replay's SNAPSHOT COPY only (never the live database): the terminal
+   * exit receipts of the named Session (or `all` in-scope ones) are marked superseded, so the unintegrated candidate
+   * stops gating admission and a fresh Session can launch. Its branch and PR are untouched.
+   */
+  retirePreserved?: string;
 }
 
 export type SimulatedVerdict = "pass" | "fail-repairable";
@@ -238,8 +247,10 @@ interface Manifest {
   repos: Record<string, string>;
   effectsLog: string;
   fidelity: string[];
-  executor?: "scripted" | `candidate:${string}`;
+  executor?: "scripted" | "real" | `candidate:${string}`;
   executorFiles?: Record<string, Record<string, string>>;
+  realClaude?: string;
+  realHome?: string;
 }
 
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string } = {}): string {
@@ -983,15 +994,34 @@ function githubRepository(repo: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Mark terminal exit receipts of in-scope Projects superseded in the snapshot copy; returns the Session ids. */
+export function retirePreservedCandidates(databaseFile: string, projects: string[], which: string): string[] {
+  const db = new Database(databaseFile);
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_exit_receipts'").get()) return [];
+    const rows = db.prepare(`SELECT r.session_id AS id FROM session_exit_receipts r JOIN agent_sessions s ON s.id = r.session_id
+      WHERE r.superseded_by_session_id IS NULL AND r.outcome IN ('accepted_completion', 'incomplete_resumable')
+        AND s.project_slug IN (${projects.map(() => "?").join(",") || "''"})`).all(...projects) as Array<{ id: string }>;
+    const ids = rows.map((row) => row.id).filter((id) => which === "all" || id === which);
+    const update = db.prepare("UPDATE session_exit_receipts SET superseded_by_session_id = 'production-replay-retired' WHERE session_id = ? AND superseded_by_session_id IS NULL");
+    for (const id of ids) update.run(id);
+    return ids;
+  } finally {
+    db.close();
+  }
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
-  if (options.executor !== undefined && options.executor !== "scripted" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
-    throw new Error("--executor is scripted or candidate:<ref>.");
+  if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
+    throw new Error("--executor is scripted, real or candidate:<ref>.");
   }
   if (options.reviewers !== undefined && options.reviewers !== "real" && options.reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
   if (options.executor && !options.simulateGithubWrites) throw new Error("--executor needs --simulate-github-writes: the pull request it opens and merges is simulated.");
   const realCodex = options.reviewers === "real" ? which("codex") : null;
   if (options.reviewers === "real" && !realCodex) throw new Error("--reviewers real needs the codex CLI on PATH.");
+  const realClaude = options.executor === "real" ? which("claude") : null;
+  if (options.executor === "real" && !realClaude) throw new Error("--executor real needs the claude CLI on PATH.");
   if (options.reviewers === "real" && options.simulateVerdict) throw new Error("--reviewers real and --simulate-verdict are alternatives.");
   const print = options.print ?? ((line: string) => process.stdout.write(`${line}\n`));
   const source = realpathSync(path.resolve(options.sourceWorkspace));
@@ -1050,6 +1080,11 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     // A live claim names a live host process; it would hold the replay's preservation for its whole lease.
     const claims = clearPreservationClaims(databaseFile);
     if (claims > 0) fidelity.push(`${claims} preservation claim(s) from the source were cleared; the replay's own worker claims afresh.`);
+    if (options.retirePreserved) {
+      const retired = retirePreservedCandidates(databaseFile, [...inScope], options.retirePreserved);
+      print(`Retired ${retired.length} preserved candidate exit(s) in the snapshot copy: ${retired.join(", ") || "none"}.`);
+      fidelity.push(`RETIRE-PRESERVED ${options.retirePreserved}: ${retired.length} terminal exit receipt(s) of the snapshot copy were marked superseded so their unintegrated candidates stop gating admission (${retired.join(", ") || "none"}); the live database is untouched.`);
+    }
     const unconfined = unconfinedPaths(databaseFile, root);
     if (unconfined.length > 0) {
       throw new Error(`Refusing to run: these existing paths in the snapshot are outside the replay root and no mapping covers them: ${unconfined.slice(0, 5).join(", ")}`);
@@ -1113,7 +1148,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (!existsSync(recording)) writeFileSync(recording, "");
     const manifest: Manifest = {
       root, workspace, receipt, now: options.now ?? new Date().toISOString(), ticks: options.ticks ?? (options.executor ? 80 : 12), repos, effectsLog, fidelity,
-      ...(options.executor ? { executor: options.executor } : {}), ...(options.executorFiles ? { executorFiles: options.executorFiles } : {})
+      ...(options.executor ? { executor: options.executor } : {}), ...(realClaude ? { realClaude, realHome } : {}), ...(options.executorFiles ? { executorFiles: options.executorFiles } : {})
     };
     const manifestFile = path.join(root, "manifest.json");
     writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
@@ -1389,6 +1424,20 @@ async function runPrepared(manifestFile: string): Promise<void> {
         const result = executor.run(launch, { files, validation: "true" }, "clean");
         return `scripted executor finished ${result.brief.action}: work ${result.workCommit.slice(0, 12)}, settlement ${result.settlementCommit?.slice(0, 12) ?? "none"}, head ${result.finalHead.slice(0, 12)}${result.settleWarnings.length ? `, settle warnings: ${result.settleWarnings.join("; ")}` : ""}`;
       }
+      if (manifest.executor === "real") {
+        // The tick's own launch command (`env <identity> claude ...`), run in the worktree; `claude` resolves to the real CLI
+        // through a one-binary directory ahead of the guards, so git/gh/tmux stay guarded for the Session.
+        const realBin = path.join(manifest.root, "real-bin");
+        mkdirSync(realBin, { recursive: true });
+        const link = path.join(realBin, "claude");
+        if (!existsSync(link)) symlinkSync(manifest.realClaude!, link);
+        const env: NodeJS.ProcessEnv = { ...process.env, HOME: manifest.realHome!, PATH: `${realBin}${path.delimiter}${process.env.PATH ?? ""}`, NODE_OPTIONS: "" };
+        const started = Date.now();
+        const result = spawnSync(launch.command, launch.args, { cwd: launch.cwd, env, encoding: "utf8", timeout: 60 * 60_000, maxBuffer: 256 * 1024 * 1024 });
+        const logFile = path.join(manifest.root, `real-session-${Date.now()}.log`);
+        writeFileSync(logFile, `${result.stdout ?? ""}\n--- stderr ---\n${result.stderr ?? ""}`);
+        return `real Session exited ${String(result.status ?? result.signal)} after ${Math.round((Date.now() - started) / 1000)}s (log ${logFile}); head ${spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: launch.cwd, encoding: "utf8" }).stdout.trim()}`;
+      }
       const reset = spawnSync("git", ["reset", "--hard", "-q", "refs/replay/candidate"], { cwd: launch.cwd, encoding: "utf8" });
       if (reset.status !== 0) throw new Error(`git reset --hard refs/replay/candidate failed in ${launch.cwd}: ${reset.stderr.trim()}`);
       return `${manifest.executor}: ${launch.cwd} reset to ${spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: launch.cwd, encoding: "utf8" }).stdout.trim()}`;
@@ -1594,11 +1643,12 @@ function parseArgs(argv: string[]): ReplayOptions {
       case "--simulate-github-writes": options.simulateGithubWrites = true; break;
       case "--executor": {
         const executor = value();
-        if (executor !== "scripted" && !/^candidate:\S+$/.test(executor)) throw new Error("--executor is scripted or candidate:<ref>.");
+        if (executor !== "scripted" && executor !== "real" && !/^candidate:\S+$/.test(executor)) throw new Error("--executor is scripted, real or candidate:<ref>.");
         options.executor = executor as ReplayOptions["executor"];
         break;
       }
       case "--executor-files": options.executorFiles = JSON.parse(readFileSync(value(), "utf8")) as ReplayOptions["executorFiles"]; break;
+      case "--retire-preserved": options.retirePreserved = value(); break;
       case "--merge-into-base": options.mergeIntoBase = value(); break;
       case "--reviewers": {
         const reviewers = value();
@@ -1607,7 +1657,7 @@ function parseArgs(argv: string[]): ReplayOptions {
         break;
       }
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>]\n`
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|real|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>] [--retire-preserved <sessionId|all>]\n`
           + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n"
           + "  --executor continues past launch (Session result produced by the replay, simulated PR and merge); --reviewers real runs the real read-only reviewers over the simulated PR evidence (spends tokens).\n");
         process.exit(0);

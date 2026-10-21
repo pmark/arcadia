@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -665,6 +665,22 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     }
   }, REPLAY_TIMEOUT_MS);
 
+  it("retires preserved candidates in the snapshot copy only, by Session or all", () => {
+    const file = path.join(root, "retire.sqlite3");
+    const db = new Database(file);
+    db.exec(`CREATE TABLE agent_sessions (id TEXT, project_slug TEXT);
+      CREATE TABLE session_exit_receipts (session_id TEXT, outcome TEXT, superseded_by_session_id TEXT);
+      INSERT INTO agent_sessions VALUES ('s1','p'), ('s2','p'), ('s3','other');
+      INSERT INTO session_exit_receipts VALUES ('s1','accepted_completion',NULL), ('s2','incomplete_resumable',NULL), ('s3','accepted_completion',NULL);`);
+    db.close();
+    expect(retirePreservedCandidates(file, ["p"], "s1")).toEqual(["s1"]);
+    expect(retirePreservedCandidates(file, ["p"], "all")).toEqual(["s2"]);
+    const check = new Database(file, { readonly: true });
+    expect(check.prepare("SELECT session_id FROM session_exit_receipts WHERE superseded_by_session_id IS NULL").all()).toEqual([{ session_id: "s3" }]);
+    check.close();
+    expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "real", simulateGithubWrites: false })).toThrow(/--simulate-github-writes/);
+  });
+
   it("refuses an executor it cannot resolve before building anything", () => {
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "candidate:" })).toThrow(/--executor/);
     expect(() => runProductionReplay({ sourceWorkspace: root, grant: "x", executor: "bogus" as never })).toThrow(/--executor/);
@@ -715,6 +731,7 @@ describe("production replay of the whole chain with a scripted executor", () => 
   });
 
   it("goes past launch: the executor produces the Session's result and the real tick reconciles its completion", () => {
+    if (process.env.REPLAY_DEBUG_FILE) writeFileSync(process.env.REPLAY_DEBUG_FILE, printed.join("\n"));
     expect(printed.join("\n")).not.toContain("Tick error");
     const launched = report.ticks.filter((tick) => tick.launch?.outcome === "launched");
     expect(launched[0].launch!.actionKey).toBe(source.actionA);
@@ -725,6 +742,7 @@ describe("production replay of the whole chain with a scripted executor", () => 
 
   // Needs real Seatbelt preservation validation (macOS, unsandboxed shell, ARCADIA_PRESERVATION_HOST_TEST=1).
   it.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1" || process.platform !== "darwin")("runs the whole chain: preservation, simulated PR, review, simulated merge, the next Action, all merged", () => {
+    if (process.env.REPLAY_DEBUG_FILE) writeFileSync(process.env.REPLAY_DEBUG_FILE, printed.join("\n"));
     expect(report.ticks.filter((tick) => tick.launch?.outcome === "launched").map((tick) => tick.launch!.actionKey)).toEqual([source.actionA, source.actionB]);
     expect(report.stop.reason).toBe("all_merged");
     const kinds = report.ticks.flatMap((tick) => tick.effects.map((effect) => effect.kind));
