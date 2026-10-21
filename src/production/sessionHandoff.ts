@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
+import type { OperatorQaPlanSource } from "../sessions/operatorQaPlan.js";
 import { preserveCandidate, resolvePullRequestBase, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { operatorQaPlanSource } from "../sessions/operatorQaPlan.js";
@@ -28,7 +29,7 @@ import { mergeCandidatePullRequest, type WorkerMergeDeps, type WorkerMergeRefusa
  */
 
 export type PreservationStep =
-  | { kind: "preserved"; receiptId: string; commitSha: string; state: PreservationState; replayed: boolean; baseBranch: string; qaPlanRefusal?: string }
+  | { kind: "preserved"; receiptId: string; commitSha: string; state: PreservationState; replayed: boolean; baseBranch: string; qaPlanRefusal?: string; qaPlan?: OperatorQaPlanSource }
   | { kind: "not_applicable"; reason: string }
   | { kind: "refused"; reason: string; detail?: unknown; identicalRefusalLimitReached?: boolean };
 
@@ -271,6 +272,7 @@ export function preserveSessionCandidate(
       state: receipt.preservationState,
       replayed: receipt.replayed,
       baseBranch,
+      qaPlan: qaPlan(),
       ...(receipt.qaPlanRefusal ? { qaPlanRefusal: receipt.qaPlanRefusal } : {})
     };
   } catch (error) {

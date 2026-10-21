@@ -44,6 +44,12 @@ describe("Issue #1518: a completion Ask drafted at the base revision by a Sessio
     const view = world.gh.view(pr!);
     expect(view.headRefOid).toBe(head);
     expect(view.files.map((file) => file.path)).toEqual(expect.arrayContaining(["PROJECT.md", planFile, "MARKER.md"]));
+    // Process Critic F1: the PR body's Operator QA plan names the pushed settled head
+    // (not its parent, the preserved commit) and lists the settlement records.
+    expect(view.body).toContain(`at commit \`${head}\``);
+    expect(view.body).toContain(`git rev-parse HEAD\` prints \`${head}\``);
+    for (const file of ["PROJECT.md", planFile, "MARKER.md"]) expect(view.body).toContain(`\`${file}\``);
+    expect(view.body).toContain(`exactly ${view.files.length} changed`);
 
     world.untilIntegrated(ACTION_1);
     expect(git(world.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(head);

@@ -1054,7 +1054,7 @@ export function renderPreservedOperatorQaPlan(
 function withValidationEvidence(
   planBody: string,
   plan: OperatorQaPlanSource,
-  request: CandidatePreservationRequest,
+  request: Pick<CandidatePreservationRequest, "validation">,
   repositoryPath: string,
   commitSha: string
 ): string {
@@ -1076,6 +1076,44 @@ function withValidationEvidence(
   } catch {
     return `${planBody}\n\n${unavailableValidationEvidence("the validation evidence could not be rendered (renderer defect).")}\n\n${COMPLETION_SETTLEMENT_LINE}`;
   }
+}
+
+/**
+ * Re-render a preserved candidate's pull-request body at the settled head
+ * (Process Critic F1, 2026-10-21): the completion-settlement commit lands on
+ * top of the preserved commit, so the body preservation rendered names the
+ * parent and omits the settlement records. The plan is rendered against the
+ * pushed head and its full changed-file set; the validation evidence still
+ * relates to the preserved commit it actually covered. Best effort: a missing
+ * receipt or pull request, or a failed `gh` write, returns false and leaves
+ * the pushed head standing.
+ */
+export function refreshPreservedPullRequestBody(
+  db: Database.Database,
+  input: { requestId: string; plan: OperatorQaPlanSource; headSha: string },
+  remote: Pick<CandidatePreservationRemote, "upsertDraftPullRequest"> = systemPreservationRemote
+): boolean {
+  const receipt = loadReceipt(db, input.requestId);
+  if (!receipt || receipt.preservationState !== "IN PR" || !receipt.pullRequestNumber || !receipt.pullRequestUrl) return false;
+  const rendered = renderPreservedOperatorQaPlan(input.plan, {
+    repositoryPath: receipt.repositoryPath,
+    branch: receipt.branch,
+    baseBranch: receipt.prBase?.branch ?? receipt.baseBranch,
+    baseRevision: receipt.prBase?.diffBase ?? receipt.baseRevision,
+    commitSha: input.headSha
+  });
+  const body = withValidationEvidence(rendered.body, input.plan,
+    { validation: { passed: true, evidenceRef: receipt.validationEvidenceRef, candidateFingerprint: receipt.candidateFingerprint } },
+    receipt.repositoryPath, receipt.commitSha);
+  remote.upsertDraftPullRequest({
+    repositoryPath: receipt.repositoryPath,
+    branch: receipt.branch,
+    baseBranch: receipt.prBase?.branch ?? receipt.baseBranch,
+    title: `Candidate: ${receipt.actionId}`,
+    body,
+    existing: { number: receipt.pullRequestNumber, url: receipt.pullRequestUrl }
+  });
+  return true;
 }
 
 /** Files the candidate commit changes against its launch base, or null when Git cannot say. */

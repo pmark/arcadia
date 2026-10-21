@@ -39,7 +39,7 @@ import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../ses
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
 import { COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
-import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
+import { refreshPreservedPullRequestBody, systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { appendJourneyLog, ensureActionJourneyLogTable } from "./journeyLog.js";
@@ -1139,7 +1139,7 @@ function publishSettledCandidateHead(
   input: {
     session: AgentSession; repoRoot: string; preservation: PreservationStep; operatorLaunch: boolean;
     receipt: { outcome: string; reason: string; evidence_json: string | null };
-    remote: Pick<CandidatePreservationRemote, "push">; now: Date; log: (message: string) => void;
+    remote: Pick<CandidatePreservationRemote, "push" | "upsertDraftPullRequest">; now: Date; log: (message: string) => void;
   }
 ): void {
   const { session, preservation, receipt, log } = input;
@@ -1182,6 +1182,16 @@ function publishSettledCandidateHead(
     const changed = (tryGit(session.worktree_path, ["diff", "--name-only", preservation.commitSha, head]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
     if (!findCandidateSettledCompletion(db, session, head) || changed.length === 0) return;
     input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
+    // The PR body's Operator QA plan was rendered at the preserved commit; re-render it at this head.
+    if (preservation.qaPlan) {
+      try {
+        if (refreshPreservedPullRequestBody(db, { requestId: `worker-tick-preserve-${session.id}`, plan: preservation.qaPlan, headSha: head }, input.remote)) {
+          log(`Re-rendered the pull-request Operator QA plan of ${session.branch} at the settled head ${head.slice(0, 12)}.`);
+        }
+      } catch (error) {
+        log(`Re-rendering the pull-request Operator QA plan of ${session.branch} failed (the pushed head stands): ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
   } catch (error) {
     log(`Pushing the settled head of ${session.branch} for ${actionKey} failed (the review step retries it before any verdict): ${error instanceof Error ? error.message : String(error)}`);
