@@ -7,7 +7,8 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, rewriteSnapshotPaths, runProductionReplay, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
-import { git, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
 const REPLAY_TIMEOUT_MS = 240_000;
 
@@ -452,5 +453,80 @@ describe("production replay of a card never pressed (--card)", () => {
       integrationGrant: { decisionRef: "0058", mergeThroughPullRequest: true, expiresAt: "2026-10-21T00:00:00.000Z" },
       actions: ["arcadia/test-transient-review-retry-after-exhaustion", "arcadia/refresh-decision-0130-status-and-1559-fake", "arcadia/guard-repair-gate-upsert-role"]
     });
+  });
+});
+
+describe("production replay of a false completion Ask (Issue #1640)", () => {
+  // Live shape (2026-10-20): two Sessions in a row on one candidate each drafted a
+  // completion Ask whose evidence the validator refused (incomplete_resumable). The
+  // second replaced the first's draft file; both proposals stayed pending and held the
+  // resume as operator_gate_pending until the Release Manager rejected them by hand.
+  let source: Rehearsal;
+  let parent: string;
+  let report: ReplayReport;
+
+  const draft = (session: { id: string; action_id: string; worktree_path: string }, requestId: string): void => {
+    source.agentEdit(session as never, "MARKER.md", `${LINE_A}\n`);
+    source.agentEdit(session as never, "WORK.md", `${session.id} ${requestId}\n`);
+    git(session.worktree_path, ["add", "-A"]);
+    git(session.worktree_path, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work"]);
+    runAgentAskDraftCommand({
+      workspace: source.workspace, dir: session.worktree_path,
+      request: JSON.stringify({
+        agent_ask: "v1", request_id: requestId, project: source.projectSlug, intent: "complete", target_ref: `action/${session.action_id}`,
+        desired_result: `Record ${session.action_id} complete.`, candidate_revision: git(session.worktree_path, ["rev-parse", "HEAD"]).trim(),
+        evidence: [{ criterion: "A paraphrase that is not the declared criterion.", status: "met", note: "n" }],
+        requested_authority: "apply_if_approved"
+      })
+    });
+  };
+
+  beforeAll(() => {
+    source = new Rehearsal({ withOrigin: true });
+    source.createFixtureRepository();
+    source.approve(source.registerProject());
+    source.activate("grant-replay-false-ask-20261018T000000Z");
+    source.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === source.actionA, 3);
+    const first = source.lease()!;
+    draft(first, "complete-round-1");
+    source.tmux.exit(first.tmux_session_name);
+    source.tick();
+    source.tickUntil(() => { const lease = source.lease(); return lease !== null && lease.id !== first.id; }, 3);
+    const second = source.lease()!;
+    git(second.worktree_path, ["rm", "-q", "-f", ".arcadia/asks/agent-ask-complete-round-1.yaml"]);
+    draft(second, "complete-round-2");
+    source.tmux.exit(second.tmux_session_name);
+    source.tick();
+    source.deactivate("stop-replay-false-ask-20261018T000100Z");
+    parent = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-false-ask-")));
+    // The live services keep the WAL database open, so the snapshot's read-only open finds its -shm;
+    // a quiescent WAL database left by ticks has none and sqlite3 cannot open it read-only.
+    const services = new Database(path.join(source.workspace, "database", "arcadia.sqlite3"));
+    try {
+      services.prepare("SELECT count(*) FROM sqlite_master").get();
+      report = runProductionReplay({
+        sourceWorkspace: source.workspace,
+        grant: "grant-replay-false-ask",
+        ticks: 4,
+        github: "offline",
+        parent,
+        keep: true,
+        worktreeRoots: [source.worktrees],
+        print: () => {}
+      });
+    } finally {
+      services.close();
+    }
+  }, REPLAY_TIMEOUT_MS);
+
+  afterAll(() => {
+    source?.dispose();
+    if (parent) rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("resumes the candidate instead of holding launch as operator_gate_pending on its refused completion Asks", () => {
+    expect(JSON.stringify(report.ticks)).not.toContain("operator_gate_pending");
+    expect(report.stop.reason).toBe("launched");
+    expect(report.stop.detail).toContain(source.actionA);
   });
 });
