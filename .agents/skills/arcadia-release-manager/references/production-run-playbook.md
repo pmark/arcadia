@@ -20,12 +20,14 @@ batch, and only then ask for the press.
 ## Pre-press gate (all must hold)
 
 1. **Full-chain replay.** `pnpm production-replay --source-workspace <live>
-   --card <card> --github live --simulate-github-writes` reaches launch, and
-   with a scripted or real candidate and real reviewers continues through
-   completion validation, settlement, PR, code review, QA, simulated green
-   CI, worker merge, pointer advance and the next Action's launch. The replay
-   must not stop at `Stop: launched` without that extension. Record every
-   refusal it prints.
+   --card <card> --github live --simulate-github-writes --simulate-verdict
+   pass` (and `fail-repairable`) reaches launch with no operator touch;
+   record every refusal it prints. As of 2026-10-21 the replay stops at
+   `Stop: launched`: continuing through completion validation, settlement,
+   PR, review, QA, worker merge and the next launch needs a candidate/executor
+   extension being built on branch `replay-past-launch-20261021`. Once it
+   lands, require the replay to reach every pinned Action's merge. Until then,
+   cover those stages with gates 2 and 3 and record the gap.
 2. **Real validator dry run.** Each pinned Action's named test passes
    `validateCompletionCandidate` (Seatbelt, dependencyRoot = main checkout)
    twice, well under the 900 s bound. A test that needs host tools (tmux) can
@@ -38,9 +40,12 @@ batch, and only then ask for the press.
    every finding ranked above "low" before pressing.
 5. **Action shape.** Pinned Actions touch only `WORKER_MERGE_SAFE_PATHS`
    (`src/production/workerMerge.ts`), never `src/production` or
-   `src/sessions` (those are never repaired unattended). Each `next_action`
-   contains "Implement" so `planStepsForWorkItem` routes it to build, not a
-   Decision-gated planning run. Criteria pass the deterministic checker
+   `src/sessions` (those are never repaired unattended). Each Action routes
+   to build, not a Decision-gated planning run: `planStepsForWorkItem`
+   (`src/execution/skills.ts`) matches lowercase "implement", "code" or
+   "prototype" in title, input or `next_action`; "planning" or
+   "implementation plan" forces a planning run; a declared `execution:
+   build` route outranks both. Criteria pass the deterministic checker
    (`src/docs/acceptanceCriteria.ts`); criteria a headless Session cannot
    evidence (lint, tsc) are verified by required CI.
 6. **Governed records on remote main.** Settlement and pointer commits merged
@@ -52,8 +57,9 @@ batch, and only then ask for the press.
    worker process started after the last merge.
 8. **Capacity.** `arcadia production capacity --refresh` admits the provider
    now (a stale read is not proof). Press within minutes of that read.
-9. **Production Off and nothing merges while Active** except the worker's own
-   merges.
+9. **Production is Off at press time.** Once Active, nothing merges except
+   the worker's own merges and operator-approved merges; remind the operator
+   to STOP first.
 
 ## Supervision during a run
 
@@ -85,11 +91,14 @@ batch, and only then ask for the press.
 
 ## Hotfix path (proposal, not yet a Decision)
 
+Not in force: until a Decision ratifies it, AGENTS.md and the Decision
+0060/0080 independent review apply to every PR.
+
 When the operator decides a small named change in chat: record the decision,
 make the change with its tests, open a PR labelled `hotfix` quoting the
 operator, and hand it over at green CI. All other gates stay. Independent
 review is skipped only on the operator's explicit instruction for that PR,
-and is owed afterwards. Proposal: `proposal-hotfix-path-20261021`.
+and is owed afterwards. Proposal: Agent Ask `proposal-hotfix-path-20261021` (workspace proposal, `arcadia agent-ask pending`).
 
 ## Closing a run
 
