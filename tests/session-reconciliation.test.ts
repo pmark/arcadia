@@ -852,6 +852,11 @@ it("asserts the contract", () => {
       expect(result.receipt.reason).toContain("Scope check refused the completion");
       expect(result.receipt.reason).toContain("src/product.ts");
       expect(result.receipt.reason).not.toContain("docs/plans");
+      // Governance already recorded the completion, so the Session cannot repair it: no relaunch, the operator decides.
+      expect(result.receipt.outcome).not.toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.reason).toContain("already settled");
+      expect(result.receipt.evidence_json).toContain("completionSettlementNotInCandidate");
     });
 
     it("(#1615) accepts a self-settled completion that stays in scope, the settlement's own records excused", () => {

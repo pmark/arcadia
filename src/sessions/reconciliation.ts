@@ -813,6 +813,13 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       // escalates it by name.
       settlementNotInCandidate = { settlementId: drafted.settlementId, reason: drafted.reason };
       reason = drafted.reason;
+    } else if (settled && settledRefusal) {
+      // Issue #1615: the completion is already settled and the Plan says done, so
+      // any repair would only break the settlement's evidence and a relaunch
+      // could never be accepted. Escalate once; the operator decides.
+      const refused = `The Session already settled its own completion (settlement ${settled.id}) but it fails the host's checks: ${settledRefusal} Not resumable; the operator decides.`;
+      settlementNotInCandidate = { settlementId: settled.id, reason: refused };
+      reason = refused;
     } else {
       if (drafted?.kind === "refused" && drafted.hold) completionHold = drafted.hold;
       reason = `${reason} ${attempt.reason}`;
