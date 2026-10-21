@@ -177,7 +177,7 @@ function workspaceMembers(root: string): string[] {
  * inside a `node_modules` tree (never into the workspace) are linked. Returns
  * the real paths the sandbox may read.
  */
-function bridgeDependencies(dependencyRoot: string, source: string, scratch: string, forbidden: string[]): string[] {
+export function bridgeCompletionDependencies(dependencyRoot: string, source: string, scratch: string, forbidden: string[]): string[] {
   const root = realpathSync(dependencyRoot);
   const members = workspaceMembers(root);
   const memberRoots = new Map(members.map((member) => [path.join(root, member), member]));
@@ -302,7 +302,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     let readable: string[] = [];
     if (vitest) {
       try {
-        readable = bridgeDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
+        readable = bridgeCompletionDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
       } catch (error) {
         return deny(`the Project's installed dependencies could not be linked (${untrusted(normalizeError(error).message, 300)}).`);
       }
