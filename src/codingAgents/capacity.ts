@@ -162,12 +162,15 @@ export const CAPACITY_ADMISSION_LIMITS = {
   /** An observation older than this cannot admit unattended work. */
   observationFreshnessMs: 15 * 60_000,
   /**
-   * Operator emergency reserve (Decision 0111: 20%). Unattended admission is
-   * budgeted to the rest, 100 - 20 = 80% of every window (Decision 0130 for
-   * Claude's 5-hour and 7-day windows; Decision 0103: percent of window).
-   * Exactly 80% is admitted; anything above is refused.
+   * Operator emergency reserve. Decision 0111 set 20% (an 80% unattended
+   * ceiling, applied to Claude's 5-hour and 7-day windows by Decision 0130;
+   * Decision 0103: percent of window). Operator decision 2026-10-21 (Release
+   * Manager session): no reserve, so unattended work may use a window up to
+   * exhaustion, which still refuses as capacity_exhausted. A pause-and-resume
+   * checkpoint at a margin is proposed separately
+   * (proposal-reserve-margin-pause-and-resume-20261021).
    */
-  reserveMarginPercentage: 20,
+  reserveMarginPercentage: 0,
   /** An operator attestation is bounded; it never becomes standing proof. */
   operatorReceiptMaxTtlMs: 4 * 60 * 60_000,
   /** Deadline for one capacity refresh pass across all providers. */

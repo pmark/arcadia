@@ -275,27 +275,27 @@ describe("unattended admission refuses what it cannot prove", () => {
     expect(decision.reason).toContain("credits are never purchased");
   });
 
-  it("admits up to the 80% unattended budget and refuses above it (Decisions 0103/0111/0130)", () => {
+  it("admits up to window exhaustion with no reserve margin (operator decision 2026-10-21, superseding Decision 0111's 20%)", () => {
     const at = (usedPercentage: number, label = "5h") =>
       decisionFor("codex-cli", { rateLimits: [{ label, usedPercentage, resetsAt: "2026-09-06T15:00:00.000Z" }] });
 
-    expect(CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage).toBe(20);
+    expect(CAPACITY_ADMISSION_LIMITS.reserveMarginPercentage).toBe(0);
     expect(at(40).admitted).toBe(true);
-    expect(at(80).admitted).toBe(true);
-    expect(at(80.1)).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
-    expect(at(85)).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
-    expect(at(85).reason).toContain("80% unattended budget");
-    expect(at(85, "7d")).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+    expect(at(80.1).admitted).toBe(true);
+    expect(at(99.9).admitted).toBe(true);
+    expect(at(99.9, "7d").admitted).toBe(true);
+    expect(at(100)).toMatchObject({ admitted: false, code: "capacity_exhausted" });
+    expect(at(100, "7d")).toMatchObject({ admitted: false, code: "capacity_exhausted" });
   });
 
-  it("refuses when either window is over budget, even if the other is low", () => {
+  it("refuses when either window is exhausted, even if the other is low", () => {
     const decision = decisionFor("codex-cli", {
       rateLimits: [
         { label: "5h", usedPercentage: 10, resetsAt: "2026-09-06T15:00:00.000Z" },
-        { label: "7d", usedPercentage: 81, resetsAt: "2026-09-10T00:00:00.000Z" }
+        { label: "7d", usedPercentage: 100, resetsAt: "2026-09-10T00:00:00.000Z" }
       ]
     });
-    expect(decision).toMatchObject({ admitted: false, code: "capacity_reserve_margin" });
+    expect(decision).toMatchObject({ admitted: false, code: "capacity_exhausted" });
     expect(decision.reason).toContain("7d");
   });
 
@@ -729,25 +729,25 @@ describe("managed production admission requires proven capacity", () => {
     expect(outcome.admitted).toBe(true);
   });
 
-  it("refuses over-budget production admission on the 5-hour window, naming the 80% unattended budget and window", () => {
-    const overBudget = decisionFor("codex-cli", {
-      rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }]
+  it("refuses production admission on an exhausted 5h window, naming it", () => {
+    const exhausted = decisionFor("codex-cli", {
+      rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }]
     });
-    const outcome = admit(activated(), "adm-5h-over-budget", overBudget);
+    const outcome = admit(activated(), "adm-5h-over-budget", exhausted);
 
     expect(outcome).toMatchObject({ admitted: false, code: "capacity_refused" });
-    expect(outcome.admitted === false && outcome.reason).toContain("80% unattended budget");
+    expect(outcome.admitted === false && outcome.reason).toContain("window is spent");
     expect(outcome.admitted === false && outcome.reason).toContain("5h");
   });
 
-  it("refuses over-budget production admission on the 7-day window, naming it", () => {
-    const overBudget = decisionFor("codex-cli", {
-      rateLimits: [{ label: "7d", usedPercentage: 85, resetsAt: "2026-09-10T00:00:00.000Z" }]
+  it("refuses production admission on an exhausted 7d window, naming it", () => {
+    const exhausted = decisionFor("codex-cli", {
+      rateLimits: [{ label: "7d", usedPercentage: 100, resetsAt: "2026-09-10T00:00:00.000Z" }]
     });
-    const outcome = admit(activated(), "adm-7d-over-budget", overBudget);
+    const outcome = admit(activated(), "adm-7d-over-budget", exhausted);
 
     expect(outcome).toMatchObject({ admitted: false, code: "capacity_refused" });
-    expect(outcome.admitted === false && outcome.reason).toContain("80% unattended budget");
+    expect(outcome.admitted === false && outcome.reason).toContain("window is spent");
     expect(outcome.admitted === false && outcome.reason).toContain("7d");
   });
 });
@@ -776,7 +776,7 @@ describe("the spend budget check is hermetic", () => {
       withDatabase(target, (db) =>
         activateProduction(db, { requestId: "grant-budget", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" })
       );
-      const overBudget = decisionFor("codex-cli", { rateLimits: [{ label: "5h", usedPercentage: 85, resetsAt: "2026-09-06T15:00:00.000Z" }] });
+      const overBudget = decisionFor("codex-cli", { rateLimits: [{ label: "5h", usedPercentage: 100, resetsAt: "2026-09-06T15:00:00.000Z" }] });
       const outcome = withDatabase(target, (db) =>
         issueAdmission(db, { requestId: "adm-budget", actionKey: "demo/migrate", projectSlug: "demo", planSlug: "queue-plan", provider: "codex-cli", capacity: overBudget })
       );
