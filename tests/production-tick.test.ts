@@ -1267,6 +1267,29 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
+  it.each(["completion_validation_unavailable", "completion_refused_repeatedly"])("does not relaunch an Action held by %s until the operator resets it (Issue #1613)", (kind) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, ?, 'held', 'fix it', ?, ?)")
+        .run("test-project/define-contract", kind, fixture.now.toISOString(), fixture.now.toISOString());
+    });
+    const held = tick(0).projects.find((entry) => entry.projectSlug === "test-project")?.launch;
+    expect(held).toMatchObject({ attempted: false, outcome: "skipped" });
+    expect(tmux.launches).toHaveLength(0);
+
+    withDatabase(fixture.workspace, (db) => resetProductionRepairBudget(db, "test-project/define-contract"));
+    expect(tick(60_000).projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
   it("escalates a depends_on id that stays unresolved for more than one worker tick, instead of waiting silently", () => {
     // "plan/no-such-plan#no-such-action" names no Plan anywhere in this
     // fixture, so it can never resolve on its own the way an ordinary

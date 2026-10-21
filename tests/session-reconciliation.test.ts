@@ -20,6 +20,7 @@ import { getActiveActionClaim, getActiveWorktreeReservation, getSession, prepare
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -681,6 +682,33 @@ it("asserts the contract", () => {
       expect(result.receipt.outcome).toBe("incomplete_resumable");
       expect(result.receipt.reason).toContain("did not finish within 15s");
       expect(result.receipt.reason).toContain("tests/contract.test.ts (timed out)");
+      // Issue #1613: a timeout is a host fault, not a candidate defect: no resumable handoff
+      // whose brief says "fix the code or tests"; one named operator hold instead.
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(JSON.parse(result.receipt.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_validation_unavailable" });
+    });
+
+    // Issue #1613: the same drafted-completion refusal, repeated across relaunches of one Action,
+    // stops for the operator at the existing identical-refusal limit.
+    it("stops offering resumption once the identical drafted-completion refusal repeats the identical-refusal limit", () => {
+      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(3); });`);
+      const receipts = [] as Array<{ lease_handoff: number; evidence_json: string | null }>;
+      for (let attempt = 1; attempt <= MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt += 1) {
+        // Each pass stands for one more relaunch of the same Action exiting with the same draft: forget the
+        // previous receipt and let the Session be reconciled again (a real relaunch is a new Session id).
+        withDatabase(fixture.workspace, (db) => {
+          db.prepare("DELETE FROM session_exit_receipts WHERE session_id = ?").run(sessionId);
+          db.prepare("UPDATE agent_sessions SET status = 'running', ended_at = NULL WHERE id = ?").run(sessionId);
+        });
+        const result = withDatabase(fixture.workspace, (db) =>
+          reconcileSessionExit({ db, sessionId, requestId: `reconcile-repeat-${attempt}`, repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+        );
+        receipts.push(result.receipt);
+      }
+      expect(receipts.slice(0, -1).map((receipt) => receipt.lease_handoff)).toEqual(receipts.slice(0, -1).map(() => 1));
+      const last = receipts[receipts.length - 1];
+      expect(last.lease_handoff).toBe(0);
+      expect(JSON.parse(last.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_refused_repeatedly" });
     });
   });
 

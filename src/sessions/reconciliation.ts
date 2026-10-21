@@ -9,6 +9,7 @@ import type { PlanDoc } from "../docs/types.js";
 import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
 import { sessionLogPath } from "./sessionRecording.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
+import { clearPreservationRefusal, fingerprintPreservationRefusal, MAX_IDENTICAL_PRESERVATION_REFUSALS, recordPreservationRefusal } from "./preservationRefusalBudget.js";
 import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_EVIDENCE_INCOMPLETE, AUTO_SETTLE_NO_DRAFT, AUTO_SETTLE_REVISION_CHANGED, AUTO_SETTLE_STALE_REVISION, AUTO_SETTLE_VALIDATION_REFUSED } from "../ask/autoSettleBeforeDispatch.js";
 import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
@@ -515,6 +516,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     }, validationOptions);
     return validation.status === "refused" ? { ok: false as const, reason: validation.reason } : { ok: true as const };
   };
+  const actionKey = `${session.project_slug}/${session.action_id}`;
   const result = attemptAutoSettlePendingCompletion(db, {
     repoRoot: worktree,
     projectSlug: session.project_slug,
@@ -530,8 +532,30 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   if (!result.settled) {
     // The Session drafted a completion that was refused: say why, so the
     // receipt (and the resumed Session's brief) names what to fix.
-    return result.reason === AUTO_SETTLE_NO_DRAFT ? null : { kind: "refused", reason: draftedCompletionRefusal(worktree, result.reason, result.askPath, result.detail) };
+    if (result.reason === AUTO_SETTLE_NO_DRAFT) return null;
+    const refusal = draftedCompletionRefusal(worktree, result.reason, result.askPath, result.detail);
+    // Issue #1613: a validation that could not run here is not a candidate defect; relaunching
+    // cannot fix it, so it is one operator hold with a named remedy, not a resumable handoff.
+    const unavailable = result.reason === AUTO_SETTLE_VALIDATION_REFUSED ? validation as CompletionValidationResult | null : null;
+    if (unavailable?.status === "refused" && unavailable.hostFault) {
+      const message = `Pre-acceptance validation could not run on this host, so the drafted completion was neither accepted nor refused on its merits: ${result.detail ?? refusal}`;
+      return { kind: "refused", reason: message, hold: {
+        kind: COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, message,
+        remedy: `This is a host fault, not a candidate defect. Fix the host condition the message names (a runner or dependencies missing in the checkout, an unsupported host, or a validation that needs a longer bound), then clear this hold with \`arcadia production reset-repair-budget\` for ${actionKey} so the Action relaunches; the candidate is preserved at ${worktree} on ${session.branch}.`
+      } };
+    }
+    // The same refusal repeating across relaunches of one Action is a stuck loop, not progress.
+    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprintPreservationRefusal(refusal, null), refusal, new Date());
+    if (attempts >= MAX_IDENTICAL_PRESERVATION_REFUSALS) {
+      const message = `${refusal} It was refused the same way ${attempts} times in a row, so it is not offered for automatic resumption.`;
+      return { kind: "refused", reason: message, hold: {
+        kind: COMPLETION_REFUSED_REPEATEDLY_ESCALATION, message,
+        remedy: `Inspect the candidate at ${worktree} on ${session.branch}: repair what the refusal names (or the Action's criteria if they cannot be met), then clear this hold with \`arcadia production reset-repair-budget\` for ${actionKey}.`
+      } };
+    }
+    return { kind: "refused", reason: refusal };
   }
+  clearPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey));
   const settlementId = result.receiptId ?? "unknown";
   // Issue #1518: a settlement can be recorded while its commit is not on the
   // candidate (its Git commit failed, leaving the settled documents in the
@@ -574,7 +598,14 @@ export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_PREFIX = "Completion settlem
 type DraftedCompletionSettlement =
   | { kind: "settled"; settlementId: string }
   | { kind: "not_in_candidate"; settlementId: string; reason: string }
-  | { kind: "refused"; reason: string };
+  | { kind: "refused"; reason: string; hold?: CompletionHold };
+
+/** An operator hold on an Action whose drafted completion keeps being refused (Issue #1613); the tick escalates it by `kind`. */
+export interface CompletionHold { kind: string; message: string; remedy: string }
+export const COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION = "completion_validation_unavailable";
+export const COMPLETION_REFUSED_REPEATEDLY_ESCALATION = "completion_refused_repeatedly";
+/** The identical-refusal count's subject for an Action; cleared when its completion settles or an operator resets the budget. */
+export const draftedCompletionRefusalSubject = (actionKey: string) => `drafted-completion:${actionKey}`;
 
 /**
  * One sentence naming why the Session's own drafted complete Ask was not
@@ -716,6 +747,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   // other outcome keeps reading `repoRoot` exactly as before.
   let nextMoveRepoRoot = repoRoot;
   let settlementNotInCandidate: { settlementId: string; reason: string } | null = null;
+  let completionHold: CompletionHold | null = null;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, input.completionValidation);
@@ -737,6 +769,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       settlementNotInCandidate = { settlementId: drafted.settlementId, reason: drafted.reason };
       reason = drafted.reason;
     } else {
+      if (drafted?.kind === "refused" && drafted.hold) completionHold = drafted.hold;
       reason = `${reason} ${attempt.reason}`;
     }
   }
@@ -751,7 +784,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   const providerSignInExit = Boolean(signInFailure) && reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX);
   const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
-  const suppressHandoff = outcome === "incomplete_resumable" && !settlementNotInCandidate && input.suppressLeaseHandoff;
+  const suppressHandoff = outcome === "incomplete_resumable" && !settlementNotInCandidate && !completionHold && input.suppressLeaseHandoff;
   const row: SessionExitReceipt = {
     id: createId("sessionExitReceipt"),
     session_id: session.id,
@@ -766,10 +799,11 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       ...evidence,
       ...(session.stop_reason ? { stopReason: session.stop_reason } : {}),
       ...(settlementNotInCandidate ? { completionSettlementNotInCandidate: settlementNotInCandidate } : {}),
+      ...(completionHold ? { completionHold } : {}),
       ...(providerSignInExit ? { providerFailure: { kind: "sign_in", provider: session.provider, message: signInFailure } } : {})
     }),
     next_action_json: JSON.stringify(nextMove),
-    lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff && !settlementNotInCandidate ? 1 : 0,
+    lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff && !settlementNotInCandidate && !completionHold ? 1 : 0,
     superseded_by_session_id: null,
     is_simulated: session.is_simulated ? 1 : 0,
     created_at: now,
