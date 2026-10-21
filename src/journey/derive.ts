@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { attemptWasReviewerUnavailable, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
 import { MAX_REVIEW_REPAIR_ROUNDS } from "../sessions/reviewRepair.js";
 import { classifyObstacle } from "./classify.js";
 import {
@@ -279,7 +279,8 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     .map((role) => verdicts.filter((attempt) => attempt.role === role && attempt.input_revision === inputRevision))
     .sort((left, right) => right.length - left.length)[0] ?? [];
   const reviewAttempts: JourneyBudget = {
-    spent: latestVerdictRole.filter((attempt) => attempt.status === "passed" || attempt.status === "failed").length,
+    // A reviewer-unavailable attempt produced no verdict and spends none of the budget.
+    spent: latestVerdictRole.filter((attempt) => (attempt.status === "passed" || attempt.status === "failed") && !attemptWasReviewerUnavailable(attempt)).length,
     inUse: latestVerdictRole.filter((attempt) => attempt.status === "pending" || attempt.status === "running").length,
     limit: MAX_VERDICT_ATTEMPTS
   };

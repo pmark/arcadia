@@ -16,6 +16,7 @@ import { ensureProductionTickTables } from "../src/production/tick.js";
 import { ensureWorkerMergeTable } from "../src/production/workerMerge.js";
 import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { ensureReviewRepairTable } from "../src/sessions/reviewRepair.js";
+import { MAX_VERDICT_ATTEMPTS } from "../src/sessions/roleLineage.js";
 
 /**
  * The journey of one Action, derived from a fixture database shaped like the
@@ -112,25 +113,26 @@ describe("deriveJourney", () => {
 
     expect(journey.now).toMatchObject({ kind: "now", label: "#1577 awaiting checks", at: "2026-10-19T15:50:00.000Z", ref: { kind: "pr", id: "1577", url: pr(1577) } });
     expect(journey.gate).toMatchObject({ kind: "gate", label: "independent review" });
-    expect(journey.budget).toEqual({ reviewAttempts: { spent: 2, inUse: 0, limit: 5 }, repairRounds: { spent: 1, inUse: 0, limit: 3 } });
+    expect(journey.budget).toEqual({ reviewAttempts: { spent: 2, inUse: 0, limit: MAX_VERDICT_ATTEMPTS }, repairRounds: { spent: 1, inUse: 0, limit: 3 } });
     expect(journey.ahead.map((branch) => [branch.id, branch.available])).toEqual([["pass", true], ["repair", true]]);
     expect(journey.destination).toMatchObject({ label: "PR merged", reached: false, ref: { id: "1577" } });
   });
 
   it("puts an open obstacle on the path and closes the repair branch when no verdict attempt is left", () => {
     seedPath();
-    attempt("code-review", 3, "failed", HEAD.c, "2026-10-19T15:55:00.000Z");
-    attempt("code-review", 4, "failed", HEAD.c, "2026-10-19T15:56:00.000Z");
-    attempt("code-review", 5, "failed", HEAD.c, "2026-10-19T15:57:00.000Z");
+    // Seeded ordinals 1 and 2 plus these spend the whole verdict budget.
+    for (let ordinal = 3; ordinal <= MAX_VERDICT_ATTEMPTS; ordinal += 1) {
+      attempt("code-review", ordinal, "failed", HEAD.c, `2026-10-19T15:${String(50 + ordinal).padStart(2, "0")}:00.000Z`);
+    }
     insert("production_review_repairs", { request_id: "repair-3", action_key: KEY, policy_epoch: 2, round: 2, failed_session_id: "s3", failed_branch: "claude/demo-3", failed_head: HEAD.c, pull_request_url: pr(1577), role: "code-review", verdict: "fail", summary: "Misattributed fix.", findings_json: "[]", failed_checks_json: "[]", outcome: "escalated", reason: "No independent code-review attempt remains.\nFindings (report …): 1. credential handling", created_at: "2026-10-19T15:57:00.000Z", updated_at: "2026-10-19T15:57:00.000Z" });
     db.prepare("UPDATE production_operator_escalations SET kind = 'review_repair_rounds_exhausted', message = 'No attempt remains. Findings (report): credential handling'").run();
 
     const journey = deriveJourney(db, KEY, NOW);
     const open = journey.events.filter((event) => event.kind === "obstacle");
-    expect(open.map((event) => event.label)).toEqual(["review fail", "review fail", "review fail", "repair escalated"]);
+    expect(open.map((event) => event.label)).toEqual([...Array.from({ length: MAX_VERDICT_ATTEMPTS - 2 }, () => "review fail"), "repair escalated"]);
     // The escalation duplicates the repair row; it is not told twice, and its quoted report never classifies.
     expect(open.find((event) => event.label === "repair escalated")).toMatchObject({ detail: "No independent code-review attempt remains.", class: null });
-    expect(journey.budget.reviewAttempts).toEqual({ spent: 5, inUse: 0, limit: 5 });
+    expect(journey.budget.reviewAttempts).toEqual({ spent: MAX_VERDICT_ATTEMPTS, inUse: 0, limit: MAX_VERDICT_ATTEMPTS });
     expect(journey.ahead.find((branch) => branch.id === "repair")?.available).toBe(false);
     expect(journey.ahead.find((branch) => branch.id === "pass")?.label).toMatch(/operator/);
   });
@@ -150,7 +152,7 @@ describe("deriveJourney", () => {
     attempt("code-review", 1, "failed", HEAD.a, "2026-10-17T10:00:00.000Z", "fail", "older-rev");
     attempt("code-review", 3, "failed", HEAD.c, "2026-10-19T15:55:00.000Z", "passed", "rev", { stale: true });
     const journey = deriveJourney(db, KEY, NOW);
-    expect(journey.budget.reviewAttempts).toEqual({ spent: 3, inUse: 0, limit: 5 });
+    expect(journey.budget.reviewAttempts).toEqual({ spent: 3, inUse: 0, limit: MAX_VERDICT_ATTEMPTS });
     expect(journey.events.at(-1)).toMatchObject({ kind: "obstacle", label: "review stale" });
   });
 

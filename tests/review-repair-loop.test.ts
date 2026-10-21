@@ -14,7 +14,9 @@ import { listPendingTerminalCandidates } from "../src/production/terminalCandida
 import type { AgentSession } from "../src/sessions/index.js";
 import { ensureReviewRepairTable, getSessionRepair, launchedRepairRounds, listReviewRepairs, releaseRepairSession, type ReviewRepairRow } from "../src/sessions/reviewRepair.js";
 import { getSession } from "../src/sessions/index.js";
-import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
+import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, MAX_VERDICT_ATTEMPTS, planDevelopmentAttempt } from "../src/sessions/roleLineage.js";
+import { MAX_VARIANCE_REVIEW_ATTEMPTS } from "../src/production/independentReview.js";
+import { MAX_REVIEW_REPAIR_ROUNDS } from "../src/sessions/reviewRepair.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { candidateCompletionAskIds, resumedSessionSupersededAskIds } from "../src/sessions/launch.js";
 import { runAgentAskDraftCommand, runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
@@ -686,13 +688,33 @@ describe("the review repair bound and gates", () => {
   it("escalates instead of launching when no verdict attempt is left to review a repaired head", () => {
     const { rehearsal } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
     expect(rehearsal.lease()).toBeNull(); // held back by the failed comment
-    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE session_role_attempts SET ordinal = 5 WHERE role = 'code-review'").run());
+    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE session_role_attempts SET ordinal = ? WHERE role = 'code-review'").run(MAX_VERDICT_ATTEMPTS));
     rehearsal.tick();
     expect(rehearsal.lease()).toBeNull();
     expect(rehearsal.tmux.launches).toHaveLength(1);
     expect(repairs(rehearsal).map((row) => row.outcome)).toEqual(["escalated"]);
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_rounds_exhausted", message: expect.stringContaining("No independent code-review attempt remains") });
     expect(rehearsal.github.comments.at(-1)?.body).toContain("Do not merge: escalated to the operator.");
+  });
+
+  it("does not spend a verdict attempt on an unavailable reviewer: two unavailable attempts still leave the repair round its verdict attempt (Issue F3)", () => {
+    const { rehearsal } = failedReview((r) => { r.github.commentFailures.push("HTTP 502 (simulated)"); });
+    expect(rehearsal.lease()).toBeNull();
+    withDatabase(rehearsal.workspace, (db) => {
+      const row = db.prepare("SELECT * FROM session_role_attempts WHERE role = 'code-review'").get() as Record<string, unknown>;
+      db.prepare("UPDATE session_role_attempts SET ordinal = ? WHERE role = 'code-review'").run(MAX_VERDICT_ATTEMPTS);
+      for (const ordinal of [1, 2]) {
+        const copy = { ...row, id: `${String(row.id)}-unavailable-${ordinal}`, request_id: `${String(row.request_id)}-unavailable-${ordinal}`, ordinal, status: "failed", terminal_receipt_json: JSON.stringify({ reviewerUnavailable: "Selected model is at capacity" }) };
+        db.prepare(`INSERT INTO session_role_attempts (${Object.keys(copy).join(", ")}) VALUES (${Object.keys(copy).map((k) => `@${k}`).join(", ")})`).run(copy);
+      }
+    });
+    rehearsal.tick();
+    expect(repairs(rehearsal).map((row) => row.outcome)).not.toContain("escalated");
+    expect(rehearsal.tmux.launches.length).toBeGreaterThan(1);
+  });
+
+  it("keeps the verdict attempt budget at least one initial review, every repair round and every variance rerun", () => {
+    expect(MAX_VERDICT_ATTEMPTS).toBeGreaterThanOrEqual(1 + MAX_REVIEW_REPAIR_ROUNDS + MAX_VARIANCE_REVIEW_ATTEMPTS);
   });
 
   it("treats a failed PR that is no longer open as a gated stop, and names a merge", () => {

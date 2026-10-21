@@ -9,6 +9,7 @@ import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import type { CandidatePreservationReceipt } from "./candidatePreservation.js";
 import { JUDGEMENT_REVISION } from "../qa/reviewCriteria.js";
+import { MAX_REVIEW_REPAIR_ROUNDS } from "./reviewRepair.js";
 import {
   actedAsDeveloper,
   allocateSessionRoleAttempt,
@@ -521,8 +522,44 @@ function assertIndependentOf(db: Database.Database, session: AgentSession, input
  * `executionCwd` are the host-observed identity and working directory of the
  * reviewer process; neither may be the developer's.
  */
-/** Code review or QA attempts per role per requirement input revision (every head and rerun counts). */
-export const MAX_VERDICT_ATTEMPTS = 5;
+/**
+ * Attempts in all (the first review and its automatic reruns) one verdict kind
+ * may spend on one exact head while its non-pass is pure reviewer variance:
+ * the operator's 2026-10-06 choice (Issue #1018). Defined here so the lineage
+ * budget below derives from it; `independentReview.ts` re-exports it.
+ */
+export const MAX_VARIANCE_REVIEW_ATTEMPTS = 3;
+
+/**
+ * Code review or QA verdicts per role per requirement input revision (every
+ * head and rerun counts): the initial review, one more per repair round, and
+ * the variance reruns. An attempt whose reviewer was unavailable produced no
+ * verdict and does not count (see {@link verdictAttemptLimit}).
+ */
+export const MAX_VERDICT_ATTEMPTS = 1 + MAX_REVIEW_REPAIR_ROUNDS + MAX_VARIANCE_REVIEW_ATTEMPTS;
+
+/** Whether a lineage attempt ended because the reviewer was unavailable: no verdict, so no verdict budget spent. */
+export function attemptWasReviewerUnavailable(attempt: { status: string; terminal_receipt_json: string | null }): boolean {
+  if (attempt.status !== "failed" || !attempt.terminal_receipt_json) return false;
+  try {
+    const unavailable = (JSON.parse(attempt.terminal_receipt_json) as { reviewerUnavailable?: unknown }).reviewerUnavailable;
+    return typeof unavailable === "string" && unavailable.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The highest ordinal a verdict role may allocate for this requirement input:
+ * {@link MAX_VERDICT_ATTEMPTS} verdicts plus one ordinal per unavailable
+ * reviewer attempt (which produced none). A dead reviewer is still bounded by
+ * the review step's consecutive-failure cap, never by this budget.
+ */
+export function verdictAttemptLimit(db: Database.Database, requirementId: string, inputRevision: string, role: IndependentVerdictRole): number {
+  const rows = db.prepare("SELECT status, terminal_receipt_json FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = ?")
+    .all(requirementId, inputRevision, role) as Array<Pick<SessionRoleAttempt, "status" | "terminal_receipt_json">>;
+  return MAX_VERDICT_ATTEMPTS + rows.filter(attemptWasReviewerUnavailable).length;
+}
 
 export function beginIndependentVerdict(db: Database.Database, input: {
   role: IndependentVerdictRole;
@@ -580,7 +617,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
     mutationOwner: false,
     retryAuthorized: input.retryAuthorized ?? false,
     authorityCurrent: true,
-    maxOrdinal: input.maxOrdinal ?? MAX_VERDICT_ATTEMPTS,
+    maxOrdinal: input.maxOrdinal ?? verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.role),
     binding: readiness.binding,
     now: input.now
   });
