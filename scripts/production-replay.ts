@@ -136,8 +136,8 @@ export interface ReplayOptions {
    * (simulated; fast-forwards only the replay's local bare origin) and launch
    * the next Action.
    *   - `scripted`: the fast-rehearsal ScriptedExecutor (tests/fast-rehearsal/helpers/executor.ts)
-   *     writes `executorFiles[actionId]` (default: one marker file), commits under the
-   *     launch identity and drafts and settles a complete `complete` Agent Ask in the worktree.
+   *     writes `executorFiles[actionId]` (default: one marker file) and drafts a
+   *     `complete` Agent Ask at the base, leaving work uncommitted for host validation, preservation and settlement.
    *   - `real`: the REAL agent CLI Session the tick asked tmux to start runs (same command and brief) in the replay's
    *     candidate worktree, against the replay's local repository and workspace; provider tokens are spent. The
    *     replay's git/gh/tmux guards stay first on its PATH; only the Session's own sign-in (the real HOME) is exposed.
@@ -1427,7 +1427,8 @@ async function runPrepared(manifestFile: string): Promise<void> {
         const brief = launch.args.at(-1) ?? "";
         const action = /^Action: (.+)$/m.exec(brief)?.[1]?.trim() ?? "";
         const files = manifest.executorFiles?.[action] ?? manifest.executorFiles?.[action.slice(action.indexOf("/") + 1)] ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action} (production replay).\n` };
-        const result = executor.run(launch, { files, validation: "true" }, "clean");
+        // Match a headless Session: the host, not the executor, commits and settles completion.
+        const result = executor.run(launch, { files, validation: "true" }, "draft-at-base-uncommitted");
         return `scripted executor finished ${result.brief.action}: work ${result.workCommit.slice(0, 12)}, settlement ${result.settlementCommit?.slice(0, 12) ?? "none"}, head ${result.finalHead.slice(0, 12)}${result.settleWarnings.length ? `, settle warnings: ${result.settleWarnings.join("; ")}` : ""}`;
       }
       if (manifest.executor === "real") {

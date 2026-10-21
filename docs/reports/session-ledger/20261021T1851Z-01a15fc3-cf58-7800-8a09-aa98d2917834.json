@@ -1,0 +1,27 @@
+{
+  "session_id": "01a15fc3-cf58-7800-8a09-aa98d2917834",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "operator-directed:#1675",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "ci-linux-protected-validator-refusal",
+      "cost_min": null,
+      "fix_ref": "tests/production-replay.test.ts"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Replay drafts for host settlement. macOS: 31 replay tests, lint, tsc and build pass. CI exposed Linux host refusal; regression now asserts refusal there. Review and snapshot results are on PR #1676."
+}
