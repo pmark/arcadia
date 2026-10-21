@@ -65,7 +65,7 @@ import {
 } from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
-import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
+import { candidateLandingCommand, handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import type { CompletionValidationOptions } from "../sessions/completionValidation.js";
 import { createId } from "../utils/id.js";
 import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
@@ -80,7 +80,7 @@ import {
   type ReviewStepOutcome
 } from "./independentReview.js";
 import { getReviewRepair, requiredChecksRepairRequestId } from "../sessions/reviewRepair.js";
-import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
+import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseMergedReviewRepairs, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -225,7 +225,7 @@ function recoverTerminalHandoff(
   if (pending.length === 0) return null;
 
   const session = pending[0];
-  const merge = operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
+  let merge = operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
   let preservedRow = hasPreservationTable
     ? db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
         .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined
@@ -233,6 +233,10 @@ function recoverTerminalHandoff(
   let preserved: CandidatePreservationReceipt | null = null;
   let terminalPreservedThisTick = false;
   try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { /* refuse below */ }
+  // Once the base has advanced past the candidate's merge base a fast-forward
+  // cannot land it: offer the head-pinned GitHub merge instead (Issue #1632).
+  merge = candidateLandingCommand({ repoRoot, branch: session.branch, baseBranch,
+    head: tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null, pullRequestUrl: pullRequestUrlOf(preservedRow) });
   let preservation: SessionHandoffResult["preservation"] = preserved
     ? { kind: "preserved", receiptId: preserved.id, commitSha: preserved.commitSha,
         state: preserved.preservationState, replayed: true, baseBranch: preserved.baseBranch }
@@ -366,6 +370,11 @@ function lapsedIntegrationGrant(db: Database.Database, session: AgentSession, no
   return `${LAPSED_INTEGRATION_GRANT} ${grant.expiresAt} (Decision ${grant.decisionRef}); the preserved candidate is not readied, reviewed or integrated unattended.`;
 }
 
+/** The pull request URL a preservation receipt row names, or null. */
+function pullRequestUrlOf(row: { receipt_json: string } | undefined): string | null {
+  try { return row ? (JSON.parse(row.receipt_json) as { pullRequestUrl?: string | null }).pullRequestUrl ?? null : null; } catch { return null; }
+}
+
 /** A terminal-recovery refusal raised by one of `recoverTerminalHandoff`'s own guards, with the read-only facts behind it. */
 interface TerminalRefusalFacts {
   session: AgentSession;
@@ -440,7 +449,7 @@ function escalatingVerdictGate(
   let baseBranch = "the governed base branch";
   try { baseBranch = resolveBaseBranch(repoRoot); } catch { /* keep the generic name */ }
   const merge = gate.head
-    ? `git -C ${repoRoot} merge --ff-only ${gate.head}   # then push ${baseBranch}`
+    ? candidateLandingCommand({ repoRoot, branch: gate.head, baseBranch, head: gate.head, pullRequestUrl })
     : operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
   const fallback = `Manual fallback: after an independent review of exactly that head, an operator may land it with \`${merge}\`.`;
   const url = pullRequestUrl ?? "<the candidate's PR URL>";
@@ -1378,6 +1387,28 @@ function operatorGateRemedy(
 }
 
 /**
+ * Why the pending-handoff branch skips a launch. The reconciliation wording is
+ * only true when a Session was reconciled this tick; otherwise the wait is for
+ * the candidate's own integration or operator merge (Issue #1632).
+ */
+export function launchSkipReason(input: { reconciledCount: number; refusal: { reason: string; operatorMergeCommand: string | null } | null; sessionId: string | null }): string {
+  if (input.reconciledCount > 0 || !input.refusal) {
+    return "Repository was just reconciled this tick; deferring admission one tick for its merge to land.";
+  }
+  return `Admission waits on the preserved candidate${input.sessionId ? ` of Session ${input.sessionId}` : ""}, which is not integrated: ${input.refusal.reason}`
+    + `${input.refusal.operatorMergeCommand ? ` Operator merge: ${input.refusal.operatorMergeCommand}` : ""}`;
+}
+
+/** Whether every review repair row of this Action names a failed head other than `head` (and at least one exists). */
+function repairStopIsForOtherHead(db: Database.Database, actionKey: string, head: string | null): boolean {
+  if (!head) return false;
+  try {
+    const rows = db.prepare("SELECT failed_head FROM production_review_repairs WHERE action_key = ?").all(actionKey) as Array<{ failed_head: string }>;
+    return rows.length > 0 && rows.every((row) => row.failed_head !== head);
+  } catch { return false; }
+}
+
+/**
  * Record a terminal-guard refusal as one operator escalation per
  * (Session, head, reason) -- the message names all three, so an unchanged
  * refusal finds its own row and writes nothing, while a new head or a new
@@ -1389,7 +1420,7 @@ function operatorGateRemedy(
  * refusal still holds (it is cleared the tick it stops). Returns true when it
  * wrote.
  */
-function recordTerminalCandidateEscalation(
+export function recordTerminalCandidateEscalation(
   db: Database.Database,
   input: { facts: TerminalRefusalFacts; repoRoot: string; now: Date; log: (message: string) => void }
 ): boolean {
@@ -1402,7 +1433,11 @@ function recordTerminalCandidateEscalation(
   if (previous?.kind === TERMINAL_CANDIDATE_ESCALATION && previous.message === message) return false;
   // Only a plain verdict wait is superseded: a durable review block (a failed
   // verdict, an exhausted review budget) stays the open escalation.
-  if (previous && previous.kind !== TERMINAL_CANDIDATE_ESCALATION && !PLAIN_VERDICT_WAITS.has(previous.kind)) return false;
+  // A review repair stop recorded for an older head is stale once the candidate
+  // sits on another head: the refusal at the current head is the real blocker
+  // (Issue #1632). A repair stop on this very head stays.
+  const staleRepairStop = previous !== undefined && REVIEW_REPAIR_ESCALATIONS.has(previous.kind) && repairStopIsForOtherHead(db, actionKey, head);
+  if (previous && previous.kind !== TERMINAL_CANDIDATE_ESCALATION && !PLAIN_VERDICT_WAITS.has(previous.kind) && !staleRepairStop) return false;
   const remedy = terminalCandidateRemedy(db, input.facts, input.repoRoot);
   // A new episode starts its own `first_detected_at`, rather than inheriting
   // the replaced row's.
@@ -1456,6 +1491,8 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
     const onlyDraftedAsks = paths.length > 0 && paths.every((file) => DRAFTED_ASK_PATH.test(file));
     let baseBranch = "the governed base branch";
     try { baseBranch = resolveBaseBranch(repoRoot); } catch { /* keep the generic name */ }
+    const landing = candidateLandingCommand({ repoRoot, branch: settlementCommit, baseBranch, head: settlementCommit,
+      pullRequestUrl: pullRequestUrlOf(db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined) });
     return `${blocked} Head ${head} carries ${extra.length === 0 ? "changes" : `commit(s) ${extra.join("; ")}`} after its completion settlement commit ${settlementCommit}`
       + `${paths.length > 0 ? `, changing ${paths.join(", ")}` : ""}. `
       + (onlyDraftedAsks
@@ -1463,7 +1500,9 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
         : "")
       + `${inspect} The tick never integrates a head other than the settlement commit, and no command removes the extra commit. `
       + `After an independent review of exactly ${settlementCommit}, an operator may land the settlement itself with `
-      + `\`git -C ${repoRoot} merge --ff-only ${settlementCommit}\` (then push ${baseBranch}); the extra commit stays preserved on ${session.branch}.`;
+      + (landing.startsWith("gh ")
+        ? `\`${landing}\` (the base has advanced past the candidate, so a fast-forward would fail); the extra commit stays preserved on ${session.branch}.`
+        : `\`git -C ${repoRoot} merge --ff-only ${settlementCommit}\` (then push ${baseBranch}); the extra commit stays preserved on ${session.branch}.`);
   }
   if (reason === "The terminal candidate worktree is missing or changed.") {
     const status = tryGit(worktree, ["status", "--porcelain", "--untracked-files=all"]);
@@ -2140,7 +2179,7 @@ export function runManagedProductionTick(
       // A refused terminal handoff of an out-of-scope pointer Action recurs
       // every tick and holds an Action-scoped run (Issue #1512): name it.
       const held = handoff !== null && reconciled.length === 0 ? outOfScopePointerHold(db, { repoRoot, projectSlug: project.slug, now, log }) : null;
-      launch = { attempted: false, outcome: "skipped", reason: held ?? "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
+      launch = { attempted: false, outcome: "skipped", reason: held ?? launchSkipReason({ reconciledCount: reconciled.length, refusal, sessionId: handoffSessionId }), actionKey: null };
     }
     // An integration-refusal episode ends whenever this tick has no refused
     // handoff to log (it integrated, nothing is pending, or production is Off
@@ -2152,6 +2191,8 @@ export function runManagedProductionTick(
       if (!(mayLaunch && handoff?.integration.kind === "refused" && handoff.integration.operatorMergeCommand)) {
         clearIntegrationRefusalLog(db, project.slug);
       }
+      // A gated review repair row whose candidate has since merged is closed (Issue #1632).
+      try { releaseMergedReviewRepairs(db, { repoRoot, projectSlug: project.slug, baseBranch: resolveBaseBranch(repoRoot), now, log }); } catch { /* retried next tick */ }
       // An operator-gate escalation lasts exactly as long as the gate holds a launch.
       clearProjectEscalationsOfKind(db, OPERATOR_GATE_ESCALATION, project.slug, gate.actionKey);
       if (mayLaunch && terminalRefusal) {
