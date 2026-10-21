@@ -539,7 +539,7 @@ export const MAX_VARIANCE_REVIEW_ATTEMPTS = 3;
 export const MAX_VERDICT_ATTEMPTS = 1 + MAX_REVIEW_REPAIR_ROUNDS + MAX_VARIANCE_REVIEW_ATTEMPTS;
 
 /** Whether a lineage attempt ended because the reviewer was unavailable: no verdict, so no verdict budget spent. */
-function attemptWasReviewerUnavailable(attempt: Pick<SessionRoleAttempt, "status" | "terminal_receipt_json">): boolean {
+export function attemptWasReviewerUnavailable(attempt: { status: string; terminal_receipt_json: string | null }): boolean {
   if (attempt.status !== "failed" || !attempt.terminal_receipt_json) return false;
   try {
     const unavailable = (JSON.parse(attempt.terminal_receipt_json) as { reviewerUnavailable?: unknown }).reviewerUnavailable;
