@@ -1002,15 +1002,24 @@ export function releaseStalePendingRepair(db: Database.Database, input: { sessio
  * the base (merged by an operator or CI), it no longer stands and is released
  * rather than left `gated` for good (Issue #1632). Local Git only.
  */
-export function releaseMergedReviewRepairs(db: Database.Database, input: { repoRoot: string; projectSlug?: string; baseBranch: string; now: Date; log?: (message: string) => void }): number {
+export function releaseMergedReviewRepairs(db: Database.Database, input: { repoRoot: string; projectSlug?: string; baseBranch: string; now: Date; log?: (message: string) => void; runCommand?: RunCommand }): number {
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_review_repairs'").get() === undefined) return 0;
-  const rows = db.prepare("SELECT request_id, action_key, failed_branch, failed_head FROM production_review_repairs WHERE outcome = 'gated' AND repair_session_id IS NULL")
-    .all().filter((row) => !input.projectSlug || (row as { action_key: string }).action_key.startsWith(`${input.projectSlug}/`)) as Array<{ request_id: string; action_key: string; failed_branch: string; failed_head: string }>;
+  const rows = db.prepare("SELECT request_id, action_key, failed_branch, failed_head, pull_request_url FROM production_review_repairs WHERE outcome = 'gated' AND repair_session_id IS NULL")
+    .all().filter((row) => !input.projectSlug || (row as { action_key: string }).action_key.startsWith(`${input.projectSlug}/`)) as Array<{ request_id: string; action_key: string; failed_branch: string; failed_head: string; pull_request_url: string | null }>;
   let released = 0;
   for (const row of rows) {
     let merged = false;
     try {
       merged = refExists(input.repoRoot, `refs/heads/${row.failed_branch}`) && isAncestor(input.repoRoot, `refs/heads/${row.failed_branch}`, input.baseBranch);
+      // A branch tip on the base is only a cheap filter, not proof (a candidate
+      // with no commits of its own is "on" the base); the PR must read MERGED.
+      if (merged) {
+        merged = false;
+        if (row.pull_request_url) {
+          const viewed = (input.runCommand ?? runHostCommand)({ command: "gh", args: ["pr", "view", row.pull_request_url, "--json", "state"], cwd: input.repoRoot, timeoutMs: 30_000 });
+          if (viewed.status === 0) merged = String((JSON.parse(viewed.stdout) as { state?: unknown }).state ?? "").toUpperCase() === "MERGED";
+        }
+      }
     } catch { /* not provable this tick */ }
     if (!merged) continue;
     const at = input.now.toISOString();

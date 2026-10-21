@@ -89,13 +89,17 @@ describe("defect 3: the launch skip names the truthful reason", () => {
 });
 
 describe("defect 4: a merged candidate closes its gated repair row", () => {
-  it("releases a gated row whose branch is on the base, and only that", () => {
+  const pr = (state: string) => () => ({ status: 0, stdout: JSON.stringify({ state }), stderr: "" });
+  const input = (root: string, state: string) => ({ repoRoot: root, baseBranch: "main", now: NOW, runCommand: pr(state) as never });
+  it("releases a gated row only when its branch is on the base and its PR reads MERGED", () => {
     const root = repo();
     const d = db();
     repairRow(d, "cand", "oldhead");
-    expect(releaseMergedReviewRepairs(d, { repoRoot: root, baseBranch: "main", now: NOW })).toBe(0); // cand is not on main yet
+    d.prepare("UPDATE production_review_repairs SET pull_request_url = 'https://github.com/o/r/pull/7'").run();
+    expect(releaseMergedReviewRepairs(d, input(root, "MERGED"))).toBe(0); // cand is not on main yet
     run(root, ["merge", "-q", "--no-ff", "-m", "m", "cand"]);
-    expect(releaseMergedReviewRepairs(d, { repoRoot: root, baseBranch: "main", now: NOW })).toBe(1);
+    expect(releaseMergedReviewRepairs(d, input(root, "OPEN"))).toBe(0); // on base locally is not proof (fast-rehearsal shape)
+    expect(releaseMergedReviewRepairs(d, input(root, "MERGED"))).toBe(1);
     expect((d.prepare("SELECT outcome FROM production_review_repairs").get() as { outcome: string }).outcome).toBe("released");
   });
 });

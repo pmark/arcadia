@@ -2192,7 +2192,7 @@ export function runManagedProductionTick(
         clearIntegrationRefusalLog(db, project.slug);
       }
       // A gated review repair row whose candidate has since merged is closed (Issue #1632).
-      try { releaseMergedReviewRepairs(db, { repoRoot, projectSlug: project.slug, baseBranch: resolveBaseBranch(repoRoot), now, log }); } catch { /* retried next tick */ }
+      try { releaseMergedReviewRepairs(db, { repoRoot, projectSlug: project.slug, baseBranch: resolveBaseBranch(repoRoot), now, log, runCommand: options.review?.runCommand }); } catch { /* retried next tick */ }
       // An operator-gate escalation lasts exactly as long as the gate holds a launch.
       clearProjectEscalationsOfKind(db, OPERATOR_GATE_ESCALATION, project.slug, gate.actionKey);
       if (mayLaunch && terminalRefusal) {
