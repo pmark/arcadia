@@ -129,6 +129,44 @@ export interface ReplayOptions {
    * refused.
    */
   simulateGithubWrites?: boolean;
+  /**
+   * Continue past launch. Instead of starting the agent CLI, the replay
+   * produces the Session's result and lets the real tick reconcile, validate,
+   * settle, preserve, open a (simulated) pull request, review, worker-merge
+   * (simulated; fast-forwards only the replay's local bare origin) and launch
+   * the next Action.
+   *   - `scripted`: the fast-rehearsal ScriptedExecutor (tests/fast-rehearsal/helpers/executor.ts)
+   *     writes `executorFiles[actionId]` (default: one marker file), commits under the
+   *     launch identity and drafts and settles a complete `complete` Agent Ask in the worktree.
+   *   - `real`: the REAL agent CLI Session the tick asked tmux to start runs (same command and brief) in the replay's
+   *     candidate worktree, against the replay's local repository and workspace; provider tokens are spent. The
+   *     replay's git/gh/tmux guards stay first on its PATH; only the Session's own sign-in (the real HOME) is exposed.
+   *   - `candidate:<ref>`: the Session's worktree branch is reset to a commit that exists in the
+   *     source repository (a branch, tag or sha, e.g. a preserved PR commit); nothing is drafted.
+   * Pull requests are then simulated (`gh pr create`/`view`/`list`/compare patch/`ready`/`edit`/`merge`)
+   * with a green required-check rollup on the exact head, which needs `simulateGithubWrites`.
+   */
+  executor?: "scripted" | "real" | `candidate:${string}`;
+  /** Files the scripted executor writes, per Action id (the part of the key after the Project slug). */
+  executorFiles?: Record<string, Record<string, string>>;
+  /**
+   * `simulated` (default): reviewers answer `simulateVerdict` or are refused as before.
+   * `real`: the real code-review and QA reviewer (`codex exec`, read-only sandbox) run against the
+   * replay's simulated pull-request evidence; tokens are spent and nothing is posted to GitHub.
+   */
+  reviewers?: "real" | "simulated";
+  /**
+   * Predict a change before it merges: a commit, branch or tag of the source repository (a fetched `pull/N/head`)
+   * is merged into the replay's `origin/<base>` (the local bare origin and the clone's remote-tracking ref only; no
+   * push to GitHub and no change to the source), so the tick runs on top of it.
+   */
+  mergeIntoBase?: string;
+  /**
+   * Retire stale preserved candidates in the replay's SNAPSHOT COPY only (never the live database): the terminal
+   * exit receipts of the named Session (or `all` in-scope ones) are marked superseded, so the unintegrated candidate
+   * stops gating admission and a fresh Session can launch. Its branch and PR are untouched.
+   */
+  retirePreserved?: string;
 }
 
 export type SimulatedVerdict = "pass" | "fail-repairable";
@@ -154,6 +192,8 @@ export interface ReplayTick {
   blockers: string[];
   redAlerts: string[];
   effects: ReplayEffect[];
+  /** What `--executor` did for a Session launched this tick. */
+  executor?: string;
 }
 
 export interface ReplayReport {
@@ -162,7 +202,7 @@ export interface ReplayReport {
   activation: { ok: boolean; detail: string; warnings: string[]; source?: "press-receipt" | "card-descriptor" };
   ticks: ReplayTick[];
   stop: {
-    reason: "launched" | "integrated" | "external_effect" | "unrecorded_github_read" | "steady_state" | "host_operation_timeout" | "tick_limit" | "activation_refused" | "error";
+    reason: "launched" | "integrated" | "all_merged" | "external_effect" | "unrecorded_github_read" | "steady_state" | "host_operation_timeout" | "tick_limit" | "activation_refused" | "error";
     detail: string;
   };
   /** Effects recorded after the child's last tick (a detached host operation). */
@@ -207,6 +247,10 @@ interface Manifest {
   repos: Record<string, string>;
   effectsLog: string;
   fidelity: string[];
+  executor?: "scripted" | "real" | `candidate:${string}`;
+  executorFiles?: Record<string, Record<string, string>>;
+  realClaude?: string;
+  realHome?: string;
 }
 
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string } = {}): string {
@@ -573,7 +617,7 @@ function which(name: string): string | null {
 }
 
 /** PATH guards for the child: every external seam either answers from the replay or records a refused effect. */
-export function installGuards(root: string, effectsLog: string, simulateVerdict?: SimulatedVerdict): string {
+export function installGuards(root: string, effectsLog: string, simulateVerdict?: SimulatedVerdict, realCodex?: string): string {
   const bin = path.join(root, "bin");
   mkdirSync(bin, { recursive: true });
   const record = (kind: string) => `printf '{"kind":"%s","detail":"%s"}\\n' ${shellQuote(kind)} "$(printf '%s' "$(pwd -P): $replay_args" | tr -d '"\\\\' | tr '\\n' ' ')" >> ${shellQuote(effectsLog)}`;
@@ -604,6 +648,11 @@ export function installGuards(root: string, effectsLog: string, simulateVerdict?
     exec ${shellQuote(process.execPath)} ${shellQuote(simulatedReviewer)} ${shellQuote(simulateVerdict)} ${shellQuote(effectsLog)} "$@" ;;`;
   }
   for (const [name, answers] of Object.entries(probes)) {
+    if (name === "codex" && realCodex) {
+      // --reviewers real: the real Codex CLI (sandbox probe and `codex exec`), read-only; nothing else of the host is exposed.
+      writeExecutable(path.join(bin, name), `#!/bin/sh\nexec ${shellQuote(realCodex)} "$@"\n`);
+      continue;
+    }
     writeExecutable(path.join(bin, name), `#!/bin/sh\nreplay_args="$*"\ncase "$1" in\n${answers}\nesac\n${record(`provider:${name}`)}\necho "production replay: refused to run ${name}" >&2\nexit 97\n`);
   }
   writeExecutable(path.join(bin, "tmux"), `#!/bin/sh
@@ -639,7 +688,7 @@ check() { resolved=$(resolve "$1"); inside "$resolved" || outside "$resolved"; }
 dir=$(pwd -P)
 # SIMULATION ONLY: the review command matches a PR to its Project by origin's
 # GitHub URL; the replay's origin is a local bare clone, so name the source's.
-if [ -n "$REPLAY_SIMULATE_VERDICT" ] && [ -n "$REPLAY_GH_REPO" ] && [ "$replay_args" = "remote get-url origin" ] && inside "$dir"; then
+if [ -n "$REPLAY_SIMULATE_VERDICT$REPLAY_SIMULATE_PRS" ] && [ -n "$REPLAY_GH_REPO" ] && [ "$replay_args" = "remote get-url origin" ] && inside "$dir"; then
   echo "https://github.com/$REPLAY_GH_REPO.git"; exit 0
 fi
 for value in "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_INDEX_FILE" "$GIT_COMMON_DIR" "$GIT_OBJECT_DIRECTORY"; do
@@ -677,6 +726,12 @@ for arg in "$@"; do
             esac
           fi
           [ "$sub" = clone ] && check "$arg" ;;
+        config)
+          # A write to remote.*, url.* or credential.* could point a later push at the network or store a credential.
+          case "$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')" in
+            remote.*|url.*|credential.*)
+              case " $replay_args " in *" --get "*|*" --get-all "*|*" --get-regexp "*|*" --list "*|*" -l "*|*" --get-urlmatch "*) ;; *) network "$arg" ;; esac ;;
+          esac ;;
         remote|worktree|submodule|archive|bundle|format-patch)
           case "$arg" in /*|.*|*/*) check "$arg" ;; esac ;;
       esac ;;
@@ -729,6 +784,93 @@ function isRead() {
 // succeed without GitHub, and later reads of that PR see the simulated state.
 const overlayFile = env.REPLAY_GH_OVERLAY;
 const readOverlay = () => { try { return JSON.parse(readFileSync(overlayFile, "utf8")); } catch { return {}; } };
+// SIMULATION ONLY (REPLAY_SIMULATE_PRS, with --executor): pull requests live in a registry. \`pr create\` registers one
+// (head and base are branches of the replay's local bare origin); reads are built from that origin's objects with a
+// green required-check rollup on the exact head; \`pr merge\` fast-forwards ONLY the local bare origin, never GitHub.
+const simPrs = env.REPLAY_SIMULATE_PRS === "1" && env.REPLAY_SIMULATE_GH_WRITES === "1" && overlayFile;
+const prFile = (overlayFile || "") + ".prs";
+const readPrs = () => { try { return JSON.parse(readFileSync(prFile, "utf8")); } catch { return {}; } };
+const gitOut = (cwd, ...a) => { const r = spawnSync("git", a, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }); return r.status === 0 ? r.stdout : null; };
+const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+function findPr(prs, ref) {
+  if (!ref) return null;
+  const text = String(ref);
+  const number = /^\d+$/.test(text) ? text : (/\/pull\/(\d+)/.exec(text) || [])[1];
+  if (number && prs[number]) return prs[number];
+  return Object.values(prs).filter((pr) => pr.headRefName === text).at(-1) || null;
+}
+function prFacts(pr) {
+  const rev = (ref) => (gitOut(pr.bare, "rev-parse", "--verify", "-q", ref) || "").trim();
+  const head = pr.state === "MERGED" ? pr.mergedHead : rev("refs/heads/" + pr.headRefName);
+  const baseTip = rev("refs/heads/" + pr.baseRefName);
+  const mergeBase = pr.state === "MERGED" ? baseTip : (gitOut(pr.bare, "merge-base", baseTip, head) || "").trim();
+  const files = (gitOut(pr.bare, "diff", "--numstat", mergeBase + ".." + head) || "").split("\n").filter(Boolean).map((line) => {
+    const [add, del, ...rest] = line.split("\t");
+    return { path: rest.join("\t"), additions: Number(add) || 0, deletions: Number(del) || 0 };
+  });
+  const oids = (gitOut(pr.bare, "rev-list", "--reverse", mergeBase + ".." + head) || "").split("\n").filter(Boolean);
+  return {
+    number: pr.number, title: pr.title, url: pr.url, state: pr.state, isDraft: pr.isDraft, body: pr.body,
+    headRefName: pr.headRefName, headRefOid: head, baseRefName: pr.baseRefName, baseRefOid: baseTip,
+    mergeStateStatus: "CLEAN", mergeable: "MERGEABLE", isCrossRepository: false, files, commits: oids.map((oid) => ({ oid })),
+    mergeCommit: pr.state === "MERGED" ? { oid: head } : null,
+    statusCheckRollup: [{ __typename: "CheckRun", name: "replay-required-checks", workflowName: "production replay (simulated green on the exact head)", status: "COMPLETED", conclusion: "SUCCESS" }]
+  };
+}
+const pickFields = (facts) => { const wanted = (flag("--json") || "").split(",").filter(Boolean); return Object.fromEntries(wanted.filter((key) => key in facts).map((key) => [key, facts[key]])); };
+if (simPrs && args[0] === "pr") {
+  const prs = readPrs();
+  const save = () => writeFileSync(prFile, JSON.stringify(prs));
+  const simulated = () => effect("simulated:github-write", "gh " + args.join(" "));
+  if (args[1] === "create") {
+    const bare = (gitOut(process.cwd(), "config", "--get", "remote.origin.url") || "").trim();
+    const repo = flag("--repo") || env.REPLAY_GH_REPO || "simulated/replay";
+    const number = 910000 + Object.keys(prs).length + 1;
+    prs[number] = { number, url: "https://github.com/" + repo + "/pull/" + number, repo, bare, headRefName: flag("--head"), baseRefName: flag("--base") || "main", title: flag("--title") || "", body: flag("--body") || "", isDraft: args.includes("--draft"), state: "OPEN" };
+    save(); simulated();
+    writeOut(prs[number].url + "\n");
+    process.exit(0);
+  }
+  const pr = findPr(prs, args[2]);
+  if (pr) {
+    if (args[1] === "view") { writeOut(JSON.stringify(pickFields(prFacts(pr))) + "\n"); process.exit(0); }
+    if (["ready", "edit", "comment", "close", "merge"].includes(args[1])) {
+      simulated();
+      if (args[1] === "ready") pr.isDraft = args.includes("--undo");
+      if (args[1] === "edit" && flag("--body") !== undefined) pr.body = flag("--body");
+      if (args[1] === "edit" && flag("--title") !== undefined) pr.title = flag("--title");
+      if (args[1] === "close") pr.state = "CLOSED";
+      if (args[1] === "merge") {
+        const head = (gitOut(pr.bare, "rev-parse", "--verify", "-q", "refs/heads/" + pr.headRefName) || "").trim();
+        const base = (gitOut(pr.bare, "rev-parse", "--verify", "-q", "refs/heads/" + pr.baseRefName) || "").trim();
+        const match = flag("--match-head-commit");
+        if (pr.state !== "OPEN" || pr.isDraft) { writeErr("simulated merge refused: pull request is " + pr.state + (pr.isDraft ? " (draft)" : "") + "\n"); process.exit(1); }
+        if (match && match !== head) { writeErr("simulated merge refused: head " + head + " does not match --match-head-commit " + match + "\n"); process.exit(1); }
+        if (gitOut(pr.bare, "merge-base", "--is-ancestor", base, head) === null) { writeErr("simulated merge refused: base " + base + " is not an ancestor of head " + head + " (replay fast-forwards only)\n"); process.exit(1); }
+        if (gitOut(pr.bare, "update-ref", "refs/heads/" + pr.baseRefName, head, base) === null) { writeErr("simulated merge could not move the local origin\n"); process.exit(1); }
+        pr.state = "MERGED"; pr.mergedHead = head;
+      }
+      save();
+      process.exit(0);
+    }
+  }
+  // No simulated PR matches: offline, the replay's own branches have no PR yet (the recording cannot know them);
+  // live, the real gh answers for PRs that exist on GitHub.
+  if (args[1] === "view" && !pr && env.REPLAY_GH_MODE !== "live") { writeErr("no pull requests found for " + String(args[2]) + "\n"); process.exit(1); }
+  if (args[1] === "list") {
+    const matches = Object.values(prs).filter((entry) => (!flag("--head") || entry.headRefName === flag("--head")) && (!flag("--state") || flag("--state") === "all" || entry.state.toLowerCase() === flag("--state")));
+    if (matches.length || env.REPLAY_GH_MODE !== "live") { writeOut(JSON.stringify(matches.map((entry) => pickFields(prFacts(entry)))) + "\n"); process.exit(0); }
+  }
+}
+if (simPrs && args[0] === "api") {
+  const compare = args.map((value) => /compare\/([0-9a-f]{7,64})\.\.\.([0-9a-f]{7,64})/.exec(value)).find(Boolean);
+  if (compare) {
+    for (const entry of Object.values(readPrs())) {
+      const patch = gitOut(entry.bare, "format-patch", "--stdout", "--no-signature", compare[1] + "..." + compare[2]);
+      if (patch) { writeOut(patch); process.exit(0); }
+    }
+  }
+}
 const SIMULATED_PR_WRITES = ["ready", "comment", "close", "edit", "merge"];
 if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "pr" && SIMULATED_PR_WRITES.includes(args[1]) && args[2]) {
   const overlay = readOverlay();
@@ -858,8 +1000,35 @@ function githubRepository(repo: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Mark terminal exit receipts of in-scope Projects superseded in the snapshot copy; returns the Session ids. */
+export function retirePreservedCandidates(databaseFile: string, projects: string[], which: string): string[] {
+  const db = new Database(databaseFile);
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_exit_receipts'").get()) return [];
+    const rows = db.prepare(`SELECT r.session_id AS id FROM session_exit_receipts r JOIN agent_sessions s ON s.id = r.session_id
+      WHERE r.superseded_by_session_id IS NULL AND r.outcome IN ('accepted_completion', 'incomplete_resumable')
+        AND s.project_slug IN (${projects.map(() => "?").join(",") || "''"})`).all(...projects) as Array<{ id: string }>;
+    const ids = rows.map((row) => row.id).filter((id) => which === "all" || id === which);
+    const update = db.prepare("UPDATE session_exit_receipts SET superseded_by_session_id = 'production-replay-retired' WHERE session_id = ? AND superseded_by_session_id IS NULL");
+    for (const id of ids) update.run(id);
+    return ids;
+  } finally {
+    db.close();
+  }
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
+  if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
+    throw new Error("--executor is scripted, real or candidate:<ref>.");
+  }
+  if (options.reviewers !== undefined && options.reviewers !== "real" && options.reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
+  if (options.executor && !options.simulateGithubWrites) throw new Error("--executor needs --simulate-github-writes: the pull request it opens and merges is simulated.");
+  const realCodex = options.reviewers === "real" ? which("codex") : null;
+  if (options.reviewers === "real" && !realCodex) throw new Error("--reviewers real needs the codex CLI on PATH.");
+  const realClaude = options.executor === "real" ? which("claude") : null;
+  if (options.executor === "real" && !realClaude) throw new Error("--executor real needs the claude CLI on PATH.");
+  if (options.reviewers === "real" && options.simulateVerdict) throw new Error("--reviewers real and --simulate-verdict are alternatives.");
   const print = options.print ?? ((line: string) => process.stdout.write(`${line}\n`));
   const source = realpathSync(path.resolve(options.sourceWorkspace));
   const sourceDatabase = path.join(source, "database", "arcadia.sqlite3");
@@ -917,6 +1086,11 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     // A live claim names a live host process; it would hold the replay's preservation for its whole lease.
     const claims = clearPreservationClaims(databaseFile);
     if (claims > 0) fidelity.push(`${claims} preservation claim(s) from the source were cleared; the replay's own worker claims afresh.`);
+    if (options.retirePreserved) {
+      const retired = retirePreservedCandidates(databaseFile, [...inScope], options.retirePreserved);
+      print(`Retired ${retired.length} preserved candidate exit(s) in the snapshot copy: ${retired.join(", ") || "none"}.`);
+      fidelity.push(`RETIRE-PRESERVED ${options.retirePreserved}: ${retired.length} terminal exit receipt(s) of the snapshot copy were marked superseded so their unintegrated candidates stop gating admission (${retired.join(", ") || "none"}); the live database is untouched.`);
+    }
     const unconfined = unconfinedPaths(databaseFile, root);
     if (unconfined.length > 0) {
       throw new Error(`Refusing to run: these existing paths in the snapshot are outside the replay root and no mapping covers them: ${unconfined.slice(0, 5).join(", ")}`);
@@ -931,6 +1105,26 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       cloneRepository(repoPath, target, path.join(root, "remotes", `${slug}.git`), fidelity);
       const refs = readRefs(repoPath);
       for (const [name, sha] of Object.entries(refs)) sourceRefs[`${slug}:${name}`] = sha;
+      if (options.executor?.startsWith("candidate:")) {
+        // The candidate commit (a preserved PR head, say) is pinned in the replay clone under a private ref.
+        const wanted = options.executor.slice("candidate:".length);
+        const sha = git(repoPath, ["rev-parse", "--verify", "-q", `${wanted}^{commit}`]).trim();
+        if (!sha) throw new Error(`--executor candidate:${wanted} does not resolve to a commit in ${repoPath}.`);
+        git(target, ["update-ref", "refs/replay/candidate", sha]);
+        fidelity.push(`EXECUTOR candidate:${wanted}: each Session's branch is reset to ${sha.slice(0, 12)}; no Ask is drafted by the replay.`);
+      }
+      if (options.mergeIntoBase) {
+        const sha = git(repoPath, ["rev-parse", "--verify", "-q", `${options.mergeIntoBase}^{commit}`]).trim();
+        const baseBranch = spawnSync("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: repoPath, encoding: "utf8", env: GIT_READ_ENV }).stdout.trim() || "main";
+        const tip = refs[`refs/remotes/origin/${baseBranch}`] ?? refs[`refs/heads/${baseBranch}`];
+        if (!tip) throw new Error(`--merge-into-base: ${slug} has no origin/${baseBranch} to merge onto.`);
+        const tree = git(target, ["merge-tree", "--write-tree", tip, sha]).split("\n")[0].trim();
+        const merged = git(target, ["-c", "user.name=Production Replay", "-c", "user.email=production-replay@arcadia.invalid", "-c", "commit.gpgsign=false", "commit-tree", tree, "-p", tip, "-p", sha, "-m", `Production replay: merge ${options.mergeIntoBase} into origin/${baseBranch}`]).trim();
+        git(target, ["push", "-q", "--force", path.join(root, "remotes", `${slug}.git`), `${merged}:refs/heads/${baseBranch}`]);
+        git(target, ["update-ref", `refs/remotes/origin/${baseBranch}`, merged]);
+        fidelity.push(`MERGE-INTO-BASE: ${options.mergeIntoBase} (${sha.slice(0, 12)}) is merged into the replay's origin/${baseBranch} (${tip.slice(0, 12)} -> ${merged.slice(0, 12)}); nothing was pushed to GitHub.`);
+        print(`Merged ${options.mergeIntoBase} into the replay's origin/${baseBranch}.`);
+      }
       let recreated = 0;
       for (const session of sessions.filter((entry) => entry.projectSlug === slug)) {
         // Read before the rewrite: `worktree` is the source path.
@@ -952,14 +1146,16 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
 
     const effectsLog = path.join(root, "effects.jsonl");
     writeFileSync(effectsLog, "");
-    const realGh = installGuards(root, effectsLog, options.simulateVerdict);
+    const realGh = installGuards(root, effectsLog, options.simulateVerdict, realCodex ?? undefined);
     const home = path.join(root, "home");
     mkdirSync(path.join(home, ".config"), { recursive: true });
     writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = Arcadia Production Replay\n\temail = production-replay@arcadia.invalid\n[commit]\n\tgpgsign = false\n[core]\n\tfsmonitor = false\n");
     const recording = options.githubRecording ? path.resolve(options.githubRecording) : path.join(root, "github-recording.jsonl");
     if (!existsSync(recording)) writeFileSync(recording, "");
-    const ticks = options.ticks ?? 12;
-    const manifest: Manifest = { root, workspace, receipt, now: options.now ?? new Date().toISOString(), ticks, repos, effectsLog, fidelity };
+    const manifest: Manifest = {
+      root, workspace, receipt, now: options.now ?? new Date().toISOString(), ticks: options.ticks ?? (options.executor ? 80 : 12), repos, effectsLog, fidelity,
+      ...(options.executor ? { executor: options.executor } : {}), ...(realClaude ? { realClaude, realHome } : {}), ...(options.executorFiles ? { executorFiles: options.executorFiles } : {})
+    };
     const manifestFile = path.join(root, "manifest.json");
     writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
 
@@ -986,9 +1182,10 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       REPLAY_REAL_GH: realGh,
       REPLAY_REAL_HOME: realHome,
       REPLAY_REAL_PATH: process.env.PATH ?? "",
-      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? "",
+      REPLAY_GH_REPO: Object.values(repos).map(githubRepository).find(Boolean) ?? (options.executor ? "simulated/replay" : ""),
       REPLAY_SIMULATE_VERDICT: options.simulateVerdict ?? "",
       REPLAY_SIMULATE_GH_WRITES: options.simulateGithubWrites ? "1" : "",
+      REPLAY_SIMULATE_PRS: options.executor ? "1" : "",
       REPLAY_GH_OVERLAY: path.join(root, "github-overlay.json")
     });
     if (options.simulateVerdict) {
@@ -998,6 +1195,16 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       writeFileSync(path.join(home, ".codex", "auth.json"), "{\"productionReplay\":\"placeholder; no credential\"}\n");
       print(`SIMULATION: every independent reviewer verdict is simulated as "${options.simulateVerdict}"; the real reviewer never runs and may judge otherwise.`);
       fidelity.push(`SIMULATION: reviewer verdicts are simulated as "${options.simulateVerdict}" (--simulate-verdict); they predict what the worker does with such a verdict, not the verdict. \`git remote get-url origin\` in a replay repository answers the source's GitHub URL so the review command can match the PR.`);
+    }
+    if (options.reviewers === "real") {
+      // The reviewer's boundary probe needs ~/.codex/auth.json readable outside its sandbox and denied inside: the replay home links to the host's.
+      symlinkSync(path.join(realHome, ".codex"), path.join(home, ".codex"));
+      print("REVIEWERS: the real code-review and QA reviewers (codex exec, read-only sandbox) run against the replay's simulated pull-request evidence; tokens are spent, nothing is posted.");
+      fidelity.push("REVIEWERS REAL (--reviewers real): verdicts come from the real read-only reviewers over the replay's simulated PR evidence (patch from the local origin, green simulated checks); the replay home links the host's ~/.codex for sign-in.");
+    }
+    if (options.executor) {
+      print(`EXECUTOR ${options.executor}: the Session's result is produced by the replay, then the real tick reconciles, validates, settles, preserves, opens a SIMULATED PR, reviews and worker-merges (simulated; only the replay's local origin moves).`);
+      fidelity.push(`SIMULATION: --executor ${options.executor}; the pull request is simulated: required checks are green on the exact head by construction, \`gh pr merge\` fast-forwards only the replay's local bare origin, and branch protection, CI and conflicts are not replayed.`);
     }
     if (options.simulateGithubWrites) {
       print("SIMULATION: gh pr ready/comment/close/edit/merge and gh project item-edit/item-add and gh issue create/edit/comment/close (Action mirror Issues) succeed without GitHub; later PR reads see the simulated state.");
@@ -1195,6 +1402,74 @@ async function runPrepared(manifestFile: string): Promise<void> {
     }]
   });
 
+  /** Pinned Actions not yet done in the replay repository's Plan; null when the scope names no Plan to read. */
+  const unmergedPinnedActions = async (): Promise<string[] | null> => {
+    if (!scope.plans?.length) return null;
+    try {
+      const { discoverDocs } = await import("../src/docs/discover.js");
+      const [projectSlug, planSlug] = scope.plans[0].split("/");
+      const plan = discoverDocs(path.join(manifest.root, "repos", projectSlug)).docs.find((doc) => doc.type === "plan" && doc.project === projectSlug && doc.slug === planSlug) as { actions: Array<{ id: string; status: string }> } | undefined;
+      if (!plan) return null;
+      const pinned = scope.actions?.length ? new Set(scope.actions.map((key) => key.slice(key.indexOf("/") + 1))) : null;
+      return plan.actions.filter((action) => (!pinned || pinned.has(action.id)) && action.status !== "done").map((action) => action.id);
+    } catch {
+      return null;
+    }
+  };
+  /** --executor: produce the launched Session's result in its worktree, then the caller ends its pane. */
+  const runExecutor = async (launch: { name: string; cwd: string; command: string; args: string[] }): Promise<string> => {
+    try {
+      if (manifest.executor === "scripted") {
+        const { ScriptedExecutor } = await import("../tests/fast-rehearsal/helpers/executor.js");
+        const { PhaseRecorder } = await import("../tests/fast-rehearsal/helpers/report.js");
+        const recorder = new PhaseRecorder("production-replay", path.join(manifest.root, "executor.json"), (text: string) => text);
+        const executor = new ScriptedExecutor(workspace, recorder, path.join(manifest.root, "unreachable-from-the-agent-sandbox"));
+        const brief = launch.args.at(-1) ?? "";
+        const action = /^Action: (.+)$/m.exec(brief)?.[1]?.trim() ?? "";
+        const files = manifest.executorFiles?.[action] ?? manifest.executorFiles?.[action.slice(action.indexOf("/") + 1)] ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action} (production replay).\n` };
+        const result = executor.run(launch, { files, validation: "true" }, "clean");
+        return `scripted executor finished ${result.brief.action}: work ${result.workCommit.slice(0, 12)}, settlement ${result.settlementCommit?.slice(0, 12) ?? "none"}, head ${result.finalHead.slice(0, 12)}${result.settleWarnings.length ? `, settle warnings: ${result.settleWarnings.join("; ")}` : ""}`;
+      }
+      if (manifest.executor === "real") {
+        // The tick's own launch command (`env <identity> claude ...`), run in the worktree; `claude` resolves to the real CLI
+        // through a one-binary directory ahead of the guards, so git/gh/tmux stay guarded for the Session.
+        const realBin = path.join(manifest.root, "real-bin");
+        mkdirSync(realBin, { recursive: true });
+        const link = path.join(realBin, "claude");
+        if (!existsSync(link)) symlinkSync(manifest.realClaude!, link);
+        // The real HOME is the Session's sign-in only: no global Git config (identity comes from the launch's GIT_* variables),
+        // an empty gh config dir and no GitHub token, so the Session cannot reach GitHub; no Discord/ARCADIA variable is inherited
+        // (the child's environment was already reduced to a fixed list), and `arcadia ping` only writes an outbox row to the
+        // replay's database copy, which no bot drains.
+        const ghConfig = path.join(manifest.root, "gh-config-empty");
+        mkdirSync(ghConfig, { recursive: true });
+        const env: NodeJS.ProcessEnv = {
+          ...process.env, HOME: manifest.realHome!, PATH: `${realBin}${path.delimiter}${process.env.PATH ?? ""}`, NODE_OPTIONS: "",
+          GIT_CONFIG_GLOBAL: "/dev/null", GH_CONFIG_DIR: ghConfig, GH_TOKEN: "", GITHUB_TOKEN: ""
+        };
+        const started = Date.now();
+        // A detached supervisor owns the Session's process group, so the timeout kills every descendant, not just `claude`.
+        const supervisor = `const { spawn } = require("node:child_process");
+const [command, ...args] = JSON.parse(process.argv[1]);
+const child = spawn(command, args, { stdio: "inherit", detached: true });
+const kill = () => { try { process.kill(-child.pid, "SIGKILL"); } catch {} };
+const timer = setTimeout(() => { console.error("production replay: real Session timed out; killing its process group"); kill(); }, Number(process.argv[2]));
+child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(code ?? (signal ? 137 : 1)); });`;
+        const result = spawnSync(process.execPath, ["-e", supervisor, JSON.stringify([launch.command, ...launch.args]), String(60 * 60_000)], { cwd: launch.cwd, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+        const logFile = path.join(manifest.root, `real-session-${Date.now()}.log`);
+        writeFileSync(logFile, `${result.stdout ?? ""}\n--- stderr ---\n${result.stderr ?? ""}`);
+        return `real Session exited ${String(result.status ?? result.signal)} after ${Math.round((Date.now() - started) / 1000)}s (log ${logFile}); head ${spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: launch.cwd, encoding: "utf8" }).stdout.trim()}`;
+      }
+      const reset = spawnSync("git", ["reset", "--hard", "-q", "refs/replay/candidate"], { cwd: launch.cwd, encoding: "utf8" });
+      if (reset.status !== 0) throw new Error(`git reset --hard refs/replay/candidate failed in ${launch.cwd}: ${reset.stderr.trim()}`);
+      return `${manifest.executor}: ${launch.cwd} reset to ${spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: launch.cwd, encoding: "utf8" }).stdout.trim()}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      predicted.add(`executor failed (${manifest.executor}): ${message}`);
+      return `FAILED ${manifest.executor}: ${message.slice(0, 1500)}`;
+    }
+  };
+
   let pingBase = 0;
   try {
     pingBase = withDatabase(workspace, (db) => (db.prepare("SELECT COALESCE(MAX(rowid), 0) AS n FROM operator_pings").get() as { n: number }).n);
@@ -1265,6 +1540,10 @@ async function runPrepared(manifestFile: string): Promise<void> {
       const text = `${alert.trigger} (${alert.actionKey ?? alert.projectSlug}): ${alert.detail}`;
       if (!seenAlerts.has(text)) { seenAlerts.add(text); tick.redAlerts.push(text); if (inScope(alert.actionKey ?? alert.projectSlug)) predicted.add(`red alert ${text}`); }
     }
+    if (manifest.executor && tick.launch?.outcome === "launched" && tmux.launches.length > 0) {
+      tick.executor = await runExecutor(tmux.launches.at(-1)!);
+      tmux.live.delete(tmux.launches.at(-1)!.name);
+    }
     tick.effects = readEffects();
     if (tick.launch && tick.launch.outcome !== "launched" && tick.launch.outcome !== "skipped") predicted.add(`launch ${tick.launch.outcome} (${tick.launch.actionKey ?? "-"}): ${tick.launch.reason}`);
     // A detached host operation is awaited in real time; its iterations spend no tick budget.
@@ -1288,12 +1567,20 @@ async function runPrepared(manifestFile: string): Promise<void> {
     }
     hostWaitSince = null;
 
-    if (tick.launch?.outcome === "launched") {
+    if (manifest.executor) {
+      const unmerged = await unmergedPinnedActions();
+      if (unmerged !== null && unmerged.length === 0) {
+        report.stop = { reason: "all_merged", detail: `every pinned Action is done in the replay repository after ${n} ticks (merges simulated)` };
+        for (const effect of tick.effects) if (effect.kind.startsWith("simulated:")) predicted.add(`SIMULATED ${effect.kind}: ${effect.detail}`);
+        break;
+      }
+    }
+    if (tick.launch?.outcome === "launched" && !manifest.executor) {
       const launch = tmux.launches.at(-1);
       report.stop = { reason: "launched", detail: `${tick.launch.actionKey}${launch ? ` in ${launch.cwd}: ${launch.command} ${launch.args.join(" ").slice(0, 400)}` : ""}` };
       break;
     }
-    if (tick.handoff?.integrationKind === "integrated") {
+    if (tick.handoff?.integrationKind === "integrated" && !manifest.executor) {
       report.stop = { reason: "integrated", detail: tick.handoff.integration };
       break;
     }
@@ -1328,6 +1615,7 @@ function describeStep(step: unknown): string {
 function printTick(out: (line: string) => void, tick: ReplayTick, launches: Array<{ cwd: string; command: string; args: string[] }>): void {
   out(`-- tick ${tick.tick} @ ${tick.at}`);
   if (tick.launch) out(`   launch: ${tick.launch.outcome} ${tick.launch.actionKey ?? ""}${tick.launch.reason ? ` -- ${tick.launch.reason.slice(0, 600)}` : ""}`);
+  if (tick.executor) out(`   executor: ${tick.executor}`);
   if (tick.launch?.outcome === "launched" && launches.length) out(`   would start: ${launches.at(-1)!.command} (cwd ${launches.at(-1)!.cwd})`);
   if (tick.handoff) out(`   handoff: preservation ${tick.handoff.preservation}; integration ${tick.handoff.integration}`);
   for (const entry of tick.reconciled) out(`   reconciled ${entry.sessionId}: ${entry.outcome}`);
@@ -1375,9 +1663,25 @@ function parseArgs(argv: string[]): ReplayOptions {
         break;
       }
       case "--simulate-github-writes": options.simulateGithubWrites = true; break;
+      case "--executor": {
+        const executor = value();
+        if (executor !== "scripted" && executor !== "real" && !/^candidate:\S+$/.test(executor)) throw new Error("--executor is scripted, real or candidate:<ref>.");
+        options.executor = executor as ReplayOptions["executor"];
+        break;
+      }
+      case "--executor-files": options.executorFiles = JSON.parse(readFileSync(value(), "utf8")) as ReplayOptions["executorFiles"]; break;
+      case "--retire-preserved": options.retirePreserved = value(); break;
+      case "--merge-into-base": options.mergeIntoBase = value(); break;
+      case "--reviewers": {
+        const reviewers = value();
+        if (reviewers !== "real" && reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
+        options.reviewers = reviewers;
+        break;
+      }
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes]\n`
-          + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n");
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|real|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>] [--retire-preserved <sessionId|all>]\n`
+          + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n"
+          + "  --executor continues past launch (Session result produced by the replay, simulated PR and merge); --reviewers real runs the real read-only reviewers over the simulated PR evidence (spends tokens).\n");
         process.exit(0);
         break;
       default: throw new Error(`Unknown argument ${flag}.`);
