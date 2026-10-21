@@ -15,7 +15,7 @@ import {
 import type { AgentSession } from "../sessions/index.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt } from "../sessions/enrollment.js";
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
-import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS, verdictAttemptLimit } from "../sessions/roleLineage.js";
 import type { GuardedLaunchInput, GuardedLaunchResult } from "../sessions/launch.js";
 import {
   ensureReviewRepairTable,
@@ -286,7 +286,7 @@ function verdictAttemptsRemaining(db: Database.Database, attempt: { requirement_
   let tightest = { role: "code-review", remaining: MAX_VERDICT_ATTEMPTS };
   for (const role of INDEPENDENT_VERDICT_ROLES) {
     const latest = latestRoleAttempt(db, attempt.requirement_id, attempt.input_revision, role);
-    const remaining = MAX_VERDICT_ATTEMPTS - (latest?.ordinal ?? 0);
+    const remaining = verdictAttemptLimit(db, attempt.requirement_id, attempt.input_revision, role) - (latest?.ordinal ?? 0);
     if (remaining < tightest.remaining) tightest = { role, remaining };
   }
   return tightest;

@@ -4,7 +4,7 @@ import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
-import { independentVerdictReadiness, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
+import { independentVerdictReadiness, MAX_VARIANCE_REVIEW_ATTEMPTS, MAX_VERDICT_ATTEMPTS } from "../sessions/roleLineage.js";
 import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
@@ -64,7 +64,7 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  * variance: the operator's 2026-10-06 choice (Issue #1018), i.e. at most two
  * reruns. A new head restarts the count.
  */
-export const MAX_VARIANCE_REVIEW_ATTEMPTS = 3;
+export { MAX_VARIANCE_REVIEW_ATTEMPTS };
 
 export type ReviewBlockCode =
   | "review_head_moved"
