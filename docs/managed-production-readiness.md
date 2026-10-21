@@ -2,9 +2,74 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-19**, from `origin/main` 9e6ff4aa1 and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the first unattended Claude run's worker log, ledger rows and PR record. The 2026-10-18 derivation used `origin/main` 4777543a7, the first supervised Claude run's worker log and receipts, and live `production status`. Historical observations below do not establish installed adoption or current live authority.
+Latest derivation: **2026-10-20**, from `origin/main` 1a84c392f, the second unattended Claude run's PR and Issue record (card `grant-production-unattended-claude-next-run-20261019`) and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md). The 2026-10-19 derivation used `origin/main` 9e6ff4aa1 and the [unattended-Claude Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the first unattended Claude run's worker log, ledger rows and PR record. The 2026-10-18 derivation used `origin/main` 4777543a7, the first supervised Claude run's worker log and receipts, and live `production status`. Historical observations below do not establish installed adoption or current live authority.
 
-## Current answer, 2026-10-19: not yet. The review-repair loop ran unattended from the rerun verdict onward, but no Action of the first unattended Claude run reached a merged PR unattended
+## Current answer, 2026-10-20: not yet proven unattended. All three Actions of the second unattended Claude run reached merged PRs, but through many non-allowed touches
+
+The second multi-Action run under the grant card `grant-production-unattended-claude-next-run-20261019` (live workspace `martianrover`, repository `pmark/arcadia`, provider `claude-code-cli`, Plan `arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider`) ran 2026-10-20. Acceptance criterion 2 of `first-unattended-run` (every Action reaches a merged PR with only activation and authority-adjacent merges as operator touches) is **not met**, so the Action stays open. Unattended production on Arcadia's own repository is **not yet proven unattended**. The merged-PR count improved from 0 to 3 of 3, but the Release Manager (RM) hand-completed one Action, hand-repaired two candidates, and the operator pressed Off, RE-RUN and STOP repeatedly. GitHub shows every merge as `pmark`; attribution here is the run record's claim. Live policy revision, epoch and alerts were not re-read for this derivation.
+
+### Run record by Action
+
+| Action | Observed |
+| --- | --- |
+| 1 `test-transient-review-retry-after-exhaustion` | Completed by the RM by hand and merged as #1610 (merged 09:07Z). The Session-produced candidate #1601 was closed as a false fix. Not an unattended completion. |
+| 2 `refresh-decision-0130-status-and-1559-fake` | Four Sessions. The validation wall (Sessions told to run validation their permission mode denies) was Issue #1619, fixed in #1622. Independent code review returned needs-follow-up (leftover Ask files); the RM hand-repaired it in de8c70f; an RM-launched fresh review passed; the operator merged #1617 (20:12Z). The hand repair broke the canonical-settlement binding, so the tick could not re-review the candidate itself (#1632, open: a terminal settlement-mismatch refusal is masked by a stale `review_repair_gated` escalation). |
+| 3 `guard-repair-gate-upsert-role` | The real completion validator refused the Action's original criteria at its 900 s bound: `tests/review-repair-loop.test.ts` alone took 627 s. Criteria were amended to a focused test file (#1633, operator merge). The offline replay could not reach tick 2 because `gh project item-edit` was unsimulated (#1634, fixed). Run 1: four Sessions looped `incomplete_resumable` because headless Sessions could not run the named test (the allow-list was the Project `validationCommands` only; #1636, fixed by #1637, operator merged); the operator pressed STOP mid-run. Four false "complete" Asks held launch as `operator_gate_pending`; the RM rejected them with `agent-ask settle --disposition rejected`. RE-RUN: one Session reached `accepted_completion`. The tick's independent code review then FAILED #1635 (an `IS NOT` to `!= null` regression, and the test copied the SQL instead of exercising the real gate path). Repair was gated (Decision 0098), so the RM hand-repaired it in 96833eac6 at the operator's direction; a fresh RM review passed; the operator merged #1635 (23:48Z) while production was still Active. |
+
+### What worked unattended
+
+- Packet preparation, delegated packet approval and launch.
+- Resume after an incomplete Session (once headless Sessions could run their named test).
+- The worker readied its own PR and ran its own independent code review, which caught a real regression in Action 3 (#1635).
+
+### Operator and RM touches (non-allowed ones in bold)
+
+- **Consented Claude CLI sign-in refresh, 14:13Z** (Decision 0131, answered in #1631: CLI self-refresh).
+- Operator presses: **Off ~15:03Z**, RE-RUN ~21:14Z, **STOP ~21:45Z**, RE-RUN ~22:18Z.
+- **RM completed Action 1 by hand (#1610); RM hand repairs de8c70f (Action 2) and 96833eac6 (Action 3); RM-launched reviews for both.**
+- **RM rejected four false completion Asks to release launch.**
+- **Operator merges of #1633 (criteria amendment), #1637 (fix), #1617, #1635 (candidate with a hand repair).**
+- The host denied `gh pr ready` to the agent. Restarting services under load needed `ARCADIA_READY_DEADLINE=360`, and a failed restart stops all services (known, #1129).
+
+### Acceptance criteria of `first-unattended-run`
+
+| Criterion | Status |
+| --- | --- |
+| 1. Preview for at least three ready Claude Actions, activation as one card, agents did not activate | Met earlier (2026-10-18); unchanged. |
+| 2. Every Action reaches a merged PR with only activation and authority-adjacent merges as operator touches | **Not met.** 3 of 3 merged (#1610, #1617, #1635), but one by RM hand completion, two after RM hand repair, plus Off, STOP, RE-RUN, sign-in, criteria-amendment and fix merges. |
+| 3. This document re-derived from the run with verdict and every failure | Met once this PR merges. |
+
+### Failures observed, 2026-10-20
+
+| # | Failure | Fix or tracking |
+| --- | --- | --- |
+| a | Headless Sessions were told to run validation their permission mode denied, so they self-certified or stalled. | #1619, fixed #1622 |
+| b | Headless Sessions could not run the Action's named test (allow-list = Project `validationCommands` only); four Sessions looped `incomplete_resumable`. | #1636, fixed #1637 |
+| c | The real validator's 900 s bound refused a slow test file (627 s alone); criteria had to be amended by hand. | #1633 (amended); Issue #1606 (synchronous tick work) is related |
+| d | Replay could not reach tick 2 (unsimulated `gh project item-edit`). | #1634 |
+| e | False "complete" Asks held launch as `operator_gate_pending`; rejected by hand. | #1640; see Next route |
+| f | Hand repair of a candidate breaks canonical-settlement binding; the stale `review_repair_gated` escalation masks the terminal mismatch refusal and the ff-only remedy misleads. | #1632 (open) |
+| g | An agent-written candidate regressed a gate (`IS NOT` to `!= null`) with a test that copied the SQL. Caught by the worker's own review; repair gated by design. | #1635 (merged after RM repair) |
+| h | Claude usage parser read a 1% window as 100% spent. | #1620 (closed) |
+| i | Independent code review counted governed settlement records against a "touches only" criterion. | #1625 (closed) |
+| j | Other findings filed the same day: tick starvation (#1606), preservation Seatbelt can read home (#1607), host-fault validation refusal relaunches unbounded (#1613), grant precondition ignores worker source revision (#1614), stray untracked files and self-settled completions bypass checks (#1615), approving a PR code-review item queues an execution that can only fail (#1624), Decision proposals invisible to an offsite operator (#1627), flaky launch-preview CI test (#1628), operator-library hardening (#1638). | open unless noted above |
+
+### Remaining gates to a genuinely unattended run
+
+1. Agents must run their own named tests headlessly. Fixed by #1637; unproven live until a Session uses it.
+2. Repair of a gate-listed `src/production` candidate is never unattended by design (Decision 0098). An Action that touches `src/production` can therefore never satisfy criterion 2. The next run needs Actions outside gate-listed paths, or an explicit Decision to change the design (an operator authority decision, not taken here).
+3. The validation wall: the completion validator's 900 s bound versus slow test files and synchronous tick work (#1606, #1613). Actions must name focused test files.
+4. Stale-escalation masking after any hand repair (#1632), and the hand repair's loss of canonical-settlement binding.
+5. False completion Asks holding launch as `operator_gate_pending` (#1640).
+6. The live worker's loaded revision against the grant precondition (#1614) and services restart under load.
+
+### Cheapest next route
+
+Do not press again with an Action that touches `src/production`. (1) Merge fixes for #1632, #1613 and #1615 (small, offline-reproducible; replay first per the checklist). (2) Fix the false-completion-Ask hold (#1640) so a rejected or superseded Ask does not hold launch. (3) Pick three Actions that touch only tests, docs or non-gated source with focused named tests under 900 s, run the Process Critic pre-mortem and replay (including a headless-test scenario), then one press. Success is criterion 2 with only activation and authority-adjacent merges. Replay obligation: failures b (headless named test) and e (false completion Ask) were predictable offline and have no hermetic replay scenario yet; #1637 carries its own unit test, but that is not a replay. This obligation stays **deferred** and is not done in this change.
+
+**Verdict: not yet proven unattended.** The second run merged all three Actions, but not unattended, so criterion 2 is not met.
+
+## Historical answer, 2026-10-19 (superseded): not yet. The review-repair loop ran unattended from the rerun verdict onward, but no Action of the first unattended Claude run reached a merged PR unattended
 
 The first multi-Action run under the repeatable grant card `grant-production-unattended-claude-rerun-20261018` (valid to 2026-10-25; live workspace `martianrover`, repository `pmark/arcadia`, provider `claude-code-cli`) ran 2026-10-18/19 and was stopped by the operator. The standalone record is [first-unattended-claude-run-2026-10-19.md](reports/first-unattended-claude-run-2026-10-19.md). Acceptance criterion 2 of `first-unattended-run` is **not met**; the Action stays open.
 
