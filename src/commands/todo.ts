@@ -517,8 +517,8 @@ function withDecisionReviewPaths(found: TodoItem[], rows: ReviewItemSummary[], p
     const decision = slug ? evidence.decisionDocs.get(slug) : undefined;
     if (!decision || decision.status !== "open" || viaOf.has(decision.id)) continue;
     viaOf.set(decision.id, [
-      `Discord: reply to the requires-review notification for review item ${row.id} (${row.slug ?? row.id}) with your answer; review resolve-reply writes it into the Decision document`,
-      `or: arcadia review resolve-reply "<answer>" --id ${row.id}`
+      `Discord: reply to the requires-review notification for review item ${row.id} (${row.slug ?? row.id}) with the letter of your choice (A, B, C...); review resolve-reply writes the chosen option into the Decision document`,
+      `or: arcadia review answer ${row.id} <letter>`
     ]);
   }
   if (viaOf.size === 0) return found;

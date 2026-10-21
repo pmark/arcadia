@@ -1,3 +1,4 @@
+import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   createMilestoneForProject,
@@ -27,6 +28,7 @@ import {
 import { queueForWorkClassification } from "../domain/constants.js";
 import type { Project } from "../domain/types.js";
 import { executionRequirementToPortableValue } from "../execution/profiles.js";
+import { tryGit } from "../git/worktrees.js";
 import { discoverDocs } from "./discover.js";
 import {
   actionDocRef,
@@ -373,7 +375,7 @@ export function syncProjectDocs(
     if (conflicting.has(decisionDocRef(decision.slug)) || blockedByDuplicateId.has(decision.relativePath)) {
       continue;
     }
-    result.changes.push(syncDecision(db, project, decision, options.apply));
+    result.changes.push(syncDecision(db, project, decision, options.apply, candidateBranchFor(options.repoRoot, metadata?.repo_path)));
   }
 
   for (const proposal of proposals) {
@@ -1137,11 +1139,23 @@ function syncLog(
   return changes;
 }
 
+/**
+ * The branch a settlement synced from, when it synced a candidate worktree rather than the Project's own checkout. A
+ * Decision opened from it is not answerable until that branch is merged; the answer menu names the branch.
+ */
+function candidateBranchFor(syncedRoot: string | undefined, projectRepoPath: string | null | undefined): string | null {
+  const project = projectRepoPath?.trim();
+  if (!syncedRoot || !project || path.resolve(syncedRoot) === path.resolve(project)) return null;
+  const branch = tryGit(syncedRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  return branch && branch.length > 0 ? branch : null;
+}
+
 function syncDecision(
   db: Database.Database,
   project: Project,
   doc: DecisionDoc,
-  apply: boolean
+  apply: boolean,
+  candidateBranch: string | null = null
 ): DocChange {
   const ref = decisionDocRef(doc.slug);
   const existing = getReviewItemByDocRef(db, ref);
@@ -1159,7 +1173,7 @@ function syncDecision(
         confidenceLabel: doc.confidence ?? "medium",
         confidence: 0,
         missingFields: doc.gapType ? [doc.gapType] : [],
-        context: { schemaVersion: 1, gapType: doc.gapType, docRef: ref, source: doc.relativePath }
+        context: { schemaVersion: 1, gapType: doc.gapType, docRef: ref, source: doc.relativePath, ...(candidateBranch ? { candidateBranch } : {}) }
       });
       setReviewItemDocRef(db, created.id, ref);
       // A document may arrive already decided — a decision the operator made in

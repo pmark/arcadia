@@ -142,7 +142,7 @@ describe("review approve applies its effect or refuses", () => {
     const item = clarificationFor(workspace, projectId, "decision/never-written");
 
     expect(() => runReviewApproveCommand({ workspace, id: item.id, answer: "Go left" }))
-      .toThrow(/No decision file matches/);
+      .toThrow(/Not answerable yet/);
 
     const stored = withReadOnlyDatabase(workspace, (db) => getReviewItem(db, item.id));
     expect(stored?.status).toBe("open");

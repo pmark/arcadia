@@ -288,11 +288,11 @@ export function prepareDecisionAnswer(
   const decisionsDir = path.join(repoRoot, "docs", "decisions");
   const absolutePath = findDecisionFile(decisionsDir, input.decisionRef);
   if (!absolutePath) {
-    throw validationError("No decision file matches this id.", {
+    throw validationError("No decision file matches this id: this Decision is not answerable yet because its document is not on the main branch.", {
       id: input.decisionRef,
       decision: input.decisionRef,
-      decisionsDir,
-      remedy: "This item names a Decision document that is not in the repository. Create it, or correct the reference, before recording an answer."
+      reason: "decision_document_not_on_base",
+      remedy: "This Decision is not answerable yet: its document is not on the main branch. Merge the pull request that adds it; it becomes answerable by itself once it is merged."
     });
   }
 
@@ -775,7 +775,7 @@ function resolveProjectRepo(workspacePath: string, projectIdOrSlug: string): str
  * same resolution `agent-ask settle` already uses, so a Decision is answered
  * where it lives and the answer ships in that Action's pull request.
  */
-function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], projectIdOrSlug: string): string {
+export function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], projectIdOrSlug: string): string {
   const project = getProject(db, projectIdOrSlug) ?? getProjectBySlug(db, projectIdOrSlug);
   if (!project) {
     throw projectNotFound(projectIdOrSlug);
@@ -803,7 +803,7 @@ function nextDecisionId(decisionsDir: string): string {
   return String(highest + 1).padStart(4, "0");
 }
 
-function findDecisionFile(decisionsDir: string, id: string): string | null {
+export function findDecisionFile(decisionsDir: string, id: string): string | null {
   if (!existsSync(decisionsDir)) {
     return null;
   }
