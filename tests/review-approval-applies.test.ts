@@ -20,7 +20,7 @@ vi.mock("../src/db/connection.js", async (importOriginal) => {
       })
   };
 });
-import { runDecisionNewCommand } from "../src/commands/decision.js";
+import { runDecisionNewCommand as newDecision } from "../src/commands/decision.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
@@ -39,6 +39,18 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+const manualCommit = new Set(["commit-me", "db-fails", "hook-blocked"]);
+
+/** The Decision answer path needs the document committed on the base branch, as it is once its PR is merged. */
+function runDecisionNewCommand(...args: Parameters<typeof newDecision>): ReturnType<typeof newDecision> {
+  const made = newDecision(...args);
+  if (manualCommit.has(args[0].slug)) return made; // these tests commit it themselves
+  const repo = path.dirname(path.dirname(path.dirname(made.data.absolutePath)));
+  execFileSync("git", ["add", "-A"], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "decision"], { cwd: repo });
+  return made;
+}
 
 function workspaceWithProject(): { workspace: string; repoRoot: string; projectSlug: string; projectId: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-review-approval-"));

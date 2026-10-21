@@ -59,6 +59,8 @@ const OPTIONS = [
 function withDecision(options = OPTIONS) {
   const f = fixture();
   const made = runDecisionNewCommand({ workspace: f.workspace, project: "demo", slug: "pick", question: "Pick?", options });
+  git(f.repoRoot, "add", "-A");
+  git(f.repoRoot, "commit", "-qm", "decision");
   const id = itemFor(f.workspace, f.projectId, "pick");
   return { ...f, id, number: made.data.id };
 }
@@ -88,6 +90,14 @@ describe("lettered Decision answers", () => {
     const f = withDecision();
     runReviewResolveReplyCommand({ workspace: f.workspace, reply: `${f.number} A` });
     expect(withReadOnlyDatabase(f.workspace, (db) => getReviewItem(db, f.id))?.decision_note).toBe("Ship it");
+  });
+
+  it("refuses a numbered reply that names a different Decision than the one replied to", () => {
+    const f = withDecision();
+    expect(() => runReviewResolveReplyCommand({ workspace: f.workspace, id: f.id, reply: "0133 A" })).toThrow(/different Decision/);
+    expect(withReadOnlyDatabase(f.workspace, (db) => getReviewItem(db, f.id))?.status).toBe("open");
+    runReviewResolveReplyCommand({ workspace: f.workspace, id: f.id, reply: `${f.number} A` });
+    expect(withReadOnlyDatabase(f.workspace, (db) => getReviewItem(db, f.id))?.status).toBe("approved");
   });
 
   it("review answer takes only a valid letter", () => {
@@ -134,6 +144,10 @@ describe("lettered Decision answers", () => {
     const id = itemFor(f.workspace, f.projectId, "pick");
     expect(menuOf(f.workspace, id)?.answerable).toBe(false);
     runDecisionNewCommand({ workspace: f.workspace, project: "demo", slug: "pick", question: "Pick?", options: OPTIONS });
+    // Present in the working tree only: still not answerable.
+    expect(menuOf(f.workspace, id)?.answerable).toBe(false);
+    git(f.repoRoot, "add", "-A");
+    git(f.repoRoot, "commit", "-qm", "decision");
     expect(menuOf(f.workspace, id)?.answerable).toBe(true);
   });
 

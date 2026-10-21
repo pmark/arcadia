@@ -680,6 +680,12 @@ function applyReviewReply(
     if (item.status !== "open" && item.status !== "deferred") {
       throw validationError("Requires Review Decision is already decided.", { id: item.id, status: item.status });
     }
+    if (parsed.decisionNumber && options.id && !item.source_input.includes(`docs/decisions/${parsed.decisionNumber}-`)) {
+      throw validationError(
+        `Your reply names Decision ${parsed.decisionNumber}, but you replied to a different Decision. Nothing was recorded; reply with just the letter to answer this one, or reply to the notification for Decision ${parsed.decisionNumber}.`,
+        { id: item.id, decisionNumber: parsed.decisionNumber }
+      );
+    }
     return item;
   });
   const packet = reviewPacketForReviewItem(reviewItem);

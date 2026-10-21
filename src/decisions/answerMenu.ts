@@ -79,7 +79,7 @@ export function buildAnswerMenu(db: Database.Database, item: ReviewItemSummary):
     repoRoot = null;
   }
   const absolutePath = repoRoot ? findDecisionFile(path.join(repoRoot, "docs", "decisions"), slug) : null;
-  if (!repoRoot || !absolutePath || !existsSync(absolutePath)) {
+  if (!repoRoot || !absolutePath || !existsSync(absolutePath) || !committedOnBase(repoRoot, path.relative(repoRoot, absolutePath))) {
     return { source: "standard", answerable: false, options: [], blocked: blockedFor(item, repoRoot) };
   }
 
@@ -105,6 +105,13 @@ export function buildAnswerMenu(db: Database.Database, item: ReviewItemSummary):
     options: STANDARD.map((option, index) => ({ letter: letterFor(index), label: option.label, consequence: option.consequence, recommended: false })),
     blocked: null
   };
+}
+
+/** True when the document is committed on the Project's base branch, not merely present in the working tree. */
+function committedOnBase(repoRoot: string, relativePath: string): boolean {
+  const head = tryGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  const base = head ? head.replace(/^origin\//, "") : "main";
+  return tryGit(repoRoot, ["cat-file", "-e", `${base}:${relativePath}`]) !== null;
 }
 
 function blockedFor(item: ReviewItemSummary, repoRoot: string | null): AnswerBlocked {
