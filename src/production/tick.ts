@@ -20,7 +20,7 @@ import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor } from "./terminalCandidates.js";
+import { latestCandidateSettlementCommit, listPendingTerminalCandidates, operatorHeldEscalation, pendingTerminalCandidateFor } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -1647,9 +1647,13 @@ function recordRepairBudgetExhaustedEscalation(
  * same rule: it is per-Action bookkeeping with the identical staleness risk.
  */
 function pruneStaleOperatorEscalations(db: Database.Database, projectSlug: string, currentActionKey: string | null): void {
-  db.prepare("DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ?").run(
+  // Operator decision 2026-10-21: an Action held by a review repair escalation
+  // keeps it while the pointer is on another Action; the operator resolves it.
+  const heldKinds = [...REVIEW_REPAIR_ESCALATIONS];
+  db.prepare(`DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ? AND kind NOT IN (${heldKinds.map(() => "?").join(", ")})`).run(
     `${projectSlug}/%`,
-    currentActionKey ?? ""
+    currentActionKey ?? "",
+    ...heldKinds
   );
   db.prepare("DELETE FROM production_dependency_unresolved_sightings WHERE action_key LIKE ? AND action_key != ?").run(
     `${projectSlug}/%`,
@@ -2531,6 +2535,16 @@ function attemptProjectLaunch(
           ?? `The pointer names ${selectedKey}, which is outside the Active production scope; production waits for an in-scope Action to become current.`,
         actionKey: null
       };
+    }
+  }
+  // Operator decision 2026-10-21: an Action held by its operator escalation is
+  // never relaunched or re-escalated here (a settlement of another Action can
+  // leave the pointer on it); the scheduler moves the pointer to the next
+  // independent in-scope Action on its next pass.
+  if (selected) {
+    const held = operatorHeldEscalation(db, `${input.projectSlug}/${selected.action.id}`);
+    if (held) {
+      return { attempted: false, outcome: "skipped", reason: `${input.projectSlug}/${selected.action.id} is held by its operator escalation (${held.kind}); production does not relaunch it.`, actionKey: null };
     }
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {

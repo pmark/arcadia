@@ -107,12 +107,13 @@ export class FastRehearsal extends Rehearsal {
   private lastIntegrated: string | null = null;
   private expecting: string | null = null;
 
-  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean; longChain?: boolean; workerMerge?: boolean } = {}) {
+  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean; longChain?: boolean; workerMerge?: boolean; fixturePlan?: { firstAction: string; actionsYaml: string; genesisFiles: Record<string, string> }; validationCommand?: string } = {}) {
     super({
       independentReviewers: "tick",
       ...(options.thirdAction ? { thirdAction: true } : {}),
       ...(options.workerMerge ? { workerMerge: true } : {}),
-      ...(options.longChain ? { fixturePlan: longChainFixture(), validationCommand: CHAIN_VALIDATION } : {})
+      ...(options.longChain ? { fixturePlan: longChainFixture(), validationCommand: CHAIN_VALIDATION } : {}),
+      ...(options.fixturePlan ? { fixturePlan: options.fixturePlan, validationCommand: options.validationCommand } : {})
     });
     process.env.ARCADIA_WORKSPACE = this.workspace;
     this.validator = process.env.ARCADIA_PRESERVATION_HOST_TEST === "1" ? "seatbelt" : "unsandboxed";
