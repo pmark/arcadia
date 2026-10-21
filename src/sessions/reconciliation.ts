@@ -433,6 +433,23 @@ export function settlementRecordFilesForReview(db: Database.Database, session: A
   return settlement ? settlementCommitRecordFiles(session.worktree_path, settlement, head) : [];
 }
 
+/** The commit a settlement commit sits on (the Session's preserved candidate), or null when it cannot be read. */
+export function settlementPreservedCommit(worktree: string, documentsCommit: string): string | null {
+  try {
+    return git(worktree, ["rev-parse", `${documentsCommit}^`]).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The preserved commit and settled head when `head` carries a verified settlement whose records the reviewer excuses; else undefined. */
+export function settledCandidateForReview(db: Database.Database, session: AgentSession, head: string): { preservedCommit: string; head: string } | undefined {
+  const settlement = findCandidateSettledCompletion(db, session, head);
+  if (!settlement || settlementCommitRecordFiles(session.worktree_path, settlement, head).length === 0) return undefined;
+  const preservedCommit = settlementPreservedCommit(session.worktree_path, settlement.documentsCommit);
+  return preservedCommit ? { preservedCommit, head } : undefined;
+}
+
 /** A completed worker Session whose exact settled candidate still exists. */
 export function findAcceptedTerminalCompletion(
   db: Database.Database,
