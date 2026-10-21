@@ -222,13 +222,16 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
   const inScope = activeActionScopeGate(db, project.slug, base.planSlug);
   base.actionScoped = inScope !== null;
   const eligible = (key: string): boolean => byKey.get(key)?.status === "ready" && (inScope === null || inScope(key));
-  // Operator decision 2026-10-21: an Action held by an operator escalation
-  // (review repair stopped, candidate preserved) is passed over for the next
-  // ready in-scope Action. Readiness already excludes anything that depends on
-  // it; when nothing else is eligible the held Action stays next, as before.
+  // Operator decision 2026-10-21: under an Active Action-scoped policy, an
+  // in-scope Action held by an operator escalation (review repair stopped,
+  // candidate preserved) is passed over for the next ready in-scope Action.
+  // Readiness already excludes anything depending on it (directly,
+  // transitively or across Plans); when nothing else is eligible the held
+  // Action stays next, as before. Without an Active scope nothing is held.
+  const heldInScope = (key: string): boolean => inScope !== null && inScope(key) && operatorHeldEscalation(db, key) !== null;
   base.next = record.pausedReason
     ? null
-    : base.queue.find((key) => eligible(key) && !operatorHeldEscalation(db, key)) ?? base.queue.find(eligible) ?? null;
+    : base.queue.find((key) => eligible(key) && !heldInScope(key)) ?? base.queue.find(eligible) ?? null;
   return base;
 }
 

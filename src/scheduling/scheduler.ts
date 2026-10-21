@@ -4,6 +4,7 @@ import { createReviewItem, getProjectBySlug, getReviewItem, listProjects } from 
 import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
+import { activeActionScopeGate } from "../production/policy.js";
 import { operatorHeldEscalation, pendingTerminalCandidateFor } from "../production/terminalCandidates.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
@@ -295,6 +296,12 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const actionKey = schedule.next;
   const actionId = actionKey ? actionKey.slice(schedule.projectSlug.length + 1) : null;
   const unchanged = (reason: string) => ({ moved: false, from, to: from, reason });
+  // A held row for an Action that is now done is stale: drop it.
+  for (const action of schedule.actions) {
+    if (action.status === "done" && operatorHeldEscalation(db, action.key)) {
+      db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(action.key);
+    }
+  }
   if (schedule.pausedReason) return unchanged(`Project is paused: ${schedule.pausedReason}`);
   if (!actionKey || !actionId) {
     return unchanged(schedule.actionScoped
@@ -318,7 +325,11 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   // candidate is preserved and cannot integrate without the operator), so the
   // candidate holds below are exactly what this move passes. The held Action
   // keeps its escalation and candidate; nothing depending on it is ready.
-  const held = from ? operatorHeldEscalation(db, `${schedule.projectSlug}/${from}`) : null;
+  // Only under an Active Action-scoped policy that names `from`; otherwise
+  // (no policy, Off, or rescoped) a stale hold never lets the pointer pass.
+  const fromKey = from ? `${schedule.projectSlug}/${from}` : null;
+  const inScope = schedule.actionScoped ? activeActionScopeGate(db, schedule.projectSlug, schedule.planSlug) : null;
+  const held = fromKey && inScope && inScope(fromKey) ? operatorHeldEscalation(db, fromKey) : null;
   if (from && held) {
     const logKey = `${schedule.projectSlug}/${from}\u0000${held.kind}\u0000${held.firstDetectedAt}`;
     if (!loggedHeldSkips.has(logKey)) {

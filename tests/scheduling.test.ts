@@ -488,6 +488,69 @@ describe("scheduling pass", () => {
     expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
   });
 
+  describe("an Action held by an operator review-repair escalation (operator decision 2026-10-21)", () => {
+    const hold = (db: Parameters<typeof activateProduction>[0], key: string) => db.prepare(
+      `INSERT OR REPLACE INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+       VALUES (?, 'review_repair_rounds_exhausted', 'held', 'operator', '2026-10-21T00:00:00.000Z', '2026-10-21T00:00:00.000Z')`).run(key);
+    const holdRows = (db: Parameters<typeof activateProduction>[0]) => db.prepare("SELECT action_key FROM production_operator_escalations").all();
+    const scoped = (db: Parameters<typeof activateProduction>[0], actions: string[]) => {
+      const scope = normalizeProductionScope({
+        intent: "Run the scoped Actions.", projects: ["alpha"], plans: ["alpha/alpha-plan"], actions,
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: ["pointer"]
+      });
+      activateProduction(db, { requestId: `grant-${actions.join("-")}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    };
+    const nextOf = (db: Parameters<typeof activateProduction>[0]) => buildProjectSchedule(db, getProjectBySlug(db, "alpha")!).next;
+
+    it("is passed over by an Active scope covering both Actions, skipping direct, transitive and cross-Plan dependents", () => {
+      const fx = fixture([{ slug: "alpha", current: "a", actions: [
+        { id: "a" }, { id: "b", dependsOn: ["a"] }, { id: "c", dependsOn: ["b"] }, { id: "d", dependsOn: ["plan/alpha-plan#a"] }, { id: "e" }
+      ] }]);
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, ["alpha/a", "alpha/b", "alpha/c", "alpha/d", "alpha/e"]);
+        hold(db, "alpha/a");
+        expect(nextOf(db)).toBe("alpha/e");
+        expect(runSchedulingPass(db, { now: new Date("2026-10-21T10:00:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "e" });
+      });
+    });
+
+    it("keeps the held Action next when every other ready Action is out of scope or depends on it", () => {
+      const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b", dependsOn: ["a"] }, { id: "c" }] }]);
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, ["alpha/a", "alpha/b"]);
+        hold(db, "alpha/a");
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-10-21T10:00:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+      });
+    });
+
+    it("is never passed over without an Active Action-scoped policy that names it (none, Off, empty scope, rescoped)", () => {
+      const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
+      withDatabase(fx.workspace, (db) => {
+        hold(db, "alpha/a");
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-10-21T10:00:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+        scoped(db, []);
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-10-21T10:01:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+        scoped(db, ["alpha/b"]);
+        deactivateProduction(db, { requestId: "off-held" });
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-10-21T10:02:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+      });
+      expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    });
+
+    it("drops the held row once its Action is done", () => {
+      const fx = fixture([{ slug: "alpha", current: "b", actions: [{ id: "a", status: "done" }, { id: "b" }] }]);
+      withDatabase(fx.workspace, (db) => {
+        hold(db, "alpha/a");
+        runSchedulingPass(db, { now: new Date("2026-10-21T10:00:00.000Z") });
+        expect(holdRows(db)).toEqual([]);
+      });
+    });
+  });
+
   it("keeps queue-head selection under an Active policy whose scope lists no Actions", () => {
     const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
     withDatabase(fx.workspace, (db) => {
