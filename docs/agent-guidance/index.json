@@ -20,7 +20,7 @@
       "trigger": "operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this",
       "path": "docs/agent-guidance/operator-actions.md",
       "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
-      "sha256": "7496462ae71794abec0e6eb4eb5a3fbc6685d37e532132bde326a4b0894a1f85"
+      "sha256": "9a302ae9ac308f06c048d0b52cedf46249b92833ca0e01a0005719558c5f5732"
     },
     {
       "id": "proposals",
