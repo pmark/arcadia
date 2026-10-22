@@ -80,16 +80,20 @@ describe("Issue #1518: a completion Ask drafted at the base revision by a Sessio
     world.start();
     world.expectError(/Did not record pending completion Agent Ask/);
     world.expectError(/completion_settlement_not_in_candidate|Completion settlement not in candidate/);
+    world.expectError(/^Integration waits on a governed completion; reconciliation outcome was incomplete_resumable\.$/);
     world.expectError(/injected fault/);
     const base = git(world.repo, ["rev-parse", "refs/heads/main"]).trim();
     const { session, launch } = world.untilLaunched(ACTION_1, 3);
     world.execute(launch, ACTION_1, "draft-at-base-uncommitted");
-    // Only the settlement's own commit hashes blobs with --no-filters (src/git/askIsolation.ts).
+    // Target settlement's explicit-path input; capture uses --stdin-paths.
     const faults = installGitFaults(world.root);
-    faults.arm("hash-object", 1, "--no-filters");
+    faults.arm("hash-object", 1, "--no-filters -- ");
     try {
       const [exit] = world.ticks(1);
-      expect(faults.injected().map((entry) => entry.subcommand)).toEqual(["hash-object"]);
+      const injections = faults.injected();
+      expect(injections.map((entry) => entry.subcommand)).toEqual(["hash-object"]);
+      expect(injections[0].argv).toContain("--no-filters -- ");
+      expect(injections[0].argv).not.toContain("--stdin-paths");
       expect(exit.reconciled.map((entry) => entry.outcome)).not.toContain("accepted_completion");
       expect(world.log.some((line) => line.includes("accepted_completion"))).toBe(false);
       const escalation = world.escalations().find((entry) => entry.actionKey === world.actionKey(ACTION_1));
@@ -107,6 +111,6 @@ describe("Issue #1518: a completion Ask drafted at the base revision by a Sessio
       faults.remove();
     }
     expect(isolation.guardCalls()).toEqual([]);
-    world.finish();
+    expect(world.finish().errors.filter((error) => !error.expected)).toEqual([]);
   }, SCENARIO_TIMEOUT_MS);
 });

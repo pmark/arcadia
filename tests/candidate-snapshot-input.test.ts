@@ -31,24 +31,33 @@ describe("candidate snapshot subprocess input", () => {
     // its bytes, then blocks on EOF exactly as the captured live stack did.
     // Descriptor-fed regular files run unmodified through the real subprocess.
     vi.mocked(execFileSync).mockImplementation(((command: string, args: string[], options: ExecFileSyncOptions = {}) => {
-      if (command !== "git" || !args.includes("--stdin") || !Buffer.isBuffer(options.input)) {
+      const input = options.input;
+      if (command !== "git" || !args.some(arg => arg === "--stdin" || arg === "--stdin-paths") || (typeof input !== "string" && !Buffer.isBuffer(input))) {
         return realExec(command, args, options);
       }
       const fifo = path.join(f.root, "withheld-eof");
       realExec("mkfifo", [fifo]);
       const fd = openSync(fifo, constants.O_RDWR);
       try {
-        writeSync(fd, options.input);
+        writeSync(fd, typeof input === "string" ? Buffer.from(input) : input);
         return realExec(command, args, { ...options, input: undefined, stdio: [fd, "pipe", "pipe"] });
       } finally {
         closeSync(fd);
         rmSync(fifo);
       }
     }) as typeof execFileSync);
+    // Exercise the fault injector itself with both transports: --stdin-paths
+    // uses text, whereas the former per-blob --stdin path used a Buffer.
+    const request = JSON.stringify(path.join(f.candidate, "binary-input")) + "\n";
+    for (const input of [request, Buffer.from(request)]) {
+      expect(() => execFileSync("git", ["hash-object", "-w", "--no-filters", "--stdin-paths"], {
+        cwd: f.candidate, input, timeout: 800, killSignal: "SIGKILL"
+      })).toThrow(expect.objectContaining({ code: "ETIMEDOUT" }));
+    }
     const capture = () => withPreservationProgress(() => undefined, () => {
       preservationStage("validation.binding");
       return snapshotCandidate(f.candidate);
-    }, { gitTimeoutMs: 800 });
+    }, { gitTimeoutMs: ({ command, args }) => command === "git" && args[0] === "hash-object" ? 800 : 15_000 });
     const tree = capture();
     for (const [file, expected] of [["binary-input", bytes], ["empty-input", Buffer.alloc(0)]] as const) {
       const hash = createHash("sha1").update(`blob ${expected.length}\0`).update(expected).digest("hex");
@@ -68,7 +77,7 @@ describe("candidate snapshot subprocess input", () => {
     const scratchBefore = readdirSync(common).filter(name => name.startsWith("arcadia-index-"));
     const descriptors = new Set<number>();
     vi.mocked(execFileSync).mockImplementation(((command: string, args: string[], options: ExecFileSyncOptions = {}) => {
-      if (command === "git" && args.includes("--stdin")) {
+      if (command === "git" && args.some(arg => arg === "--stdin" || arg === "--stdin-paths")) {
         const fd = Array.isArray(options.stdio) ? options.stdio[0] : undefined;
         expect(typeof fd).toBe("number");
         const stat = fstatSync(fd as number);
@@ -89,7 +98,7 @@ describe("candidate snapshot subprocess input", () => {
     const capture = () => withPreservationProgress(() => undefined, () => {
       preservationStage("validation.binding");
       return snapshotCandidate(f.candidate);
-    }, { gitTimeoutMs: 800 });
+    }, { gitTimeoutMs: ({ command, args }) => command === "git" && args[0] === "hash-object" ? 800 : 15_000 });
     if (timeout) {
       expect(capture).toThrow(expect.objectContaining({
         code: "PRESERVATION_GIT_TIMEOUT", details: expect.objectContaining({ stage: "validation.binding", timeoutMs: 800 })

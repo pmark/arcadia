@@ -2,6 +2,7 @@ import { boundedExec as bounded, preservationProcessLimits, preservationTimeout 
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
 
@@ -125,24 +126,9 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
   removeStaleScratchIndexes(common);
   const scratch = mkdtempSync(path.join(common, "arcadia-index-"));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
-  const git = (args: string[], input?: Buffer | string) => {
-    const options = { cwd: root, env, maxBuffer: 64 * 1024 * 1024 };
-    if (input === undefined) return bounded("git", args, options);
-    // A finite regular file reaches EOF without a synchronous pipe handoff.
-    // Keep captured bytes in the existing private scratch, open read-only and
-    // unlink before spawning: no input path or bytes reach Git's arguments.
-    const inputPath = path.join(scratch, "stdin");
-    writeFileSync(inputPath, input, { flag: "wx", mode: 0o600 });
-    let fd: number | undefined;
-    try {
-      fd = openSync(inputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-      unlinkSync(inputPath);
-      return bounded("git", args, { ...options, stdio: [fd, "pipe", "pipe"] });
-    } finally {
-      if (fd !== undefined) closeSync(fd);
-      rmSync(inputPath, { force: true });
-    }
-  };
+  const git = (args: string[], input?: Buffer | string) => input === undefined
+    ? bounded("git", args, { cwd: root, env, maxBuffer: 64 * 1024 * 1024 })
+    : gitWithInput(root, args, input, scratch, env);
   try {
     const tracked = bounded("git", ["ls-files", "-z"], { cwd: root }).toString().split("\0");
     if (tracked.includes(PRESERVATION_REQUEST_FILE)) throw validationError("The preservation transport file must not be tracked.");
@@ -173,9 +159,22 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
     const toCapture = trustedPaths.size ? selected.filter(file => !trustedPaths.has(file)) : selected;
     const captured = privilegedRead<Array<{ path: string; mode: number; bytes: string }>>(CAPTURE_FILES, root, toCapture, "<candidate capture>");
     const entries: string[] = [];
-    for (const file of captured) {
-      const hash = git(["hash-object", "-w", "--stdin"], Buffer.from(file.bytes, "base64")).toString().trim();
-      entries.push(`${file.mode & 0o111 ? "100755" : "100644"} ${hash}\t${file.path}\0`);
+    if (captured.length) {
+      // Git reads only private copies of the anchored capture, never mutable
+      // candidate paths. --no-filters keeps attributes and clean filters out.
+      const inputs = captured.map((file, index) => {
+        const inputPath = path.join(scratch, `blob-${index}`);
+        writeFileSync(inputPath, Buffer.from(file.bytes, "base64"), { flag: "wx", mode: 0o600 });
+        // Git's C-style path quoting: octal bytes also cover quotes, newlines,
+        // backslashes and non-ASCII characters in the scratch directory path.
+        return '"' + [...Buffer.from(inputPath)].map(byte => `\\${byte.toString(8).padStart(3, "0")}`).join("") + '"';
+      });
+      const hashes = git(["hash-object", "-w", "--no-filters", "--stdin-paths"], inputs.join("\n") + "\n")
+        .toString().trim().split("\n");
+      if (hashes.length !== captured.length || hashes.some(hash => !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(hash))) {
+        throw validationError("Candidate capture returned invalid Git blob identities.");
+      }
+      captured.forEach((file, index) => entries.push(`${file.mode & 0o111 ? "100755" : "100644"} ${hashes[index]}\t${file.path}\0`));
     }
     for (const symlink of trustedSymlinks) entries.push(`120000 ${symlink.hash}\t${symlink.path}\0`);
     git(["read-tree", "--empty"]);
@@ -261,25 +260,71 @@ export function snapshotCandidateCommit(repository: string, candidate: string, b
  * one whose target would escape the restricted snapshot is refused before any
  * symlink is created, rather than left for a later cross-file write through it. */
 export function materializeCandidateTree(repository: string, tree: string, destination: string): void {
-  const entries = bounded("git", ["ls-tree", "-rz", tree], { cwd: repository }).toString().split("\0").filter(Boolean);
-  for (const entry of entries) {
-    const match = /^(100644|100755|120000) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
+  const entries = bounded("git", ["ls-tree", "-rlz", tree], { cwd: repository, maxBuffer: MAX_BLOB_BYTES }).toString().split("\0").filter(Boolean).map(entry => {
+    const match = /^(100644|100755|120000) blob ([a-f0-9]+) +([0-9]+)\t([\s\S]+)$/.exec(entry);
     if (!match) throw validationError("Validated snapshot contains an unsupported Git entry.");
-    const [, mode, hash, name] = match;
+    const [, mode, hash, length, name] = match;
+    const size = Number(length);
+    if (!Number.isSafeInteger(size) || size > MAX_BLOB_BYTES) throw validationError("Snapshot blob exceeds the 64 MiB preservation limit.");
     const target = path.resolve(destination, name);
     if (!target.startsWith(`${destination}${path.sep}`)) throw validationError("Snapshot path escaped its root.");
-    mkdirSync(path.dirname(target), { recursive: true });
-    const blob = bounded("git", ["cat-file", "blob", hash], { cwd: repository, maxBuffer: 64 * 1024 * 1024 });
-    if (mode === "120000") {
-      const linkTarget = blob.toString();
-      const resolvedTarget = path.resolve(path.dirname(target), linkTarget);
-      if (resolvedTarget !== destination && !resolvedTarget.startsWith(`${destination}${path.sep}`)) {
-        throw validationError("Snapshot symlink target escaped its root.");
+    return { mode, hash, size, target };
+  });
+  const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-blobs-"));
+  try {
+    for (let start = 0; start < entries.length;) {
+      let end = start, bytes = 0;
+      // Bound both tiny-object overhead and the response held in memory; a
+      // single large blob keeps the existing per-blob 64 MiB maximum.
+      while (end < entries.length && end - start < 256 && (end === start || bytes + entries[end].size <= 8 * 1024 * 1024)) {
+        bytes += entries[end++].size;
       }
-      symlinkSync(linkTarget, target);
-    } else {
-      writeFileSync(target, blob, { mode: mode === "100755" ? 0o555 : 0o444 });
+      const batch = entries.slice(start, end);
+      const response = gitWithInput(repository, ["cat-file", "--batch"], batch.map(entry => entry.hash + "\n").join(""), scratch);
+      let offset = 0;
+      for (const entry of batch) {
+        const headerEnd = response.indexOf(10, offset);
+        const header = `${entry.hash} blob ${entry.size}`;
+        if (headerEnd < 0 || !response.subarray(offset, headerEnd).equals(Buffer.from(header))) {
+          throw validationError("Snapshot Git blob batch returned an invalid header.");
+        }
+        const bodyStart = headerEnd + 1, bodyEnd = bodyStart + entry.size;
+        if (bodyEnd >= response.length || response[bodyEnd] !== 10) throw validationError("Snapshot Git blob batch returned truncated content.");
+        const blob = response.subarray(bodyStart, bodyEnd);
+        mkdirSync(path.dirname(entry.target), { recursive: true });
+        if (entry.mode === "120000") {
+          const linkTarget = blob.toString();
+          const resolvedTarget = path.resolve(path.dirname(entry.target), linkTarget);
+          if (resolvedTarget !== destination && !resolvedTarget.startsWith(`${destination}${path.sep}`)) {
+            throw validationError("Snapshot symlink target escaped its root.");
+          }
+          symlinkSync(linkTarget, entry.target);
+        } else {
+          writeFileSync(entry.target, blob, { mode: entry.mode === "100755" ? 0o555 : 0o444 });
+        }
+        offset = bodyEnd + 1;
+      }
+      if (offset !== response.length) throw validationError("Snapshot Git blob batch returned unexpected trailing content.");
+      start = end;
     }
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+}
+
+const MAX_BLOB_BYTES = 64 * 1024 * 1024;
+
+/** Finite, private regular-file stdin avoids the synchronous pipe/EOF deadlock
+ * from #1414. Shared by hash/index input and size-bounded blob batch requests. */
+function gitWithInput(repository: string, args: string[], input: Buffer | string, scratch: string, env = process.env): Buffer {
+  const inputPath = path.join(scratch, "stdin");
+  writeFileSync(inputPath, input, { flag: "wx", mode: 0o600 });
+  let fd: number | undefined;
+  try {
+    fd = openSync(inputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    unlinkSync(inputPath);
+    return bounded("git", args, { cwd: repository, env, maxBuffer: MAX_BLOB_BYTES + 64 * 1024, stdio: [fd, "pipe", "pipe"] }) as Buffer;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+    rmSync(inputPath, { force: true });
   }
 }
 
