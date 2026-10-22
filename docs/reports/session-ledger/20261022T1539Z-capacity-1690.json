@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Operator-directed diagnostic; no governed Action. Six red-first cases, 58 final focused tests, lint and tsc passed. HTTP403 access blocker separate in1692. R2 review/CI pending. Production Off."
+  "notes": "Operator-directed diagnostic; no governed Action. Failed-first receipts retained; 58 final focused tests, lint and tsc passed. HTTP403 access blocker separate in1692. R2 review/CI pending. Production Off."
 }
