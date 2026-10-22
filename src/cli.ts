@@ -643,8 +643,10 @@ export function buildProgram(): Command {
   addJsonOption(program.command("provider-usage")
     .description("Shared credential-aware usage diagnostics for Codex, Claude Code and OpenCode")
     .option("--refresh", "Make one bounded usage read per supported provider; no shared cache writes")
-    .option("--claude-source <source>", "auto, environment, file or keychain; explicit selection never falls back", "auto"))
-    .action((options: { refresh?: boolean; claudeSource?: string; json?: boolean }) =>
+    .option("--claude-source <source>", "auto, environment, file or keychain; explicit selection never falls back", "auto")
+    .option("--opencode-session <id>", "Read one explicitly named existing OpenCode session; requires Python 3 and a Unix PTY")
+    .option("--opencode-export <file>", "Read one explicitly named OpenCode JSON export; never falls back to another source"))
+    .action((options: { refresh?: boolean; claudeSource?: string; opencodeSession?: string; opencodeExport?: string; json?: boolean }) =>
       runCliAction("provider-usage", options, () => runProviderUsageCommand(options),
         (response) => [JSON.stringify(response.data, null, 2)]));
 
