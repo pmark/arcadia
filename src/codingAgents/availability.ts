@@ -253,6 +253,7 @@ export async function refreshClaudeCodeUsageTelemetry(
       snapshotPath,
       response.status === 0 ? "unreachable" : response.status === 401 ? "unauthorized" : "not_reported",
       now,
+      response.status,
     );
     return;
   }
@@ -264,6 +265,7 @@ export async function refreshClaudeCodeUsageTelemetry(
     arcadia_captured_at: now.toISOString(),
     arcadia_usage_checked_at: now.toISOString(),
     arcadia_usage_refresh_state: "ok" satisfies ClaudeUsageRefreshState,
+    arcadia_usage_refresh_http_status: normalizeHttpStatus(response.status),
     arcadia_usage_unauthorized_since: null,
     arcadia_usage_unauthorized_signalled: null,
     rate_limits: {
@@ -347,7 +349,11 @@ async function requestClaudeUsage(accessToken: string): Promise<{
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) return { status: response.status, body: null };
-    return { status: response.status, body: await response.json() as ClaudeUsageResponse };
+    try {
+      return { status: response.status, body: await response.json() as ClaudeUsageResponse };
+    } catch {
+      return { status: response.status, body: null };
+    }
   } catch {
     return { status: 0, body: null };
   }
@@ -380,6 +386,7 @@ function recordClaudeRefreshState(
   snapshotPath: string,
   state: ClaudeUsageRefreshState,
   now: Date,
+  httpStatus: number | null = null,
 ): void {
   const current = readJsonRecord(snapshotPath) ?? {};
   // An unauthorized episode starts on the first 401 after a good (or no)
@@ -391,6 +398,7 @@ function recordClaudeRefreshState(
     ...current,
     arcadia_usage_checked_at: now.toISOString(),
     arcadia_usage_refresh_state: state,
+    arcadia_usage_refresh_http_status: normalizeHttpStatus(httpStatus),
     arcadia_usage_unauthorized_since: since,
   });
 }
@@ -526,7 +534,7 @@ function readClaudeStatusLineTelemetry(now: Date): ProviderTelemetry | null {
 
     const refreshState = stringValue(raw.arcadia_usage_refresh_state) as ClaudeUsageRefreshState | null;
     const refreshNote = refreshState && refreshState !== "ok"
-      ? ` The last refresh did not update it: ${describeClaudeRefreshState(refreshState)}`
+      ? ` The last refresh did not update it: ${describeClaudeRefreshState(refreshState, raw.arcadia_usage_refresh_http_status)}`
       : "";
 
     return {
@@ -671,7 +679,16 @@ function codexBankedResets(value: Record<string, unknown> | null): CodingAgentBa
     }));
 }
 
-function describeClaudeRefreshState(state: ClaudeUsageRefreshState): string {
+/** Retain only a standard numeric HTTP outcome, never provider response text. */
+function normalizeHttpStatus(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+}
+
+function describeClaudeRefreshState(state: ClaudeUsageRefreshState, httpStatus?: unknown): string {
+  const status = normalizeHttpStatus(httpStatus);
+  if (state === "not_reported" && status !== null && (status < 200 || status >= 300)) {
+    return `Claude's usage service returned HTTP ${status}; no fresh allowance window was obtained.`;
+  }
   switch (state) {
     case "no_credentials":
       return "no Claude Code OAuth credential was readable on this host, so subscription usage cannot be refreshed automatically.";

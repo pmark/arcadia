@@ -1,0 +1,26 @@
+{
+  "session_id": "capacity-1690",
+  "role": "driver",
+  "model": "inherited-runtime-unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1690",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "claude-refresh-http-detail-discarded",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1690"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "58 tests, lint, tsc and R2 review passed. Readiness updated; R3/CI pending. HTTP403 in #1692. Production Off."
+}
