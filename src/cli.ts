@@ -645,7 +645,7 @@ export function buildProgram(): Command {
     .option("--refresh", "Make one bounded usage read per supported provider; no shared cache writes")
     .option("--claude-source <source>", "auto, environment, file or keychain; explicit selection never falls back", "auto")
     .option("--opencode-session <id>", "Read one explicitly named existing OpenCode session; requires Python 3 and a Unix PTY")
-    .option("--opencode-export <file>", "Read one explicitly named OpenCode JSON export; never falls back to another source"))
+    .option("--opencode-export <file>", "Read one explicitly named OpenCode JSON export; relative paths use the invocation directory", resolveAskFileOption))
     .action((options: { refresh?: boolean; claudeSource?: string; opencodeSession?: string; opencodeExport?: string; json?: boolean }) =>
       runCliAction("provider-usage", options, () => runProviderUsageCommand(options),
         (response) => [JSON.stringify(response.data, null, 2)]));

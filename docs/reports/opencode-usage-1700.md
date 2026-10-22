@@ -57,3 +57,35 @@ reduction; truly future source timestamps still refuse. An explicitly supplied
 `clock` injection models advancing time without silently changing that seam.
 The same three-file focused suite now includes these three regressions (43 tests).
 No provider, model or existing-session calls were used for this repair.
+
+
+## Available advisory finding: invocation-relative export paths
+
+CodeRabbit finding 4353007230 identified that the supported launcher changes
+runtime cwd while preserving `ARCADIA_INVOKED_FROM`. The export option now uses
+the existing `resolveAskFileOption` parser, as other file options do. Relative
+paths resolve from the invocation directory; absolute paths are unaffected, and
+blank input stays blank so the handler returns `invalid_export_file` rather than
+reading a directory. A parser regression reproduced the defect before repair:
+exit 1, one relative-path case failed while three absolute/blank cases passed.
+No importer, collector or production behavior changed.
+
+Validation grouping after this repair: the three usage/no-record files retain
+43 passing tests; the full `tests/cli-invocation.test.ts` has 21 passing tests
+(including four new cases), for 64 passing tests across four files. Typecheck,
+touched-file lint and diff hygiene checks exit 0. The pre-edit work monitor and
+targeted Notes/retained learning lookup completed; no additional matching path
+lesson was present. This repair used no provider, live session or credential call.
+
+
+The first combined run produced exit 1 with 63/64 passing: the existing
+oversized-output cleanup fixture wrote its marker after an unconditional
+one-second child sleep, while the export took about 7.8 seconds under concurrent
+validation load. That marker predated cleanup and was a false positive. The
+approved fixture-only correction waits for the original exporter parent PID to
+change before attempting the marker write, taking the expected parent PID as an
+argument so late child startup is covered. The existing post-return observation
+window remains. No production deadline, size limit or collector behavior changed.
+An initial exact-text patch assertion failed before writing files; a validation
+run was inadvertently started on unchanged source. The patch was then applied by
+its verified test boundaries, and final validation was run on the changed fixture.

@@ -224,9 +224,16 @@ else: sys.stdout.write(open(${JSON.stringify(file)}).read())
 
   it.skipIf(process.platform === "win32")("kills the exporter process group on oversized output without persisting transcript bytes", async () => {
     const dir = temp(); const marker = path.join(dir, "unreaped-child"); const cli = path.join(dir, "opencode");
+    // The exporter can legitimately take longer than a second to fill the PTY.
+    // An escaped child is a failure only after its original parent has exited.
+    const child = `import os,sys,time
+parent = int(sys.argv[1])
+while os.getppid() == parent: time.sleep(0.01)
+time.sleep(0.05)
+open(${JSON.stringify(marker)}, "w").write("bad")`;
     writeFileSync(cli, `#!/usr/bin/env python3
-import subprocess,sys,time
-subprocess.Popen([sys.executable,"-c",${JSON.stringify(`import time; time.sleep(1); open(${JSON.stringify(marker)}, "w").write("bad")`)}])
+import os,subprocess,sys,time
+subprocess.Popen([sys.executable,"-c",${JSON.stringify(child)},str(os.getpid())])
 sys.stdout.write("x" * 9000000)
 sys.stdout.flush()
 time.sleep(5)
