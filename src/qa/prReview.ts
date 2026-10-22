@@ -1,3 +1,4 @@
+import { withPrReviewExecutionClaim } from "./executionClaim.js";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -339,6 +340,9 @@ export function runQaPrReviewCommand(
   options: QaPrReviewOptions,
   dependencies: QaPrReviewDependencies = {}
 ): CommandSuccess<QaPrReviewCommandData> {
+  if (options.expectedCandidate && (!Number.isInteger(options.expectedCandidate.maxOrdinal) || options.expectedCandidate.maxOrdinal < 1)) {
+    throw validationError("Pinned recovery requires a positive integer ordinal cap.");
+  }
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const profile = PR_REVIEW_ROLES[options.role ?? "qa"];
   const runCommand = dependencies.runCommand ?? executeCommand;
@@ -382,6 +386,7 @@ export function runQaPrReviewCommand(
     }
   }
 
+  return withPrReviewExecutionClaim(path.dirname(receiptRoot), () => {
   const attemptRoot = uniqueAttemptRoot(receiptRoot, now(), evidenceFingerprint);
   mkdirSync(attemptRoot, { recursive: true });
 
@@ -701,6 +706,7 @@ export function runQaPrReviewCommand(
   }
 
   return createSuccess({ command: profile.command, workspace: workspacePath, data });
+  });
 }
 
 function reviewerActorIdFor(profile: PrReviewRoleProfile, bindingId: string): string {

@@ -166,3 +166,16 @@ source merge plus specifically bounded credential verification are the only
 immediate approval items. Recovery and START remain held.
 
 The general QA pass-result/stale-lineage inconsistency is retained as #1695; this consumer verifies canonical read-back. The recovery pin also caps allocation at ordinal 4 without raising the canonical verdict limit.
+
+Round 2 identified concurrent worker/card execution of one running QA ordinal.
+The canonical QA path now acquires one exclusive per-PR/per-role filesystem
+execution claim before allocating or resuming reviewer work. All canonical
+callers share it; the claim is released on normal return or bounded failure.
+An uncertain inherited claim (including a killed owner) is deliberately not
+stolen or removed automatically. It remains an observable `review_execution_claimed`
+refusal requiring diagnosis; no command here deletes such a claim. Tests cover
+an overlapping canonical invocation, already-held claims, normal/failure release
+and the absence of a second reviewer invocation. This is not full repaired-body
+worker-tick integration proof; that pre-press scenario remains held.
+
+Concurrency defect tracked at https://github.com/pmark/arcadia/issues/1696.

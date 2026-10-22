@@ -28,6 +28,23 @@ afterEach(() => {
 });
 
 describe("minimal independent pull-request QA", () => {
+  it("rejects a malformed recovery cap before any external command", () => {
+    expect(() => runQaPrReviewCommand({ workspace: "/unused", pullRequest: "https://github.com/pmark/arcadia/pull/77", expectedCandidate: { headSha: HEAD_SHA, bodySha256: "0".repeat(64), inputRevision: "pinned-input", maxOrdinal: NaN } }, {
+      runCommand: () => { throw new Error("must not execute"); }
+    })).toThrow("positive integer ordinal cap");
+  });
+
+  it("excludes an overlapping worker/manual invocation before the second reviewer can run", () => {
+    const fixture = createFixture();
+    let overlapping: ReturnType<typeof runQaWithRollup> | undefined;
+    const checks = () => [check("fast", "SUCCESS", "https://ci/fast")];
+    const first = runQaWithRollup(checks, () => { overlapping = runQaWithRollup(checks, undefined, fixture); }, fixture);
+    expect(first.error).toBeNull();
+    expect(first.reviewerInvocations).toBe(1);
+    expect(overlapping?.reviewerInvocations).toBe(0);
+    expect(String(overlapping?.error)).toContain("Reviewer execution is already claimed");
+  });
+
   it.each(["head", "body", "late-body"])("refuses an operator-pinned %s drift before reviewer or role allocation", (drift) => {
     const fixture = createFixture();
     const initial = rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]);
@@ -781,12 +798,11 @@ describe("review readiness reads real statusCheckRollup shapes", () => {
   });
 });
 
-function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined): {
+function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined, fixture = createFixture()): {
   result: ReturnType<typeof runQaPrReviewCommand> | null;
   error: unknown;
   reviewerInvocations: number;
 } {
-  const fixture = createFixture();
   let reviewerInvocations = 0;
   try {
     const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, {
