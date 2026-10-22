@@ -1,0 +1,160 @@
+{
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 10562,
+      "sha256": "c7ac933b4bf77f1d13a2753b64c1b40407d1f54bacb92cc66bed7df73d3e30a4"
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 3320,
+      "sha256": "984897f9445ec2332e9bc7352b7f413b89961b198e2b6eb93694f9ad71d816a8"
+    },
+    {
+      "path": "PROJECT.md",
+      "bytes": 31687,
+      "sha256": "49805e3feeecb1b9464f52948dde6d08e19cc43e228a1922a620f7578b0c3ae2"
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "bytes": 539,
+      "sha256": "80968f45ffd52d50d1bf0695ff9191638e720ab9e4c9c1e5e33b8f8f6b9ec182"
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "bytes": 703,
+      "sha256": "783d7108cc76ab9843b8c15f6697b08484ad8ea390933a8d71733d313a00df50"
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "bytes": 870,
+      "sha256": "9b52b6a15adad198e6cfea6ac49bea0662a21415bc84b920817bb88c4360d0e6"
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "bytes": 10914,
+      "sha256": "edf41bee44742ca7a96422c3781bac720ff781c77b9319c8a90b7b0c7f82a032"
+    },
+    {
+      "path": ".agents/skills/arcadia-role/SKILL.md",
+      "bytes": 9434,
+      "sha256": "bb2a5910a08af40bf1deee1bc4d709b1eee420d7334a1869987b570ae57bb1b5"
+    },
+    {
+      "path": ".agents/skills/arcadia-guardrail/SKILL.md",
+      "bytes": 5565,
+      "sha256": "9a68171099ddb1f71378a1e2f401b6a33e1ff70eb87a859fe80cefb50e4fa24a"
+    },
+    {
+      "path": "docs/agent-guidance/operator-directed-work.md",
+      "bytes": 4494,
+      "sha256": "9c7c88bb7015eb36c7c04a595807fab42b18b7972102d4f13955033f53995744"
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "bytes": 2458,
+      "sha256": "0e23186653006ebf4cd4620276fde96fec4122e81a7dc839127337b71ef503ad"
+    },
+    {
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "bytes": 6949,
+      "sha256": "a46104491e473cf7dad9a33eb74a320f31ebe177b86920889b4a3fb6d7d89b74"
+    },
+    {
+      "path": "docs/agent-guidance/continuation.md",
+      "bytes": 7256,
+      "sha256": "9c3ff89313226e6b51bd0fdbb01015830201b09766fc9c3c1ddbb4a37878e797"
+    },
+    {
+      "path": "docs/agent-guidance/git-identity.md",
+      "bytes": 5248,
+      "sha256": "b613888f440a9c5a61af3195ae978e179899beb26e967224d88990d1123d924a"
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "bytes": 21758,
+      "sha256": "45e937b77c26949e3b9c8f48c9861ed148703594297cd519d608ded04a661d78"
+    },
+    {
+      "path": "docs/working-copy-safety.md",
+      "bytes": 16202,
+      "sha256": "0a3d6fd400d23bc42ef08db21a1e5c625a51888cab312d0f18a2dc5105395d46"
+    },
+    {
+      "path": "docs/agent-guidance/arcadia-repository.md",
+      "bytes": 30312,
+      "sha256": "9887c078abb59740cecfb88478af89323ae55c1b684051c7279f9d04adb914c8"
+    },
+    {
+      "path": "docs/agent-guidance/principles.md",
+      "bytes": 14124,
+      "sha256": "c6cdcfd81c4779ae8b9e126453bac52def54c4b5eb50539caa63a2454eabe7fc"
+    },
+    {
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "bytes": 4690,
+      "sha256": "2247fb33da135af65d2ab0275f11e620e9bc703b8c6a0307fed73dc8b9428d46"
+    },
+    {
+      "path": "docs/agent-guidance/standard-harness.md",
+      "bytes": 5569,
+      "sha256": "1a8c9d1d23068fe036e83e9b9acc6e550c13f5dc650e5ca9ae529e3f39f5c7e6"
+    },
+    {
+      "path": "docs/notes-to-self.md",
+      "bytes": 43625,
+      "sha256": "c488dbe4b357d09b0e12998aab83e08524a70a760b4cacf731267936ea4ee380"
+    },
+    {
+      "path": "docs/reports/preservation-input-repair-2026-10-14.md",
+      "bytes": 10257,
+      "sha256": "e59f6a2fe412725400743d7d1ad5f7de58827295a26186adf781d4e149300c1b"
+    },
+    {
+      "path": "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md",
+      "bytes": 26321,
+      "sha256": "758d410ee702c5a1b66d8f96a05ddada8c9c7aeccaae3a37f3198c64968e12dd"
+    },
+    {
+      "path": "docs/arcadia-semantics.md",
+      "bytes": 15647,
+      "sha256": "ca8ade28e573a4521567866e528d94c8526d740a3164c1e5b97eb6c177969031"
+    },
+    {
+      "path": "docs/reports/session-ledger/README.md",
+      "bytes": 338,
+      "sha256": "779e254e5c3304192496baeb949b64deaac0d9c6b53b30a09b74b67935d5393e"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "bytes": 2514,
+      "sha256": "4ce5aef1e20fb0405ad4350556e5e28ac5f3357a12f197f5cffc82ca9be718f9"
+    },
+    {
+      "path": "tests/fast-rehearsal/README.md",
+      "bytes": 24117,
+      "sha256": "13b61fcb8b71a8cf380f3d296fceb407f705fa1bc50d436033bde705553594ab"
+    },
+    {
+      "path": "docs/managed-production-readiness.md",
+      "bytes": 94248,
+      "sha256": "1f3f414a246f2eae5a7afe85ed30dece07ddcf54dcd380a7483233c24a44c7bd"
+    }
+  ],
+  "sections": {
+    "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md": "current Action lines280-296",
+    "docs/notes-to-self.md": "preservation timeout/input77 and rehearsal334; context excerpts",
+    "docs/agent-guidance/arcadia-repository.md": "Orientation, Semantics, Model Selection, Identity, QA Plan, Working-Copy Safety",
+    "docs/working-copy-safety.md": "safety states, Daily check, start/stop; broker not invoked",
+    "docs/agent-guidance/pull-requests.md": "Independent review/feedback; CI failures132-177; lifecycle225-289; QA and work metadata290-352; merge not invoked",
+    "docs/arcadia-semantics.md": "Core rule, concept model, canonical concepts, Behavior (lines1-190)",
+    "docs/agent-guidance/index.json": "All entries read; matching procedures loaded by operation",
+    "docs/managed-production-readiness.md": "Current answer/gates1-72; prove cheaply and refresh contract850-880. No Action/Grant/Plan or live-run transition performed; Lead owns future readiness derivation."
+  },
+  "externalBrief": {
+    "path": "/private/tmp/arcadia-1680-implementer-brief.json",
+    "bytes": 5184,
+    "sha256": "a8bd21d105ba4f932650f3047fc32a7c6de0ff305ca4f4dc4cf17f83d8f0cf4a"
+  },
+  "providedInstructions": "Operator interaction/PR/Article/skill preferences supplied in chat; parent sole-writer assignment and full generated brief."
+}

@@ -1,0 +1,65 @@
+{
+  "sourceSha256": "18380a9875664e437e7da5a3cef7320fa630e0c8bb7946d3a7d335c22b621b85",
+  "limits": "Full invocation failed and remains failed. Focused retry proves selected semantics at unchanged bounds; final settlement-report assertion separately verified. No full source-state replay or installed adoption proof.",
+  "runs": [
+    {
+      "label": "full",
+      "command": "node scripts/fast-rehearsal.mjs --maxWorkers=1",
+      "exitCode": 1,
+      "wallMs": 3349380,
+      "report": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-owm3jc/report.json",
+      "sha256": "8beeaba45dee0f415a1795e873d743d62a9cfd8f909b351e77d354aee115b0d1",
+      "scenarioCount": 44,
+      "recordedErrors": 66,
+      "unexpectedErrors": [
+        {
+          "kind": "lifecycle",
+          "command": "worker tick: log",
+          "cwd": "<scenario>/fixture",
+          "exitCode": null,
+          "stderr": "Escalated two-action-rehearsal-v4/write-marker-a to the operator (environment_wall): Environment wall for two-action-rehearsal-v4/write-marker-a (workspace_write) found by the session probe, run inside the Session as its first step (recorded probe budget 5000 tokens): the Session was told to stop before spending and will not be relaunched automatically. The attempt spent 1800 input tokens. workspace_write: workspace_write: EROFS: read-only file system, open 'database/.probe' | session probe {\"probe\":\"session-capability/v1\",\"nonce\":\"c202436c6ed860a2cdc890f596a1cbd3\",\"ok\":false,\"ms\":31,\"checks\":[{\"name\":\"workspace_write\",\"ok\":false,\"error\":\"EROFS: read-only file system, open 'database/.probe'\"},{\"name\":\"host_validation\",\"ok\":true},{\"name\":\"preservation\",\"ok\":true}]}",
+          "expected": false
+        },
+        {
+          "kind": "lifecycle",
+          "command": "worker tick: launch",
+          "cwd": "<scenario>/fixture",
+          "exitCode": null,
+          "stderr": "Environment wall for two-action-rehearsal-v4/write-marker-a (workspace_write) found by the session probe, run inside the Session as its first step (recorded probe budget 5000 tokens): the Session was told to stop before spending and will not be relaunched automatically. The attempt spent 1800 input tokens. workspace_write: workspace_write: EROFS: read-only file system, open 'database/.probe' | session probe {\"probe\":\"session-capability/v1\",\"nonce\":\"c202436c6ed860a2cdc890f596a1cbd3\",\"ok\":false,\"ms\":31,\"checks\":[{\"name\":\"workspace_write\",\"ok\":false,\"error\":\"EROFS: read-only file system, open 'database/.probe'\"},{\"name\":\"host_validation\",\"ok\":true},{\"name\":\"preservation\",\"ok\":true}]}",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "label": "focused",
+      "command": "node scripts/fast-rehearsal.mjs --maxWorkers=1 -t 'Grant expires while step 4|Issue #1518'",
+      "exitCode": 0,
+      "wallMs": 284969,
+      "report": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-Jbdh32/report.json",
+      "sha256": "629b583b5329954a17d369f7e4b2e90c0c1387dd54a2e887c5d340772c8ff567",
+      "scenarioCount": 4,
+      "recordedErrors": 5,
+      "unexpectedErrors": [
+        {
+          "kind": "lifecycle",
+          "command": "worker tick: integration",
+          "cwd": "<scenario>/fixture",
+          "exitCode": null,
+          "stderr": "Integration waits on a governed completion; reconciliation outcome was incomplete_resumable.",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "label": "final-settlement-case",
+      "command": "node scripts/fast-rehearsal.mjs --maxWorkers=1 -t 'never reports accepted_completion when the settlement cannot be committed'",
+      "exitCode": 0,
+      "wallMs": 226253,
+      "report": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-R0cWMY/report.json",
+      "sha256": "526a51b432f9dc3ded58fa90dc6903ab88d7ea6d3538d9229bc96d835940b9b6",
+      "scenarioCount": 1,
+      "recordedErrors": 3,
+      "unexpectedErrors": []
+    }
+  ]
+}
