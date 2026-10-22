@@ -3577,3 +3577,22 @@ use `$arcadia-release-manager` in Codex, `/arcadia-release-manager` in Claude
 Code, or ask OpenCode to load `arcadia-release-manager`. Loading it does not
 start a watch or grant dispatch or messaging authority. For installation and
 discovery checks, see [skill compatibility](docs/agent-guidance/skills.md).
+
+## Shared provider usage diagnostics
+
+Codex, Claude Code and OpenCode can all use `arcadia provider-usage --json`.
+Without `--refresh` it makes no provider request and labels Claude's cached
+windows as credential-context-unverified. `--refresh` makes one bounded usage
+read each for Claude and Codex without writing the shared production telemetry
+or inheriting its cooldown. It reports actual request attempts, timestamps,
+HTTP/transport/parse outcomes and allowance windows. OpenCode is explicitly
+unsupported here; its underlying provider allowance stays unknown.
+
+Claude normally selects environment, file, then Keychain. Use
+`--claude-source environment|file|keychain` to select exactly one source;
+an absent or rejected credential never silently switches accounts. Source and
+known expiry are reported; credentials are never printed, exchanged or changed.
+This diagnostic does not prove the worker uses the same credential or grant
+production admission. A live worker-context capacity check remains required
+before production approval. No model call, reset redemption or production
+activation occurs.

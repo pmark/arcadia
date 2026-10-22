@@ -91,6 +91,8 @@ export interface CodingAgentAvailabilitySnapshot {
  */
 export interface ClaudeOAuthCredentials {
   accessToken: string;
+  source?: "environment" | "file" | "keychain";
+  expiresAt?: string | null;
 }
 
 export interface ClaudeUsageResponse {
@@ -300,14 +302,20 @@ function readProviderTelemetry(provider: string, now: Date): ProviderTelemetry |
   return null;
 }
 
-async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials | null> {
+export type ClaudeCredentialSource = "auto" | "environment" | "file" | "keychain";
+
+export async function loadClaudeOAuthCredentials(source: ClaudeCredentialSource = "auto"): Promise<ClaudeOAuthCredentials | null> {
   const environmentToken = stringValue(process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  if (environmentToken) return { accessToken: environmentToken };
+  if ((source === "auto" || source === "environment") && environmentToken) return { accessToken: environmentToken, source: "environment", expiresAt: null };
+  if (source === "environment") return null;
 
   const credentialsPath = process.env.ARCADIA_CLAUDE_CREDENTIALS_PATH
     ?? path.join(os.homedir(), ".claude", ".credentials.json");
-  const fromFile = credentialsFromRecord(readJsonRecord(credentialsPath));
-  if (fromFile) return fromFile;
+  if (source === "auto" || source === "file") {
+    const fromFile = credentialsFromRecord(readJsonRecord(credentialsPath));
+    if (fromFile) return { ...fromFile, source: "file" };
+    if (source === "file") return null;
+  }
 
   if (process.platform !== "darwin") return null;
   for (const service of CLAUDE_KEYCHAIN_SERVICES) {
@@ -318,7 +326,7 @@ async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials | nu
         maxBuffer: 1024 * 1024,
       });
       const fromKeychain = credentialsFromRecord(JSON.parse(result.stdout) as Record<string, unknown>);
-      if (fromKeychain) return fromKeychain;
+      if (fromKeychain) return { ...fromKeychain, source: "keychain" };
     } catch {
       // Try the next credential source, then retain the snapshot fallback.
     }
@@ -330,12 +338,15 @@ function credentialsFromRecord(record: Record<string, unknown> | null): ClaudeOA
   const oauth = objectValue(record?.claudeAiOauth);
   const accessToken = stringValue(oauth?.accessToken);
   if (!accessToken) return null;
-  return { accessToken };
+  const expiry = oauth?.expiresAt;
+  const parsed = typeof expiry === "number" ? new Date(expiry) : null;
+  return { accessToken, expiresAt: parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null };
 }
 
-async function requestClaudeUsage(accessToken: string): Promise<{
+export async function requestClaudeUsage(accessToken: string): Promise<{
   status: number;
   body: ClaudeUsageResponse | null;
+  failure?: "transport" | "parse";
 }> {
   try {
     const response = await fetch(CLAUDE_USAGE_URL, {
@@ -352,10 +363,10 @@ async function requestClaudeUsage(accessToken: string): Promise<{
     try {
       return { status: response.status, body: await response.json() as ClaudeUsageResponse };
     } catch {
-      return { status: response.status, body: null };
+      return { status: response.status, body: null, failure: "parse" };
     }
   } catch {
-    return { status: 0, body: null };
+    return { status: 0, body: null, failure: "transport" };
   }
 }
 
@@ -507,8 +518,7 @@ function writeTelemetryCache(cache: CodingAgentTelemetryCache): void {
   }
 }
 
-function readClaudeStatusLineTelemetry(now: Date): ProviderTelemetry | null {
-  const filePath = claudeStatusLinePath();
+export function readClaudeStatusLineTelemetry(now: Date, filePath = claudeStatusLinePath()): ProviderTelemetry | null {
   if (!existsSync(filePath)) return null;
 
   try {

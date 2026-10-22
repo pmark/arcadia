@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runProviderUsageCommand } from "./commands/providerUsage.js";
 import { runRunConsumeCommand } from "./commands/runConsume.js";
 import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
 import { runRecurringScheduleCommand, renderRecurringScheduleSuccess } from "./commands/recurringSchedule.js";
@@ -639,6 +640,14 @@ let invokedCommandKey: string | null = null;
 
 export function buildProgram(): Command {
   const program = new Command();
+  addJsonOption(program.command("provider-usage")
+    .description("Shared credential-aware usage diagnostics for Codex, Claude Code and OpenCode")
+    .option("--refresh", "Make one bounded usage read per supported provider; no shared cache writes")
+    .option("--claude-source <source>", "auto, environment, file or keychain; explicit selection never falls back", "auto"))
+    .action((options: { refresh?: boolean; claudeSource?: string; json?: boolean }) =>
+      runCliAction("provider-usage", options, () => runProviderUsageCommand(options),
+        (response) => [JSON.stringify(response.data, null, 2)]));
+
 
   program
     .name("arcadia")

@@ -1,0 +1,27 @@
+{
+  "session_id": "01a1647b-2f2c-7c82-9317-9a02cebc4384",
+  "role": "lead",
+  "model": "inherited-native-runtime (exact id unavailable)",
+  "effort": null,
+  "action_id": "operator-directed:#1693",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "live-keychain-usage-auto-review-denied",
+      "cost_min": null,
+      "fix_ref": "docs/reports/shared-usage-1693-and-1662-recovery.md"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Production Off. Helper and one-shot recovery prepared; live credential verification denied before execution. No registered reviewer/QA admission or live production attempt."
+}
