@@ -1,0 +1,102 @@
+{
+  "schema": "arcadia-preservation-speed-proof-v1",
+  "issue": "https://github.com/pmark/arcadia/issues/1680",
+  "before": {
+    "label": "before",
+    "baselineRevision": "fdc6d0548b4b6d51c81d7a4ce59654da3b75f67d",
+    "git": "/usr/bin/git",
+    "loadBefore": [
+      40.73388671875,
+      73.44482421875,
+      116.103515625
+    ],
+    "loadAfter": [
+      53.37353515625,
+      49.86181640625,
+      91.98291015625
+    ],
+    "candidateHead": "fdc6d0548b4b6d51c81d7a4ce59654da3b75f67d",
+    "sourceSha256": "dec292b949c90edc88131452665edb70ad4454171d5bb823440e9d162044fe45",
+    "tree": "dfd53e47261961ae799e96932898e8160947d749",
+    "files": 3001,
+    "bytes": 49968000,
+    "captureMs": 133158,
+    "materializeMs": 153633,
+    "captureCounts": {
+      "rev-parse": 1,
+      "ls-files": 3,
+      "ls-tree": 1,
+      "cat-file": 1,
+      "hash-object": 3000,
+      "read-tree": 1,
+      "update-index": 1,
+      "write-tree": 1
+    },
+    "materializeCounts": {
+      "ls-tree": 1,
+      "cat-file": 3001
+    },
+    "sourcePreserved": true,
+    "errors": [],
+    "fixtureFile": "/private/tmp/arcadia-1680-benchmark-fixture-final.json",
+    "destination": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-1680-speed-fGZ9ce/before-materialized-6Yl6rv",
+    "node": "v22.23.1",
+    "date": "2026-10-22T03:35:12.677Z",
+    "loadNote": "Single serial sample; other host activity and warm caches are uncontrolled. Phase-only fixture, not full replay or installed-runtime proof."
+  },
+  "after": {
+    "label": "after",
+    "baselineRevision": "fdc6d0548b4b6d51c81d7a4ce59654da3b75f67d",
+    "git": "/usr/bin/git",
+    "loadBefore": [
+      53.37353515625,
+      49.86181640625,
+      91.98291015625
+    ],
+    "loadAfter": [
+      73.32470703125,
+      54.25927734375,
+      93.0517578125
+    ],
+    "candidateHead": "fdc6d0548b4b6d51c81d7a4ce59654da3b75f67d",
+    "sourceSha256": "18380a9875664e437e7da5a3cef7320fa630e0c8bb7946d3a7d335c22b621b85",
+    "tree": "dfd53e47261961ae799e96932898e8160947d749",
+    "files": 3001,
+    "bytes": 49968000,
+    "captureMs": 6802,
+    "materializeMs": 3992,
+    "captureCounts": {
+      "rev-parse": 1,
+      "ls-files": 3,
+      "ls-tree": 1,
+      "cat-file": 1,
+      "hash-object": 1,
+      "read-tree": 1,
+      "update-index": 1,
+      "write-tree": 1
+    },
+    "materializeCounts": {
+      "ls-tree": 1,
+      "cat-file": 12
+    },
+    "sourcePreserved": true,
+    "errors": [],
+    "fixtureFile": "/private/tmp/arcadia-1680-benchmark-fixture-final.json",
+    "destination": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-1680-speed-fGZ9ce/after-materialized-KPW8bn",
+    "node": "v22.23.1",
+    "date": "2026-10-22T03:35:26.355Z",
+    "loadNote": "Single serial sample; other host activity and warm caches are uncontrolled. Phase-only fixture, not full replay or installed-runtime proof."
+  },
+  "proof": {
+    "sameTree": true,
+    "everyRegularFileByteAndExecutableMode": true,
+    "baselineSymlinkTarget": true,
+    "headIndexStatusPreserved": true,
+    "baselineAndCandidateSourceHashesVerified": true
+  },
+  "limits": [
+    "One serial sample per implementation; uncontrolled heavy host activity and warm caches.",
+    "Synthetic data-only Git fixture; no Arcadia workspace or candidate fixture execution.",
+    "Phase-only proof; no full source-state replay, installation or production claim."
+  ]
+}
