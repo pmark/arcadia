@@ -187,11 +187,13 @@ function readExport(file: string): string {
   } finally { closeSync(fd); }
 }
 
-export function readOpenCodeUsage(options: OpenCodeUsageOptions, now: Date, deps: OpenCodeUsageDependencies = {}): OpenCodeSessionUsage | undefined {
+export function readOpenCodeUsage(options: OpenCodeUsageOptions, now: Date | (() => Date), deps: OpenCodeUsageDependencies = {}): OpenCodeSessionUsage | undefined {
   if (options.session === undefined && options.exportFile === undefined) return undefined;
+  // Preserve explicit Date snapshots; live callers supply a clock read after IO.
+  const clock = typeof now === "function" ? now : () => now;
   const result: OpenCodeSessionUsage = {
     kind: "local_session_telemetry", observation: "unavailable", source: options.session !== undefined ? "session_export" : "export_file",
-    outcome: "unavailable", capturedAt: now.toISOString(), sourceUpdatedAt: null, latestAssistantCompletedAt: null, cliVersion: null,
+    outcome: "unavailable", capturedAt: "", sourceUpdatedAt: null, latestAssistantCompletedAt: null, cliVersion: null,
     sessionIdSha256: null, accountQuota: null, accountBinding: "unknown", windows: [], steps: [], coverage: null,
   };
   try {
@@ -202,9 +204,12 @@ export function readOpenCodeUsage(options: OpenCodeUsageOptions, now: Date, deps
       ? (deps.collectSession ?? collectOpenCodeSession)(options.session)
       : { text: (deps.readExport ?? readExport)(options.exportFile!), cliVersion: null };
     const reduced = reduceOpenCodeExport(input.text, options.session);
-    if (Date.parse(reduced.sourceUpdatedAt) > now.getTime() || (reduced.latestAssistantCompletedAt !== null && Date.parse(reduced.latestAssistantCompletedAt) > now.getTime())) throw new Error("future_source_timestamp");
+    const observedAt = clock();
+    result.capturedAt = observedAt.toISOString();
+    if (Date.parse(reduced.sourceUpdatedAt) > observedAt.getTime() || (reduced.latestAssistantCompletedAt !== null && Date.parse(reduced.latestAssistantCompletedAt) > observedAt.getTime())) throw new Error("future_source_timestamp");
     return { ...result, ...reduced, cliVersion: input.cliVersion, observation: "local_export", outcome: reduced.coverage.status === "partial" ? "partial_coverage" : "ok" };
   } catch (error) {
+    if (!result.capturedAt) result.capturedAt = clock().toISOString();
     const allowed = ["conflicting_sources", "invalid_session_id", "invalid_export_file", "invalid_export", "invalid_metrics", "invalid_json", "export_too_large", "session_mismatch", "duplicate_message", "conflicting_step", "missing_steps", "collector_unavailable", "collector_failed", "future_source_timestamp"];
     result.outcome = error instanceof Error && allowed.includes(error.message) ? error.message : "export_unavailable";
     return result;

@@ -147,6 +147,46 @@ describe("OpenCode safe local session telemetry", () => {
     expect(output).not.toContain(file); expect(output).not.toContain("secret-");
   });
 
+  it("checks active-session source timestamps against the observation-end clock", async () => {
+    let clockTime = now.getTime();
+    const data = fixture();
+    const result = await readProviderUsage({ now, opencodeSession: session }, {
+      clock: () => new Date(clockTime), readClaudeCache: () => null,
+      opencode: { collectSession: () => {
+        data.info.time.updated = now.getTime() + 500;
+        data.messages[0].info.time.completed = now.getTime() + 400;
+        clockTime = now.getTime() + 1000;
+        return { text: JSON.stringify(data), cliVersion: "1.16.2" };
+      } },
+    });
+    expect(result.providers[2].sessionUsage).toMatchObject({ observation: "local_export", outcome: "ok",
+      capturedAt: new Date(now.getTime() + 1000).toISOString(), sourceUpdatedAt: new Date(now.getTime() + 500).toISOString() });
+    expect(result.providers[2].sessionUsage?.steps).toHaveLength(2);
+  });
+
+  it("still refuses source timestamps beyond collection end with an injected live clock", async () => {
+    let clockTime = now.getTime();
+    const data = fixture();
+    const result = await readProviderUsage({ now, opencodeSession: session }, {
+      clock: () => new Date(clockTime), readClaudeCache: () => null,
+      opencode: { collectSession: () => {
+        data.info.time.updated = now.getTime() + 1001;
+        clockTime = now.getTime() + 1000;
+        return { text: JSON.stringify(data), cliVersion: "1.16.2" };
+      } },
+    });
+    expect(result.providers[2].sessionUsage).toMatchObject({ observation: "unavailable", outcome: "future_source_timestamp",
+      capturedAt: new Date(now.getTime() + 1000).toISOString(), steps: [] });
+  });
+
+  it("keeps an explicit now snapshot fixed unless a live clock is deliberately injected", async () => {
+    const data = fixture(); data.info.time.updated = now.getTime() + 1;
+    const result = await readProviderUsage({ now, opencodeSession: session }, {
+      readClaudeCache: () => null, opencode: { collectSession: () => ({ text: JSON.stringify(data), cliVersion: "1.16.2" }) },
+    });
+    expect(result.providers[2].sessionUsage).toMatchObject({ observation: "unavailable", outcome: "future_source_timestamp", capturedAt: now.toISOString(), steps: [] });
+  });
+
   it("keeps explicit session telemetry separate from account status and other credentials", async () => {
     const loadClaude = vi.fn(); const readCodex = vi.fn();
     const result = await readProviderUsage({ now, opencodeSession: session }, { loadClaude, readCodex, readClaudeCache: () => null, opencode: { collectSession: () => ({ text: JSON.stringify(fixture()), cliVersion: "1.16.2" }) } });

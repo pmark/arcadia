@@ -33,7 +33,7 @@ Private local receipts (outside the repository): `/private/tmp/arcadia-opencode-
 
 ## Validation and boundary
 
-- `pnpm exec vitest run tests/opencode-usage.test.ts tests/provider-usage.test.ts tests/activity-no-record-commands.test.ts`: exit 0, 40 tests passed. Synthetic fixtures cover 47 steps, mixed coverage, duplicates/conflicts, zero model cost, missing/invalid/nonfinite/negative metrics, truncation, privacy filtering, explicit-source failure/no fallback, no default collection, PTY export and descendant cleanup on deadline and oversized output.
+- `pnpm exec vitest run tests/opencode-usage.test.ts tests/provider-usage.test.ts tests/activity-no-record-commands.test.ts`: exit 0, 43 tests passed. Synthetic fixtures cover 47 steps, mixed coverage, duplicates/conflicts, zero model cost, missing/invalid/nonfinite/negative metrics, truncation, privacy filtering, explicit-source failure/no fallback, no default collection, PTY export and descendant cleanup on deadline and oversized output.
 - `pnpm exec tsc --noEmit`: exit 0.
 - Touched-file `pnpm exec eslint` for the four source files and two test files: exit 0.
 - `git diff --check`: exit 0.
@@ -42,3 +42,18 @@ Private local receipts (outside the repository): `/private/tmp/arcadia-opencode-
 Public source boundaries: the [CLI documentation](https://opencode.ai/docs/cli/) describes stats/export/run; version-pinned [export source](https://raw.githubusercontent.com/anomalyco/opencode/v1.16.2/packages/opencode/src/cli/cmd/export.ts) preserves numeric usage while sanitizing transcript fields, and [step schema](https://raw.githubusercontent.com/anomalyco/opencode/v1.16.2/packages/core/src/v1/session.ts) defines the token buckets. [Go documentation](https://opencode.ai/v2/docs/console/go/) directs current allowance tracking to Console. The separate [Console budget API](https://opencode.ai/v2/docs/console/api/budgets/) reads configured monthly member budgets/spend, not verified Go rolling subscription capacity. No authenticated API request or credential read was performed. Account allowance remains unknown; this change cannot enable unattended production admission by itself.
 
 Independent current-head review, push, PR handoff, required CI and any further production decisions belong to the Lead. No self-acceptance or governed completion is claimed.
+
+
+## Independent review round 1 repair
+
+The reviewer found that comparing source timestamps with a Date captured before
+export could reject an active session updated during collection. A synthetic
+`readProviderUsage` regression reproduced that refusal before the repair (exit 1:
+two clock/capture assertions failed, one fixed-snapshot assertion passed). The
+shared helper now passes a clock through to the OpenCode read. Timestamp
+validation and `capturedAt` use the observation-end clock after collection and
+reduction; truly future source timestamps still refuse. An explicitly supplied
+`options.now` remains a fixed deterministic snapshot. A deliberate dependency
+`clock` injection models advancing time without silently changing that seam.
+The same three-file focused suite now includes these three regressions (43 tests).
+No provider, model or existing-session calls were used for this repair.
