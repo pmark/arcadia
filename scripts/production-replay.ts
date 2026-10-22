@@ -117,8 +117,9 @@ export interface ReplayOptions {
   /**
    * SIMULATION ONLY: the independent reviewer (`codex exec` and its sandbox
    * probe) answers with this verdict instead of being refused. `pass` passes
-   * every criterion; `fail-repairable` fails Correctness with one ordinary
-   * finding (no authority wording), the shape the repair loop launches for.
+   * every criterion; `fail-repairable` fails the first code-review head (including
+   * retries of that head), then passes later heads. `fail-always` keeps failing
+   * code review to exercise bounded exhaustion. All findings are simulated.
    * It predicts what the worker does with such a verdict, never the verdict.
    */
   simulateVerdict?: SimulatedVerdict;
@@ -151,6 +152,8 @@ export interface ReplayOptions {
   executor?: "scripted" | "real" | `candidate:${string}`;
   /** Files the scripted executor writes, per Action id (the part of the key after the Project slug). */
   executorFiles?: Record<string, Record<string, string>>;
+  /** Replacement work for subsequent scripted launches of the same Action; no repair is inferred. */
+  executorRepairFiles?: Record<string, Record<string, string>>;
   /**
    * `simulated` (default): reviewers answer `simulateVerdict` or are refused as before.
    * `real`: the real code-review and QA reviewer (`codex exec`, read-only sandbox) run against the
@@ -171,7 +174,7 @@ export interface ReplayOptions {
   retirePreserved?: string;
 }
 
-export type SimulatedVerdict = "pass" | "fail-repairable";
+export type SimulatedVerdict = "pass" | "fail-repairable" | "fail-always";
 
 export interface PathMapping {
   from: string;
@@ -251,6 +254,8 @@ interface Manifest {
   fidelity: string[];
   executor?: "scripted" | "real" | `candidate:${string}`;
   executorFiles?: Record<string, Record<string, string>>;
+  /** Replacement work for subsequent scripted launches of the same Action; no repair is inferred. */
+  executorRepairFiles?: Record<string, Record<string, string>>;
   realClaude?: string;
   realHome?: string;
 }
@@ -958,14 +963,24 @@ process.exit(recorded.status);
  * `--output-last-message` and records a `simulated:reviewer` effect. It says
  * nothing about what the real reviewer would judge.
  */
-const SIMULATED_REVIEWER = String.raw`import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+const SIMULATED_REVIEWER = String.raw`import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const [simulated, effectsLog, ...args] = process.argv.slice(2);
 const prompt = readFileSync(0, "utf8");
 const role = prompt.includes("Exact-Head Code Review") ? "code-review" : "qa";
 const criteria = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "review-criteria.json"), "utf8"))[role];
-const fail = simulated === "fail-repairable" && role === "code-review";
+// One failed immutable head for this replay, never a pass on a retry of it.
+let fail = simulated === "fail-always" && role === "code-review";
+if (simulated === "fail-repairable" && role === "code-review") {
+  const section = prompt.split("## Candidate\n")[1]?.split("\n## Pull-request body")[0];
+  const candidate = JSON.parse(section ?? "null");
+  if (!candidate?.repository || !/^[a-f0-9]{40}$/i.test(candidate.headSha ?? "")) throw new Error("Simulated repair review needs an immutable Candidate.");
+  const stateFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "failed-review-head.json");
+  if (!existsSync(stateFile)) writeFileSync(stateFile, JSON.stringify({ repository: candidate.repository, headSha: candidate.headSha }), { flag: "wx" });
+  const first = JSON.parse(readFileSync(stateFile, "utf8"));
+  fail = first.repository === candidate.repository && first.headSha === candidate.headSha;
+}
 const verdict = {
   verdict: fail ? "fail" : "pass",
   summary: fail ? "SIMULATED verdict (production replay): one repairable defect." : "SIMULATED verdict (production replay): no defect.",
@@ -1220,7 +1235,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (!existsSync(recording)) writeFileSync(recording, "");
     const manifest: Manifest = {
       root, workspace, receipt, now: options.now ?? new Date().toISOString(), ticks: options.ticks ?? (options.executor ? 80 : 12), repos, effectsLog, fidelity,
-      ...(options.executor ? { executor: options.executor } : {}), ...(realClaude ? { realClaude, realHome } : {}), ...(options.executorFiles ? { executorFiles: options.executorFiles } : {})
+      ...(options.executor ? { executor: options.executor } : {}), ...(realClaude ? { realClaude, realHome } : {}), ...(options.executorFiles ? { executorFiles: options.executorFiles } : {}), ...(options.executorRepairFiles ? { executorRepairFiles: options.executorRepairFiles } : {})
     };
     const manifestFile = path.join(root, "manifest.json");
     writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
@@ -1482,6 +1497,9 @@ async function runPrepared(manifestFile: string): Promise<void> {
       return null;
     }
   };
+  // One executor owns the whole replay so completion request ids survive repair launches.
+  let scriptedExecutor: import("../tests/fast-rehearsal/helpers/executor.js").ScriptedExecutor | undefined;
+  const scriptedAttempts = new Map<string, number>();
   /** --executor: produce the launched Session's result in its worktree, then the caller ends its pane. */
   const runExecutor = async (launch: { name: string; cwd: string; command: string; args: string[] }): Promise<string> => {
     try {
@@ -1489,10 +1507,19 @@ async function runPrepared(manifestFile: string): Promise<void> {
         const { ScriptedExecutor } = await import("../tests/fast-rehearsal/helpers/executor.js");
         const { PhaseRecorder } = await import("../tests/fast-rehearsal/helpers/report.js");
         const recorder = new PhaseRecorder("production-replay", path.join(manifest.root, "executor.json"), (text: string) => text);
-        const executor = new ScriptedExecutor(workspace, recorder, path.join(manifest.root, "unreachable-from-the-agent-sandbox"));
+        const executor = scriptedExecutor ??= new ScriptedExecutor(workspace, recorder, path.join(manifest.root, "unreachable-from-the-agent-sandbox"));
         const brief = launch.args.at(-1) ?? "";
         const action = /^Action: (.+)$/m.exec(brief)?.[1]?.trim() ?? "";
-        const files = manifest.executorFiles?.[action] ?? manifest.executorFiles?.[action.slice(action.indexOf("/") + 1)] ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action} (production replay).\n` };
+        const attempt = (scriptedAttempts.get(action) ?? 0) + 1;
+        scriptedAttempts.set(action, attempt);
+        const lookup = (fixtures: Manifest["executorFiles"]) => fixtures?.[action] ?? fixtures?.[action.slice(action.indexOf("/") + 1)];
+        const initial = lookup(manifest.executorFiles);
+        const repair = lookup(manifest.executorRepairFiles);
+        if (attempt > 1 && initial && !repair) throw new Error(`Scripted repair of ${action} needs --executor-repair-files; unchanged initial work is not a repair.`);
+        const files = (attempt > 1 ? repair : initial) ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action}, attempt ${attempt} (production replay).\n` };
+        if (attempt > 1 && !Object.entries(files).some(([file, content]) => {
+          try { return readFileSync(path.join(launch.cwd, file), "utf8") !== content; } catch { return true; }
+        })) throw new Error(`Scripted repair of ${action} changes no work; supply different --executor-repair-files.`);
         // Match a headless Session: the host, not the executor, commits and settles completion.
         const result = executor.run(launch, { files, validation: "true" }, "draft-at-base-uncommitted");
         return `scripted executor finished ${result.brief.action}: work ${result.workCommit.slice(0, 12)}, settlement ${result.settlementCommit?.slice(0, 12) ?? "none"}, head ${result.finalHead.slice(0, 12)}${result.settleWarnings.length ? `, settle warnings: ${result.settleWarnings.join("; ")}` : ""}`;
@@ -1725,7 +1752,7 @@ function parseArgs(argv: string[]): ReplayOptions {
       case "--keep": options.keep = true; break;
       case "--simulate-verdict": {
         const verdict = value();
-        if (verdict !== "pass" && verdict !== "fail-repairable") throw new Error("--simulate-verdict is pass or fail-repairable.");
+        if (verdict !== "pass" && verdict !== "fail-repairable" && verdict !== "fail-always") throw new Error("--simulate-verdict is pass, fail-repairable or fail-always.");
         options.simulateVerdict = verdict;
         break;
       }
@@ -1736,6 +1763,7 @@ function parseArgs(argv: string[]): ReplayOptions {
         options.executor = executor as ReplayOptions["executor"];
         break;
       }
+      case "--executor-repair-files": options.executorRepairFiles = JSON.parse(readFileSync(value(), "utf8")) as ReplayOptions["executorRepairFiles"]; break;
       case "--executor-files": options.executorFiles = JSON.parse(readFileSync(value(), "utf8")) as ReplayOptions["executorFiles"]; break;
       case "--retire-preserved": options.retirePreserved = value(); break;
       case "--merge-into-base": options.mergeIntoBase = value(); break;
@@ -1746,7 +1774,7 @@ function parseArgs(argv: string[]): ReplayOptions {
         break;
       }
       case "--help": case "-h":
-        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable] [--simulate-github-writes] [--executor scripted|real|candidate:<ref>] [--executor-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>] [--retire-preserved <sessionId|all>]\n`
+        process.stdout.write(`Usage: pnpm production-replay --source-workspace <workspace> (--grant <request-id prefix> | --card <grant operator-script id>) [--ticks 12] [--github offline|live] [--github-recording <jsonl>] [--now <iso>] [--report <file>] [--parent <dir>] [--keep] [--simulate-verdict pass|fail-repairable|fail-always] [--simulate-github-writes] [--executor scripted|real|candidate:<ref>] [--executor-files <json>] [--executor-repair-files <json>] [--reviewers real|simulated] [--merge-into-base <ref>] [--retire-preserved <sessionId|all>]\n`
           + "  --simulate-verdict and --simulate-github-writes are SIMULATIONS: they show what the worker does next, never what the reviewer or GitHub would do.\n"
           + "  --executor continues past launch (Session result produced by the replay, simulated PR and merge); --reviewers real runs the real read-only reviewers over the simulated PR evidence (spends tokens).\n");
         process.exit(0);

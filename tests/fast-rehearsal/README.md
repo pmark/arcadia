@@ -44,6 +44,24 @@ chain takes 1 to 2.5 min (about 12 to 20 s per Action under parallel load)
 and sets the wall time. Measured 2026-10-06 on a loaded host: all 27
 scenarios in 2 min 22 s, the nine-Action chain 2 min 10 s.
 
+## Live-state production replay repair scenario
+
+`pnpm production-replay` also uses `ScriptedExecutor`, retaining one instance
+across launches so repair completions have distinct request ids. With
+`--simulate-verdict fail-repairable`, the first code-review head fails;
+retrying that exact repository/head still fails, and later heads pass. This
+exercises one recovery, not a real reviewer's judgment. Use `fail-always` for
+repeated failure and budget exhaustion.
+
+For custom work, pass `--executor-files initial.json` and
+`--executor-repair-files repaired.json`. Both map Action ids to filename/content
+maps. The initial fixture should contain the intended review defect, and the
+repair fixture should correct it within the same Action's scope. Subsequent
+launches use the repair map; missing or unchanged repair work is refused rather
+than manufacturing a new completion as proof of a fix. Provider execution,
+reviewer verdicts and GitHub writes remain simulated; validation and the
+worker's transitions are real. Keep source production Off.
+
 ## What is real and what is faked
 
 Real, called as `arcadia worker` calls it (src/commands/worker.ts: preservation

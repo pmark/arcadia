@@ -380,13 +380,35 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     const probe = spawnSync("codex", ["sandbox", "--", "/bin/zsh", "-c", "true"], { cwd: root, env: bare, encoding: "utf8" });
     expect(probe.stdout.trim()).toBe("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied");
     const output = path.join(root, "verdict.json");
-    const reviewed = spawnSync("codex", ["exec", "--json", "--output-last-message", output, "-"], { cwd: root, env: bare, input: "## Exact-Head Code Review\n", encoding: "utf8" });
+    const reviewed = spawnSync("codex", ["exec", "--json", "--output-last-message", output, "-"], { cwd: root, env: bare, input: `## Exact-Head Code Review\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: "a".repeat(40) })}\n## Pull-request body`, encoding: "utf8" });
     expect(reviewed.status).toBe(0);
     const verdict = JSON.parse(readFileSync(output, "utf8")) as { verdict: string; summary: string; checks: Array<{ criterion: string; status: string }> };
     expect(verdict.verdict).toBe("fail");
     expect(verdict.summary).toContain("SIMULATED");
     expect(verdict.checks.filter((check) => check.status === "fail").map((check) => check.criterion)).toEqual(["correctness"]);
     expect(effects()).toEqual([{ kind: "simulated:reviewer", detail: "code-review fail" }]);
+    const review = (head: string, role = "Exact-Head Code Review") => {
+      const result = spawnSync("codex", ["exec", "--json", "--output-last-message", output, "-"], {
+        cwd: root, env: bare, encoding: "utf8",
+        input: `## ${role}\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: head.repeat(40) })}\n## Pull-request body`
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return JSON.parse(readFileSync(output, "utf8")).verdict;
+    };
+    expect(review("a")).toBe("fail"); // Retry never turns the failed head green.
+    expect(review("b")).toBe("pass");
+    expect(review("a")).toBe("fail"); // Even after reviewing the repair.
+    expect(review("b", "Pull-Request QA")).toBe("pass");
+    const alwaysRoot = path.join(root, "always");
+    mkdirSync(alwaysRoot);
+    installGuards(alwaysRoot, effectsLog, "fail-always");
+    for (const head of ["c", "d"]) {
+      const result = spawnSync(path.join(alwaysRoot, "bin", "codex"), ["exec", "--output-last-message", output, "-"], {
+        cwd: root, env: bare, encoding: "utf8", input: `Exact-Head Code Review ${head}`
+      });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(output, "utf8")).verdict).toBe("fail");
+    }
     // Anything else is still a refused provider run.
     expect(spawnSync("codex", ["login"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
   });
@@ -742,7 +764,7 @@ describe("production replay past launch (--executor, --reviewers)", () => {
   });
 });
 
-describe.each([false, true])("production replay of the whole chain with a scripted executor (Vitest: %s)", (vitest) => {
+describe.each([{ vitest: false, repair: false }, { vitest: true, repair: false }, { vitest: false, repair: true }])("production replay of the whole chain with a scripted executor ($vitest, repair: $repair)", ({ vitest, repair }) => {
   let source: Rehearsal;
   let parent: string;
   let report: ReplayReport;
@@ -776,7 +798,7 @@ describe.each([false, true])("production replay of the whole chain with a script
         parent,
         keep: true,
         executor: "scripted",
-        executorFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` }, "write-marker-b": {
+        executorFiles: { "write-marker-a": { "MARKER.md": repair ? `${LINE_A}\n${LINE_B}\n` : `${LINE_A}\n` }, "write-marker-b": {
           "MARKER.md": `${LINE_A}\n${LINE_B}\n`,
           // The Action's acceptance criteria name this test file; the host refuses a completion without it.
           "tests/marker.test.mjs": vitest
@@ -784,7 +806,8 @@ describe.each([false, true])("production replay of the whole chain with a script
             : `import { readFileSync } from "node:fs";\nimport test from "node:test";\nimport assert from "node:assert";\ntest("both lines in order", () => {\n  assert.deepEqual(readFileSync("MARKER.md", "utf8").trimEnd().split("\\n"), [${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}]);\n});\n`
         } },
         reviewers: "simulated",
-        simulateVerdict: "pass",
+        executorRepairFiles: { "write-marker-a": { "MARKER.md": `${LINE_A}\n` } },
+        simulateVerdict: repair ? "fail-repairable" : "pass",
         simulateGithubWrites: true,
         print: (line) => printed.push(line)
       });
@@ -821,7 +844,16 @@ describe.each([false, true])("production replay of the whole chain with a script
   // Needs real Seatbelt preservation validation (macOS, unsandboxed shell, ARCADIA_PRESERVATION_HOST_TEST=1).
   it.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1" || process.platform !== "darwin")("runs the whole chain: preservation, simulated PR, review, simulated merge, the next Action, all merged", () => {
     if (process.env.REPLAY_DEBUG_FILE) writeFileSync(process.env.REPLAY_DEBUG_FILE, printed.join("\n"));
-    expect(report.ticks.filter((tick) => tick.launch?.outcome === "launched").map((tick) => tick.launch!.actionKey)).toEqual([source.actionA, source.actionB]);
+    expect(report.ticks.filter((tick) => tick.launch?.outcome === "launched").map((tick) => tick.launch!.actionKey)).toEqual(repair ? [source.actionA, source.actionA, source.actionB] : [source.actionA, source.actionB]);
+    expect(report.ticks.flatMap((tick) => tick.reconciled).filter((entry) => entry.outcome === "accepted_completion")).toHaveLength(repair ? 3 : 2);
+    expect(report.ticks.flatMap((tick) => tick.log).join("\n")).not.toContain("repair_budget_exhausted");
+    expect(report.ticks.map((tick) => tick.executor ?? "").join("\n")).not.toContain("FAILED");
+    if (repair) {
+      const logs = report.ticks.flatMap((tick) => tick.log).join("\n");
+      expect(logs).toContain("round 1 of 3");
+      const reviewerEffects = report.ticks.flatMap((tick) => tick.effects).filter((effect) => effect.kind === "simulated:reviewer");
+      expect(reviewerEffects.map((effect) => effect.detail)).toEqual(["code-review fail", "code-review pass", "qa pass", "code-review pass", "qa pass"]);
+    }
     expect(report.stop.reason).toBe("all_merged");
     const kinds = report.ticks.flatMap((tick) => tick.effects.map((effect) => effect.kind));
     expect(kinds).toContain("simulated:reviewer");
