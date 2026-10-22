@@ -1105,7 +1105,7 @@ export function scriptedReplayFiles(input: {
   const lookup = (fixtures: ReplayOptions["executorFiles"]) => fixtures?.[action] ?? fixtures?.[action.slice(action.indexOf("/") + 1)];
   const initial = lookup(input.initial);
   const repair = lookup(input.repair);
-  if (attempt > 1 && initial && !repair) throw new Error(`Scripted repair of ${action} needs --executor-repair-files; unchanged initial work is not a repair.`);
+  if (attempt > 1 && !repair) throw new Error(`Scripted repair of ${action} needs --executor-repair-files; unchanged initial work is not a repair.`);
   const files = (attempt > 1 ? repair : initial) ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action}, attempt ${attempt} (production replay).\n` };
   if (attempt > 1 && !Object.entries(files).some(([file, content]) => {
     try { return readFileSync(path.join(cwd, file), "utf8") !== content; } catch { return true; }

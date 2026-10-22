@@ -74,6 +74,7 @@ describe("production replay repair fixtures", () => {
       writeFileSync(path.join(root, "WORK.md"), "initial\n");
       const input = { action: "project/action", attempt: 2, cwd: root, initial: { action: { "WORK.md": "initial\n" } } };
       expect(() => scriptedReplayFiles(input)).toThrow(/needs --executor-repair-files/);
+      expect(() => scriptedReplayFiles({ ...input, initial: undefined })).toThrow(/needs --executor-repair-files/);
       expect(() => scriptedReplayFiles({ ...input, repair: input.initial })).toThrow(/changes no work/);
       expect(readFileSync(path.join(root, "WORK.md"), "utf8")).toBe("initial\n");
       expect(scriptedReplayFiles({ ...input, repair: { "project/action": { "WORK.md": "repaired\n" } } })).toEqual({ "WORK.md": "repaired\n" });
