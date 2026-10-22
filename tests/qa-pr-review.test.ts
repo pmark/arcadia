@@ -28,6 +28,33 @@ afterEach(() => {
 });
 
 describe("minimal independent pull-request QA", () => {
+  it.each(["head", "body", "late-body"])("refuses an operator-pinned %s drift before reviewer or role allocation", (drift) => {
+    const fixture = createFixture();
+    const initial = rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]);
+    let reads = 0;
+    let selections = 0;
+    const dependencies: QaPrReviewDependencies = {
+      selectReviewer: () => { selections += 1; return fakeReviewer(); },
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+changed\n");
+        if (command === "gh" && args[1] === "view") {
+          reads += 1;
+          const changed = drift !== "late-body" || reads > 1;
+          return success(JSON.stringify({ ...initial,
+            ...(changed && drift === "head" ? { headRefOid: "f".repeat(40) } : {}),
+            ...(changed && drift !== "head" ? { body: initial.body + " changed" } : {}) }));
+        }
+        throw new Error(`Unexpected command: ${command}`);
+      }
+    };
+    expect(() => runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/77", rerun: true,
+      expectedCandidate: { headSha: HEAD_SHA, bodySha256: createHash("sha256").update(initial.body).digest("hex"), inputRevision: "pinned-input", maxOrdinal: 4 }
+    }, dependencies)).toThrow("Pinned recovery candidate head or body changed");
+    expect(selections).toBe(drift === "late-body" ? 1 : 0);
+    expect(withDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get())).toEqual({n: 0});
+  });
+
   it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
     const fixture = createFixture();
     let reviewerInvocations = 0;

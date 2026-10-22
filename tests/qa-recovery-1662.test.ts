@@ -13,7 +13,7 @@ vi.mock("../src/cli/workspace.js", () => ({ resolveReadyWorkspace: () => ({ work
 vi.mock("../src/production/policy.js", () => ({ readProductionPolicySafely: mocks.policy }));
 vi.mock("../src/sessions/roleLineage.js", () => ({ verdictAttemptLimit: mocks.limit }));
 vi.mock("../src/qa/prReview.js", () => ({ runQaPrReviewCommand: mocks.qa }));
-import { runQa1662Recovery } from "../scripts/qa-recovery-1662.js";
+import { runQa1662Recovery, assertRecoveryTerminal } from "../scripts/qa-recovery-1662.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const id = "recover-qa-1662-20261022";
@@ -66,5 +66,20 @@ describe("one-shot #1662 operator recovery", () => {
     mocks.rows = [{ role: "qa", ordinal: 4, status: "failed" }];
     await expect(runQa1662Recovery()).rejects.toThrow("QA lineage moved");
     expect(mocks.qa).not.toHaveBeenCalled(); expect(mocks.open).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("canonical recovery read-back", () => {
+  const head = "cff844a22093fbbf4c0a29408502718ab91d047a";
+  const input = "04991ec7485bf6ff4bdbce6183a44591108922de2f817ea602228b3992dbe99d";
+  const row = { ordinal: 4, status: "passed", target_head: head, input_revision: input, terminal_receipt_json: JSON.stringify({ artifactId: "artifact-qa", headSha: head, verdict: "pass" }) };
+  it("accepts only the exact canonical terminal and matching result receipt", () => {
+    expect(() => assertRecoveryTerminal(row, "artifact-qa")).not.toThrow();
+    for (const change of [{ status: "failed" }, { ordinal: 5 }, { target_head: "moved" }, { input_revision: "moved" }, { terminal_receipt_json: "{}" }]) {
+      expect(() => assertRecoveryTerminal({ ...row, ...change }, "artifact-qa")).toThrow("canonical passed attempt 4");
+    }
+    expect(() => assertRecoveryTerminal(row, "different-artifact")).toThrow("canonical passed attempt 4");
+    expect(() => assertRecoveryTerminal(undefined, "artifact-qa")).toThrow("canonical passed attempt 4");
   });
 });

@@ -31,7 +31,7 @@ import { NAMED_EXECUTION_PROFILES, type ResolvedExecutionRequirement } from "../
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { toWorkspaceRelativePath, getWorkspacePaths } from "../workspace/paths.js";
 import { listMonitoredProjects } from "../commands/workMonitor.js";
-import { assertVerdictHead, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, lineageBoundSessionForBranch } from "../sessions/roleLineage.js";
+import { assertVerdictHead, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, lineageBoundSessionForBranch, verdictAttemptLimit } from "../sessions/roleLineage.js";
 import { getSessionRoleAttempt, latestRoleAttempt, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 import { normalizeStatusCheck, type NormalizedStatusCheck, type RawStatusCheck } from "../workMonitoring/pullRequests.js";
@@ -184,6 +184,8 @@ export interface QaPrReviewOptions {
   pullRequest: string;
   reviewerProfile?: string;
   rerun?: boolean;
+  /** An operator recovery may narrow the candidate; it never grants review authority. */
+  expectedCandidate?: { headSha: string; bodySha256: string; inputRevision: string; maxOrdinal: number };
   /**
    * Bound on the reviewer-model process. The CLI keeps its 30-minute default;
    * the worker tick passes a shorter bound so one review cannot outlive the
@@ -350,6 +352,7 @@ export function runQaPrReviewCommand(
       state: pullRequest.state
     });
   }
+  assertExpectedCandidate(pullRequest, options.expectedCandidate);
   assertPullRequestReadyForQa(pullRequest);
 
   const candidate = toCandidate(project, reference.repository, pullRequest);
@@ -423,18 +426,30 @@ export function runQaPrReviewCommand(
   // run; the reviewer is identified by its host binding, never by the
   // developer's Session, and nothing the caller supplies is the verdict.
   const reviewerActorId = reviewerActorIdFor(profile, reviewer.bindingId);
+  if (options.expectedCandidate) {
+    assertExpectedCandidate(readPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand), options.expectedCandidate);
+  }
   const lineage = withDatabase(workspacePath, (db) => {
     const session = lineageBoundSessionForBranch(db, { repositoryPath: project.repositoryPath, branch: pullRequest.headRefName });
-    if (!session) return null;
+    if (!session) {
+      if (options.expectedCandidate) throw validationError("Pinned recovery requires managed candidate lineage.");
+      return null;
+    }
     const readiness = independentVerdictReadiness(db, { session, repoRoot: project.repositoryPath });
+    if (options.expectedCandidate && (!readiness.ready || readiness.requirement.inputRevision !== options.expectedCandidate.inputRevision)) {
+      throw validationError("Pinned recovery requirement changed before attempt allocation.");
+    }
     let previous: ReturnType<typeof latestRoleAttempt> = null;
     if (readiness.ready) {
       assertVerdictHead(readiness.binding, candidate.headSha);
       assertManagedProductionOn(db, profile);
       previous = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, profile.role);
     }
+    const maxOrdinal = options.expectedCandidate && readiness.ready
+      ? Math.min(options.expectedCandidate.maxOrdinal, verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, profile.role))
+      : undefined;
     const begun = beginIndependentVerdict(db, {
-      role: profile.role, session, repoRoot: project.repositoryPath,
+      role: profile.role, session, repoRoot: project.repositoryPath, maxOrdinal,
       requestId: `${profile.role}-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
       actorId: reviewerActorId, executionCwd: process.cwd(), reviewerBindingId: reviewer.bindingId, retryAuthorized: options.rerun === true, now: now()
     });
@@ -1690,6 +1705,13 @@ function readPersistedReceipt(
     });
   } catch {
     return null;
+  }
+}
+
+function assertExpectedCandidate(pullRequest: RawPullRequest, expected: QaPrReviewOptions["expectedCandidate"]): void {
+  if (!expected) return;
+  if (pullRequest.headRefOid !== expected.headSha || createHash("sha256").update(pullRequest.body).digest("hex") !== expected.bodySha256) {
+    throw validationError("Pinned recovery candidate head or body changed before attempt allocation.");
   }
 }
 

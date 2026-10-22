@@ -23,6 +23,13 @@ const bodySha256 = "5057d7d18cb5f4046d0a0a0ee743ac50686c71e74399a5cd93fb59216a7f
 const run = (command: string, args: string[]) => execFileSync(command, args, { cwd: root, encoding: "utf8", timeout: 45_000, maxBuffer: 4 * 1024 * 1024 }).trim();
 const refuse = (reason: string): never => { throw new Error(`Recovery refused: ${reason}`); };
 
+interface RecoveryTerminal { ordinal: number; status: string; target_head: string | null; input_revision: string; terminal_receipt_json: string | null }
+export function assertRecoveryTerminal(terminal: RecoveryTerminal | undefined, artifactId: string): void {
+  const receipt = terminal?.terminal_receipt_json ? JSON.parse(terminal.terminal_receipt_json) as { artifactId?: string; headSha?: string; verdict?: string } : null;
+  if (!terminal || terminal.ordinal !== 4 || terminal.status !== "passed" || terminal.target_head !== head || terminal.input_revision !== inputRevision
+    || receipt?.artifactId !== artifactId || receipt.headSha !== head || receipt.verdict !== "pass") refuse("returned QA pass lacks matching canonical passed attempt 4");
+}
+
 export async function runQa1662Recovery() {
   if (process.env.ARCADIA_OPERATOR_SCRIPT_ID !== id || process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR !== path.join(library, `${id}.json`)) refuse("launch only from this card in the operator-action library");
   if (process.env.CODEX_SANDBOX) refuse("host operator action only");
@@ -52,7 +59,8 @@ export async function runQa1662Recovery() {
     return { revision: policy.revision, epoch: policy.epoch };
   });
   const authority = assertAuthority();
-  const pr = JSON.parse(run("gh", ["pr", "view", url, "--json", "headRefOid,body,state,isDraft,statusCheckRollup"])) as { headRefOid: string; body: string; state: string; isDraft: boolean; statusCheckRollup: { name?: string; conclusion?: string }[] };
+  const readPinnedPr = () => JSON.parse(run("gh", ["pr", "view", url, "--json", "headRefOid,body,state,isDraft,statusCheckRollup"])) as { headRefOid: string; body: string; state: string; isDraft: boolean; statusCheckRollup: { name?: string; conclusion?: string }[] };
+  const pr = readPinnedPr();
   if (pr.headRefOid !== head || pr.state !== "OPEN" || createHash("sha256").update(pr.body).digest("hex") !== bodySha256) refuse("candidate head or repaired QA plan moved");
   const required = ["lint", "dashboard", "e2e", ...Array.from({length: 8}, (_, i) => `unit-shard-${i + 1}`), ...Array.from({length: 4}, (_, i) => `unit-${i + 1}`)];
   if (required.some(name => !pr.statusCheckRollup.some(check => check.name === name && check.conclusion === "SUCCESS"))) refuse("required CI not green");
@@ -65,13 +73,19 @@ export async function runQa1662Recovery() {
   closeSync(openSync(path.join(library, `${id}.started`), "wx", 0o600));
   writeFileSync(path.join(runDir, "preflight.json"), JSON.stringify({ head, authority, observedAt: new Date().toISOString() }));
   try {
-    if (pr.isDraft) run("gh", ["pr", "ready", url]);
+    const beforeReady = readPinnedPr();
+    if (beforeReady.headRefOid !== head || createHash("sha256").update(beforeReady.body).digest("hex") !== bodySha256) refuse("candidate changed immediately before readiness");
+    // GitHub has no conditional ready mutation: a remote push can race it.
+    // QA still receives the approved pin and refuses drift before allocation.
+    if (beforeReady.isDraft) run("gh", ["pr", "ready", url]);
     const currentAuthority = assertAuthority();
     if (currentAuthority.revision !== authority.revision || currentAuthority.epoch !== authority.epoch) refuse("production authority changed after readiness");
-    const result = runQaPrReviewCommand({ workspace: workspacePath, pullRequest: url, rerun: true, reviewerTimeoutMs: 300_000 });
+    const result = runQaPrReviewCommand({ workspace: workspacePath, pullRequest: url, rerun: true, reviewerTimeoutMs: 300_000, expectedCandidate: { headSha: head, bodySha256, inputRevision, maxOrdinal: 4 } });
     writeFileSync(path.join(runDir, "result.json"), JSON.stringify(result, null, 2));
+    if (result.data.verdict !== "pass" || result.data.candidate.headSha !== head) refuse("QA did not pass for the pinned head; preserve report and stop");
+    const terminal = withReadOnlyDatabase(workspacePath, db => db.prepare("SELECT ordinal, status, target_head, input_revision, terminal_receipt_json FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = 'qa' ORDER BY ordinal DESC LIMIT 1").get(requirement, inputRevision)) as RecoveryTerminal | undefined;
+    assertRecoveryTerminal(terminal, result.data.artifact.id);
     console.log(JSON.stringify(result));
-    if (result.data.verdict !== "pass") refuse("QA did not pass; preserve report and stop");
   } catch (error) {
     writeFileSync(path.join(runDir, "failure-handoff.md"), `Recovery did not establish success. Do not retry this card or reset attempts. Inspect result.json if present and canonical QA ordinal 4. Production was not changed by this card.\n${error instanceof Error ? error.message : "unknown failure"}\n`);
     throw error;

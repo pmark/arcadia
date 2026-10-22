@@ -141,3 +141,28 @@ Instruction retrieval (UTF-8 source bytes; sections used as recorded above):
 - Active Plan: exact current Action `cover-mail-ack-receipt-kind-collision`; open, clarified, agent-owned; no overlap with this operator-directed helper.
 - `docs/notes-to-self.md`: credential/usage, workspace resolution, sandbox-write recovery, isolated dependencies, pre-press gate. Learn query returned no matches; retained checkpoint lesson remains cited.
 - Skills: arcadia-guardrail, arcadia-release-manager and its checkpoint/production-run-playbook references; arcadia-role and arcadia-process-critic retrieved for review boundaries.
+
+## Independent review and pre-mortem
+
+Round 1 at 3839fe495 found two blocking recovery defects: the operator's
+candidate pin was not passed into canonical QA, and returned pass was not
+confirmed by canonical attempt settlement. The repair narrows the existing QA
+executor with expected head/body/input, rechecks before attempt allocation, and
+requires matching passed canonical attempt 4 and artifact receipt on read-back.
+GitHub has no conditional ready API: a remote push can race readiness despite
+an immediate pre-read; QA refuses a moved approved pin before allocation, and
+readiness alone grants no review, integration or merge authority.
+
+Independent process pre-mortem at 3839fe495 returned NO-GO for activation.
+Before asking for START, run the repaired-body/unchanged-head scenario with
+code-review ordinal 5, QA ordinal 3 and worker ticks interleaved with recovery.
+Prove whether review binding remains current or ordinal 6 becomes necessary,
+and that no duplicate QA allocation/integration occurs. The prior replay
+stopped at this hold. The card safely refuses moved lineage and retains its
+marker; that fail-closed behavior does not prove a usable one-press recovery.
+Capacity, installed identity, immutable-validator proof and explicit STOP
+semantics remain separate gates. These findings are retained under #1693;
+source merge plus specifically bounded credential verification are the only
+immediate approval items. Recovery and START remain held.
+
+The general QA pass-result/stale-lineage inconsistency is retained as #1695; this consumer verifies canonical read-back. The recovery pin also caps allocation at ordinal 4 without raising the canonical verdict limit.
