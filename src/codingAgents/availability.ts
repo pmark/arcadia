@@ -362,7 +362,10 @@ export async function requestClaudeUsage(accessToken: string): Promise<{
     if (!response.ok) return { status: response.status, body: null };
     try {
       return { status: response.status, body: await response.json() as ClaudeUsageResponse };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+        return { status: response.status, body: null, failure: "transport" };
+      }
       return { status: response.status, body: null, failure: "parse" };
     }
   } catch {

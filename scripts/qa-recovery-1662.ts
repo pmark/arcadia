@@ -8,7 +8,7 @@ import { withReadOnlyDatabase } from "../src/db/connection.js";
 import { resolveReadyWorkspace } from "../src/cli/workspace.js";
 import { readProductionPolicySafely } from "../src/production/policy.js";
 import { verdictAttemptLimit } from "../src/sessions/roleLineage.js";
-import { runQaPrReviewCommand } from "../src/qa/prReview.js";
+import { classifyPullRequestChecks, runQaPrReviewCommand, type PullRequestCheckRun } from "../src/qa/prReview.js";
 
 const id = "recover-qa-1662-20261022";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,11 +59,15 @@ export async function runQa1662Recovery() {
     return { revision: policy.revision, epoch: policy.epoch };
   });
   const authority = assertAuthority();
-  const readPinnedPr = () => JSON.parse(run("gh", ["pr", "view", url, "--json", "headRefOid,body,state,isDraft,statusCheckRollup"])) as { headRefOid: string; body: string; state: string; isDraft: boolean; statusCheckRollup: { name?: string; conclusion?: string }[] };
+  const readPinnedPr = () => JSON.parse(run("gh", ["pr", "view", url, "--json", "headRefOid,body,state,isDraft,statusCheckRollup"])) as { headRefOid: string; body: string; state: string; isDraft: boolean; statusCheckRollup: PullRequestCheckRun[] };
   const pr = readPinnedPr();
   if (pr.headRefOid !== head || pr.state !== "OPEN" || createHash("sha256").update(pr.body).digest("hex") !== bodySha256) refuse("candidate head or repaired QA plan moved");
   const required = ["lint", "dashboard", "e2e", ...Array.from({length: 8}, (_, i) => `unit-shard-${i + 1}`), ...Array.from({length: 4}, (_, i) => `unit-${i + 1}`)];
-  if (required.some(name => !pr.statusCheckRollup.some(check => check.name === name && check.conclusion === "SUCCESS"))) refuse("required CI not green");
+  const assertCi = (candidate: typeof pr) => {
+    if (required.some(name => !candidate.statusCheckRollup.some(check => check.name === name))
+      || classifyPullRequestChecks(candidate.statusCheckRollup).state !== "green") refuse("required CI not green");
+  };
+  assertCi(pr);
   const latest = assertAuthority();
   if (authority.revision !== latest.revision || authority.epoch !== latest.epoch) refuse("production authority changed during preparation");
   const runDir = path.join(library, "runs", `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`);
@@ -75,6 +79,9 @@ export async function runQa1662Recovery() {
   try {
     const beforeReady = readPinnedPr();
     if (beforeReady.headRefOid !== head || createHash("sha256").update(beforeReady.body).digest("hex") !== bodySha256) refuse("candidate changed immediately before readiness");
+    assertCi(beforeReady);
+    const beforeReadyAuthority = assertAuthority();
+    if (beforeReadyAuthority.revision !== authority.revision || beforeReadyAuthority.epoch !== authority.epoch) refuse("production authority changed immediately before readiness");
     // GitHub has no conditional ready mutation: a remote push can race it.
     // QA still receives the approved pin and refuses drift before allocation.
     if (beforeReady.isDraft) run("gh", ["pr", "ready", url]);

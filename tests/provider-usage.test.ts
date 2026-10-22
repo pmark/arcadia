@@ -72,6 +72,14 @@ describe("shared provider usage diagnostics", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
+  it.each(["AbortError", "TimeoutError"])("classifies a response-body %s as transport while retaining HTTP status", async name => {
+    const error = new Error("private body-read failure"); error.name = name;
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => { throw error; } })));
+    try {
+      expect(await requestClaudeUsage("secret")).toEqual({ status: 200, body: null, failure: "transport" });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("explicit absent environment source never tries a credential fallback", async () => {
     vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
     try { expect(await loadClaudeOAuthCredentials("environment")).toBeNull(); }

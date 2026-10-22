@@ -3,6 +3,34 @@
 Operator-directed intake: #1693. No governed Action exists for this request.
 Instruction: “Build the shared credential-aware usage helper for Codex, Claude Code and OpenCode, then prepare #1662’s QA recovery and tell me exactly what I need to approve. Keep production Off.”
 
+## Operator-approved follow-through and bounded repair
+
+The operator approved source merge of #1694 once current-head review/checks are
+clear, and one bounded live diagnostic. At 2026-10-22T18:18:23Z that diagnostic
+succeeded: Claude Keychain HTTP 200, five-hour 4% and weekly 1%; Codex app-server
+weekly 2%. These are historical selected-context readings, not fresh worker
+admission proof. No inference, token refresh, shared-cache write or installation
+occurred. The earlier host rejection below is retained as history and was
+resolved by the explicit credential-use approval.
+
+After all 15 CI jobs turned green, the final feedback read found three new
+CodeRabbit findings, recorded in #1699. The operator then explicitly authorized
+one bounded repair and independent delta-review round beyond the five-round
+limit: “Fix all three findings, rerun CI, and merge #1694 if clear.” Installation,
+#1662 recovery and production activation remain prohibited.
+
+The repair uses the canonical non-advisory CI classifier plus named-job
+completeness both at preflight and at the final remote read. Conflicting duplicate,
+pending and extra failed checks refuse readiness. Authority revision/epoch is
+rechecked immediately before readiness, with the later check retained. A body
+read aborted with AbortError/TimeoutError is a transport outcome with its received
+HTTP status preserved; malformed JSON remains a parse outcome. Hermetic regression
+tests exercise those failures, both missing-job reads, and a valid path to the
+mocked guarded-QA boundary. They never run live recovery. The first test run's
+incomplete child-process mock was repaired; its failed receipt is preserved.
+Final review/CI results belong to the public PR summary. No additional review
+round beyond this explicit exception is authorized here.
+
 ## Delivered boundary
 
 One shared CLI, `arcadia provider-usage --json`, works identically for callers in
