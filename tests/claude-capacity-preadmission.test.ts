@@ -187,6 +187,31 @@ describe("worker pre-admission Claude usage refresh (Decision 0130)", () => {
     expect(claudeDecision().reason).not.toContain("last refresh did not update");
   });
 
+  it("preserves a received HTTP status when its JSON body is malformed", async () => {
+    writeStaleSnapshot();
+    const request = vi.fn(async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("fixture malformed JSON"); } }));
+    vi.stubGlobal("fetch", request);
+    await refreshClaudeCodeUsageTelemetry(new Date(), { force: true, deps: {
+      snapshotPath, loadCredentials: async () => ({ accessToken: "fixture-token" })
+    } });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(readFileSync(snapshotPath, "utf8")).arcadia_usage_refresh_http_status).toBe(200);
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("not_reported");
+    expect(claudeDecision()).toMatchObject({ admitted: false, code: "capacity_stale" });
+    expect(claudeDecision().reason).not.toContain("could not be reached");
+  });
+
+  it("retains transport failure classification when no HTTP response arrives", async () => {
+    writeStaleSnapshot();
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fixture transport failure"); }));
+    await refreshClaudeCodeUsageTelemetry(new Date(), { force: true, deps: {
+      snapshotPath, loadCredentials: async () => ({ accessToken: "fixture-token" })
+    } });
+    expect(JSON.parse(readFileSync(snapshotPath, "utf8")).arcadia_usage_refresh_http_status).toBeNull();
+    expect(readClaudeUsageRefreshState(snapshotPath)).toBe("unreachable");
+    expect(claudeDecision().admitted).toBe(false);
+  });
+
   it("the manual refresh is read-only too: a 401 is recorded unauthorized with no token exchange", async () => {
     writeStaleSnapshot();
     const requestUsage = vi.fn(async () => ({ status: 401, body: null }));

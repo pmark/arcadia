@@ -349,7 +349,11 @@ async function requestClaudeUsage(accessToken: string): Promise<{
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) return { status: response.status, body: null };
-    return { status: response.status, body: await response.json() as ClaudeUsageResponse };
+    try {
+      return { status: response.status, body: await response.json() as ClaudeUsageResponse };
+    } catch {
+      return { status: response.status, body: null };
+    }
   } catch {
     return { status: 0, body: null };
   }

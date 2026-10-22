@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
+  "review_rounds": 1,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Operator-directed diagnostic; no governed Action. Four red regressions then 56 focused tests, lint and tsc passed. Fresh live read unreachable; cause unproved. Review/CI pending. Production Off."
+  "notes": "Operator-directed diagnostic; no governed Action. Six red-first cases, 58 final focused tests, lint and tsc passed. HTTP403 access blocker separate in1692. R2 review/CI pending. Production Off."
 }
