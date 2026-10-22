@@ -1,0 +1,26 @@
+{
+  "session_id": "capacity-1690",
+  "role": "driver",
+  "model": "inherited-runtime-unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1690",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "claude-refresh-http-detail-discarded",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1690"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Operator-directed diagnostic; no governed Action. Four red regressions then 56 focused tests, lint and tsc passed. Fresh live read unreachable; cause unproved. Review/CI pending. Production Off."
+}
