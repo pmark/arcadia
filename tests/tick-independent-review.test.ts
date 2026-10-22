@@ -1,3 +1,5 @@
+import path from "node:path";
+import { withPrReviewExecutionClaim } from "../src/qa/executionClaim.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { runProductionResetRepairBudgetCommand } from "../src/commands/production.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -90,6 +92,28 @@ function verdicts(rehearsal: Rehearsal, role: "code-review" | "qa") {
 }
 
 describe("tick-driven independent review", () => {
+  it("waits on a manual QA execution claim without spending retries, then reconciles one QA pass", () => {
+    const { rehearsal } = finishedA();
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.tick(); // code-review pass
+    const pr = rehearsal.github.prs[0];
+    const parts = new URL(pr.url).pathname.split("/").filter(Boolean);
+    const claimRoot = path.join(rehearsal.workspace, "artifacts", "qa", "pull-requests", `${parts[0]}-${parts[1]}`, parts[3]);
+    withPrReviewExecutionClaim(claimRoot, () => {
+      for (let i = 0; i < 12; i += 1) rehearsal.tick();
+      expect(rehearsal.github.reviewerCalls.map(call => call.role)).toEqual(["code-review"]);
+      expect(verdicts(rehearsal, "qa")).toEqual([]);
+      const rows = withDatabase(rehearsal.workspace, db => listReviewSteps(db, rehearsal.actionA));
+      expect(rows[0]).toMatchObject({ failures: 0, total_failures: 0 });
+      expect(escalation(rehearsal)?.kind).toBe("awaiting_independent_verdicts");
+    });
+    const { integrated } = rehearsal.tickThroughReview(5);
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+    expect(rehearsal.github.reviewerCalls.map(call => call.role)).toEqual(["code-review", "qa"]);
+    expect(verdicts(rehearsal, "qa").map(attempt => attempt.status)).toEqual(["passed"]);
+  });
+
   it("readies the draft PR once, runs code review then QA on the exact head, integrates, and stays idempotent on later ticks", () => {
     const { rehearsal, a } = finishedA();
     exitTick(rehearsal);

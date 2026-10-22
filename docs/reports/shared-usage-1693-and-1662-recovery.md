@@ -186,3 +186,14 @@ receipt is retained at `/private/tmp/arcadia-1693-ci-shard6.log`; no test or gat
 was weakened. The diagnostic is now explicitly host-level/workspace-exempt,
 with normal/error invocations added to the no-database/no-activity contract.
 This keeps diagnostic reads out of the live workspace activity log as intended.
+
+The final handoff audit also found that worker ticks must treat an existing
+canonical execution claim as waiting, not as a failed review command. Otherwise
+manual QA could consume the worker's transient-failure budget despite no
+second reviewer running. The worker now preserves that budget on the named
+claim refusal. A real tick/settlement/Git rehearsal holds the claim for twelve
+ticks, proves no extra reviewer/attempt or failure allocation, releases it and
+proves one QA pass followed by integration. This extends the #1696 concurrency
+repair; live #1662 execution remains held for fresh installed/worker proof.
+
+The unchanged 15-minute E2E job at dab5218de passed on its single infrastructure retry. Its original 11m43s browser dependency-download delay remains Issue #1697; no gate was weakened. Final worker-wait-guard source still requires its own exact-head CI.

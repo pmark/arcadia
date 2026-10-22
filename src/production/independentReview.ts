@@ -786,6 +786,9 @@ export function advanceIndependentReview(db: Database.Database, input: {
         );
       } catch (error) {
         const code = error instanceof ArcadiaError ? (error.details as { code?: unknown }).code : undefined;
+        if (code === "review_execution_claimed") {
+          return { kind: "waiting", reason: `The ${role} reviewer is already executing or has an uncertain execution claim; preserve its claim and wait for canonical evidence without spending the failure budget.` };
+        }
         if (code === "managed_production_off") return { kind: "waiting", reason: `Withheld the ${role} reviewer: managed production is Off.` };
         if (code === "verdict_not_ready") {
           return {
