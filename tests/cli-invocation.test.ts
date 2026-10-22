@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
+import { readOpenCodeUsage } from "../src/codingAgents/opencodeUsage.js";
 import { buildProgram } from "../src/cli.js";
 import { enclosingProjectRoot, invocationRoot, resolveInvocationPath } from "../src/cli/invocation.js";
 
@@ -182,6 +183,38 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "tidy --repo",
       "triggers --repo"
     ]);
+  });
+});
+
+describe("provider-usage --opencode-export", () => {
+  function parseExport(file: string): string {
+    const command = buildProgram().commands.find((candidate) => candidate.name() === "provider-usage")!;
+    command.parseOptions(["--opencode-export", file]);
+    return command.opts().opencodeExport as string;
+  }
+
+  it("resolves a relative export against the launcher-recorded invocation directory", () => {
+    const stood = scratch();
+    process.env.ARCADIA_INVOKED_FROM = stood;
+    expect(stood).not.toBe(process.cwd());
+    expect(parseExport("nested/export.json")).toBe(path.join(stood, "nested", "export.json"));
+  });
+
+  it("leaves an absolute export path unchanged", () => {
+    process.env.ARCADIA_INVOKED_FROM = scratch();
+    const absolute = path.join(scratch(), "export.json");
+    expect(parseExport(absolute)).toBe(absolute);
+  });
+
+  it.each(["", "   "])("preserves a blank input %j for the invalid-export-file refusal", file => {
+    const stood = scratch();
+    process.env.ARCADIA_INVOKED_FROM = stood;
+    const parsed = parseExport(file);
+    expect(parsed).toBe(file);
+    expect(parsed).not.toBe(stood);
+    expect(readOpenCodeUsage({ exportFile: parsed }, new Date(0))).toMatchObject({
+      observation: "unavailable", outcome: "invalid_export_file", steps: [],
+    });
   });
 });
 

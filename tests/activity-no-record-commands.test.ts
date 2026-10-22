@@ -83,7 +83,7 @@ afterEach(() => {
  */
 function invocations(): Record<string, string[][]> {
   return {
-    "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"]],
+    "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"], ["provider-usage", "--opencode-session", "ses_explicit", "--opencode-export", "unused.json", "--json"]],
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
     init: [
       ["init", path.join(root, "fresh")],

@@ -3585,8 +3585,8 @@ Without `--refresh` it makes no provider request and labels Claude's cached
 windows as credential-context-unverified. `--refresh` makes one bounded usage
 read each for Claude and Codex without writing the shared production telemetry
 or inheriting its cooldown. It reports actual request attempts, timestamps,
-HTTP/transport/parse outcomes and allowance windows. OpenCode is explicitly
-unsupported here; its underlying provider allowance stays unknown.
+HTTP/transport/parse outcomes and allowance windows. OpenCode account allowance stays unknown. Its optional local session usage is
+reported separately and never supplies production allowance windows.
 
 Claude normally selects environment, file, then Keychain. Use
 `--claude-source environment|file|keychain` to select exactly one source;
@@ -3596,3 +3596,49 @@ This diagnostic does not prove the worker uses the same credential or grant
 production admission. A live worker-context capacity check remains required
 before production approval. No model call, reset redemption or production
 activation occurs.
+
+
+Read local OpenCode usage with an explicit existing session:
+
+```sh
+arcadia provider-usage --opencode-session ses_EXPLICIT_ID --json > usage.json
+```
+
+This reads the installed CLI's sanitized export in memory. On macOS and Linux,
+Python 3's standard-library PTY avoids OpenCode 1.16.2's observed pipe-output
+truncation. The collector has a 15-second export deadline and an 8 MiB limit,
+kills the export process group on failure, and never launches a model session.
+If that capability is unavailable, import an explicitly named existing export:
+
+```sh
+arcadia provider-usage --opencode-export /absolute/path/existing-export.json --json > usage.json
+```
+
+Choose one source. Neither option discovers or falls back to another session,
+file, credential or provider. Without either option, OpenCode records are not
+read. An import may contain private transcript fields; only allowlisted usage
+fields are emitted, with session and step identifiers hashed. No transcript
+intermediate is written. Protect the input export according to its contents.
+The output `sessionUsage` contains each unique step's provider/model, separate
+token buckets and OpenCode-reported model cost. It preserves zero cost and does
+not estimate a missing token total or combine it with message totals. These
+figures are local session accounting, not billed spend, billing-account identity,
+or remaining subscription allowance. `sourceUpdatedAt` is the session metadata
+timestamp and may lag assistant completion. `latestAssistantCompletedAt` comes
+from assistant message metadata; neither proves the session has ended.
+`capturedAt` is this diagnostic's time, not proof of recent inference.
+Malformed, truncated, oversized or future-dated exports report `unavailable`
+with empty steps. Valid exports containing failed or unmetered assistant turns
+retain known step records with `coverage.status: partial` and message counts.
+Their observed metered usage is a lower bound, not complete session spend.
+`complete` means all assistant messages in this export were metered, with no
+reported errors or incomplete turns; it does not prove the session has ended.
+An export with no metered records is unavailable. Inspect `sessionUsage.observation` and `outcome`
+before consuming the file; successful CLI execution alone does not prove usage.
+
+The [Go documentation](https://opencode.ai/v2/docs/console/go/) directs allowance
+tracking to Console. No supported Go remaining-quota API or CLI was verified.
+The separate [Console budget API](https://opencode.ai/v2/docs/console/api/budgets/)
+reports configured monthly member budgets and spend; it does not establish
+Go's rolling allowance. Neither API credentials nor production admission are
+part of this local diagnostic.

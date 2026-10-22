@@ -1,3 +1,4 @@
+import { readOpenCodeUsage, type OpenCodeUsageDependencies, type OpenCodeSessionUsage } from "./opencodeUsage.js";
 import {
   loadClaudeOAuthCredentials, readClaudeStatusLineTelemetry, readCodexRateLimitsLive,
   requestClaudeUsage,
@@ -8,6 +9,8 @@ export interface ProviderUsageOptions {
   refresh?: boolean;
   claudeSource?: ClaudeCredentialSource;
   now?: Date;
+  opencodeSession?: string;
+  opencodeExport?: string;
 }
 
 export interface ProviderUsageReading {
@@ -20,18 +23,23 @@ export interface ProviderUsageReading {
   httpStatus: number | null;
   observedAt: string | null;
   windows: CodingAgentRateLimit[];
+  sessionUsage?: OpenCodeSessionUsage;
 }
 
 export interface ProviderUsageDependencies {
+  /** Deliberate live-clock injection; options.now alone remains a fixed snapshot. */
+  clock?: () => Date;
   loadClaude?: (source: ClaudeCredentialSource) => Promise<ClaudeOAuthCredentials | null>;
   requestClaude?: typeof requestClaudeUsage;
   readClaudeCache?: typeof readClaudeStatusLineTelemetry;
   readCodex?: typeof readCodexRateLimitsLive;
+  opencode?: OpenCodeUsageDependencies;
 }
 
 /** Diagnostic only: no admission, shared cache writes, token exchange or model call. */
 export async function readProviderUsage(options: ProviderUsageOptions = {}, deps: ProviderUsageDependencies = {}) {
-  const now = options.now ?? new Date();
+  const clock = deps.clock ?? (() => options.now ?? new Date());
+  const now = clock();
   const reading = (provider: ProviderUsageReading["provider"]): ProviderUsageReading => ({
     provider, observation: "not_requested", credentialSource: "unknown",
     credentialExpiresAt: null, requestAttempted: false, outcome: "refresh_not_requested",
@@ -41,7 +49,9 @@ export async function readProviderUsage(options: ProviderUsageOptions = {}, deps
   const codex = reading("codex");
   const opencode = reading("opencode");
   opencode.observation = "unsupported";
-  opencode.outcome = "No shared OpenCode account-usage reader; underlying provider limits remain unknown.";
+  opencode.outcome = "OpenCode account allowance is unknown; local session usage does not establish remaining quota.";
+  const sessionUsage = readOpenCodeUsage({ session: options.opencodeSession, exportFile: options.opencodeExport }, clock, deps.opencode);
+  if (sessionUsage) opencode.sessionUsage = sessionUsage;
   if (!options.refresh) {
     const cached = (deps.readClaudeCache ?? readClaudeStatusLineTelemetry)(now);
     if (cached) {
