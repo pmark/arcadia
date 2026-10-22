@@ -1,6 +1,6 @@
 import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, chmodSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { preservationStage, withPreservationProgress } from "../src/sessions/preservationStages.js";
@@ -112,6 +112,38 @@ describe("batched candidate blobs", () => {
     expect(readdirSync(destination)).not.toContain("not-captured.ignored");
     expect(f.state()).toEqual(before);
     expect(readdirSync(path.join(f.repo, ".git")).filter(name => name.startsWith("arcadia-index-"))).toEqual([]);
+  }, 30_000);
+
+  it("materializes a real size-aware tree listing above Node's default output buffer", () => {
+    const f = fixture();
+    const count = 16_000;
+    const empty = f.git(["hash-object", "-w", "--stdin"], "");
+    const names = Array.from({ length: count }, (_, index) => `file-${String(index).padStart(5, "0")}`);
+    const manifest = path.join(f.root, "tree-input");
+    writeFileSync(manifest, names.map(name => `100644 blob ${empty}\t${name}\n`).join(""));
+    const fd = openSync(manifest, "r");
+    let tree: string;
+    try {
+      tree = realExec("git", ["mktree"], { cwd: f.repo, stdio: [fd, "pipe", "pipe"] }).toString().trim();
+    } finally { closeSync(fd); }
+    const listing = (flag: string) => realExec("git", ["ls-tree", flag, tree], { cwd: f.repo, maxBuffer: 64 * 1024 * 1024 });
+    // Real Git output proves -l crosses the default 1 MiB bound for a tree
+    // whose former listing still fits; no synthetic oversized stdout is used.
+    expect(listing("-rz").byteLength).toBeLessThan(1024 * 1024);
+    expect(listing("-rlz").byteLength).toBeGreaterThan(1024 * 1024);
+    const before = f.state();
+    const destination = path.join(f.root, "large-tree"); mkdirSync(destination);
+    vi.mocked(execFileSync).mockClear();
+    materializeCandidateTree(f.repo, tree, destination);
+    expect(readdirSync(destination).sort()).toEqual(names);
+    for (const name of names) {
+      const entry = lstatSync(path.join(destination, name));
+      expect(entry.isFile()).toBe(true);
+      expect(entry.size).toBe(0);
+      expect(entry.mode & 0o777).toBe(0o444);
+    }
+    expect(vi.mocked(execFileSync).mock.calls.filter(([command, args]) => command === "git" && args?.[0] === "cat-file")).toHaveLength(Math.ceil(count / 256));
+    expect(f.state()).toEqual(before);
   }, 30_000);
 
   it("captures and materializes an empty tree without issuing blob calls", () => {

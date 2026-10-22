@@ -21,7 +21,7 @@ The same 3001-entry fixture (49968000 regular-file bytes plus one baseline symli
 | Capture | 133158 ms | 6802 ms | `hash-object` 3000 → 1 |
 | Materialization | 153633 ms | 3992 ms | `cat-file` 3001 → 12 |
 
-These are single serial samples using Node v22.23.1 and `/usr/bin/git`, with very high uncontrolled host load and warm caches. The change is bound to source SHA-256 `18380a9875664e437e7da5a3cef7320fa630e0c8bb7946d3a7d335c22b621b85`. The [measurement Artifact](preservation-speed-1680-measurements.json) records timings, subprocess counts, load averages, source hashes and proof limits.
+These are single serial samples using Node v22.23.1 and `/usr/bin/git`, with very high uncontrolled host load and warm caches. These samples are bound to source SHA-256 `18380a9875664e437e7da5a3cef7320fa630e0c8bb7946d3a7d335c22b621b85`. The [measurement Artifact](preservation-speed-1680-measurements.json) records timings, subprocess counts, load averages, source hashes and proof limits.
 
 | Final validation | Exit | Result / receipt |
 | --- | ---: | --- |
@@ -59,3 +59,9 @@ The fresh worktree needed the documented dependency bridge (four trees, exit 0).
 Configured production status was read at 2026-10-22T04:52:16.416Z: `inactive_idle`, desired inactive, zero live admissions (`/private/tmp/arcadia-1680-final-production-status.json`). The implementation performs no installation, restart, broker action, live workspace mutation, provider/reviewer spend, claim/budget reset, governance edit, merge or deployment. The Lead must bind independent review and CI to the pushed head. A final source-state replay remains a separate proof gate before any production press. Revival for broader performance work: this bounded change passes its checks and the next final-source replay identifies a remaining phase bottleneck.
 
 Instruction paths/byte hashes and retrieved sections are retained in the checked-in [instruction inventory](preservation-speed-1680-instructions.json); raw commands, exit codes, artifacts and remaining gates are in `/private/tmp/arcadia-1680-speed-handback.json`.
+
+## Review round 2: finite large-tree listing bound
+
+CodeRabbit finding [4344728506](https://github.com/pmark/arcadia/pull/1689#discussion_r4344728506) identified a valid regression: adding sizes with `ls-tree -rlz` can exceed Node's default 1 MiB output bound for a tree whose former `-rz` listing fits. A real 16,000-empty-file tree reproduced `ENOBUFS` before the repair (`/private/tmp/arcadia-1680-listing-red.log`, exit 1). The listing now explicitly uses the existing finite 64 MiB Git output bound; blob/batch/file-size limits, timeout and authority are unchanged.
+
+The new regression verifies both real listing sizes, every empty regular file and read-only mode, 63 bounded blob requests, and unchanged HEAD/index/status. The 14-case batch suite passed (30.86 s); touched-file ESLint, `tsc --noEmit`, and `git diff --check` passed. Raw receipts are `/private/tmp/arcadia-1680-listing-green.log`, `-lint.log` and `-tsc.log`; commands and exit codes are in the handback. This one-option repair changes runtime source SHA-256 to `f81fcb504df735b894694d45ab8781279ffadd34bcac562793ed7f1a7b56e1ee`. The timings above remain measurements of the prior source hash `18380a9875664e437e7da5a3cef7320fa630e0c8bb7946d3a7d335c22b621b85`; no benchmark or full rehearsal was rerun for this listing-bound delta. Lead owns independent delta review, new-head CI and combination/replay.

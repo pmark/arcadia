@@ -260,7 +260,7 @@ export function snapshotCandidateCommit(repository: string, candidate: string, b
  * one whose target would escape the restricted snapshot is refused before any
  * symlink is created, rather than left for a later cross-file write through it. */
 export function materializeCandidateTree(repository: string, tree: string, destination: string): void {
-  const entries = bounded("git", ["ls-tree", "-rlz", tree], { cwd: repository }).toString().split("\0").filter(Boolean).map(entry => {
+  const entries = bounded("git", ["ls-tree", "-rlz", tree], { cwd: repository, maxBuffer: MAX_BLOB_BYTES }).toString().split("\0").filter(Boolean).map(entry => {
     const match = /^(100644|100755|120000) blob ([a-f0-9]+) +([0-9]+)\t([\s\S]+)$/.exec(entry);
     if (!match) throw validationError("Validated snapshot contains an unsupported Git entry.");
     const [, mode, hash, length, name] = match;
