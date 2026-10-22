@@ -179,3 +179,10 @@ and the absence of a second reviewer invocation. This is not full repaired-body
 worker-tick integration proof; that pre-press scenario remains held.
 
 Concurrency defect tracked at https://github.com/pmark/arcadia/issues/1696.
+
+Final-head CI at 97072f77e exposed a missed required CLI classification:
+`provider-usage` was absent from COMMAND_CLASSIFICATION. The failing shard6
+receipt is retained at `/private/tmp/arcadia-1693-ci-shard6.log`; no test or gate
+was weakened. The diagnostic is now explicitly host-level/workspace-exempt,
+with normal/error invocations added to the no-database/no-activity contract.
+This keeps diagnostic reads out of the live workspace activity log as intended.

@@ -61,6 +61,7 @@ beforeEach(() => {
   writeFileSync(userConfig, JSON.stringify({ defaultWorkspace: live }));
   vi.stubEnv("ARCADIA_CONFIG_PATH", userConfig);
   vi.stubEnv("HOME", home);
+  vi.stubEnv("ARCADIA_CLAUDE_USAGE_PATH", path.join(root, "no-claude-usage.json"));
   vi.stubEnv("ARCADIA_WORKSPACE", "");
   vi.stubEnv("CODEX_SANDBOX", "");
   repo = path.join(root, "repo");
@@ -82,6 +83,7 @@ afterEach(() => {
  */
 function invocations(): Record<string, string[][]> {
   return {
+    "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"]],
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
     init: [
       ["init", path.join(root, "fresh")],
