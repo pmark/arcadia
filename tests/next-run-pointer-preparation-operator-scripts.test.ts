@@ -8,6 +8,7 @@ import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
+import { discoverDocs } from "../src/docs/discover.js";
 import { planAmendmentLauncher, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { validatePlanAmendmentInput, type PlanAmendmentInput } from "../src/operatorActions/planAmendmentContract.js";
 import type { PlanAmendmentResult } from "../src/operatorActions/planAmendment.js";
@@ -32,6 +33,14 @@ const POINT_ID = "point-at-test-transient-review-retry-20261019";
 const PLAN = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
 const PLAN_FILE = `docs/plans/${PLAN}.md`;
 const IN_SCOPE = ["test-transient-review-retry-after-exhaustion", "refresh-decision-0130-status-and-1559-fake", "guard-repair-gate-upsert-role"];
+
+it("keeps frozen control records out of ordinary repository document discovery", () => {
+  const plans = discoverDocs(sourceRoot).docs.filter((doc) => doc.type === "plan" && doc.slug === PLAN);
+  expect(plans.map((plan) => plan.relativePath)).toEqual([PLAN_FILE]);
+  const projects = discoverDocs(sourceRoot).docs.filter((doc) => doc.type === "project" && doc.slug === "arcadia");
+  expect(projects.map((project) => project.relativePath)).toEqual(["PROJECT.md"]);
+});
+
 const amendDescriptor = JSON.parse(readFileSync(path.join(library, `${AMEND_ID}.json`), "utf8")) as { planAmendment: PlanAmendmentInput } & Record<string, unknown>;
 const pointDescriptor = JSON.parse(readFileSync(path.join(library, `${POINT_ID}.json`), "utf8")) as Record<string, unknown>;
 const pinned = amendDescriptor.planAmendment;
@@ -72,10 +81,10 @@ function fixture(options: { amended?: boolean } = {}) {
   // Before-images: the frozen documents with the pinned pointers, the pinned
   // first-unattended-run block, and the three in-scope Actions still open.
   const e = pinned.envelope;
-  const projectText = readFileSync(path.join(frozen, "PROJECT.fixture.md"), "utf8");
+  const projectText = readFileSync(path.join(frozen, "PROJECT.fixture.txt"), "utf8");
   const project = { ...frontmatter(projectText), ...e.projectUnchanged };
   writeFileSync(path.join(repo, "PROJECT.md"), `---\n${stringify(project)}---\n${body(projectText)}`);
-  const planText = readFileSync(path.join(frozen, "plan.fixture.md"), "utf8");
+  const planText = readFileSync(path.join(frozen, "plan.fixture.txt"), "utf8");
   const plan = frontmatter(planText);
   const actions = (plan.actions as Record<string, unknown>[]).map((action) =>
     action.id === e.action ? (options.amended ? e.actionAfter : e.actionBefore) : IN_SCOPE.includes(action.id as string) ? { ...action, status: "open" } : action);
