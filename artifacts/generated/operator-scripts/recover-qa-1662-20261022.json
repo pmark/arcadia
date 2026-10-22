@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "recover-qa-1662-20261022",
+  "kind": "grant",
+  "title": "Recover #1662: ready the pinned candidate and run QA once (requires separately approved Active production)",
+  "script": "recover-qa-1662-20261022.sh",
+  "repeatable": false,
+  "expires_at": "2026-10-26T00:00:00Z",
+  "problem": "The repaired exact-head QA plan still has its old failed QA verdict. Production is Off, so no reviewer can run yet.",
+  "desired_effect": "After a separate production activation, verify clean reviewed main, current remote main, exact #1662 head and repaired body, green CI, unchanged QA lineage (next 4/limit 7), passing code-review ordinal 5 and matching Active Claude scope; ready #1662 and invoke the existing guarded QA executor once with a five-minute reviewer bound.",
+  "authority": {
+    "does": [
+      "Readies only PR #1662 at cff844a22093fbbf4c0a29408502718ab91d047a.",
+      "Requests one supported QA rerun under separately approved Active production. Records receipts and retains a one-shot marker before mutations."
+    ],
+    "never_does": [
+      "Never activates or deactivates production, changes scope, resets attempts or expands budgets.",
+      "Never merges a PR, changes credentials, edits governed records or launches an implementation Session.",
+      "Never retries after uncertain execution; a consumed marker requires diagnosis, not removal."
+    ]
+  },
+  "success": {
+    "effect": "Exactly one QA request completed and passed for the pinned candidate. Existing production worker may progress only under its separate grant.",
+    "next": "Read canonical QA evidence and production status; this card does not prove a full unattended run."
+  },
+  "failure": {
+    "effect": "Preconditions refuse before mutation; after the marker, readiness may have changed or QA may have allocated an attempt. No production policy changes.",
+    "next": "Read the run receipt and canonical lineage. Do not repeat or delete the marker. Keep or restore Off through the existing STOP control if the approved run must stop."
+  }
+}

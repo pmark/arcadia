@@ -28,6 +28,50 @@ afterEach(() => {
 });
 
 describe("minimal independent pull-request QA", () => {
+  it("rejects a malformed recovery cap before any external command", () => {
+    expect(() => runQaPrReviewCommand({ workspace: "/unused", pullRequest: "https://github.com/pmark/arcadia/pull/77", expectedCandidate: { headSha: HEAD_SHA, bodySha256: "0".repeat(64), inputRevision: "pinned-input", maxOrdinal: NaN } }, {
+      runCommand: () => { throw new Error("must not execute"); }
+    })).toThrow("positive integer ordinal cap");
+  });
+
+  it("excludes an overlapping worker/manual invocation before the second reviewer can run", () => {
+    const fixture = createFixture();
+    let overlapping: ReturnType<typeof runQaWithRollup> | undefined;
+    const checks = () => [check("fast", "SUCCESS", "https://ci/fast")];
+    const first = runQaWithRollup(checks, () => { overlapping = runQaWithRollup(checks, undefined, fixture); }, fixture);
+    expect(first.error).toBeNull();
+    expect(first.reviewerInvocations).toBe(1);
+    expect(overlapping?.reviewerInvocations).toBe(0);
+    expect(String(overlapping?.error)).toContain("Reviewer execution is already claimed");
+  });
+
+  it.each(["head", "body", "late-body"])("refuses an operator-pinned %s drift before reviewer or role allocation", (drift) => {
+    const fixture = createFixture();
+    const initial = rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]);
+    let reads = 0;
+    let selections = 0;
+    const dependencies: QaPrReviewDependencies = {
+      selectReviewer: () => { selections += 1; return fakeReviewer(); },
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+changed\n");
+        if (command === "gh" && args[1] === "view") {
+          reads += 1;
+          const changed = drift !== "late-body" || reads > 1;
+          return success(JSON.stringify({ ...initial,
+            ...(changed && drift === "head" ? { headRefOid: "f".repeat(40) } : {}),
+            ...(changed && drift !== "head" ? { body: initial.body + " changed" } : {}) }));
+        }
+        throw new Error(`Unexpected command: ${command}`);
+      }
+    };
+    expect(() => runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/77", rerun: true,
+      expectedCandidate: { headSha: HEAD_SHA, bodySha256: createHash("sha256").update(initial.body).digest("hex"), inputRevision: "pinned-input", maxOrdinal: 4 }
+    }, dependencies)).toThrow("Pinned recovery candidate head or body changed");
+    expect(selections).toBe(drift === "late-body" ? 1 : 0);
+    expect(withDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get())).toEqual({n: 0});
+  });
+
   it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
     const fixture = createFixture();
     let reviewerInvocations = 0;
@@ -754,12 +798,11 @@ describe("review readiness reads real statusCheckRollup shapes", () => {
   });
 });
 
-function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined): {
+function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined, fixture = createFixture()): {
   result: ReturnType<typeof runQaPrReviewCommand> | null;
   error: unknown;
   reviewerInvocations: number;
 } {
-  const fixture = createFixture();
   let reviewerInvocations = 0;
   try {
     const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, {
