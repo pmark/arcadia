@@ -4,13 +4,13 @@
   "model": "unknown",
   "effort": null,
   "action_id": "operator-directed:#1702",
-  "pr": null,
+  "pr": 1703,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 2,
-  "review_rounds": 8,
+  "review_rounds": 9,
   "blocking_findings": [
     {
       "class": "off-pointer recovery hidden; unsafe local-base chronology",
@@ -32,8 +32,8 @@
   ],
   "outcome": "stopped",
   "stop_reason": "Policy choice and governed conflict recovery remain operator-gated; full-batch START is NO-GO and production remains Off.",
-  "notes": "Captured before PR creation: 8 private harness/critique passes; exact PR-head review is reported separately. Native runtime model/effort and usage metrics unavailable.",
-  "candidate_head": "7903bf9cacf8a991b080d66415fb26c9e4badd55",
+  "notes": "Captured after PR round 1: 8 private preflights plus 1 PR review. Delta review is reported separately; native model/effort and usage unavailable.",
+  "candidate_head": "47b6d6eb2058230477a6d07bad52cbd962176958",
   "evidence_source": "docs/reports/qa1662-preparation-20261022.md",
   "task_class": "operator-directed production preparation"
 }

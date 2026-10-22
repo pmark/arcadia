@@ -28,3 +28,7 @@ The next operator choice is the proposed recovery policy, not START. A live #166
 ## Skill portability
 
 The updated release-manager playbook remains under one `.agents/skills/arcadia-release-manager` source; Claude's discovery link points to that source, and Codex/OpenCode use `.agents`. Filesystem validation is recorded separately from native checks. This chat's Codex catalog exposes the skill; fresh native Codex/Claude/OpenCode discovery of this candidate is unperformed. No provider invocation was started merely to test discovery.
+
+## PR review follow-through
+
+Internal PR review round 1 found no blocking implementation finding for the draft scope. Its precedence-test finding was repaired: the fixture now publishes its scheduler commit as setup and proves recovered A is eligible while B still owns its lease, then asserts only terminal B is selected. This fixture setup is not presented as the production publication path. Exact-head delta review and CI are reported on PR #1703.

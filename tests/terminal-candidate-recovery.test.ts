@@ -125,10 +125,14 @@ describe("terminal recovery after an exhaustion hold", () => {
     const fixture = heldCandidate(); const { world } = fixture;
     world.tickUntil(result => result.launch?.outcome === "launched" && result.launch.actionKey === world.actionB, 4);
     const second = world.lease()!;
+    // Fixture setup: remove the independent ancestry deferral, then prove A
+    // qualifies while B still owns its lease and has no terminal exit.
+    git(world.repo, ["push", "origin", "main"]);
+    recoverQa(fixture);
+    expect(pending(world)).toEqual(["write-marker-a"]);
     world.agentEdit(second, "OTHER.md", "independent B\n"); world.agentFinish(second, criteriaB);
     world.tmux.exit(second.tmux_session_name);
     expect(world.tick().reconciled[0]?.outcome).toBe("accepted_completion");
-    recoverQa(fixture);
     expect(pending(world)).toEqual(["write-marker-b"]);
     expect(readFileSync(path.join(second.worktree_path, "OTHER.md"), "utf8")).toBe("independent B\n");
   });
