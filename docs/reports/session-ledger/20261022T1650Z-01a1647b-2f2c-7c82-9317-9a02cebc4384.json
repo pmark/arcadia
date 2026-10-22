@@ -23,5 +23,6 @@
     }
   ],
   "outcome": "stopped",
-  "notes": "Production Off. Helper and one-shot recovery prepared; live credential verification denied before execution. No registered reviewer/QA admission or live production attempt."
+  "notes": "Production Off. Helper and one-shot recovery prepared; live credential verification denied before execution. No registered reviewer/QA admission or live production attempt.",
+  "stop_reason": "Awaiting independent review and operator source-merge/live-credential approval; production stays Off."
 }
