@@ -19,15 +19,17 @@ batch, and only then ask for the press.
 
 ## Pre-press gate (all must hold)
 
-1. **Full-chain replay.** `pnpm production-replay --source-workspace <live>
-   --card <card> --github live --simulate-github-writes --simulate-verdict
-   pass` (and `fail-repairable`) reaches launch with no operator touch;
-   record every refusal it prints. As of 2026-10-21 the replay stops at
-   `Stop: launched`: continuing through completion validation, settlement,
-   PR, review, QA, worker merge and the next launch needs a candidate/executor
-   extension being built on branch `replay-past-launch-20261021`. Once it
-   lands, require the replay to reach every pinned Action's merge. Until then,
-   cover those stages with gates 2 and 3 and record the gap.
+1. **Full-chain replay.** Use the existing source-state runner with a pinned
+   receipt (`--grant`), explicit initial/repair file maps and the scripted
+   executor; test both passing and `fail-repairable` simulated verdicts with
+   simulated GitHub writes. The runner now supports completion validation,
+   settlement, review/QA, local fake-origin integration and subsequent Action
+   admission (#1684), with bounded batched preservation (#1689). Require every
+   pinned Action's merge for a complete scope proof. A run that proves recovery
+   and a following Action but stops on an inherited hold is only that bounded
+   proof. Label simulated reviewers/writes and trusted edits; preserve earlier
+   failures, unchanged run bounds and all live holds. Never use the replay to
+   reset live attempts or claim actual provider/independent-verdict acceptance.
 2. **Real validator dry run.** Each pinned Action's named test passes
    `validateCompletionCandidate` (Seatbelt, dependencyRoot = main checkout)
    twice, well under the 900 s bound. A test that needs host tools (tmux) can
@@ -56,7 +58,11 @@ batch, and only then ask for the press.
    `ARCADIA_WORKSPACE`); `arcadia go-broker status` revision = HEAD; the
    worker process started after the last merge.
 8. **Capacity.** `arcadia production capacity --refresh` admits the provider
-   now (a stale read is not proof). Press within minutes of that read.
+   now (a stale read is not proof). A successful sign-in check or elapsed reset
+   is insufficient. Preserve HTTP refusal diagnostics and compare the worker's
+   credential-source context; never print credentials or silently rotate them.
+   Decision 0131's 401/Active-worker fallback does not cover a 403 or an Off-state
+   call. Press within minutes of a genuinely fresh admitted reading.
 9. **Production is Off at press time.** Once Active, nothing merges except
    the worker's own merges and operator-approved merges; remind the operator
    to STOP first.

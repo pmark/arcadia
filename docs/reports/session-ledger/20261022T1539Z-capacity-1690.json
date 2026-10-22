@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Operator-directed diagnostic; no governed Action. Failed-first receipts retained. 58 tests, lint and tsc passed. HTTP403 tracked in #1692. R2 review/CI pending. Production Off."
+  "notes": "58 tests, lint, tsc and R2 review passed. Readiness updated; R3/CI pending. HTTP403 in #1692. Production Off."
 }
