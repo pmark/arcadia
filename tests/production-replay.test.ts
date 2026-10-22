@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -64,6 +64,22 @@ describe("production replay path mapping", () => {
     expect(mapPath("/live/arcadia/.claude/worktrees/x", mappings)).toBe("/replay/nested/x");
     expect(mapPath("/live/arcadia-other/x", mappings)).toBe("/live/arcadia-other/x");
     expect(mapPath("/home/.claude/worktrees/run/arcadia", mappings)).toBe("/replay/agent-worktrees/claude/run/arcadia");
+  });
+});
+
+describe("production replay repair fixtures", () => {
+  it("refuses missing and unchanged repair work without changing the candidate", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-replay-repair-files-"));
+    try {
+      writeFileSync(path.join(root, "WORK.md"), "initial\n");
+      const input = { action: "project/action", attempt: 2, cwd: root, initial: { action: { "WORK.md": "initial\n" } } };
+      expect(() => scriptedReplayFiles(input)).toThrow(/needs --executor-repair-files/);
+      expect(() => scriptedReplayFiles({ ...input, repair: input.initial })).toThrow(/changes no work/);
+      expect(readFileSync(path.join(root, "WORK.md"), "utf8")).toBe("initial\n");
+      expect(scriptedReplayFiles({ ...input, repair: { "project/action": { "WORK.md": "repaired\n" } } })).toEqual({ "WORK.md": "repaired\n" });
+      // Selection is read-only; the executor writes the selected work later.
+      expect(readFileSync(path.join(root, "WORK.md"), "utf8")).toBe("initial\n");
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
 

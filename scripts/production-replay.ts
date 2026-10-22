@@ -1096,6 +1096,23 @@ export function snapshotReplayDependencies(repository: string, target: string, s
   rewriteBridge(path.join(scratch, "dependencies"));
 }
 
+/** Select explicit repair work, refusing a completion-only change on a resumed candidate. */
+export function scriptedReplayFiles(input: {
+  action: string; attempt: number; cwd: string;
+  initial?: ReplayOptions["executorFiles"]; repair?: ReplayOptions["executorRepairFiles"];
+}): Record<string, string> {
+  const { action, attempt, cwd } = input;
+  const lookup = (fixtures: ReplayOptions["executorFiles"]) => fixtures?.[action] ?? fixtures?.[action.slice(action.indexOf("/") + 1)];
+  const initial = lookup(input.initial);
+  const repair = lookup(input.repair);
+  if (attempt > 1 && initial && !repair) throw new Error(`Scripted repair of ${action} needs --executor-repair-files; unchanged initial work is not a repair.`);
+  const files = (attempt > 1 ? repair : initial) ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action}, attempt ${attempt} (production replay).\n` };
+  if (attempt > 1 && !Object.entries(files).some(([file, content]) => {
+    try { return readFileSync(path.join(cwd, file), "utf8") !== content; } catch { return true; }
+  })) throw new Error(`Scripted repair of ${action} changes no work; supply different --executor-repair-files.`);
+  return files;
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
@@ -1512,14 +1529,7 @@ async function runPrepared(manifestFile: string): Promise<void> {
         const action = /^Action: (.+)$/m.exec(brief)?.[1]?.trim() ?? "";
         const attempt = (scriptedAttempts.get(action) ?? 0) + 1;
         scriptedAttempts.set(action, attempt);
-        const lookup = (fixtures: Manifest["executorFiles"]) => fixtures?.[action] ?? fixtures?.[action.slice(action.indexOf("/") + 1)];
-        const initial = lookup(manifest.executorFiles);
-        const repair = lookup(manifest.executorRepairFiles);
-        if (attempt > 1 && initial && !repair) throw new Error(`Scripted repair of ${action} needs --executor-repair-files; unchanged initial work is not a repair.`);
-        const files = (attempt > 1 ? repair : initial) ?? { "REPLAY_SCRIPTED_WORK.md": `Scripted Session work for ${action}, attempt ${attempt} (production replay).\n` };
-        if (attempt > 1 && !Object.entries(files).some(([file, content]) => {
-          try { return readFileSync(path.join(launch.cwd, file), "utf8") !== content; } catch { return true; }
-        })) throw new Error(`Scripted repair of ${action} changes no work; supply different --executor-repair-files.`);
+        const files = scriptedReplayFiles({ action, attempt, cwd: launch.cwd, initial: manifest.executorFiles, repair: manifest.executorRepairFiles });
         // Match a headless Session: the host, not the executor, commits and settles completion.
         const result = executor.run(launch, { files, validation: "true" }, "draft-at-base-uncommitted");
         return `scripted executor finished ${result.brief.action}: work ${result.workCommit.slice(0, 12)}, settlement ${result.settlementCommit?.slice(0, 12) ?? "none"}, head ${result.finalHead.slice(0, 12)}${result.settleWarnings.length ? `, settle warnings: ${result.settleWarnings.join("; ")}` : ""}`;
