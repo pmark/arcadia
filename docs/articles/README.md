@@ -4,6 +4,8 @@ When the operator explicitly requests repository storage, `docs/articles/` holds
 
 ## Drafts
 
+- [Making every run teach us more](2026-10-21-making-every-run-teach-us-more.md) — a proposed feedback loop for autonomous production, using focused checks and disposable failure rehearsals.
+
 - [Arcadia spatial background and conversational context](2026-10-14-arcadia-spatial-background.md) — design proposal for an entity-based conversational workspace; includes concept imagery.
 
 - [Arcadia Studio gives agents room to create and puts the system to the test](2026-10-12-arcadia-studio-creative-work-integration-test.md) — the proposed creative studio, its minimal interface, and the first scout's proof boundary.
