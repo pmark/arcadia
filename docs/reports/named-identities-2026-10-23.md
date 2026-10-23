@@ -66,3 +66,23 @@ four dependency trees bridged. Revalidation:
 - First post-bridge `pnpm check:agent-guidance`: exit 1, reported stale roles-guide fingerprint. The initial edit hashed raw bytes; existing `guidanceFingerprint` hashes the trimmed body. Corrected the index to that established convention, then `node --import tsx scripts/check-agent-guidance.ts`: exit 0, all three providers have no delivery problems. Receipt: `/private/tmp/arcadia-identities-guidance-check.json`.
 - Shared `.agents/skills/arcadia-role/SKILL.md` supplies Codex and OpenCode filesystem discovery; Claude's relative `.claude/skills/arcadia-role` alias resolves to that same directory. Fresh native discovery remains unperformed for all three.
 - No runtime executable changed; no full test suite or production replay was run for this documentation change. Independent review of the candidate is the parent's next delivery step.
+
+## Vida extension · 2026-10-23
+
+Latest operator instruction: “Wait, I want to add another identity responsible for assessing system health: Vida”. The original six-profile implementation evidence above is preserved; this extension adds **Vida — Health Assessor** as the seventh human profile. The seven registered role IDs remain unchanged and do not map one-to-one to the profiles. Vida uses `researcher` for bounded read-only operational assessment; Rowan receives the evidence/risks/next step, Mira investigates recurring causes, Ellis repairs source and Quinn verifies product acceptance. No live health assessment or automatic workflow was invoked.
+
+Candidate extension begins at `bdfe32bef792b542b824b34db9c7df9b8b42b604`. Parent retained work monitor `/private/tmp/arcadia-vida-work-monitor.json` (2026-10-23T18:02:05Z), with no competing writer identified and limited cwd-holder coverage; lesson search `/private/tmp/arcadia-vida-lessons.json` returned zero. Re-read canonical/guide/skill/operator-guide sections and indexed skills procedure; targeted Notes lookup found no specific health-assessment remedy. Parent retains Issue #1712 intake. This extension changes the same six documentation/skill paths; no schema, role registry or runtime changes.
+
+Extension verification results follow. Filesystem discovery remains separate from fresh native discovery, which was not performed for Codex, Claude Code or OpenCode. Actual runtime metadata remains unavailable.
+
+- `node --import tsx scripts/check-agent-skills.ts`: exit 0, no discovery problems across Codex/Claude/OpenCode filesystem paths.
+- `node --import tsx scripts/check-agent-guidance.ts`: exit 0; receipt `/private/tmp/arcadia-vida-guidance-check.json`.
+- `pnpm exec vitest run tests/agent-roles.test.ts tests/agent-skill-discovery.test.ts`: exit 0, 43 tests across 2 files passed.
+- `git diff --check`: exit 0. No live health probes, runtime tests or fresh native discovery were performed.
+
+Extension retrieved sources (post-change UTF-8 bytes):
+- `docs/arcadia-semantics.md`: 21095 bytes.
+- `docs/agent-guidance/session-roles-and-briefs.md`: 10502 bytes.
+- `.agents/skills/arcadia-role/SKILL.md`: 11479 bytes.
+- `docs/agent-guidance/skills.md`: 3305 bytes.
+- `START_HERE.md`: 234069 bytes.

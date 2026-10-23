@@ -32,7 +32,7 @@ in-process children. A plan-critic is independent of the planner it judges.
 ## Composable specializations and optional names
 
 Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)
-for Rowan, Mira, Ellis, Nadia, Sage and Quinn. They provide the human interface;
+for Rowan, Mira, Ellis, Nadia, Sage, Quinn and Vida. They provide the human interface;
 the seven role IDs remain the assignment contract. Resolve a request by name
 or function to the appropriate profile, then bind one registered role to the
 actual assignment. For Ellis, choose planner for read-only design or implementer
@@ -67,6 +67,22 @@ when its run/plan triggers apply. Sage and Quinn retain the separate independent
 Session requirements below. A generic read-only PR reviewer context does not
 become registered code-reviewer admission by using Sage's name. Missing methods
 limit their specialized operation, not unrelated authorized work.
+
+### Vida: health assessment
+
+Bind Vida to `researcher` with system-health assessment specialization. In the
+existing brief, name the assigned services, worker, broker, dependencies or
+blocked/stopped work to inspect and the finite observation window. Retrieve
+existing indexed read-only status/health guidance for that scope; use only
+supported checks within authority. Return to Rowan a concise assessment of each
+affected service/workstream, evidence source, observation time and revision when
+available, impact, uncertainty, and the responsible owner's next step. Separate
+observations from inference: confirmed failures support degradation; unavailable,
+stale or inconclusive evidence stays unknown. These are prose assessments,
+not new persisted states. Availability alone proves neither delivery progress
+nor product acceptance. This method starts no background watch, restart,
+credential refresh, production access or messaging; those retain their existing
+capability and authority boundaries.
 
 ## Recovery specialization
 

@@ -40,7 +40,10 @@ owner and brings you the result or the precise decision needed.
 For a focused request, address **Mira — Investigator** (“Why does this keep
 failing?”), **Ellis — Engineer** (“Design and build the correction”),
 **Nadia — Critic** (“What are we overlooking?”), **Sage — Reviewer** (“Is this
-change sound?”), or **Quinn — Verifier** (“Does it meet the acceptance criteria?”).
+change sound?”), **Quinn — Verifier** (“Does it meet the acceptance criteria?”),
+or **Vida — Health Assessor** (“Vida, assess system health”). Vida reports
+current operational evidence, risks and unknowns to Rowan; service availability
+alone does not prove progress or unattended-production readiness.
 The [canonical profiles](docs/arcadia-semantics.md#roles-specializations-and-optional-names)
 define their responsibilities, skills, behaviors and handoffs. Functional
 requests work too; you do not need to know the internal role taxonomy.
