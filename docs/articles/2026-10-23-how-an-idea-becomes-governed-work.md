@@ -14,8 +14,9 @@ channels: [site, rss]
 
 # How an idea becomes governed work
 
-Agents have good ideas at inconvenient moments. If every idea could quietly become work, the record of what a Project is
-doing would drift with each session. If no idea could be voiced, useful
+Agents have good ideas at inconvenient moments. If every idea could quietly
+become work, the record of what a Project is doing would drift with each
+session. If no idea could be voiced, useful
 discoveries would die in a chat transcript. Arcadia resolves this by separating
 asking from doing. Anyone may ask, at any time, for anything. The governed
 record changes only when a request is settled: Arcadia applies exactly the
@@ -47,7 +48,7 @@ responsibility (who may advance it: `autonomous`, `agent`, `requires_review` or
 **Decision.** A point requiring human judgment. An Ask with `intent: decision`
 opens one when a reasonable person could choose differently, when the move
 resists reversal, or when it names an approval boundary such as deploy, publish
-or spend. Decisions sit beside this path. An Action whose responsibility is
+or spend. Decisions sit beside the lifecycle below. An Action whose responsibility is
 `requires_review` is one a coding agent must not implement, and a `complete`
 Ask is refused while a required review Decision is unresolved.
 
