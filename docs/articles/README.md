@@ -4,6 +4,8 @@ When the operator explicitly requests repository storage, `docs/articles/` holds
 
 ## Drafts
 
+- [How an idea becomes governed work](2026-10-23-how-an-idea-becomes-governed-work.md): a short explainer of proposals, Agent Asks, Plans, Actions and Decisions, and how settlement connects them.
+
 - [Making every run teach us more](2026-10-21-making-every-run-teach-us-more.md) — a proposed feedback loop for autonomous production, using focused checks and disposable failure rehearsals.
 
 - [Arcadia spatial background and conversational context](2026-10-14-arcadia-spatial-background.md) — design proposal for an entity-based conversational workspace; includes concept imagery.
