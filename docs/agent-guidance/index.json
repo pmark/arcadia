@@ -122,10 +122,10 @@
     },
     {
       "id": "session-roles-and-briefs",
-      "trigger": "launch subagent, driver brief, session ledger row, model per role, role taxonomy, composable specializations, optional names, Mira, release investigation, named identity profiles, Rowan, Ellis, Nadia, Sage, Quinn, Vida, system health assessment",
+      "trigger": "launch subagent, driver brief, session ledger row, model per role, role taxonomy, composable specializations, optional names, Mira, release investigation, named identity profiles, Rowan, Ellis, Nadia, Sage, Quinn, Vida, system health assessment, Clara, technical writer, article, explainer, editorial ownership, AMC, social copy, publication verification",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
       "read_before": "Before launching or briefing a Session or subagent, composing specializations, invoking release investigation or writing a hand-back; grants no authority.",
-      "sha256": "7b7a2e87305360b8a7bdebec4591ef23c45256e9c2fdb28d975258caabacda72"
+      "sha256": "0bcbf6e0f1587cea70ca37531f5c66b3bdada39123af583a5134ac91d2ca833e"
     },
     {
       "id": "native-app-sessions",

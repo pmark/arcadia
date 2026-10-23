@@ -5,6 +5,12 @@ authority approved in Decision 0120, implementation pending. Nothing
 here posts anywhere. It governs the Mission Control site (ArcadiaMissionControl.com,
 own repo) and drafts kept in this repo. Standing rule: honesty outranks conversion.
 
+Scope: this strategy governs Decision 0120's bounded **Field Notes** packages,
+not all Clara editorial work. General AMC guides adapt the agent-oriented
+[article sources](../articles/README.md) through [Clara's method](../agent-guidance/session-roles-and-briefs.md#clara-technical-writing).
+Their site copy need not duplicate internal source prose. The Field Notes
+package's exact-copy and review bindings below remain unchanged.
+
 ## Recommendations
 
 1. **One site section, two post types.** Section name **Field Notes** (decided),
@@ -12,10 +18,10 @@ own repo) and drafts kept in this repo. Standing rule: honesty outranks conversi
    what did not) and `type: essay` (milestone write-ups like the first article).
    One feed, filterable by type. If ship notes outgrow it, split later into
    `/changelog/`.
-2. **Source of truth is this repo.** Drafts live in `docs/articles/YYYY-MM-DD-slug.md`;
-   the site repo pulls or copies merged files. The site never holds text that
-   the repo lacks. URL: `/notes/<slug>/`. Feed: `/notes/rss.xml` (full text),
-   auto-discovery link in the head.
+2. **Field Notes package source is this repo.** Drafts live in `docs/articles/YYYY-MM-DD-slug.md`;
+   the site repo pulls or copies their merged files. For these packages, the
+   site never holds text the reviewed package lacks. URL: `/notes/<slug>/`.
+   Feed: `/notes/rss.xml` (full text), auto-discovery link in the head.
 3. **Default cadence (per post type, agent-managed once authorized).**
    Ship notes: weekly, only when there is shipped work, never padded; a quiet
    week means no post. Essays: only at a real milestone, at most monthly.
@@ -27,7 +33,8 @@ own repo) and drafts kept in this repo. Standing rule: honesty outranks conversi
    Do not bypass those gates by editing status. The [production instruction](field-notes-production.md)
    defines the content package and the remaining publication capability.
 5. **No social posting yet.** HN, X, dev.to, Reddit and Lobsters are all held.
-   The only outward channels now are the site, its RSS feed and an email list.
+   Decision 0120 permits only its site/RSS scope. Email material is draft-only;
+   it grants no subscriber-email sending authority.
 6. **First article:** publish on the site and RSS after fact-check and the
    implemented Decision 0120 gate; no external submission.
 
@@ -71,7 +78,8 @@ keep source status `approved` so the build can continue including it.
 
 ## Channels, ranked for a not-yet-installable project
 
-Channel analysis below is retained for when social is authorized; all rows except the site, RSS and email are currently held.
+Channel analysis below is retained for future authorization. Site/RSS remain
+within Decision 0120; email is draft-only and all social posting remains held.
 
 | Rank | Channel | Use for | Rules to respect | Source |
 |---|---|---|---|---|
@@ -119,7 +127,9 @@ Notes on norms:
 ## Operating model (minimal operator time)
 
 1. Agent drafts the post, its receipts file and, for the email list, an email
-   draft. No per-channel social variants are produced while social is held.
+   draft. Clara may prepare explicitly assigned per-channel social variants as
+   **UNPOSTED** material under her editorial remit; this workflow neither
+   drafts them unsolicited nor posts them under Decision 0120.
 2. Independent agent fact-checks; findings fixed. Mandatory in every mode.
 3. Decision 0120 is approved; the current commands still create operator
    review items until its gate is implemented. Do not generate recurring

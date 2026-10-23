@@ -160,3 +160,12 @@ OpenCode. Before creating, editing or installing one, read
 `docs/agent-guidance/skills.md`; preserve one source and verify discovery for
 all three systems. Provider-specific tools must have an explicit capability
 boundary and supported fallback.
+
+## Editorial sources
+
+Clara owns user-facing writing within assigned authority. Follow
+[article sources](docs/articles/README.md) and
+[Clara's method](docs/agent-guidance/session-roles-and-briefs.md#clara-technical-writing):
+`docs/articles/` captures agent-oriented topics/evidence; polished public pieces
+belong in AMC. This Project-specific direction replaces the older personal
+Arcadia Articles folder default; publishing retains its existing gates.

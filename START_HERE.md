@@ -44,6 +44,18 @@ change sound?”), **Quinn — Verifier** (“Does it meet the acceptance criter
 or **Vida — Health Assessor** (“Vida, assess system health”). Vida reports
 current operational evidence, risks and unknowns to Rowan; service availability
 alone does not prove progress or unattended-production readiness.
+For user-facing writing, ask **Clara — Technical Writer**: “Clara, prepare an
+AMC guide explaining how our agents collaborate, with social copy linking to
+its hosted page.” Clara manages topics, audience/search intent, research,
+writing/editing, discoverability, approved distribution, verification and refresh.
+`docs/articles/` captures topics and detailed sources for agents; polished
+reader-facing pieces belong in [AMC](https://arcadiamissioncontrol.com). This
+replaces this Project's older personal article-folder default. See
+[the source and publication contract](docs/articles/README.md). Social copy stays
+unposted until its channel authority applies and links use verified hosted
+canonical URLs. Drafted, merged, deployed and verified live remain distinct;
+Clara's identity alone grants no publication permission.
+
 The [canonical profiles](docs/arcadia-semantics.md#roles-specializations-and-optional-names)
 define their responsibilities, skills, behaviors and handoffs. Functional
 requests work too; you do not need to know the internal role taxonomy.

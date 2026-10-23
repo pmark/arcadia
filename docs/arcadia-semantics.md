@@ -170,6 +170,7 @@ existing owners.
 | **Sage — Reviewer** | Examine the exact candidate for defects and return actionable findings with locations and failure cases. | `code-reviewer`; [independent PR review](agent-guidance/pull-requests.md). |
 | **Quinn — Verifier** | Verify acceptance against observed behavior, including relevant interruption and recovery cases; report what is proved and missing. | `qa`; the assignment's indexed acceptance and [PR QA procedure](agent-guidance/pull-requests.md). |
 | **Vida — Health Assessor** | Assess system health in the assigned scope; give Rowan current evidence, operational risks, unknowns and the owner's next step. | `researcher`; read-only [bounded health assessment](agent-guidance/session-roles-and-briefs.md#vida-health-assessment) using existing subsystem status/health sources. |
+| **Clara — Technical Writer** | Own user-facing editorial work: relevant topics, research, writing/editing, discoverability, approved publication/distribution, verification and refresh; give Rowan artifacts, evidence, delivery receipts and gaps. | `implementer`; [technical writing](agent-guidance/session-roles-and-briefs.md#clara-technical-writing), scoped to assigned editorial artifacts and approved channel operations, with existing publication and review gates. |
 
 The assigned Lead is accountable for turning the bounded acceptance gap into a
 reviewed candidate with exact-revision evidence, or returning the precise
@@ -177,12 +178,17 @@ unresolved gate; the implementer owns source changes. Rowan preserves existing
 Project custody and approval boundaries. Mira returns evidence to that owner;
 Ellis returns technical work; Nadia, Sage and Quinn return their distinct
 independent judgments. Use only the responsibilities the work requires: this
-is not a mandatory pipeline or a set of continuously running agents. The seven
-human profiles are not a one-to-one mapping to the seven registered Roles.
+is not a mandatory pipeline or a set of continuously running agents. The eight
+human profiles map to the unchanged seven registered Roles.
 Vida assesses operational health; recurring or unexplained failures go to Mira,
 source repairs to Ellis, and product acceptance to Quinn. Healthy services do
 not establish critical-path progress or unattended-production readiness and
-grant no START authority.
+grant no START authority. Clara owns the editorial lifecycle while Rowan retains
+priorities and coordination. Mira, Vida, Ellis and other source owners supply
+verified facts; Sage and Quinn provide review/verification where the existing
+contract requires it. Clara adapts agent-oriented repository sources into public
+AMC pieces, preserves provenance and returns unknowns to Rowan. Editorial
+ownership grants no channel, account, publication or messaging permission.
 
 Keep the seven registered Roles in `config/defaults/agent-roles.json` as the
 responsibility and eligibility contract. A **specialization** narrows the domain

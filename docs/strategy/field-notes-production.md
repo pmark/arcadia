@@ -5,6 +5,12 @@ GitHub and Arcadia commands. Read the [publishing strategy](update-promotion-str
 and [Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
 first. This file neither schedules a session nor grants authority.
 
+Scope: this instruction covers only Decision 0120 Field Notes packages and their
+exact source/review/publication bindings. General AMC guides and explicitly
+assigned UNPOSTED social drafts follow [Clara's editorial method](../agent-guidance/session-roles-and-briefs.md#clara-technical-writing)
+and [agent-oriented article sources](../articles/README.md). General guide
+adaptation does not relax this package's review, cadence or channel limits.
+
 ## Current reachability
 
 The production destination is `pmark/mission-control-site` at
@@ -89,8 +95,10 @@ the ordinary ship-note path.
 Copy the [ship-note template](../articles/templates/ship.md) or
 [essay template](../articles/templates/essay.md) into
 `docs/articles/YYYY-MM-DD-<slug>.md`. Do not publish templates or placeholders.
-The same merged Markdown is the source for the site and full-text RSS. The site
-must never become a competing editorial source.
+For these Decision 0120 Field Notes packages, the same merged Markdown is the
+source for the site and full-text RSS; the site must not become a competing
+source for this exact reviewed package. General AMC guides instead adapt source
+material under their own authoring contract.
 
 Ship notes are 100–250 words of body text including the required limitation
 section. Describe one to three user-visible changes, why they matter and what
