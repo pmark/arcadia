@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-21
+updated: 2026-10-23
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -331,6 +331,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1419"]
+  - id: rebuild-cover-mail-ack-receipt-kind-collision
+    title: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
+    expected_artifact: Evidence satisfying Agent Ask rebuild-cover-mail-ack-receipt-kind-collision
+    clarification: clarified
+    confidence: high
+    source: Agent Ask prepare-native-mail-replacement-action-20261022-v2
+    why: "A fresh substantive rebuild can use existing governed dispatch without resetting or borrowing evidence from held PR1662."
+    acceptance_criteria:
+      - "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."
+      - The same test asserts the message status is still acknowledged afterwards, and every other test in the file passes unchanged.
+      - The change touches only tests/native-mail.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/pull/1662", "https://github.com/pmark/arcadia/issues/1470"]
 questions: []
 decisions: []
 recommended_model: standard
