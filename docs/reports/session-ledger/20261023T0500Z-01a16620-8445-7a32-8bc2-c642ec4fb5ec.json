@@ -1,0 +1,39 @@
+{
+  "session_id": "01a16620-8445-7a32-8bc2-c642ec4fb5ec",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1706",
+  "pr": 1707,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "circular-action-acceptance",
+      "caught_by": "independent plan-critic preflight"
+    },
+    {
+      "class": "applied-receipt-has-no-preview-review",
+      "caught_by": "independent plan-critic preflight"
+    },
+    {
+      "class": "timeout-effects-uncertain",
+      "caught_by": "independent plan-critic preflight"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-has-no-tsx-dependencies",
+      "cost_min": null,
+      "fix_ref": "Primary checkout read-only validator with explicit candidate root"
+    }
+  ],
+  "outcome": "split",
+  "notes": "Off-only setup published. PR1707 prepares unapproved dependency input; no pointer move, runtime refresh, provider use, replay or activation. Model/effort and resource usage unavailable."
+}
