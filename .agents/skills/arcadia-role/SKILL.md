@@ -72,6 +72,21 @@ researcher at depth 1. Delegates return help requests to the Lead and never spaw
 children. Code-reviewer and QA need separate independent Sessions, never native
 children. Decisions 0112/0114 govern these limits.
 
+## Compose specializations, keep identities accountable
+
+Roles stay the seven registry IDs. Specializations narrow the assignment;
+Behaviors provide reusable methods within it. Read the Project's indexed
+`docs/agent-guidance/session-roles-and-briefs.md` for composition and optional
+names. Use its existing brief: role, method source, inputs/output, owner,
+independence, allowance and stop condition. Select only useful methods; do not
+multiply assignments or budgets to represent each one.
+
+An optional handle such as **Release Investigator · Mira** names a capability,
+not the agent signing a commit or receipt. Preserve the actual provider/tier
+identity, Session and attempt lineage. For a requested causal investigation,
+use [arcadia-release-investigator](../arcadia-release-investigator/SKILL.md).
+It supplements the assigned role; it does not grant messaging or launch authority.
+
 ## Simplification within existing roles
 
 For an assigned simplification or a concrete complexity finding, read the

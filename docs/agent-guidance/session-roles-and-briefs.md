@@ -29,6 +29,32 @@ to request planner, plan-critic, implementer or researcher at depth 1. Delegates
 never delegate. Code-reviewer and qa are separate independent Sessions, never
 in-process children. A plan-critic is independent of the planner it judges.
 
+## Composable specializations and optional names
+
+Use the existing brief and `--specialization` label; it is descriptive data, not
+an executable capability ID or permission. Read the linked Behavior contract
+when a procedural specialization is needed. Name its stable source path and
+revision in the brief when reproducibility requires it. No alias resolver or
+automatic routing is implied. See the
+[canonical distinction](../arcadia-semantics.md#roles-specializations-and-optional-names).
+
+Select the smallest useful combination: causal investigation, specification
+analysis, protocol analysis, experimentation, architecture analysis or
+verification can specialize an existing Role. These examples are methods, not
+new registered roles or required review stages. Keep one accountable owner,
+the existing finite allowance, the expected evidence and the stop condition.
+Separate assignments only when ownership or independence requires it; a new
+name or method never releases a claim or resets a budget.
+
+For **Release Investigator · Mira**, load
+[arcadia-release-investigator](../../.agents/skills/arcadia-release-investigator/SKILL.md)
+or its installed same-source skill. The researcher gathers evidence; a separately
+assigned plan-critic can challenge the explanation. The Lead retains coordination
+and the implementer retains repairs. Reuse Process Critic for run/plan critique
+and Hacker recovery for finding an existing authorized route; investigation
+does not add a compulsory step to either workflow. A missing skill limits that
+specialized operation, not unrelated authorized work.
+
 ## Recovery specialization
 
 Read [Hacker recovery](hacker-recovery.md) for repeated refusals and red alerts.

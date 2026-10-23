@@ -122,10 +122,10 @@
     },
     {
       "id": "session-roles-and-briefs",
-      "trigger": "launch subagent, driver brief, session ledger row, model per role",
+      "trigger": "launch subagent, driver brief, session ledger row, model per role, role taxonomy, composable specializations, optional names, Mira, release investigation",
       "path": "docs/agent-guidance/session-roles-and-briefs.md",
-      "read_before": "Before launching or briefing a Session or subagent, or writing a hand-back; grants no authority.",
-      "sha256": "7461f13f80c0b8a2af8baba8e36cc0ea1789291028d4f8c209a4ce29bc7fd151"
+      "read_before": "Before launching or briefing a Session or subagent, composing specializations, invoking release investigation or writing a hand-back; grants no authority.",
+      "sha256": "9e384982126823b2d159d86e2d90c2a893139f651785a70183342c3ad11fc555"
     },
     {
       "id": "native-app-sessions",
