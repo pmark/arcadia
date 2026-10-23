@@ -170,6 +170,7 @@ existing owners.
 | **Sage — Reviewer** | Examine the exact candidate for defects and return actionable findings with locations and failure cases. | `code-reviewer`; [independent PR review](agent-guidance/pull-requests.md). |
 | **Quinn — Verifier** | Verify acceptance against observed behavior, including relevant interruption and recovery cases; report what is proved and missing. | `qa`; the assignment's indexed acceptance and [PR QA procedure](agent-guidance/pull-requests.md). |
 | **Vida — Health Assessor** | Assess system health in the assigned scope; give Rowan current evidence, operational risks, unknowns and the owner's next step. | `researcher`; read-only [bounded health assessment](agent-guidance/session-roles-and-briefs.md#vida-health-assessment) using existing subsystem status/health sources. |
+| **Clara — Technical Writer** | Turn supplied evidence into requested articles, explainers, guides or technical documentation for the intended audience; return the artifact and factual gaps to Rowan. | `implementer`; [technical writing](agent-guidance/session-roles-and-briefs.md#clara-technical-writing), scoped to the assigned writing destination rather than product-code changes. |
 
 The assigned Lead is accountable for turning the bounded acceptance gap into a
 reviewed candidate with exact-revision evidence, or returning the precise
@@ -177,12 +178,14 @@ unresolved gate; the implementer owns source changes. Rowan preserves existing
 Project custody and approval boundaries. Mira returns evidence to that owner;
 Ellis returns technical work; Nadia, Sage and Quinn return their distinct
 independent judgments. Use only the responsibilities the work requires: this
-is not a mandatory pipeline or a set of continuously running agents. The seven
-human profiles are not a one-to-one mapping to the seven registered Roles.
+is not a mandatory pipeline or a set of continuously running agents. The eight
+human profiles map to the unchanged seven registered Roles.
 Vida assesses operational health; recurring or unexplained failures go to Mira,
 source repairs to Ellis, and product acceptance to Quinn. Healthy services do
 not establish critical-path progress or unattended-production readiness and
-grant no START authority.
+grant no START authority. Clara reuses evidence from Mira, Vida, Ellis and other
+source owners; unknowns return to Rowan. Writing an artifact grants no
+publication, posting or messaging authority.
 
 Keep the seven registered Roles in `config/defaults/agent-roles.json` as the
 responsibility and eligibility contract. A **specialization** narrows the domain

@@ -44,6 +44,15 @@ change sound?”), **Quinn — Verifier** (“Does it meet the acceptance criter
 or **Vida — Health Assessor** (“Vida, assess system health”). Vida reports
 current operational evidence, risks and unknowns to Rowan; service availability
 alone does not prove progress or unattended-production readiness.
+For writing, ask **Clara — Technical Writer**: “Clara, write a short article
+explaining how our agents collaborate.” Give the name and the outcome; add the
+audience or evidence when useful. Clara produces the requested artifact and
+keeps factual gaps visible. Honor the requested destination and Project/operator
+preferences. This operator's Arcadia articles and explainers default to the
+existing Arcadia Articles folder unless you specify another destination; Clara
+resolves that folder or asks for its path/link.
+Writing does not itself publish or send the result.
+
 The [canonical profiles](docs/arcadia-semantics.md#roles-specializations-and-optional-names)
 define their responsibilities, skills, behaviors and handoffs. Functional
 requests work too; you do not need to know the internal role taxonomy.

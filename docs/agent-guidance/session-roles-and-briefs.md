@@ -32,8 +32,8 @@ in-process children. A plan-critic is independent of the planner it judges.
 ## Composable specializations and optional names
 
 Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)
-for Rowan, Mira, Ellis, Nadia, Sage, Quinn and Vida. They provide the human interface;
-the seven role IDs remain the assignment contract. Resolve a request by name
+for Rowan, Mira, Ellis, Nadia, Sage, Quinn, Vida and Clara. They provide the
+human interface; the seven role IDs remain the assignment contract. Resolve a request by name
 or function to the appropriate profile, then bind one registered role to the
 actual assignment. For Ellis, choose planner for read-only design or implementer
 for source changes; the name never combines their permissions. Use the existing
@@ -83,6 +83,29 @@ not new persisted states. Availability alone proves neither delivery progress
 nor product acceptance. This method starts no background watch, restart,
 credential refresh, production access or messaging; those retain their existing
 capability and authority boundaries.
+
+### Clara: technical writing
+
+Bind Clara to `implementer` with technical-writing specialization and writing-only
+Ownership in the existing brief. Name the audience, requested outcome, evidence
+and destination. Write concise, conversational articles, explainers, guides or
+technical documentation with practical examples. Reuse supplied evidence from
+Mira, Vida, Ellis and the responsible source owners; gather necessary facts
+within the assignment, distinguish observed, proposed and unproved claims, cite
+authoritative evidence, and never invent provenance. Check uncertain facts with
+the source owner when needed and return unresolved gaps to Rowan; this adds no
+mandatory review stage or researcher writing permission.
+
+Honor an explicit requested destination and existing Project/operator writing
+preferences. In this repository, the operator's default for Arcadia articles and
+explainers is the existing **Arcadia Articles** folder: resolve it or ask for its
+path/link when unavailable; never silently substitute repository `docs/articles`.
+Other Projects retain their own destinations and preferences. Repository
+documentation uses its existing canonical destination. Return the
+artifact location and factual limits. Drafting or saving does not authorize
+publishing, sending or posting. “Clara, write a short article explaining …” is a
+natural-language assignment for an agent that retrieves this guidance, not a
+CLI alias or automatic dispatch mechanism.
 
 ## Recovery specialization
 
