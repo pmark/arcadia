@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 2,
+  "review_rounds": 3,
   "blocking_findings": [
     {
       "class": "circular-action-acceptance",
@@ -35,5 +35,5 @@
     }
   ],
   "outcome": "split",
-  "notes": "Off-only setup published. PR1707 prepares unapproved dependency input; no pointer move, runtime refresh, provider use, replay or activation. Model/effort and resource usage unavailable."
+  "notes": "Operator setup touch: off-only-replacement-setup-2026-10-22.md; asksettle_0e30cea4b0df47d280. Counts unmeasured. Off; scope/pointer unapproved. Runtime resources unavailable."
 }

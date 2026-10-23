@@ -14,7 +14,7 @@ The successful host receipt is `artifacts/generated/operator-scripts/runs/202610
 
 Both authoritative pointers still name `cover-mail-ack-receipt-kind-collision`. Original [PR #1662](https://github.com/pmark/arcadia/pull/1662), head `cff844a22093fbbf4c0a29408502718ab91d047a`, Session `session_59c66b4cf01d4754a7`, failed QA3, attempts, receipts and exhausted hold remain historical held work. Creating the replacement does not complete or merge the original. Broader-policy [PR #1703](https://github.com/pmark/arcadia/pull/1703) remains unapproved and unadopted.
 
-Production remains Off at revision 79 / epoch 44, with zero live admissions. No provider capacity/credential read, coding Session, retry, reset, installation, service restart or activation was authorized by these setup approvals.
+Production was observed Off after setup publication at **2026-10-23T04:59:29.756Z**, revision 79 / epoch 44, with zero live admissions (host receipt `/private/tmp/arcadia-1707-final-off.json`; not included in this PR). This timestamped observation does not establish a later live state. No provider capacity/credential read, coding Session, retry, reset, installation, service restart or activation was authorized by these setup approvals.
 
 ## Exact next proposal
 
