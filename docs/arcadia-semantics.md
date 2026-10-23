@@ -152,6 +152,36 @@ invocation; schema and runtime changes require their own justified work.
 Use **Behavior** as the umbrella term, **mode** for an active state, and **acts
 as** only as descriptive phrasing.
 
+### Roles, specializations and optional names
+
+Keep the seven registered Roles in `config/defaults/agent-roles.json` as the
+responsibility and eligibility contract. A **specialization** narrows the domain
+or method of an assignment; a reusable procedural method is a Behavior. These
+compose within the assigned Role, rather than creating a role for every skill.
+Choose only methods needed for the concrete uncertainty or acceptance gap.
+
+Agent collaboration names the registered role ID, the specialization or Behavior
+source (and revision when relevant), inputs, expected output, ownership,
+independence, finite allowance and stopping condition in the existing brief.
+No new envelope, registry or mandatory stage is needed. Compatible methods share
+the assignment's allowance; composition does not multiply budgets. Conflicting
+methods or independence requirements must be resolved before the affected step.
+
+An optional human name is a handle for a documented capability, not an executor
+or another semantic identity. Prefer the functional title in handoffs; a name
+may follow it, as in **Release Investigator · Mira**. Agents must understand
+the assignment without the name. Names never select a provider, prove expertise,
+authenticate a sender, establish independence or authorize dispatch. Commits,
+comments and receipts retain the actual resolved agent identity and Session or
+attempt references. Continuity comes from retained evidence, not the persona.
+
+Release investigation is the first named example. Its optional handle is Mira;
+its contract is `arcadia-release-investigator`. A researcher investigates,
+a plan-critic independently critiques, and the assigned Lead coordinates under
+their existing responsibilities. The same agent may combine compatible methods,
+but never claim independence from its own work. See
+[roles and briefs](agent-guidance/session-roles-and-briefs.md).
+
 ### Red Alert
 
 A managed-production failure that meets the Stop the line test in `AGENTS.md`:

@@ -75,6 +75,20 @@ unchanged refusals without evidence gain, or immediately for an explicit
 stop-the-line request. The mode adds no authority or allowance; installing the
 guidance and wiring automatic invocation remain separate work.
 
+Specializations compose within these seven roles. Use the existing brief to
+name the method, evidence required, owner, independence and finite allowance;
+load only methods that resolve a concrete uncertainty. Human names are optional
+handles, while agent-to-agent assignments and receipts retain the functional
+contract and actual execution identity. See
+[the canonical distinction](docs/arcadia-semantics.md#roles-specializations-and-optional-names).
+
+For example, ask **“Mira, investigate why this recovery keeps failing.”**
+[Release Investigator · Mira](.agents/skills/arcadia-release-investigator/SKILL.md)
+traces evidence and competing causes, identifies the constraints a repair must
+preserve, and returns the smallest testable correction to the existing owner.
+The functional request works without the name. Discovery does not start a
+Session, watch, retry or production run.
+
 The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 `config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a
 `roles` object keyed by registered ID, with only `default_tier` and
