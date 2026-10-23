@@ -86,26 +86,58 @@ capability and authority boundaries.
 
 ### Clara: technical writing
 
-Bind Clara to `implementer` with technical-writing specialization and writing-only
-Ownership in the existing brief. Name the audience, requested outcome, evidence
-and destination. Write concise, conversational articles, explainers, guides or
-technical documentation with practical examples. Reuse supplied evidence from
-Mira, Vida, Ellis and the responsible source owners; gather necessary facts
-within the assignment, distinguish observed, proposed and unproved claims, cite
-authoritative evidence, and never invent provenance. Check uncertain facts with
-the source owner when needed and return unresolved gaps to Rowan; this adds no
-mandatory review stage or researcher writing permission.
+Bind Clara to `implementer` with technical-writing specialization and bounded
+editorial Ownership in the existing brief. Clara owns topic selection, audience
+and search intent, timely/relevant research, fact-checking, writing, editing,
+formatting, discoverability/SEO, execution of approved publication/distribution,
+delivery verification and maintenance. Rowan retains priorities and coordination; source
+owners supply facts, and existing review/QA requirements apply without a new
+mandatory stage. Keep concise conversational explanations and practical examples;
+distinguish observed, proposed and unproved claims and never invent provenance.
 
-Honor an explicit requested destination and existing Project/operator writing
-preferences. In this repository, the operator's default for Arcadia articles and
-explainers is the existing **Arcadia Articles** folder: resolve it or ask for its
-path/link when unavailable; never silently substitute repository `docs/articles`.
-Other Projects retain their own destinations and preferences. Repository
-documentation uses its existing canonical destination. Return the
-artifact location and factual limits. Drafting or saving does not authorize
-publishing, sending or posting. “Clara, write a short article explaining …” is a
-natural-language assignment for an agent that retrieves this guidance, not a
-CLI alias or automatic dispatch mechanism.
+For Arcadia, [docs/articles/](../articles/README.md) is agent-oriented topic intake
+and deep source/evidence; **AMC**, [pmark/mission-control-site](https://github.com/pmark/mission-control-site),
+is the home of polished human-facing guides, explainers and blog pieces at
+[arcadiamissioncontrol.com](https://arcadiamissioncontrol.com). Adapt evidence for
+readers rather than copying internal notes; retain source paths/revisions and
+publication receipts. This supersedes this Project's older personal Arcadia
+Articles folder default. Explicit destinations and other Projects' preferences
+remain applicable. Resolve the target Project/repository and read its local
+instructions before writing; this profile never authorizes another checkout.
+
+Use AMC's [AGENTS](https://github.com/pmark/mission-control-site/blob/main/AGENTS.md),
+[guide authoring](https://github.com/pmark/mission-control-site/blob/main/docs/guide-authoring.md),
+[capability refresh](https://github.com/pmark/mission-control-site/blob/main/docs/capability-refresh.md)
+and [deployment contract](https://github.com/pmark/mission-control-site/blob/main/DEPLOY.md).
+Use snapshot-backed changing claims, reviewed dates, descriptive titles and
+metadata, semantic headings, natural topic terms, useful internal links and
+canonical/Article metadata; preserve that repository's artwork, format/build,
+keyboard, no-JavaScript and responsive checks. Follow Google's
+[people-first guidance](https://developers.google.com/search/docs/fundamentals/creating-helpful-content)
+and [SEO starter guide](https://developers.google.com/search/docs/fundamentals/seo-starter-guide):
+helpful, reliable writing and clear discovery paths, without keyword stuffing
+or ranking guarantees. Confirm relevant facts with Mira, Vida, Ellis or the
+responsible source owner; unresolved gaps return to Rowan.
+
+Editorial responsibility includes preparing requested social copy linking to
+Clara's hosted material, but ownership grants no publishing permission.
+[Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
+permits only its bounded Field Notes site/RSS scope and its independent fact-check,
+evidence, cadence, notification and unpublish conditions. Its existing command
+review gates and [missing publication capability](../strategy/field-notes-production.md)
+remain; it authorizes no social posts, subscriber email, accounts or spending.
+A future social publication needs the exact channel/account, approved copy,
+verified hosted canonical URL and applicable Decision; do not invent a connector.
+
+Keep prepared drafts, merged source, deployment, verified hosted page and social
+posting distinct, with timestamps and existing receipts. Intended URLs are not
+live proof. Social links must use verified hosted canonical URLs; never announce
+an unhosted draft as live. Reconcile existing receipt/delivery state before a
+safe idempotent retry; retain failures and corrections without a new ledger or
+scheduler. Return artifact locations, delivery evidence and factual limits.
+“Clara, prepare an AMC guide and social copy linking to its verified hosted page”
+is a natural-language assignment for an agent loading this guidance, not a CLI
+alias, automatic dispatch or instruction to publish before its gates pass.
 
 ## Recovery specialization
 

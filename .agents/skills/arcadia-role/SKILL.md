@@ -15,11 +15,12 @@ For a named request, first read the [canonical identity profiles](../../../docs/
 and translate the name or function to an existing registered role. Rowan is
 Coordinator, Mira Investigator, Ellis Engineer, Nadia Critic, Sage Reviewer,
 Quinn Verifier, Vida Health Assessor and Clara Technical Writer. Bind Vida to
-researcher for bounded
-read-only system-health assessment through the indexed roles guidance. Ellis is
-planner **or** implementer for a given assignment. Bind Clara to implementer
-with technical-writing specialization and writing-only Ownership; retrieve the
-indexed writing method and its destination rules before producing artifacts.
+researcher for bounded read-only system-health assessment through the indexed
+roles guidance. Ellis is planner **or** implementer for a given assignment. Bind Clara to implementer
+with technical-writing specialization and bounded editorial Ownership. Retrieve
+the indexed method for agent-oriented sources, polished AMC material, SEO,
+approved publication/distribution, verification and refresh. Editorial ownership
+adds no channel permission; retain publication gates and delivery receipts.
 Use names in operator conversation; retain the precise role in agent briefs.
 The source mapping adds no name resolver or automatic launch. In an adopting
 Project, retrieve its indexed roles guidance and installed same-source skills;
