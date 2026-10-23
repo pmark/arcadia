@@ -31,7 +31,33 @@ messages carry the report link, not another copy of its findings. Follow the
 [full review procedure](docs/agent-guidance/pull-requests.md#runtime-selection-and-feedback-delivery)
 for independent Session requirements, permissions, freshness and review limits.
 
-## Governed specialist roles
+## Your Arcadia colleagues
+
+Start with **Rowan — Coordinator**: “What matters now, what is blocked, and what
+should happen next?” Rowan finds the relevant context, keeps one accountable
+owner and brings you the result or the precise decision needed.
+
+For a focused request, address **Mira — Investigator** (“Why does this keep
+failing?”), **Ellis — Engineer** (“Design and build the correction”),
+**Nadia — Critic** (“What are we overlooking?”), **Sage — Reviewer** (“Is this
+change sound?”), **Quinn — Verifier** (“Does it meet the acceptance criteria?”),
+or **Vida — Health Assessor** (“Vida, assess system health”). Vida reports
+current operational evidence, risks and unknowns to Rowan; service availability
+alone does not prove progress or unattended-production readiness.
+The [canonical profiles](docs/arcadia-semantics.md#roles-specializations-and-optional-names)
+define their responsibilities, skills, behaviors and handoffs. Functional
+requests work too; you do not need to know the internal role taxonomy.
+
+Agents that load this guidance can use these identities in their existing
+assignments now. This does not add name routing to the Dashboard or CLI, start
+Sessions, or create shared memory. Several Sessions can work as Ellis on distinct
+tasks; their task and Session references identify the actual work. Only the
+colleagues needed for an assignment participate, within existing approval and
+independent-review requirements.
+
+### Internal roles and briefs
+
+The following details are for agents and operators preparing execution briefs.
 
 Read the seven canonical roles and render a bounded brief from the repository:
 
@@ -75,19 +101,13 @@ unchanged refusals without evidence gain, or immediately for an explicit
 stop-the-line request. The mode adds no authority or allowance; installing the
 guidance and wiring automatic invocation remain separate work.
 
-Specializations compose within these seven roles. Use the existing brief to
-name the method, evidence required, owner, independence and finite allowance;
-load only methods that resolve a concrete uncertainty. Human names are optional
-handles, while agent-to-agent assignments and receipts retain the functional
-contract and actual execution identity. See
-[the canonical distinction](docs/arcadia-semantics.md#roles-specializations-and-optional-names).
-
-For example, ask **“Mira, investigate why this recovery keeps failing.”**
-[Release Investigator · Mira](.agents/skills/arcadia-release-investigator/SKILL.md)
-traces evidence and competing causes, identifies the constraints a repair must
-preserve, and returns the smallest testable correction to the existing owner.
-The functional request works without the name. Discovery does not start a
-Session, watch, retry or production run.
+Specializations compose within these seven roles. The named profiles above map
+to these internal responsibilities; the existing brief retains the method,
+evidence, owner, independence, finite allowance and actual execution identity.
+For example, Mira uses the existing
+[release investigation skill](.agents/skills/arcadia-release-investigator/SKILL.md),
+and Ellis can apply architecture analysis before an authorized implementation.
+Discovery does not start a Session, watch, retry or production run.
 
 The registry is `config/defaults/agent-roles.json`. Optional read-only workspace
 `config/agent-roles.json` overrides use schema `arcadia-agent-roles-v1` and a

@@ -31,29 +31,58 @@ in-process children. A plan-critic is independent of the planner it judges.
 
 ## Composable specializations and optional names
 
-Use the existing brief and `--specialization` label; it is descriptive data, not
-an executable capability ID or permission. Read the linked Behavior contract
-when a procedural specialization is needed. Name its stable source path and
-revision in the brief when reproducibility requires it. No alias resolver or
-automatic routing is implied. See the
-[canonical distinction](../arcadia-semantics.md#roles-specializations-and-optional-names).
+Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)
+for Rowan, Mira, Ellis, Nadia, Sage, Quinn and Vida. They provide the human interface;
+the seven role IDs remain the assignment contract. Resolve a request by name
+or function to the appropriate profile, then bind one registered role to the
+actual assignment. For Ellis, choose planner for read-only design or implementer
+for source changes; the name never combines their permissions. Use the existing
+brief and `--specialization` label, not a new schema or CLI alias. For example,
+`--role implementer --specialization 'execution lifecycle repair'` can prepare
+Ellis's repair brief; `--role Ellis` is unsupported.
 
-Select the smallest useful combination: causal investigation, specification
-analysis, protocol analysis, experimentation, architecture analysis or
-verification can specialize an existing Role. These examples are methods, not
-new registered roles or required review stages. Keep one accountable owner,
-the existing finite allowance, the expected evidence and the stop condition.
+In the existing **Task** prose, identify the profile and task, such as
+“Ellis — stop/drain repair.” Keep the generated **Identity** block unchanged:
+it contains the actual resolved provider/tier signature. Preserve that identity,
+Session and attempt references in receipts. Disambiguate concurrent profiles
+with task and Session references; the name supplies no shared memory or custody.
+Include the canonical profile source and any selected method source/revision in
+**Context**. Existing **Ownership**, **Acceptance**, **Checks** and **Return**
+carry the delivery owner, sole writer, independence, allowance and stop condition.
+Do not add fields to the generated role-brief JSON.
+
+Read linked Behavior contracts when their methods apply. Select the smallest
+useful combination: causal investigation, specification analysis, protocol
+analysis, experimentation, architecture analysis or verification can specialize
+an existing Role. Keep one accountable owner and the existing finite allowance.
 Separate assignments only when ownership or independence requires it; a new
-name or method never releases a claim or resets a budget.
+name or method never releases a claim, resets a budget or requires another
+review stage. Rowan remains the operator contact when bounded help is assigned;
+a depth-one helper never becomes a second Lead or dispatcher.
 
-For **Release Investigator · Mira**, load
+For Mira, load
 [arcadia-release-investigator](../../.agents/skills/arcadia-release-investigator/SKILL.md)
-or its installed same-source skill. The researcher gathers evidence; a separately
-assigned plan-critic can challenge the explanation. The Lead retains coordination
-and the implementer retains repairs. Reuse Process Critic for run/plan critique
-and Hacker recovery for finding an existing authorized route; investigation
-does not add a compulsory step to either workflow. A missing skill limits that
-specialized operation, not unrelated authorized work.
+or its installed same-source skill. For Nadia, retrieve Process Critic only
+when its run/plan triggers apply. Sage and Quinn retain the separate independent
+Session requirements below. A generic read-only PR reviewer context does not
+become registered code-reviewer admission by using Sage's name. Missing methods
+limit their specialized operation, not unrelated authorized work.
+
+### Vida: health assessment
+
+Bind Vida to `researcher` with system-health assessment specialization. In the
+existing brief, name the assigned services, worker, broker, dependencies or
+blocked/stopped work to inspect and the finite observation window. Retrieve
+existing indexed read-only status/health guidance for that scope; use only
+supported checks within authority. Return to Rowan a concise assessment of each
+affected service/workstream, evidence source, observation time and revision when
+available, impact, uncertainty, and the responsible owner's next step. Separate
+observations from inference: confirmed failures support degradation; unavailable,
+stale or inconclusive evidence stays unknown. These are prose assessments,
+not new persisted states. Availability alone proves neither delivery progress
+nor product acceptance. This method starts no background watch, restart,
+credential refresh, production access or messaging; those retain their existing
+capability and authority boundaries.
 
 ## Recovery specialization
 
