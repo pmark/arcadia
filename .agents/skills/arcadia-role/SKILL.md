@@ -11,6 +11,15 @@ execution protocol, not an authority store or admission mechanism.
 
 ## Receive the assignment
 
+For a named request, first read the [canonical identity profiles](../../../docs/arcadia-semantics.md#roles-specializations-and-optional-names)
+and translate the name or function to an existing registered role. Rowan is
+Coordinator, Mira Investigator, Ellis Engineer, Nadia Critic, Sage Reviewer and
+Quinn Verifier. Ellis is planner **or** implementer for a given assignment.
+Use names in operator conversation; retain the precise role in agent briefs.
+The source mapping adds no name resolver or automatic launch. In an adopting
+Project, retrieve its indexed roles guidance and installed same-source skills;
+if this source is unavailable, preserve the named request and report the gap.
+
 Read the repository's AGENTS.md, context policy, Constitution, Project and exact
 current Action before discovery; for operator-directed work read its indexed
 procedure and rule out overlap. Read `docs/agent-guidance/index.json`, the
@@ -81,10 +90,15 @@ names. Use its existing brief: role, method source, inputs/output, owner,
 independence, allowance and stop condition. Select only useful methods; do not
 multiply assignments or budgets to represent each one.
 
-An optional handle such as **Release Investigator · Mira** names a capability,
-not the agent signing a commit or receipt. Preserve the actual provider/tier
-identity, Session and attempt lineage. For a requested causal investigation,
-use [arcadia-release-investigator](../arcadia-release-investigator/SKILL.md).
+Use the named profile and task in the existing Task prose; keep the generated
+Identity block as the actual resolved provider/tier identity. Retrieve the
+canonical profile's selected skill/Behavior source, then record inputs/output,
+owner, sole writer, independence and stop condition in the existing brief.
+Names are not accepted role IDs and add no permission or allowance. Concurrent
+uses of one profile require distinct task and Session references; retained
+evidence supplies continuity. Do not create per-name skills or another registry.
+For Mira's causal investigation, use
+[arcadia-release-investigator](../arcadia-release-investigator/SKILL.md).
 It supplements the assigned role; it does not grant messaging or launch authority.
 
 ## Simplification within existing roles

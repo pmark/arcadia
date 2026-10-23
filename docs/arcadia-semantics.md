@@ -154,33 +154,60 @@ as** only as descriptive phrasing.
 
 ### Roles, specializations and optional names
 
+Arcadia presents a small set of named **identity profiles** to people. Each
+profile has a stable functional purpose and maps to existing registered Roles,
+skills and Behaviors. People can address the name or the function; they need
+not learn internal role IDs. Rowan is the normal point of contact, answers
+questions by finding the relevant evidence, and coordinates action with the
+existing owners.
+
+| Identity profile | Purpose and handoff | Assigned Role and reusable methods |
+| --- | --- | --- |
+| **Rowan — Coordinator** | Establish what matters, who owns it, what is blocked and the next permitted move; integrate delivery evidence for the operator. | `lead`; [release management](../.agents/skills/arcadia-release-manager/SKILL.md) and [supervision](../.agents/skills/arcadia-supervisor/SKILL.md) when assigned. |
+| **Mira — Investigator** | Explain a failure using evidence and competing causes; give the owner the smallest testable correction and remaining uncertainty. | `researcher`; [release investigation](../.agents/skills/arcadia-release-investigator/SKILL.md), including causal and protocol analysis. |
+| **Ellis — Engineer** | Design a bounded correction or build it; return a design with proof obligations, or a candidate with regression evidence. | `planner` **or** `implementer`, explicitly bound per assignment; [planning](planning-process.md), architecture analysis when needed, and [implementation guardrails](../.agents/skills/arcadia-guardrail/SKILL.md). |
+| **Nadia — Critic** | Challenge assumptions, expose missing evidence and test whether a proposed plan achieves its Outcome. | `plan-critic`; independent plan critique and [Process Critic](../.agents/skills/arcadia-process-critic/SKILL.md) when its triggers apply. |
+| **Sage — Reviewer** | Examine the exact candidate for defects and return actionable findings with locations and failure cases. | `code-reviewer`; [independent PR review](agent-guidance/pull-requests.md). |
+| **Quinn — Verifier** | Verify acceptance against observed behavior, including relevant interruption and recovery cases; report what is proved and missing. | `qa`; the assignment's indexed acceptance and [PR QA procedure](agent-guidance/pull-requests.md). |
+
+The assigned Lead is accountable for turning the bounded acceptance gap into a
+reviewed candidate with exact-revision evidence, or returning the precise
+unresolved gate; the implementer owns source changes. Rowan preserves existing
+Project custody and approval boundaries. Mira returns evidence to that owner;
+Ellis returns technical work; Nadia, Sage and Quinn return their distinct
+independent judgments. Use only the responsibilities the work requires: this
+is not a mandatory six-stage pipeline or six continuously running agents.
+
 Keep the seven registered Roles in `config/defaults/agent-roles.json` as the
 responsibility and eligibility contract. A **specialization** narrows the domain
 or method of an assignment; a reusable procedural method is a Behavior. These
 compose within the assigned Role, rather than creating a role for every skill.
 Choose only methods needed for the concrete uncertainty or acceptance gap.
+Ellis's architecture specialization does not create an Architect role or make
+planning authority to implement. A change of assignment follows existing
+ownership rules; no identity may claim independence from its own work.
 
-Agent collaboration names the registered role ID, the specialization or Behavior
-source (and revision when relevant), inputs, expected output, ownership,
-independence, finite allowance and stopping condition in the existing brief.
-No new envelope, registry or mandatory stage is needed. Compatible methods share
-the assignment's allowance; composition does not multiply budgets. Conflicting
-methods or independence requirements must be resolved before the affected step.
+Agent collaboration names the identity profile and task for readability, plus
+the registered role ID, specialization or Behavior source (and revision when
+relevant), inputs, expected output, ownership, independence, finite allowance
+and stopping condition in the existing brief. No new envelope, registry or
+mandatory stage is needed. Compatible methods share the assignment's allowance;
+composition does not multiply budgets. Resolve conflicting methods or
+independence requirements before the affected step.
 
-An optional human name is a handle for a documented capability, not an executor
-or another semantic identity. Prefer the functional title in handoffs; a name
-may follow it, as in **Release Investigator · Mira**. Agents must understand
-the assignment without the name. Names never select a provider, prove expertise,
-authenticate a sender, establish independence or authorize dispatch. Commits,
-comments and receipts retain the actual resolved agent identity and Session or
-attempt references. Continuity comes from retained evidence, not the persona.
+Names are optional handles for these documented profiles, not executor
+identities. They never select a provider, prove expertise, authenticate a sender,
+establish independence or authorize dispatch. Commits, comments and receipts
+retain the actual resolved provider/tier identity and Session or attempt lineage.
+Several Sessions may use the same profile: distinguish them by name, task and
+Session reference. Continuity comes from retained evidence, not shared memory
+or a uniquely persistent named actor.
 
-Release investigation is the first named example. Its optional handle is Mira;
-its contract is `arcadia-release-investigator`. A researcher investigates,
-a plan-critic independently critiques, and the assigned Lead coordinates under
-their existing responsibilities. The same agent may combine compatible methods,
-but never claim independence from its own work. See
-[roles and briefs](agent-guidance/session-roles-and-briefs.md).
+This contract is usable by agents that retrieve it. It adds no CLI name aliases,
+automatic routing, scheduler, installed adoption or new runtime capability.
+Functional requests remain supported. See
+[roles and briefs](agent-guidance/session-roles-and-briefs.md) for translating a
+named request into an existing bounded assignment.
 
 ### Red Alert
 
