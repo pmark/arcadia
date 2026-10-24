@@ -14,23 +14,20 @@ and other consequential approval boundaries retain their existing gates.
 
 ## Standing unattended-production directive
 
-Operator prime directive, 2026-10-24, within the Constitution: keep authorized
-unattended-production critical-path work moving. One assigned release manager
-(Rowan / Coordinator) is the operator contact. Use the
-[single readiness checklist](docs/managed-production-readiness.md); derive it
-from canonical records and current evidence. Use bounded help within authority and sole-writer custody.
-Notify the configured Discord channel of new/material blockers, distinguishing
-queued from delivered. Do not silently stop with an authorized next step.
+Operator prime directive, 2026-10-24; Constitution governs: one assigned Rowan
+release manager is the contact and keeps authorized critical-path work moving.
+Use the [single checklist](docs/managed-production-readiness.md). Use bounded
+help and sole-writer custody; advance independent work during blockers. Alert
+the configured Discord channel on new/material blockers; verify delivery.
+Before context/usage exhaustion preserve evidence and a paste-ready Codex,
+Claude Code or OpenCode handoff: Plan/Action, revisions, owners, pending work,
+approvals, wakeup state and next move. Transfer sole coordinator custody.
+Require Plan proof; report limits.
 
-Before context/usage exhaustion preserve evidence and a paste-ready handoff for
-Codex, Claude Code or OpenCode: Plan/Action, revisions, owners, pending operations,
-approvals, wakeup state and first safe move. Transfer sole coordinator custody
-explicitly. Require Plan evidence for achievement. Report execution limits.
-
-**Keep production Off pending separate explicit START approval.** The operator
-confirmed “100%, no reserve” and authorized canonical recording; preserve other
-gates. This grants no credential probe, paid fallback, attempt reset, additional
-runtime recovery, merge exception or approval bypass. Verify delivery into running prompts separately.
+**Production stays Off pending separate START approval.** Record the confirmed
+“100%, no reserve” through canonical governance. Preserve other gates: no new
+credential probe, paid fallback, attempt reset, runtime recovery, merge exception
+or approval bypass. Verify actual prompt delivery.
 
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
