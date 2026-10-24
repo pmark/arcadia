@@ -71,6 +71,13 @@ start model differs from the plan's):
 | codex | `spawn_agent` with `model: "<escalation model>"` (built-in, in-process, `multi_agent` stable in codex-cli 0.160.1; the brief is the explicit instruction its tool description requires). A nested `codex exec` is not used: the `workspace-write` sandbox has no network for child processes. | Stop; draft an Agent Ask. |
 | opencode | None Arcadia can vouch for. | Stop; draft an Agent Ask. |
 
+For a consultation request, use the [consultation Behavior](agent-guidance/consultation.md)
+to choose the question, expertise and bounded output through these existing
+role-brief and launch mechanisms. It adds no third model registry or selector,
+changes no Session start policy and does not bypass a bound provider/model.
+Minimum viable total inference can favor one sufficiently capable adviser over
+repeated smaller attempts, when the existing authorized route supports it.
+
 The fallback is always the same and honest: stop, `arcadia agent-ask draft` (or
 `preview`) with `intent: proposal`, `requested_authority: propose`, asking for a
 relaunch at the plan's tier; never guess past what can be verified. The Codex
