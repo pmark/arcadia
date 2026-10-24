@@ -27,6 +27,8 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
+- [Arcadia agent identities: who does what, and why](2026-10-23-agent-identities-roles-and-behaviors.md) — plain definitions and illustrative scenarios for named colleagues, roles, specializations, skills and behaviors.
+
 - [How an idea becomes governed work](2026-10-23-how-an-idea-becomes-governed-work.md): a short explainer of proposals, Agent Asks, Plans, Actions and Decisions, and how settlement connects them.
 
 - [Making every run teach us more](2026-10-21-making-every-run-teach-us-more.md) — a proposed feedback loop for autonomous production, using focused checks and disposable failure rehearsals.
