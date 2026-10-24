@@ -168,21 +168,21 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
       "  4. Exit. The host reconciles the Session only once its process has ended."
     ];
   }
-  // Issue #1619 (live 2026-10-20): headless Claude may run only the Project's
-  // declared validation and this draft command, so a Session told to run the
-  // tests, lint and tsc its criteria name either self-certified them or
-  // stalled; and a long single-quoted command retyped by a light model lost
-  // the criterion's own apostrophes. The checks are named for what verifies
-  // them, and the draft is written with the Write tool and validated in place.
+  // Issue #1619: separate checks run here from host/CI verification, and avoid
+  // shell quoting that loses apostrophes in criteria. Named tests and their
+  // dependency bridge are now permitted; keep the recipe consistent with the
+  // named-test instructions above and the headless permission builder.
   const draftPath = `${input.worktreePath.replace(/\/+$/, "")}/.arcadia/asks/agent-ask-${ask.request_id}.yaml`;
   return [
     ...preservation,
-    "     Checks: the only Bash you may run besides the command in step 3 is the Project's declared validation,",
-    "     exactly as declared. Test, lint, type-check, build and dependency-setup commands are refused here: do not",
-    "     try them, and never write helper scripts or extra files to get around that (a file outside the Action's",
-    "     scope refuses the completion). Before accepting it, the host runs every test file your criteria name; the",
-    "     pull request's required CI runs lint, tsc and build before anything integrates. In the note of a",
-    `     criterion that names such a check, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
+    "     Checks: run the Project's declared validation exactly as declared, plus the named-test and dependency-bridge commands listed above (if any).",
+    "     Other test, lint, type-check, build or dependency-setup commands need approval unless already part of the",
+    "     declared validation. Do not try unlisted commands or change permissions, and never write helper scripts or extra files",
+    "     to work around a refusal (a file outside the Action's scope refuses the completion).",
+    "     Before accepting it, the host runs every test file your criteria name; the pull request's",
+    "     required CI runs lint, tsc and build before anything integrates.",
+    "     For checks you ran, record the command and observed result in the criterion's note.",
+    `     Only for checks you did not run, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
     "  3. Record completion without any shell quoting, in two steps:",
     "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",
@@ -222,14 +222,14 @@ export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot
   }
 }
 
-/** Tell a headless agent the exact named-test commands its allow list permits; everything else is refused. */
+/** Name the exact test commands allowed in addition to declared validation. */
 function renderNamedTestCommands(criteria: readonly string[], headless: boolean): string[] {
   if (!headless) return [];
   const files = namedTestCommands(criteria).filter((command) => command.startsWith("pnpm exec vitest run "));
   if (files.length === 0) return [];
   return [
     "",
-    ...files.map((command) => `Run the named test exactly as \`${command}\` (after \`node scripts/bridge-worktree-deps.mjs\` if node_modules is missing); other test commands need approval and will be refused.`)
+    ...files.map((command) => `Run the named test exactly as \`${command}\` (after \`node scripts/bridge-worktree-deps.mjs\` if node_modules is missing); other test commands need approval unless already part of the Project's declared validation.`)
   ];
 }
 
