@@ -1,0 +1,46 @@
+{
+  "schema": "arcadia-rehearsal-chain-run-v1",
+  "runId": "run9-2026-10-10",
+  "runLabel": "run 9",
+  "actionCount": 9,
+  "requiredCommits": [
+    { "commit": "9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1", "why": "remote preservation (#922)" },
+    { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
+    { "commit": "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4", "why": "settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983)" },
+    { "commit": "26172c74ae9dcf795cc69cabd8a62616f7ed42c8", "why": "each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a))" },
+    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" },
+    { "commit": "3c67b0a8996893210a8694960584dc9732f83d09", "why": "G7 and G8 compare the Grant's Action set order-independently (run 6's live G7 refusal; #1017)" },
+    { "commit": "c26f3a9ebbdbf87315396a9dffc9fd178e02cf37", "why": "the tick reruns a zero-defect reviewer-variance verdict up to three attempts per kind per head (operator choice 2026-10-06; Issue #1018, #1019)" },
+    { "commit": "98b532a183d31411da4437792d1e24bd1dd6eb8b", "why": "the chain reset positions its Actions in the operational queue and G6 checks the queue and reads Codex capacity live (run 7's own harness; Issues #1015, #1016, #1020)" }
+  ],
+  "previousRun": {
+    "label": "run 8",
+    "resetId": "reset-rehearsal-chain-fixture-run8-2026-10-06",
+    "terminalOffId": "restore-terminal-off-rehearsal-chain-run8-2026-10-06",
+    "grantId": "grant-production-rehearsal-chain-run8-2026-10-06",
+    "bindings": {
+      "resetRunId": "20261009T185800Z-9586",
+      "resetHead": "0bf10937f6cfa75b23b1cd87f589c2a2fcec3b36",
+      "terminalOffRunId": "UNFILLED: run restore-terminal-off-rehearsal-chain-run8-2026-10-06 once from the Terminal panel (production is already Off), then bind its runs/ id here",
+      "localMain": "0bf10937f6cfa75b23b1cd87f589c2a2fcec3b36",
+      "candidates": [
+        { "branch": "claude/write-start-marker-20261004T170245861Z", "tip": "58bcd9155cf64836994045ca63a7707d8b9ebe75", "pullRequest": 1 },
+        { "branch": "claude/write-start-marker-20261005T155147519Z", "tip": "7f1390376f4d49215cd29fd98145d40198475613", "pullRequest": 2 },
+        { "branch": "claude/write-start-marker-20261005T184707757Z", "tip": "50d1eab84e385a5566119831c82f5a6d32e752fd", "pullRequest": 3 },
+        { "branch": "claude/write-start-marker-20261005T220000438Z", "tip": "79c6bae937255964cf0453c163ece0c36bb1985a", "pullRequest": 4 },
+        { "branch": "claude/write-start-marker-20261006T032202909Z", "tip": "f68ec48ed4ff95772fee108258d401158c26a54d", "pullRequest": 5 },
+        { "branch": "claude/transform-start-marker-20261006T032821535Z", "tip": "69eb7d6283447270a9a16e540f7d4f5f2e3427fc", "pullRequest": 6 },
+        { "branch": "claude/write-start-marker-20261006T155142019Z", "tip": "6fbae8d6c04f3014038ff51745ae27572a3524dc", "pullRequest": 7 },
+        { "branch": "claude/transform-start-marker-20261006T155537486Z", "tip": "2aa3e2489d151289eb47a8b3e52629f434897d07", "pullRequest": 8 },
+        { "branch": "claude/write-start-marker-20261006T174204533Z", "tip": "8e362475887c3c7c25d1dc594e48a5c8f586ce0f", "pullRequest": 9 },
+        { "branch": "claude/write-start-marker-20261009T192657960Z", "tip": "d3ebc911b2c8ebd36b78fba41a9e6bf630644a8d", "pullRequest": 10 }
+      ]
+    }
+  },
+  "notes": [
+    "Run 9 (N=9): a clean repeat of run 8's nine-Action chain. Run 8 was reset (runs/20261009T185800Z-9586) and then continued by hand, not through G6/G7/G8; that continuation carried a stray non-canonical Agent Ask (Issue #1177) and produced PR #10 (claude/write-start-marker-20261009T192657960Z, tip d3ebc911), which stays preserved. Run 8 had no G7 press and no run of its terminal Off.",
+    "Bindings are run 8's receipts: reset runs/20261009T185800Z-9586 (newHead and remoteMainAfter 0bf10937). Observed read-only 2026-10-09: GitHub main and the fixture clone's local main are both 0bf10937, so no local-main move is needed. Candidates are PR #1 to #9 as run 8's reset receipt recorded them plus PR #10 (open, tip d3ebc911, base main). The fixture clone also holds a local-only branch claude/write-start-marker-20261009T190832496Z at 0bf10937 (run 8's prepared worktree branch; no commits, no PR) that G8's reconciliation decides, not this file.",
+    "terminalOffRunId is deliberately UNFILLED: the reset refuses without a succeeded, Off-confirmed terminal Off receipt of the previous run whose fixtureMain equals localMain and whose work-reconciliation.jsonl covers exactly these candidates, and run 8 never ran its G8. To fill it: run restore-terminal-off-rehearsal-chain-run8-2026-10-06 once from the Terminal panel (production is already Off; G8 needs no G7 receipt), confirm its fixtureMain is 0bf10937 and its reconciliation lists no unreconciled Session, correct the candidate list here if it differs (for example if it also reconciles the local-only 190832496Z branch), and replace the placeholder with that run's id in a reviewed change. The reset refuses until then; no refusal was weakened.",
+    "Required commits are run 8's list unchanged; they were not re-derived. Review them against runtime fixes merged since 98b532a1 (for example #1141, #1145, #1159, #1163) before G6 and G7."
+  ]
+}
