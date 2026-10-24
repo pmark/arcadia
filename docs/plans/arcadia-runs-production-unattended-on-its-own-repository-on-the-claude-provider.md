@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-23
+updated: 2026-10-24
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask add-clean-run-actions-20261021-r4
+    source: Agent Ask replace-held-action-dependency-20261022
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, cover-mail-ack-receipt-kind-collision, isolate-launch-preview-tmux-name, bound-guidance-test-teardown-retries]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, rebuild-cover-mail-ack-receipt-kind-collision, isolate-launch-preview-tmux-name, bound-guidance-test-teardown-retries]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
