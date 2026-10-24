@@ -3,7 +3,7 @@
   "role": "lead",
   "model": "unavailable",
   "effort": null,
-  "action_id": "operator-directed:#1728",
+  "action_id": "operator-directed:#1733",
   "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Current snapshot: consultation source and inactive five-Action follow-up; earlier request completed in #1727. PR records review/CI. Native behavior and usage unmeasured."
+  "notes": "Current snapshot: #1732 merged; first Action prepared, activation Ask and pinned runner snapshot. Prior #1727/#1732 receipts retained. No activation or Session launch."
 }

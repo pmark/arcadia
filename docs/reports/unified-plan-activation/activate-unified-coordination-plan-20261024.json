@@ -1,0 +1,113 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-unified-coordination-plan-20261024",
+  "title": "Activate unified coordination Plan at the shared-entry coding proof",
+  "script": "activate-unified-coordination-plan-20261024.sh",
+  "repeatable": false,
+  "problem": "The unified coordination Plan is inactive; its first Action is now a focused coding regression task. PROJECT still selects the production-Claude Plan.",
+  "desired_effect": "Activate the unified coordination Plan at its first Action, standard / medium; return the previous Plan to draft with unfinished work preserved and place this Project queue segment at the top. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-unified-coordination-plan-20261024.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials; never changes Action status, criteria or responsibility or deletes unfinished work.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "The unified Plan is active at its first coding Action, standard / medium; previous Plan is draft with unfinished work preserved; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "a6cafdc6c2e8964e575c80d4cf042bc32f2d103e"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-unified-coordination-plan-20261024.yaml",
+      "sha256": "c56107337a1cc6818e5c978433df3bb4c6e42d8c740c1bb682f692da2e5db426",
+      "proposal": "activate-unified-coordination-plan-20261024"
+    },
+    "settlement": {
+      "requestId": "activate-unified-coordination-plan-20261024",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "prove-shared-enrollment-at-concurrency-one",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+      "previousPlan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+      "action": "prove-shared-enrollment-at-concurrency-one",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "current_action": "rebuild-cover-mail-ack-receipt-kind-collision",
+        "milestone": "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
+      },
+      "projectAfter": {
+        "active_plan": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+        "current_action": "prove-shared-enrollment-at-concurrency-one",
+        "milestone": "Unify interactive and unattended coordination with safe concurrent Actions"
+      },
+      "planBefore": {
+        "slug": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Unify interactive and unattended coordination with safe concurrent Actions"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "prove-shared-enrollment-at-concurrency-one",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "rebuild-cover-mail-ack-receipt-kind-collision"
+      },
+      "previousPlanAfter": {
+        "status": "draft",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "prove-shared-enrollment-at-concurrency-one",
+        "title": "Prove interactive continuation and unattended execution use the same host enrollment and ownership contract at concurrency one.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/prove-shared-enrollment-at-concurrency-one",
+        "arcadia/preview-safe-concurrent-action-selection",
+        "arcadia/prove-atomic-scoped-concurrent-admission",
+        "arcadia/prove-safe-concurrent-settlement-and-integration",
+        "arcadia/prove-one-supported-native-supervision-adapter"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
