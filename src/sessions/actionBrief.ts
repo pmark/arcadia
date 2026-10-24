@@ -212,10 +212,24 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
  */
 export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot" | "projectSlug" | "planSlug" | "actionId" | "baseRevision">): string[] {
   try {
-    const relativePath = `docs/plans/${input.planSlug}.md`;
-    const content = execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${relativePath}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    let relativePath = `docs/plans/${input.planSlug}.md`;
+    const readAtBase = (file: string) => execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    let content: string;
+    try {
+      content = readAtBase(relativePath);
+    } catch {
+      // Plan slugs need not match filenames. Discovery locates the file only;
+      // permissions still use its committed contents, never candidate criteria.
+      const plan = discoverDocs(input.repoRoot).docs.find((candidate): candidate is PlanDoc =>
+        candidate.type === "plan" && candidate.slug.toLowerCase() === input.planSlug.toLowerCase()
+        && candidate.project.toLowerCase() === input.projectSlug.toLowerCase());
+      if (!plan) return [];
+      relativePath = plan.relativePath;
+      content = readAtBase(relativePath);
+    }
     const doc = parseDoc(relativePath, path.join(input.repoRoot, relativePath), content).doc;
-    if (!doc || doc.type !== "plan" || doc.project.toLowerCase() !== input.projectSlug.toLowerCase()) return [];
+    if (!doc || doc.type !== "plan" || doc.project.toLowerCase() !== input.projectSlug.toLowerCase()
+      || doc.slug.toLowerCase() !== input.planSlug.toLowerCase()) return [];
     return doc.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
   } catch {
     return [];

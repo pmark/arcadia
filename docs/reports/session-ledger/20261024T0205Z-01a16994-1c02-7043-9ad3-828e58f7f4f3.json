@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 3,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -19,8 +19,13 @@
       "id": "pr-fyi-workspace-sandbox-write-denied",
       "cost_min": null,
       "fix_ref": "Ordinary host permission path; ping_cadb5b00ef24428b81 queued"
+    },
+    {
+      "id": "criteria-guard-exposed-filename-slug-assumption",
+      "cost_min": null,
+      "fix_ref": "src/sessions/actionBrief.ts base-only Plan lookup fallback; CI run 40053346776"
     }
   ],
   "outcome": "complete",
-  "notes": "Requested source fix; snapshot after R1. Final-head delta review and CI recorded on PR. Offline tests are not native model-behavior proof."
+  "notes": "Source fix; snapshot after R3. Final PR records lookup-repair review/CI. Offline tests are not native model-behavior proof."
 }

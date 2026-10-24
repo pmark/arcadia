@@ -124,6 +124,27 @@ describe("renderActionBrief", () => {
     expect(() => renderActionBrief({ ...input, agent: "codex", headless: true })).not.toThrow();
   });
 
+  it("pins criteria when a Plan filename differs from its slug", () => {
+    const repo = briefRepo();
+    const original = path.join(repo, "docs/plans/copy-proof.md");
+    const criterion = "The contract exists and tests/contract.test.ts passes.";
+    writeFileSync(original, readFileSync(original, "utf8").replace("The contract exists.", criterion));
+    execFileSync("git", ["-C", repo, "mv", "docs/plans/copy-proof.md", "docs/plans/operator-chosen-name.md"]);
+    execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "noncanonical Plan filename"]);
+    const input = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: repo, branch: "claude/x", agent: "claude" as const, baseRevision: head(repo), headless: true };
+    expect(actionAcceptanceCriteria(input)).toEqual([criterion, "The contract is published."]);
+    expect(renderActionBrief(input)).toContain("Run the named test exactly as `pnpm exec vitest run tests/contract.test.ts`");
+    expect(headlessClaudeAllowList([], null, actionAcceptanceCriteria(input))).toContain("Bash(pnpm exec vitest run tests/contract.test.ts)");
+    const file = path.join(repo, "docs/plans/operator-chosen-name.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace(criterion, "tests/unassigned.test.ts passes."));
+    expect(actionAcceptanceCriteria(input)).toEqual([criterion, "The contract is published."]);
+    expect(headlessClaudeAllowList([], null, actionAcceptanceCriteria(input))).not.toContain("Bash(pnpm exec vitest run tests/unassigned.test.ts)");
+    expect(() => renderActionBrief(input)).toThrow(/acceptance criteria differ from.*base revision/);
+    // A worktree slug cannot relabel another base Plan into this Session.
+    writeFileSync(file, readFileSync(file, "utf8").replace("slug: copy-proof", "slug: different-plan"));
+    expect(actionAcceptanceCriteria({ ...input, planSlug: "different-plan" })).toEqual([]);
+  });
+
   it.each([
     { files: [] },
     { files: ["tests/contract.test.ts"] },
