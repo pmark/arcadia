@@ -113,7 +113,7 @@ function shellSingleQuote(value: string): string {
 }
 
 /** The words a headless Claude note adds for a check it cannot run (#1619): no quotes, so it is safe inside the one-line JSON. */
-export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verified by host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
 
 /**
  * The draft-only completion block for a Session that cannot commit: one exact
@@ -177,7 +177,7 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     ...preservation,
     "     Checks: run the Project's declared validation exactly as declared, plus the named-test and dependency-bridge commands listed above (if any).",
     "     Other test, lint, type-check, build or dependency-setup commands need approval unless already part of the",
-    "     declared validation. Do not try unlisted commands or change permissions, and never write helper scripts or extra files",
+    "     declared validation. Do not try unlisted check or setup commands or change permissions, and never write helper scripts or extra files",
     "     to work around a refusal (a file outside the Action's scope refuses the completion).",
     "     Before accepting it, the host runs every test file your criteria name; the pull request's",
     "     required CI runs lint, tsc and build before anything integrates.",

@@ -145,6 +145,8 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("plus the named-test and dependency-bridge commands listed above (if any)");
     expect(brief).toContain("For checks you ran, record the command and observed result");
     expect(brief).toContain("Only for checks you did not run");
+    expect(brief).toContain("not run in this Session; verification deferred to host");
+    expect(brief).not.toContain("not run in this Session; verified by host");
     expect(brief).toContain("the host runs every test file your criteria name");
     expect(brief).toContain("required CI runs lint, tsc and build before anything integrates");
   });
