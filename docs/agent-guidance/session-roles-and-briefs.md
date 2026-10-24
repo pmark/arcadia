@@ -29,6 +29,18 @@ to request planner, plan-critic, implementer or researcher at depth 1. Delegates
 never delegate. Code-reviewer and qa are separate independent Sessions, never
 in-process children. A plan-critic is independent of the planner it judges.
 
+## Consultation requests
+
+For “get advice,” “get a second opinion” or “get help,” read
+[the consultation Behavior](consultation.md) before choosing or launching advisers.
+Rowan frames the question and integrates one bounded consultation using the
+existing profiles, role briefs and authorized routes; minimize expected total
+inference without creating a new budget workflow or granting execution authority.
+Across assignments, Rowan actively identifies safe opportunities for parallel
+work and coordinates eligible work through existing authorized admission. The
+host enforces dependencies, ownership, conflicts and limits; a coordinator
+never treats a consultation or disjoint worktrees as permission for concurrency.
+
 ## Composable specializations and optional names
 
 Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)

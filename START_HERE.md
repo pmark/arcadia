@@ -67,6 +67,21 @@ tasks; their task and Session references identify the actual work. Only the
 colleagues needed for an assignment participate, within existing approval and
 independent-review requirements.
 
+### Get advice without assembling the team
+
+Say **“Get advice on this,” “Get a second opinion,”** or **“Get help with this.”**
+Rowan selects the relevant expertise and a sufficiently capable model and effort,
+using one adviser unless a specific missing perspective needs another. The aim
+is minimum viable total inference, including briefing and retries, rather than
+a mandatory cheap-model trial or a panel. A second opinion is independent; help
+defaults to advice until execution assistance is actually requested.
+
+This works through agents loading the [consultation procedure](docs/agent-guidance/consultation.md)
+and their available authorized tools. It adds no automatic Dashboard/CLI phrase
+router or native runtime support. Consultation returns a recommendation, evidence,
+uncertainty and the next permitted step; it does not change ownership or start
+production. Other-project guidance updates remain a separate rollout.
+
 ### Internal roles and briefs
 
 The following details are for agents and operators preparing execution briefs.

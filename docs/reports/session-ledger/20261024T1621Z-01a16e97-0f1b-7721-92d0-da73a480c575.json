@@ -3,7 +3,7 @@
   "role": "lead",
   "model": "unavailable",
   "effort": null,
-  "action_id": "operator-directed:#1726",
+  "action_id": "operator-directed:#1728",
   "pr": null,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
@@ -14,7 +14,13 @@
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
-  "frictions": [],
+  "frictions": [
+    {
+      "id": "consultation-plan-bracket-scalar",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1731; serializer-safe v2 accepted; original preserved and retired"
+    }
+  ],
   "outcome": "complete",
-  "notes": "Documentation default only. Instruction delivery checks passed for Codex, Claude Code and OpenCode; native behavior not exercised. PR carries review/CI evidence."
+  "notes": "Current snapshot: consultation source and inactive five-Action follow-up; earlier request completed in #1727. PR records review/CI. Native behavior and usage unmeasured."
 }
