@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { PreservationLifecycle } from "./preservationProcessLifecycle.js";
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import path from "node:path";
@@ -28,26 +30,38 @@ export function readPreservationAttempt(file: string): PreservationAttempt | und
   try { return JSON.parse(readFileSync(file, "utf8")) as PreservationAttempt; } catch { return; }
 }
 
-/** Each attempt owns one process group. Kill the checks too, and wait for the
- * child exit before releasing the claim or reporting a result. */
+/** The async attempt owner controls payload and validation groups. Cancellation
+ * requests a drain; parent exit alone never supplies terminal proof. */
 export async function executeHostPreservation(input: {
-  source: string; workspace: string; attemptFile: string; onSpawn?: (pid: number) => void;
-}, limits = { total: PRESERVATION_EXECUTION_TIMEOUT_MS, stage: PRESERVATION_STAGE_TIMEOUT_MS }): Promise<GoTransportResult> {
+  source: string; workspace: string; attemptFile: string; custodyToken?: string; signal?: AbortSignal; onSpawn?: (pid: number) => void;
+}, limits = { total: PRESERVATION_EXECUTION_TIMEOUT_MS, stage: PRESERVATION_STAGE_TIMEOUT_MS }): Promise<GoTransportResult & { lifecycle: PreservationLifecycle }> {
   if (process.env.CODEX_SANDBOX) throw validationError("Preservation execution must run on the host.");
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
   const startedAt = Date.now();
+  const token = input.custodyToken ?? randomUUID();
   writePreservationAttempt(input.attemptFile, { stage: "host.start", at: startedAt });
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [
       ...(extension === "ts" ? ["--import", import.meta.resolve("tsx")] : []),
       fileURLToPath(new URL(`./preservationRequestWorker.${extension}`, import.meta.url)),
-      input.source, input.workspace, input.attemptFile
+      input.source, input.workspace, input.attemptFile, token, String(limits.total)
     ], { detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
-    let result: GoTransportResult | undefined;
+    let result: (GoTransportResult & { lifecycle: PreservationLifecycle }) | undefined;
+    let finished = false;
+    let cancellationBound: NodeJS.Timeout | undefined;
     let failure: GoTransportResult | undefined;
     let stderr = "";
     child.stderr?.on("data", bytes => { stderr = (stderr + String(bytes)).slice(-4000); });
-    child.once("message", message => { result = message as GoTransportResult; });
+    child.on("message", message => {
+      const value = message as GoTransportResult & { lifecycle?: PreservationLifecycle };
+      if (value.lifecycle?.token === token) result = value as typeof result;
+    });
+    const cancel = () => {
+      failure ??= goTransportFailure(validationError("Protected preservation cancelled; candidate and evidence retained.", { attemptRef: input.attemptFile }));
+      if (child.connected) child.send({ cancel: true });
+      cancellationBound ??= setTimeout(() => finish(failure!), 10_000);
+    };
+    input.signal?.addEventListener("abort", cancel, { once: true });
     const timer = setInterval(() => {
       if (failure) return;
       const last = readPreservationAttempt(input.attemptFile);
@@ -57,16 +71,19 @@ export async function executeHostPreservation(input: {
         attemptRef: input.attemptFile, command: last?.command ?? null,
         remedy: "Inspect the retained attempt and validation receipt, then retry through protected preservation; a commit may already exist and will be recovered by its trailer. Do not clear claims or bypass validation."
       }));
-      if (child.pid) {
-        try { process.kill(-child.pid, "SIGKILL"); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") process.stderr.write(`Could not stop preservation child: ${String(error)}\n`); }
-      }
+      cancel();
     }, Math.min(250, limits.stage));
     const finish = (value: GoTransportResult) => {
+      if (finished) return;
+      finished = true;
       clearInterval(timer);
+      clearTimeout(cancellationBound);
+      input.signal?.removeEventListener("abort", cancel);
+      const lifecycle = result?.lifecycle ?? { state: "drain_unknown" as const, token, executionRoots: [], detail: "owner exited without matching terminal proof" };
+      const final = { ...value, lifecycle };
       try {
-        writePreservationAttempt(`${input.attemptFile}.result.json`, { result: value, stderr, finishedAt: new Date().toISOString() });
-        resolve(value);
+        writePreservationAttempt(`${input.attemptFile}.result.json`, { result: final, stderr, finishedAt: new Date().toISOString() });
+        resolve(final);
       } catch (error) { reject(normalizeError(error)); }
     };
     child.once("error", error => { failure = goTransportFailure(error); });
@@ -74,10 +91,11 @@ export async function executeHostPreservation(input: {
       "Protected preservation child exited without a response; candidate and evidence retained.",
       { ...readPreservationAttempt(input.attemptFile), attemptRef: input.attemptFile, code, signal, stderr }
     ))));
+    if (input.signal?.aborted) cancel();
     try { if (child.pid) input.onSpawn?.(child.pid); }
     catch (error) {
       failure = goTransportFailure(error);
-      if (child.pid) process.kill(-child.pid, "SIGKILL");
+      cancel();
     }
   });
 }

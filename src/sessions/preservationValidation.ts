@@ -1,6 +1,6 @@
 import { preservationStage, preservationStageFailure } from "./preservationStages.js";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { runOwnedValidation } from "./preservationProcessLifecycle.js";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -111,6 +111,7 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   const scratch = path.join(root, "scratch");
   mkdirSync(source); mkdirSync(scratch);
   const evidenceRef = path.join(evidenceDirectory, "validation.json");
+  let terminalProven = true;
   try {
     onStage?.("seatbelt-validation");
     preservationStage("validation.materialize", { evidenceRef, executionRoot: root });
@@ -134,14 +135,17 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
       writeEvidence(command);
       preservationStage("validation.check", { command, evidenceRef });
       const startedAt = performance.now();
-      const run = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
+      terminalProven = false;
+      const run = runOwnedValidation({ argv: ["/usr/bin/sandbox-exec", "-p", profile, "/bin/sh", "-c", command],
         cwd: source, env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: process.env.NODE_ENV ?? "" },
-        encoding: "utf8", timeout: CHECK_TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
+        timeoutMs: CHECK_TIMEOUT_MS, executionRoot: root, workspace
       });
+      terminalProven = run.terminalProven;
+      if (!terminalProven) throw validationError("Preservation descendants have no terminal proof; execution root retained.", { evidenceRef, executionRoot: root });
       const durationMs = Math.round(performance.now() - startedAt);
-      results.push({ command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
+      results.push({ command, exitStatus: run.status, signal: run.signal, error: run.error ?? null,
         stdout: run.stdout, stderr: run.stderr, cwd: source, durationMs,
-        timedOut: checkTimedOut(run.error), timeoutMs: CHECK_TIMEOUT_MS });
+        timedOut: run.timedOut, timeoutMs: CHECK_TIMEOUT_MS });
       writeEvidence(command);
     }
     preservationStage("validation.evidence", { evidenceRef });
@@ -171,6 +175,6 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
     preservationStage("validation.cleanup", { evidenceRef });
-    rmSync(root, { recursive: true, force: true });
+    if (terminalProven) rmSync(root, { recursive: true, force: true });
   }
 }

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { runOwnedValidation } from "./preservationProcessLifecycle.js";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -47,11 +47,6 @@ export const MAX_NAMED_TEST_FILES = 10;
 const MAX_REPORTED_FAILURES = 10;
 const MAX_NAME_CHARS = 200;
 const MAX_REASON_CHARS = 1_500;
-
-/** Whether spawnSync stopped a process at its own timeout (`checkTimedOut` in preservationValidation.ts; not imported, that module imports this one's caller). */
-function spawnTimedOut(error: Error | undefined): boolean {
-  return error !== undefined && "code" in error && error.code === "ETIMEDOUT";
-}
 
 export interface CompletionValidationOptions {
   /** The checkout whose installed `node_modules` trees the named tests resolve against. Defaults to the Session's repository. */
@@ -243,17 +238,6 @@ interface VitestReport {
 
 // Runs the command in its own process group, output discarded so no
 // descendant holds the host's pipes, and kills the whole group at the bound.
-const WATCHDOG = String.raw`
-const { spawn } = require("node:child_process");
-const { writeFileSync } = require("node:fs");
-const [marker, timeoutMs, ...argv] = process.argv.slice(1);
-const child = spawn(argv[0], argv.slice(1), { stdio: "ignore", detached: true });
-const kill = () => { try { process.kill(-child.pid, "SIGKILL"); } catch {} };
-const timer = setTimeout(() => { writeFileSync(marker, "timeout"); kill(); }, Number(timeoutMs));
-child.on("error", (error) => { clearTimeout(timer); process.stderr.write(String(error && error.message)); process.exit(127); });
-child.on("exit", (code) => { clearTimeout(timer); kill(); process.exit(code === null ? 128 : code); });
-`;
-
 /** Run the Action's declared validation against the candidate's exact tree. Synchronous, bounded by `timeoutMs` in total. */
 export function validateCompletionCandidate(candidate: CompletionValidationCandidate, given: CompletionValidationOptions = {}): CompletionValidationResult {
   // The unconfined seam exists for test runs only; anywhere else it is ignored.
@@ -286,6 +270,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   const marker = path.join(root, "timeout");
   mkdirSync(source); mkdirSync(scratch);
   const startedAt = performance.now();
+  let terminalProven = true;
   try {
     try {
       materializeCandidateTree(candidate.repository, tree, source);
@@ -335,11 +320,11 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
       const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
-      const result = spawnSync(process.execPath, ["-e", WATCHDOG, marker, String(limit), ...confined], {
-        cwd: source, env, encoding: "utf8", stdio: ["ignore", "ignore", "pipe"], timeout: limit + 30_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
-      });
-      const timedOut = existsSync(marker) || spawnTimedOut(result.error);
-      const error = result.error && !timedOut ? normalizeError(result.error).message : result.status === 127 ? (result.stderr || "the command could not start") : null;
+      terminalProven = false;
+      const result = runOwnedValidation({ argv: confined, cwd: source, env, timeoutMs: limit, executionRoot: root, workspace: candidate.workspace });
+      terminalProven = result.terminalProven;
+      const timedOut = result.timedOut;
+      const error = !terminalProven ? "validation descendants have no terminal proof; execution root retained" : result.error ?? null;
       return { status: result.status, timedOut, error };
     };
     const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
@@ -392,6 +377,6 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
     return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    if (terminalProven) rmSync(root, { recursive: true, force: true });
   }
 }

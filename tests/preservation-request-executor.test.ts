@@ -19,7 +19,7 @@ describe("bounded protected preservation child", () => {
     vi.stubEnv("CODEX_SANDBOX", "");
     vi.useFakeTimers();
     root = mkdtempSync(path.join(tmpdir(), "arcadia-preservation-executor-"));
-    child = Object.assign(new EventEmitter(), { pid: 12345, stderr: new EventEmitter() });
+    child = Object.assign(new EventEmitter(), { pid: 12345, stderr: new EventEmitter(), connected: true, send: vi.fn() });
     mocks.spawn.mockReturnValue(child);
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); rmSync(root, { recursive: true, force: true }); });
@@ -30,7 +30,8 @@ describe("bounded protected preservation child", () => {
     const promise = executeHostPreservation(input(), { total: 2000, stage: 500 }).then(result => { settled(result); return result; });
     writePreservationAttempt(input().attemptFile, { stage: "validation.recheck-snapshot", at: Date.now(), evidenceRef: "/protected/check/validation.json" });
     await vi.advanceTimersByTimeAsync(500);
-    expect(kill).toHaveBeenCalledWith(-child.pid, "SIGKILL");
+    expect(kill).not.toHaveBeenCalled();
+    expect((child as unknown as { send: ReturnType<typeof vi.fn> }).send).toHaveBeenCalledWith({ cancel: true });
     expect(settled).not.toHaveBeenCalled();
     child.emit("close", null, "SIGKILL");
     expect(await promise).toMatchObject({ ok: false, error: { details: { stage: "validation.recheck-snapshot", evidenceRef: "/protected/check/validation.json", attemptRef: input().attemptFile } } });
@@ -44,7 +45,7 @@ describe("bounded protected preservation child", () => {
       writePreservationAttempt(input().attemptFile, { stage: `stage-${i}`, at: Date.now() });
       await vi.advanceTimersByTimeAsync(250);
     }
-    expect(kill).toHaveBeenCalledTimes(1);
+    expect(kill).not.toHaveBeenCalled();
     child.emit("close", null, "SIGKILL");
     expect(await promise).toMatchObject({ ok: false });
   });
@@ -55,9 +56,11 @@ describe("bounded protected preservation child", () => {
     expect(onSpawn).toHaveBeenCalledWith(child.pid);
     expect(mocks.spawn.mock.calls.at(-1)?.[1].join(" ")).toContain("preservationRequestWorker.ts");
     const response = { ok: true, response: { commitSha: "preserved" } };
-    child.emit("message", response);
+    const token = mocks.spawn.mock.calls.at(-1)?.[1].at(-2);
+    const lifecycle = { token, state: "terminal_proven", executionRoots: [] };
+    child.emit("message", { ...response, lifecycle });
     child.emit("close", 0, null);
-    expect(await promise).toEqual(response);
+    expect(await promise).toEqual({ ...response, lifecycle });
     expect(vi.getTimerCount()).toBe(0);
   });
 

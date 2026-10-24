@@ -20,7 +20,7 @@ export const fixtureGit = (cwd: string, args: string[]) => execFileSync("git", a
  * directory just before it is committed and the candidate worktree is cut from
  * it, so anything it adds (for example a tracked baseline symlink) lands
  * identically in both the base commit and the candidate, unchanged. */
-export function preservationFixture(root?: string, command = "node check.mjs", extra?: (repo: string) => void) {
+export function preservationFixture(root?: string, command: string | string[] = "node check.mjs", extra?: (repo: string) => void) {
   const fixture = buildPreservationFixture(root, command, "session", extra);
   if (!fixture.lease) throw Error("The session fixture did not register a Session.");
   return { ...fixture, lease: fixture.lease };
@@ -29,11 +29,12 @@ export function preservationFixture(root?: string, command = "node check.mjs", e
 /** The same disposable fixture with only an active worktree reservation, so
  * preservation binds through the manual `go` handoff path: no Session lease,
  * no authorized packet and no production grant. */
-export function manualPreservationFixture(root?: string, command = "node check.mjs", extra?: (repo: string) => void) {
+export function manualPreservationFixture(root?: string, command: string | string[] = "node check.mjs", extra?: (repo: string) => void) {
   return buildPreservationFixture(root, command, "manual", extra);
 }
 
-function buildPreservationFixture(root: string | undefined, command: string, mode: "session" | "manual", extra?: (repo: string) => void) {
+function buildPreservationFixture(root: string | undefined, command: string | string[], mode: "session" | "manual", extra?: (repo: string) => void) {
+  const commands = Array.isArray(command) ? command : [command];
   root = realpathSync(root ?? mkdtempSync(path.join(tmpdir(), "arcadia-preservation-fixture-")));
   const repo = path.join(root, "repo");
   const workspace = path.join(root, "workspace");
@@ -53,7 +54,7 @@ function buildPreservationFixture(root: string | undefined, command: string, mod
   initWorkspace(workspace);
   const lease = withDatabase(workspace, db => {
     const project = upsertProject(db, { name: "Preservation Fixture", mission: "Prove preservation", goal: "Prove preservation", status: "active", currentMilestone: "Prove preservation", nextAction: "Write the marker.", workClassification: "agent" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: [command] });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: commands });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length) throw Error(JSON.stringify(sync.errors));
     if (mode === "manual") {
@@ -63,7 +64,7 @@ function buildPreservationFixture(root: string | undefined, command: string, mod
     const workItem = getWorkItemByDocRef(db, "plan/proof#write-marker")!;
     const promptPath = "prompts/codex/preservation-fixture/prompt.md";
     mkdirSync(path.dirname(path.join(workspace, promptPath)), { recursive: true });
-    writeFileSync(path.join(workspace, promptPath), `# Authorized fixture packet\n- Run validation command: ${command}\n`);
+    writeFileSync(path.join(workspace, promptPath), `# Authorized fixture packet\n${commands.map(command => `- Run validation command: ${command}\n`).join("")}`);
     writeFileSync(path.join(workspace, "prompts/codex/preservation-fixture/metadata.json"), JSON.stringify({ invocationId: "fixture-packet", workItemId: workItem.id, promptPath, providerSelection: { provider: "codex-cli", model: "fixture", mappingId: "fixture-map", bindingId: "fixture-binding" } }));
     createCodexInvocation(db, { id: "fixture-packet", purpose: "build", agentProfile: "codex_build", workspaceScope: repo, command: "codex", promptPath, jsonlOutputPath: "output.jsonl", finalMessagePath: "final.md", status: "packet_created", workItemId: workItem.id, providerMappingId: "fixture-map", providerBindingId: "fixture-binding" });
     const approval = createReviewItem(db, { projectId: project.id, workItemId: workItem.id, codexInvocationId: "fixture-packet", decisionNeeded: "Authorize disposable fixture packet", sourceInput: "Synthetic fixture authority", proposedAction: "Validate and preserve fixture locally only", resolvedIntent: "CodexPlanningArtifactAcceptance", confidenceLabel: "high", confidence: 1, missingFields: [], context: { planningPromotion: { actionId: "write-marker", actionDocRef: "plan/proof#write-marker", repoPath: repo, buildProfile: "codex_build", buildInvocationId: "fixture-packet", buildPacketPath: promptPath, buildPacketSha256: packetSha256(path.join(workspace, promptPath)) } } });

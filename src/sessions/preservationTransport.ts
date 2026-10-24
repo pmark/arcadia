@@ -1,3 +1,4 @@
+import { custodyPath, terminalCustody, drainPreservationWorkspace, hasUnresolvedPreservationCustody, type PreservationCustody, type PreservationLifecycle } from "./preservationProcessLifecycle.js";
 import { randomUUID } from "node:crypto";
 import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -43,6 +44,13 @@ const HEARTBEAT = HEARTBEAT_FILE;
  */
 const runningGoSources = new Set<string>();
 const runningPreservationRequests = new Set<string>();
+const stoppedPreservationWorkspaces = new Set<string>();
+/** Call after stopping the workspace's dispatch loop. New local admission is
+ * fenced before cancelling durable owners; a failed proof retains custody. */
+export async function drainPreservationRequests(workspace: string, timeoutMs = 10_000) {
+  stoppedPreservationWorkspaces.add(workspace);
+  return drainPreservationWorkspace(workspace, timeoutMs);
+}
 const NONCE = /^[a-f0-9-]{36}$/;
 // Re-exported from the leaf module so existing importers are unchanged.
 export { agentGoTransportState, preservationTransportReady, TRANSPORT_FRESHNESS_MS, transportHeartbeatDiagnostic };
@@ -336,6 +344,7 @@ export interface PreservationTransportDeps {
 }
 
 export function processPreservationRequests(db: Database.Database, workspace: string, deps: PreservationTransportDeps = {}): boolean {
+  if (stoppedPreservationWorkspaces.has(workspace)) return true;
   if (process.env.CODEX_SANDBOX) throw validationError("The preservation consumer must run on the host.");
   mkdirSync(path.join(workspace, ".arcadia"), { recursive: true });
   const leases = db.prepare("SELECT * FROM agent_sessions WHERE status IN ('prepared','running')").all() as AgentSession[];
@@ -368,11 +377,21 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     try { processContainerAuditRequest(workspace, repository.path); }
     catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
   }
+  // Includes standalone completion validators, whose owning Session may have
+  // already transitioned. Their unknown custody must survive caller restart.
+  if (hasUnresolvedPreservationCustody(workspace)) return true;
   let preservationInFlight = false;
   for (const lease of [...leases, ...handoffs]) {
     try { processContainerAuditRequest(workspace, lease.worktree_path); }
     catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
     processGoRequest({ workspace, source: lease.worktree_path });
+    const custodyFile = custodyPath(workspace, lease.id);
+    if (existsSync(custodyFile)) {
+      try {
+        const custody = JSON.parse(readFileSync(custodyFile, "utf8")) as PreservationCustody;
+        if (!terminalCustody(custody)) { preservationInFlight = true; continue; }
+      } catch { preservationInFlight = true; continue; }
+    }
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;
     const nonce = readPreserveRequest(request)?.nonce;
@@ -407,12 +426,18 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     preservationInFlight = true;
     runningPreservationRequests.add(requestKey);
     const attemptFile = path.join(path.dirname(response), `${nonce}.attempt.json`);
-    let hostOperation: Promise<GoTransportResult>;
+    let hostOperation: Promise<GoTransportResult & { lifecycle?: PreservationLifecycle }>;
+    // Persist custody before spawning. A dead/aged PID cannot prove descendants
+    // terminal after a caller crash; only the matching owner receipt can.
+    if (!deps.executeHostPreservation) {
+      mkdirSync(path.dirname(custodyFile), { recursive: true });
+      writeFileSync(custodyFile, JSON.stringify({ token, attemptFile }), { mode: 0o600 });
+    }
     try {
       hostOperation = deps.executeHostPreservation
         ? deps.executeHostPreservation(lease.worktree_path, workspace, PRESERVATION_JOB_TIMEOUT_MS)
         : executeBoundedHostPreservation({
-            source: lease.worktree_path, workspace, attemptFile,
+            source: lease.worktree_path, workspace, attemptFile, custodyToken: token,
             onSpawn: pid => {
               db.prepare("UPDATE candidate_preservation_claims SET pid = ? WHERE session_id = ? AND token = ?").run(pid, lease.id, token);
             }
@@ -422,11 +447,15 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     }
     void hostOperation
       .catch(goTransportFailure)
-      .then(result => writeGoResponse(response, result))
+      .then(result => {
+        if (!deps.executeHostPreservation && !terminalCustody({ token, attemptFile })) return;
+        writeGoResponse(response, result);
+      })
       .catch(error => { process.stderr.write(`Could not write preservation response: ${String(error)}\n`); })
       .finally(() => {
         runningPreservationRequests.delete(requestKey);
         try {
+          if (!deps.executeHostPreservation && !terminalCustody({ token, attemptFile })) return;
           withDatabase(workspace, current => {
             current.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
           });
