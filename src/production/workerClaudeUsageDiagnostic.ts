@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, closeSync, existsSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from "node:fs";
+import { constants, closeSync, existsSync, fsyncSync, fstatSync, lstatSync, linkSync, unlinkSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,40 @@ function boundedJson(file: string, protectedFile = false): unknown {
   }
   finally {
     closeSync(fd);
+  }
+}
+/** Publish complete owner metadata exclusively. A crash before publication has
+* no credential effect; after publication the consumed record is always readable. */
+export function publishDiagnosticAttempt(attempt: string, owner: object): boolean {
+  const temporary = `${attempt}.${randomUUID()}.tmp`;
+  const fd = openSync(temporary, "wx", 0o600);
+  try {
+    try {
+      writeFileSync(fd, JSON.stringify(owner));
+      fsyncSync(fd);
+    }
+    finally {
+      closeSync(fd);
+    }
+    try {
+      linkSync(temporary, attempt);
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+        return false;
+      throw error;
+    }
+    const directory = openSync(path.dirname(attempt), "r");
+    try {
+      fsyncSync(directory);
+    }
+    finally {
+      closeSync(directory);
+    }
+    return true;
+  }
+  finally {
+    unlinkSync(temporary);
   }
 }
 /** Capture actual module locations/bytes once at startup; never infer loaded code
@@ -212,13 +246,21 @@ async function processRequest(workspace: string, repository: string, binding: Di
   const failed = (outcome: string, requestAttempted = false) => receipt({ success: false, outcome, requestAttempted, httpStatus: null, windows: [], source: requestAttempted ? "worker_live_request" : "worker_no_request" });
   const attempt = `${response}.attempt`;
   if (existsSync(attempt)) {
-    const owner = boundedJson(attempt, true) as {
+    let owner: {
       pid: number;
       instance: string;
       approval?: {
         digest: string;
       };
     };
+    try {
+      owner = boundedJson(attempt, true) as typeof owner;
+    }
+    catch {
+      return null;
+    } // Unknown consumed custody is preserved, never retried.
+    if (!Number.isSafeInteger(owner.pid) || owner.pid < 1 || typeof owner.instance !== "string")
+      return null;
     if (!authority || owner.approval?.digest !== authority.digest)
       return null;
     approval = owner.approval;
@@ -229,7 +271,7 @@ async function processRequest(workspace: string, repository: string, binding: Di
     catch (error) {
       alive = (error as NodeJS.ErrnoException).code !== "ESRCH";
     }
-    if (alive && owner.instance !== binding?.instance)
+    if (alive)
       return null;
     return receipt({ success: false, outcome: "interrupted", requestAttempted: null, httpStatus: null, windows: [], source: "worker_no_request" });
   }
@@ -251,30 +293,9 @@ async function processRequest(workspace: string, repository: string, binding: Di
     grant = authority.grant;
     authorize();
     approval = { decision: grant.decision, digest: authority.digest, policyRevision: grant.policyRevision, policyEpoch: grant.policyEpoch, provider: "claude", source: "auto", endpoint: CLAUDE_DIAGNOSTIC_ENDPOINT };
-    // Exclusive durable consume, before even invoking the credential loader.
-    let fd: number;
-    try {
-      fd = openSync(attempt, "wx", 0o600);
-    }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST")
-        return null;
-      throw error;
-    }
-    try {
-      writeFileSync(fd, JSON.stringify({ nonce, pid: binding.pid, instance: binding.instance, startedAt, approval }));
-      fsyncSync(fd);
-    }
-    finally {
-      closeSync(fd);
-    }
-    const directory = openSync(path.dirname(attempt), "r");
-    try {
-      fsyncSync(directory);
-    }
-    finally {
-      closeSync(directory);
-    }
+    // Complete, exclusive, durable metadata is visible before credential access.
+    if (!publishDiagnosticAttempt(attempt, { nonce, pid: binding.pid, instance: binding.instance, startedAt, approval }))
+      return null;
   }
   catch {
     return failed("refused");

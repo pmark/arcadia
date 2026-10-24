@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerTick, pollWorkerClaudeUsageDiagnostics } from "../src/commands/worker.js";
 import { readProviderUsage, type ProviderUsageDependencies } from "../src/codingAgents/providerUsage.js";
-import { captureDiagnosticWorkerBinding, CLAUDE_DIAGNOSTIC_ENDPOINT, CLAUDE_DIAGNOSTIC_REQUEST, diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, processWorkerClaudeUsageRequest, type ClaudeDiagnosticGrant, type DiagnosticPolicy } from "../src/production/workerClaudeUsageDiagnostic.js";
+import { captureDiagnosticWorkerBinding, CLAUDE_DIAGNOSTIC_ENDPOINT, CLAUDE_DIAGNOSTIC_REQUEST, diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, publishDiagnosticAttempt, processWorkerClaudeUsageRequest, type ClaudeDiagnosticGrant, type DiagnosticPolicy } from "../src/production/workerClaudeUsageDiagnostic.js";
 const roots: string[] = [];
 const now = new Date("2026-10-24T21:00:00Z");
 const secret = "diagnostic-secret-sentinel";
@@ -289,7 +289,7 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     const f = fixture();
     const result = diagnosticResponsePath(f.workspace, f.nonce);
     mkdirSync(path.dirname(result), { recursive: true });
-    writeFileSync(result + ".attempt", JSON.stringify({ pid: process.pid, instance: f.binding.instance, startedAt: now.toISOString(), approval: { digest: diagnosticGrantAnswer(f.grant).split(" ").at(-1) } }), { mode: 0o600 });
+    writeFileSync(result + ".attempt", JSON.stringify({ pid: 2147483647, instance: f.binding.instance, startedAt: now.toISOString(), approval: { digest: diagnosticGrantAnswer(f.grant).split(" ").at(-1) } }), { mode: 0o600 });
     expect(await f.run()).toMatchObject({ outcome: "interrupted", requestAttempted: null, windows: [] });
     expect(f.deps.loadClaude).not.toHaveBeenCalled();
     expect(await f.run()).toMatchObject({ outcome: "interrupted" });
@@ -358,6 +358,61 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     const after = captureDiagnosticWorkerBinding(pathToFileURL(worker).href, context);
     expect(after?.handlerHash).not.toBe(before?.handlerHash);
     expect(before?.handlerHash).not.toBe(after?.handlerHash);
+  });
+  it("atomically publishes one complete immutable owner record under competing claims", async () => {
+    const f = fixture();
+    const file = path.join(f.root, "attempt");
+    const owner = { pid: process.pid, instance: "first", approval: { digest: "bound" } };
+    const results = await Promise.all([Promise.resolve().then(() => publishDiagnosticAttempt(file, owner)), Promise.resolve().then(() => publishDiagnosticAttempt(file, { ...owner, instance: "second" }))]);
+    expect(results).toEqual([true, false]);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(owner);
+  });
+  it.each(["known-live", "unreadable"])("preserves %s consumed custody without execution or a fabricated terminal receipt", async (kind) => {
+    const f = fixture();
+    const file = diagnosticResponsePath(f.workspace, f.nonce);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const bytes = kind === "unreadable" ? "{partial" : JSON.stringify({ pid: process.pid, instance: f.binding.instance, approval: { digest: diagnosticGrantAnswer(f.grant).split(" ").at(-1) } });
+    writeFileSync(file + ".attempt", bytes, { mode: 0o600 });
+    expect(await f.run()).toBeNull();
+    expect(readFileSync(file + ".attempt", "utf8")).toBe(bytes);
+    expect(existsSync(file)).toBe(false);
+    expect(f.deps.loadClaude).not.toHaveBeenCalled();
+  });
+  it("continues polling later repositories after one repository response fails", async () => {
+    const f = fixture();
+    vi.stubEnv("CODEX_SANDBOX", "");
+    const first = diagnosticResponsePath(f.workspace, f.nonce);
+    mkdirSync(path.dirname(first), { recursive: true });
+    writeFileSync(first, "{partial", { mode: 0o600 });
+    const other = path.join(f.root, "second-repository");
+    mkdirSync(path.join(other, ".arcadia"), { recursive: true });
+    const nonce = "55555555-5555-5555-5555-555555555555";
+    writeFileSync(path.join(other, CLAUDE_DIAGNOSTIC_REQUEST), JSON.stringify({ nonce }));
+    await expect(pollWorkerClaudeUsageDiagnostics(f.workspace, () => true, { binding: f.binding, repositories: [f.repository, other], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } })).rejects.toThrow("diagnostic_poll_unavailable");
+    expect(JSON.parse(readFileSync(diagnosticResponsePath(f.workspace, nonce), "utf8"))).toMatchObject({ outcome: "refused", requestAttempted: false });
+    expect(f.deps.loadClaude).not.toHaveBeenCalled();
+  });
+  it("rate limits diagnostic errors and resets the counter after success without logging error text", async () => {
+    const f = fixture();
+    let calls = 0;
+    const diagnostic = vi.fn(async () => {
+      calls++;
+      if (calls !== 32)
+        throw new Error(secret);
+    });
+    const logfile = path.join(f.root, "tick.log");
+    const tick = createWorkerTick({ workspacePath: f.workspace, pid: process.pid, logfile, diagnostic, schedule: () => {
+      }, openDb: () => {
+        throw new Error("fixture database unavailable");
+      } });
+    for (let i = 0; i < 62; i++) {
+      tick();
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    const log = readFileSync(logfile, "utf8");
+    expect(log.split("Worker Claude diagnostic polling unavailable.").length - 1).toBe(4);
+    expect(log).not.toContain(secret);
+    expect(calls).toBe(62);
   });
   it("refuses source checkout as loaded release attestation", () => {
     expect(captureDiagnosticWorkerBinding(import.meta.url)).toBeNull();

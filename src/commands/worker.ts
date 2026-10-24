@@ -59,7 +59,12 @@ export async function pollWorkerClaudeUsageDiagnostics(workspace: string, owns: 
     return {state: read.policy.desiredState, revision: read.policy.revision, epoch: read.policy.epoch,
       liveAdmissions: countLiveAdmissions(db, read.policy.epoch, new Date().toISOString()), ownsWorker: owns()};
   }));
-  for (const repository of repositories) await processWorkerClaudeUsageRequest(workspace, repository, binding, policy, fixture?.dependencies);
+  let failed = false;
+  for (const repository of repositories) {
+    try { await processWorkerClaudeUsageRequest(workspace, repository, binding, policy, fixture?.dependencies); }
+    catch { failed = true; }
+  }
+  if (failed) throw new Error("diagnostic_poll_unavailable");
 }
 
 /**
@@ -543,6 +548,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   // Consecutive synchronous failures, so a persistent one is summarized rather
   // than written once per 2s tick.
   let consecutiveFailures = 0;
+  let consecutiveDiagnosticFailures = 0;
   const identity = options.identity ?? { pid: options.pid, owner: "test" };
 
   let tick: () => void;
@@ -591,8 +597,13 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
 
   const preAdmission = async () => {
     if (options.diagnostic) {
-      try { await options.diagnostic(); }
-      catch { log(options.logfile, "Worker Claude diagnostic polling unavailable."); }
+      try { await options.diagnostic(); consecutiveDiagnosticFailures = 0; }
+      catch {
+        consecutiveDiagnosticFailures += 1;
+        if (consecutiveDiagnosticFailures === 1 || consecutiveDiagnosticFailures % REPEATED_FAILURE_LOG_INTERVAL === 0) {
+          log(options.logfile, "Worker Claude diagnostic polling unavailable.");
+        }
+      }
     }
     if (owns()) await options.preAdmission?.();
   };
