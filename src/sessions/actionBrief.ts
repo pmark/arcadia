@@ -275,6 +275,17 @@ export function renderActionBrief(input: ActionBriefInput): string {
     );
   }
 
+  // Headless Claude permissions are pinned to this same base revision. A resumed
+  // candidate may contain Plan edits; never instruct checks its settings deny.
+  if (input.headless && input.agent === "claude"
+    && JSON.stringify(action.acceptanceCriteria) !== JSON.stringify(actionAcceptanceCriteria(input))) {
+    throw validationError(
+      `A headless Claude Session cannot launch: Action "${input.actionId}" acceptance criteria differ from its pinned base revision.`,
+      { planSlug: input.planSlug, actionId: input.actionId, baseRevision: input.baseRevision,
+        remedy: "Reconcile the candidate's criteria with the authorized Session base before relaunching; do not widen permissions." }
+    );
+  }
+
   const pinned = pinnedConstitution(input);
   const constraints = loadConstitution(input.repoRoot, pinned);
 

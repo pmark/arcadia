@@ -119,6 +119,9 @@ describe("renderActionBrief", () => {
     // The agent-editable worktree copy cannot widen what the base revision allows.
     writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract is published.", "tests/evil.test.ts passes."));
     expect(actionAcceptanceCriteria(input)).toEqual(["The contract exists and tests/contract.test.ts passes.", "The contract is published."]);
+    expect(() => renderActionBrief({ ...input, headless: true })).toThrow(/acceptance criteria differ from.*base revision/);
+    expect(() => renderActionBrief(input)).not.toThrow();
+    expect(() => renderActionBrief({ ...input, agent: "codex", headless: true })).not.toThrow();
   });
 
   it.each([
@@ -391,6 +394,7 @@ describe("renderActionBrief", () => {
       const repo = briefRepo();
       const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
       writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", "The contract doesn't exist yet."));
+      execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "quoted criterion fixture"]);
       const tricky = "/tmp/it's a 'worktree'";
       const brief = renderActionBrief({
         repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
