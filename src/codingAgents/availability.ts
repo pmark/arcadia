@@ -343,7 +343,7 @@ function credentialsFromRecord(record: Record<string, unknown> | null): ClaudeOA
   return { accessToken, expiresAt: parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null };
 }
 
-export async function requestClaudeUsage(accessToken: string): Promise<{
+export async function requestClaudeUsage(accessToken: string, signal?: AbortSignal): Promise<{
   status: number;
   body: ClaudeUsageResponse | null;
   failure?: "transport" | "parse";
@@ -357,7 +357,7 @@ export async function requestClaudeUsage(accessToken: string): Promise<{
         Authorization: `Bearer ${accessToken}`,
         "anthropic-beta": "oauth-2025-04-20",
       },
-      signal: AbortSignal.timeout(8_000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(8_000)]) : AbortSignal.timeout(8_000),
     });
     if (!response.ok) return { status: response.status, body: null };
     try {
