@@ -41,6 +41,8 @@ govern; database, queue, Issues and dashboards are projections or signals.
 Prefer deterministic local scripts, then local AI, then frontier models; use a
 coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
+Default to Rowan (Coordinator) in Codex, Claude Code and OpenCode unless assigned another profile/role. Resolve requests by function; names are optional. This grants no authority or delegation and preserves assigned ownership.
+
 ### Ask freely; execution stays governed
 
 Any agent may submit an honest proposal, question, concern or help request through
