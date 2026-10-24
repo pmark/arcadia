@@ -11,7 +11,7 @@ import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservatio
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
 const fixtures: ReturnType<typeof preservationFixture>[] = [];
-const fixture = (command?: string) => { const f = preservationFixture(undefined, command); fixtures.push(f); return f; };
+const fixture = (command?: string, extra?: (repo: string) => void) => { const f = preservationFixture(undefined, command, extra); fixtures.push(f); return f; };
 afterEach(() => { for (const f of fixtures.splice(0)) { rmSync(f.candidate, { recursive: true, force: true }); rmSync(f.root, { recursive: true, force: true }); } });
 
 describe("preservation authority and content", () => {
@@ -101,10 +101,16 @@ describe("recorded check timeout", () => {
 // the host; never substitute a mock producer for this evidence.
 describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host validation sandbox", () => {
   it("allows anchored traversal into scratch while retaining workspace denial", () => {
-    const code = "import os; root=os.open('/',os.O_RDONLY|os.O_DIRECTORY); " +
-      "parts=os.path.realpath(os.environ['TMPDIR']).split('/'); " +
-      "exec('for part in parts:\\n if part:\\n  child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=root)\\n  os.close(root)\\n  root=child'); os.close(root)";
-    const f = fixture(`/usr/bin/python3 -I -c '${code.replaceAll("'", "'\\''")}'`);
+    const code = `import os
+root = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+for part in os.path.realpath(os.environ['TMPDIR']).split('/'):
+    if part:
+        child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+        os.close(root)
+        root = child
+os.close(root)
+`;
+    const f = fixture("/usr/bin/python3 -I check.py", repo => writeFileSync(path.join(repo, "check.py"), code));
     const result = withDatabase(f.workspace, db => validatePreservationCandidate(db, f.workspace, f.lease));
     expect(result.passed).toBe(true);
     const proof = JSON.parse(readFileSync(result.evidenceRef, "utf8"));

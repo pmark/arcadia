@@ -1,3 +1,4 @@
+import { drainPreservationWorkspaceSync } from "../src/sessions/preservationProcessLifecycle.js";
 /**
  * Live-state production replay: predict what the managed-production worker
  * would do if an Active policy were granted right now, without touching the
@@ -1334,6 +1335,9 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (options.reportPath) print(`Report: ${destination}`);
     return report;
   } finally {
+    // Child exit is not terminal proof for detached preservation/validation owners.
+    // On uncertainty the exception retains the complete replay root and receipts.
+    drainPreservationWorkspaceSync(path.join(root, "workspace"));
     if (!options.keep) {
       // Worktrees registered in the replay clones live under the root; removing it removes them.
       rmSync(root, { recursive: true, force: true });

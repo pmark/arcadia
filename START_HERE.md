@@ -1552,6 +1552,12 @@ part of the fingerprint `reactivate-preview` shows (`Remote preservation: on`),
 and never adds it to a configuration that lacked it. A second Off keeps the
 first save; an Off from a policy that was never active has nothing to save.
 
+Policy Off and process termination are separate checks. Offline replay cleanup
+waits for terminal receipts from its protected preservation and validation owners.
+An uncertain drain retains execution roots and custody; a dead owner PID alone
+never clears that hold. The reviewed source must be installed through the
+separate approved host update before these mechanics apply to a running worker.
+
 To switch back On, preview first, then reactivate bound to what the preview
 showed. Reactivation replays the saved scope verbatim into a **fresh epoch**
 with fresh authority, never a revived one. It never re-derives the Action list
