@@ -124,12 +124,17 @@ describe("renderActionBrief", () => {
     expect(() => renderActionBrief({ ...input, agent: "codex", headless: true })).not.toThrow();
   });
 
-  it("pins criteria when a Plan filename differs from its slug", () => {
+  it.each([false, true])("pins criteria when a Plan filename differs from its slug (conventional path occupied: %s)", (occupied) => {
     const repo = briefRepo();
     const original = path.join(repo, "docs/plans/copy-proof.md");
     const criterion = "The contract exists and tests/contract.test.ts passes.";
     writeFileSync(original, readFileSync(original, "utf8").replace("The contract exists.", criterion));
     execFileSync("git", ["-C", repo, "mv", "docs/plans/copy-proof.md", "docs/plans/operator-chosen-name.md"]);
+    if (occupied) {
+      const moved = path.join(repo, "docs/plans/operator-chosen-name.md");
+      writeFileSync(original, readFileSync(moved, "utf8").replace("slug: copy-proof", "slug: unrelated-plan"));
+      execFileSync("git", ["-C", repo, "add", "docs/plans/copy-proof.md"]);
+    }
     execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "noncanonical Plan filename"]);
     const input = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: repo, branch: "claude/x", agent: "claude" as const, baseRevision: head(repo), headless: true };
     expect(actionAcceptanceCriteria(input)).toEqual([criterion, "The contract is published."]);

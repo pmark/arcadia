@@ -212,25 +212,28 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
  */
 export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot" | "projectSlug" | "planSlug" | "actionId" | "baseRevision">): string[] {
   try {
-    let relativePath = `docs/plans/${input.planSlug}.md`;
-    const readAtBase = (file: string) => execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    let content: string;
+    const readPlanAtBase = (file: string): PlanDoc | null => {
+      const content = execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      const doc = parseDoc(file, path.join(input.repoRoot, file), content).doc;
+      return doc?.type === "plan" && doc.project.toLowerCase() === input.projectSlug.toLowerCase()
+        && doc.slug.toLowerCase() === input.planSlug.toLowerCase() ? doc : null;
+    };
+    let plan: PlanDoc | null = null;
     try {
-      content = readAtBase(relativePath);
+      plan = readPlanAtBase(`docs/plans/${input.planSlug}.md`);
     } catch {
-      // Plan slugs need not match filenames. Discovery locates the file only;
+      // A missing conventional filename is not a missing Plan.
+    }
+    if (!plan) {
+      // Slugs need not match filenames. Discovery locates the file only;
       // permissions still use its committed contents, never candidate criteria.
-      const plan = discoverDocs(input.repoRoot).docs.find((candidate): candidate is PlanDoc =>
+      const located = discoverDocs(input.repoRoot).docs.find((candidate): candidate is PlanDoc =>
         candidate.type === "plan" && candidate.slug.toLowerCase() === input.planSlug.toLowerCase()
         && candidate.project.toLowerCase() === input.projectSlug.toLowerCase());
-      if (!plan) return [];
-      relativePath = plan.relativePath;
-      content = readAtBase(relativePath);
+      if (!located) return [];
+      plan = readPlanAtBase(located.relativePath);
     }
-    const doc = parseDoc(relativePath, path.join(input.repoRoot, relativePath), content).doc;
-    if (!doc || doc.type !== "plan" || doc.project.toLowerCase() !== input.projectSlug.toLowerCase()
-      || doc.slug.toLowerCase() !== input.planSlug.toLowerCase()) return [];
-    return doc.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
+    return plan?.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
   } catch {
     return [];
   }
