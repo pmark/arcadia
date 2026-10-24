@@ -114,6 +114,86 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     expect(f.deps.loadClaude).toHaveBeenCalledTimes(1);
     expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
   });
+  it.each(["revoke-decision", "remove-decision", "remove-grant", "replace-grant"])("fences %s during credential load before HTTP", async (change) => {
+    const f = fixture();
+    f.deps.loadClaude = vi.fn(async () => {
+      const decision = path.join(f.repository, "docs/decisions/diagnostic-approval.md");
+      if (change === "revoke-decision")
+        writeFileSync(decision, readFileSync(decision, "utf8").replace("status: approved", "status: proposed"));
+      else if (change === "remove-decision")
+        rmSync(decision);
+      else if (change === "remove-grant")
+        rmSync(diagnosticGrantPath(f.workspace));
+      else {
+        f.grant.deadlineMs = 999;
+        f.saveGrant();
+      }
+      return { accessToken: secret };
+    });
+    expect(await f.run()).toMatchObject({ success: false, outcome: "authority_drift", requestAttempted: false, windows: [] });
+    expect(f.deps.requestClaude).not.toHaveBeenCalled();
+    expect(existsSync(diagnosticResponsePath(f.workspace, f.nonce) + ".attempt")).toBe(true);
+  });
+  it("refuses success if approval is revoked during HTTP", async () => {
+    const f = fixture();
+    f.deps.requestClaude = vi.fn(async () => {
+      rmSync(path.join(f.repository, "docs/decisions/diagnostic-approval.md"));
+      return { status: 200, body: { five_hour: { utilization: 1, resets_at: "2026-10-24T23:00:00Z" }, seven_day: { utilization: 2, resets_at: "2026-10-30T23:00:00Z" } } };
+    });
+    expect(await f.run()).toMatchObject({ success: false, outcome: "authority_drift", requestAttempted: true, windows: [] });
+    expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
+  });
+  it.each(["deadline", "policy", "decision"])("refuses same-nonce %s scope replacement without altering historical receipt", async (change) => {
+    const f = fixture();
+    await f.run();
+    const file = diagnosticResponsePath(f.workspace, f.nonce);
+    const original = readFileSync(file, "utf8");
+    if (change === "deadline")
+      f.grant.deadlineMs = 999;
+    else if (change === "policy") {
+      f.grant.policyRevision++;
+      f.policy.revision++;
+    }
+    else
+      f.grant.decision = "replacement-approved-decision";
+    f.saveGrant();
+    if (change === "decision") {
+      const old = path.join(f.repository, "docs/decisions/diagnostic-approval.md");
+      writeFileSync(path.join(f.repository, "docs/decisions/replacement-approved-decision.md"), readFileSync(old, "utf8").replace("slug: diagnostic-approval", "slug: replacement-approved-decision"));
+    }
+    expect(await f.run()).toBeNull();
+    expect(readFileSync(file, "utf8")).toBe(original);
+    expect(f.deps.loadClaude).toHaveBeenCalledTimes(1);
+    expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
+  });
+  it("refuses a concurrently replaced grant rather than returning another scope's promise", async () => {
+    const f = fixture();
+    let resolve!: (value: {
+      accessToken: string;
+    }) => void;
+    f.deps.loadClaude = vi.fn(() => new Promise(r => {
+      resolve = r;
+    }));
+    const pending = f.run();
+    f.grant.deadlineMs = 999;
+    f.saveGrant();
+    expect(await f.run()).toBeNull();
+    resolve({ accessToken: secret });
+    expect(await pending).toMatchObject({ success: false, requestAttempted: false, outcome: "authority_drift" });
+    expect(f.deps.loadClaude).toHaveBeenCalledTimes(1);
+    expect(f.deps.requestClaude).not.toHaveBeenCalled();
+  });
+  it("recovers an unchanged expired grant only as historical without renewing its receipt", async () => {
+    const f = fixture();
+    const original = await f.run();
+    const file = diagnosticResponsePath(f.workspace, f.nonce);
+    const bytes = readFileSync(file, "utf8");
+    const recovered = await processWorkerClaudeUsageRequest(f.workspace, f.repository, f.binding, () => f.policy, { now: () => new Date("2026-10-24T21:02:00Z"), usage: f.deps });
+    expect(recovered).toMatchObject({ ...original as object, historical: true });
+    expect(readFileSync(file, "utf8")).toBe(bytes);
+    expect(f.deps.loadClaude).toHaveBeenCalledTimes(1);
+    expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
+  });
   it("requires both valid future reset windows", async () => {
     const f = fixture();
     f.deps.requestClaude = vi.fn(async () => ({ status: 200, body: { five_hour: { utilization: 1, resets_at: "2026-10-23T00:00:00Z" }, seven_day: { utilization: 2, resets_at: "invalid" } } }));
@@ -182,7 +262,7 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     let owns = true;
     let finish!: () => void;
     const diagnostic = vi.fn(async () => {
-      await pollWorkerClaudeUsageDiagnostics(f.workspace, () => owns, {binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: {now: () => now, usage: f.deps}});
+      await pollWorkerClaudeUsageDiagnostics(f.workspace, () => owns, { binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } });
       await new Promise<void>(resolve => {
         finish = resolve;
       });
@@ -209,7 +289,7 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     const f = fixture();
     const result = diagnosticResponsePath(f.workspace, f.nonce);
     mkdirSync(path.dirname(result), { recursive: true });
-    writeFileSync(result + ".attempt", JSON.stringify({ pid: process.pid, instance: f.binding.instance, startedAt: now.toISOString() }), { mode: 0o600 });
+    writeFileSync(result + ".attempt", JSON.stringify({ pid: process.pid, instance: f.binding.instance, startedAt: now.toISOString(), approval: { digest: diagnosticGrantAnswer(f.grant).split(" ").at(-1) } }), { mode: 0o600 });
     expect(await f.run()).toMatchObject({ outcome: "interrupted", requestAttempted: null, windows: [] });
     expect(f.deps.loadClaude).not.toHaveBeenCalled();
     expect(await f.run()).toMatchObject({ outcome: "interrupted" });
@@ -283,10 +363,14 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     expect(captureDiagnosticWorkerBinding(import.meta.url)).toBeNull();
   });
   it("checks credential expiry against the clock after asynchronous loading", async () => {
-    const f = fixture(); let clock = now;
+    const f = fixture();
+    let clock = now;
     f.deps.clock = () => clock;
-    f.deps.loadClaude = vi.fn(async () => { clock = new Date(now.getTime() + 2000); return {accessToken: secret, expiresAt: new Date(now.getTime() + 1000).toISOString()}; });
-    expect((await readProviderUsage({refresh:true,claudeOnly:true}, f.deps)).providers[0]).toMatchObject({outcome:"credential_expired",requestAttempted:false});
+    f.deps.loadClaude = vi.fn(async () => {
+      clock = new Date(now.getTime() + 2000);
+      return { accessToken: secret, expiresAt: new Date(now.getTime() + 1000).toISOString() };
+    });
+    expect((await readProviderUsage({ refresh: true, claudeOnly: true }, f.deps)).providers[0]).toMatchObject({ outcome: "credential_expired", requestAttempted: false });
     expect(f.deps.requestClaude).not.toHaveBeenCalled();
   });
   it("shared Claude-only helper invokes no Codex, cache or inference", async () => {

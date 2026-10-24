@@ -103,7 +103,32 @@ export function captureDiagnosticWorkerBinding(workerModuleUrl: string, fixture?
     return null;
   }
 }
-const inFlight = new Map<string, Promise<unknown>>();
+interface DiagnosticAuthority {
+  grant: ClaudeDiagnosticGrant;
+  digest: string;
+}
+/** Read the same fixed authority at each asynchronous boundary. A nonce alone
+* cannot bind a replay to a replacement grant or a revoked Decision. */
+function readDiagnosticAuthority(workspace: string, repository: string, binding: DiagnosticWorkerBinding | null, nonce: string): DiagnosticAuthority {
+  const grant = boundedJson(diagnosticGrantPath(workspace), true) as ClaudeDiagnosticGrant;
+  if (!grant || !exactKeys(grant, grantKeys) || grant.schema !== "arcadia-worker-claude-usage-grant-v1" || grant.nonce !== nonce || grant.workspace !== realpathSync(workspace) || grant.repository !== realpathSync(repository) || repository !== realpathSync(repository)
+    || grant.provider !== "claude" || grant.source !== "auto" || grant.endpoint !== CLAUDE_DIAGNOSTIC_ENDPOINT || grant.release !== binding?.release || grant.handlerHash !== binding?.handlerHash
+    || !/^[a-z0-9][a-z0-9-]*$/.test(grant.decision) || !Number.isInteger(grant.policyRevision) || !Number.isInteger(grant.policyEpoch)
+    || !canonicalTime(grant.expiresAt) || !Number.isInteger(grant.deadlineMs) || grant.deadlineMs < 1 || grant.deadlineMs > MAX_DEADLINE_MS)
+    throw new Error("grant_refused");
+  const decisionPath = path.join(repository, "docs/decisions", `${grant.decision}.md`);
+  if (realpathSync(decisionPath) !== decisionPath || realpathSync(path.dirname(diagnosticGrantPath(workspace))) !== path.dirname(diagnosticGrantPath(workspace)))
+    throw new Error("noncanonical_path");
+  const answer = diagnosticGrantAnswer(grant);
+  const decision = parseDoc(path.basename(decisionPath), decisionPath, readFileSync(decisionPath, "utf8"));
+  if (decision.errors.length || decision.doc?.type !== "decision" || decision.doc.status !== "approved" || decision.doc.answer !== answer)
+    throw new Error("decision_refused");
+  return { grant, digest: answer.split(" ").at(-1) ?? "" };
+}
+const inFlight = new Map<string, {
+  digest: string | null;
+  operation: Promise<unknown>;
+}>();
 const exactKeys = (value: object, keys: string) => Object.keys(value).sort().join() === keys;
 const canonicalTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
 function safeReading(reading: ProviderUsageReading, now: Date) {
@@ -131,34 +156,27 @@ export function processWorkerClaudeUsageRequest(workspace: string, repository: s
   catch {
     return Promise.resolve(null);
   }
+  let authority: DiagnosticAuthority | null = null;
+  try {
+    authority = readDiagnosticAuthority(workspace, repository, binding, nonce);
+  }
+  catch {
+  }
   const key = `${workspace}\0${repository}\0${nonce}`;
-  if (inFlight.has(key))
-    return inFlight.get(key)!;
-  const operation = processRequest(workspace, repository, binding, policy, dependencies);
-  inFlight.set(key, operation);
+  const running = inFlight.get(key);
+  if (running)
+    return authority && running.digest === authority.digest ? running.operation : Promise.resolve(null);
+  const operation = processRequest(workspace, repository, binding, policy, dependencies, nonce, authority);
+  const entry = { digest: authority?.digest ?? null, operation };
+  inFlight.set(key, entry);
   void operation.finally(() => {
-    if (inFlight.get(key) === operation)
+    if (inFlight.get(key) === entry)
       inFlight.delete(key);
   }).catch(() => {
   });
   return operation;
 }
-async function processRequest(workspace: string, repository: string, binding: DiagnosticWorkerBinding | null, policy: () => DiagnosticPolicy, dependencies: DiagnosticDependencies) {
-  const request = path.join(repository, CLAUDE_DIAGNOSTIC_REQUEST);
-  if (!existsSync(request))
-    return null;
-  let nonce: string;
-  try {
-    const value = boundedJson(request) as {
-      nonce: string;
-    };
-    if (!value || !exactKeys(value, "nonce") || typeof value.nonce !== "string" || !noncePattern.test(value.nonce))
-      return null;
-    nonce = value.nonce;
-  }
-  catch {
-    return null;
-  }
+async function processRequest(workspace: string, repository: string, binding: DiagnosticWorkerBinding | null, policy: () => DiagnosticPolicy, dependencies: DiagnosticDependencies, nonce: string, authority: DiagnosticAuthority | null) {
   const response = diagnosticResponsePath(workspace, nonce);
   if (existsSync(response)) {
     const existing = boundedJson(response, true) as {
@@ -167,8 +185,14 @@ async function processRequest(workspace: string, repository: string, binding: Di
       nonce: string;
       release: string;
       handlerHash: string;
+      approval?: {
+        digest: string;
+      };
     };
-    return existing.repository === repository && existing.workspace === workspace && existing.nonce === nonce && existing.release === binding?.release && existing.handlerHash === binding?.handlerHash ? existing : null;
+    if (!authority || existing.repository !== repository || existing.workspace !== workspace || existing.nonce !== nonce || existing.release !== binding?.release || existing.handlerHash !== binding?.handlerHash || existing.approval?.digest !== authority.digest)
+      return null;
+    // Recovery is the original observation, never a renewed execution allowance.
+    return (dependencies.now?.() ?? new Date()).getTime() >= Date.parse(authority.grant.expiresAt) ? { ...existing, historical: true } : existing;
   }
   mkdirSync(path.dirname(response), { recursive: true, mode: 0o700 });
   const now = dependencies.now ?? (() => new Date());
@@ -191,7 +215,13 @@ async function processRequest(workspace: string, repository: string, binding: Di
     const owner = boundedJson(attempt, true) as {
       pid: number;
       instance: string;
+      approval?: {
+        digest: string;
+      };
     };
+    if (!authority || owner.approval?.digest !== authority.digest)
+      return null;
+    approval = owner.approval;
     let alive = true;
     try {
       process.kill(owner.pid, 0);
@@ -208,25 +238,19 @@ async function processRequest(workspace: string, repository: string, binding: Di
   const authorize = () => {
     controller.signal.throwIfAborted();
     dependencies.signal?.throwIfAborted();
+    const currentAuthority = readDiagnosticAuthority(workspace, repository, binding, nonce);
+    if (!authority || currentAuthority.digest !== authority.digest)
+      throw new Error("authority_drift");
     const current = policy();
-    if (!binding || binding.pid !== process.pid || binding.repository !== repository || !current.ownsWorker || current.state !== "inactive" || current.liveAdmissions !== 0 || current.revision !== grant.policyRevision || current.epoch !== grant.policyEpoch || now().getTime() >= Date.parse(grant.expiresAt))
+    if (!binding || binding.pid !== process.pid || binding.repository !== repository || !current.ownsWorker || current.state !== "inactive" || current.liveAdmissions !== 0 || current.revision !== grant.policyRevision || current.epoch !== grant.policyEpoch || (now().getTime() >= Date.parse(grant.expiresAt) || Date.parse(grant.expiresAt) - now().getTime() > 300000))
       throw new Error("authority_drift");
   };
   try {
-    grant = boundedJson(diagnosticGrantPath(workspace), true) as ClaudeDiagnosticGrant;
-    if (!grant || !exactKeys(grant, grantKeys) || grant.schema !== "arcadia-worker-claude-usage-grant-v1" || grant.nonce !== nonce || grant.workspace !== realpathSync(workspace) || grant.repository !== realpathSync(repository) || repository !== realpathSync(repository)
-      || grant.provider !== "claude" || grant.source !== "auto" || grant.endpoint !== CLAUDE_DIAGNOSTIC_ENDPOINT || grant.release !== binding?.release || grant.handlerHash !== binding?.handlerHash
-      || !/^[a-z0-9][a-z0-9-]*$/.test(grant.decision) || !Number.isInteger(grant.policyRevision) || !Number.isInteger(grant.policyEpoch)
-      || !canonicalTime(grant.expiresAt) || Date.parse(grant.expiresAt) - now().getTime() > 300000 || !Number.isInteger(grant.deadlineMs) || grant.deadlineMs < 1 || grant.deadlineMs > MAX_DEADLINE_MS)
+    if (!authority || !binding)
       throw new Error("grant_refused");
-    const decisionPath = path.join(repository, "docs/decisions", `${grant.decision}.md`);
-    if (realpathSync(decisionPath) !== decisionPath || realpathSync(path.dirname(diagnosticGrantPath(workspace))) !== path.dirname(diagnosticGrantPath(workspace)))
-      throw new Error("noncanonical_path");
-    const decision = parseDoc(path.basename(decisionPath), decisionPath, readFileSync(decisionPath, "utf8"));
-    if (decision.errors.length || decision.doc?.type !== "decision" || decision.doc.status !== "approved" || decision.doc.answer !== diagnosticGrantAnswer(grant))
-      throw new Error("decision_refused");
+    grant = authority.grant;
     authorize();
-    approval = { decision: grant.decision, digest: diagnosticGrantAnswer(grant).split(" ").at(-1), policyRevision: grant.policyRevision, policyEpoch: grant.policyEpoch, provider: "claude", source: "auto", endpoint: CLAUDE_DIAGNOSTIC_ENDPOINT };
+    approval = { decision: grant.decision, digest: authority.digest, policyRevision: grant.policyRevision, policyEpoch: grant.policyEpoch, provider: "claude", source: "auto", endpoint: CLAUDE_DIAGNOSTIC_ENDPOINT };
     // Exclusive durable consume, before even invoking the credential loader.
     let fd: number;
     try {
