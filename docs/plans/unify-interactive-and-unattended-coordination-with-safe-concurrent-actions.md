@@ -14,18 +14,19 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove interactive continuation and unattended execution use the same host enrollment and ownership contract at concurrency one.
+    next_action: Implement focused regression tests proving shared interactive and unattended host enrollment ownership at concurrency one.
     expected_artifact: Evidence satisfying Agent Ask prove-shared-enrollment-at-concurrency-one
     clarification: clarified
     confidence: high
-    source: Agent Ask unified-coordination-concurrency-followup-20261024-v2
+    source: Agent Ask prepare-unified-first-action-20261024
     acceptance_criteria:
       - ENTRY — A focused integration test races interactive and unattended requests for the same Action and proves exactly one owner; exact replay returns only that requester's original receipt.
       - ENTRY — Tests cover interruption and restart without ownership transfer from silence, stable claim-generation fencing, and truthful refusal when a native runtime is not supervisable.
       - Existing questions remain read-only; go reports Action, owner, execution route, gates and receipt without silently activating production or widening scope. Record source versus installed-host proof separately; use fixtures until separately authorized live proof.
+      - Implement the proof in tests/unified-session-entry.test.ts using the existing host enrollment/admission path with fake process/provider effects and disposable fixtures; pnpm exec vitest run tests/unified-session-entry.test.ts passes, with pnpm lint and pnpm exec tsc --noEmit passing. No live provider launch, native adoption, production activation or concurrency increase is performed.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1728"]
+    references: ["https://github.com/pmark/arcadia/issues/1733"]
   - id: preview-safe-concurrent-action-selection
     title: Implement a read-only preview selecting additional dependency-ready, authorized Actions in existing priority order with conservative conflict explanations.
     status: open
