@@ -1,0 +1,20 @@
+{
+  "session_id": "01a16e97-0f1b-7721-92d0-da73a480c575",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1726",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "complete",
+  "notes": "Documentation default only. Instruction delivery checks passed for Codex, Claude Code and OpenCode; native behavior not exercised. PR carries review/CI evidence."
+}
