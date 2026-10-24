@@ -7,6 +7,7 @@ import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -118,6 +119,65 @@ describe("renderActionBrief", () => {
     // The agent-editable worktree copy cannot widen what the base revision allows.
     writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract is published.", "tests/evil.test.ts passes."));
     expect(actionAcceptanceCriteria(input)).toEqual(["The contract exists and tests/contract.test.ts passes.", "The contract is published."]);
+    expect(() => renderActionBrief({ ...input, headless: true })).toThrow(/acceptance criteria differ from.*base revision/);
+    expect(() => renderActionBrief(input)).not.toThrow();
+    expect(() => renderActionBrief({ ...input, agent: "codex", headless: true })).not.toThrow();
+  });
+
+  it.each([false, true])("pins criteria when a Plan filename differs from its slug (conventional path occupied: %s)", (occupied) => {
+    const repo = briefRepo();
+    const original = path.join(repo, "docs/plans/copy-proof.md");
+    const criterion = "The contract exists and tests/contract.test.ts passes.";
+    writeFileSync(original, readFileSync(original, "utf8").replace("The contract exists.", criterion));
+    execFileSync("git", ["-C", repo, "mv", "docs/plans/copy-proof.md", "docs/plans/operator-chosen-name.md"]);
+    if (occupied) {
+      const moved = path.join(repo, "docs/plans/operator-chosen-name.md");
+      writeFileSync(original, readFileSync(moved, "utf8").replace("slug: copy-proof", "slug: unrelated-plan"));
+      execFileSync("git", ["-C", repo, "add", "docs/plans/copy-proof.md"]);
+    }
+    execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "noncanonical Plan filename"]);
+    const input = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: repo, branch: "claude/x", agent: "claude" as const, baseRevision: head(repo), headless: true };
+    expect(actionAcceptanceCriteria(input)).toEqual([criterion, "The contract is published."]);
+    expect(renderActionBrief(input)).toContain("Run the named test exactly as `pnpm exec vitest run tests/contract.test.ts`");
+    expect(headlessClaudeAllowList([], null, actionAcceptanceCriteria(input))).toContain("Bash(pnpm exec vitest run tests/contract.test.ts)");
+    const file = path.join(repo, "docs/plans/operator-chosen-name.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace(criterion, "tests/unassigned.test.ts passes."));
+    expect(actionAcceptanceCriteria(input)).toEqual([criterion, "The contract is published."]);
+    expect(headlessClaudeAllowList([], null, actionAcceptanceCriteria(input))).not.toContain("Bash(pnpm exec vitest run tests/unassigned.test.ts)");
+    expect(() => renderActionBrief(input)).toThrow(/acceptance criteria differ from.*base revision/);
+    // A worktree slug cannot relabel another base Plan into this Session.
+    writeFileSync(file, readFileSync(file, "utf8").replace("slug: copy-proof", "slug: different-plan"));
+    expect(actionAcceptanceCriteria({ ...input, planSlug: "different-plan" })).toEqual([]);
+  });
+
+  it.each([
+    { files: [] },
+    { files: ["tests/contract.test.ts"] },
+    { files: ["tests/contract.test.ts", "tests/other.test.ts"] }
+  ])("keeps the complete headless Claude brief consistent with named-test permissions: $files", ({ files }) => {
+    const repo = briefRepo();
+    const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+    const criterion = files.length ? `The contract exists and ${files.join(" and ")} pass.` : "The contract exists.";
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", criterion));
+    if (files.length) execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "test criteria"]);
+    const input = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: "/w", branch: "claude/x", agent: "claude" as const, baseRevision: head(repo), headless: true };
+    const brief = renderActionBrief(input);
+    const allow = headlessClaudeAllowList(["pnpm lint"], null, actionAcceptanceCriteria(input));
+    const instructedTests = [...brief.matchAll(/Run the named test exactly as `([^`]+)`/g)].map((match) => match[1]);
+    expect(instructedTests).toEqual(files.map((file) => `pnpm exec vitest run ${file}`));
+    for (const command of instructedTests) expect(allow).toContain(`Bash(${command})`);
+    expect(allow.includes("Bash(node scripts/bridge-worktree-deps.mjs)")).toBe(files.length > 0);
+    expect(allow).toContain("Bash(pnpm lint)");
+    expect(allow).not.toContain("Bash(pnpm exec vitest run tests/unassigned.test.ts)");
+    expect(allow).not.toContain("Bash(pnpm exec vitest run *)");
+    expect(brief).not.toContain("Test, lint, type-check, build and dependency-setup commands are refused here");
+    expect(brief).toContain("plus the named-test and dependency-bridge commands listed above (if any)");
+    expect(brief).toContain("For checks you ran, record the command and observed result");
+    expect(brief).toContain("Only for checks you did not run");
+    expect(brief).toContain("not run in this Session; verification deferred to host");
+    expect(brief).not.toContain("not run in this Session; verified by host");
+    expect(brief).toContain("the host runs every test file your criteria name");
+    expect(brief).toContain("required CI runs lint, tsc and build before anything integrates");
   });
 
   it.each([
@@ -265,8 +325,9 @@ describe("renderActionBrief", () => {
       expect(protocol).toContain("git add, git commit, git push and arcadia-preserve-broker-claude are host-owned in this Session and");
       expect(protocol).toContain("will be refused. Do not run them or try to change permissions");
       expect(protocol).not.toContain("If your sandbox cannot commit");
-      // #1619: no instruction to run checks the allow list refuses, and what verifies them instead.
-      expect(protocol).toContain("Test, lint, type-check, build and dependency-setup commands are refused here");
+      // Named tests are permitted; other checks may be delegated honestly to the host and CI.
+      expect(protocol).toContain("run the Project's declared validation exactly as declared");
+      expect(protocol).toContain("plus the named-test and dependency-bridge commands listed above (if any)");
       expect(protocol).toContain("never write helper scripts or extra files");
       expect(protocol).toContain("the host runs every test file your criteria name");
       expect(protocol).toContain("required CI runs lint, tsc and build before anything integrates");
@@ -359,6 +420,7 @@ describe("renderActionBrief", () => {
       const repo = briefRepo();
       const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
       writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", "The contract doesn't exist yet."));
+      execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "quoted criterion fixture"]);
       const tricky = "/tmp/it's a 'worktree'";
       const brief = renderActionBrief({
         repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",

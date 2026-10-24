@@ -113,7 +113,7 @@ function shellSingleQuote(value: string): string {
 }
 
 /** The words a headless Claude note adds for a check it cannot run (#1619): no quotes, so it is safe inside the one-line JSON. */
-export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verified by host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
 
 /**
  * The draft-only completion block for a Session that cannot commit: one exact
@@ -168,21 +168,21 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
       "  4. Exit. The host reconciles the Session only once its process has ended."
     ];
   }
-  // Issue #1619 (live 2026-10-20): headless Claude may run only the Project's
-  // declared validation and this draft command, so a Session told to run the
-  // tests, lint and tsc its criteria name either self-certified them or
-  // stalled; and a long single-quoted command retyped by a light model lost
-  // the criterion's own apostrophes. The checks are named for what verifies
-  // them, and the draft is written with the Write tool and validated in place.
+  // Issue #1619: separate checks run here from host/CI verification, and avoid
+  // shell quoting that loses apostrophes in criteria. Named tests and their
+  // dependency bridge are now permitted; keep the recipe consistent with the
+  // named-test instructions above and the headless permission builder.
   const draftPath = `${input.worktreePath.replace(/\/+$/, "")}/.arcadia/asks/agent-ask-${ask.request_id}.yaml`;
   return [
     ...preservation,
-    "     Checks: the only Bash you may run besides the command in step 3 is the Project's declared validation,",
-    "     exactly as declared. Test, lint, type-check, build and dependency-setup commands are refused here: do not",
-    "     try them, and never write helper scripts or extra files to get around that (a file outside the Action's",
-    "     scope refuses the completion). Before accepting it, the host runs every test file your criteria name; the",
-    "     pull request's required CI runs lint, tsc and build before anything integrates. In the note of a",
-    `     criterion that names such a check, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
+    "     Checks: run the Project's declared validation exactly as declared, plus the named-test and dependency-bridge commands listed above (if any).",
+    "     Other test, lint, type-check, build or dependency-setup commands need approval unless already part of the",
+    "     declared validation. Do not try unlisted check or setup commands or change permissions, and never write helper scripts or extra files",
+    "     to work around a refusal (a file outside the Action's scope refuses the completion).",
+    "     Before accepting it, the host runs every test file your criteria name; the pull request's",
+    "     required CI runs lint, tsc and build before anything integrates.",
+    "     For checks you ran, record the command and observed result in the criterion's note.",
+    `     Only for checks you did not run, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
     "  3. Record completion without any shell quoting, in two steps:",
     "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",
@@ -212,24 +212,41 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
  */
 export function actionAcceptanceCriteria(input: Pick<ActionBriefInput, "repoRoot" | "projectSlug" | "planSlug" | "actionId" | "baseRevision">): string[] {
   try {
-    const relativePath = `docs/plans/${input.planSlug}.md`;
-    const content = execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${relativePath}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    const doc = parseDoc(relativePath, path.join(input.repoRoot, relativePath), content).doc;
-    if (!doc || doc.type !== "plan" || doc.project.toLowerCase() !== input.projectSlug.toLowerCase()) return [];
-    return doc.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
+    const readPlanAtBase = (file: string): PlanDoc | null => {
+      const content = execFileSync("git", ["-C", input.repoRoot, "show", `${input.baseRevision}:${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      const doc = parseDoc(file, path.join(input.repoRoot, file), content).doc;
+      return doc?.type === "plan" && doc.project.toLowerCase() === input.projectSlug.toLowerCase()
+        && doc.slug.toLowerCase() === input.planSlug.toLowerCase() ? doc : null;
+    };
+    let plan: PlanDoc | null = null;
+    try {
+      plan = readPlanAtBase(`docs/plans/${input.planSlug}.md`);
+    } catch {
+      // A missing conventional filename is not a missing Plan.
+    }
+    if (!plan) {
+      // Slugs need not match filenames. Discovery locates the file only;
+      // permissions still use its committed contents, never candidate criteria.
+      const located = discoverDocs(input.repoRoot).docs.find((candidate): candidate is PlanDoc =>
+        candidate.type === "plan" && candidate.slug.toLowerCase() === input.planSlug.toLowerCase()
+        && candidate.project.toLowerCase() === input.projectSlug.toLowerCase());
+      if (!located) return [];
+      plan = readPlanAtBase(located.relativePath);
+    }
+    return plan?.actions.find((candidate) => candidate.id === input.actionId)?.acceptanceCriteria ?? [];
   } catch {
     return [];
   }
 }
 
-/** Tell a headless agent the exact named-test commands its allow list permits; everything else is refused. */
+/** Name the exact test commands allowed in addition to declared validation. */
 function renderNamedTestCommands(criteria: readonly string[], headless: boolean): string[] {
   if (!headless) return [];
   const files = namedTestCommands(criteria).filter((command) => command.startsWith("pnpm exec vitest run "));
   if (files.length === 0) return [];
   return [
     "",
-    ...files.map((command) => `Run the named test exactly as \`${command}\` (after \`node scripts/bridge-worktree-deps.mjs\` if node_modules is missing); other test commands need approval and will be refused.`)
+    ...files.map((command) => `Run the named test exactly as \`${command}\` (after \`node scripts/bridge-worktree-deps.mjs\` if node_modules is missing); other test commands need approval unless already part of the Project's declared validation.`)
   ];
 }
 
@@ -272,6 +289,17 @@ export function renderActionBrief(input: ActionBriefInput): string {
     throw validationError(
       `A managed-production Session cannot launch: Action "${input.actionId}" declares no acceptance criteria.`,
       { planSlug: input.planSlug, actionId: input.actionId, planPath: plan.relativePath }
+    );
+  }
+
+  // Headless Claude permissions are pinned to this same base revision. A resumed
+  // candidate may contain Plan edits; never instruct checks its settings deny.
+  if (input.headless && input.agent === "claude"
+    && JSON.stringify(action.acceptanceCriteria) !== JSON.stringify(actionAcceptanceCriteria(input))) {
+    throw validationError(
+      `A headless Claude Session cannot launch: Action "${input.actionId}" acceptance criteria differ from its pinned base revision.`,
+      { planSlug: input.planSlug, actionId: input.actionId, baseRevision: input.baseRevision,
+        remedy: "Reconcile the candidate's criteria with the authorized Session base before relaunching; do not widen permissions." }
     );
   }
 

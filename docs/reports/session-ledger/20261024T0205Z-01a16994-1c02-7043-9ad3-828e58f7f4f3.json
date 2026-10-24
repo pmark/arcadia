@@ -1,0 +1,31 @@
+{
+  "session_id": "01a16994-1c02-7043-9ad3-828e58f7f4f3",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1722",
+  "pr": 1723,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 3,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "pr-fyi-workspace-sandbox-write-denied",
+      "cost_min": null,
+      "fix_ref": "Ordinary host permission path; ping_cadb5b00ef24428b81 queued"
+    },
+    {
+      "id": "criteria-guard-exposed-filename-slug-assumption",
+      "cost_min": null,
+      "fix_ref": "src/sessions/actionBrief.ts base-only Plan lookup fallback; CI run 40053346776"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Source fix; snapshot after R3. Final PR records lookup-repair review/CI. Offline tests are not native model-behavior proof."
+}
