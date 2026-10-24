@@ -185,7 +185,16 @@ describe("manual Go preservation binding", () => {
   it("holds one claim until the async child finishes, keeping heartbeats serviceable", async () => {
     const f = fixture();
     let finish!: (result: import("../src/sessions/goRequestProtocol.js").GoTransportResult) => void;
-    const host = vi.mocked(executor.executeHostPreservation).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const host = vi.mocked(executor.executeHostPreservation).mockImplementation(input => new Promise(resolve => {
+      if (!input.custodyToken) throw new Error("Transport did not bind the fixture owner token");
+      const token = input.custodyToken;
+      finish = result => {
+        const terminal = { ...result, lifecycle: { state: "terminal_proven" as const, token, executionRoots: [] } };
+        // The real executor settles only after its owner persists matching proof.
+        executor.writePreservationAttempt(`${input.attemptFile}.owner-result.json`, terminal);
+        resolve(terminal);
+      };
+    }));
     withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
     const nonce = randomUUID();
     writeFileSync(path.join(f.candidate, ".arcadia-preserve-request"), JSON.stringify({ nonce }));
@@ -195,11 +204,20 @@ describe("manual Go preservation binding", () => {
       expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 1 });
     });
     expect(host).toHaveBeenCalledTimes(1);
+    const attemptFile = host.mock.calls[0][0].attemptFile;
+    const responseFile = path.join(path.dirname(attemptFile), `${nonce}.json`);
+    expect(existsSync(`${attemptFile}.owner-result.json`)).toBe(false);
+    expect(existsSync(responseFile)).toBe(false);
+    // A refreshed transport projection cannot release the claim before proof.
+    withDatabase(f.workspace, db => {
+      processPreservationRequests(db, f.workspace);
+      expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 1 });
+    });
     finish(goTransportFailure(new Error("bounded stage refusal")));
     await vi.waitFor(() => {
       withDatabase(f.workspace, db => expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 0 }));
     });
-    const response = JSON.parse(readFileSync(path.join(f.workspace, "artifacts/preservation", host.mock.calls[0][0].attemptFile.split(path.sep).at(-2)!, `${nonce}.json`), "utf8"));
+    const response = JSON.parse(readFileSync(responseFile, "utf8"));
     expect(response.ok).toBe(false);
   });
   it("keeps the worker route responsive while the bounded host preservation job runs", async () => {
