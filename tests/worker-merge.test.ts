@@ -173,6 +173,17 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(github.mergeCalls).toHaveLength(1);
   });
 
+  it("refuses before the remote write when the candidate would strand local base history", () => {
+    candidate({ [SAFE]: "feature\n" });
+    writeFileSync(path.join(repo, "local-pointer.txt"), "retained scheduler commit\n");
+    git(repo, ["add", "local-pointer.txt"]);
+    git(repo, ["commit", "-qm", "advance local pointer"]);
+    const before = git(repo, ["rev-parse", "main"]).trim();
+    expect(merge()).toMatchObject({ kind: "refused", code: "base_not_synced", operatorMergeCommand: null });
+    expect(github.mergeCalls).toEqual([]);
+    expect(git(repo, ["rev-parse", "main"]).trim()).toBe(before);
+  });
+
   it("refuses a moved head by name, and never calls merge", () => {
     candidate({ [SAFE]: "feature\n" });
     git(repo, ["checkout", "-q", branch]);

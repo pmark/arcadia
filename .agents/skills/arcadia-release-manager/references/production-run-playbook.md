@@ -112,3 +112,34 @@ Settle `first-unattended-run` (or the run's evidence Action) only with a
 complete Ask whose every criterion is met; otherwise keep it open. Re-derive
 `docs/managed-production-readiness.md` with every failure observed, score the
 pre-mortem's predictions, and update this playbook in the same PR.
+
+## Recovering an inherited exhausted candidate
+
+A canonical QA pass is only a verdict-stage proof. Exercise discovery and real
+fake-origin PR integration through the next Action before calling recovery
+complete. Keep the original failed verdict, ordinal/limit history and first
+failed replay. Ordinary terminal candidates retain precedence. An older held
+candidate must not strand a scheduler commit that exists only on local main;
+let an ordinary candidate carry that commit through its PR, and refuse unsafe
+remote writes before GitHub changes. Never fake this by directly publishing
+local main, resetting a shadow, rewinding a pointer or manually rewriting a
+managed document.
+
+Independent settlements may still conflict on governed pointer fields. A true
+merge refusal is a pre-press blocker, even when QA and rediscovery pass. Preserve
+it and use the governed reconciliation path; an old exact-head recovery card
+cannot authorize a changed head or a wider retry. Do not press a full batch on
+an assumption that a manually started QA will beat the scheduler.
+
+Keep test adapters faithful: generated fake PR URLs must match the configured
+Project repository before the host stores their receipts. A fixture URL mismatch
+is a harness failure. Preserve its root and attempt history; correct the adapter
+in a fresh fixture rather than clearing its review-step budget to get green.
+
+After a refresh, distinguish installed source, broker/transport/brief checks,
+card publication and genuinely fresh worker-context capacity. The shared usage
+helper's selected diagnostic source, cached result or OpenCode local statistics
+are not Claude worker admission. Compare credential context without printing or
+persisting credentials; bypass the diagnostic cooldown only through its supported
+force operation under specific credential-use approval. Retain historical 403s
+and do not infer their cause from a later successful login or Keychain read.

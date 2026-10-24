@@ -3,7 +3,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, isPatchEquivalent, resolveBaseBranch } from "../git/worktrees.js";
 import { canonicalPath, getSession, type AgentSession } from "../sessions/index.js";
-import { developedForSupersededInput } from "../sessions/roleLineage.js";
+import { developedForSupersededInput, independentVerdictGate } from "../sessions/roleLineage.js";
 import { REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
@@ -77,19 +77,22 @@ export function listPendingTerminalCandidates(
   }
   const docs = discoverDocs(repoRoot).docs;
   const basePlans = docs.filter((doc) => doc.type === "plan");
-  // Recovery (no `actionId`) leaves a held Action's candidate to the operator
-  // once the pointer has moved past it, so it neither refuses the handoff of
-  // the Action now running nor makes two candidates "ambiguous". While the
-  // pointer still names it, it stays the candidate recovery refuses today.
+  // Recovery (no `actionId`) leaves held off-pointer candidates alone. An
+  // exhausted candidate with newly satisfied canonical verdicts can return
+  // after the ordinary pipeline drains; authority-gated holds stay held.
+  // While the pointer still names it, existing recovery behavior is unchanged.
   const pointer = actionId === null ? docs.find((doc) => doc.type === "project" && doc.slug === projectSlug) : undefined;
   const pointerAction = pointer?.type === "project" ? pointer.currentAction : null;
   const pending: AgentSession[] = [];
+  const recoveredExhausted: AgentSession[] = [];
   for (const exit of exits) {
     const session = getSession(db, exit.session_id);
     if (!session) continue;
     // Issue #1615: a settled completion the host refused is the operator's, never recovery's to integrate.
     if (exit.evidence_json?.includes("completionSettlementNotInCandidate")) continue;
-    if (actionId === null && session.action_id !== pointerAction && operatorHeldEscalation(db, `${session.project_slug}/${session.action_id}`)) continue;
+    const held = actionId === null && session.action_id !== pointerAction
+      ? operatorHeldEscalation(db, `${session.project_slug}/${session.action_id}`) : null;
+    if (held && held.kind !== "review_repair_rounds_exhausted") continue;
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
     const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
     if (action?.status === "done") continue;
@@ -99,9 +102,22 @@ export function listPendingTerminalCandidates(
       options.onSuperseded?.(session, action);
       continue;
     }
-    pending.push(session);
+    if (held) {
+      // Keep an unpublished scheduler commit available to the next ordinary
+      // Action. Selecting the older head first would block that admission,
+      // then leave local main unable to fast-forward after its remote merge.
+      // A supported rerun can satisfy the exact binding after scheduling has
+      // moved past exhaustion. Reuse that proof; never clear a hold or budget.
+      if (independentVerdictGate(db, { session, repoRoot }).satisfied
+        && (isAncestor(repoRoot, baseBranch, session.branch)
+          || isAncestor(repoRoot, baseBranch, `refs/remotes/origin/${baseBranch}`))) recoveredExhausted.push(session);
+    } else {
+      pending.push(session);
+    }
   }
-  return { baseBranch, pending };
+  // Finish the normal pipeline first; a recovered older candidate must not
+  // turn the current candidate's handoff into an ambiguous two-candidate set.
+  return { baseBranch, pending: pending.length > 0 ? pending : recoveredExhausted };
 }
 
 export type TerminalCandidateCheck =

@@ -1,0 +1,39 @@
+{
+  "session_id": "01a1655d-b6f5-7fa2-9d67-cb4894838a66",
+  "role": "lead",
+  "model": "unknown",
+  "effort": null,
+  "action_id": "operator-directed:#1702",
+  "pr": 1703,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 2,
+  "review_rounds": 9,
+  "blocking_findings": [
+    {
+      "class": "off-pointer recovery hidden; unsafe local-base chronology",
+      "caught_by": "shadow rehearsal and independent internal review"
+    },
+    {
+      "class": "governed-record merge conflict; Decision0133 policy boundary",
+      "caught_by": "corrected exact shadow and independent process critique"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "fake-pr-repository-mismatch",
+      "cost_min": null,
+      "fix_ref": "docs/reports/qa1662-preparation-20261022.md"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Policy choice and governed conflict recovery remain operator-gated; full-batch START is NO-GO and production remains Off.",
+  "notes": "Captured after PR round 1: 8 private preflights plus 1 PR review. Delta review is reported separately; native model/effort and usage unavailable.",
+  "candidate_head": "47b6d6eb2058230477a6d07bad52cbd962176958",
+  "evidence_source": "docs/reports/qa1662-preparation-20261022.md",
+  "task_class": "operator-directed production preparation"
+}

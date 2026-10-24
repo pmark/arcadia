@@ -523,6 +523,13 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   });
   if (!evaluation.ok) return refused(evaluation.code, evaluation.reason, evaluation.code === "authority_adjacent" ? blastRadius?.boundaries ?? [] : []);
 
+  // A remote merge cannot preserve local-only base history unless the
+  // candidate carries it. Refuse before writing GitHub, not after its merge.
+  if (tryGit(repoRoot, ["merge-base", "--is-ancestor", baseBranch, head]) === null
+    && tryGit(repoRoot, ["merge-base", "--is-ancestor", baseBranch, `refs/remotes/origin/${baseBranch}`]) === null) {
+    return refused("base_not_synced", `Local ${baseBranch} has history absent from both the candidate and origin/${baseBranch}; preserve it through the ordinary candidate pipeline before merging ${url}.`);
+  }
+
   const fenced = input.authorityChanged?.() ?? null;
   if (fenced) return { kind: "withheld", reason: `Withheld the worker merge of ${url}: ${fenced}.` };
   const merged = runCommand({ command: "gh", args: ["pr", "merge", evaluation.pullRequestUrl, "--merge", "--match-head-commit", head], cwd: repoRoot, timeoutMs: 120_000 });
