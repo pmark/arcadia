@@ -12,6 +12,23 @@ standing authorization when requesting host permission for them; a host
 refusal still follows the normal permission recovery path. Merge, deployment,
 and other consequential approval boundaries retain their existing gates.
 
+## Standing unattended-production directive
+
+Operator prime directive, 2026-10-24; Constitution governs: one assigned Rowan
+release manager is the contact and keeps authorized critical-path work moving.
+Use the [single checklist](docs/managed-production-readiness.md). Use bounded
+help and sole-writer custody; advance independent work during blockers. Alert
+the configured Discord channel on new/material blockers; verify delivery.
+Before context/usage exhaustion preserve evidence and a paste-ready Codex,
+Claude Code or OpenCode handoff: Plan/Action, revisions, owners, pending work,
+approvals, wakeup state and next move. Transfer sole coordinator custody.
+Require Plan proof; report limits.
+
+**Production stays Off pending separate START approval.** Record the confirmed
+“100%, no reserve” through canonical governance. Preserve other gates: no new
+credential probe, paid fallback, attempt reset, runtime recovery, merge exception
+or approval bypass. Verify actual prompt delivery.
+
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
 
