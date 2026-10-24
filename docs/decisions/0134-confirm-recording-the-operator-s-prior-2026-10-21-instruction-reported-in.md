@@ -4,7 +4,7 @@ type: decision
 id: "0134"
 slug: confirm-recording-the-operator-s-prior-2026-10-21-instruction-reported-in
 project: arcadia
-status: open
+status: approved
 question: Confirm recording the operator's prior 2026-10-21 instruction, reported in PR1654 as "100%, no reserve", as a standing 0% reserve for included provider-capacity windows. Supersede only Decision0111's numeric20% floor and Decision0130's resulting80% Claude admission ceiling; do not reopen percentage selection.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-24
+answer: Confirm the recorded 2026-10-21 no-reserve instruction
+decided: 2026-10-24
 ---
 
 # Decision 0134: Confirm recording the operator's prior 2026-10-21 instruction, reported in PR1654 as "100%, no reserve", as a standing 0% reserve for included provider-capacity windows. Supersede only Decision0111's numeric20% floor and Decision0130's resulting80% Claude admission ceiling; do not reopen percentage selection.
