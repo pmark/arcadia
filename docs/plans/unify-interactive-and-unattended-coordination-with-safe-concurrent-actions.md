@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: unify-interactive-and-unattended-coordination-with-safe-concurrent-actions
 project: arcadia
-status: active
+status: draft
 milestone: Unify interactive and unattended coordination with safe concurrent Actions
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -97,7 +97,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1728"]
 questions: []
 decisions: []
-current_action: preview-safe-concurrent-action-selection
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
