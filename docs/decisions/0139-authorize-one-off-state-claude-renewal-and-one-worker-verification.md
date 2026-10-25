@@ -4,7 +4,7 @@ type: decision
 id: "0139"
 slug: authorize-one-off-state-claude-renewal-and-one-worker-verification
 project: arcadia
-status: open
+status: approved
 question: Authorize one Off-state Claude renewal and one worker verification?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Authorize one Off-state Claude renewal and one worker verification
+decided: 2026-10-25
 ---
 
 # Decision 0139: Authorize one Off-state Claude renewal and one worker verification?
