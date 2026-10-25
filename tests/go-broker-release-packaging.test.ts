@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BRIEF_CHILD_ENV, BRIEF_SELF_TEST_ENV } from "../src/briefSupervisor.js";
 import {
   stageBrokerLaunchers, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies,
-  stageGoBrokerRoleRegistry, validateExistingRelease, validateGoBrokerRoleRegistry
+  stageGoBrokerRoleRegistry, stageGoBrokerWorkerDefaults, validateExistingRelease, validateGoBrokerRoleRegistry
 } from "../src/commands/goBrokerInstall.js";
 
 const repository = path.resolve(import.meta.dirname, "..");
@@ -39,6 +39,7 @@ beforeAll(() => {
   mkdirSync(path.join(source, "config/defaults"), { recursive: true });
   copyFileSync(path.join(repository, "config/defaults/agent-roles.json"), path.join(source, "config/defaults/agent-roles.json"));
   registry = stageGoBrokerRoleRegistry(source, release);
+  stageGoBrokerWorkerDefaults(repository, release);
   stageGoBrokerDatabaseSchema(repository, release);
   mkdirSync(path.join(release, "scripts"), { recursive: true });
   copyFileSync(path.join(repository, "scripts/bridge-worktree-deps.mjs"), path.join(release, "scripts/bridge-worktree-deps.mjs"));

@@ -24,6 +24,7 @@ import {
   renderGoBrokerStatusSuccess,
   runGoBrokerStatusCommand,
   stageBrokerLaunchers,
+  stageGoBrokerWorkerDefaults,
   validateExistingRelease
 } from "../src/commands/goBrokerInstall.js";
 import {
@@ -670,6 +671,13 @@ describe("go broker release staging covers every protected launcher", () => {
     write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// bridge\n");
     write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "rev-1" }));
     stageBrokerLaunchers(release, "/unused/arcadia-go-broker.js");
+    // Keep this an otherwise-complete release; the negative case removes only enroll launchers.
+    stageGoBrokerWorkerDefaults(path.resolve(import.meta.dirname, ".."), release);
+    for (const entry of ["cli.js", "commands/worker.js", "production/workerClaudeUsageDiagnostic.js",
+      "codingAgents/providerUsage.js", "codingAgents/availability.js", "commands/workerHeartbeatBeacon.js",
+      "sessions/preservationRequestWorker.js", "sessions/preservationRequestPayload.js", "sessions/preservationValidationClient.js"]) {
+      write(path.join(release, "dist/src", entry), "// fixed compiled fixture entry\n");
+    }
     expect(() => validateExistingRelease(release, "rev-1")).not.toThrow();
     for (const agent of agents) rmSync(path.join(release, `arcadia-enroll-broker-${agent}`), { force: true });
     expect(() => validateExistingRelease(release, "rev-1")).toThrow("existing protected broker release is incomplete");

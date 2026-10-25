@@ -5,8 +5,11 @@ import { countLiveAdmissions, readProductionPolicySafely } from "../production/p
 import { finalizeWorkerFailure } from "../execution/runFinalization.js";
 import { tickRecurringSchedules } from "../recurring/scheduler.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
-import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, lstatSync, realpathSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { homedir } from "node:os";
+import { validateGoBrokerWorkerCode, validateGoBrokerWorkerDefaults } from "./goBrokerInstall.js";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -36,7 +39,7 @@ import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagno
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
 import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
-import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
+import { auditArcadiaLaunchAgents, canonicalWorkspaceIdentity, type LaunchAgentAudit } from "../runtime/launchAgents.js";
 import { startHeartbeatBeacon as defaultStartHeartbeatBeacon, type HeartbeatBeacon } from "./workerHeartbeatBeaconExecutor.js";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -143,6 +146,7 @@ export interface WorkerOptions {
 export interface WorkerInstallDependencies extends ProcessAncestryDependencies {
   execFileSync?: typeof execFileSync;
   waitForRoutes?: typeof waitForWorkerRoutes;
+  auditLaunchAgents?: typeof auditArcadiaLaunchAgents;
   now?: () => number;
 }
 
@@ -1296,12 +1300,64 @@ export interface WorkerPlistInput {
   miseBin: string;
   logPath: string;
   home: string;
+  protectedRelease?: ProtectedWorkerLaunch;
+}
+
+export interface ProtectedWorkerLaunch {
+  directory: string;
+  runtimeExecutable: string;
+  cliPath: string;
+  sourceRepository: string;
+}
+
+/** Internal fixture arguments never originate in CLI/request input. */
+export function resolveProtectedWorkerLaunch(
+  workerUrl: string = import.meta.url,
+  bootBinding: DiagnosticWorkerBinding | null = diagnosticWorkerBinding,
+  home: string = homedir()
+): ProtectedWorkerLaunch | undefined {
+  const worker = fileURLToPath(workerUrl);
+  if (worker.endsWith(".ts")) return undefined;
+  const directory = path.resolve(path.dirname(worker), "../../..");
+  const fresh = captureDiagnosticWorkerBinding(workerUrl, {
+    home,
+    moduleUrl: new URL("../production/workerClaudeUsageDiagnostic.js", workerUrl).href
+  });
+  if (!fresh || !bootBinding || fresh.release !== bootBinding.release
+    || fresh.handlerHash !== bootBinding.handlerHash || fresh.repository !== bootBinding.repository) {
+    throw validationError("Compiled worker installation requires unchanged registered boot code and manifest.");
+  }
+  validateGoBrokerWorkerDefaults(directory);
+  validateGoBrokerWorkerCode(directory);
+  const cliPath = path.join(directory, "dist/src/cli.js");
+  if (!lstatSync(cliPath).isFile() || realpathSync(cliPath) !== cliPath) {
+    throw validationError("The protected worker CLI is not release-local.");
+  }
+  return { directory, runtimeExecutable: process.execPath, cliPath, sourceRepository: fresh.repository };
+}
+
+function workerCustodyPresent(workspace: string): boolean {
+  try { lstatSync(pidfilePath(workspace)); return true; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** Refuse custody uncertainty before writing a plist or contacting launchd. */
+export function assertWorkerInstallCustody(workspace: string, agents: LaunchAgentAudit[], custodyPresent: boolean): void {
+  const target = canonicalWorkspaceIdentity(workspace);
+  if (custodyPresent || agents.some(agent => agent.verdict === "unreadable" || agent.label === WORKER_PLIST_LABEL
+    || ((agent.role === "worker" || agent.label.endsWith(".worker"))
+      && (!agent.workspace || canonicalWorkspaceIdentity(agent.workspace) === target)))) {
+    throw validationError("Existing or ambiguous worker custody requires a separate approved lifecycle operation before installation.");
+  }
 }
 
 export const WORKER_PLIST_LABEL = "com.arcadia.worker";
 
 /**
- * The worker's launch agent, always routed through mise.
+ * Source workers use mise; registered compiled workers use their manifest runtime.
  *
  * Separate from the install command so a test can assert what gets written
  * without installing anything. This previously baked `process.execPath` and the
@@ -1323,6 +1379,10 @@ export function buildWorkerPlist(input: WorkerPlistInput): string {
   const tsxBin = path.join(repositoryRoot, "node_modules", "tsx", "dist", "cli.mjs");
   const cliPath = path.join(repositoryRoot, "src", "cli.ts");
   const plistLabel = WORKER_PLIST_LABEL;
+  const launchRoot = input.protectedRelease?.directory ?? repositoryRoot;
+  const argv = input.protectedRelease
+    ? [input.protectedRelease.runtimeExecutable, input.protectedRelease.cliPath]
+    : [...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath];
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1332,12 +1392,12 @@ export function buildWorkerPlist(input: WorkerPlistInput): string {
   <string>${plistLabel}</string>
   <key>ProgramArguments</key>
   <array>
-${[...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath, "worker", "start", "--workspace", workspacePath]
+${[...argv, "worker", "start", "--workspace", workspacePath]
   .map((argument) => `    <string>${xmlEscape(argument)}</string>`)
   .join("\n")}
   </array>
   <key>WorkingDirectory</key>
-  <string>${xmlEscape(repositoryRoot)}</string>
+  <string>${xmlEscape(launchRoot)}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -1356,7 +1416,7 @@ ${[...miseNodeArgv(miseBin, repositoryRoot), tsxBin, cliPath, "worker", "start",
     <key>HOME</key>
     <string>${xmlEscape(input.home)}</string>
     <key>NODE_PATH</key>
-    <string>${xmlEscape(path.join(repositoryRoot, "node_modules"))}</string>
+    <string>${xmlEscape(path.join(launchRoot, "node_modules"))}</string>
   </dict>
 </dict>
 </plist>`;
@@ -1377,12 +1437,16 @@ export function runWorkerInstallCommand(options: WorkerOptions, dependencies: Wo
   refuseIfManagedSession("install", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   refuseInExperimentWorkspace("launchd.plist-write", workspacePath);
-  const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+  const protectedRelease = resolveProtectedWorkerLaunch();
+  const repositoryRoot = protectedRelease?.sourceRepository ?? path.resolve(import.meta.dirname, "../..");
   const home = process.env["HOME"] ?? "/tmp";
+  assertWorkerInstallCustody(workspacePath, (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents,
+    workerCustodyPresent(workspacePath));
   const plistPath = path.join(home, "Library", "LaunchAgents", `${WORKER_PLIST_LABEL}.plist`);
   const plist = buildWorkerPlist({
     workspacePath,
     repositoryRoot,
+    protectedRelease,
     miseBin: resolveMiseExecutable(),
     logPath: logPath(workspacePath),
     home
@@ -1405,22 +1469,6 @@ export function runWorkerInstallCommand(options: WorkerOptions, dependencies: Wo
   }
   process.stdout.write(`Worker installed and started via launchd; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n`);
 
-  warnOnDuplicateWorkers(workspacePath);
-}
-
-/**
- * Installing a worker cannot replace an agent carrying a different label, so a
- * machine that already has one gets a second worker beside it rather than a
- * repaired one. Say so, once, at the moment it happens.
- */
-function warnOnDuplicateWorkers(workspacePath: string): void {
-  try {
-    const warning = duplicateWorkerWarning(auditArcadiaLaunchAgents().agents, workspacePath);
-    if (warning) process.stdout.write(`${warning}\n`);
-  } catch {
-    // An unreadable plist or a missing LaunchAgents directory must not fail an
-    // install that already succeeded.
-  }
 }
 
 export function runWorkerUninstallCommand(_options: WorkerOptions): void {

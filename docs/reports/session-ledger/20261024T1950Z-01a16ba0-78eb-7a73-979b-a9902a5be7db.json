@@ -10,7 +10,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 4,
   "blocking_findings": [
     {
       "class": "authority-revocation-across-await",
@@ -36,5 +36,5 @@
     }
   ],
   "outcome": "split",
-  "notes": "Coordinator checkpoint, not canonical Action split. Direct source #1736/PR1737; R1 repairs await R2/CI. Prior directive and A publication retained. Production Off; no live proof."
+  "notes": "Coordinator checkpoint, not Action split. PR1737 merged6fdba64 after4reviews/all15CIpass. Issue1740source-only prep active; enrollment owner preserved. Off; no runtime/credential/START authority."
 }
