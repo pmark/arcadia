@@ -537,6 +537,7 @@ import {
   runWorkUpdateCommand
 } from "./commands/work.js";
 import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
+import { renderWorkReservationsSuccess, runWorkReservationsCommand } from "./commands/workReservations.js";
 import { renderWorkPullRequestsSuccess, runWorkPullRequestsCommand } from "./commands/workPullRequests.js";
 import {
   renderWorkflowListSuccess,
@@ -3314,6 +3315,13 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
 
   const work = program.command("work").description("Action commands");
+  addJsonOption(
+    work.command("reservations")
+      .description("Read every unexpired handoff reservation without recovery or custody changes")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace?: string; json?: boolean }) =>
+    runCliAction("work.reservations", options, () => runWorkReservationsCommand(options), renderWorkReservationsSuccess)
+  );
   addJsonOption(
     work
       .command("monitor")
