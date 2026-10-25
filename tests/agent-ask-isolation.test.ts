@@ -10,7 +10,7 @@ import { projectCheckoutFor } from "../src/git/worktrees.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { isolatedGitEnvironment } from "../src/git/isolatedGitEnvironment.js";
 import { recoverLegacyAgentAskDrift } from "../src/sessions/legacyAskRecovery.js";
-const commandHooks = vi.hoisted(() => ({ afterUpdate: undefined as (() => void) | undefined, afterBuild: undefined as (() => void) | undefined, beforeUpdate: undefined as (() => void) | undefined, crossDevice: false }));
+const commandHooks = vi.hoisted(() => ({ afterUpdate: undefined as (() => void) | undefined, afterBuild: undefined as (() => void) | undefined, beforeUpdate: undefined as (() => void) | undefined, crossDevice: false, cleanupKinds: [] as string[], cleanupAttempts: [] as string[] }));
 vi.mock("node:child_process", async importOriginal => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   const wrapped = (...args: Parameters<typeof actual.execFileSync>) => {
@@ -30,13 +30,20 @@ vi.mock("node:child_process", async importOriginal => {
 });
 vi.mock("node:fs", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, renameSync: (source: string, target: string) => {
+  return { ...actual, rmSync: (target: string, options?: Parameters<typeof actual.rmSync>[1]) => {
+    const kind = path.basename(target).startsWith("arcadia-ask-publication-") ? "publication" : path.basename(target).startsWith("arcadia-ask-index-") ? "scratch" : null;
+    if (kind) {
+      commandHooks.cleanupAttempts.push(kind);
+      if (commandHooks.cleanupKinds.includes(kind)) throw Object.assign(new Error(`denied ${kind} cleanup`), { code: "EPERM" });
+    }
+    return actual.rmSync(target, options);
+  }, renameSync: (source: string, target: string) => {
     if (commandHooks.crossDevice && path.basename(target) === "index" && !path.resolve(source).startsWith(path.dirname(path.resolve(target)) + path.sep)) throw Object.assign(new Error("cross-device rename"), { code: "EXDEV" });
     return actual.renameSync(source, target);
   } };
 });
 const roots: string[] = [];
-afterEach(() => { commandHooks.afterUpdate = undefined; commandHooks.afterBuild = undefined; commandHooks.beforeUpdate = undefined; commandHooks.crossDevice = false; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { commandHooks.afterUpdate = undefined; commandHooks.afterBuild = undefined; commandHooks.beforeUpdate = undefined; commandHooks.crossDevice = false; commandHooks.cleanupKinds = []; commandHooks.cleanupAttempts = []; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-ask-isolation-")); roots.push(root);
   const main = path.join(root, "main"); const candidate = path.join(root, "candidate");
@@ -195,6 +202,47 @@ describe("Agent Ask isolation", () => {
     const f = fixture(); writeFileSync(path.join(f.candidate, "record.md"), "changed\n"); commandHooks.crossDevice = true;
     const held = reserveAskGitIndex(f.candidate); try { expect(held.commit(["record.md"], "record")).toBeNull(); } finally { held.release(); }
     expect(git(f.candidate, "show", "HEAD:record.md")).toBe("changed");
+  });
+  it.each([ ["publication"], ["scratch"], ["publication", "scratch"] ])("preserves successful publication with pending cleanup %j", (...kinds) => {
+    const f = fixture(); const mainBefore = snapshot(f.main);
+    writeFileSync(path.join(f.candidate, "peer.md"), "staged peer\n"); git(f.candidate, "add", "peer.md");
+    writeFileSync(path.join(f.candidate, "record.md"), "settled\n"); const before = snapshot(f.candidate);
+    const held = reserveAskGitIndex(f.candidate); commandHooks.cleanupKinds = kinds;
+    try {
+      expect(held.commit(["record.md"], "settlement")).toBeNull();
+      expect(commandHooks.cleanupAttempts).toEqual(["publication", "scratch"]);
+      expect(held.cleanupFailures).toHaveLength(kinds.length);
+      for (const failure of held.cleanupFailures) {
+        expect(failure).toMatchObject({ operation: "rm", code: "EPERM", status: "pending", message: expect.stringContaining("cleanup") });
+        expect(existsSync(failure.path)).toBe(true);
+      }
+      expect(git(f.candidate, "rev-list", "--count", `${before.head}..HEAD`)).toBe("1");
+      expect(git(f.candidate, "show", "HEAD:record.md")).toBe("settled");
+      expect(git(f.candidate, "show", ":record.md")).toBe("settled");
+      expect(git(f.candidate, "show", "HEAD:peer.md")).toBe("before");
+      expect(git(f.candidate, "show", ":peer.md")).toBe("staged peer");
+      expect(snapshot(f.main)).toEqual(mainBefore);
+    } finally {
+      held.release(); commandHooks.cleanupKinds = [];
+      for (const failure of held.cleanupFailures ?? []) rmSync(failure.path, { recursive: true, force: true });
+    }
+  });
+  it("preserves the original publication failure when both cleanup paths fail", () => {
+    const f = fixture(); writeFileSync(path.join(f.candidate, "record.md"), "settled\n"); const before = snapshot(f.candidate);
+    const lock = git(f.candidate, "rev-parse", "--path-format=absolute", "--git-path", "index") + ".lock";
+    const held = reserveAskGitIndex(f.candidate);
+    commandHooks.afterUpdate = () => { rmSync(lock); writeFileSync(lock, "foreign lock"); };
+    commandHooks.cleanupKinds = ["publication", "scratch"];
+    try {
+      expect(held.commit(["record.md"], "settlement")).toMatch(/ownership changed after ref update/);
+      expect(commandHooks.cleanupAttempts).toEqual(["publication", "scratch"]);
+      expect(held.cleanupFailures).toHaveLength(2);
+      expect(snapshot(f.candidate)).toEqual(before);
+      expect(readFileSync(lock, "utf8")).toBe("foreign lock");
+    } finally {
+      held.release(); commandHooks.cleanupKinds = [];
+      for (const failure of held.cleanupFailures ?? []) rmSync(failure.path, { recursive: true, force: true });
+    }
   });
   it("recovers a tracked dirty Ask without modifying the source index or HEAD", () => {
     const f = fixture(); const file = path.join(f.main, "agent-ask.yaml"); writeFileSync(file, "original without newline"); git(f.main, "add", "agent-ask.yaml"); git(f.main, "commit", "-qm", "tracked Ask");

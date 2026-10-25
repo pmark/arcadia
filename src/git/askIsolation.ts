@@ -84,8 +84,17 @@ export function assertAskDraftCheckout(root: string): void {
   }
 }
 
+/** Evidence that an owned temporary directory still needs cleanup; publication is independent. */
+export interface AskGitCleanupFailure {
+  path: string;
+  operation: "rm";
+  code: string | null;
+  message: string;
+  status: "pending";
+}
+
 /** Reserve the real index before document writes; never steal or remove another operation's lock. */
-export function reserveAskGitIndex(root: string): { commit: (paths: string[], message: string) => string | null; release: () => void } {
+export function reserveAskGitIndex(root: string): { commit: (paths: string[], message: string) => string | null; release: () => void; cleanupFailures: AskGitCleanupFailure[] } {
   const index = askGit(root, ["rev-parse", "--path-format=absolute", "--git-path", "index"]);
   if (existsSync(index) && !lstatSync(index).isFile()) throw validationError("Agent Ask Git index must be a regular file.", { index });
   const initialRef = tryAskGit(root, ["symbolic-ref", "HEAD"]);
@@ -97,6 +106,7 @@ export function reserveAskGitIndex(root: string): { commit: (paths: string[], me
   const headPath = askGit(root, ["rev-parse", "--path-format=absolute", "--git-path", "HEAD"]);
   if (!lstatSync(headPath).isFile()) throw validationError("Agent Ask HEAD must be a regular file.", { headPath });
   const locks: { path: string; fd: number; dev: number; ino: number }[] = [];
+  const cleanupFailures: AskGitCleanupFailure[] = [];
   let released = false;
   const release = (): void => {
     if (released) return;
@@ -123,6 +133,7 @@ export function reserveAskGitIndex(root: string): { commit: (paths: string[], me
   try { initialHead = askGit(root, ["rev-parse", "HEAD"]); } catch (error) { release(); throw error; }
   return {
     release,
+    cleanupFailures,
     commit: (paths, message) => {
       const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-ask-index-"));
       let publishedCommit: string | null = null;
@@ -192,8 +203,19 @@ export function reserveAskGitIndex(root: string): { commit: (paths: string[], me
         }
         return String(failure.stderr ?? failure.message ?? error).trim() + recovery;
       } finally {
-        if (publicationDir) rmSync(publicationDir, { recursive: true, force: true });
-        rmSync(scratch, { recursive: true, force: true });
+        // Cleanup must neither replace publication's result nor prevent the other
+        // owned path's cleanup. Retain failures for settlement receipts and replay.
+        for (const ownedPath of [publicationDir, scratch]) {
+          if (!ownedPath) continue;
+          try { rmSync(ownedPath, { recursive: true, force: true }); }
+          catch (error) {
+            const code = (error as NodeJS.ErrnoException | null)?.code;
+            cleanupFailures.push({
+              path: ownedPath, operation: "rm", code: typeof code === "string" ? code : null,
+              message: error instanceof Error ? error.message : String(error), status: "pending"
+            });
+          }
+        }
       }
     }
   };
