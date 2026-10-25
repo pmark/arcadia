@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Unify interactive and unattended coordination with safe concurrent Actions
 active_plan: unify-interactive-and-unattended-coordination-with-safe-concurrent-actions
-current_action: prove-shared-enrollment-at-concurrency-one
-updated: 2026-10-24
+current_action: preview-safe-concurrent-action-selection
+updated: 2026-10-25
 ---
 
 # Arcadia

@@ -7,14 +7,14 @@ status: active
 milestone: Unify interactive and unattended coordination with safe concurrent Actions
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-24
+updated: 2026-10-25
 actions:
   - id: prove-shared-enrollment-at-concurrency-one
     title: Prove interactive continuation and unattended execution use the same host enrollment and ownership contract at concurrency one.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement focused regression tests proving shared interactive and unattended host enrollment ownership at concurrency one.
+    next_action: Completed via Agent Ask complete-shared-enrollment-concurrency-one-20261024; no further action.
     expected_artifact: Evidence satisfying Agent Ask prove-shared-enrollment-at-concurrency-one
     clarification: clarified
     confidence: high
@@ -97,7 +97,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1728"]
 questions: []
 decisions: []
-current_action: prove-shared-enrollment-at-concurrency-one
+current_action: preview-safe-concurrent-action-selection
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

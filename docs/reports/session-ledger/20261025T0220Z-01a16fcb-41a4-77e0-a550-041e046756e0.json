@@ -1,0 +1,36 @@
+{
+  "session_id": "01a16fcb-41a4-77e0-a550-041e046756e0",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "configured_effort": "medium",
+  "effective_effort": null,
+  "effort_source": "operator requested standard/medium; effective runtime binding unavailable",
+  "action_id": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions#prove-shared-enrollment-at-concurrency-one",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "brief-work-monitor-deadline",
+      "cost_min": null,
+      "fix_ref": "docs/reports/unified-session-entry-2026-10-24.md; lesson_4cc0d6e816bcf7427028"
+    },
+    {
+      "id": "learn-workspace-write-denied",
+      "cost_min": null,
+      "fix_ref": "same supported command succeeded through ordinary approved host execution"
+    }
+  ],
+  "outcome": "complete",
+  "candidate_head": "d35d7164042be55a7cde3ba9022c5ee597d7cca7",
+  "evidence_source": "docs/reports/unified-session-entry-2026-10-24.md",
+  "notes": "Source proof: 7 tests/lint/tsc passed; R1 no findings. Snapshot precedes canonical settlement/remote handoff; final receipts on completion Ask/PR. Production Off; no live enrollment proof."
+}

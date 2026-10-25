@@ -205,6 +205,8 @@ If `go` prepares a worktree but no session launches, preview `pnpm -s arcadia ti
 Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
 Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
+2026-10-24 recovery: a prepared candidate in `arcadia-unattended` succeeded with the same fixed brief launcher after prepending the already-installed Homebrew Git (`PATH="/opt/homebrew/bin:$PATH" /Users/pmark/.local/bin/arcadia-brief-broker-codex`) and removing diagnostic tracing. Apple Git timed out at `work-monitor`; Homebrew Git with tracing reached `next`, then the permitted unchanged retry without tracing completed. This is a measured route on this host, not a guaranteed latency fix or authority to change the 25s deadline. Preserve the receipt and verify caller-owned claim/generation before editing. Evidence: `docs/reports/unified-session-entry-2026-10-24.md`, lesson `lesson_4cc0d6e816bcf7427028`.
+
 ## Arcadia CLI workspace writes fail with `SQLITE_WORKSPACE_WRITE_DENIED`
 
 keys: SQLITE_WORKSPACE_WRITE_DENIED, readonly database, workspace write denied, SQLite, sandbox, approved host execution, host permission, agent-ask preview, arcadia next, arcadia ping send, tidy, tidy --apply, work monitor, Claude Code, trust settings, TMPDIR
