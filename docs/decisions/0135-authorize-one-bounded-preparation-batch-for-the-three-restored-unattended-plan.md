@@ -4,7 +4,7 @@ type: decision
 id: "0135"
 slug: authorize-one-bounded-preparation-batch-for-the-three-restored-unattended-plan
 project: arcadia
-status: open
+status: approved
 question: Authorize one bounded preparation batch for the three restored unattended-Plan Actions using explicit claude_build, including its incidental Codex availability telemetry, while production remains Off?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Authorize one bounded three-Action preparation batch
+decided: 2026-10-25
 ---
 
 # Decision 0135: Authorize one bounded preparation batch for the three restored unattended-Plan Actions using explicit claude_build, including its incidental Codex availability telemetry, while production remains Off?
