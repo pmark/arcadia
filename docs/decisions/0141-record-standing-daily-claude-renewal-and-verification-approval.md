@@ -4,7 +4,7 @@ type: decision
 id: "0141"
 slug: record-standing-daily-claude-renewal-and-verification-approval
 project: arcadia
-status: open
+status: approved
 question: Record standing daily Claude renewal and verification approval?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Record standing daily approval for bounded renewal and verification
+decided: 2026-10-25
 ---
 
 # Decision 0141: Record standing daily Claude renewal and verification approval?
