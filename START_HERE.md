@@ -2098,6 +2098,11 @@ select `arcadia-unattended` explicitly. For Desktop Go tasks, select it as above
 pnpm arcadia go-broker status
 ```
 
+Broker releases include the Session capability probe and exit recorder. Status
+refuses an installation if either required script is missing or points outside
+the release. Repair requires a reviewed replacement release while production
+is Off; status never repairs an installed release in place.
+
 Installation readiness is separate from runtime readiness: `status` succeeds for
 a correct install even before the worker starts. Its named
 `preservationTransport` field reports whether the host worker has a fresh
