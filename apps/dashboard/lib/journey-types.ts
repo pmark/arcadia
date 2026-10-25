@@ -74,3 +74,27 @@ export interface Journey {
   ahead: JourneyBranch[];
   warnings: string[];
 }
+
+/** `arcadia journey <project>/plan:<plan> --json`: one summary line per Action in Plan order. */
+export interface PlanJourneyAction {
+  id: string;
+  title: string;
+  status: string;
+  current: boolean;
+  journey: {
+    activity: { phase: JourneyPhase; headline: string; since: string | null; yourMove: string | null };
+    destination: { reached: boolean };
+    counts: { victories: number; cleared: number; open: number };
+  };
+}
+
+export interface PlanJourney {
+  schema: "arcadia-plan-journey-v1";
+  generatedAt: string;
+  project: string;
+  plan: { slug: string; milestone: string | null; active: boolean };
+  context: JourneyContext;
+  northStar: null;
+  actions: PlanJourneyAction[];
+  warnings: string[];
+}

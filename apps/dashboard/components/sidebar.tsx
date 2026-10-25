@@ -36,7 +36,7 @@ const PRIMARY_NAV = [
   { href: "/flight-deck", label: "Flight Deck", icon: LayoutGrid },
   { href: "/plans", label: "Plans", icon: ListTree },
   { href: "/path", label: "Path", icon: Route },
-  { href: "/journey/arcadia/current#now", label: "Journey", icon: Rocket },
+  { href: "/journey", label: "Journey", icon: Rocket },
   { href: "/mission-control", label: "Mission Control", icon: Radar },
   { href: "/clock", label: "Clock", icon: Clock },
   { href: "/work-queue", label: "Work Queue", icon: ListOrdered },

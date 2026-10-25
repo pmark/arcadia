@@ -4555,7 +4555,7 @@ Origin: every item has "origin" (a string from a field its source records, else 
   addJsonOption(
     program
       .command("journey <action>")
-      .description("One Action's rover journey (<project>/<action>, or <project>/current for the Project's current Action): launch, victories, obstacles, now and the way ahead; read-only")
+      .description("One Action's rover journey (<project>/<action>, or <project>/current for the Project's current Action; <project>/plan:<slug> or <project>/plan:current for a whole Plan): launch, victories, obstacles, now and the way ahead; read-only")
       .option("--workspace <path>", "Workspace path")
   ).action((actionKey: string, options: { workspace?: string; json?: boolean }) =>
     runCliAction("journey", options, () => runJourneyCommand({ actionKey, workspace: options.workspace }), renderJourneySuccess)

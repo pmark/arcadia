@@ -111,3 +111,33 @@ export interface Journey {
   ahead: JourneyBranch[];
   warnings: string[];
 }
+
+/** One Action's line in a Plan journey: its status in the Plan document and a summary of its own journey. */
+export interface PlanJourneyAction {
+  id: string;
+  title: string;
+  /** The Action's status in the checked-in Plan document. */
+  status: string;
+  /** True for the Project's `current_action`. */
+  current: boolean;
+  journey: {
+    activity: { phase: JourneyPhase; headline: string; since: string | null; yourMove: string | null };
+    destination: { reached: boolean };
+    counts: { victories: number; cleared: number; open: number };
+  };
+}
+
+/** A whole Plan's journey (`arcadia-plan-journey-v1`): one summary line per Action, in Plan order. */
+export interface PlanJourney {
+  schema: typeof PLAN_JOURNEY_SCHEMA;
+  generatedAt: string;
+  project: string;
+  plan: { slug: string; milestone: string | null; active: boolean };
+  context: JourneyContext;
+  /** The dashboard fills this in from the Path brief; the CLI never does. */
+  northStar: null;
+  actions: PlanJourneyAction[];
+  warnings: string[];
+}
+
+export const PLAN_JOURNEY_SCHEMA = "arcadia-plan-journey-v1";

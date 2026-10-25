@@ -9,7 +9,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { projectRepositoryRoot } from "../scheduling/schedule.js";
 import { deriveJourney, splitActionKey, type IntegrationLookup } from "../journey/derive.js";
-import type { Journey, JourneyContext, JourneyEvent } from "../journey/schema.js";
+import { PLAN_JOURNEY_SCHEMA, type Journey, type JourneyContext, type JourneyEvent, type PlanJourney, type PlanJourneyAction } from "../journey/schema.js";
 
 /**
  * `arcadia journey <project>/<action>`: one Action's rover journey (past,
@@ -21,7 +21,9 @@ import type { Journey, JourneyContext, JourneyEvent } from "../journey/schema.js
  * active Plan's), read from the checked-in documents the same way the
  * scheduler reads them, so one bookmark keeps following the active rover.
  */
-export function runJourneyCommand(options: { actionKey: string; workspace?: string; now?: Date }): CommandSuccess<Journey> {
+export function runJourneyCommand(options: { actionKey: string; workspace?: string; now?: Date }): CommandSuccess<Journey | PlanJourney> {
+  const planKey = parsePlanKey(options.actionKey);
+  if (planKey) return runPlanJourneyCommand({ ...options, project: planKey.project, plan: planKey.plan });
   try {
     splitActionKey(options.actionKey);
   } catch (error) {
@@ -51,6 +53,86 @@ export function runJourneyCommand(options: { actionKey: string; workspace?: stri
 
 /** The action segment that means "the Project's current Action" (so an Action literally named `current` is reachable only through the pointer). */
 export const CURRENT = "current";
+
+/** `<project>/plan:<slug>` or `<project>/plan:current`: a whole Plan's journey rather than one Action's. */
+function parsePlanKey(key: string): { project: string; plan: string } | null {
+  const match = /^([^/\s]+)\/plan:([^/\s]+)$/.exec(key);
+  return match ? { project: match[1], plan: match[2] } : null;
+}
+
+function runPlanJourneyCommand(options: { project: string; plan: string; workspace?: string; now?: Date }): CommandSuccess<PlanJourney> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const data = withReadOnlyDatabase(workspacePath, (db) => derivePlanJourney(db, readProjectDocuments(db, options.project), options.plan, options.now ?? new Date()));
+  return createSuccess({ command: "journey", workspace: workspacePath, data, warnings: data.warnings });
+}
+
+/** The Plan's Actions in Plan order, each summarised from its own journey. Read-only. */
+export function derivePlanJourney(db: Database.Database, documents: ProjectDocuments, planSlug: string, now: Date): PlanJourney {
+  const activeSlug = documents.project?.activePlan ?? null;
+  const slug = planSlug === CURRENT ? activeSlug : planSlug;
+  if (!slug) throw validationError(`Project "${documents.slug}" has no active Plan.`);
+  const plan = documents.plans.find((candidate) => candidate.slug === slug);
+  if (!plan) throw validationError(`No Plan "${slug}" in Project "${documents.slug}".`);
+  let pointer: string | null = null;
+  try {
+    pointer = currentActionIn(documents);
+  } catch {
+    pointer = null;
+  }
+  const warnings: string[] = [];
+  const actions: PlanJourneyAction[] = plan.actions.map((doc) => {
+    const done = doc.status === "done";
+    let journey: Journey | null = null;
+    try {
+      journey = deriveJourney(db, `${documents.slug}/${doc.id}`, now, done ? {} : { integration: gitIntegration });
+    } catch (error) {
+      warnings.push(`${doc.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (journey) for (const warning of journey.warnings) if (!/^No Session has run for /.test(warning)) warnings.push(`${doc.id}: ${warning}`);
+    const events = journey?.events ?? [];
+    const counts = {
+      victories: events.filter((event) => event.kind === "victory").length,
+      cleared: events.filter((event) => event.kind === "cleared").length,
+      open: events.filter((event) => event.kind === "obstacle").length
+    };
+    // The Plan document says the Action is done: that outranks a journey still reading its Sessions.
+    const activity = done && journey?.activity.phase !== "arrived"
+      ? { phase: "arrived" as const, headline: "Done", since: journey?.destination.at ?? null, yourMove: null }
+      : { phase: journey?.activity.phase ?? "parked", headline: journey?.activity.headline ?? "Not started", since: journey?.activity.since ?? null, yourMove: journey?.activity.yourMove ?? null };
+    return {
+      id: doc.id,
+      title: doc.title,
+      status: doc.status,
+      current: doc.id === pointer,
+      journey: { activity, destination: { reached: done || (journey?.destination.reached ?? false) }, counts }
+    };
+  });
+  return {
+    schema: PLAN_JOURNEY_SCHEMA,
+    generatedAt: now.toISOString(),
+    project: documents.slug,
+    plan: { slug: plan.slug, milestone: plan.milestone ?? documents.project?.milestone ?? null, active: plan.slug === activeSlug },
+    context: {
+      project: documents.project ? { name: documents.project.name, goal: documents.project.goal, outcome: documents.project.outcome, milestone: documents.project.milestone } : null,
+      plan: { slug: plan.slug, milestone: plan.milestone ?? documents.project?.milestone ?? null, active: plan.slug === activeSlug, position: null, total: plan.actions.length, done: plan.actions.filter((a) => a.status === "done").length },
+      action: null
+    },
+    northStar: null,
+    actions,
+    warnings
+  };
+}
+
+export function renderPlanJourneySuccess(response: CommandSuccess<PlanJourney>): string[] {
+  const journey = response.data;
+  const lines = [`${journey.project}/plan:${journey.plan.slug}${journey.plan.active ? " (active)" : ""}${journey.plan.milestone ? ` · ${journey.plan.milestone}` : ""}`];
+  for (const action of journey.actions) {
+    const { activity } = action.journey;
+    const glyph = action.journey.destination.reached ? "◆" : activity.phase === "blocked" ? "▲" : action.current ? "◉" : "○";
+    lines.push(`${glyph} ${action.id}${action.current ? " *" : ""}  ${activity.headline}${activity.yourMove ? `  — Your move: ${activity.yourMove}` : ""}`);
+  }
+  return lines;
+}
 
 /** A Project's checked-in documents, read the way the scheduler reads them; read-only. */
 export interface ProjectDocuments {
@@ -120,8 +202,9 @@ export function journeyContext(documents: ProjectDocuments, planSlug: string | n
 
 const GLYPH: Record<JourneyEvent["kind"], string> = { launch: "•", victory: "◆", cleared: "△", obstacle: "▲", gate: "○", now: "◉" };
 
-export function renderJourneySuccess(response: CommandSuccess<Journey>): string[] {
-  const journey = response.data;
+export function renderJourneySuccess(response: CommandSuccess<Journey | PlanJourney>): string[] {
+  if (response.data.schema === PLAN_JOURNEY_SCHEMA) return renderPlanJourneySuccess(response as CommandSuccess<PlanJourney>);
+  const journey = (response as CommandSuccess<Journey>).data;
   const lines = [
     `${journey.action.key}`,
     `Now: ${journey.activity.headline}${journey.activity.since ? ` (since ${journey.activity.since.slice(0, 16).replace("T", " ")} UTC)` : ""} — ${journey.activity.detail}`,

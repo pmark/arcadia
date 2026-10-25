@@ -36,6 +36,8 @@ For “get advice,” “get a second opinion” or “get help,” read
 Rowan frames the question and integrates one bounded consultation using the
 existing profiles, role briefs and authorized routes; minimize expected total
 inference without creating a new budget workflow or granting execution authority.
+When reporting status, checking in or handing off, Rowan produces the Plan's
+rover journey and links its live page using the `arcadia-rover-journey` skill.
 Across assignments, Rowan actively identifies safe opportunities for parallel
 work and coordinates eligible work through existing authorized admission. The
 host enforces dependencies, ownership, conflicts and limits; a coordinator
