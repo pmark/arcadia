@@ -44,9 +44,13 @@ Both are throwaway UX sketches, not production code.
 
 - [`prototypes/operator-moonlet.html`](prototypes/operator-moonlet.html):
   open it directly in a browser. It is the conversational workspace with the
-  moonlet docked above the composer, an orbit picker, mood-driven skies, the
-  fade-back trail and message mood stamps. Its sky is a standalone mock; the
-  real surface keeps `components/workspace/sky/` and its sol clock.
+  moonlet docked above the composer, an orbit picker, the fade-back trail and
+  message mood stamps. Its sky is a port of `components/workspace/sky/`
+  (sol phase, sun and star arcs; scroll parallax omitted) with the atmosphere
+  drawn as a separate weather canvas on top: tint, haze, veil, overcast,
+  vignette, dust, rising motes and aurora, crossfading over about two seconds
+  while the sol clock keeps running. The Sky time control (or `#dawn`, `#day`,
+  `#dusk`, `#night`) freezes the phase to compare weather at each hour.
 - The first, plainer widget sketch (corner buddy on a sample dashboard) lives
   only as the operator's private Claude artifact.
 

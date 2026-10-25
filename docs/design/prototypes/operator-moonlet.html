@@ -32,8 +32,8 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { margin: 0; background: #1d2340; color: var(--ink); font-family: var(--ui); font-weight: 400; overflow: hidden; transition: color 1.2s; }
-canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+body { margin: 0; background: linear-gradient(180deg, var(--sky-zenith, #07080f), var(--sky-mid, #0c0f1d) 55%, var(--sky-horizon, #171a2b)) fixed; color: var(--ink); font-family: var(--ui); font-weight: 400; overflow: hidden; transition: color 1.2s; }
+canvas#sky, canvas#stars, canvas#weather { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .app { position: relative; height: 100%; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 10px; }
 
@@ -50,6 +50,10 @@ nav { display: flex; align-items: center; justify-content: space-between; gap: 1
 .telemetry .sep { width: 1px; height: 14px; background: var(--glass-line); }
 @media (max-width: 720px) { .telemetry .opt { display: none; } }
 @media (max-width: 460px) { .telemetry { display: none; } .logo { font-size: 18px; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.when select { appearance: none; -webkit-appearance: none; font: inherit; font-size: 12px; letter-spacing: .06em; color: var(--ink); padding: 7px 26px 7px 12px; border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass) url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%276%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27%23f3ece6%27 stroke-width=%271.4%27/%3E%3C/svg%3E") no-repeat right 10px center; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); cursor: pointer; }
+.when select:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 2px; }
+.when option { color: #1a1a24; }
 .avatar { position: relative; width: 38px; height: 38px; border-radius: 50%; background: var(--glass-strong); border: 1px solid var(--glass-line); display: grid; place-items: center; box-shadow: 0 0 0 2px var(--hue); transition: box-shadow 1.2s; flex: none; }
 .avatar svg { width: 20px; height: 20px; fill: var(--ink-soft); }
 .avatar .badge { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
@@ -213,6 +217,8 @@ svg.trail .sat { fill: var(--ink); }
 </style>
 
 <canvas id="sky" aria-hidden="true"></canvas>
+<canvas id="stars" aria-hidden="true"></canvas>
+<canvas id="weather" aria-hidden="true"></canvas>
 <span class="moon-label" id="lbl-phobos">Phobos <em>· fear</em></span>
 <span class="moon-label" id="lbl-deimos">Deimos <em>· dread</em></span>
 
@@ -229,6 +235,7 @@ svg.trail .sat { fill: var(--ink); }
         <span class="k">Now</span><b id="t-now">Thinking</b><span class="sep opt"></span>
         <span class="k opt">Sol</span><b class="opt" id="t-sol">—</b>
       </div>
+      <label class="when"><span class="sr">Sky time</span><select id="when"><option value="">Live sky</option><option value="dawn">Dawn</option><option value="day">Day</option><option value="dusk">Dusk</option><option value="night">Night</option></select></label>
       <div class="avatar" aria-hidden="true">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z"/></svg>
         <span class="badge" id="avatar-badge"></span>
@@ -284,24 +291,25 @@ svg.trail .sat { fill: var(--ink); }
 
 <script>
 // ---------------- data ----------------
-const SKIES = {
-  calm:     { label: "Calm",     note: "violet dusk",      hue: "#e58f6f", tone: "dark",  idle: ["drift", "6s"],      face: "",
-              top: "#1b2140", mid: "#4b4468", low: "#c98b7c", glow: "#f4a77b", sun: [.09, .9, 34, "#ffd9b0"], stars: .9,  dust: 18,  wind: .2, haze: 0,   aurora: 0, ridges: ["#3c3652", "#2a2740", "#17172a"] },
-  content:  { label: "Content",  note: "pale noon haze",   hue: "#d79a74", tone: "light", idle: ["float-slow", "7s"], face: "happy",
-              top: "#ece6df", mid: "#f1e6da", low: "#e9c9ae", glow: "#fff5e8", sun: [.09, .66, 26, "#fffaf2"], stars: 0,   dust: 24,  wind: .15, haze: 0,  aurora: 0, ridges: ["#dbb59c", "#c69074", "#9c5e44"] },
-  focused:  { label: "Focused",  note: "clear night",      hue: "#8ea2ff", tone: "dark",  idle: ["hover-still", "4s"], face: "",
-              top: "#04060e", mid: "#0c1430", low: "#1f2848", glow: "#3b4b7d", sun: [.5, 1.4, 0, "#000000"],   stars: 1,   dust: 4,   wind: .05, haze: 0,  aurora: 0, ridges: ["#151b2e", "#0e1322", "#080b15"] },
-  stoked:   { label: "Stoked",   note: "golden hour",      hue: "#f2b13f", tone: "dark",  idle: ["bounce", "1.4s"],   face: "happy",
-              top: "#2a2f6a", mid: "#c6627a", low: "#f6b25c", glow: "#ffd27a", sun: [.5, .82, 58, "#fff0c4"],  stars: .2,  dust: 30,  wind: .3, haze: 0,   aurora: 0, ridges: ["#7c3c4b", "#58283a", "#331725"] },
-  tired:    { label: "Tired",    note: "small hours",      hue: "#9d8fc6", tone: "dark",  idle: ["sag", "8s"],        face: "sleepy",
-              top: "#0a0a15", mid: "#1b1830", low: "#2f2942", glow: "#4c405f", sun: [.5, 1.4, 0, "#000000"],   stars: .55, dust: 6,   wind: .05, haze: 0,  aurora: 0, ridges: ["#1d1929", "#14111e", "#0c0a13"] },
-  stressed: { label: "Stressed", note: "dust storm",       hue: "#ef7a45", tone: "dark",  idle: ["tremble", ".5s"],   face: "worried",
-              top: "#57291a", mid: "#984a29", low: "#c97a48", glow: "#e49a5d", sun: [.78, .32, 22, "#ffe0b8"], stars: 0,   dust: 320, wind: 2.6, haze: .38, aurora: 0, ridges: ["#7c3b23", "#5f2a18", "#43200f"] },
-  low:      { label: "Low",      note: "overcast",         hue: "#8f9bb0", tone: "dark",  idle: ["sag", "7s"],        face: "flat",
-              top: "#394050", mid: "#575e6c", low: "#7b7e87", glow: "#9a99a0", sun: [.3, .5, 0, "#000000"],    stars: 0,   dust: 14,  wind: .2, haze: .1,  aurora: 0, ridges: ["#4c5160", "#3b3f4b", "#2a2d36"] },
-  playful:  { label: "Playful",  note: "aurora",           hue: "#7fe0c0", tone: "dark",  idle: ["bounce", "2.4s"],   face: "happy",
-              top: "#081024", mid: "#172b4a", low: "#3b3e6a", glow: "#7d70b1", sun: [.5, 1.4, 0, "#000000"],   stars: .9,  dust: 8,   wind: .1, haze: 0,   aurora: 1, ridges: ["#222a46", "#171d36", "#0e1225"] }
+const ATMOS = {
+  calm:     { label: "Calm",     note: "clear skies",  hue: "#e58f6f", idle: ["drift", "6s"],       face: "",        swatch: ["#1b2140", "#4b4468", "#c98b7c"],
+              w: { tint: ["#8a6fd0", .06] , dust: 10,  wind: .15 } },
+  content:  { label: "Content",  note: "warm haze",    hue: "#d79a74", idle: ["float-slow", "7s"],  face: "happy",   swatch: ["#c9a58a", "#e6c7aa", "#f3dcc4"],
+              w: { haze: ["#ffd7a8", .2], dust: 24, wind: .15 } },
+  focused:  { label: "Focused",  note: "still, clear air", hue: "#8ea2ff", idle: ["hover-still", "4s"], face: "",     swatch: ["#04060e", "#0c1430", "#1f2848"],
+              w: { vignette: .5 } },
+  stoked:   { label: "Stoked",   note: "golden glow",  hue: "#f2b13f", idle: ["bounce", "1.4s"],    face: "happy",   swatch: ["#2a2f6a", "#c6627a", "#f6b25c"],
+              w: { haze: ["#ffbf5a", .34], tint: ["#ffb347", .08], rise: 46 } },
+  tired:    { label: "Tired",    note: "dim and heavy", hue: "#9d8fc6", idle: ["sag", "8s"],        face: "sleepy",  swatch: ["#0a0a15", "#1b1830", "#2f2942"],
+              w: { veil: ["#07061a", .4], dust: 4, wind: .05 } },
+  stressed: { label: "Stressed", note: "dust storm",   hue: "#ef7a45", idle: ["tremble", ".5s"],    face: "worried", swatch: ["#57291a", "#984a29", "#c97a48"],
+              w: { haze: ["#c8743f", .6], tint: ["#a5502a", .22], dust: 320, wind: 2.6 } },
+  low:      { label: "Low",      note: "overcast",     hue: "#8f9bb0", idle: ["sag", "7s"],         face: "flat",    swatch: ["#394050", "#575e6c", "#7b7e87"],
+              w: { clouds: .7, veil: ["#2f3440", .22], dust: 6, wind: .2 } },
+  playful:  { label: "Playful",  note: "aurora",       hue: "#7fe0c0", idle: ["bounce", "2.4s"],    face: "happy",   swatch: ["#081024", "#172b4a", "#3b3e6a"],
+              w: { aurora: 1, dust: 6, wind: .1 } }
 };
+const SKIES = ATMOS;
 const STATES = [
   { id: "thinking",  label: "Thinking",     g: "🤔", fx: "tilt",   face: "side" },
   { id: "typing",    label: "Typing",       g: "⌨️", fx: "tap",    face: "flat" },
@@ -324,93 +332,182 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
 
-// ---------------- sky renderer ----------------
-const cv = $("sky"), cx = cv.getContext("2d");
-let W = 0, H = 0, DPR = 1, ridges = [], stars = [], dust = [];
-const hex = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-const lerp = (a, b, t) => a + (b - a) * t;
-const mixc = (a, b, t) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`; };
-let from = SKIES[S.sky], to = SKIES[S.sky], start = 0;
-const ease = (t) => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
-function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
-  cv.width = W * DPR; cv.height = H * DPR; cx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  const rnd = seeded(7);
-  stars = Array.from({ length: Math.round(W * H / 3800) }, () => ({ x: rnd() * W, y: rnd() * H * .72, r: rnd() * 1.1 + .25, p: rnd() * 6.28 }));
-  ridges = [0, 1, 2].map(l => {
-    const r = seeded(31 + l * 13), base = H * (.74 + l * .07), amp = H * (.05 - l * .012), ph = [r() * 6, r() * 6, r() * 6];
-    const pts = []; for (let x = 0; x <= W + 8; x += 8) pts.push(base - amp * (Math.sin(x / (260 - l * 50) + ph[0]) * .55 + Math.sin(x / (97 - l * 20) + ph[1]) * .3 + Math.sin(x / 31 + ph[2]) * .15 * (1 + l)));
-    return pts;
-  });
-  const rd = seeded(99);
-  dust = Array.from({ length: 340 }, () => ({ x: rd() * W, y: rd() * H, s: rd() * 1.6 + .4, v: rd() * .8 + .4, o: rd() }));
-  placeLabels(); layoutOrbits();
+// ---------------- sol sky (ported from /workspace) ----------------
+// sol-phase and the sky/sun/star drawing below are ported unchanged in behavior from
+// apps/dashboard/components/workspace/sky/{sol-phase.ts,controller.ts}, themselves adapted from
+// pmark/mission-control-site Backdrop.astro (MPL 2.0). Scroll parallax and streaks are omitted
+// because this page does not scroll its document.
+const SOL_MS = 600_000, OPENING_PHASE = 0, MORNING_PHASE = 0.34, OPENING_MS = 60_000;
+const FROZEN_PHASES = { dawn: 0.26, day: 0.5, dusk: 0.755, night: 0 };
+const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+function phaseSince(ms, reduced = false) {
+  if (reduced) return (OPENING_PHASE + ms / SOL_MS) % 1;
+  if (ms < OPENING_MS) return OPENING_PHASE + (MORNING_PHASE - OPENING_PHASE) * smooth(0, OPENING_MS, ms);
+  return (MORNING_PHASE + (ms - OPENING_MS) / SOL_MS) % 1;
 }
-function val(k, t) { return lerp(from[k], to[k], t); }
-function draw(now) {
-  const t = reduce ? 1 : ease(Math.min(1, (now - start) / 2600));
-  const g = cx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, mixc(from.top, to.top, t)); g.addColorStop(.55, mixc(from.mid, to.mid, t)); g.addColorStop(.86, mixc(from.low, to.low, t));
-  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
-  const glow = mixc(from.glow, to.glow, t);
-  // horizon glow
-  const hg = cx.createRadialGradient(W * .2, H * .86, 0, W * .2, H * .86, Math.max(W, H) * .7);
-  hg.addColorStop(0, glow.replace("rgb", "rgba").replace(")", ",.55)")); hg.addColorStop(1, "rgba(0,0,0,0)");
-  cx.fillStyle = hg; cx.fillRect(0, 0, W, H);
-  // stars
-  const sa = val("stars", t);
-  if (sa > .01) for (const s of stars) { const tw = reduce ? .8 : .6 + .4 * Math.sin(now / 900 + s.p); cx.globalAlpha = sa * tw * (1 - s.y / (H * .8)); cx.fillStyle = "#fff"; cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 6.283); cx.fill(); }
-  cx.globalAlpha = 1;
-  // aurora
-  const au = val("aurora", t);
-  if (au > .01) for (let b = 0; b < 3; b++) {
-    cx.beginPath(); const y0 = H * (.22 + b * .07);
-    for (let x = 0; x <= W; x += 12) { const y = y0 + Math.sin(x / 180 + now / (2600 + b * 700) + b) * 26 + Math.sin(x / 61 + now / 1700) * 8; x ? cx.lineTo(x, y) : cx.moveTo(x, y); }
-    cx.strokeStyle = b === 1 ? `rgba(180,140,255,${.22 * au})` : `rgba(110,240,190,${.26 * au})`; cx.lineWidth = 34 - b * 8; cx.filter = "blur(14px)"; cx.stroke(); cx.filter = "none";
+const SKY = {
+  light: [[0.0, '#27304f', '#3d4a72', '#6c7496'], [0.2, '#2c3a62', '#4a5f8e', '#8e8fa8'], [0.25, '#2b5aa8', '#5d9ae0', '#c98a64'], [0.32, '#9c5634', '#b26c44', '#c4875c'], [0.5, '#a45c36', '#ba7448', '#cc9064'], [0.68, '#9c5634', '#b26c44', '#c4875c'], [0.74, '#8a4c34', '#a8684a', '#bf8660'], [0.775, '#1f3f80', '#3f7fd0', '#6fa6d8'], [0.83, '#26305a', '#3a4a78', '#6c7496'], [1.0, '#27304f', '#3d4a72', '#6c7496']],
+  dark: [[0.0, '#07080f', '#0c0f1d', '#171a2b'], [0.2, '#080b18', '#101732', '#22223a'], [0.25, '#0c1a3c', '#1b3a78', '#7a4a38'], [0.32, '#1c1210', '#3a1e14', '#7a3a1c'], [0.5, '#24140f', '#4a2412', '#8e4518'], [0.68, '#20120e', '#432010', '#843f18'], [0.74, '#150f14', '#2e1a1c', '#6e3a24'], [0.775, '#081230', '#123a80', '#2f7fd0'], [0.83, '#07080f', '#0d1022', '#1a1b30'], [1.0, '#07080f', '#0c0f1d', '#171a2b']]
+};
+const hex = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+const rgb = (c, a = 1) => `rgb(${c[0]} ${c[1]} ${c[2]} / ${a})`;
+function skyAt(p, dark) {
+  const table = SKY[dark ? 'dark' : 'light'];
+  for (let i = 0; i < table.length - 1; i++) {
+    const [p0, ...a] = table[i], [p1, ...b] = table[i + 1];
+    if (p >= p0 && p <= p1) { const t = smooth(0, 1, (p - p0) / (p1 - p0)); return a.map((c, j) => mix(hex(c), hex(b[j]), t)); }
   }
-  // sun
-  const sr = val("sun2", t);
-  if (sr > .5) {
-    const sx = W * val("sun0", t), sy = H * val("sun1", t), col = mixc(from.sun[3], to.sun[3], t);
-    const sg = cx.createRadialGradient(sx, sy, 0, sx, sy, sr * 5); sg.addColorStop(0, col.replace("rgb", "rgba").replace(")", ",.5)")); sg.addColorStop(1, "rgba(0,0,0,0)");
-    cx.fillStyle = sg; cx.fillRect(sx - sr * 5, sy - sr * 5, sr * 10, sr * 10);
-    cx.fillStyle = col; cx.globalAlpha = .9; cx.beginPath(); cx.arc(sx, sy, sr, 0, 6.283); cx.fill(); cx.globalAlpha = 1;
+  return table[0].slice(1).map(c => hex(c));
+}
+const altitude = (p) => Math.cos(2 * Math.PI * (p - 0.5));
+const nightAt = (p) => smooth(0.1, -0.12, altitude(p));
+
+const skyC = $("sky"), ctx = skyC.getContext("2d"), starC = $("stars"), sctx = starC.getContext("2d"), wxC = $("weather"), wx = wxC.getContext("2d");
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+let W = 0, H = 0, DPR = 1;
+let started = Date.now();
+try { const saved = Number(sessionStorage.getItem("sol-start")); if (saved > 0 && saved <= started) started = saved; sessionStorage.setItem("sol-start", String(started)); } catch (e) {}
+let timeOverride = null; // "dawn" | "day" | "dusk" | "night" | null (live)
+const frozen = () => { const name = timeOverride || location.hash.slice(1); return Object.hasOwn(FROZEN_PHASES, name) ? FROZEN_PHASES[name] : undefined; };
+const phase = () => frozen() ?? phaseSince(Date.now() - started, reduce);
+
+function publish() {
+  const [z, m, h] = skyAt(phase(), darkQuery.matches);
+  const r = document.documentElement.style;
+  r.setProperty("--sky-zenith", rgb(z)); r.setProperty("--sky-mid", rgb(m)); r.setProperty("--sky-horizon", rgb(h));
+}
+function drawSky() {
+  const p = phase(), dark = darkQuery.matches, [zenith, midSky, horizon] = skyAt(p, dark);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgb(zenith)); g.addColorStop(0.55, rgb(midSky)); g.addColorStop(1, rgb(horizon));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const alt = altitude(p);
+  if (alt <= -0.18) return;
+  const theta = 2 * Math.PI * (p - 0.5);
+  const sx = W / 2 + W * 0.46 * Math.sin(theta), sy = H * 0.97 - H * 0.81 * Math.max(alt, -0.1);
+  const breath = reduce ? 1 : 1 + 0.06 * Math.sin((Date.now() / 1000) * ((2 * Math.PI) / 90));
+  const R = Math.max(W, H) * (0.24 + 0.12 * (1 - Math.max(0, alt))) * breath;
+  const glow = mix([70, 150, 255], [255, 226, 190], smooth(0.08, 0.38, alt));
+  const strength = (dark ? 0.55 : 0.6) * smooth(-0.18, 0.02, alt) * (1 - 0.5 * smooth(0.05, 0.4, alt));
+  const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+  rg.addColorStop(0, rgb(glow, strength)); rg.addColorStop(0.3, rgb(glow, strength * 0.4)); rg.addColorStop(1, rgb(glow, 0));
+  ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+  if (alt > -0.02) { ctx.globalAlpha = 0.92 * smooth(-0.02, 0.04, alt); ctx.fillStyle = "#fffaf0"; ctx.beginPath(); ctx.arc(sx, sy, Math.max(4, Math.min(W, H) * 0.009), 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+}
+const LAYERS = [[0.12, 0.5, 0.85, 0.6, 0.55], [0.3, 0.75, 1.15, 0.75, 0.85], [0.6, 1.05, 1.55, 0.9, 1]];
+const WARM = [255, 246, 236], TINTS = [WARM, WARM, WARM, WARM, [200, 220, 255], [255, 222, 184]];
+let stars = [];
+function seedStars() {
+  let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const count = Math.round(Math.min(240, Math.max(80, (W * H) / 6000)));
+  stars = Array.from({ length: count }, () => { const roll = rand(); const [z, lo, hi, alpha] = LAYERS.find(l => roll < l[4]);
+    return { z, alpha, px: lo + rand() * (hi - lo), u: rand(), v: rand(), period: 3 + rand() * 6, tw: rand() * Math.PI * 2, tint: TINTS[Math.floor(rand() * TINTS.length)] }; });
+}
+function drawStars() {
+  const still = reduce, pad = 40, P = H * 1.2, cx0 = W / 2, cy = H + P, band = H + 2 * pad, now = Date.now() / 1000, p = phase();
+  const f = frozen(), skyT = still ? 0 : f === undefined ? now : f * 600, omega = W / 100 / (P + H / 2);
+  const night = nightAt(p), seen = 0.92 + 0.08 * night;
+  sctx.clearRect(0, 0, W, H);
+  for (const s of stars) {
+    const radius = P - pad + s.v * band, half = Math.asin(Math.min(1, (W / 2 + pad) / radius)), span = 2 * half;
+    const a = -half + ((((s.u * span + omega * (1 + 0.3 * s.z) * skyT) % span) + span) % span);
+    const x = cx0 + radius * Math.sin(a); let y = cy - radius * Math.cos(a); y = ((((y + pad) % band) + band) % band) - pad;
+    const twinkle = still ? 0.8 : 0.6 + 0.4 * Math.sin(now * ((2 * Math.PI) / s.period) + s.tw);
+    sctx.fillStyle = rgb(s.tint, s.alpha * seen * twinkle); sctx.beginPath(); sctx.arc(x, y, s.px, 0, 7); sctx.fill();
   }
-  // Phobos & Deimos
-  moonBody(W * .8, H * .15, Math.max(16, Math.min(W, H) * .045), t, now);
-  moonBody(W * .9, H * .25, 5, t, now);
-  // orbit path
-  cx.strokeStyle = to.tone === "light" ? "rgba(60,40,30,.22)" : "rgba(255,240,230,.22)"; cx.lineWidth = 1;
-  cx.beginPath(); cx.moveTo(W * 1.02, H * .2); cx.bezierCurveTo(W * .55, H * .3, W * .5, H * .55, W * .72, H * .62); cx.bezierCurveTo(W * .86, H * .66, W * .78, H * .78, W * .66, H * .84); cx.stroke();
-  // ridges
-  ridges.forEach((pts, l) => {
-    cx.fillStyle = mixc(from.ridges[l], to.ridges[l], t); cx.beginPath(); cx.moveTo(0, H);
-    pts.forEach((y, i) => cx.lineTo(i * 8, y)); cx.lineTo(W, H); cx.closePath(); cx.fill();
-  });
-  // dust
-  const n = Math.round(val("dust", t)), wind = val("wind", t);
-  cx.fillStyle = glow;
+  const earth = night * smooth(0.77, 0.81, p) * smooth(0.97, 0.9, p);
+  if (earth > 0.01) {
+    const radius = P + H * 0.35, half = Math.asin(Math.min(1, (W / 2 + pad) / radius)), a = -half + 2 * half * (0.45 + (p - 0.77) * 2);
+    sctx.fillStyle = rgb([184, 214, 255], earth); sctx.beginPath(); sctx.arc(cx0 + radius * Math.sin(a), cy - radius * Math.cos(a), 2, 0, 7); sctx.fill();
+  }
+}
+
+// ---------------- atmosphere: the operator's weather layer ----------------
+// Weather composes over the sol sky; it never changes time of day. Each atmosphere has a weight that
+// eases toward 1 (chosen) or 0, so changes crossfade over about two seconds.
+const weights = Object.fromEntries(Object.keys(ATMOS).map(k => [k, k === S.sky ? 1 : 0]));
+let dust = [], motes = [], clouds = [], lastT = performance.now();
+function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+function blend() {
+  let sum = 0; const out = { tint: [[0, 0, 0], 0], haze: [[0, 0, 0], 0], veil: [[0, 0, 0], 0], dust: 0, wind: 0, rise: 0, aurora: 0, clouds: 0, vignette: 0 };
+  for (const [k, w] of Object.entries(weights)) {
+    if (w < .001) continue; sum += w; const p = ATMOS[k].w;
+    for (const c of ["tint", "haze", "veil"]) if (p[c]) { const col = hex(p[c][0]), a = p[c][1] * w; out[c][0] = out[c][0].map((v, i) => v + col[i] * a); out[c][1] += a; }
+    for (const n of ["dust", "wind", "rise", "aurora", "clouds", "vignette"]) out[n] += (p[n] || 0) * w;
+  }
+  for (const c of ["tint", "haze", "veil"]) if (out[c][1] > 0) out[c][0] = out[c][0].map(v => Math.round(v / out[c][1]));
+  if (sum > 0) for (const n of ["dust", "wind", "rise", "aurora", "clouds", "vignette"]) out[n] /= sum;
+  if (sum > 0) for (const c of ["tint", "haze", "veil"]) out[c][1] /= sum;
+  return out;
+}
+function drawWeather(now) {
+  const dt = Math.min(100, now - lastT); lastT = now;
+  const k = reduce ? 1 : 1 - Math.exp(-dt / 600);
+  for (const id in weights) weights[id] += ((id === S.sky ? 1 : 0) - weights[id]) * k;
+  const b = blend(), night = nightAt(phase()), move = reduce ? 0 : 1;
+  wx.clearRect(0, 0, W, H);
+  // Phobos and Deimos belong to the sky, so weather veils them too.
+  const show = .35 + .65 * night;
+  moonBody(W * .8, H * .15, Math.max(16, Math.min(W, H) * .045), show);
+  moonBody(W * .9, H * .25, 5, show);
+  $("lbl-phobos").style.opacity = $("lbl-deimos").style.opacity = String(.5 + .5 * night);
+  if (b.aurora > .01) for (let i = 0; i < 3; i++) {
+    wx.beginPath(); const y0 = H * (.2 + i * .07);
+    for (let x = 0; x <= W; x += 12) { const y = y0 + Math.sin(x / 180 + move * now / (2600 + i * 700) + i) * 26 + Math.sin(x / 61 + move * now / 1700) * 8; x ? wx.lineTo(x, y) : wx.moveTo(x, y); }
+    const a = b.aurora * (.35 + .65 * night);
+    wx.strokeStyle = i === 1 ? `rgba(180,140,255,${.24 * a})` : `rgba(110,240,190,${.3 * a})`; wx.lineWidth = 34 - i * 8; wx.filter = "blur(14px)"; wx.stroke(); wx.filter = "none";
+  }
+  if (b.clouds > .01) for (const c of clouds) {
+    if (move) { c.x += c.v * dt * .01; if (c.x - c.r * 2 > W) c.x = -c.r * 2; }
+    wx.save(); wx.translate(c.x, c.y); wx.scale(2.4, 1);
+    const g = wx.createRadialGradient(0, 0, 0, 0, 0, c.r); const shade = darkQuery.matches ? "120,126,140" : "176,180,192";
+    g.addColorStop(0, `rgba(${shade},${.8 * b.clouds * c.o})`); g.addColorStop(1, `rgba(${shade},0)`);
+    wx.fillStyle = g; wx.beginPath(); wx.arc(0, 0, c.r, 0, 7); wx.fill(); wx.restore();
+  }
+  if (b.tint[1] > .005) { wx.fillStyle = rgb(b.tint[0], b.tint[1]); wx.fillRect(0, 0, W, H); }
+  if (b.veil[1] > .005) { wx.fillStyle = rgb(b.veil[0], b.veil[1]); wx.fillRect(0, 0, W, H); }
+  if (b.haze[1] > .005) { const g = wx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, rgb(b.haze[0], b.haze[1] * .35)); g.addColorStop(1, rgb(b.haze[0], b.haze[1])); wx.fillStyle = g; wx.fillRect(0, 0, W, H); }
+  if (b.vignette > .01) { const g = wx.createRadialGradient(W / 2, H * .45, Math.min(W, H) * .25, W / 2, H * .45, Math.max(W, H) * .8); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(2,3,10,${b.vignette})`); wx.fillStyle = g; wx.fillRect(0, 0, W, H); }
+  const n = Math.round(b.dust), mc = b.haze[1] > .01 ? mix(b.haze[0], [255, 240, 220], .45) : [255, 236, 214];
+  wx.fillStyle = rgb(mc);
   for (let i = 0; i < n && i < dust.length; i++) {
     const d = dust[i];
-    if (!reduce) { d.x += d.v * (wind + .08); d.y += Math.sin(now / 1200 + d.o * 9) * .15 * (1 + wind); if (d.x > W + 4) { d.x = -4; d.y = Math.random() * H; } }
-    cx.globalAlpha = (.25 + d.o * .45) * Math.min(1, .3 + wind); cx.beginPath(); cx.arc(d.x, d.y, d.s * (1 + wind * .3), 0, 6.283); cx.fill();
+    if (move) { d.x += d.v * (b.wind + .08) * dt * .06; d.y += Math.sin(now / 1200 + d.o * 9) * .15 * (1 + b.wind); if (d.x > W + 4) { d.x = -4; d.y = Math.random() * H; } }
+    wx.globalAlpha = (.2 + d.o * .45) * Math.min(1, .3 + b.wind); wx.beginPath(); wx.arc(d.x, d.y, d.s * (1 + b.wind * .3), 0, 7); wx.fill();
   }
-  cx.globalAlpha = 1;
-  const hz = val("haze", t);
-  if (hz > .01) { cx.fillStyle = glow.replace("rgb", "rgba").replace(")", `,${hz})`); cx.fillRect(0, 0, W, H); }
-  body.style.background = mixc(from.top, to.top, t);
+  wx.fillStyle = "#ffd27a";
+  for (let i = 0; i < Math.round(b.rise) && i < motes.length; i++) {
+    const m = motes[i];
+    if (move) { m.y -= m.v * dt * .03; m.x += Math.sin(now / 900 + m.o * 7) * .2; if (m.y < -4) { m.y = H + 4; m.x = Math.random() * W; } }
+    wx.globalAlpha = (.3 + .5 * Math.sin(now / 500 + m.o * 9) ** 2) * Math.min(1, b.rise / 20); wx.beginPath(); wx.arc(m.x, m.y, m.s, 0, 7); wx.fill();
+  }
+  wx.globalAlpha = 1;
 }
-function moonBody(x, y, r, t, now) {
-  const light = to.tone === "light";
-  const g = cx.createRadialGradient(x - r * .4, y - r * .4, r * .1, x, y, r);
-  g.addColorStop(0, light ? "#f6ece4" : "#e9dcd2"); g.addColorStop(1, light ? "#cdb3a3" : "#6d5c58");
-  cx.fillStyle = g; cx.beginPath(); cx.ellipse(x, y, r * 1.08, r * .9, -.4, 0, 6.283); cx.fill();
-  if (r > 8) { cx.fillStyle = "rgba(90,60,50,.2)"; [[.3, .2, .18], [-.35, -.1, .12], [.05, -.42, .09]].forEach(([a, b, c]) => { cx.beginPath(); cx.arc(x + a * r, y + b * r, c * r, 0, 6.283); cx.fill(); }); }
+function moonBody(x, y, r, a) {
+  wx.globalAlpha = a;
+  const g = wx.createRadialGradient(x - r * .4, y - r * .4, r * .1, x, y, r);
+  g.addColorStop(0, "#e9dcd2"); g.addColorStop(1, "#6d5c58");
+  wx.fillStyle = g; wx.beginPath(); wx.ellipse(x, y, r * 1.08, r * .9, -.4, 0, 7); wx.fill();
+  if (r > 8) { wx.fillStyle = "rgba(90,60,50,.2)"; [[.3, .2, .18], [-.35, -.1, .12], [.05, -.42, .09]].forEach(([p, q, c]) => { wx.beginPath(); wx.arc(x + p * r, y + q * r, c * r, 0, 7); wx.fill(); }); }
+  wx.globalAlpha = 1;
 }
-const body = document.body;
-["sun0", "sun1", "sun2"].forEach((k, i) => Object.values(SKIES).forEach(s => s[k] = s.sun[i]));
-function frame(now) { draw(now); if (!reduce) requestAnimationFrame(frame); }
+
+function resize() {
+  W = innerWidth; H = innerHeight; DPR = Math.min(2, devicePixelRatio || 1);
+  skyC.width = W; skyC.height = H;
+  for (const [c, x] of [[starC, sctx], [wxC, wx]]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); x.setTransform(DPR, 0, 0, DPR, 0, 0); }
+  sctx.lineCap = "round"; seedStars();
+  const rd = seeded(99); dust = Array.from({ length: 340 }, () => ({ x: rd() * W, y: rd() * H, s: rd() * 1.6 + .4, v: rd() * .8 + .4, o: rd() }));
+  const rm = seeded(41); motes = Array.from({ length: 60 }, () => ({ x: rm() * W, y: rm() * H, s: rm() * 1.4 + .6, v: rm() * .8 + .4, o: rm() }));
+  const rc = seeded(17); clouds = Array.from({ length: 7 }, () => ({ x: rc() * W, y: H * (.08 + rc() * .55), r: 80 + rc() * 140, v: .3 + rc() * .6, o: .6 + rc() * .4 }));
+  placeLabels(); layoutOrbits(); redraw();
+}
+function redraw() { const t = performance.now(); publish(); drawSky(); drawStars(); drawWeather(t); }
+function frame(t) { drawSky(); drawStars(); drawWeather(t); if (!reduce) requestAnimationFrame(frame); }
+setInterval(() => { publish(); if (reduce) redraw(); }, 250);
+addEventListener("hashchange", redraw);
+darkQuery.addEventListener("change", redraw);
 
 function placeLabels() {
   const r = Math.max(16, Math.min(W, H) * .045);
@@ -427,10 +524,8 @@ function glyphNode(item) {
   return document.createTextNode(item.g);
 }
 function setSky(id) {
-  const now = performance.now();
-  from = { ...to }; to = SKIES[id]; start = now; S.sky = id; save();
-  document.documentElement.dataset.tone = to.tone;
-  if (reduce) draw(now);
+  S.sky = id; save();
+  if (reduce) redraw();
   render();
 }
 function setNow(item) {
@@ -459,7 +554,7 @@ function render(pop) {
   const s = $("sending");
   s.append("Sending as ");
   const b = document.createElement("b"); b.textContent = S.now ? `${S.now.img ? "sticker" : S.now.g} ${S.now.label}` : "just you"; s.append(b);
-  s.append(` · ${sky.label.toLowerCase()} skies, ${sky.note}`);
+  s.append(` · atmosphere ${sky.label.toLowerCase()}, ${sky.note}`);
   if (!$("orbits").hidden) buildOrbits();
   tick();
 }
@@ -475,8 +570,7 @@ setInterval(tick, 500);
 function sol() {
   const jd = Date.now() / 864e5 + 2440587.5 + 69.184 / 86400;
   const msd = (jd - 2405522.0028779) / 1.0274912517;
-  const mtc = ((msd % 1) * 24 + 24) % 24;
-  $("t-sol").textContent = `${Math.floor(msd).toLocaleString()} · ${String(Math.floor(mtc)).padStart(2, "0")}:${String(Math.floor((mtc % 1) * 60)).padStart(2, "0")} MTC`;
+  $("t-sol").textContent = Math.floor(msd).toLocaleString();
 }
 sol(); setInterval(sol, 30000);
 
@@ -524,7 +618,7 @@ function buildOrbits() {
     const ids = Object.keys(SKIES);
     [...arc(ids.slice(0, 3), R1, 0), ...arc(ids.slice(3), R2, 80)].forEach(({ it, x, y, d }) => {
       const s = SKIES[it], sw = document.createElement("span"); sw.className = "sw";
-      sw.style.background = `linear-gradient(180deg, ${s.top}, ${s.mid} 55%, ${s.low})`;
+      sw.style.background = `linear-gradient(180deg, ${s.swatch[0]}, ${s.swatch[1]} 55%, ${s.swatch[2]})`;
       orbits.append(chip(sw, `${s.label} · ${s.note}`, S.sky === it, x, y, d, () => { setSky(it); closeOrbits(); }));
     });
   }
@@ -579,8 +673,9 @@ const bars = $("bars"); const rb = seeded(5);
 for (let i = 0; i < 34; i++) { const s = document.createElement("i"); s.style.height = (3 + Math.abs(Math.sin(i * .7)) * 10 + rb() * 5) + "px"; bars.append(s); }
 
 // ---------------- boot ----------------
-document.documentElement.dataset.tone = SKIES[S.sky].tone;
 addEventListener("resize", resize);
+$("when").addEventListener("change", e => { timeOverride = e.target.value || null; redraw(); });
+if (Object.hasOwn(FROZEN_PHASES, location.hash.slice(1))) $("when").value = location.hash.slice(1);
 resize(); render(false);
-if (reduce) draw(performance.now()); else requestAnimationFrame(frame);
+if (!reduce) requestAnimationFrame(frame);
 </script>
