@@ -4,6 +4,51 @@ This is the **single canonical checklist** for the remaining unattended-producti
 
 ## Operator view: the rover’s route from here
 
+**The rover has its route, three job cards and a working fuel gauge. It is still parked.** Production remains Off until you separately approve **START**. The live [Journey](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current) reports **“Parked: production is Off.”**
+
+**Six milestones remain.** These are milestones, not six approvals. The next operator decision is START, once the last route check passes and its button is verified.
+
+| # | Milestone | What happens |
+| --- | --- | --- |
+| **1 — now** | **Finish the practice drive** | Check that the rover can deliver all three jobs, recover from a review finding and continue. A practice drive found a wrong turn toward an old held job; its queue order is corrected. The latest drive exposed a slow validation command and a reserved review gate; their effect on readiness is being assessed without resetting any attempts. |
+| **2 — your move when notified** | **Press START** | One reviewed button releases exactly these three jobs on Claude, one at a time, within the agreed limits. Preparation and earlier approvals do not start the rover. |
+| 3 | Deliver the first job | Keep a test from consulting the host’s terminal-session server. The rover validates the change, obtains independent review and delivers the PR. |
+| 4 | Deliver the second job | Make test-directory cleanup tolerate a brief filesystem delay, with the same validation and review gates. |
+| 5 | Deliver the third job | Build the fresh mail acknowledgment collision test. The older held PR stays untouched. |
+| 6 | Confirm arrival | Check the full journey record: all three real deliveries landed, with operator involvement limited to START and any reserved change approvals. Record acceptance against the original goal. |
+
+**What needs your attention now:** nothing further for sign-in renewal or the completed capacity check. Their approved sequence succeeded. Decision0141 records at most one needed bounded renewal/check per local calendar day until this milestone is proved, including its required records. Today’s allowance is consumed; failed attempts are never reset. Rowan will send the direct button link on Discord when START is genuinely ready. Any unavoidable later approval also uses a remote actionable surface or an explicit chat approval; no host commands or native coding-agent interaction are required.
+
+## Current readiness and limits
+
+Derived **2026-10-25**, from current canonical Project/Plan state, production Off revision79/epoch44/zero admissions, queue282, installed worker release `13e9f3fcf82a849e09fe8356b3ab281510905e1c`, Decisions0134–0141 and retained receipts. This is preparation, not live unattended acceptance.
+
+| State | Gate or milestone | Evidence / next move |
+| --- | --- | --- |
+| Proven | Restore the unattended Plan | PR1754 merged; the explicitly approved guarded restoration completed. The unfinished coordination track is preserved. Do not reask or reapply. |
+| Proven | Prepare the exact three immutable packets | Decision0135 batch succeeded; its attempt is consumed forever. R438–R440 remain unapproved until the explicit START grant’s packet delegation handles them. Never rebuild/reset them merely to progress. |
+| Proven | Install the reviewed worker source | PR1757 and PR1760 merged; explicitly approved guarded adoption succeeded. Actual owning worker50950 reports compiled release13e9 and its pinned handler. Adoption allowance consumed; no restart or reinstall implied by later governance-only commits. |
+| Proven | Confirm sign-in and worker capacity | Explicit0139 renewal succeeded once; actual0140 worker check returned HTTP200 at21:08:59UTC, 5h5% / 7d20%, credential expiry2026-10-26T05:07:07.651Z. Both attempts are consumed. This is retained evidence, not a promise of fresh usage at launch: the Active worker must read fresh capacity before every admission and refuse unknown, stale or exhausted windows. |
+| Proven | Apply agreed spending rule | Decision0134 records100%, no reserve; admission still requires both included windows strictly below100%, no paid fallback and all ordinary gates. Do not reask the percentage. |
+| Proven | Correct the demonstrated wrong turn | Rehearsal v2 integrated the first simulated job then selected the old held Action outside scope. Independently reviewed canonical queue move `qorder_aa887af4823444b996` changed281→282: B → C → replacement A → held original. All27 keys and every other key’s relative order remain intact. No Plan criteria, immutable packet, PR1662, custody or attempt was changed. |
+| In progress | Current-source full-chain rehearsal | v4 stopped after the corrected queue: first B validation exceeded its120s per-command lint cap; bounded continuation passed validation and independent review, then integration waited on an unarchived resumed-draft authority boundary. No3-integration current-source pass is claimed. The misleading900s total-budget message and lint workload mismatch are captured in Issue1765; the earlier Issue981 covers stray draft integration holds. Reuse historical three-Action v5 and current-source v2 first-integration evidence; independent pre-press assessment must identify the smallest remaining proof, without inventing a perfection gate or treating timeout as pass. Preserve v1’s missing-board fixture failure, v2’s routing refusal and v3’s pre-launch owner-socket refusal. No simulated result establishes real unattended acceptance. |
+| Prepared; not yet delivered | One-shot START button | Draft passed independent Process Critic review and descriptor/shell checks. It pins the exact trio, queue282, worker/source, Off79/44/zero, expiry, fresh press-time previews and a durable one-shot activation allowance. Final pre-press evidence assessment, publication, evidence binding and live actionability checks remain before notification. No agent may press it. |
+| Pending explicit human START | Release the rover | The eventual press authorizes exact scope, Claude only, concurrency1, packet approval and reviewed PR integration for24hours. The policy itself has no automatic expiry; already-approved packets may launch after delegation expiry, subject to admission gates. No PR integration after its grant expires. STOP remains available. |
+| Unproved | Three live deliveries and unattended acceptance | Preserve held PR1662 and all earlier failures. Each future candidate needs its own validation, canonical completion, exact-head independent review and required CI. Settle `first-unattended-run` only from the complete live ledger and exhaustive operator-touch record. |
+
+Current source changes to lint/tsc validation binding and workspace-wide read-only reservation inventory are published and adopted. Earlier twice-per-Action validator and bounded lint/tsc receipts remain reusable preflight evidence; they do not waive checks on future live candidates. Cached capacity may be stale before START: the established grant permits only this stale-only condition because the actual worker refreshes before admission; unknown/exhausted/unmetered states still refuse.
+
+Evidence custody: `artifacts/generated/session-closeouts/20261023-rowan-offline/READINESS-HANDOFF.md`, `postrenewal-usage-worker-receipt.json`, `start-readiness-20261025/` and the canonical Decision records. Generated evidence is host-local, ignored and preserved separately; repository publication alone does not make it portable. One Rowan coordinator and one half-hour heartbeat remain; no duplicate watch. The Journey’s “Before START” visibility proposal is recorded and is not a launch prerequisite.
+
+## Preserved earlier derivation
+
+The collapsed record below is superseded by the current gates above. Its old next-step and approval requests are historical, not instructions to repeat completed work.
+
+<details>
+<summary>October25 12:45UTC derivation and its retained proof limits</summary>
+
+## Operator view: the rover’s route from here
+
 **The rover is parked. Production is Off.** Its route-restoration request is published and reviewed, but the route has not yet been changed. The destination is three real jobs completed, reviewed and delivered by the rover, followed by proof that it made the journey without manual rescue.
 
 **Nine main checkpoints remain on the route below.** These are delivery checkpoints, not a promise of nine clicks. The systems check still has an unresolved obstacle, so the exact number of small repairs or approvals is not yet known. Preparation can happen in parallel where it is safe.
@@ -72,6 +117,9 @@ Local evidence custody is `artifacts/generated/session-closeouts/20261023-rowan-
 ## Conditional risks and revival triggers
 
 General hostile-candidate/HOME confinement tracked in #1682 remains unproved; this preparation covers only trusted narrowly bound self-check Actions. Reassess before any broader candidate or real-provider replay. The inherited #1724 dependency-snapshot ENOTDIR defect revives if an actual required check encounters it. Canonical pointer commit identity inherited the operator identity at the API runner boundary; preserve history and prepare the source correction/regression when that boundary is exercised again. The recovered descriptor's workspace mismatch needs a general source correction before its next general use; the consumed reviewed wrapper was specific to this recovery. Pending 80%-pause/Resume remains a separate propose-only deferred policy, revived by its recorded trigger; it is not part of the confirmed no-reserve baseline. None of these is silently declared resolved or expanded into new launch authority.
+
+
+</details>
 
 ## Historical derivations
 
