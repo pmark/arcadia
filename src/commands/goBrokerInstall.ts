@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { BRIEF_CHILD_ENV, BRIEF_DEADLINE_ENV, BRIEF_SELF_TEST_ENV } from "../briefSupervisor.js";
 import { validationError } from "../cli/errors.js";
+import { validatePhase3Registries, type Phase3Registries } from "../intent/registries.js";
 import { loadRoleRegistry, validateRoleRegistry } from "../agentRoles/registry.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import type { GoBrokerAgent, ProtectedBrokerOperation } from "../goBroker.js";
@@ -183,6 +184,7 @@ export function runGoBrokerInstallCommand(
       });
       stageGoBrokerDatabaseSchema(repository, stagedRelease);
       const roleRegistry = stageGoBrokerRoleRegistry(repository, stagedRelease);
+      stageGoBrokerWorkerDefaults(repository, stagedRelease);
       mkdirSync(path.join(stagedRelease, "dist", "scripts"), { recursive: true });
       copyFileSync(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
@@ -537,6 +539,8 @@ export function validateExistingRelease(releaseDirectory: string, revision: stri
     throw validationError("The existing protected broker release is incomplete.", { releaseDirectory });
   }
   validateGoBrokerRoleRegistry(releaseDirectory);
+  validateGoBrokerWorkerDefaults(releaseDirectory);
+  validateGoBrokerWorkerCode(releaseDirectory);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { schema?: string; revision?: string };
   if (manifest.schema !== INSTALL_SCHEMA || manifest.revision !== revision) {
     throw validationError("The existing protected broker release manifest does not match its revision.", {
@@ -590,6 +594,58 @@ export function stageGoBrokerRoleRegistry(repository: string, stagedRelease: str
   }
   copyFileSync(source, destination);
   return validateGoBrokerRoleRegistry(stagedRelease, createHash("sha256").update(readFileSync(source)).digest("hex"));
+}
+
+/** Required compiled startup entries; no source checkout fallback. */
+export function validateGoBrokerWorkerCode(release: string): void {
+  const root = realpathSync(release);
+  for (const name of ["cli.js", "commands/worker.js", "production/workerClaudeUsageDiagnostic.js",
+    "codingAgents/providerUsage.js", "codingAgents/availability.js", "commands/workerHeartbeatBeacon.js",
+    "sessions/preservationRequestWorker.js", "sessions/preservationRequestPayload.js", "sessions/preservationValidationClient.js"]) {
+    const file = path.join(root, "dist/src", name);
+    try {
+      if (!lstatSync(file).isFile() || realpathSync(file) !== file) throw new Error("Non-local worker entry");
+    } catch {
+      throw validationError("The protected worker compiled package is incomplete or not release-local.", { file });
+    }
+  }
+}
+
+const WORKER_DEFAULTS = [
+  ["intents", "intent-registry.json"],
+  ["templates", "template-registry.json"],
+  ["codingAgents", "coding-agent-profiles.json"],
+  ["providerAdapters", "provider-adapters.json"]
+] as const;
+
+export function validateGoBrokerWorkerDefaults(release: string): void {
+  const registries: Record<string, unknown> = {};
+  try {
+    for (const [key, name] of WORKER_DEFAULTS) {
+      const file = path.join(realpathSync(release), "dist/config/defaults", name);
+      if (!lstatSync(file).isFile() || realpathSync(file) !== file) throw new Error("Non-local registry");
+      registries[key] = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    }
+    validatePhase3Registries(registries as unknown as Phase3Registries);
+  } catch {
+    throw validationError("The protected worker registry defaults are missing, malformed or not release-local.");
+  }
+}
+
+export function stageGoBrokerWorkerDefaults(repository: string, release: string): void {
+  // The role-registry staging routine already creates and checks these directories.
+  const directory = path.join(release, "dist/config/defaults");
+  if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== path.join(realpathSync(release), "dist/config/defaults")) {
+    throw validationError("The protected worker registry directory is not release-local.");
+  }
+  for (const [, name] of WORKER_DEFAULTS) {
+    const destination = path.join(directory, name);
+    if ((existsSync(destination) || isDanglingLink(destination)) && !lstatSync(destination).isFile()) {
+      throw validationError("The protected worker registry destination is not a regular file.");
+    }
+    copyFileSync(path.join(repository, "config/defaults", name), destination);
+  }
+  validateGoBrokerWorkerDefaults(release);
 }
 
 export function stageGoBrokerDatabaseSchema(repository: string, stagedRelease: string): string {
