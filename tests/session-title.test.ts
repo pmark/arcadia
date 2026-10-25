@@ -45,11 +45,11 @@ describe("session titles", () => {
     expect(formatSessionTitle({ kind: "repair", state: "waiting", plan: null, action: null })).toBe("🩹🟠 repair");
   });
 
-  it("leads a coordinator with the stoplight and a helper with the arrow (chat-titles.md)", () => {
+  it("leads the current coordinator with a star and stoplight and a helper with the arrow (chat-titles.md)", () => {
     expect(formatSessionTitle({
       kind: "build", state: "waiting", plan: null, action: null, relation: "coordinator",
       workstream: "Lead trials", details: ["approve pilot budget"]
-    })).toBe("🚦🟠 Lead trials · approve pilot budget");
+    })).toBe("⭐ 🚦🟠 Lead trials · approve pilot budget");
     expect(formatSessionTitle({
       kind: "plan", state: "working", plan: null, action: null, relation: "helper",
       workstream: "Lead trials", details: ["planner"]
@@ -62,6 +62,25 @@ describe("session titles", () => {
       kind: "build", state: "parked", plan: null, action: null, relation: "coordinator",
       workstream: "Lead trials", details: ["former coordinator"]
     })).toBe("🚦⏸ Lead trials · former coordinator");
+  });
+
+  it("retains the contact marker through state changes and removes it when parked", () => {
+    const titles = sessionTitlesByState({
+      kind: "review", plan: "way-delivery", action: "tidy-docs", relation: "coordinator"
+    });
+    expect(titles).toEqual({
+      working: "⭐ 🚦🔵 WD tidy-docs",
+      pr: "⭐ 🚦🟣 WD tidy-docs",
+      ci: "⭐ 🚦🟡 WD tidy-docs",
+      waiting: "⭐ 🚦🟠 WD tidy-docs",
+      blocked: "⭐ 🚦🔴 WD tidy-docs",
+      done: "⭐ 🚦🟢 WD tidy-docs",
+      parked: "🚦⏸ WD tidy-docs"
+    });
+    const helpers = sessionTitlesByState({
+      kind: "review", plan: "way-delivery", action: "tidy-docs", relation: "helper"
+    });
+    expect(Object.values(helpers).every((title) => title.startsWith("↳ ") && !title.includes("⭐"))).toBe(true);
   });
 
   it("keeps the Plan acronym and Action for a helper without a workstream label", () => {

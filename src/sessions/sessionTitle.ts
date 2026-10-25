@@ -37,12 +37,13 @@ export const SESSION_TITLE_STATE_GLYPHS: Record<SessionTitleState, string> = {
 /**
  * Who the operator should talk to (docs/agent-guidance/chat-titles.md):
  * `direct` is a contact for its own work, `coordinator` is the one
- * operator-facing manager of a workstream (🚦 replaces the kind glyph) and
+ * operator-facing manager of a workstream (⭐ marks the current contact; 🚦 replaces the kind glyph) and
  * `helper` reports to a named parent coordinator (a leading `↳ `).
  */
 export const SESSION_TITLE_RELATIONS = ["direct", "coordinator", "helper"] as const;
 export type SessionTitleRelation = (typeof SESSION_TITLE_RELATIONS)[number];
 
+export const CONTACT_TITLE_PREFIX = "⭐ ";
 export const COORDINATOR_TITLE_GLYPH = "🚦";
 export const HELPER_TITLE_PREFIX = "↳ ";
 
@@ -87,7 +88,9 @@ export interface SessionTitleInput {
 export function formatSessionTitle(input: SessionTitleInput): string {
   const relation = input.relation ?? "direct";
   const kindGlyph = relation === "coordinator" ? COORDINATOR_TITLE_GLYPH : SESSION_TITLE_KIND_GLYPHS[input.kind];
-  const glyphs = `${relation === "helper" ? HELPER_TITLE_PREFIX : ""}${kindGlyph}${SESSION_TITLE_STATE_GLYPHS[input.state]}`;
+  const prefix = relation === "helper" ? HELPER_TITLE_PREFIX
+    : relation === "coordinator" && input.state !== "parked" ? CONTACT_TITLE_PREFIX : "";
+  const glyphs = `${prefix}${kindGlyph}${SESSION_TITLE_STATE_GLYPHS[input.state]}`;
   const workstream = input.workstream?.trim();
   const scope = workstream
     ? [workstream, input.action ?? ""].filter(Boolean).join(" · ")

@@ -6,7 +6,7 @@
       "trigger": "start, continue, go, pointer, title, handoff, stop",
       "path": "docs/agent-guidance/continuation.md",
       "read_before": "Before starting or handing off any Action.",
-      "sha256": "2aff933e46ecf27aea494044dd087c799b9ad6857aa6f4293920bbefec3c88dd"
+      "sha256": "31c316cd01417215df28dc087ffc8db287d28e4b6a1164b229b2a87d0d2c91c4"
     },
     {
       "id": "agent-asks",
@@ -167,7 +167,7 @@
       "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
       "path": "docs/agent-guidance/chat-titles.md",
       "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
-      "sha256": "fde83dd3cf3399a8e89796290770ed6f623954438cbe71fc8608dd8cf7410466"
+      "sha256": "68b829893bdf226aec3ad687603c055c02af78b9f449aceb405ee41d0e82d82d"
     },
     {
       "id": "skills",
