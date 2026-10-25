@@ -3,15 +3,24 @@
   "role": "lead",
   "model": "unavailable",
   "effort": null,
-  "action_id": "operator-directed:#1729",
-  "pr": 1734,
+  "action_id": "operator-directed:#1736",
+  "pr": 1737,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 3,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "authority-revocation-across-await",
+      "caught_by": "independent internal review R1"
+    },
+    {
+      "class": "partial-scope-replay",
+      "caught_by": "independent internal review R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -19,8 +28,13 @@
       "id": "retained-C-lint-preflight-bound",
       "cost_min": null,
       "fix_ref": "docs/managed-production-readiness.md; C-only lint127452ms/tsc9803ms passed; prior120s timeout retained"
+    },
+    {
+      "id": "grant-fixture-status-coupled-to-active-plan",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1738"
     }
   ],
   "outcome": "split",
-  "notes": "Coordinator checkpoint: shared directive/checklist published in1730; confirmedA canonical record in1734; C offline checks passed. Live Actions/first-unattended acceptance remain open."
+  "notes": "Coordinator checkpoint, not canonical Action split. Direct source #1736/PR1737; R1 repairs await R2/CI. Prior directive and A publication retained. Production Off; no live proof."
 }

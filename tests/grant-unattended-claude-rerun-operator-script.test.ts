@@ -106,6 +106,8 @@ const capacity = (provider: Record<string, unknown>) => ok({ observation: { prov
 ] } });
 
 interface BoxOptions {
+  /** Fixture authority is independent of the current repository Plan status. */
+  planStatus?: "active" | "draft";
   config?: unknown;
   decisions?: Partial<Record<"0130" | "0058" | "0097", string | null>>;
   tmuxLauncher?: boolean;
@@ -116,8 +118,9 @@ interface BoxOptions {
 }
 
 /** The real Plan document with the named Actions marked done. */
-function planDocument(done: string[]): string {
-  let text = readFileSync(path.join(repoRoot, "docs", "plans", `${PLAN}.md`), "utf8");
+function planDocument(done: string[], planStatus: "active" | "draft" = "active"): string {
+  let text = readFileSync(path.join(repoRoot, "docs", "plans", `${PLAN}.md`), "utf8")
+    .replace(/^status: \w+$/m, `status: ${planStatus}`);
   for (const key of ACTIONS) {
     const id = key.slice(key.indexOf("/") + 1);
     text = text.replace(new RegExp(`(  - id: ${id}\\n(?:    .*\\n)*?    status: )\\w+`), `$1${done.includes(key) ? "done" : "open"}`);
@@ -157,7 +160,7 @@ function box(options: BoxOptions = {}) {
     mkdirSync(path.join(checkout, "src", "production"), { recursive: true });
     writeFileSync(path.join(checkout, "src", "production", "workerMerge.ts"), "export {};\n");
   }
-  writeFileSync(path.join(checkout, "docs", "plans", `${PLAN}.md`), planDocument(options.done ?? []));
+  writeFileSync(path.join(checkout, "docs", "plans", `${PLAN}.md`), planDocument(options.done ?? [], options.planStatus));
   copyFileSync(path.join(library, `${ID}.sh`), path.join(scripts, `${ID}.sh`));
   chmodSync(path.join(scripts, `${ID}.sh`), 0o755);
   copyFileSync(path.join(library, `${ID}.json`), path.join(scripts, `${ID}.json`));
@@ -273,6 +276,15 @@ describe("first unattended Claude run Grant: refusals before any change", () => 
     expect(b.run({}).status).not.toBe(0);
     expect(b.receipt().json).toMatchObject({ outcome: "refused", stage: "launch_context", activated: false, offCleanup: "not_attempted" });
     expect(b.calls()).toEqual([]);
+  });
+
+  it("refuses a draft fixture Plan without activating production", () => {
+    const b = box({ config: gateOn, planStatus: "draft" });
+    expect(b.run().status).not.toBe(0);
+    const { json } = b.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "preconditions", activated: false });
+    expect(json.reason).toContain(`the Plan ${PLAN} is not active`);
+    expect(b.arcadiaCalls("production", "activate")).toHaveLength(0);
   });
 
   it("refuses when ANTHROPIC_API_KEY is set, without recording its value", () => {

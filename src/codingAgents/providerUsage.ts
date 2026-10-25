@@ -9,6 +9,11 @@ export interface ProviderUsageOptions {
   refresh?: boolean;
   claudeSource?: ClaudeCredentialSource;
   now?: Date;
+  /** Fixed diagnostic caller: skip Codex, OpenCode and cached observations. */
+  claudeOnly?: boolean;
+  signal?: AbortSignal;
+  /** Recheck one-shot authority before credentials and after an asynchronous load. */
+  authorizeClaude?: () => void;
   opencodeSession?: string;
   opencodeExport?: string;
 }
@@ -50,10 +55,10 @@ export async function readProviderUsage(options: ProviderUsageOptions = {}, deps
   const opencode = reading("opencode");
   opencode.observation = "unsupported";
   opencode.outcome = "OpenCode account allowance is unknown; local session usage does not establish remaining quota.";
-  const sessionUsage = readOpenCodeUsage({ session: options.opencodeSession, exportFile: options.opencodeExport }, clock, deps.opencode);
+  const sessionUsage = options.claudeOnly ? null : readOpenCodeUsage({ session: options.opencodeSession, exportFile: options.opencodeExport }, clock, deps.opencode);
   if (sessionUsage) opencode.sessionUsage = sessionUsage;
   if (!options.refresh) {
-    const cached = (deps.readClaudeCache ?? readClaudeStatusLineTelemetry)(now);
+    const cached = options.claudeOnly ? null : (deps.readClaudeCache ?? readClaudeStatusLineTelemetry)(now);
     if (cached) {
       claude.observation = "cached_unverified";
       claude.outcome = "Cached credential context is unverified; refresh explicitly before relying on these windows.";
@@ -67,16 +72,21 @@ export async function readProviderUsage(options: ProviderUsageOptions = {}, deps
   codex.observation = "unavailable";
   // A separate read has no cached cooldown or windows to inherit from another account.
   // Explicit sources never fall through to another credential after denial or absence.
+  options.signal?.throwIfAborted();
+  options.authorizeClaude?.();
   const credential = await (deps.loadClaude ?? loadClaudeOAuthCredentials)(options.claudeSource ?? "auto").catch(() => null);
+  options.signal?.throwIfAborted();
+  options.authorizeClaude?.();
   claude.credentialSource = credential?.source ?? options.claudeSource ?? "auto";
   claude.credentialExpiresAt = credential?.expiresAt ?? null;
   if (!credential) {
     claude.outcome = "no_credentials";
-  } else if (credential.expiresAt && Date.parse(credential.expiresAt) <= now.getTime()) {
+  } else if (credential.expiresAt && Date.parse(credential.expiresAt) <= (options.claudeOnly ? clock() : now).getTime()) {
     claude.outcome = "credential_expired";
   } else {
     claude.requestAttempted = true;
-    const response = await (deps.requestClaude ?? requestClaudeUsage)(credential.accessToken)
+    const request = deps.requestClaude ?? requestClaudeUsage;
+    const response = await (options.signal ? request(credential.accessToken, options.signal) : request(credential.accessToken))
       .catch(() => ({ status: 0, body: null, failure: "transport" as const }));
     claude.httpStatus = response.status || null;
     claude.outcome = response.failure ?? (response.status < 200 || response.status >= 300 ? "http_error" : "not_reported");
@@ -95,6 +105,7 @@ export async function readProviderUsage(options: ProviderUsageOptions = {}, deps
       }
     }
   }
+  if (options.claudeOnly) return { generatedAt: now.toISOString(), providers: [claude] };
   codex.credentialSource = "codex-app-server";
   codex.requestAttempted = true;
   const result = (deps.readCodex ?? readCodexRateLimitsLive)(now);

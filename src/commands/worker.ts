@@ -1,3 +1,7 @@
+import { captureDiagnosticWorkerBinding, processWorkerClaudeUsageRequest, type DiagnosticWorkerBinding, type DiagnosticPolicy, type DiagnosticDependencies } from "../production/workerClaudeUsageDiagnostic.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
+import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { countLiveAdmissions, readProductionPolicySafely } from "../production/policy.js";
 import { finalizeWorkerFailure } from "../execution/runFinalization.js";
 import { tickRecurringSchedules } from "../recurring/scheduler.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
@@ -36,6 +40,32 @@ import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/lau
 import { startHeartbeatBeacon as defaultStartHeartbeatBeacon, type HeartbeatBeacon } from "./workerHeartbeatBeaconExecutor.js";
 
 const POLL_INTERVAL_MS = 2_000;
+// Captured at module load, not inferred from mutable source HEAD at request time.
+const diagnosticWorkerBinding = captureDiagnosticWorkerBinding(import.meta.url);
+export async function pollWorkerClaudeUsageDiagnostics(workspace: string, owns: () => boolean = () => false, fixture?: {
+  binding: DiagnosticWorkerBinding; repositories: string[]; policy: () => DiagnosticPolicy; dependencies: DiagnosticDependencies;
+}): Promise<void> {
+  if (process.env.CODEX_SANDBOX) return;
+  mkdirSync(path.join(workspace, ".arcadia"), {recursive: true});
+  writeFileSync(path.join(workspace, ".arcadia/worker-claude-usage-heartbeat.json"), JSON.stringify({at: Date.now(), binding: diagnosticWorkerBinding}), {mode: 0o600});
+  const binding = fixture?.binding ?? diagnosticWorkerBinding;
+  if (!binding || !owns()) return;
+  const repositories = fixture?.repositories ?? withReadOnlyDatabase(workspace, db => listProjects(db)
+    .filter(project => project.status === "active")
+    .map(project => getProjectMetadata(db, project.id)?.repo_path).filter((repo): repo is string => Boolean(repo)));
+  const policy = fixture?.policy ?? (() => withReadOnlyDatabase(workspace, db => {
+    const read = readProductionPolicySafely(db);
+    if (read.status !== "ok") return {state: "unknown" as const, revision: -1, epoch: -1, liveAdmissions: -1, ownsWorker: owns()};
+    return {state: read.policy.desiredState, revision: read.policy.revision, epoch: read.policy.epoch,
+      liveAdmissions: countLiveAdmissions(db, read.policy.epoch, new Date().toISOString()), ownsWorker: owns()};
+  }));
+  let failed = false;
+  for (const repository of repositories) {
+    try { await processWorkerClaudeUsageRequest(workspace, repository, binding, policy, fixture?.dependencies); }
+    catch { failed = true; }
+  }
+  if (failed) throw new Error("diagnostic_poll_unavailable");
+}
 
 /**
  * How long the worker's own heartbeat may go unrefreshed before the process
@@ -488,6 +518,8 @@ export interface WorkerTickOptions {
    * failed refresh leaves the stale snapshot for admission to refuse.
    */
   preAdmission?: () => Promise<void>;
+  /** Fixed diagnostic polling, separate from shared admission telemetry. */
+  diagnostic?: () => Promise<void>;
 }
 
 /**
@@ -516,6 +548,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   // Consecutive synchronous failures, so a persistent one is summarized rather
   // than written once per 2s tick.
   let consecutiveFailures = 0;
+  let consecutiveDiagnosticFailures = 0;
   const identity = options.identity ?? { pid: options.pid, owner: "test" };
 
   let tick: () => void;
@@ -562,8 +595,19 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
     }
   };
 
-  const preAdmission = options.preAdmission;
-  if (!preAdmission) { tick = tickBody; return tick; }
+  const preAdmission = async () => {
+    if (options.diagnostic) {
+      try { await options.diagnostic(); consecutiveDiagnosticFailures = 0; }
+      catch {
+        consecutiveDiagnosticFailures += 1;
+        if (consecutiveDiagnosticFailures === 1 || consecutiveDiagnosticFailures % REPEATED_FAILURE_LOG_INTERVAL === 0) {
+          log(options.logfile, "Worker Claude diagnostic polling unavailable.");
+        }
+      }
+    }
+    if (owns()) await options.preAdmission?.();
+  };
+  if (!options.preAdmission && !options.diagnostic) { tick = tickBody; return tick; }
   tick = () => {
     if (!owns()) {
       onOwnershipLost();
@@ -994,6 +1038,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     identity,
     ownsWorker: () => ownsWorker(workspacePath, identity),
     onOwnershipLost: stopWhenOwnershipChanges,
+    diagnostic: () => pollWorkerClaudeUsageDiagnostics(workspacePath, () => ownsWorker(workspacePath, identity)),
     preAdmission: () => refreshClaudeUsageBeforeAdmission(workspacePath)
   });
 
