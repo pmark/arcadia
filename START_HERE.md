@@ -1917,6 +1917,13 @@ pnpm arcadia work monitor
 pnpm arcadia work monitor --json
 ```
 
+For a complete point-in-time inventory of unexpired Go handoff reservations,
+`arcadia work reservations --json` reads the configured workspace without
+recovering journals, migrating schema, testing worktree liveness or changing
+custody. It includes reservations outside active Projects and refuses missing
+schema or invalid timestamps. An empty result is an observation, not permission
+to restart services or retire a worker; the other approval and custody gates remain.
+
 Preservation and delivery are separate. `UNSAVED` and `LOCAL ONLY` mean work
 can still be lost; `PUSHED` means it is backed up, with the report separately
 stating whether an open PR was found. Use one branch and worktree per coding session, and leave
