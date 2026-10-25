@@ -901,6 +901,38 @@ describe("arcadia tidy — GitHub verification degradation", () => {
 });
 
 describe("arcadia tidy — handoff reservations end with the work", () => {
+  it("recognizes served handoffs after blank-message protected ref updates", () => {
+    const root = repo();
+    const branch = "codex/blank-reflog";
+    const tree = handoffWorktree(root, branch, "blank-reflog");
+    reserveHandoff(root, tree, branch);
+    const base = run(root, ["rev-parse", branch]).trim();
+    const tip = run(root, ["commit-tree", "main^{tree}", "-p", base, "-m", "preserved empty commit"]).trim();
+    run(root, ["update-ref", `refs/heads/${branch}`, tip, base]);
+    run(root, ["merge", "-q", "--ff-only", branch]);
+    expect(run(root, ["reflog", "show", "--format=%gs", branch]).split("\n").filter(Boolean)).toHaveLength(1);
+
+    const result = data(runTidyCommand({ repo: root, apply: true, noFetch: true, noGithub: true }));
+    expect(result.worktrees.find((entry) => entry.path === tree)?.retired).toBe(true);
+    expect(reservationCount(root, tree)).toBe(0);
+  });
+
+  it("keeps a served reservation when its reflog has been pruned", () => {
+    const root = repo();
+    const branch = "codex/pruned-reflog";
+    const tree = handoffWorktree(root, branch, "pruned-reflog");
+    reserveHandoff(root, tree, branch);
+    const base = run(root, ["rev-parse", branch]).trim();
+    const tip = run(root, ["commit-tree", "main^{tree}", "-p", base, "-m", "preserved"]).trim();
+    run(root, ["update-ref", `refs/heads/${branch}`, tip, base]);
+    run(root, ["merge", "-q", "--ff-only", branch]);
+    run(root, ["reflog", "expire", "--expire=all", `refs/heads/${branch}`]);
+
+    const result = data(runTidyCommand({ repo: root, apply: true, noFetch: true, noGithub: true }));
+    expect(result.worktrees.find((entry) => entry.path === tree)?.verdict).toBe("protected");
+    expect(reservationCount(root, tree)).toBe(1);
+  });
+
   it("retires a reserved worktree whose agent committed and whose work landed", () => {
     const root = repo();
     const branch = "claude/served";
