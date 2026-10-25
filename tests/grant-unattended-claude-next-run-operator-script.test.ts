@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -112,6 +112,8 @@ const capacity = (provider: Record<string, unknown>) => ok({ observation: { prov
 ] } });
 
 interface BoxOptions {
+  /** Expiry belongs to the disposable copied pair, never the published card. */
+  cardExpiresAt?: string;
   /** Fixture authority is independent of the current repository Plan status. */
   planStatus?: "active" | "draft";
   config?: unknown;
@@ -188,9 +190,15 @@ function box(options: BoxOptions = {}) {
     writeFileSync(path.join(checkout, "src", "production", "workerMerge.ts"), "export {};\n");
   }
   writeFileSync(path.join(checkout, "docs", "plans", `${PLAN}.md`), planDocument(options.done ?? [], options.missing ?? [], options.planStatus));
-  copyFileSync(path.join(library, `${ID}.sh`), path.join(scripts, `${ID}.sh`));
-  chmodSync(path.join(scripts, `${ID}.sh`), 0o755);
-  copyFileSync(path.join(library, `${ID}.json`), path.join(scripts, `${ID}.json`));
+  // Behavioral fixtures remain fresh without renewing the historical library card.
+  const cardExpiresAt = options.cardExpiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString();
+  const expiryAssignment = /^CARD_EXPIRES_AT="[^"]+"$/m;
+  if (!expiryAssignment.test(source)) throw new Error("Missing fixture card expiry assignment");
+  const fixtureSource = source.replace(expiryAssignment, `CARD_EXPIRES_AT="${cardExpiresAt}"`);
+  const fixtureDescriptor = { ...descriptor, expires_at: cardExpiresAt };
+  validateOperatorScriptContract(fixtureDescriptor, ID, fixtureSource);
+  writeFileSync(path.join(scripts, `${ID}.sh`), fixtureSource, { mode: 0o755 });
+  writeFileSync(path.join(scripts, `${ID}.json`), JSON.stringify(fixtureDescriptor));
   git(checkout, ["init", "-q", "-b", "main"]);
   git(checkout, ["add", "-A"]);
   git(checkout, ["add", "-f", `artifacts/generated/operator-scripts/${ID}.sh`, `artifacts/generated/operator-scripts/${ID}.json`]);
@@ -234,7 +242,7 @@ function box(options: BoxOptions = {}) {
   };
   const calls = () => readFileSync(path.join(root, "calls.log"), "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]);
   const arcadiaCalls = (noun: string, verb: string) => calls().filter((c) => c[2] === "pnpm" && c[5] === noun && c[6] === verb);
-  return { root, workspace, head, run, receipt, calls, arcadiaCalls, launch };
+  return { root, workspace, head, run, receipt, calls, arcadiaCalls, launch, fixtureDescriptor };
 }
 
 const gateOn = { codingAgent: { defaultProvider: "claude-code-cli" } };
@@ -300,9 +308,20 @@ describe("next unattended Claude run Grant: refusals before any change", () => {
     const b = box({ config: gateOn });
     const described = b.run({}, ["--describe"]);
     expect(described.status).toBe(0);
-    expect(JSON.parse(described.stdout)).toEqual(descriptor);
+    expect(JSON.parse(described.stdout)).toEqual(b.fixtureDescriptor);
     expect(b.run({}).status).not.toBe(0);
     expect(b.receipt().json).toMatchObject({ outcome: "refused", stage: "launch_context", activated: false, offCleanup: "not_attempted" });
+    expect(b.calls()).toEqual([]);
+  });
+
+  it("refuses an expired copied card before any activation", () => {
+    const expired = "2000-01-01T00:00:00Z";
+    const b = box({ config: gateOn, cardExpiresAt: expired });
+    expect(b.run().status).not.toBe(0);
+    const { json } = b.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "parameters", activated: false, offCleanup: "not_attempted" });
+    expect(json.reason).toContain(`this re-run card expired at ${expired}`);
+    expect(b.arcadiaCalls("production", "activate")).toHaveLength(0);
     expect(b.calls()).toEqual([]);
   });
 
