@@ -13,6 +13,7 @@ vi.mock("../src/sessions/preservationProcessLifecycle.js", () => ({ runOwnedVali
 const preservation = "node scripts/preservation-self-check.mjs";
 const required = ["pnpm lint", "pnpm exec tsc --noEmit"];
 const roots: string[] = [];
+const checkCommand = (argv: string[]) => argv.at(-1) === "echo fixture" ? "pnpm lint" : argv.at(-1) === "--noEmit" ? "pnpm exec tsc --noEmit" : argv.at(-1);
 let failCommand: string | null = null;
 
 beforeEach(() => {
@@ -20,7 +21,7 @@ beforeEach(() => {
   vi.mocked(runOwnedValidation).mockReset().mockImplementation(({ argv }) => {
     const report = argv.find((arg) => arg.startsWith("--test-reporter-destination="));
     if (report) writeFileSync(report.slice("--test-reporter-destination=".length), "TAP version 13\nok 1 - fixture\n# pass 1\n# fail 0\n");
-    return { status: argv.at(-1) === failCommand ? 1 : 0, signal: null, stdout: "", stderr: "", timedOut: false, terminalProven: true, error: null };
+    return { status: checkCommand(argv) === failCommand ? 1 : 0, signal: null, stdout: "", stderr: checkCommand(argv) === failCommand ? "fixture check failed" : "", timedOut: false, terminalProven: true, error: null };
   });
 });
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -35,7 +36,10 @@ function candidate() {
   writeFileSync(path.join(repository, "tests/ready.test.js"), "// fixture, execution is replaced by the owned-validator mock\n");
   const env = { ...process.env, GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  writeFileSync(path.join(repository, ".gitignore"), "node_modules/\n");
   git("init", "-q"); git("add", "."); git("commit", "-qm", "fixture");
+  mkdirSync(path.join(repository, "node_modules/typescript/bin"), { recursive: true });
+  writeFileSync(path.join(repository, "node_modules/typescript/bin/tsc"), "// installed fixture compiler, execution is mocked\n");
   return { repository, worktree: repository, workspace, base: git("rev-parse", "HEAD"), commands: ["true"], acceptanceCriteria: ["tests/ready.test.js, pnpm lint and tsc pass."] };
 }
 
@@ -59,6 +63,8 @@ describe("criteria-required checks", () => {
     ["tests/ready.test.js and pnpm lint:fix pass."],
     ["tests/ready.test.js passes; arbitrary shell commands are required."],
     ["tests/tsc.test.ts passes."],
+    ["tests/ready.test.js passes; document `echo pnpm lint passes` as an example."],
+    ["tests/ready.test.js passes; echo tsc pass."],
     ["tests/ready.test.js passes; pnpm lint; touch marker and tsc --watch pass."]
   ])("grants no extra command for unsupported or negative criteria %j", (criterion) => {
     expect(criteriaValidationCommands([criterion])).toEqual([]);
@@ -72,14 +78,24 @@ describe("criteria-required checks", () => {
   it.each(required)("a failing required %s check blocks host completion", (command) => {
     failCommand = command;
     const result = validateCompletionCandidate(candidate(), { unconfinedForTests: true });
-    expect(result).toMatchObject({ status: "refused", failures: [command] });
-    expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => call.argv.at(-1) === command)).toBe(true);
+    expect(result).toMatchObject({ status: "refused", failures: [command], reason: expect.stringContaining("fixture check failed") });
+    expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => checkCommand(call.argv) === command)).toBe(true);
   });
 
   it("proves both required commands and the named test before accepting completion", () => {
     const result = validateCompletionCandidate(candidate(), { unconfinedForTests: true });
     expect(result).toMatchObject({ status: "passed", commands: ["true", ...required] });
     expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => call.argv.includes("--test"))).toBe(true);
+    expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => call.argv[0] === "/bin/sh" && call.argv.at(-1) === "echo fixture")).toBe(true);
+    expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => call.argv[0] === process.execPath && call.argv.at(-2)?.endsWith("/typescript/bin/tsc") && call.argv.at(-1) === "--noEmit")).toBe(true);
+    expect(vi.mocked(runOwnedValidation).mock.calls.some(([call]) => call.argv.some((arg) => /corepack|^pnpm$/.test(arg)))).toBe(false);
+  });
+
+  it("refuses rather than accepting without an installed TypeScript compiler", () => {
+    const input = candidate();
+    rmSync(path.join(input.repository, "node_modules/typescript/bin/tsc"));
+    expect(validateCompletionCandidate(input, { unconfinedForTests: true })).toMatchObject({ status: "refused", hostFault: true, reason: expect.stringContaining("TypeScript compiler is not installed") });
+    expect(runOwnedValidation).not.toHaveBeenCalled();
   });
 
   it("refuses a candidate that changes the lint script definition", () => {

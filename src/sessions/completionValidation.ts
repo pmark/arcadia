@@ -39,7 +39,7 @@ export function criteriaValidationCommands(criteria: readonly string[]): string[
   if (!namedTestFiles(criteria).length) return [];
   const required = criteria.filter((criterion) =>
     /\bpass(?:es)?\b/i.test(criterion)
-    && !/\b(?:not|never|without|optional|skip(?:ped)?|omit(?:ted)?|avoid)\b/i.test(criterion));
+    && !/\b(?:not|never|without|optional|skip(?:ped)?|omit(?:ted)?|avoid|example|document|mention|echo|printf)\b/i.test(criterion));
   const commands: string[] = [];
   if (required.some((criterion) => /\bpnpm[ \t]+lint(?=[ \t,]+(?:and[ \t]+)?(?:(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+)?pass(?:es)?\b)/i.test(criterion))) commands.push("pnpm lint");
   if (required.some((criterion) => /(?:^|[\s,;])(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+pass(?:es)?\b/i.test(criterion))) commands.push("pnpm exec tsc --noEmit");
@@ -301,7 +301,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     }
     const forbidden = [candidate.workspace, candidate.repository, candidate.worktree].map((dir) => realpathSync(dir));
     let readable: string[] = [];
-    if (vitest) {
+    if (vitest || requiredChecks.length) {
       try {
         readable = bridgeCompletionDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
       } catch (error) {
@@ -310,6 +310,27 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     }
     const runner = path.join(source, "node_modules", "vitest", "vitest.mjs");
     if (vitest && !existsSync(runner)) return unavailable("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
+
+    // Corepack in a private HOME may try to download pnpm. Run only the frozen
+    // lint script and installed TypeScript entrypoint, with the same dependency
+    // tree the named tests use; never grant access to the operator's tool cache.
+    const requiredInvocations = new Map<string, string[]>();
+    try {
+      if (requiredChecks.includes("pnpm lint")) {
+        const manifest = JSON.parse(readFileSync(path.join(source, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
+        const lint = manifest.scripts?.lint;
+        if (typeof lint !== "string" || !lint.trim()) throw new Error("the authorized manifest declares no lint script");
+        if (manifest.scripts?.prelint || manifest.scripts?.postlint) throw new Error("lint lifecycle hooks require a separately supported validation binding");
+        requiredInvocations.set("pnpm lint", ["/bin/sh", "-c", lint]);
+      }
+      if (requiredChecks.includes("pnpm exec tsc --noEmit")) {
+        const compiler = path.join(source, "node_modules", "typescript", "bin", "tsc");
+        if (!existsSync(compiler)) throw new Error("the Project's TypeScript compiler is not installed");
+        requiredInvocations.set("pnpm exec tsc --noEmit", [process.execPath, compiler, "--noEmit"]);
+      }
+    } catch (error) {
+      return unavailable(`the required checks could not be prepared (${untrusted(error instanceof Error ? error.message : normalizeError(error).message, 200)}).`);
+    }
 
     const quote = (value: string) => JSON.stringify(value);
     // Unreadable: the workspace, repository, worktree, dependency checkout and
@@ -329,10 +350,10 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all ${denied})) `
       + (readable.length ? `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) ` : "")
       + `(allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target same-sandbox)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const env: NodeJS.ProcessEnv = { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1" };
+    const env: NodeJS.ProcessEnv = { PATH: `${path.join(source, "node_modules", ".bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1", COREPACK_ENABLE_NETWORK: "0" };
     const run = (argv: string[], bound: number) => {
       const remaining = Math.floor(deadline - performance.now());
-      if (remaining <= 0) return { status: null, timedOut: true, error: null };
+      if (remaining <= 0) return { status: null, timedOut: true, error: null, output: "" };
       const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
       const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
@@ -341,15 +362,15 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       terminalProven = result.terminalProven;
       const timedOut = result.timedOut;
       const error = !terminalProven ? "validation descendants have no terminal proof; execution root retained" : result.error ?? null;
-      return { status: result.status, timedOut, error };
+      return { status: result.status, timedOut, error, output: untrusted(result.stderr || result.stdout, 600) };
     };
     const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
 
     for (const command of commands) {
-      const result = run(["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
+      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
       if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
-      if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.`, [command]);
+      if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
     }
 
     if (!vitest) {
