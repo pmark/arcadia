@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
-import { currentActionOf, gitIntegration, journeyContext } from "../src/commands/journey.js";
+import { currentActionOf, derivePlanJourney, gitIntegration, journeyContext, readProjectDocuments, renderPlanJourneySuccess } from "../src/commands/journey.js";
 import { classifyObstacle } from "../src/journey/classify.js";
 import { deriveJourney, firstLine } from "../src/journey/derive.js";
 import { applyInitialSchema } from "../src/db/schema.js";
@@ -465,5 +465,56 @@ describe("currentActionOf", () => {
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
+  });
+});
+
+describe("derivePlanJourney", () => {
+  const projectDoc = `---\narcadia: v1\ntype: project\nslug: arcadia\nname: Arcadia\nstatus: active\ngoal: Demo goal\nupdated: 2026-10-19\nactive_plan: demo-plan\ncurrent_action: demo-action\n---\n\n# Arcadia\n`;
+  const planDoc = `---\narcadia: v1\ntype: plan\nslug: demo-plan\nproject: arcadia\nstatus: active\nmilestone: M1\ncurrent_action: demo-action\ntoken_impact: medium\ntoken_budget: One Session.\nrecommended_model: sonnet\nupdated: 2026-10-19\nactions:\n  - id: shipped\n    title: Already shipped\n    status: done\n    responsibility: codex\n    effort: session\n    clarification: clarified\n    next_action: Do shipped.\n    expected_artifact: docs/shipped.md\n    acceptance_criteria:\n      - It exists.\n  - id: demo-action\n    title: Write the report\n    status: open\n    responsibility: codex\n    effort: session\n    clarification: clarified\n    next_action: Do demo-action.\n    expected_artifact: docs/demo-action.md\n    acceptance_criteria:\n      - It exists.\n  - id: later\n    title: Do it later\n    status: open\n    responsibility: codex\n    effort: session\n    clarification: clarified\n    next_action: Do later.\n    expected_artifact: docs/later.md\n    acceptance_criteria:\n      - It exists.\n---\n\n# Demo plan\n`;
+
+  function withRepo(run: (documents: ReturnType<typeof readProjectDocuments>) => void): void {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "journey-plan-"));
+    try {
+      mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
+      writeFileSync(path.join(repo, "docs", "plans", "demo-plan.md"), planDoc);
+      writeFileSync(path.join(repo, "PROJECT.md"), projectDoc);
+      seedPath();
+      insert("projects", { id: "project-arcadia", slug: "arcadia", name: "Arcadia", mission: "m", status: "active", created_at: NOW.toISOString(), updated_at: NOW.toISOString() });
+      insert("project_metadata", { project_id: "project-arcadia", repo_path: repo, created_at: NOW.toISOString(), updated_at: NOW.toISOString() });
+      run(readProjectDocuments(db, "arcadia"));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }
+
+  it("lists the Plan's Actions in order, each with its own journey summary", () => {
+    withRepo((documents) => {
+      const journey = derivePlanJourney(db, documents, "demo-plan", NOW);
+      expect(journey).toMatchObject({ schema: "arcadia-plan-journey-v1", project: "arcadia", plan: { slug: "demo-plan", active: true }, northStar: null });
+      expect(journey.actions.map((action) => [action.id, action.current])).toEqual([["shipped", false], ["demo-action", true], ["later", false]]);
+      const run = journey.actions[1];
+      expect(run.journey.activity.phase).toBe("in-review");
+      expect(run.journey.counts).toMatchObject({ victories: 3 });
+      expect(run.journey.destination.reached).toBe(false);
+      expect(journey.context.plan).toMatchObject({ slug: "demo-plan", total: 3, done: 1 });
+      expect(renderPlanJourneySuccess({ data: journey } as never)[0]).toContain("arcadia/plan:demo-plan (active)");
+    });
+  });
+
+  it("follows the active Plan for plan:current", () => {
+    withRepo((documents) => {
+      expect(derivePlanJourney(db, documents, "current", NOW).plan.slug).toBe("demo-plan");
+      expect(() => derivePlanJourney(db, documents, "nope", NOW)).toThrow(/No Plan "nope"/);
+    });
+  });
+
+  it("reads a done Action with no Session as arrived from the Plan document", () => {
+    withRepo((documents) => {
+      const shipped = derivePlanJourney(db, documents, "demo-plan", NOW).actions[0];
+      expect(shipped.journey.activity).toMatchObject({ phase: "arrived", headline: "Done", yourMove: null });
+      expect(shipped.journey.destination.reached).toBe(true);
+      const later = derivePlanJourney(db, documents, "demo-plan", NOW).actions[2];
+      expect(later.journey.activity.phase).not.toBe("arrived");
+    });
   });
 });

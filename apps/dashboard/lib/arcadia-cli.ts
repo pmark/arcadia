@@ -24,7 +24,7 @@ import type {
   QaRestartResult,
   QaSwitchResult
 } from "./types";
-import type { Journey } from "./journey-types";
+import type { Journey, PlanJourney } from "./journey-types";
 import type { PathBrief } from "./path-types";
 import type { NowBrief } from "./now-types";
 import type { PlanProgressData, ProjectPlansResponse } from "./plans-types";
@@ -1465,7 +1465,7 @@ export async function loadJourney(project: string, action: string) {
   // shared host; viewers of one Action within 10 s share one read.
   const key = `${project}/${action}`;
   const cached = journeyReads.get(key);
-  if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read;
+  if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read as Promise<ArcadiaJsonSuccess<Journey>>;
   for (const [other, entry] of journeyReads) {
     if (Date.now() - entry.at >= JOURNEY_CACHE_MS) journeyReads.delete(other);
   }
@@ -1478,8 +1478,27 @@ export async function loadJourney(project: string, action: string) {
   return read;
 }
 
+/** `arcadia journey <project>/plan:<plan>` — a whole Plan's journey (`plan` may be `current`); read-only, cached like `loadJourney`. */
+export async function loadPlanJourney(project: string, plan: string) {
+  if (!JOURNEY_SEGMENT.test(project) || !JOURNEY_SEGMENT.test(plan)) {
+    throw new ArcadiaCliError("Expected /journey/<project>/plan/<plan> with slug segments.", 400);
+  }
+  const key = `${project}/plan:${plan}`;
+  const cached = journeyReads.get(key);
+  if (cached && Date.now() - cached.at < JOURNEY_CACHE_MS) return cached.read as Promise<ArcadiaJsonSuccess<PlanJourney>>;
+  for (const [other, entry] of journeyReads) {
+    if (Date.now() - entry.at >= JOURNEY_CACHE_MS) journeyReads.delete(other);
+  }
+  const read = runArcadiaCliJson<PlanJourney>(["journey", key], { timeoutMs: 60_000 });
+  journeyReads.set(key, { at: Date.now(), read: read });
+  read.catch(() => {
+    if (journeyReads.get(key)?.read === read) journeyReads.delete(key);
+  });
+  return read;
+}
+
 const JOURNEY_CACHE_MS = 10_000;
-const journeyReads = new Map<string, { at: number; read: Promise<ArcadiaJsonSuccess<Journey>> }>();
+const journeyReads = new Map<string, { at: number; read: Promise<ArcadiaJsonSuccess<Journey | PlanJourney>> }>();
 
 const JOURNEY_SEGMENT = /^[a-z0-9][a-z0-9._-]{0,199}$/i;
 
