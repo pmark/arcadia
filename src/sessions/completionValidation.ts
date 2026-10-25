@@ -12,7 +12,8 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * file its own acceptance criteria named failed -- the tests never ran before
  * acceptance. This is the host's check that runs, before a drafted `complete`
  * Ask is settled, the Action's declared validation against the candidate's
- * exact tree: the Project's configured validation commands and every test
+ * exact tree: the Project's configured validation commands, exact criteria-required
+ * lint/TypeScript checks, and every test
  * file the Action's acceptance criteria name, through the Project's own test
  * runner (vitest when its package.json declares it, otherwise `node --test`
  * for plain JavaScript test files), under the same macOS Seatbelt
@@ -32,6 +33,18 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * its own runner configuration, which it controls just as it controls the
  * named test file; the independent review gate remains that defense.
  */
+
+/** Exact extra checks required by named-test criteria, never shell text copied from a criterion. */
+export function criteriaValidationCommands(criteria: readonly string[]): string[] {
+  if (!namedTestFiles(criteria).length) return [];
+  const required = criteria.filter((criterion) =>
+    /\bpass(?:es)?\b/i.test(criterion)
+    && !/\b(?:not|never|without|optional|skip(?:ped)?|omit(?:ted)?|avoid|example|document|mention|echo|printf)\b/i.test(criterion));
+  const commands: string[] = [];
+  if (required.some((criterion) => /\bpnpm[ \t]+lint(?=[ \t,]+(?:and[ \t]+)?(?:(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+)?pass(?:es)?\b)/i.test(criterion))) commands.push("pnpm lint");
+  if (required.some((criterion) => /(?:^|[\s,;])(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+pass(?:es)?\b/i.test(criterion))) commands.push("pnpm exec tsc --noEmit");
+  return commands;
+}
 
 /**
  * Bound on the whole validation. One named file runs in one vitest worker
@@ -243,6 +256,8 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   // The unconfined seam exists for test runs only; anywhere else it is ignored.
   const options = given.unconfinedForTests && !process.env.VITEST ? { ...given, unconfinedForTests: false } : given;
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
+  const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
+  const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0) return { status: "not_required" };
   const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
   // A timeout is host load or a hung test: counted on its own small budget before it holds (Issue #1613).
@@ -260,7 +275,8 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   try {
     tree = snapshotCandidate(candidate.worktree, candidate.base);
     // A check the candidate rewrote cannot judge it.
-    bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
+    // A required lint script is owned by the authorized base, never by its candidate.
+    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.length ? ["node package.json"] : [])]);
   } catch (error) {
     return deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
@@ -285,7 +301,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     }
     const forbidden = [candidate.workspace, candidate.repository, candidate.worktree].map((dir) => realpathSync(dir));
     let readable: string[] = [];
-    if (vitest) {
+    if (vitest || requiredChecks.length) {
       try {
         readable = bridgeCompletionDependencies(options.dependencyRoot ?? candidate.repository, source, scratch, [forbidden[0]]);
       } catch (error) {
@@ -294,6 +310,27 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     }
     const runner = path.join(source, "node_modules", "vitest", "vitest.mjs");
     if (vitest && !existsSync(runner)) return unavailable("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
+
+    // Corepack in a private HOME may try to download pnpm. Run only the frozen
+    // lint script and installed TypeScript entrypoint, with the same dependency
+    // tree the named tests use; never grant access to the operator's tool cache.
+    const requiredInvocations = new Map<string, string[]>();
+    try {
+      if (requiredChecks.includes("pnpm lint")) {
+        const manifest = JSON.parse(readFileSync(path.join(source, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
+        const lint = manifest.scripts?.lint;
+        if (typeof lint !== "string" || !lint.trim()) throw new Error("the authorized manifest declares no lint script");
+        if (manifest.scripts?.prelint || manifest.scripts?.postlint) throw new Error("lint lifecycle hooks require a separately supported validation binding");
+        requiredInvocations.set("pnpm lint", ["/bin/sh", "-c", lint]);
+      }
+      if (requiredChecks.includes("pnpm exec tsc --noEmit")) {
+        const compiler = path.join(source, "node_modules", "typescript", "bin", "tsc");
+        if (!existsSync(compiler)) throw new Error("the Project's TypeScript compiler is not installed");
+        requiredInvocations.set("pnpm exec tsc --noEmit", [process.execPath, compiler, "--noEmit"]);
+      }
+    } catch (error) {
+      return unavailable(`the required checks could not be prepared (${untrusted(error instanceof Error ? error.message : normalizeError(error).message, 200)}).`);
+    }
 
     const quote = (value: string) => JSON.stringify(value);
     // Unreadable: the workspace, repository, worktree, dependency checkout and
@@ -313,10 +350,10 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all ${denied})) `
       + (readable.length ? `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) ` : "")
       + `(allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target same-sandbox)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const env: NodeJS.ProcessEnv = { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1" };
+    const env: NodeJS.ProcessEnv = { PATH: `${path.join(source, "node_modules", ".bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1", COREPACK_ENABLE_NETWORK: "0" };
     const run = (argv: string[], bound: number) => {
       const remaining = Math.floor(deadline - performance.now());
-      if (remaining <= 0) return { status: null, timedOut: true, error: null };
+      if (remaining <= 0) return { status: null, timedOut: true, error: null, output: "" };
       const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
       const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
@@ -325,15 +362,15 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       terminalProven = result.terminalProven;
       const timedOut = result.timedOut;
       const error = !terminalProven ? "validation descendants have no terminal proof; execution root retained" : result.error ?? null;
-      return { status: result.status, timedOut, error };
+      return { status: result.status, timedOut, error, output: untrusted(result.stderr || result.stdout, 600) };
     };
     const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
 
-    for (const command of candidate.commands) {
-      const result = run(["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
+    for (const command of commands) {
+      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
       if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
-      if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.`, [command]);
+      if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
     }
 
     if (!vitest) {
@@ -350,7 +387,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
         if (result.status !== 0) return deny(`the named tests failed (node --test exited ${result.status}).`, failing.length ? failing : [file]);
         if (!/^# pass [1-9]\d*$/m.test(tap) || !/^# fail 0$/m.test(tap)) return deny("node --test exited 0 but did not report a passing test for every named file.", [file]);
       }
-      return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
+      return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
     }
 
     const report = path.join(scratch, "completion-vitest-report.json");
@@ -375,7 +412,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       return !entry || entry.status !== "passed" || !(entry.assertionResults ?? []).some((test) => test.status === "passed");
     });
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
-    return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
+    return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
   } finally {
     if (terminalProven) rmSync(root, { recursive: true, force: true });
   }

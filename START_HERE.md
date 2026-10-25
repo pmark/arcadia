@@ -2359,8 +2359,11 @@ as a standing-policy launch does: `claude --print --output-format stream-json
 `codex exec --json --sandbox workspace-write`, and `opencode run` (which takes
 its permissions from your own opencode configuration; Arcadia manages none).
 The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
-its log: your Project's declared validation commands, exactly as declared, and
-`arcadia agent-ask draft`, nothing else. `--setting-sources ""` stops Claude
+its log: your Project's declared validation commands, the Action's named test
+commands, exact criteria-required `pnpm lint` / `pnpm exec tsc --noEmit` checks,
+and `arcadia agent-ask draft`. Host completion runs those required checks too;
+preservation retains its separate dependency-free check list. A candidate
+cannot replace its authorized lint-script manifest to pass completion. `--setting-sources ""` stops Claude
 merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
 `.claude/settings.json`) into it, so a headless Claude Session loads no user or
 project settings or hooks. Two limits: `acceptEdits` also auto-approves
