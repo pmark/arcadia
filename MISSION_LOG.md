@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-24
+updated: 2026-10-25
 ---
 
 # Mission Log: Arcadia
@@ -2666,3 +2666,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider remains draft with completion state preserved. Operator requested preparation for activation, not immediate activation. The eventual operator press selects the first coding-sized regression Action, preserves every unfinished Action in the previous production-Claude Plan, and moves only this Project queue segment to the top. It starts no Session or production run, increases no concurrency, and grants no new spend, credentials or integration authority. Revive the previous production-Claude Plan after shared-entry proof, or when an existing production blocker requires that Plan again.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-25 — Completed arcadia/prove-shared-enrollment-at-concurrency-one
+
+- **Did:** Completed Action arcadia/prove-shared-enrollment-at-concurrency-one from accepted evidence (Candidate 3e6b53ba85c211d80fe87b29910b26e1493123f7).
+- **Result:** Every declared acceptance criterion was accepted as met: "ENTRY — A focused integration test races interactive and unattended requests for the same Action and proves exactly one owner; exact replay returns only that requester's original receipt."; "ENTRY — Tests cover interruption and restart without ownership transfer from silence, stable claim-generation fencing, and truthful refusal when a native runtime is not supervisable."; "Existing questions remain read-only; go reports Action, owner, execution route, gates and receipt without silently activating production or widening scope. Record source versus installed-host proof separately; use fixtures until separately authorized live proof."; "Implement the proof in tests/unified-session-entry.test.ts using the existing host enrollment/admission path with fake process/provider effects and disposable fixtures; pnpm exec vitest run tests/unified-session-entry.test.ts passes, with pnpm lint and pnpm exec tsc --noEmit passing. No live provider launch, native adoption, production activation or concurrency increase is performed.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-shared-enrollment-concurrency-one-20261024).
