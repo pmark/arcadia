@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   renderAgentAskSettleSuccess, runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand, runAgentAskSettleCommand
@@ -22,8 +22,19 @@ import {
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
+const cleanupHooks = vi.hoisted(() => ({ fail: false, paths: [] as string[] }));
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, rmSync: (target: string, options?: Parameters<typeof actual.rmSync>[1]) => {
+    if (cleanupHooks.fail && /^arcadia-ask-(publication|index)-/.test(path.basename(target))) {
+      cleanupHooks.paths.push(target);
+      throw Object.assign(new Error("owned cleanup denied"), { code: "EPERM" });
+    }
+    return actual.rmSync(target, options);
+  } };
+});
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { cleanupHooks.fail = false; for (const target of cleanupHooks.paths.splice(0)) rmSync(target, { recursive: true, force: true }); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Agent Ask complete", () => {
   it("lists complete in the published contract", () => {
@@ -76,6 +87,32 @@ describe("Agent Ask complete", () => {
     expect(replayedPlan.actions.find((action) => action.id === "first")).toMatchObject({
       nextAction: "Completed via Agent Ask complete-first; no further action."
     });
+  });
+
+  it("persists pending cleanup evidence after complete and replays without another commit, Log or pointer write", () => {
+    const { workspace, repo, head } = fixture();
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-cleanup-denied", "first", head) });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-cleanup-denied", disposition: "accepted" as const, operator: true };
+    const preview = runAgentAskSettleCommand(options);
+    cleanupHooks.fail = true;
+    const receipt = runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true }).data.receipt;
+    expect(receipt.applied).toBe(true);
+    expect(receipt.recovery).toBeUndefined();
+    expect(receipt.cleanupFailures).toEqual(cleanupHooks.paths.map(target => ({ path: target, operation: "rm", code: "EPERM", message: "owned cleanup denied", status: "pending" })));
+    expect(receipt.cleanupFailures).toHaveLength(2);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    expect(receipt.documentsCommit).toBe(git("rev-parse", "HEAD"));
+    expect(git("rev-list", "--count", `${head}..HEAD`)).toBe("1");
+    expect(git("status", "--porcelain")).toBe("");
+    expect(discoverDocs(repo).docs.find(doc => doc.type === "project")).toMatchObject({ currentAction: "second" });
+    withDatabase(workspace, db => {
+      const row = db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE id = ?").get(receipt.id) as { receipt_json: string };
+      expect(JSON.parse(row.receipt_json)).toEqual(receipt);
+    });
+    const before = { head: git("rev-parse", "HEAD"), log: readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8"), project: readFileSync(path.join(repo, "PROJECT.md"), "utf8"), plan: readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8") };
+    cleanupHooks.fail = false;
+    expect(runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true }).data.receipt).toEqual(receipt);
+    expect({ head: git("rev-parse", "HEAD"), log: readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8"), project: readFileSync(path.join(repo, "PROJECT.md"), "utf8"), plan: readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8") }).toEqual(before);
   });
 
   it("rewrites a block-scalar next_action cleanly, without leaving orphaned continuation lines behind (parse.ts accepts | and > forms)", () => {

@@ -20,7 +20,7 @@ import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
-import { reserveAskGitIndex, askGit as git, tryAskGit as tryGit } from "../git/askIsolation.js";
+import { reserveAskGitIndex, askGit as git, tryAskGit as tryGit, type AskGitCleanupFailure } from "../git/askIsolation.js";
 import { assertClean, projectCheckoutFor, untrackedDraftAskPaths } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
@@ -136,6 +136,8 @@ export interface AgentAskSettlementReceipt {
    * failed, and on receipts from before this field existed.
    */
   documentsCommit?: string | null;
+  /** Owned temporary paths still requiring cleanup; does not imply publication failed. */
+  cleanupFailures?: AskGitCleanupFailure[];
   /**
    * Non-fatal findings the settlement did not act on, e.g. a file at the
    * Ask's canonical draft path whose content is not this Ask (Issue #981).
@@ -1758,6 +1760,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt, gitReservation!.commit);
     if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
     else baseReceipt.documentsCommit = tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
+    if (gitReservation!.cleanupFailures.length > 0) {
+      baseReceipt.cleanupFailures = [...gitReservation!.cleanupFailures];
+    }
   }
 
   // Phase 3 — bounded operational projection. Review items, queue placement,
