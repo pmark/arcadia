@@ -626,6 +626,10 @@ export function validateGoBrokerWorkerDefaults(release: string): void {
       if (!lstatSync(file).isFile() || realpathSync(file) !== file) throw new Error("Non-local registry");
       registries[key] = JSON.parse(readFileSync(file, "utf8")) as unknown;
     }
+    const adapters = registries.providerAdapters;
+    if (adapters === null || typeof adapters !== "object" || Array.isArray(adapters)) {
+      throw new Error("Required provider adapters must be a registry object.");
+    }
     validatePhase3Registries(registries as unknown as Phase3Registries);
   } catch {
     throw validationError("The protected worker registry defaults are missing, malformed or not release-local.");

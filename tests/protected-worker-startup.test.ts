@@ -63,6 +63,14 @@ describe("protected compiled worker startup", () => {
     rmSync(path.join(f.directory, entry));
     expect(() => resolveProtectedWorkerLaunch(f.url, f.binding, f.home)).toThrow();
   });
+  it.each([null, false, 0, "", [], 1, "invalid", {}].map(value => ({ value })))(
+    "refuses malformed required adapter default $value through the protected resolver", ({ value }) => {
+      const f = fixture();
+      completeWorkerPackage(f.directory);
+      writeFileSync(path.join(f.directory, "dist/config/defaults/provider-adapters.json"), JSON.stringify(value));
+      expect(() => resolveProtectedWorkerLaunch(f.url, f.binding, f.home)).toThrow("registry defaults");
+    }
+  );
   it("retains the source mise/tsx launch defaults", () => {
     expect(resolveProtectedWorkerLaunch(import.meta.url)).toBeUndefined();
     const plist = buildWorkerPlist({ workspacePath: "/workspace", repositoryRoot: "/repository", miseBin: "/mise", logPath: "/log", home: "/home" });
