@@ -4,7 +4,7 @@ type: decision
 id: "0140"
 slug: authorize-one-post-renewal-worker-claude-usage-diagnostic
 project: arcadia
-status: open
+status: approved
 question: Authorize one post-renewal worker Claude usage diagnostic?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Authorize one worker Claude usage diagnostic 832743c04bdad25d88b4c5bcd1b41e947eb6a24325ce8c7ae88cea98d00026ec
+decided: 2026-10-25
 ---
 
 # Decision 0140: Authorize one post-renewal worker Claude usage diagnostic?
