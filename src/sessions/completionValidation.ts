@@ -12,7 +12,8 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * file its own acceptance criteria named failed -- the tests never ran before
  * acceptance. This is the host's check that runs, before a drafted `complete`
  * Ask is settled, the Action's declared validation against the candidate's
- * exact tree: the Project's configured validation commands and every test
+ * exact tree: the Project's configured validation commands, exact criteria-required
+ * lint/TypeScript checks, and every test
  * file the Action's acceptance criteria name, through the Project's own test
  * runner (vitest when its package.json declares it, otherwise `node --test`
  * for plain JavaScript test files), under the same macOS Seatbelt
@@ -32,6 +33,18 @@ import { bindCheckDefinitions } from "./preservationCheckBinding.js";
  * its own runner configuration, which it controls just as it controls the
  * named test file; the independent review gate remains that defense.
  */
+
+/** Exact extra checks required by named-test criteria, never shell text copied from a criterion. */
+export function criteriaValidationCommands(criteria: readonly string[]): string[] {
+  if (!namedTestFiles(criteria).length) return [];
+  const required = criteria.filter((criterion) =>
+    /\bpass(?:es)?\b/i.test(criterion)
+    && !/\b(?:not|never|without|optional|skip(?:ped)?|omit(?:ted)?|avoid)\b/i.test(criterion));
+  const commands: string[] = [];
+  if (required.some((criterion) => /\bpnpm[ \t]+lint(?=[ \t,]+(?:and[ \t]+)?(?:(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+)?pass(?:es)?\b)/i.test(criterion))) commands.push("pnpm lint");
+  if (required.some((criterion) => /(?:^|[\s,;])(?:pnpm[ \t]+exec[ \t]+)?tsc(?:[ \t]+--noEmit)?[ \t]+pass(?:es)?\b/i.test(criterion))) commands.push("pnpm exec tsc --noEmit");
+  return commands;
+}
 
 /**
  * Bound on the whole validation. One named file runs in one vitest worker
@@ -243,6 +256,8 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   // The unconfined seam exists for test runs only; anywhere else it is ignored.
   const options = given.unconfinedForTests && !process.env.VITEST ? { ...given, unconfinedForTests: false } : given;
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
+  const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
+  const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0) return { status: "not_required" };
   const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
   // A timeout is host load or a hung test: counted on its own small budget before it holds (Issue #1613).
@@ -260,7 +275,8 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   try {
     tree = snapshotCandidate(candidate.worktree, candidate.base);
     // A check the candidate rewrote cannot judge it.
-    bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
+    // A required lint script is owned by the authorized base, never by its candidate.
+    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.length ? ["node package.json"] : [])]);
   } catch (error) {
     return deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
@@ -329,7 +345,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     };
     const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
 
-    for (const command of candidate.commands) {
+    for (const command of commands) {
       const result = run(["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
       if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
@@ -350,7 +366,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
         if (result.status !== 0) return deny(`the named tests failed (node --test exited ${result.status}).`, failing.length ? failing : [file]);
         if (!/^# pass [1-9]\d*$/m.test(tap) || !/^# fail 0$/m.test(tap)) return deny("node --test exited 0 but did not report a passing test for every named file.", [file]);
       }
-      return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
+      return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
     }
 
     const report = path.join(scratch, "completion-vitest-report.json");
@@ -375,7 +391,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       return !entry || entry.status !== "passed" || !(entry.assertionResults ?? []).some((test) => test.status === "passed");
     });
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
-    return { status: "passed", namedTests, commands: candidate.commands, durationMs: Math.round(performance.now() - startedAt) };
+    return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
   } finally {
     if (terminalProven) rmSync(root, { recursive: true, force: true });
   }

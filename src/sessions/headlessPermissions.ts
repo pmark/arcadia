@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { namedTestFiles } from "./completionValidation.js";
+import { criteriaValidationCommands, namedTestFiles } from "./completionValidation.js";
 import { validationError } from "../cli/errors.js";
 import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.js";
 
@@ -24,6 +24,9 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
  *
+ * Exact criteria-required lint and TypeScript checks are also allowed when
+ * those same checks are enforced by host completion validation. Preservation
+ * keeps its separate dependency-free command list.
  * Read-only canonical role discovery/preparation is also allowed.
  * Nothing else is added: no commit, push, settle, broker or arbitrary shell.
  * The list is written to a per-Session settings file under the workspace and
@@ -104,6 +107,7 @@ export function headlessClaudeAllowList(validationCommands: readonly string[], p
     // Only a vitest run of the named file also takes trailing arguments (`2>&1`, `--reporter=...`); the bridge stays exact.
     if (command !== HEADLESS_BRIDGE_DEPS_COMMAND) rules.add(`${exactBashRule(command).slice(0, -1)} *)`);
   }
+  for (const command of criteriaValidationCommands(acceptanceCriteria)) rules.add(exactBashRule(command));
   for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
   // The brief's first step: the in-Session capability probe, pinned to the one
   // exact command string (path, arguments and this Session's nonce).
