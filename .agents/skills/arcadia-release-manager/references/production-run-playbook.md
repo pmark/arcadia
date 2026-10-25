@@ -28,8 +28,12 @@ batch, and only then ask for the press.
    pinned Action's merge for a complete scope proof. A run that proves recovery
    and a following Action but stops on an inherited hold is only that bounded
    proof. Label simulated reviewers/writes and trusted edits; preserve earlier
-   failures, unchanged run bounds and all live holds. Never use the replay to
-   reset live attempts or claim actual provider/independent-verdict acceptance.
+   failures, unchanged run bounds and all live holds. Reuse existing full-scope
+   and repair evidence when an explicit map accounts for changed inputs and code
+   paths; no blanket rule requires two fresh full-scope runs. A partial recovery
+   report remains partial and cannot stand in for the full-scope component.
+   Never use the replay to reset live attempts or claim actual
+   provider/independent-verdict acceptance.
 2. **Real validator dry run.** Each pinned Action's named test passes
    `validateCompletionCandidate` (Seatbelt, dependencyRoot = main checkout)
    twice, well under the 900 s bound. A test that needs host tools (tmux) can
@@ -51,21 +55,49 @@ batch, and only then ask for the press.
    (`src/docs/acceptanceCriteria.ts`); criteria a headless Session cannot
    evidence (lint, tsc) are verified by required CI.
 6. **Governed records on remote main.** Settlement and pointer commits merged
-   as merge commits (never squash); `current_action` names the first pinned
-   Action; the managed-documents contract test passes.
-7. **Host.** Primary checkout clean, on main, level with origin; services
-   restarted at HEAD (`scripts/services.sh restart`, inline
-   `ARCADIA_WORKSPACE`); `arcadia go-broker status` revision = HEAD; the
-   worker process started after the last merge.
-8. **Capacity.** `arcadia production capacity --refresh` admits the provider
-   now (a stale read is not proof). A successful sign-in check or elapsed reset
-   is insufficient. Preserve HTTP refusal diagnostics and compare the worker's
-   credential-source context; never print credentials or silently rotate them.
-   Decision 0131's 401/Active-worker fallback does not cover a 403 or an Off-state
-   call. Press within minutes of a genuinely fresh admitted reading.
+   as merge commits (never squash); `current_action` names an eligible in-scope
+   Action and the scheduler preview identifies the first pinned Action; the
+   managed-documents contract test passes. Verify the canonical queue too:
+   an earlier out-of-scope held terminal candidate must not capture the pointer
+   after the first merge. Priority-only corrections use the supported queue move
+   under Decision0054, preserving every key and unrelated relative order; they
+   do not need a new priority Decision or authorize dispatch.
+7. **Host.** Primary checkout clean, on main, level with origin; actual owning
+   worker and reviewed installed release are bound and healthy. Governance-only
+   commits do not require a restart: prove the release is an ancestor and there
+   is no code/configuration delta in the guarded runtime paths. A material
+   runtime delta requires its separate guarded adoption authority; a method
+   checklist never grants installation, recovery or restart permission.
+8. **Capacity.** Gate stays on. Every actual launch requires the Active worker's
+   fresh, known, admissible reading under Decision0130 and its numeric amendment
+   0134; stale, unknown, exhausted or failed refresh never admits work. Preserve
+   the actual worker-context diagnostic and credential expiry; sign-in alone
+   is not quota evidence. The existing guarded START path may offer activation
+   with a **stale-only cached reading** when it enforces that fresh worker read
+   before any launch. Disclose that distinction; never relabel an old diagnostic
+   as fresh quota, inject telemetry or disable the gate. Do not add another
+   Off-state credential probe merely to refresh a display. Use exact existing
+   authority: Decision0141's daily Off renewal/verification allowance is bounded
+   and consumed once per local day; Decision0131's separate fallback applies
+   only to the Active worker's recorded401, not403 or a new Off operation.
 9. **Production is Off at press time.** Once Active, nothing merges except
    the worker's own merges and operator-approved merges; remind the operator
    to STOP first.
+
+## Retained preparation lessons
+
+- Reconcile evidence before repeating expensive checks. Record exact scope,
+  source changes, receipt provenance and limitations. A missing raw historical
+  file is a coverage limit; retain its published report as such, never invent it.
+- A required command's timeout is a refusal. Distinguish the per-command bound
+  from the enclosing validation budget: current command120seconds and total
+  900seconds are different. A lint pass taking127seconds exposes a reliability
+  risk, not permission to count a timeout as pass, reset an attempt or silently
+  increase a limit. Capture and independently assess the smallest correction.
+- Reuse actual operator approval for its stated class and effects. A blocked
+  operation does not block independent preparation. Present only a genuinely
+  needed external decision through a verified remote surface, preserving the
+  separate explicit START gate and all custody and consumed-attempt records.
 
 ## Supervision during a run
 
