@@ -4,7 +4,7 @@ type: decision
 id: "0138"
 slug: authorize-one-replacement-worker-claude-usage-diagnostic
 project: arcadia
-status: open
+status: approved
 question: Authorize one replacement worker Claude usage diagnostic?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Authorize one worker Claude usage diagnostic 0386caf6e207c7768bc7298328546f73b03e7ac999ac06c42662db60de0bb24b
+decided: 2026-10-25
 ---
 
 # Decision 0138: Authorize one replacement worker Claude usage diagnostic?
