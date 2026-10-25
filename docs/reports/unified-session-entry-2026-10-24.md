@@ -11,7 +11,7 @@ Action: `unify-interactive-and-unattended-coordination-with-safe-concurrent-acti
 - A real unresolved fixture Decision survives preview, preparation and refusals. The receipt reports the selected Action, caller, execution route, question gates, fenced claim and principal. Read-only Go preview makes no claim or admission; managed entry refuses Off; interactive preparation leaves Off unchanged.
 - Missing and incomplete native supervision adapters refuse with `native_runtime_not_supervisable`, identify the managed-worker fallback, and create no claim, Session, worktree, admission or enrollment receipt.
 
-Validation: `pnpm exec vitest run tests/unified-session-entry.test.ts` passed 7/7 (exit 0); `pnpm lint` passed (exit 0); `pnpm exec tsc --noEmit` passed on the final test file (exit 0); `git diff --check` passed. Independent review remains required before handoff.
+Validation: `pnpm exec vitest run tests/unified-session-entry.test.ts` passed 7/7 (exit 0); `pnpm lint` passed (exit 0); `pnpm exec tsc --noEmit` passed on the final test file (exit 0); `git diff --check` passed. Independent R1 review of the preserved source head passed with no findings; details below. Subsequent code changes would require fresh review.
 
 ## Installed-host recovery proof
 
@@ -77,3 +77,11 @@ Loaded guidance paths and UTF-8 bytes (section reads where applicable):
 Repository-specific sections retrieved: Orientation, Plan-amendment runner, Arcadia Semantics, Model Selection, Operator Guide, PR QA Plan and Working-Copy Safety. Notes lookup covered broker/brief/work-monitor, preservation, enrollment, test commands and the initial failed assertion. Source inspection covered the fixed brief supervisor, work monitor/scanner, enrollment transport/core/host adapter, existing host-enrollment tests and Action-claim generation tests. Production activation, credential probing, native adoption, increased concurrency and runtime recovery remain outside this Action.
 
 Live read-only production status at `2026-10-25T02:18:45.055Z`: Inactive / Idle, desired state inactive, revision 79, epoch 44. No live production command was run to change it. Existing unrelated alerts remain untouched.
+
+## Preservation and independent review
+
+Protected receipt `presv_c009cb5e62634dff9d` preserved source head `d35d7164042be55a7cde3ba9022c5ee597d7cca7`, tree `66657970956dbbe6f95143af140a6471154ddb0a`, as LOCAL ONLY under the existing manual-handoff reservation. The controller authored the preservation commit as Arcadia Controller; the agent resolved Cody Mason before requesting it. Source implementation was not raw-committed or re-authored.
+
+Independent generic reviewer context `/root/entry_review` reviewed `e8f21eb0c5b6675097343e8b79aa3c594bd62e5a..d35d7164042be55a7cde3ba9022c5ee597d7cca7`: **pass, no findings**. This is not registered role or governed-attempt admission. Requested runtime: Codex `gpt-5.6-terra`, medium. The returned reviewer called itself a GPT-6 session with effort unavailable; no runtime binding substantiates that self-report, so actual model/effort remain unverified. The reviewer traced canonical enrollment/admission/generation paths and checked diff hygiene. Its temporary archive test attempt stopped at mise's untrusted-config refusal before Vitest, and was not counted as fresh test evidence. Author exact-head checks supply deterministic validation.
+
+Main checkout reflog before and after R1 remained `2ef3a17cc`, `8183741f4`, `c2d1af846`. No reviewer or author modified the primary checkout. Later settlement, final preservation and remote handoff receipts belong in the canonical completion Ask and PR conversation; no installed/live enrollment acceptance is inferred from them.
