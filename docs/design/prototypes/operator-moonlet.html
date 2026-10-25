@@ -1,0 +1,586 @@
+<!doctype html>
+<!-- Throwaway UX prototype for Issue #1761 (operator moonlet). Open directly in a browser; not production code. See docs/design/operator-moonlet.md. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arcadia Moonlet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Cormorant+Garamond:wght@500;600&display=swap">
+<style>
+/* Layout: a full-bleed Martian sky (canvas) behind Arcadia's conversational UI. The moonlet rises over the composer; its picker blooms in orbits above it.
+   The page commits to its own sky look: tone tokens follow the current atmosphere (dark skies vs. the pale haze), not the OS theme. */
+:root {
+  --ink: #f3ece6;
+  --ink-soft: rgba(243, 236, 230, .72);
+  --glass: rgba(38, 36, 62, .42);
+  --glass-strong: rgba(30, 28, 52, .72);
+  --glass-line: rgba(255, 255, 255, .16);
+  --ember: #e58f6f;
+  --hue: #e58f6f;
+  --ui: "Jost", "Avenir Next", "Futura", system-ui, sans-serif;
+  --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  color-scheme: dark;
+}
+:root[data-tone="light"] {
+  --ink: #2c2420;
+  --ink-soft: rgba(44, 36, 32, .66);
+  --glass: rgba(255, 250, 245, .5);
+  --glass-strong: rgba(255, 250, 245, .82);
+  --glass-line: rgba(80, 50, 30, .14);
+  --ember: #c9775a;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: #1d2340; color: var(--ink); font-family: var(--ui); font-weight: 400; overflow: hidden; transition: color 1.2s; }
+canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.app { position: relative; height: 100%; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 10px; }
+
+/* nav */
+nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.logo { display: flex; align-items: center; gap: 14px; font-weight: 300; font-size: 22px; letter-spacing: .32em; }
+.logo svg { width: 40px; height: 40px; overflow: visible; }
+.logo .orbit-dot { transform-origin: 20px 20px; animation: orbit 24s linear infinite; }
+@keyframes orbit { to { transform: rotate(360deg); } }
+.navr { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.telemetry { display: flex; gap: 14px; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 12px; letter-spacing: .08em; min-width: 0; white-space: nowrap; transition: background 1.2s; }
+.telemetry .k { color: var(--ink-soft); text-transform: uppercase; font-size: 10.5px; letter-spacing: .14em; }
+.telemetry b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.telemetry .sep { width: 1px; height: 14px; background: var(--glass-line); }
+@media (max-width: 720px) { .telemetry .opt { display: none; } }
+@media (max-width: 460px) { .telemetry { display: none; } .logo { font-size: 18px; } }
+.avatar { position: relative; width: 38px; height: 38px; border-radius: 50%; background: var(--glass-strong); border: 1px solid var(--glass-line); display: grid; place-items: center; box-shadow: 0 0 0 2px var(--hue); transition: box-shadow 1.2s; flex: none; }
+.avatar svg { width: 20px; height: 20px; fill: var(--ink-soft); }
+.avatar .badge { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+.avatar .badge img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+
+/* sky labels (Phobos / Deimos) */
+.moon-label { position: fixed; font-size: 12px; letter-spacing: .06em; color: var(--ink-soft); pointer-events: none; transition: color .6s, opacity .6s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.moon-label::before { content: ""; width: 34px; height: 1px; background: currentColor; opacity: .6; }
+.moon-label em { font-style: normal; opacity: 0; transition: opacity .6s; color: var(--ember); }
+.moon-label.lit em { opacity: 1; }
+.moon-label.lit { color: var(--ink); }
+
+/* conversation */
+.convo { overflow-y: auto; padding: 18px 0 24px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+.convo::-webkit-scrollbar { display: none; }
+.thread { max-width: 560px; margin: 0 auto 0 max(0px, calc(50% - 460px)); display: flex; flex-direction: column; gap: 14px; padding-top: 6vh; }
+@media (max-width: 900px) { .thread { margin: 0 auto; } }
+.msg { min-width: 0; display: flex; gap: 14px; align-items: flex-start; animation: rise .5s ease both; }
+.msg .dot { width: 20px; height: 20px; border-radius: 50%; background: var(--ember); margin-top: 12px; flex: none; box-shadow: 0 0 18px color-mix(in srgb, var(--ember) 60%, transparent); }
+.msg.me { padding-left: 34px; justify-content: flex-start; }
+.bubble { position: relative; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 16px; padding: 12px 18px; font-size: 17px; line-height: 1.45; max-width: 100%; min-width: 0; transition: background 1.2s, border-color 1.2s; overflow-wrap: anywhere; }
+.stamp { position: absolute; top: -10px; right: -10px; min-width: 26px; height: 26px; padding: 0 4px; border-radius: 13px; display: grid; place-items: center; font-size: 15px; background: var(--glass-strong); border: 1px solid var(--glass-line); box-shadow: 0 0 0 1.5px var(--stamp-hue, var(--hue)); }
+.stamp img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.wave { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--glass-line); font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.wave .play { width: 26px; height: 26px; border-radius: 50%; background: var(--ink-soft); display: grid; place-items: center; }
+.wave .play::after { content: ""; border-left: 8px solid var(--glass-strong); border-top: 5px solid transparent; border-bottom: 5px solid transparent; margin-left: 2px; }
+.wave .bars { display: flex; gap: 2px; align-items: center; height: 18px; }
+.wave .bars i { width: 2px; background: var(--ink-soft); border-radius: 1px; display: block; }
+.card { margin-left: 34px; min-width: 0; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 16px; padding: 18px 22px 14px; max-width: 360px; transition: background 1.2s; animation: rise .5s ease both; }
+.card h3 { font-family: var(--serif); font-weight: 500; font-size: 28px; margin: 0 0 12px; letter-spacing: .01em; }
+.card .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.card .tags span { font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); }
+.card .link { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--glass-line); font-size: 15px; display: flex; gap: 8px; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* dock: moonlet + composer */
+.dock { position: relative; z-index: 7; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 6px; padding-top: 4px; }
+.moonlet-wrap { position: relative; width: 96px; height: 82px; display: grid; place-items: center; z-index: 6; }
+.moonlet { all: unset; cursor: pointer; position: relative; width: 62px; height: 62px; border-radius: 50%; -webkit-tap-highlight-color: transparent; transform-origin: 50% 70%;
+  animation: var(--idle-anim, drift) var(--idle-dur, 6s) ease-in-out infinite; }
+.moonlet:focus-visible { outline: 2px solid var(--ink); outline-offset: 8px; }
+.moonlet .body { position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle at 70% 70%, rgba(120, 80, 60, .28) 0 9%, transparent 10%),
+    radial-gradient(circle at 24% 62%, rgba(120, 80, 60, .22) 0 6%, transparent 7%),
+    radial-gradient(circle at 62% 20%, rgba(120, 80, 60, .2) 0 5%, transparent 6%),
+    radial-gradient(circle at 34% 28%, #fff4ea 0%, #f0d6c2 38%, #c99a80 78%, #8f6450 100%);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--hue) 70%, transparent), 0 0 70px color-mix(in srgb, var(--hue) 35%, transparent), inset -6px -8px 14px rgba(80, 40, 30, .35);
+  transition: box-shadow 1.2s; }
+.moonlet .face { position: absolute; inset: 0; }
+.eye { position: absolute; top: 40%; width: 9%; height: 12%; background: #2a1a16; border-radius: 50%; animation: blink 5.5s infinite; transition: transform .3s, height .3s, top .3s; }
+.eye.l { left: 33%; } .eye.r { right: 33%; }
+.eye::after { content: ""; position: absolute; width: 38%; height: 32%; background: #fff; border-radius: 50%; top: 16%; left: 20%; }
+.brow { position: absolute; top: 31%; width: 17%; height: 4%; background: #2a1a16; border-radius: 3px; opacity: 0; transition: opacity .25s, transform .3s; }
+.brow.l { left: 27%; } .brow.r { right: 27%; }
+.mouth { position: absolute; left: 50%; top: 59%; width: 18%; height: 9%; transform: translateX(-50%); border: 2.5px solid #2a1a16; border-top: 0; border-radius: 0 0 30px 30px; transition: all .3s; }
+.blush { position: absolute; top: 55%; width: 12%; height: 7%; border-radius: 50%; background: rgba(230, 110, 110, .4); }
+.blush.l { left: 18%; } .blush.r { right: 18%; }
+@keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+
+.moonlet[data-face="side"] .eye { transform: translateX(-60%); } .moonlet[data-face="side"] .mouth { width: 12%; transform: translateX(-80%); }
+.moonlet[data-face="flat"] .mouth { width: 16%; height: 3%; border-width: 0 0 2.5px 0; border-radius: 0; }
+.moonlet[data-face="worried"] .brow { opacity: 1; } .moonlet[data-face="worried"] .brow.l { transform: rotate(-16deg); } .moonlet[data-face="worried"] .brow.r { transform: rotate(16deg); }
+.moonlet[data-face="worried"] .mouth { width: 14%; height: 6%; border: 2.5px solid #2a1a16; border-bottom: 0; border-radius: 30px 30px 0 0; top: 63%; }
+.moonlet[data-face="angry"] .brow { opacity: 1; } .moonlet[data-face="angry"] .brow.l { transform: rotate(20deg); } .moonlet[data-face="angry"] .brow.r { transform: rotate(-20deg); }
+.moonlet[data-face="angry"] .mouth { border: 2.5px solid #2a1a16; border-bottom: 0; border-radius: 30px 30px 0 0; top: 64%; }
+.moonlet[data-face="shock"] .eye { transform: scale(1.45); } .moonlet[data-face="shock"] .mouth { width: 14%; height: 15%; border: 2.5px solid #2a1a16; border-radius: 50%; background: #5a2620; }
+.moonlet[data-face="happy"] .eye { height: 7%; background: transparent; border: 2.5px solid #2a1a16; border-bottom: 0; border-radius: 30px 30px 0 0; animation: none; }
+.moonlet[data-face="happy"] .eye::after { display: none; }
+.moonlet[data-face="happy"] .mouth { width: 26%; height: 14%; background: #5a2620; }
+.moonlet[data-face="sleepy"] .eye { height: 3%; top: 45%; border-radius: 0 0 4px 4px; animation: none; } .moonlet[data-face="sleepy"] .eye::after { display: none; }
+.moonlet[data-face="sleepy"] .mouth { width: 10%; height: 5%; }
+.moonlet[data-face="dizzy"] .eye { background: transparent; border: 2.5px solid #2a1a16; } .moonlet[data-face="dizzy"] .eye::after { display: none; }
+
+/* idle (atmosphere) + momentary fx */
+@keyframes drift { 50% { transform: translateY(-4px); } }
+@keyframes float-slow { 50% { transform: translateY(-2px) rotate(-2deg); } }
+@keyframes hover-still { 50% { transform: translateY(-1px); } }
+@keyframes bounce { 0%,100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-10px) scale(.97, 1.03); } 60% { transform: translateY(0) scale(1.05, .95); } }
+@keyframes sag { 50% { transform: translateY(3px) scale(1.02, .97); } }
+@keyframes tremble { 25% { transform: translate(-1px, 0); } 75% { transform: translate(1px, -1px); } }
+.moonlet[data-fx="tilt"] { animation: tilt 2.6s ease-in-out infinite; }
+.moonlet[data-fx="tap"] { animation: tap .5s ease-in-out infinite; }
+.moonlet[data-fx="wobble"] { animation: wobble 1.5s ease-in-out infinite; }
+.moonlet[data-fx="spin"] { animation: spin 3s ease-in-out infinite; }
+.moonlet[data-fx="dash"] { animation: dash .45s ease-in-out infinite; }
+.moonlet[data-fx="shake"] { animation: shake .32s linear infinite; }
+.moonlet[data-fx="panic"] { animation: shake .14s linear infinite; }
+.moonlet[data-fx="hop"] { animation: hop .7s cubic-bezier(.3, 1.6, .5, 1) infinite; }
+.moonlet[data-fx="doze"] { animation: sag 3.4s ease-in-out infinite; }
+.moonlet[data-fx="none"] { animation: drift 7s ease-in-out infinite; }
+@keyframes tilt { 50% { transform: rotate(-12deg); } }
+@keyframes tap { 50% { transform: translateY(-3px); } }
+@keyframes wobble { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes spin { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-20deg) translateX(-2px); } }
+@keyframes dash { 50% { transform: translateX(-5px) skewX(10deg); } }
+@keyframes shake { 25% { transform: translateX(-3px) rotate(-3deg); } 75% { transform: translateX(3px) rotate(3deg); } }
+@keyframes hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+
+.now-pill { position: absolute; left: calc(50% + 26px); top: -8px; min-width: 34px; height: 34px; padding: 0 6px; border-radius: 17px; display: grid; place-items: center; font-size: 20px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; transition: transform .3s cubic-bezier(.3, 1.6, .5, 1), opacity .25s; }
+.now-pill img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.moonlet-wrap.picking .now-pill { opacity: 0; transform: scale(.3); }
+.scrim { position: fixed; inset: 0; z-index: 6; background: rgba(12, 10, 24, .38); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: fade .3s ease both; }
+.scrim[hidden] { display: none; }
+.now-pill.off { transform: scale(.3) translate(-30px, 30px); opacity: 0; }
+.now-pill.pop { animation: pop .4s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { from { transform: scale(.4); } }
+svg.trail { position: absolute; left: 50%; top: 50%; width: 86px; height: 86px; transform: translate(-50%, -50%) rotate(-90deg); pointer-events: none; overflow: visible; }
+svg.trail circle { fill: none; }
+svg.trail .track { stroke: var(--glass-line); stroke-width: 1; }
+svg.trail .left { stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; opacity: .8; }
+svg.trail .sat { fill: var(--ink); }
+
+/* orbit picker */
+.orbits { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 8; }
+.orbits[hidden] { display: none; }
+.ring-line { position: absolute; border: 1px dashed var(--glass-line); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; clip-path: inset(0 0 50% 0); animation: fade .3s ease both; }
+.chip { all: unset; cursor: pointer; position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; display: grid; place-items: center; font-size: 23px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 6px 18px rgba(0,0,0,.22);
+  transform: translate(0, 0) scale(.2); opacity: 0; transition: transform .42s cubic-bezier(.3, 1.5, .5, 1), opacity .25s, box-shadow .2s; }
+.orbits.open .chip { transform: translate(var(--x), var(--y)) scale(1); opacity: 1; }
+.chip:hover, .chip:focus-visible { box-shadow: 0 0 0 2px var(--ink), 0 6px 18px rgba(0,0,0,.22); }
+.chip[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ember), 0 0 18px var(--ember); }
+.chip img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+.chip .sw { width: 34px; height: 34px; border-radius: 50%; display: block; box-shadow: inset 0 -6px 10px rgba(0,0,0,.25); }
+.chip.add { font-size: 20px; font-weight: 300; }
+.orbit-head { position: absolute; left: 0; transform: translate(-50%, 0); display: grid; justify-items: center; gap: 8px; animation: fade .3s ease both; }
+.seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.seg button { all: unset; cursor: pointer; padding: 5px 14px; border-radius: 999px; font-size: 13px; letter-spacing: .04em; color: var(--ink-soft); white-space: nowrap; }
+.seg button[aria-selected="true"] { background: var(--ink); color: #241c28; }
+:root[data-tone="light"] .seg button[aria-selected="true"] { color: #fffaf5; }
+.seg button:focus-visible { outline: 1.5px solid var(--ink); }
+.caption { font-family: var(--serif); font-size: 22px; font-weight: 500; height: 26px; letter-spacing: .02em; white-space: nowrap; text-shadow: 0 1px 12px rgba(0,0,0,.25); }
+@keyframes fade { from { opacity: 0; } }
+
+.custom { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -12px); width: min(320px, calc(100vw - 32px)); background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-radius: 16px; padding: 12px; display: grid; gap: 8px; z-index: 9; }
+.custom[hidden] { display: none; }
+.custom .r { display: flex; gap: 8px; }
+.custom input[type="text"] { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--glass-line); background: var(--glass); color: var(--ink); }
+.btn { all: unset; cursor: pointer; padding: 7px 14px; border-radius: 10px; font-size: 14px; border: 1px solid var(--glass-line); background: var(--glass); text-align: center; }
+.btn.solid { background: var(--ink); color: #241c28; border-color: transparent; }
+:root[data-tone="light"] .btn.solid { color: #fffaf5; }
+.btn:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 2px; }
+.custom p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+
+.composer { width: min(700px, 100%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 10px 40px rgba(0,0,0,.18); transition: background 1.2s; }
+.composer .plus { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 300; color: var(--ink-soft); background: var(--glass); flex: none; }
+.composer .div { width: 1px; height: 26px; background: var(--glass-line); flex: none; }
+.composer input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 17px; font-weight: 300; padding: 6px 4px; }
+.composer input::placeholder { color: var(--ink-soft); }
+.composer .mic { width: 22px; height: 22px; fill: var(--ink-soft); flex: none; }
+.composer .send { all: unset; cursor: pointer; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--ember) 45%, #f3e6dc); flex: none; }
+.composer .send svg { width: 18px; height: 18px; stroke: #3a2a24; fill: none; stroke-width: 2; }
+.composer .send:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.sending { font-size: 12.5px; color: var(--ink-soft); letter-spacing: .03em; min-height: 18px; text-align: center; }
+.sending b { color: var(--ink); font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .moonlet, .eye, .logo .orbit-dot, .msg, .card { animation: none !important; }
+  .chip { transition: opacity .2s; }
+}
+</style>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<span class="moon-label" id="lbl-phobos">Phobos <em>· fear</em></span>
+<span class="moon-label" id="lbl-deimos">Deimos <em>· dread</em></span>
+
+<div class="app">
+  <nav>
+    <div class="logo">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="1.3"/><g class="orbit-dot"><circle cx="33" cy="7" r="3" fill="currentColor"/></g></svg>
+      arcadia
+    </div>
+    <div class="navr">
+      <div class="telemetry" aria-label="Operator telemetry">
+        <span class="k opt">Operator telemetry</span><span class="sep opt"></span>
+        <span class="k">Atmosphere</span><b id="t-atmo">Calm</b><span class="sep"></span>
+        <span class="k">Now</span><b id="t-now">Thinking</b><span class="sep opt"></span>
+        <span class="k opt">Sol</span><b class="opt" id="t-sol">—</b>
+      </div>
+      <div class="avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z"/></svg>
+        <span class="badge" id="avatar-badge"></span>
+      </div>
+    </div>
+  </nav>
+
+  <main class="convo" id="convo">
+    <div class="thread" id="thread">
+      <div class="msg me">
+        <div class="bubble">A garden on a moon of Mars.
+          <div class="wave"><span class="play"></span><span class="bars" id="bars"></span><span>0:08</span></div>
+          <span class="stamp" style="--stamp-hue:#f2b13f">🤩</span>
+        </div>
+      </div>
+      <div class="msg"><span class="dot"></span><div class="bubble">A quiet place to grow something extraordinary.</div></div>
+      <div class="card">
+        <h3>Moon garden</h3>
+        <div class="tags"><span>Space</span><span>Story</span><span>Experience</span></div>
+        <div class="link">Explore the idea <span aria-hidden="true">↗</span></div>
+      </div>
+      <div class="msg"><span class="dot"></span><div class="bubble">What would you like to bring into it?</div></div>
+    </div>
+  </main>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <footer class="dock">
+    <div class="moonlet-wrap" id="moonlet-wrap">
+      <svg class="trail" viewBox="0 0 86 86" aria-hidden="true"><circle class="track" cx="43" cy="43" r="41"/><circle class="left" id="trail" cx="43" cy="43" r="41" stroke-dasharray="257.6" stroke-dashoffset="0"/></svg>
+      <button class="moonlet" id="moonlet" aria-haspopup="dialog" aria-expanded="false" aria-label="Your moonlet. Tap to say how you feel.">
+        <span class="body"></span>
+        <span class="face"><span class="brow l"></span><span class="brow r"></span><span class="eye l"></span><span class="eye r"></span><span class="blush l"></span><span class="blush r"></span><span class="mouth"></span></span>
+      </button>
+      <span class="now-pill off" id="now-pill" aria-hidden="true"></span>
+      <div class="orbits" id="orbits" hidden role="dialog" aria-label="How do you feel?"></div>
+      <div class="custom" id="custom" hidden>
+        <div class="r"><input type="text" id="custom-emoji" maxlength="8" placeholder="Any emoji" aria-label="Any emoji"><button class="btn solid" id="custom-use">Use</button></div>
+        <div class="r"><label class="btn" for="custom-file" style="flex:1">Upload a sticker or GIF</label><button class="btn" id="custom-cancel">Cancel</button></div>
+        <input type="file" id="custom-file" accept="image/*" hidden>
+        <p id="custom-hint">Stickers stay in your orbit for next time. Up to 1.5 MB.</p>
+      </div>
+    </div>
+    <form class="composer" id="composer" autocomplete="off">
+      <span class="plus" aria-hidden="true">+</span><span class="div"></span>
+      <input id="say" placeholder="Imagine anything…" aria-label="Message Arcadia">
+      <svg class="mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1A7 7 0 0 0 19 12z"/></svg>
+      <span class="div"></span>
+      <button class="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+    </form>
+    <div class="sending" id="sending" aria-live="polite"></div>
+  </footer>
+</div>
+
+<script>
+// ---------------- data ----------------
+const SKIES = {
+  calm:     { label: "Calm",     note: "violet dusk",      hue: "#e58f6f", tone: "dark",  idle: ["drift", "6s"],      face: "",
+              top: "#1b2140", mid: "#4b4468", low: "#c98b7c", glow: "#f4a77b", sun: [.09, .9, 34, "#ffd9b0"], stars: .9,  dust: 18,  wind: .2, haze: 0,   aurora: 0, ridges: ["#3c3652", "#2a2740", "#17172a"] },
+  content:  { label: "Content",  note: "pale noon haze",   hue: "#d79a74", tone: "light", idle: ["float-slow", "7s"], face: "happy",
+              top: "#ece6df", mid: "#f1e6da", low: "#e9c9ae", glow: "#fff5e8", sun: [.09, .66, 26, "#fffaf2"], stars: 0,   dust: 24,  wind: .15, haze: 0,  aurora: 0, ridges: ["#dbb59c", "#c69074", "#9c5e44"] },
+  focused:  { label: "Focused",  note: "clear night",      hue: "#8ea2ff", tone: "dark",  idle: ["hover-still", "4s"], face: "",
+              top: "#04060e", mid: "#0c1430", low: "#1f2848", glow: "#3b4b7d", sun: [.5, 1.4, 0, "#000000"],   stars: 1,   dust: 4,   wind: .05, haze: 0,  aurora: 0, ridges: ["#151b2e", "#0e1322", "#080b15"] },
+  stoked:   { label: "Stoked",   note: "golden hour",      hue: "#f2b13f", tone: "dark",  idle: ["bounce", "1.4s"],   face: "happy",
+              top: "#2a2f6a", mid: "#c6627a", low: "#f6b25c", glow: "#ffd27a", sun: [.5, .82, 58, "#fff0c4"],  stars: .2,  dust: 30,  wind: .3, haze: 0,   aurora: 0, ridges: ["#7c3c4b", "#58283a", "#331725"] },
+  tired:    { label: "Tired",    note: "small hours",      hue: "#9d8fc6", tone: "dark",  idle: ["sag", "8s"],        face: "sleepy",
+              top: "#0a0a15", mid: "#1b1830", low: "#2f2942", glow: "#4c405f", sun: [.5, 1.4, 0, "#000000"],   stars: .55, dust: 6,   wind: .05, haze: 0,  aurora: 0, ridges: ["#1d1929", "#14111e", "#0c0a13"] },
+  stressed: { label: "Stressed", note: "dust storm",       hue: "#ef7a45", tone: "dark",  idle: ["tremble", ".5s"],   face: "worried",
+              top: "#57291a", mid: "#984a29", low: "#c97a48", glow: "#e49a5d", sun: [.78, .32, 22, "#ffe0b8"], stars: 0,   dust: 320, wind: 2.6, haze: .38, aurora: 0, ridges: ["#7c3b23", "#5f2a18", "#43200f"] },
+  low:      { label: "Low",      note: "overcast",         hue: "#8f9bb0", tone: "dark",  idle: ["sag", "7s"],        face: "flat",
+              top: "#394050", mid: "#575e6c", low: "#7b7e87", glow: "#9a99a0", sun: [.3, .5, 0, "#000000"],    stars: 0,   dust: 14,  wind: .2, haze: .1,  aurora: 0, ridges: ["#4c5160", "#3b3f4b", "#2a2d36"] },
+  playful:  { label: "Playful",  note: "aurora",           hue: "#7fe0c0", tone: "dark",  idle: ["bounce", "2.4s"],   face: "happy",
+              top: "#081024", mid: "#172b4a", low: "#3b3e6a", glow: "#7d70b1", sun: [.5, 1.4, 0, "#000000"],   stars: .9,  dust: 8,   wind: .1, haze: 0,   aurora: 1, ridges: ["#222a46", "#171d36", "#0e1225"] }
+};
+const STATES = [
+  { id: "thinking",  label: "Thinking",     g: "🤔", fx: "tilt",   face: "side" },
+  { id: "typing",    label: "Typing",       g: "⌨️", fx: "tap",    face: "flat" },
+  { id: "confused",  label: "Confused",     g: "😵‍💫", fx: "spin",   face: "dizzy", moon: "phobos" },
+  { id: "worried",   label: "Worried",      g: "😟", fx: "wobble", face: "worried", moon: "deimos" },
+  { id: "rushing",   label: "Rushing",      g: "🏃", fx: "dash",   face: "flat" },
+  { id: "impatient", label: "Impatient",    g: "⏳", fx: "tap",    face: "angry", moon: "deimos" },
+  { id: "angry",     label: "Angry",        g: "😠", fx: "shake",  face: "angry" },
+  { id: "freaking",  label: "Freaking out", g: "😱", fx: "panic",  face: "shock", moon: "phobos" },
+  { id: "excited",   label: "Excited",      g: "🤩", fx: "hop",    face: "happy" },
+  { id: "stoked",    label: "Stoked",       g: "🤙", fx: "hop",    face: "happy" },
+  { id: "content",   label: "Content",      g: "😌", fx: "none",   face: "happy" },
+  { id: "away",      label: "Stepped away", g: "☕", fx: "doze",   face: "sleepy" }
+];
+const DECAY_MS = 5 * 60 * 1000;
+const KEY = "arcadia-moonlet-v1";
+let S = { sky: "calm", now: { ...STATES[0] }, expiresAt: Date.now() + DECAY_MS, setAt: Date.now(), custom: [] };
+try { const r = localStorage.getItem(KEY); if (r) { const v = JSON.parse(r); if (v && SKIES[v.sky]) S = Object.assign(S, v); } } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = (id) => document.getElementById(id);
+
+// ---------------- sky renderer ----------------
+const cv = $("sky"), cx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, ridges = [], stars = [], dust = [];
+const hex = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lerp = (a, b, t) => a + (b - a) * t;
+const mixc = (a, b, t) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`; };
+let from = SKIES[S.sky], to = SKIES[S.sky], start = 0;
+const ease = (t) => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR; cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const rnd = seeded(7);
+  stars = Array.from({ length: Math.round(W * H / 3800) }, () => ({ x: rnd() * W, y: rnd() * H * .72, r: rnd() * 1.1 + .25, p: rnd() * 6.28 }));
+  ridges = [0, 1, 2].map(l => {
+    const r = seeded(31 + l * 13), base = H * (.74 + l * .07), amp = H * (.05 - l * .012), ph = [r() * 6, r() * 6, r() * 6];
+    const pts = []; for (let x = 0; x <= W + 8; x += 8) pts.push(base - amp * (Math.sin(x / (260 - l * 50) + ph[0]) * .55 + Math.sin(x / (97 - l * 20) + ph[1]) * .3 + Math.sin(x / 31 + ph[2]) * .15 * (1 + l)));
+    return pts;
+  });
+  const rd = seeded(99);
+  dust = Array.from({ length: 340 }, () => ({ x: rd() * W, y: rd() * H, s: rd() * 1.6 + .4, v: rd() * .8 + .4, o: rd() }));
+  placeLabels(); layoutOrbits();
+}
+function val(k, t) { return lerp(from[k], to[k], t); }
+function draw(now) {
+  const t = reduce ? 1 : ease(Math.min(1, (now - start) / 2600));
+  const g = cx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, mixc(from.top, to.top, t)); g.addColorStop(.55, mixc(from.mid, to.mid, t)); g.addColorStop(.86, mixc(from.low, to.low, t));
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+  const glow = mixc(from.glow, to.glow, t);
+  // horizon glow
+  const hg = cx.createRadialGradient(W * .2, H * .86, 0, W * .2, H * .86, Math.max(W, H) * .7);
+  hg.addColorStop(0, glow.replace("rgb", "rgba").replace(")", ",.55)")); hg.addColorStop(1, "rgba(0,0,0,0)");
+  cx.fillStyle = hg; cx.fillRect(0, 0, W, H);
+  // stars
+  const sa = val("stars", t);
+  if (sa > .01) for (const s of stars) { const tw = reduce ? .8 : .6 + .4 * Math.sin(now / 900 + s.p); cx.globalAlpha = sa * tw * (1 - s.y / (H * .8)); cx.fillStyle = "#fff"; cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 6.283); cx.fill(); }
+  cx.globalAlpha = 1;
+  // aurora
+  const au = val("aurora", t);
+  if (au > .01) for (let b = 0; b < 3; b++) {
+    cx.beginPath(); const y0 = H * (.22 + b * .07);
+    for (let x = 0; x <= W; x += 12) { const y = y0 + Math.sin(x / 180 + now / (2600 + b * 700) + b) * 26 + Math.sin(x / 61 + now / 1700) * 8; x ? cx.lineTo(x, y) : cx.moveTo(x, y); }
+    cx.strokeStyle = b === 1 ? `rgba(180,140,255,${.22 * au})` : `rgba(110,240,190,${.26 * au})`; cx.lineWidth = 34 - b * 8; cx.filter = "blur(14px)"; cx.stroke(); cx.filter = "none";
+  }
+  // sun
+  const sr = val("sun2", t);
+  if (sr > .5) {
+    const sx = W * val("sun0", t), sy = H * val("sun1", t), col = mixc(from.sun[3], to.sun[3], t);
+    const sg = cx.createRadialGradient(sx, sy, 0, sx, sy, sr * 5); sg.addColorStop(0, col.replace("rgb", "rgba").replace(")", ",.5)")); sg.addColorStop(1, "rgba(0,0,0,0)");
+    cx.fillStyle = sg; cx.fillRect(sx - sr * 5, sy - sr * 5, sr * 10, sr * 10);
+    cx.fillStyle = col; cx.globalAlpha = .9; cx.beginPath(); cx.arc(sx, sy, sr, 0, 6.283); cx.fill(); cx.globalAlpha = 1;
+  }
+  // Phobos & Deimos
+  moonBody(W * .8, H * .15, Math.max(16, Math.min(W, H) * .045), t, now);
+  moonBody(W * .9, H * .25, 5, t, now);
+  // orbit path
+  cx.strokeStyle = to.tone === "light" ? "rgba(60,40,30,.22)" : "rgba(255,240,230,.22)"; cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(W * 1.02, H * .2); cx.bezierCurveTo(W * .55, H * .3, W * .5, H * .55, W * .72, H * .62); cx.bezierCurveTo(W * .86, H * .66, W * .78, H * .78, W * .66, H * .84); cx.stroke();
+  // ridges
+  ridges.forEach((pts, l) => {
+    cx.fillStyle = mixc(from.ridges[l], to.ridges[l], t); cx.beginPath(); cx.moveTo(0, H);
+    pts.forEach((y, i) => cx.lineTo(i * 8, y)); cx.lineTo(W, H); cx.closePath(); cx.fill();
+  });
+  // dust
+  const n = Math.round(val("dust", t)), wind = val("wind", t);
+  cx.fillStyle = glow;
+  for (let i = 0; i < n && i < dust.length; i++) {
+    const d = dust[i];
+    if (!reduce) { d.x += d.v * (wind + .08); d.y += Math.sin(now / 1200 + d.o * 9) * .15 * (1 + wind); if (d.x > W + 4) { d.x = -4; d.y = Math.random() * H; } }
+    cx.globalAlpha = (.25 + d.o * .45) * Math.min(1, .3 + wind); cx.beginPath(); cx.arc(d.x, d.y, d.s * (1 + wind * .3), 0, 6.283); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  const hz = val("haze", t);
+  if (hz > .01) { cx.fillStyle = glow.replace("rgb", "rgba").replace(")", `,${hz})`); cx.fillRect(0, 0, W, H); }
+  body.style.background = mixc(from.top, to.top, t);
+}
+function moonBody(x, y, r, t, now) {
+  const light = to.tone === "light";
+  const g = cx.createRadialGradient(x - r * .4, y - r * .4, r * .1, x, y, r);
+  g.addColorStop(0, light ? "#f6ece4" : "#e9dcd2"); g.addColorStop(1, light ? "#cdb3a3" : "#6d5c58");
+  cx.fillStyle = g; cx.beginPath(); cx.ellipse(x, y, r * 1.08, r * .9, -.4, 0, 6.283); cx.fill();
+  if (r > 8) { cx.fillStyle = "rgba(90,60,50,.2)"; [[.3, .2, .18], [-.35, -.1, .12], [.05, -.42, .09]].forEach(([a, b, c]) => { cx.beginPath(); cx.arc(x + a * r, y + b * r, c * r, 0, 6.283); cx.fill(); }); }
+}
+const body = document.body;
+["sun0", "sun1", "sun2"].forEach((k, i) => Object.values(SKIES).forEach(s => s[k] = s.sun[i]));
+function frame(now) { draw(now); if (!reduce) requestAnimationFrame(frame); }
+
+function placeLabels() {
+  const r = Math.max(16, Math.min(W, H) * .045);
+  const p = $("lbl-phobos"), d = $("lbl-deimos");
+  p.style.left = (W * .8 - r - 120) + "px"; p.style.top = (H * .15 - r - 12) + "px"; p.style.flexDirection = "row-reverse";
+  d.style.left = (W * .9 + 10) + "px"; d.style.top = (H * .25 + 4) + "px";
+  if (W < 520) { d.style.left = (W * .9 - 110) + "px"; d.style.flexDirection = "row-reverse"; }
+}
+
+// ---------------- state + render ----------------
+const moonlet = $("moonlet"), pill = $("now-pill"), trail = $("trail");
+function glyphNode(item) {
+  if (item.img) { const i = document.createElement("img"); i.src = item.img; i.alt = item.label || "Sticker"; return i; }
+  return document.createTextNode(item.g);
+}
+function setSky(id) {
+  const now = performance.now();
+  from = { ...to }; to = SKIES[id]; start = now; S.sky = id; save();
+  document.documentElement.dataset.tone = to.tone;
+  if (reduce) draw(now);
+  render();
+}
+function setNow(item) {
+  S.now = item ? { id: item.id, label: item.label, g: item.g || null, img: item.img || null, fx: item.fx || "tap", face: item.face || "", moon: item.moon || null } : null;
+  S.setAt = Date.now(); S.expiresAt = item ? Date.now() + DECAY_MS : null; save(); render(true);
+}
+function render(pop) {
+  const sky = SKIES[S.sky];
+  document.documentElement.style.setProperty("--hue", sky.hue);
+  moonlet.style.setProperty("--idle-anim", sky.idle[0]); moonlet.style.setProperty("--idle-dur", sky.idle[1]);
+  pill.replaceChildren(); $("avatar-badge").replaceChildren();
+  if (S.now) {
+    pill.append(glyphNode(S.now)); $("avatar-badge").append(glyphNode(S.now));
+    pill.classList.remove("off");
+    if (pop) { pill.classList.remove("pop"); void pill.offsetWidth; pill.classList.add("pop"); }
+    moonlet.dataset.fx = S.now.fx; moonlet.dataset.face = S.now.face;
+  } else {
+    pill.classList.add("off"); moonlet.dataset.fx = ""; moonlet.dataset.face = sky.face;
+  }
+  $("lbl-phobos").classList.toggle("lit", !!(S.now && S.now.moon === "phobos"));
+  $("lbl-deimos").classList.toggle("lit", !!(S.now && S.now.moon === "deimos"));
+  $("t-atmo").textContent = sky.label;
+  $("t-now").textContent = S.now ? S.now.label : "—";
+  moonlet.setAttribute("aria-label", `Your moonlet: ${S.now ? S.now.label + ", " : ""}${sky.label.toLowerCase()} atmosphere. Tap to change.`);
+  $("sending").innerHTML = "";
+  const s = $("sending");
+  s.append("Sending as ");
+  const b = document.createElement("b"); b.textContent = S.now ? `${S.now.img ? "sticker" : S.now.g} ${S.now.label}` : "just you"; s.append(b);
+  s.append(` · ${sky.label.toLowerCase()} skies, ${sky.note}`);
+  if (!$("orbits").hidden) buildOrbits();
+  tick();
+}
+function tick() {
+  const C = 257.6;
+  if (S.now && S.expiresAt) {
+    const left = S.expiresAt - Date.now();
+    if (left <= 0) { setNow(null); return; }
+    trail.style.strokeDashoffset = String(C * (1 - left / DECAY_MS)); trail.style.opacity = .8;
+  } else trail.style.opacity = 0;
+}
+setInterval(tick, 500);
+function sol() {
+  const jd = Date.now() / 864e5 + 2440587.5 + 69.184 / 86400;
+  const msd = (jd - 2405522.0028779) / 1.0274912517;
+  const mtc = ((msd % 1) * 24 + 24) % 24;
+  $("t-sol").textContent = `${Math.floor(msd).toLocaleString()} · ${String(Math.floor(mtc)).padStart(2, "0")}:${String(Math.floor((mtc % 1) * 60)).padStart(2, "0")} MTC`;
+}
+sol(); setInterval(sol, 30000);
+
+// ---------------- orbit picker ----------------
+const orbits = $("orbits");
+let mode = "now", scale = 1;
+function layoutOrbits() { scale = Math.max(.72, Math.min(1, (innerWidth - 24) / 420)); if (!orbits.hidden) buildOrbits(); }
+function chip(content, label, pressed, x, y, delay, onPick, extra) {
+  const b = document.createElement("button");
+  b.className = "chip" + (extra ? " " + extra : ""); b.type = "button";
+  b.style.setProperty("--x", x + "px"); b.style.setProperty("--y", y + "px"); b.style.transitionDelay = delay + "ms";
+  b.setAttribute("aria-label", label); b.setAttribute("aria-pressed", pressed ? "true" : "false");
+  b.append(content);
+  const show = () => cap.textContent = label, hide = () => cap.textContent = mode === "now" ? "How are you, right now?" : "Set your atmosphere";
+  b.addEventListener("pointerenter", show); b.addEventListener("focus", show); b.addEventListener("pointerleave", hide); b.addEventListener("blur", hide);
+  b.addEventListener("click", onPick);
+  return b;
+}
+let cap;
+function arc(items, R, startDelay) {
+  return items.map((it, i) => { const a = Math.PI + ((i + .5) / items.length) * Math.PI; return { it, x: Math.cos(a) * R * scale, y: Math.sin(a) * R * scale, d: startDelay + i * 22 }; });
+}
+function buildOrbits() {
+  orbits.replaceChildren();
+  const R1 = 92, R2 = 160;
+  [R1, R2].forEach(R => { const l = document.createElement("span"); l.className = "ring-line"; l.style.width = l.style.height = (R * 2 * scale) + "px"; orbits.append(l); });
+  const head = document.createElement("div"); head.className = "orbit-head"; head.style.top = (-(R2 * scale) - 96) + "px";
+  const seg = document.createElement("div"); seg.className = "seg"; seg.setAttribute("role", "tablist");
+  [["now", "Right now"], ["sky", "Atmosphere"]].forEach(([k, t]) => {
+    const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "tab"); b.textContent = t; b.setAttribute("aria-selected", mode === k);
+    b.addEventListener("click", () => { mode = k; buildOrbits(); requestAnimationFrame(() => orbits.classList.add("open")); });
+    seg.append(b);
+  });
+  cap = document.createElement("div"); cap.className = "caption"; cap.textContent = mode === "now" ? "How are you, right now?" : "Set your atmosphere";
+  head.append(seg, cap); orbits.append(head);
+  if (mode === "now") {
+    const extras = S.custom.slice(0, 3);
+    const inner = STATES.slice(0, 5), outer = [...STATES.slice(5), ...extras, { add: true }];
+    [...arc(inner, R1, 0), ...arc(outer, R2, 90)].forEach(({ it, x, y, d }) => {
+      if (it.add) { const t = document.createElement("span"); t.textContent = "+"; orbits.append(chip(t, "Your own emoji, sticker or GIF", false, x, y, d, openCustom, "add")); return; }
+      const pressed = S.now && S.now.id === it.id;
+      orbits.append(chip(glyphNode(it), it.label, pressed, x, y, d, () => { setNow(pressed ? null : it); closeOrbits(); }));
+    });
+  } else {
+    const ids = Object.keys(SKIES);
+    [...arc(ids.slice(0, 3), R1, 0), ...arc(ids.slice(3), R2, 80)].forEach(({ it, x, y, d }) => {
+      const s = SKIES[it], sw = document.createElement("span"); sw.className = "sw";
+      sw.style.background = `linear-gradient(180deg, ${s.top}, ${s.mid} 55%, ${s.low})`;
+      orbits.append(chip(sw, `${s.label} · ${s.note}`, S.sky === it, x, y, d, () => { setSky(it); closeOrbits(); }));
+    });
+  }
+}
+function openOrbits() {
+  $("custom").hidden = true; $("scrim").hidden = orbits.hidden; orbits.hidden = false; $("scrim").hidden = false; $("moonlet-wrap").classList.add("picking"); buildOrbits(); moonlet.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => requestAnimationFrame(() => { orbits.classList.add("open"); const f = orbits.querySelector(".chip"); if (f) f.focus({ preventScroll: true }); }));
+}
+function closeOrbits(refocus = true) { orbits.classList.remove("open"); orbits.hidden = true; $("scrim").hidden = $("custom").hidden; $("moonlet-wrap").classList.remove("picking"); moonlet.setAttribute("aria-expanded", "false"); if (refocus) moonlet.focus({ preventScroll: true }); }
+function openCustom() { closeOrbits(false); $("custom").hidden = false; $("scrim").hidden = false; $("custom-emoji").focus(); }
+moonlet.addEventListener("click", () => orbits.hidden ? openOrbits() : closeOrbits());
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!orbits.hidden) closeOrbits(); if (!$("custom").hidden) { $("custom").hidden = true; $("scrim").hidden = orbits.hidden; moonlet.focus(); } } });
+document.addEventListener("pointerdown", e => {
+  const w = $("moonlet-wrap");
+  if (!orbits.hidden && !w.contains(e.target)) closeOrbits(false);
+  if (!$("custom").hidden && !$("custom").contains(e.target)) { $("custom").hidden = true; $("scrim").hidden = orbits.hidden; }
+});
+$("custom-cancel").addEventListener("click", () => { $("custom").hidden = true; $("scrim").hidden = orbits.hidden; moonlet.focus(); });
+$("custom-use").addEventListener("click", () => {
+  const v = $("custom-emoji").value.trim(); if (!v) return;
+  const it = { id: "c-" + Date.now(), label: "Custom", g: v, fx: "tap", face: "" };
+  S.custom = [it, ...S.custom.filter(c => c.g !== v)].slice(0, 6); $("custom-emoji").value = ""; $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it);
+});
+$("custom-file").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.size > 1.5 * 1024 * 1024) { $("custom-hint").textContent = "That file is over 1.5 MB. Pick a smaller sticker or GIF."; return; }
+  const r = new FileReader();
+  r.onload = () => { const it = { id: "s-" + Date.now(), label: f.name.replace(/\.[^.]+$/, "").slice(0, 18) || "Sticker", img: r.result, fx: "tap", face: "" };
+    S.custom = [it, ...S.custom].slice(0, 6); $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it); };
+  r.readAsDataURL(f);
+});
+
+// ---------------- composer ----------------
+const REPLIES = ["Noted. I'll fold that into the moon garden.", "Got it. Want me to sketch that next?", "Lovely. Adding it to the concept draft.", "I can see that taking shape. Anything else to bring in?"];
+let ri = 0;
+$("composer").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = $("say").value.trim(); if (!v) return; $("say").value = "";
+  const m = document.createElement("div"); m.className = "msg me";
+  const b = document.createElement("div"); b.className = "bubble"; b.textContent = v;
+  if (S.now) { const st = document.createElement("span"); st.className = "stamp"; st.style.setProperty("--stamp-hue", SKIES[S.sky].hue); st.append(glyphNode(S.now)); st.title = `Sent while ${S.now.label.toLowerCase()}`; b.append(st); }
+  m.append(b); $("thread").append(m); $("convo").scrollTop = 1e6;
+  setTimeout(() => {
+    const r = document.createElement("div"); r.className = "msg"; r.innerHTML = '<span class="dot"></span>';
+    const rb = document.createElement("div"); rb.className = "bubble"; rb.textContent = REPLIES[ri++ % REPLIES.length]; r.append(rb);
+    $("thread").append(r); $("convo").scrollTop = 1e6;
+  }, 900);
+});
+
+// waveform bars
+const bars = $("bars"); const rb = seeded(5);
+for (let i = 0; i < 34; i++) { const s = document.createElement("i"); s.style.height = (3 + Math.abs(Math.sin(i * .7)) * 10 + rb() * 5) + "px"; bars.append(s); }
+
+// ---------------- boot ----------------
+document.documentElement.dataset.tone = SKIES[S.sky].tone;
+addEventListener("resize", resize);
+resize(); render(false);
+if (reduce) draw(performance.now()); else requestAnimationFrame(frame);
+</script>
