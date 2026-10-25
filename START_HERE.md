@@ -3621,7 +3621,9 @@ authorize implementation.
 
 ## Reading coding-agent chat titles
 
-Talk to the workstream coordinator whose title has no arrow. A leading `↳` marks
+Talk to the current workstream coordinator whose title starts with `⭐ 🚦`.
+The star stays with that contact through state changes and moves only after an
+explicit handoff; parked former coordinators have no star. A leading `↳` marks
 a background helper that reports through its coordinator. Orange (🟠) means a
 concrete question or approval needs an answer; red (🔴) means externally blocked.
 The title names the actual need, such as `approve pilot budget` or

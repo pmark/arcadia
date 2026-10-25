@@ -52,7 +52,7 @@ changes (pushing a PR, the review finishing so checks start, stopping at a
 picker, hitting a blocker, finishing), never batched for later and never
 skipped because the change felt minor. It is cheap: reuse the `sessionTitles`
 map already returned by the current brief and call the title tool with the
-matching key as the base, then restore any verified helper prefix or specific
+matching key as the base, then restore any verified current-contact star, helper prefix or specific
 attention suffix. The map names only the Action that
 brief resolved: when the session moves on to a different Action, rerun the
 brief launcher and retitle from its fresh `data.sessionTitles` instead of
@@ -64,7 +64,7 @@ because the session is mid-task.
 
 Read [chat titles and attention signals](chat-titles.md) before choosing or
 updating a title. A leading `↳` identifies a helper reporting to a known parent;
-the direct operator contact has no arrow. Retain the generated base title and
+the current operator-facing coordinator starts with `⭐ 🚦`. Keep exactly one starred coordinator per workstream; a completed task retains its contact star until an actual handoff or hold. A parked predecessor has no star. Retain the generated base title and
 append the specific question or blocker. Use 🟠 for concrete input or approval
 needed, 🔴 for an external blocker, and ⏸ only for a deliberately parked or
 superseded contact. A helper waiting on its coordinator says `parent input`;
