@@ -309,7 +309,7 @@ export function startNotificationPoller(
             await recordReviewMessage(reviewMessageStatePath(config.arcadiaWorkspace), {
               reviewId: item.id,
               reviewSlug: item.slug,
-              channelId: config.discordChannelId,
+              channelId: sent.channelId,
               messageId: sent.id,
               createdAt: new Date().toISOString()
             });
@@ -403,7 +403,7 @@ export function agentAskNotificationMessages(notifications: AgentAskNotification
     key: `agent-ask:${notification.settlementId}`,
     content: agentAskSettlementMessage(notification, dashboardUrl)
   });
-  // Only rejections bound for the log channel: anything routed to alerts or the default channel stays its own message.
+  // Only rejections bound for the log channel: anything routed to alerts, review or the default channel stays its own message.
   const quiet = notifications.filter(
     (notification) => notification.disposition === "rejected" && !notification.recovery && categorizeAgentAsk(notification) === "log"
   );
