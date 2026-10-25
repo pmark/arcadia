@@ -2,6 +2,26 @@
 
 This is the **single canonical checklist** for the remaining unattended-production acceptance gap. It is derived evidence, not an authority store: the [unattended-production acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the [current coordination Plan](plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md), Decisions and canonical runtime receipts govern. Handoffs and coordinator wakeups point here rather than maintaining another checklist. Rowan is the sole release-manager contact; helper assignments do not transfer that custody.
 
+## Operator view: the rover’s route from here
+
+**The rover is parked. Production is Off.** Its route-restoration request is published and reviewed, but the route has not yet been changed. The destination is three real jobs completed, reviewed and delivered by the rover, followed by proof that it made the journey without manual rescue.
+
+**Nine main checkpoints remain on the route below.** These are delivery checkpoints, not a promise of nine clicks. The systems check still has an unresolved obstacle, so the exact number of small repairs or approvals is not yet known. Preparation can happen in parallel where it is safe.
+
+| # | Checkpoint | What must happen |
+| --- | --- | --- |
+| **1** | **Put the unattended route back on the map** | **Your next gate:** approve restoring that route, while saving the unfinished current route for later. This does not start the rover. |
+| 2 | Load three clear job cards | Prepare the three specific jobs, with a clear finish line and an agreed way to check each one. |
+| 3 | Clear the rover’s systems check | Prove that its real controls and fuel gauge can be trusted. Fuel rules are already agreed; a trustworthy current reading is still missing. This is the main unresolved obstacle. |
+| 4 | Approve the exact journey | Agree which three jobs the rover may do, its limits, and when it must stop. Other unfinished work stays outside that drive. |
+| 5 | Say **START** | You explicitly release the rover. Every earlier checkpoint leaves production Off. |
+| 6 | Reach the first delivery waypoint | The rover completes the first job and delivers a reviewed, accepted change. |
+| 7 | Reach the second delivery waypoint | It continues to the second job and delivers another reviewed, accepted change. |
+| 8 | Reach the third delivery waypoint | It continues to the third job and delivers the third reviewed, accepted change. |
+| 9 | Confirm the destination was reached | Check the journey record: all three deliveries landed, with your involvement limited to START and any change approvals reserved for you. Record the result against the original goal. |
+
+**What you need to decide now:** whether to restore the unattended route at checkpoint1. I can carry out the reviewed, guarded step after your explicit approval. The remote button is not currently available; you do not need to operate a terminal. Clearing that gate does not clear the systems-check obstacle or authorize START.
+
 Latest derivation: **2026-10-25**, from published main `d79aff4c94e5323fd1e1f341bc69783878a03ac2` (display-only [PR1752](https://github.com/pmark/arcadia/pull/1752), following inactive-input [PR1750](https://github.com/pmark/arcadia/pull/1750)), canonical Project/Plan state and Decision0134, and production observed **2026-10-25T12:45:57.625Z**: **Off**, revision **79**, epoch **44**, **zero live admissions**, scope/authority absent. **Not ready to present START:** a fresh approved three-Action scope, eligible immutable packets, and fresh actual-worker capacity/launch evidence are still missing. No unattended acceptance or universal startup failure is established. All earlier failed and partial proofs remain preserved below. Installed broker was last observed at `92437476d8be3fa35f2be9243c898cdf7fe6bd27` at07:41UTC; source publication is not runtime adoption, and the prior recovery allowance remains consumed. Observations expire when their inputs change.
 
 ## Remaining checklist
