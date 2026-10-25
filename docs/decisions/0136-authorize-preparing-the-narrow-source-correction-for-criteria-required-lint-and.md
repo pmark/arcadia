@@ -4,7 +4,7 @@ type: decision
 id: "0136"
 slug: authorize-preparing-the-narrow-source-correction-for-criteria-required-lint-and
 project: arcadia
-status: open
+status: approved
 question: Authorize preparing the narrow source correction for criteria-required lint and TypeScript checks outside preservation, as a reviewed PR, while production remains Off?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Authorize the bounded validation-source correction PR
+decided: 2026-10-25
 ---
 
 # Decision 0136: Authorize preparing the narrow source correction for criteria-required lint and TypeScript checks outside preservation, as a reviewed PR, while production remains Off?
