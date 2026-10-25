@@ -626,9 +626,13 @@ function handoffServed(protection: WorktreeProtection, input: {
 }
 
 function branchMovedSinceCreation(cwd: string, branch: string): boolean {
-  const reflog = tryGit(cwd, ["reflog", "show", "--format=%gs", branch]);
+  // Protected preservation uses update-ref without a message. Its empty
+  // subjects are valid movement evidence; compare full commit IDs instead.
+  const reflog = tryGit(cwd, ["reflog", "show", "--format=%H", branch]);
   if (reflog === null) return false;
-  return reflog.split("\n").filter((entry) => entry.trim() !== "").length > 1;
+  const commits = reflog.split("\n").map((entry) => entry.trim()).filter(Boolean);
+  if (!commits.every((commit) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit))) return false;
+  return new Set(commits).size > 1;
 }
 
 /**
