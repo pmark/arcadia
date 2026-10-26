@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 import { CONDITIONS, MOMENTARY_STATES, conditionOf, defaultPresence, loadPresence, remaining, savePresence, setCondition, setMomentary, setStyle, settle, snapshot, type ConditionId, type MomentaryState, type PresenceState } from "../../../lib/operator-presence";
 import "./presence.css";
 
@@ -91,16 +91,23 @@ export function PresenceMenu() {
   const summary = `${now ? `${now.label}${minutes ? ` for ${minutes} more min` : ""} · ` : ""}${condition.label} overall`;
 
   function pick(state: MomentaryState | null) { commit(setMomentary(ref.current, now?.id === state?.id ? null : state, Date.now())); }
-  function keepCustom(state: MomentaryState) {
+  /** Keeps a custom state for next time; false (with the reason shown) when the browser refused. */
+  function keepCustom(state: MomentaryState): boolean {
     const next = [state, ...custom.filter(c => c.glyph !== state.glyph || state.image)].slice(0, MAX_CUSTOM);
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(next)); setHint(null); }
-    catch { setHint("This browser is out of room for stickers, so this one is not kept. Your earlier ones are."); return; }
+    catch { setHint("This browser would not keep it (storage is full or blocked), so it shows now but is not saved for next time."); return false; }
     setCustom(next);
+    return true;
+  }
+  /** Applies a custom state; the panel stays open when it could not be kept, so the reason is readable. */
+  function takeCustom(state: MomentaryState) {
+    if (keepCustom(state)) setCustomOpen(false);
+    pick(state);
   }
   function applyEmoji() {
     const glyph = firstGrapheme(emoji.trim()); if (!glyph) return;
-    const state: MomentaryState = { id: `custom-${Date.now()}`, label: "Custom", glyph, fx: "tap", face: "" };
-    keepCustom(state); setEmoji(""); setCustomOpen(false); pick(state);
+    setEmoji("");
+    takeCustom({ id: `custom-${Date.now()}`, label: "Custom", glyph, fx: "tap", face: "" });
   }
   function applyFile(file: File | undefined) {
     if (!file) return;
@@ -108,13 +115,15 @@ export function PresenceMenu() {
     if (file.size > MAX_IMAGE_BYTES) { setHint("That file is over 1 MB. Pick a smaller sticker or GIF."); return; }
     const reader = new FileReader();
     reader.onload = () => {
-      const state: MomentaryState = { id: `sticker-${Date.now()}`, label: file.name.replace(/\.[^.]+$/, "").slice(0, 18) || "Sticker", glyph: null, image: String(reader.result), fx: "tap", face: "" };
-      keepCustom(state); setCustomOpen(false); pick(state);
+      takeCustom({ id: `sticker-${Date.now()}`, label: file.name.replace(/\.[^.]+$/, "").slice(0, 18) || "Sticker", glyph: null, image: String(reader.result), fx: "tap", face: "" });
     };
     reader.readAsDataURL(file);
   }
 
-  return <div className={`presence style-${presence.style}`} ref={wrap} style={{ "--hue": condition.hue } as CSSProperties}>
+  // Tabbing out of the menu closes it, so focus never lands on controls hidden beneath it.
+  const onBlur = (e: FocusEvent<HTMLDivElement>) => { if (open && e.relatedTarget && !wrap.current?.contains(e.relatedTarget)) setOpen(false); };
+
+  return <div className={`presence style-${presence.style}`} ref={wrap} onBlur={onBlur} style={{ "--hue": condition.hue } as CSSProperties}>
     <button id={buttonId} type="button" className="presence-button" aria-haspopup="dialog" aria-expanded={open}
       aria-label={`Your presence: ${summary}. Change it.`} onClick={() => setOpen(v => !v)}>
       {presence.style === "expressive" ? <Moonlet presence={presence} />

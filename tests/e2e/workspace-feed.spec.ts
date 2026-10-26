@@ -37,6 +37,14 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     if (endpoint === "/api/pull-requests") return route.fulfill({ json: todoDown ? { ...inventory, snapshot: { ...inventory.snapshot, pullRequests: [], counts: { ...inventory.snapshot.counts, total: 0, ready: 0 } } } : inventory });
     return route.abort();
   });
+  // Alpha-weighted red minus blue across the bottom fifth of the weather canvas.
+  const weatherWarmth = () => page.locator(".feed-weather").evaluate(node => {
+    const canvas = node as HTMLCanvasElement;
+    const data = canvas.getContext("2d")?.getImageData(0, Math.floor(canvas.height * 0.8), canvas.width, Math.floor(canvas.height * 0.2)).data;
+    let warmth = 0, weight = 0;
+    for (let i = 0; data && i < data.length; i += 64) { warmth += (data[i] - data[i + 2]) * data[i + 3]; weight += data[i + 3]; }
+    return weight ? warmth / weight : 0;
+  });
   try {
     await waitForHttp(`${url}/workspace/feed`, server);
     await page.goto(`${url}/workspace/feed#dusk`);
@@ -57,11 +65,13 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     await sky.locator("summary").click();
     await expect(sky).toContainText("1 blocking item for you");
     await sky.locator("summary").click();
-    await expect(page.getByText(/Phobos|Deimos/)).toHaveCount(0);
+    // The weather canvas paints that reading: a storm's rust haze runs red over blue near the ground.
+    await expect.poll(weatherWarmth, { timeout: 10_000 }).toBeGreaterThan(40);
 
     // The Journey button summarises the fleet and what needs you, and on a phone replaces the feed.
     const journeyButton = page.getByRole("button", { name: /^Journey: 4 rovers: 1 blocked, 2 moving, 1 arrived\. 3 items need you\.$/ });
     await expect(journeyButton).toHaveAttribute("aria-expanded", "false");
+    await expect(journeyButton.locator(".seg")).toHaveCount(4);
     await journeyButton.click();
     const journey = page.getByRole("region", { name: "Journey" });
     await expect(journey.getByRole("heading", { name: "Journey" })).toBeFocused();
@@ -97,6 +107,14 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(profile).toBeFocused();
+    // Tabbing out closes it too, so focus never lands on controls hidden beneath it.
+    await profile.click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Shift+Tab");
+    await expect(profile).toBeFocused();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Shift+Tab");
+    await expect(menu).toBeHidden();
     await profile.click();
     await menu.getByRole("button", { name: "Freaking out" }).click();
     await menu.getByRole("button", { name: "Stressed" }).click();
@@ -119,6 +137,23 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     await expect(page.getByRole("button", { name: /^Your presence: Freaking out/ })).toBeVisible();
     await expect(page.locator(".presence-moonlet")).toHaveCount(1);
 
+    // A browser that refuses to keep a custom state says so, and the panel stays open to show why.
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- re-applied below with the real receiver.
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key: string, value: string) {
+        if (key.includes("custom")) throw new DOMException("Fixture: storage full", "QuotaExceededError");
+        return setItem.call(this, key, value);
+      };
+    });
+    await page.getByRole("button", { name: /^Your presence/ }).click();
+    await page.getByRole("dialog", { name: "Your presence" }).getByRole("button", { name: "Your own" }).click();
+    await page.getByRole("textbox", { name: "Any emoji" }).fill("🛰️");
+    await page.getByRole("button", { name: "Use", exact: true }).click();
+    await expect(page.getByText(/This browser would not keep it/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Your presence: Custom/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+
     // A to-do list that keeps failing ends the loading state with an alert, not a false "nothing waiting".
     todoDown = true;
     await page.reload();
@@ -126,6 +161,7 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     await expect(page.getByText("Reading your work…")).toBeHidden();
     await expect(page.getByText("Nothing is waiting on you.")).toBeHidden();
     await expect(sky.locator("summary")).toContainText("Signal loss");
+    await expect.poll(weatherWarmth, { timeout: 10_000 }).toBeLessThan(10);
     todoDown = false;
 
     // Phone width: no horizontal page scroll.
