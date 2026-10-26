@@ -904,7 +904,7 @@ describe("tick-driven review is not applicable to a LOCAL ONLY candidate", () =>
     rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
     const a = rehearsal.lease()!;
     rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
-    rehearsal.agentFinish(a, criteria);
+    rehearsal.agentFinish(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
     rehearsal.tick();
     rehearsal.tick();
