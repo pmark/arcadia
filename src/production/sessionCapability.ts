@@ -1,4 +1,5 @@
 import { accessSync, constants } from "node:fs";
+import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
@@ -43,16 +44,98 @@ function clip(text: string, max = 200): string {
   return line.length > max ? `${line.slice(0, max - 1)}...` : line;
 }
 
-/** Walls a Session's own log reports (one per class, first matching line), in a stable order. */
-export function detectEnvironmentWalls(log: string | null): EnvironmentWall[] {
+/** A retained observation, not permission or a request to reset/relaunch. */
+export interface SessionCapabilityObservation {
+  version: 1;
+  provenance: "session_probe" | "failed_tool_operation" | "unattributed";
+  status: "wall" | "clear" | "unknown";
+  walls: Array<EnvironmentWall & { operation: string | null; deniedPath: string | null }>;
+}
+const cleanEvidence = (text: string, max = 300) => clip(redactSecrets(sanitizeOutput(text)).replaceAll("`", "'").replaceAll("@", "@\u200b"), max);
+const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+const toolText = (value: unknown): string => typeof value === "string" ? value : Array.isArray(value)
+  ? value.flatMap(item => { const block = record(item); return block?.type === "text" && typeof block.text === "string" ? [block.text] : []; }).join("\n") : "";
+
+/** Only a known capability operation can attribute its failure to that capability. */
+function operationCanEstablish(wall: EnvironmentWallClass, command: string): boolean {
+  if (/[;&|\n]/.test(command)) return false;
+  const arcadia = /^(?:(?:\S*\/)?arcadia|pnpm\s+(?:-s\s+)?arcadia|(?:\S*\/)?node(?:\s+--import(?:=|\s+)\S+)*\s+(?:\S*\/)?src\/cli\.[jt]s)(?:\s+(.*)|$)/.exec(command);
+  if (wall === "workspace_write") return arcadia !== null;
+  if (wall === "preservation") return Boolean(arcadia && /^(?:preserve|go)(?:\s|$)/.test(arcadia[1] ?? "")) || /^(?:\S*\/)?arcadia-preserve-broker(?:\s|$)/.test(command);
+  return /^(?:go\s+test|pnpm\s+(?:(?:exec\s+)?(?:vitest|tsc)|lint|test)|arcadia\s+go\s+test)(?:\s|$)/.test(command);
+}
+
+/**
+ * Read only provider operation records, never recursively parse text printed by a tool.
+ * Claude results must match a preceding Bash tool use; Codex command results carry
+ * their command and non-zero exit in the same item. Bare prose remains unknown.
+ */
+export function detectEnvironmentWalls(log: string | null): SessionCapabilityObservation["walls"] {
   if (!log) return [];
-  const lines = log.split(/\r?\n/);
-  const found: EnvironmentWall[] = [];
-  for (const { wallClass, pattern } of WALL_PATTERNS) {
-    const hit = lines.find((line) => pattern.test(line));
-    if (hit) found.push({ wallClass, evidence: clip(hit), remedy: WALL_REMEDY[wallClass] });
+  const calls = new Map<string, string>();
+  const found = new Map<EnvironmentWallClass, SessionCapabilityObservation["walls"][number]>();
+  const failed = (command: string, output: string) => {
+    // An assertion quoting a denial is still a failed test, not a permission error.
+    const diagnostic = output.split(/\r?\n/).find(line => {
+      if (/^Error \[(?:SQLITE_WORKSPACE_WRITE_DENIED|EACCES|EPERM)\]:/i.test(line)) return true;
+      const direct = line.replace(/^arcadia(?:-preserve-broker)?:\s*/i, "").replace(/^Error:\s*(?=(?:EACCES|EPERM|SQLITE_WORKSPACE_WRITE_DENIED)\b)/i, "");
+      // Generic Error prose (including quoted denials) is not an OS/database
+      // denial. Keep unsupported diagnostic shapes unknown.
+      return /^(?:SQLITE_WORKSPACE_WRITE_DENIED:|EACCES\b|EPERM\b|operation not permitted$|permission denied$|attempt to write a readonly database\b|cannot write the workspace database\b|workspace (?:database )?write (?:was )?denied\b|preservation (?:denied|not permitted|unreachable|did not (?:produce|write)|no receipt)\b)/i.test(direct);
+    });
+    if (!diagnostic) return;
+    for (const { wallClass, pattern } of WALL_PATTERNS) {
+      if (found.has(wallClass) || !operationCanEstablish(wallClass, command) || !pattern.test(`${command} ${diagnostic}`)) continue;
+      const denied = /(?:open|access|write|path)\s+['"]([^'"\n]{1,500})['"]/.exec(diagnostic)?.[1] ?? null;
+      found.set(wallClass, { wallClass, operation: cleanEvidence(command), deniedPath: denied === null ? null : cleanEvidence(denied, 200),
+        evidence: cleanEvidence(diagnostic), remedy: WALL_REMEDY[wallClass] });
+    }
+  };
+  for (const line of log.split(/\r?\n/)) {
+    if (!line.startsWith("{")) continue;
+    let event: Record<string, unknown> | null;
+    try { event = record(JSON.parse(line)); } catch { continue; }
+    if (!event) continue;
+    if (event.type === "item.completed") {
+      const item = record(event.item);
+      if (item?.type === "command_execution" && typeof item.command === "string" && typeof item.exit_code === "number" && item.exit_code !== 0) {
+        failed(item.command, typeof item.aggregated_output === "string" ? item.aggregated_output : "");
+      }
+    }
+    if (event.type !== "assistant" && event.type !== "user") continue;
+    const content = record(event.message)?.content ?? event.content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = record(value);
+      if (!block) continue;
+      if (event.type === "assistant" && block.type === "tool_use" && typeof block.id === "string" && (block.name === "Bash" || block.name === "exec_command")) {
+        const input = record(block.input);
+        const command = input?.command ?? input?.cmd;
+        if (typeof command === "string") {
+          if (calls.size >= 2000) calls.delete(calls.keys().next().value!);
+          calls.set(block.id, command);
+        }
+      } else if (event.type === "user" && block.type === "tool_result" && block.is_error === true && typeof block.tool_use_id === "string") {
+        const command = calls.get(block.tool_use_id);
+        if (command) failed(command, toolText(block.content));
+      }
+    }
   }
-  return found;
+  return WALL_PATTERNS.flatMap(({ wallClass }) => found.has(wallClass) ? [found.get(wallClass)!] : []);
+}
+
+/** The nonce-bound probe outranks legacy diagnostic text, including a proven pass. */
+export function observeSessionCapability(log: string | null, nonce: string | null): SessionCapabilityObservation {
+  const probe = parseSessionProbe(log, nonce);
+  if (probe) {
+    // Never retain the per-launch nonce in the observation.
+    const walls = sessionProbeWalls({ ...probe, nonce: undefined }).map(wall => ({ ...wall, evidence: cleanEvidence(wall.evidence, 600), operation: "session capability probe", deniedPath: null }));
+    const known = new Set(["workspace_write", "host_validation", "preservation"]);
+    const passed = probe.ok && probe.checks.length === known.size && new Set(probe.checks.map(check => check?.name)).size === known.size && probe.checks.every(check => check && check.ok === true && known.has(check.name));
+    return { version: 1, provenance: "session_probe", status: walls.length ? "wall" : passed ? "clear" : "unknown", walls };
+  }
+  const walls = detectEnvironmentWalls(log);
+  return { version: 1, provenance: walls.length ? "failed_tool_operation" : "unattributed", status: walls.length ? "wall" : "unknown", walls };
 }
 
 /**
@@ -178,6 +261,12 @@ export const SESSION_PROBE_TOKEN_BUDGET = 5_000;
 export interface SessionProbeCheck { name: string; ok: boolean; error?: string }
 export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; nonce?: string | null; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
 
+function isSessionProbeCheck(value: unknown): value is SessionProbeCheck {
+  const check = record(value);
+  return Boolean(check && typeof check.name === "string" && typeof check.ok === "boolean"
+    && (check.error === undefined || typeof check.error === "string"));
+}
+
 function probesFromString(text: string, nonce: string, out: SessionProbeResult[]): void {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -187,7 +276,9 @@ function probesFromString(text: string, nonce: string, out: SessionProbeResult[]
       // Only a line echoing this Session's recorded nonce counts: a probe-looking
       // line from a cat'd file or injected text cannot carry it.
       if (value.probe === SESSION_PROBE_ID && value.nonce === nonce && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
-        out.push(value as SessionProbeResult);
+        // A malformed matching probe still takes precedence, as unknown. It
+        // must neither throw during receipt creation nor expose a partial wall.
+        out.push({ ...value, checks: value.checks.every(isSessionProbeCheck) ? value.checks : [] } as SessionProbeResult);
       }
     } catch { /* not the probe line */ }
   }
@@ -223,13 +314,14 @@ export function parseSessionProbe(log: string | null, nonce: string | null): Ses
 
 /** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
 export function sessionProbeWalls(result: SessionProbeResult | null): EnvironmentWall[] {
-  if (!result || (result.ok && result.checks.every((check) => check.ok))) return [];
-  const failed: SessionProbeCheck[] = result.checks.filter((check) => !check.ok);
+  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck) || (result.ok && result.checks.every((check) => check.ok))) return [];
+  const failed: SessionProbeCheck[] = result.checks.filter((check) => check && check.ok === false && typeof check.name === "string");
   const evidenceJson = clip(JSON.stringify(result), 600);
   const known: ReadonlySet<string> = new Set<EnvironmentWallClass>(["workspace_write", "host_validation", "preservation"]);
   const walls = new Map<EnvironmentWallClass, EnvironmentWall>();
-  for (const check of failed.length > 0 ? failed : [{ name: "workspace_write", ok: false } as SessionProbeCheck]) {
-    const wallClass = (known.has(check.name) ? check.name : "workspace_write") as EnvironmentWallClass;
+  for (const check of failed) {
+    if (!known.has(check.name)) continue;
+    const wallClass = check.name as EnvironmentWallClass;
     if (!walls.has(wallClass)) {
       walls.set(wallClass, { wallClass, evidence: `${check.name}: ${check.error ?? "failed"} | session probe ${evidenceJson}`, remedy: WALL_REMEDY[wallClass] });
     }

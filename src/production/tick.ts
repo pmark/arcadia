@@ -55,11 +55,10 @@ import { sessionLogPath } from "../sessions/sessionRecording.js";
 import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
-  detectEnvironmentWalls,
+  observeSessionCapability,
+  type SessionCapabilityObservation,
   ENVIRONMENT_WALL_ESCALATION_KIND,
-  parseSessionProbe,
   SESSION_PROBE_TOKEN_BUDGET,
-  sessionProbeWalls,
   sessionTokensFromLog,
   type EnvironmentWall
 } from "./sessionCapability.js";
@@ -2080,10 +2079,16 @@ export function runManagedProductionTick(
             }
             // Tokens per attempt and the environment-wall stop commit with the
             // receipt, so a crash cannot lose the wall and relaunch into it.
-            recordSessionExitAccounting(db, {
+            const capability = recordSessionExitAccounting(db, {
               workspace, projectSlug: project.slug, session: lease, outcome: receipt.outcome,
               candidateRevision: receipt.candidate_revision, now, log
             });
+            if (capability) {
+              // This is the new receipt's creation transaction, never a read-side backfill.
+              receipt.evidence_json = JSON.stringify({ ...JSON.parse(receipt.evidence_json ?? "{}"), sessionCapability: capability });
+              db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE id = ? AND session_id = ?")
+                .run(receipt.evidence_json, receipt.id, lease.id);
+            }
           }
         });
         // Issue #1518: a completion the worker settled after preservation
@@ -2949,8 +2954,8 @@ export function recordSessionExitAccounting(
     now: Date;
     log: (message: string) => void;
   }
-): void {
-  if (!input.session.action_id) return;
+): SessionCapabilityObservation | null {
+  if (!input.session.action_id) return null;
   const actionKey = `${input.projectSlug}/${input.session.action_id}`;
   let text: string | null = null;
   try {
@@ -2963,18 +2968,17 @@ export function recordSessionExitAccounting(
          VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
   }
-  // The Session's own first-step probe is the only truthful capability evidence,
-  // matched by this Session's recorded nonce. A passing probe is logged with its
-  // recorded budget here rather than on the reconcile receipt: that receipt is
-  // written by session reconciliation before this accounting runs.
-  const probe = parseSessionProbe(text, readSessionProbeNonce(input.workspace, input.session.id));
-  if (probe?.ok && probe.checks.every((check) => check.ok)) {
-    input.log(`Session probe passed for ${actionKey} in ${probe.ms ?? "?"} ms (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
+  // Prefer the nonce-bound probe; otherwise only an attributable failed tool
+  // operation can establish a wall. The creation callback retains this bounded
+  // observation in the same new-receipt transaction.
+  const capability = observeSessionCapability(text, readSessionProbeNonce(input.workspace, input.session.id));
+  if (capability.provenance === "session_probe" && capability.status === "clear") {
+    input.log(`Session probe passed for ${actionKey} (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
   }
-  if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
-  // A failed check ends the attempt even though the Session never got to edit.
-  const probeWalls = sessionProbeWalls(probe);
-  const walls = [...probeWalls, ...detectEnvironmentWalls(text).filter((wall) => !probeWalls.some((hit) => hit.wallClass === wall.wallClass))];
+  if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return capability;
+  // Only attributable failure evidence can name a capability wall.
+  const walls = capability.walls;
+  const probeFailed = capability.provenance === "session_probe" && walls.length > 0;
   const breach = tokens
     ? decideTokenCeilingBreach(tokens, resolveSessionTokenCeiling(db, {
         workspace: input.workspace, session: { provider: input.session.provider ?? "", model: input.session.model ?? "" }
@@ -2996,13 +3000,13 @@ export function recordSessionExitAccounting(
       actionKey, kind: BUDGET_EXHAUSTED_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
     });
     if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${BUDGET_EXHAUSTED_ESCALATION_KIND}): ${named.message}`);
-    return;
+    return capability;
   }
-  if (walls.length === 0) return;
+  if (walls.length === 0) return capability;
   const startRevision = input.session.launch_revision ?? input.session.base_revision;
   const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
-  if (!noDiff && probeWalls.length === 0) return;
-  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
+  if (!noDiff && !probeFailed) return capability;
+  const named = describeEnvironmentWalls(actionKey, walls, probeFailed ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
   const at = input.now.toISOString();
   const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   db.prepare(
@@ -3015,6 +3019,7 @@ export function recordSessionExitAccounting(
     actionKey, kind: ENVIRONMENT_WALL_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
   });
   if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${ENVIRONMENT_WALL_ESCALATION_KIND}): ${named.message}`);
+  return capability;
 }
 
 export interface ProductionAttemptTokens {
