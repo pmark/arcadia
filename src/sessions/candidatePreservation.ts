@@ -8,7 +8,8 @@ import { commitTreeAt, PRESERVATION_TRAILER, snapshotCandidate } from "./candida
 import { assertNoStrayAskFiles } from "./strayAskFiles.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
-import { findAcceptedTerminalCompletion } from "./reconciliation.js";
+import type { CompletionEvidenceReference, CompletionEvidenceView } from "./completionValidationEvidence.js";
+import { completionEvidenceForReview, findAcceptedTerminalCompletion, getSessionExitReceipt } from "./reconciliation.js";
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
 import {
   refusedOperatorQaPlan,
@@ -159,6 +160,8 @@ export interface CandidatePreservationReceipt {
   policyRevision: number;
   candidateFingerprint: string;
   validationEvidenceRef: string;
+  /** Host execution record retained by completion reconciliation, absent in legacy receipts. */
+  completionValidation?: CompletionEvidenceReference;
   commitSha: string;
   preservationState: PreservationState;
   pushedRemote: string | null;
@@ -1056,7 +1059,8 @@ function withValidationEvidence(
   plan: OperatorQaPlanSource,
   request: Pick<CandidatePreservationRequest, "validation">,
   repositoryPath: string,
-  commitSha: string
+  commitSha: string,
+  completionExecutionEvidence?: CompletionEvidenceView
 ): string {
   // A failed or timed-out Git read only drops the commit relation, never the evidence.
   let commitTree: string | null;
@@ -1067,6 +1071,7 @@ function withValidationEvidence(
   }
   try {
     return composePreservedPullRequestBody(planBody, {
+      completionExecutionEvidence,
       evidenceRef: request.validation.evidenceRef,
       evidence: readValidationEvidence(request.validation.evidenceRef),
       declaredCommands: plan.validationCommands,
@@ -1090,7 +1095,7 @@ function withValidationEvidence(
  */
 export function refreshPreservedPullRequestBody(
   db: Database.Database,
-  input: { requestId: string; plan: OperatorQaPlanSource; headSha: string },
+  input: { requestId: string; plan: OperatorQaPlanSource; headSha: string; workspace?: string; sessionId?: string },
   remote: Pick<CandidatePreservationRemote, "upsertDraftPullRequest"> = systemPreservationRemote
 ): boolean {
   const receipt = loadReceipt(db, input.requestId);
@@ -1102,9 +1107,14 @@ export function refreshPreservedPullRequestBody(
     baseRevision: receipt.prBase?.diffBase ?? receipt.baseRevision,
     commitSha: input.headSha
   });
+  const session = input.sessionId ? getSession(db, input.sessionId) : null;
+  const completion = input.workspace && session && session.repository_path === receipt.repositoryPath && session.worktree_path === receipt.candidateWorktreePath
+    && session.branch === receipt.branch && session.packet_sha256 === receipt.packetSha256
+    ? completionEvidenceForReview(db, input.workspace, session, input.headSha)
+    : { status: "unavailable" as const, reason: "no exact Session completion execution evidence binding" };
   const body = withValidationEvidence(rendered.body, input.plan,
     { validation: { passed: true, evidenceRef: receipt.validationEvidenceRef, candidateFingerprint: receipt.candidateFingerprint } },
-    receipt.repositoryPath, receipt.commitSha);
+    receipt.repositoryPath, receipt.commitSha, completion);
   remote.upsertDraftPullRequest({
     repositoryPath: receipt.repositoryPath,
     branch: receipt.branch,
@@ -1113,6 +1123,13 @@ export function refreshPreservedPullRequestBody(
     body,
     existing: { number: receipt.pullRequestNumber, url: receipt.pullRequestUrl }
   });
+  // Extend the existing JSON receipt only; no schema migration or new ledger.
+  if (session && completion.status === "verified") {
+    const exit = getSessionExitReceipt(db, session.id);
+    const reference = exit?.evidence_json ? JSON.parse(exit.evidence_json).completionValidation as CompletionEvidenceReference | undefined : undefined;
+    if (reference && !receipt.completionValidation) db.prepare(`UPDATE candidate_preservation_receipts SET receipt_json = ?
+      WHERE request_id = ? AND receipt_json = ?`).run(JSON.stringify({ ...receipt, completionValidation: reference }), receipt.requestId, JSON.stringify(receipt));
+  }
   return true;
 }
 

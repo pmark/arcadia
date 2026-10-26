@@ -1179,7 +1179,7 @@ export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_set
 function publishSettledCandidateHead(
   db: Database.Database,
   input: {
-    session: AgentSession; repoRoot: string; preservation: PreservationStep; operatorLaunch: boolean;
+    session: AgentSession; repoRoot: string; workspace: string; preservation: PreservationStep; operatorLaunch: boolean;
     receipt: { outcome: string; reason: string; evidence_json: string | null };
     remote: Pick<CandidatePreservationRemote, "push" | "upsertDraftPullRequest">; now: Date; log: (message: string) => void;
   }
@@ -1227,7 +1227,7 @@ function publishSettledCandidateHead(
     // The PR body's Operator QA plan was rendered at the preserved commit; re-render it at this head.
     if (preservation.qaPlan) {
       try {
-        if (refreshPreservedPullRequestBody(db, { requestId: `worker-tick-preserve-${session.id}`, plan: preservation.qaPlan, headSha: head }, input.remote)) {
+        if (refreshPreservedPullRequestBody(db, { requestId: `worker-tick-preserve-${session.id}`, plan: preservation.qaPlan, headSha: head, workspace: input.workspace, sessionId: session.id }, input.remote)) {
           log(`Re-rendered the pull-request Operator QA plan of ${session.branch} at the settled head ${head.slice(0, 12)}.`);
         }
       } catch (error) {
@@ -2084,7 +2084,7 @@ export function runManagedProductionTick(
         // Issue #1518: a completion the worker settled after preservation
         // pushed the candidate must reach the pushed branch (and its PR) now,
         // and a settlement that never reached the candidate is escalated.
-        publishSettledCandidateHead(db, { session: lease, repoRoot, preservation, operatorLaunch: Boolean(operatorAuthorization),
+        publishSettledCandidateHead(db, { session: lease, repoRoot, workspace, preservation, operatorLaunch: Boolean(operatorAuthorization),
           receipt: result.receipt, remote: options.handoff?.preserve?.remote ?? systemPreservationRemote, now, log });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the

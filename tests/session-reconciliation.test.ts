@@ -20,8 +20,9 @@ import { settleAgentAsk } from "../src/ask/settlement.js";
 import { getActiveActionClaim, getActiveWorktreeReservation, getSession, prepareSession, resolveProjectTransition, type TmuxAdapter } from "../src/sessions/index.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
-import { getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { completionEvidenceForReview, getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
+import { ensureCandidatePreservationTable, refreshPreservedPullRequestBody, type CandidatePreservationReceipt } from "../src/sessions/candidatePreservation.js";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -602,8 +603,8 @@ describe("reconcileSessionExit automatic production completion", () => {
     const confined = process.platform === "darwin" && process.env.ARCADIA_PRESERVATION_HOST_TEST === "1";
     const completionValidation = { dependencyRoot: process.cwd(), ...(confined ? {} : { unconfinedForTests: true }) };
 
-    function namedTestCandidate(testBody: string | ((workspace: string) => string)) {
-      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+    function namedTestCandidate(testBody: string | ((workspace: string) => string), nextAction = false) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion], nextAction });
       const tmux = new FakeTmux();
       const launched = launchCompletionFixture(fixture, tmux);
       const worktreePath = launched.data.session.worktree_path;
@@ -638,7 +639,7 @@ describe("reconcileSessionExit automatic production completion", () => {
     });
 
     it("accepts the drafted completion once its named test passes", () => {
-      const { fixture, sessionId } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(2); });`);
+      const { fixture, sessionId, worktreePath } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(2); });`, true);
 
       const result = withDatabase(fixture.workspace, (db) =>
         reconcileSessionExit({ db, sessionId, requestId: "reconcile-named-test-passes", repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
@@ -646,6 +647,41 @@ describe("reconcileSessionExit automatic production completion", () => {
 
       expect(result.receipt.outcome).toBe("accepted_completion");
       expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+      expect(JSON.parse(result.receipt.evidence_json!).completionValidation).toMatchObject({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+      const head = git(worktreePath, ["rev-parse", "HEAD"]);
+      const review = () => withReadOnlyDatabase(fixture.workspace, db => completionEvidenceForReview(db, fixture.workspace, getSession(db, sessionId)!, git(worktreePath, ["rev-parse", "HEAD"]).trim()));
+      expect(review()).toMatchObject({ status: "verified", record: { outcome: "passed", reports: [{ file: "tests/contract.test.ts", tests: [{ name: "asserts the contract", status: "passed" }] }] } });
+      const preservedTree = review();
+      if (preservedTree.status !== "verified") throw new Error("retained record missing");
+      let publishedBody = "";
+      withDatabase(fixture.workspace, db => {
+        const session = getSession(db, sessionId)!;
+        const preservedCommit = git(worktreePath, ["rev-parse", "HEAD^"]).trim();
+        const receipt: CandidatePreservationReceipt = { id: "fixture_preservation", requestId: "fixture_preservation", repositoryPath: session.repository_path,
+          candidateWorktreePath: session.worktree_path, branch: session.branch, baseBranch: "main", baseRevision: session.base_revision,
+          actionId: session.action_id, packetSha256: session.packet_sha256, policyEpoch: 1, policyRevision: 1,
+          candidateFingerprint: preservedTree.record.tree, validationEvidenceRef: "/missing/legacy-validation.json", commitSha: preservedCommit,
+          preservationState: "IN PR", pushedRemote: "origin", pullRequestNumber: 1, pullRequestUrl: "https://github.com/fixture/fixture/pull/1",
+          retryAction: null, createdAt: session.created_at, replayed: false };
+        ensureCandidatePreservationTable(db);
+        db.prepare(`INSERT INTO candidate_preservation_receipts
+          (id,request_id,repository_path,candidate_worktree_path,branch,base_branch,base_revision,action_id,packet_sha256,policy_epoch,policy_revision,candidate_fingerprint,commit_sha,preservation_state,receipt_json,created_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(receipt.id, receipt.requestId, receipt.repositoryPath, receipt.candidateWorktreePath, receipt.branch,
+            receipt.baseBranch, receipt.baseRevision, receipt.actionId, receipt.packetSha256, 1, 1, receipt.candidateFingerprint, receipt.commitSha, receipt.preservationState, JSON.stringify(receipt), receipt.createdAt);
+        expect(refreshPreservedPullRequestBody(db, { requestId: receipt.requestId, headSha: head.trim(), sessionId, workspace: fixture.workspace,
+          plan: { kind: "action-acceptance", actionKey: "test-project/define-contract", actionTitle: "Define contract", acceptanceCriteria: [criterion], validationCommands: ["true"] } },
+          { upsertDraftPullRequest: input => { publishedBody = input.body; return { number: 1, url: receipt.pullRequestUrl! }; } })).toBe(true);
+        const stored = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?").get(receipt.requestId) as { receipt_json: string };
+        expect(JSON.parse(stored.receipt_json).completionValidation).toEqual(JSON.parse(result.receipt.evidence_json!).completionValidation);
+      });
+      expect(publishedBody).toContain("Completion execution evidence");
+      expect(publishedBody).toContain('"status": "verified"');
+      expect(publishedBody).toContain("asserts the contract");
+      // A later code commit remains an ancestor but is no longer the validated tree.
+      writeFileSync(path.join(worktreePath, "contract.md"), "Changed after validation.\n");
+      git(worktreePath, ["commit", "-qam", "post-validation change"]);
+      expect(review().status).toBe("unavailable");
+      expect(head).not.toBe(git(worktreePath, ["rev-parse", "HEAD"]));
     });
 
     // Candidate test code must not read the workspace (its database) or the
@@ -1403,7 +1439,7 @@ function launchCompletionFixture(fixture: ReturnType<typeof preparedFixture>, tm
   return { data: { session } };
 }
 
-function preparedFixture(options: { responsibility?: string; acceptanceCriteria?: string[] } = {}) {
+function preparedFixture(options: { responsibility?: string; acceptanceCriteria?: string[]; nextAction?: boolean } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-reconcile-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -1415,6 +1451,20 @@ function preparedFixture(options: { responsibility?: string; acceptanceCriteria?
   if (options.acceptanceCriteria) {
     fixturePlan = fixturePlan.replace("      - The contract exists.", options.acceptanceCriteria.map((criterion) => `      - ${criterion}`).join("\n"));
   }
+  if (options.nextAction) fixturePlan = fixturePlan.replace("\n---\n", `
+  - id: next-contract
+    title: Define the next contract
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Define the next contract.
+    expected_artifact: next.md
+    acceptance_criteria:
+      - The next contract exists.
+    decisions: ["0001"]
+---
+`);
   writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), fixturePlan);
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);

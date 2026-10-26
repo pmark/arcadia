@@ -1,0 +1,48 @@
+# Completion evidence source repair — Issue1785
+
+Sole writer: Ellis / Cody Atlas, supervised by Rowan. Candidate `codex/retain-completion-validation-evidence`, starting base `ccecab9e02641c0cfce5ec2d342b1824bded9fb5`. This continues the preserved predecessor candidate after its capacity failure. No governed Action exists or is claimed. The active Action is unrelated native-mail test work and was read only to rule out overlap.
+
+## Authority and limits
+
+Operator goal quoted in the assignment: “I want production to start as soon as possible”; “There will be no stopping until we reach the goal”. Bounded source preparation under operator-directed-work; Issue1785 is intake, not execution authority. Reviewer evidence behavior is authority-adjacent: PR handoff only. No self-merge, adoption, live workspace/worker/queue operation, recovery, provider call, held-candidate re-review, reset or START. Production remains Off per coordinator evidence; this candidate does not provide installed/runtime proof. Existing consumed allowances and held candidates are preserved.
+
+## Source proof
+
+- Completion execution retains versioned, size-bounded sanitized argv/results/output/named reports before scratch cleanup, in existing Session preservation artifacts.
+- Binding uses Session, packet, Action, base, repository, worktree, tree and content hash; read paths run no validation and perform no schema migration.
+- Exit receipt carries reference/hash through preservation receipt and body to immutable PR reviewer input and fingerprint. Independent verdict binding includes retained reference/hash or explicit legacy-unavailable marker.
+- Exact tree is required. Only an immediate canonical settlement supported by the existing governed-record classifier may preserve the parent tree's execution proof. Final-Plan completion transformations unsupported by that classifier stay unavailable. A later code edit cannot inherit proof.
+- Failure/timeout/custody remain refusals; write failure retains scratch and refuses completion. Legacy records remain readable, with missing proof explicitly unavailable.
+- Continuation correction: redact at retention time, including refusal reason, so secrets cannot remain on disk merely because read output is sanitized.
+
+## Validation receipts
+
+Raw local receipts are `/tmp/ellis-1785-*`; these are host scratch receipts, not installed proof. Initial five-file run exited1: 121 passed, 1 failed, 1 skipped. Its only failure was the newly added write-time redaction regression against the module loaded before the edit; the subsequent stable two-file run exited0 with35 passed. Failed receipt retained at `/tmp/ellis-1785-final-tests.txt`; stable evidence at `/tmp/ellis-1785-final-retention-tests.txt`. Final stable five-file run exited0: 123 passed, 1 platform skip, 5 files passed, 102.21s; raw receipt `/tmp/ellis-1785-stable-tests.txt`.
+
+`pnpm lint` exit0; final delta eslint exit0; `pnpm exec tsc --noEmit` exit0 before and after correction; `pnpm check:session-ledger` exit0 after fixing pre-existing oversized predecessor notes and the continuation reporting label. Initial ledger failure preserved at `/tmp/ellis-1785-ledger.txt`; schema accepts `driver` as reporting label although assigned execution role is implementer. No checks weakened.
+
+The predecessor's actual model/effort/resources remain unknown in its own row. Continuation native runtime is gpt-6.1-sol/medium, registry e2_standard, heavy identity. Tokens/time are unmeasured. Generic independent current-head review is requested through Rowan at PR creation; this is not reviewer admission or governed attempt proof.
+
+## Retrieved guidance
+
+Full generated role brief: `/tmp/rowan-1785-resume-brief.json`. Targeted current-Action block read in the active Plan; targeted Notes sections: preservation, test/lint dependencies, focused vitest and offline rehearsal. Retained lesson search for completion validation evidence returned0. Work monitor completed read-only; unrelated copies were not modified. Arcadia repository sections Orientation, Semantics, Model Selection, Operator Guide, PR QA Plan and Working-Copy Safety retrieved; identity and review procedures retrieved for delivery. Session role guidance retrieved for ledger/handoff. Primary reflog baseline ends at `ea020b672` and is held for review comparison. Exact source plan was read from primary read-only `artifacts/generated/session-closeouts/20261023-rowan-offline/READINESS-HANDOFF.md`, headings08:04/07:32.
+
+Instruction file sizes at retrieval (bytes; targeted sections above, not a claim every byte was read):
+
+- `AGENTS.md`: 12236
+- `CONSTITUTION.md`: 3320
+- `PROJECT.md`: 31686
+- `.arcadia/AGENT_CONTEXT_POLICY.md`: 539
+- `.arcadia/repo-context.md`: 703
+- `.arcadia/context-policy.json`: 870
+- `docs/agent-guidance/index.json`: 11757
+- `.agents/skills/arcadia-role/SKILL.md`: 11841
+- `.agents/skills/arcadia-guardrail/SKILL.md`: 5565
+- `docs/agent-guidance/operator-directed-work.md`: 4494
+- `docs/agent-guidance/learning.md`: 2458
+- `docs/agent-guidance/git-identity.md`: 5248
+- `docs/working-copy-safety.md`: 16202
+- `docs/agent-guidance/pull-requests.md`: 21758
+- `docs/agent-guidance/arcadia-repository.md`: 30312
+- `docs/agent-guidance/continuation.md`: 7462
+- `docs/agent-guidance/session-roles-and-briefs.md`: 15378
