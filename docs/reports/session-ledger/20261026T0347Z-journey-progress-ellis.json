@@ -7,7 +7,7 @@
   "effective_effort": null,
   "effort_source": "unavailable",
   "action_id": "operator-directed-journey-progress-20261025",
-  "pr": null,
+  "pr": 1777,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
@@ -20,5 +20,5 @@
   "frictions": [],
   "outcome": "stopped",
   "notes": "Direct operator request; no governed Action. See Journey daily evidence handback; model/effort and resources unmeasured.",
-  "stop_reason": "Candidate ready; independent review and CI pending at evidence capture."
+  "stop_reason": "Draft PR preserved; independent current-head review requested from Rowan; final CI pending at evidence capture."
 }

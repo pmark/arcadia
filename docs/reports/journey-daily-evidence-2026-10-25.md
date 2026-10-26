@@ -30,7 +30,25 @@ previous window, absent optional stores, configured/runtime distinction, labels 
 `mise exec -- pnpm exec tsc --noEmit`: exit 0.
 `mise exec -- pnpm build:artifacts`: exit 0.
 `mise exec -- pnpm lint`: exit 0. Touched-file ESLint: exit 0. Session ledger check: exit 0.
-Fast-rehearsal and final dashboard validation recorded in the PR validation summary.
+`mise exec -- node scripts/fast-rehearsal.mjs`: exit 0; 26 files, 102 passing and one expected fail.
+Combined report: `/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-sSE5fT/report.json`.
+The report labels two fixture session-probe-wall lifecycle messages unexpected despite passing assertions;
+these are retained as a reporting limitation, not silently reported as zero errors.
+`mise exec -- pnpm dashboard:build`: exit 0 on clean candidate output.
+Standalone dashboard tsc retains eight unrelated test typing diagnostics after exports are built;
+the production build's type validation passes, with no Journey diagnostics.
+
+PR: https://github.com/pmark/arcadia/pull/1777. Independent read-only exact-head review was requested
+from Rowan at creation; the PR remains draft until that review and current-head CI are complete.
+No review verdict is claimed here.
+
+Built local preview browser QA: 1-day and 30-day picker changes updated denominators successfully.
+At 390px viewport, document width was 390px; at 1280px, document width was 1280px. Screenshots:
+[mobile](journey-daily-evidence-2026-10-25/mobile.png), [desktop](journey-daily-evidence-2026-10-25/desktop.png).
+Mobile screenshot visually inspected. These are local candidate QA, not shared service installation.
+
+PR-open FYI delivered: `ping_10c484358221462da1`, Discord message `1564124249130541117`,
+`2026-10-26T03:51:21.788Z`, verified through configured workspace read-only database APIs.
 
 ## Honest limits and revival triggers
 
@@ -55,6 +73,10 @@ not something a read-only report can reconstruct. No new ledger or capture syste
   test typing errors outside Journey. No Journey diagnostic; build/runtime verification is in PR.
 - First local preview curl timed out at 55s during cold compilation; server eventually returned 200.
   Do not call shared service updated or claim a verified screenshot from that request.
+- Running my candidate Next dev and build against the same generated .next directory caused a
+  PageNotFound collection failure and invalid browser QA. Stopped only my port-3049 preview,
+  moved its generated output to `/tmp/journey-next-mixed-dev-build`, rebuilt successfully,
+  then reran picker/viewport checks against the built local candidate. No shared service changed.
 
 ## Loaded guidance
 
