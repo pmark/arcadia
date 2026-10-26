@@ -333,10 +333,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1419"]
   - id: rebuild-cover-mail-ack-receipt-kind-collision
     title: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
+    next_action: Completed via Agent Ask auto-settle-arcadia-rebuild-cover-mail-ack-receipt-kind-collision-c70dc3248115; no further action.
     expected_artifact: Evidence satisfying Agent Ask rebuild-cover-mail-ack-receipt-kind-collision
     clarification: clarified
     confidence: high
@@ -353,7 +353,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: rebuild-cover-mail-ack-receipt-kind-collision
+current_action: bound-guidance-test-teardown-retries
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
