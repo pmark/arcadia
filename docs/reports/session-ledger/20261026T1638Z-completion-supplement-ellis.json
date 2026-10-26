@@ -1,0 +1,63 @@
+{
+  "session_id": "completion-supplement-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "e2_standard",
+  "configured_effort": "e2_standard",
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1793",
+  "pr": 1794,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "R1-01-final-admission-and-PASS-reuse",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "R1-02-dirty-or-unbound-executor",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "1794-R2-01-loaded-executor-identity",
+      "caught_by": "independent-R2"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "generic-artifact-forgery-and-mutation-failing-first",
+      "cost_min": null,
+      "fix_ref": "tests/completion-validation-supplement.test.ts"
+    },
+    {
+      "id": "fixture-build-wording-and-existing-Artifact-ID-format",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-supplement-integration-first.txt"
+    },
+    {
+      "id": "R1-two-failing-first-regressions",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1794#issuecomment-6422155225"
+    },
+    {
+      "id": "R2-loaded-source-drift-failing-first",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-1794-r2-loaded-failing-first.txt"
+    },
+    {
+      "id": "R2-load-digest-dashboard-bundle-unknown-filename",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-1794-r3-dashboard-ci-log.txt"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Issue1793 source only; no Action. Actual native6.1-sol/medium. Disposable local checks, simulated reviewers; no live effects. Resource totals unknown. No merge/adoption/START authority.",
+  "stop_reason": "R1 and R2 NO-GO preserved; loaded-source identity repair awaits independent ordinary R3 and new-head CI. Prior dcdb CI cancelled before E2E tests; no retry. No merge/adoption authority."
+}

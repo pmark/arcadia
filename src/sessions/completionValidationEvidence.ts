@@ -110,3 +110,45 @@ export function renderCompletionEvidence(view: CompletionEvidenceView): string {
   const displayed = text.length <= 20000 ? text : JSON.stringify(view.status === "verified" ? { status: view.status, reference: view.reference, sha256: view.sha256, tree: view.record.tree, outcome: view.record.outcome, detail: "Detailed evidence exceeds publication bound; retained host record remains available." } : view);
   return "### Completion execution evidence\n\n```json\n" + displayed.replaceAll("`", "'") + "\n```";
 }
+
+export interface CompletionSupplementPin { workspace: string; artifactId: string; sha256: string }
+export interface CompletionSupplementBinding extends CompletionEvidenceBinding {
+  inputRevision: string; head: string; tree: string; preservationSha256: string; commandsSha256: string;
+}
+export interface CompletionSupplementEnvelope {
+  schema: "arcadia-completion-validation-supplement-v1";
+  requestId: string;
+  binding: CompletionSupplementBinding;
+  operator: import("../operatorActions/operatorExecution.js").CompletionSupplementOperator;
+  validation: CompletionEvidenceReference;
+  before: string;
+  after: string;
+}
+/** Stable operation directory: a pre-existing intent is never another execution allowance. */
+export function completionSupplementDirectory(workspace: string, sessionId: string, requestId: string): string {
+  if (!safeId(sessionId) || !safeId(requestId)) throw new Error("Invalid supplement operation identity.");
+  const root = realpathSync(workspace);
+  const directory = path.join(root, "artifacts/preservation", sessionId, `supplement-${requestId}`);
+  safeBelow(root, directory);
+  return directory;
+}
+export function writeSupplementFile(workspace: string, file: string, value: unknown): CompletionEvidenceReference {
+  safeBelow(realpathSync(workspace), file);
+  const text = JSON.stringify(value);
+  if (Buffer.byteLength(text) > 65536) throw new Error("Supplement receipt exceeds its bound.");
+  const fd = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try { writeFileSync(fd, text); fsyncSync(fd); } finally { closeSync(fd); }
+  const directory = openSync(path.dirname(file), constants.O_RDONLY);
+  try { fsyncSync(directory); } finally { closeSync(directory); }
+  return { ref: file, sha256: hash(text) };
+}
+/** A pass label is insufficient without successful terminal executions and every named report. */
+export function completionExecutionPassed(view: CompletionEvidenceView, commands: readonly string[], namedTests: readonly string[]): boolean {
+  if (view.status !== "verified") return false;
+  const r = view.record;
+  return r.outcome === "passed" && r.reason === null && r.executions.length >= commands.length + 1 &&
+    JSON.stringify(r.commands) === JSON.stringify(commands) && JSON.stringify(r.namedTests) === JSON.stringify(namedTests) && namedTests.length > 0 &&
+    r.executions.every(e => e.exitStatus === 0 && e.signal === null && !e.timedOut && e.terminalProven && e.error === null) &&
+    namedTests.every(file => r.reports.some(report => report.file === file && report.tests.some(test => test.status === "passed") &&
+      report.tests.every(test => ["passed", "skipped", "pending", "todo", "disabled"].includes(test.status))));
+}

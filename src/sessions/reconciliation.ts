@@ -1,4 +1,5 @@
-import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
+import { writeTransaction } from "../db/connection.js";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -15,14 +16,18 @@ import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getSession, hasWorktreeReservationTable, type AgentSession } from "./index.js";
-import { settleDevelopmentAttemptForExit } from "./roleLineage.js";
+import { effectiveDevelopmentAttempt, requirementIdentity, settleDevelopmentAttemptForExit } from "./roleLineage.js";
 import { getSessionRepair } from "./reviewRepair.js";
-import { getProjectMetadata } from "../db/repositories.js";
+import { createArtifactRecord, getArtifact, getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
-import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
+import { criteriaValidationCommands, namedTestFiles, validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
 import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
-import { readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
+import { completionExecutionPassed, completionSupplementDirectory, writeSupplementFile, type CompletionSupplementEnvelope, type CompletionSupplementBinding, type CompletionSupplementPin, readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
 import { classifyPatchApplicability } from "../qa/patchApplicability.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
+import { packetSha256 } from "../execution/planningAuthorization.js";
+import { COMPLETION_SUPPLEMENT_ARTIFACT, verifyCompletionSupplementExecutor, completionSupplementOperator, readSupplementJson, registerCompletionSupplementArtifact, supplementDigest, type CompletionSupplementOperator } from "../operatorActions/operatorExecution.js";
+import { completionSupplementLauncher, validateOperatorScriptContract } from "../operatorActions/libraryContract.js";
 import { parseDoc } from "../docs/parse.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
@@ -961,4 +966,150 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   write();
 
   return { receipt: row, nextMove, created: true };
+}
+
+const supplementTitle = (session: AgentSession) => `Completion validation supplement: ${session.id}`;
+/** Exact Session scope, never newest Artifact selection. A registered supplement is
+ * a hold on legacy execution until its explicit ID/hash has been verified. */
+export function completionSupplementArtifacts(db: Database.Database, session: AgentSession): string[] {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifacts'").get()) return [];
+  return (db.prepare("SELECT id FROM artifacts WHERE artifact_type = ? AND title = ? AND project_id = ? AND work_item_id = ?")
+    .all(COMPLETION_SUPPLEMENT_ARTIFACT, supplementTitle(session), session.project_id, session.work_item_id) as { id: string }[]).map(row => row.id);
+}
+export function completionSupplementState(db: Database.Database, workspace: string, session: AgentSession): {
+  binding: CompletionSupplementBinding; snapshot: string; commands: string[]; criteria: string[]; namedTests: string[];
+} {
+  if (path.resolve(db.name) !== getWorkspacePaths(workspace).databaseFile) throw new Error("Supplement workspace does not own this database.");
+  const plan = discoverDocs(session.repository_path).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
+  const action = plan?.actions.find(entry => entry.id === session.action_id);
+  if (!plan || !action) throw new Error("Supplement Action input is unavailable.");
+  const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
+  const criteria = actionCriteriaAtBase(session, plan.relativePath);
+  if (!criteria || !namedTestFiles(criteria).length) throw new Error("Supplement requires the original named-test criteria.");
+  const metadataCommands = decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands);
+  const commands = [...new Set([...metadataCommands, ...criteriaValidationCommands(criteria)])];
+  const row = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+    .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
+  if (!row) throw new Error("Supplement requires the original worker preservation receipt.");
+  const preserved = JSON.parse(row.receipt_json) as { id?: string; commitSha?: string; actionId?: string; packetSha256?: string; validationEvidenceRef?: string; candidateFingerprint?: string };
+  const exit = getSessionExitReceipt(db, session.id);
+  if (!preserved.id || !preserved.commitSha || preserved.actionId !== session.action_id || preserved.packetSha256 !== session.packet_sha256 ||
+      !preserved.validationEvidenceRef || !preserved.candidateFingerprint || exit?.outcome !== "accepted_completion" || exit.superseded_by_session_id ||
+      !["completed", "failed", "needs_input"].includes(session.status) || packetSha256(path.resolve(workspace, session.packet_path)) !== session.packet_sha256) {
+    throw new Error("Supplement requires unchanged terminal Session/packet/preservation/exit evidence.");
+  }
+  const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+  const branch = git(session.repository_path, ["rev-parse", `refs/heads/${session.branch}`]).trim();
+  const status = git(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
+  if (status.trim() || branch !== head) throw new Error("Supplement candidate must be clean and exactly at its branch head.");
+  const developer = effectiveDevelopmentAttempt(db, requirement.requirementId, requirement.inputRevision);
+  if (developer?.status !== "passed" || developer.target_head !== head) throw new Error("Supplement candidate differs from its passed development head.");
+  git(session.worktree_path, ["merge-base", "--is-ancestor", preserved.commitSha, head]);
+  const live = db.prepare("SELECT id FROM agent_sessions WHERE worktree_path = ? AND status IN ('prepared', 'running') LIMIT 1").get(session.worktree_path);
+  if (live) throw new Error("A live Session still owns the supplement candidate.");
+  const tree = git(session.worktree_path, ["rev-parse", `${head}^{tree}`]).trim();
+  const binding: CompletionSupplementBinding = { ...completionEvidenceBinding(session), inputRevision: requirement.inputRevision,
+    head, tree, preservationSha256: supplementDigest(JSON.parse(row.receipt_json)), commandsSha256: supplementDigest(commands) };
+  return { binding, commands, criteria, namedTests: namedTestFiles(criteria), snapshot: supplementDigest({ binding, exit, preservation: row.receipt_json, criteria, status }) };
+}
+function assertSupplementContract(state: ReturnType<typeof completionSupplementState>, operator: CompletionSupplementOperator): void {
+  const p = operator.contract;
+  const b = state.binding;
+  for (const key of ["sessionId", "packetSha256", "inputRevision", "head", "tree", "preservationSha256", "commandsSha256", "repository"] as const) {
+    if (p[key] !== b[key]) throw new Error(`Supplement operator contract changed ${key}.`);
+  }
+}
+export type VerifiedCompletionSupplement = { pin: CompletionSupplementPin; envelope: CompletionSupplementEnvelope; view: CompletionEvidenceView; fingerprint: string };
+/** One resolver supplies both PR input and lineage. No validation, migration,
+ * allocation, latest selection, or original-record update occurs here. */
+export function resolveCompletionSupplement(db: Database.Database, session: AgentSession, pin: CompletionSupplementPin): VerifiedCompletionSupplement {
+  const ids = completionSupplementArtifacts(db, session);
+  if (ids.length !== 1 || ids[0] !== pin.artifactId || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error("Missing, foreign or ambiguous explicit supplement Artifact pin.");
+  const artifact = getArtifact(db, pin.artifactId);
+  if (!artifact || artifact.status !== "ready" || artifact.created_at !== artifact.updated_at || !artifact.path) throw new Error("Supplement Artifact is mutable or incomplete.");
+  const state = completionSupplementState(db, pin.workspace, session);
+  const raw = readSupplementJson(artifact.path, pin.workspace);
+  if (raw.sha256 !== pin.sha256) throw new Error("Supplement Artifact hash mismatch.");
+  const envelope = raw.value as CompletionSupplementEnvelope;
+  if (Object.keys(envelope).sort().join(",") !== "after,before,binding,operator,requestId,schema,validation" || envelope.schema !== "arcadia-completion-validation-supplement-v1" || !envelope.operator ||
+      supplementDigest(envelope.binding) !== supplementDigest(state.binding) || envelope.before !== state.snapshot || envelope.after !== state.snapshot) {
+    throw new Error("Supplement schema or current clean candidate binding changed.");
+  }
+  const directory = completionSupplementDirectory(pin.workspace, session.id, envelope.requestId);
+  if (artifact.path !== path.join(directory, "envelope.json")) throw new Error("Supplement is not in its canonical operation directory.");
+  const registration = readSupplementJson(path.join(directory, "registration.json"), pin.workspace).value as Record<string, unknown>;
+  if (registration.schema !== "arcadia-completion-supplement-registration-v1" || registration.artifactId !== artifact.id || registration.sha256 !== pin.sha256 || registration.requestId !== envelope.requestId) {
+    throw new Error("Supplement registration is partial or not its canonical producer receipt.");
+  }
+  const op = envelope.operator;
+  verifyCompletionSupplementExecutor(op.executor, session.repository_path);
+  assertSupplementContract(state, op);
+  const library = path.join(op.contract.repository, "artifacts/generated/operator-scripts");
+  const runDirectory = path.join(library, "runs/operator", op.run.scriptId, op.run.runId);
+  if (op.contract.phase !== "produce" || op.contract.requestId !== envelope.requestId || op.contract.workspace !== pin.workspace ||
+      op.descriptor.ref !== path.join(runDirectory, "descriptor.json") || op.run.ref !== path.join(runDirectory, "run.json")) throw new Error("Supplement producer provenance is foreign.");
+  const descriptor = readSupplementJson(op.descriptor.ref, library);
+  if (descriptor.sha256 !== op.descriptor.sha256) throw new Error("Supplement producer descriptor was altered.");
+  const typed = validateOperatorScriptContract(descriptor.value, op.run.scriptId, completionSupplementLauncher(op.run.scriptId));
+  if (supplementDigest(typed.completionSupplement) !== supplementDigest(op.contract)) throw new Error("Supplement producer contract is not canonical.");
+  const run = readSupplementJson(op.run.ref, library).value as Record<string, unknown>;
+  if (run.schema !== "arcadia-operator-script-run-v1" || run.status !== "succeeded" || run.runId !== op.run.runId || run.scriptId !== op.run.scriptId ||
+      run.pid !== op.run.pid || run.startedAt !== op.run.startedAt || run.exitCode !== 0 || typeof run.finishedAt !== "string") throw new Error("Supplement has no successful canonical operator run receipt.");
+  const view = readCompletionEvidence(pin.workspace, envelope.validation, completionEvidenceBinding(session), [state.binding.tree]);
+  if (!completionExecutionPassed(view, state.commands, state.namedTests)) throw new Error("Supplement does not prove actual successful terminal checks and named reports.");
+  return { pin, envelope, view, fingerprint: supplementDigest({ artifactId: pin.artifactId, envelopeSha256: pin.sha256, validation: envelope.validation }) };
+}
+/** Called only by the fixed host launcher. An existing intent returns its exact
+ * registration, or an uncertain-effect refusal; it never repeats validation. */
+export function produceCompletionSupplement(db: Database.Database, operator: CompletionSupplementOperator): CompletionSupplementPin {
+  const current = completionSupplementOperator(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR ?? "");
+  if (supplementDigest(current) !== supplementDigest(operator)) throw new Error("Supplement producer requires its actual current operator run.");
+  const p = operator.contract;
+  if (p.phase !== "produce") throw new Error("This operator action is not a supplemental producer.");
+  const session = getSession(db, p.sessionId);
+  if (!session) throw new Error("Supplement Session is missing.");
+  const state = completionSupplementState(db, p.workspace, session);
+  assertSupplementContract(state, operator);
+  const directory = completionSupplementDirectory(p.workspace, session.id, p.requestId);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const intent = path.join(directory, "intent.json");
+  const identity = { schema: "arcadia-completion-supplement-intent-v1", contract: p };
+  if (existsSync(intent)) {
+    if (supplementDigest(readSupplementJson(intent, p.workspace).value) !== supplementDigest(identity)) throw new Error("Supplement request replay changed its contract.");
+    const registration = readSupplementJson(path.join(directory, "registration.json"), p.workspace).value as { artifactId: string; sha256: string };
+    const pin = { workspace: p.workspace, artifactId: registration.artifactId, sha256: registration.sha256 };
+    resolveCompletionSupplement(db, session, pin);
+    return pin;
+  }
+  if (completionSupplementArtifacts(db, session).length) throw new Error("A supplement already holds this Session; no second operation is authorized.");
+  // A Session-wide exclusive claim prevents worker/card or different-request interleaving.
+  // An incomplete claim is uncertain, never an allowance to execute again.
+  writeSupplementFile(p.workspace, path.join(path.dirname(directory), "supplement-claim.json"), identity);
+  writeSupplementFile(p.workspace, intent, identity);
+  // Register an immutable, initially incomplete Artifact before execution. Its
+  // metadata is never pass proof; missing terminal files remain a central hold.
+  const input = { projectId: session.project_id, workItemId: session.work_item_id, title: supplementTitle(session),
+    artifactType: COMPLETION_SUPPLEMENT_ARTIFACT, status: "ready" as const, path: path.join(directory, "envelope.json") };
+  const artifact = writeTransaction(db, () => {
+    const requirement = `${session.project_slug}/${session.plan_slug}/${session.action_id}`;
+    if (db.prepare("SELECT 1 FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND status IN ('pending', 'running') LIMIT 1").get(requirement, state.binding.inputRevision)) {
+      throw new Error("An active role attempt owns the candidate; no supplemental validation may overlap it.");
+    }
+    return registerCompletionSupplementArtifact(operator, input, () => createArtifactRecord(db, input));
+  });
+  let validation: CompletionEvidenceReference | undefined;
+  const result = validateCompletionCandidate({ repository: session.repository_path, worktree: session.worktree_path, base: session.base_revision,
+    workspace: p.workspace, evidenceBinding: completionEvidenceBinding(session), commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands), acceptanceCriteria: state.criteria },
+    { onEvidence: reference => { validation = reference; } });
+  writeSupplementFile(p.workspace, path.join(directory, "execution.json"), { schema: "arcadia-completion-supplement-execution-v1", result, validation: validation ?? null });
+  if (result.status !== "passed" || !validation) throw new Error("Supplement validation did not pass with retained execution evidence; request remains consumed.");
+  const after = completionSupplementState(db, p.workspace, getSession(db, session.id)!);
+  if (after.snapshot !== state.snapshot) throw new Error("Supplement candidate changed during execution; request remains consumed.");
+  const view = readCompletionEvidence(p.workspace, validation, completionEvidenceBinding(session), [state.binding.tree]);
+  if (!completionExecutionPassed(view, state.commands, state.namedTests)) throw new Error("Supplement terminal evidence is incomplete.");
+  const envelope: CompletionSupplementEnvelope = { schema: "arcadia-completion-validation-supplement-v1", requestId: p.requestId,
+    binding: state.binding, operator, validation, before: state.snapshot, after: after.snapshot };
+  const sealed = writeSupplementFile(p.workspace, path.join(directory, "envelope.json"), envelope);
+  writeSupplementFile(p.workspace, path.join(directory, "registration.json"), { schema: "arcadia-completion-supplement-registration-v1", requestId: p.requestId, artifactId: artifact.id, sha256: sealed.sha256 });
+  return { workspace: p.workspace, artifactId: artifact.id, sha256: sealed.sha256 };
 }
