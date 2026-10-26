@@ -1,0 +1,95 @@
+/* The operator's presence in the workspace header: profile button and menu. See docs/design/operator-presence.md. */
+.workspace-shell .presence { --glass-strong: rgb(16 20 38 / .96); --glass-line: rgb(255 255 255 / .16); --ink-soft: rgb(243 236 230 / .74); position: relative; flex: none; }
+.presence-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.workspace-shell .presence-button { all: unset; cursor: pointer; position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: rgb(255 255 255 / .08); border: 1px solid var(--glass-line); -webkit-tap-highlight-color: transparent; }
+.workspace-shell .presence-button:hover { background: rgb(255 255 255 / .14); }
+.workspace-shell .presence-button:focus-visible { outline: 2px solid #ffd9aa; outline-offset: 3px; }
+.presence-person { width: 22px; height: 22px; fill: none; stroke: #e1e4ed; stroke-width: 1.6; stroke-linecap: round; }
+.presence-dot { position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px; border-radius: 50%; background: var(--hue); box-shadow: 0 0 0 2px rgb(12 18 36); transition: background .4s; }
+.presence-badge { position: absolute; right: -10px; top: -8px; min-width: 22px; height: 22px; padding: 0 3px; border-radius: 11px; display: grid; place-items: center; font-size: 13px; background: var(--glass-strong); border: 1px solid var(--glass-line); }
+.presence-badge img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+
+.presence-menu { position: absolute; right: 0; top: calc(100% + 10px); z-index: 30; width: 340px; max-height: min(640px, calc(100vh - 110px)); overflow: auto; padding: 14px; border-radius: 16px; background: var(--glass-strong); border: 1px solid var(--glass-line); box-shadow: 0 18px 48px rgb(0 0 0 / .4); display: grid; gap: 8px; font-size: 13.5px; }
+@media (max-width: 760px) { .presence-menu { position: fixed; left: 16px; right: 16px; top: 76px; width: auto; } }
+.presence-head { display: grid; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--glass-line); }
+.presence-head b { font-weight: 500; font-size: 15px; }
+.presence-head span { color: var(--ink-soft); font-size: 12.5px; }
+.workspace-shell .presence-k { margin: 6px 0 0; font-size: 10.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); }
+.presence-states, .presence-conditions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.presence-style { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.workspace-shell .presence-menu :is(.presence-states, .presence-conditions, .presence-style) button { all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border-radius: 9px; border: 1px solid transparent; color: inherit; font-size: 13px; }
+.workspace-shell .presence-menu :is(.presence-states, .presence-conditions, .presence-style) button:hover { background: rgb(255 255 255 / .07); }
+.workspace-shell .presence-menu button[aria-pressed="true"] { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .28); }
+.workspace-shell .presence-menu button:focus-visible, .presence-custom .file:focus-within { outline: 2px solid #ffd9aa; outline-offset: 1px; }
+.presence-states .glyph { width: 18px; text-align: center; flex: none; font-size: 14px; }
+.presence-states .glyph img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; }
+/* Quiet keeps emoji muted so the menu reads as a settings list, not a sticker sheet. */
+.presence.style-quiet .presence-states .glyph { filter: grayscale(1); opacity: .7; }
+.presence-conditions .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.workspace-shell .presence-menu .presence-style button { flex-direction: column; align-items: flex-start; gap: 1px; border-color: var(--glass-line); }
+.presence-style button span { font-size: 11.5px; color: var(--ink-soft); }
+.workspace-shell .presence-clear { all: unset; cursor: pointer; justify-self: start; font-size: 12.5px; color: #ffd9aa; padding: 2px 0; }
+.presence-custom { display: grid; gap: 6px; padding: 8px; border-radius: 10px; border: 1px solid var(--glass-line); }
+.presence-custom .row { display: flex; gap: 6px; }
+.presence-custom input[type="text"] { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--glass-line); background: rgb(255 255 255 / .06); color: inherit; }
+.workspace-shell .presence-custom :is(button, .file) { cursor: pointer; padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 13px; border: 1px solid var(--glass-line); background: rgb(255 255 255 / .06); color: inherit; text-align: center; position: relative; }
+.workspace-shell .presence-custom button.solid { background: #f5f2ed; color: #241c28; }
+.workspace-shell .presence-custom p, .workspace-shell .presence-note { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.presence-signal summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
+.presence-signal pre { margin: 6px 0 0; font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-shell .presence-signal p { margin: 4px 0 0; font-size: 12px; color: var(--ink-soft); }
+
+/* Expressive: the moonlet, drawn at 62px and scaled into the 40px button so its face keeps its proportions. */
+.presence-moonlet { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; scale: .6; border-radius: 50%; transform-origin: 50% 70%; animation: var(--idle-anim, presence-drift) var(--idle-dur, 6s) ease-in-out infinite; pointer-events: none; }
+.presence.style-expressive .presence-button { background: none; border-color: transparent; }
+.presence-moonlet .body { position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 70% 70%, rgb(120 80 60 / .28) 0 9%, transparent 10%), radial-gradient(circle at 24% 62%, rgb(120 80 60 / .22) 0 6%, transparent 7%), radial-gradient(circle at 34% 28%, #fff4ea 0%, #f0d6c2 38%, #c99a80 78%, #8f6450 100%);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--hue) 60%, transparent), inset -6px -8px 14px rgb(80 40 30 / .35); transition: box-shadow 1.2s; }
+.presence-moonlet .face { position: absolute; inset: 0; }
+.presence-moonlet .face i { position: absolute; display: block; }
+.presence-moonlet .eye { top: 40%; width: 9%; height: 12%; background: #2a1a16; border-radius: 50%; animation: presence-blink 5.5s infinite; transition: transform .3s, height .3s, top .3s; }
+.presence-moonlet .eye.l { left: 33%; } .presence-moonlet .eye.r { right: 33%; }
+.presence-moonlet .brow { top: 31%; width: 17%; height: 4%; background: #2a1a16; border-radius: 3px; opacity: 0; transition: opacity .25s, transform .3s; }
+.presence-moonlet .brow.l { left: 27%; } .presence-moonlet .brow.r { right: 27%; }
+.presence-moonlet .mouth { left: 50%; top: 59%; width: 18%; height: 9%; transform: translateX(-50%); border: 2.5px solid #2a1a16; border-top: 0; border-radius: 0 0 30px 30px; transition: all .3s; box-sizing: border-box; }
+.presence-moonlet .blush { top: 55%; width: 12%; height: 7%; border-radius: 50%; background: rgb(230 110 110 / .4); }
+.presence-moonlet .blush.l { left: 18%; } .presence-moonlet .blush.r { right: 18%; }
+.presence-moonlet[data-face="side"] .eye { transform: translateX(-60%); }
+.presence-moonlet[data-face="flat"] .mouth { width: 16%; height: 3%; border-width: 0 0 2.5px 0; border-radius: 0; }
+.presence-moonlet[data-face="worried"] .brow, .presence-moonlet[data-face="angry"] .brow { opacity: 1; }
+.presence-moonlet[data-face="worried"] .brow.l { transform: rotate(-16deg); } .presence-moonlet[data-face="worried"] .brow.r { transform: rotate(16deg); }
+.presence-moonlet[data-face="angry"] .brow.l { transform: rotate(20deg); } .presence-moonlet[data-face="angry"] .brow.r { transform: rotate(-20deg); }
+.presence-moonlet:is([data-face="worried"], [data-face="angry"]) .mouth { border: 2.5px solid #2a1a16; border-bottom: 0; border-radius: 30px 30px 0 0; top: 64%; height: 6%; }
+.presence-moonlet[data-face="shock"] .eye { transform: scale(1.45); } .presence-moonlet[data-face="shock"] .mouth { width: 14%; height: 15%; border: 2.5px solid #2a1a16; border-radius: 50%; background: #5a2620; }
+.presence-moonlet[data-face="happy"] .eye { height: 7%; background: transparent; border: 2.5px solid #2a1a16; border-bottom: 0; border-radius: 30px 30px 0 0; animation: none; }
+.presence-moonlet[data-face="happy"] .mouth { width: 26%; height: 14%; background: #5a2620; }
+.presence-moonlet[data-face="sleepy"] .eye { height: 3%; top: 45%; animation: none; }
+.presence-moonlet[data-face="dizzy"] .eye { background: transparent; border: 2.5px solid #2a1a16; }
+.presence-moonlet[data-fx="tilt"] { animation: presence-tilt 2.6s ease-in-out infinite; }
+.presence-moonlet[data-fx="tap"] { animation: presence-tap .5s ease-in-out infinite; }
+.presence-moonlet[data-fx="wobble"] { animation: presence-wobble 1.5s ease-in-out infinite; }
+.presence-moonlet[data-fx="spin"] { animation: presence-spin 3s ease-in-out infinite; }
+.presence-moonlet[data-fx="dash"] { animation: presence-dash .45s ease-in-out infinite; }
+.presence-moonlet[data-fx="shake"] { animation: presence-shake .32s linear infinite; }
+.presence-moonlet[data-fx="panic"] { animation: presence-shake .14s linear infinite; }
+.presence-moonlet[data-fx="hop"] { animation: presence-hop .7s cubic-bezier(.3, 1.6, .5, 1) infinite; }
+.presence-moonlet[data-fx="doze"] { animation: presence-sag 3.4s ease-in-out infinite; }
+@keyframes presence-drift { 50% { transform: translateY(-3px); } }
+@keyframes presence-float { 50% { transform: translateY(-2px) rotate(-2deg); } }
+@keyframes presence-hover { 50% { transform: translateY(-1px); } }
+@keyframes presence-bounce { 0%, 100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-6px) scale(.97, 1.03); } 60% { transform: translateY(0) scale(1.05, .95); } }
+@keyframes presence-sag { 50% { transform: translateY(2px) scale(1.02, .97); } }
+@keyframes presence-tremble { 25% { transform: translate(-1px, 0); } 75% { transform: translate(1px, -1px); } }
+@keyframes presence-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes presence-tilt { 50% { transform: rotate(-12deg); } }
+@keyframes presence-tap { 50% { transform: translateY(-3px); } }
+@keyframes presence-wobble { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes presence-spin { 50% { transform: rotate(-20deg) translateX(-2px); } }
+@keyframes presence-dash { 50% { transform: translateX(-5px) skewX(10deg); } }
+@keyframes presence-shake { 25% { transform: translateX(-3px) rotate(-3deg); } 75% { transform: translateX(3px) rotate(3deg); } }
+@keyframes presence-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .presence-moonlet, .presence-moonlet .eye { animation: none !important; }
+}
