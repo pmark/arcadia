@@ -407,7 +407,7 @@ export function runQaPrReviewCommand(
     const persisted = readPersistedReceipt(workspacePath, canonicalReceiptPath, evidenceFingerprint, profile);
     const stands = persisted && withDatabase(workspacePath, (db) => {
       recoverInFlightVerdict(db, { profile, repositoryPath: project.repositoryPath, persisted, now: now(), supplement: options.completionSupplement });
-      return lineageReceiptStands(db, { profile, repositoryPath: project.repositoryPath, pullRequest, supplement: options.completionSupplement });
+      return lineageReceiptStands(db, { profile, repositoryPath: project.repositoryPath, pullRequest, supplement: options.completionSupplement, verdict: persisted.verdict });
     });
     if (persisted && stands) {
       const { lineageRequestId: _lineageRequestId, ...reused } = persisted;
@@ -730,12 +730,18 @@ export function runQaPrReviewCommand(
   // The lineage verdict is finished last, from the same persisted judgment a
   // crash-recovering rerun would read back (see recoverInFlightVerdict).
   if (lineage) {
-    withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
+    const admission = withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
       requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath, supplement: options.completionSupplement,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
       receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
         reviewerUnavailable, varianceReason })
     }));
+    if (admission.stale || admission.attempt.status !== (verdict === "pass" ? "passed" : "failed")) {
+      throw validationError("The model judgment was retained, but final independent verdict admission was refused; it is not an accepted PASS.", {
+        code: "verdict_admission_refused", modelVerdict: verdict, attemptId: admission.attempt.id,
+        reportPath: data.reportPath, evidencePath: data.evidencePath
+      });
+    }
   }
 
   return createSuccess({ command: profile.command, workspace: workspacePath, data });
@@ -816,13 +822,17 @@ function assertManagedProductionOn(db: Database.Database, profile: PrReviewRoleP
  * old receipt. A candidate that cannot take a new verdict (not ready, or a PR
  * head other than its ready head) keeps the receipt as evidence, as before.
  */
-function lineageReceiptStands(db: Database.Database, input: { profile: PrReviewRoleProfile; repositoryPath: string; pullRequest: RawPullRequest; supplement?: CompletionSupplementPin }): boolean {
+function lineageReceiptStands(db: Database.Database, input: { profile: PrReviewRoleProfile; repositoryPath: string; pullRequest: RawPullRequest; supplement?: CompletionSupplementPin; verdict: QaPrVerdict }): boolean {
   const session = lineageBoundSessionForBranch(db, { repositoryPath: input.repositoryPath, branch: input.pullRequest.headRefName });
   if (!session) return true;
   const readiness = independentVerdictReadiness(db, { session, repoRoot: input.repositoryPath, supplement: input.supplement });
-  if (!readiness.ready || readiness.binding.targetHead !== input.pullRequest.headRefOid) return true;
+  if (!readiness.ready || readiness.binding.targetHead !== input.pullRequest.headRefOid) return input.supplement === undefined;
   const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.profile.role);
+  let stale: boolean;
+  try { stale = JSON.parse(latest?.terminal_receipt_json ?? "{}").stale === true; }
+  catch { stale = input.verdict === "pass"; }
   return latest !== null && (latest.status === "passed" || latest.status === "failed") &&
+    (input.verdict !== "pass" || (latest.status === "passed" && !stale)) &&
     latest.target_head === readiness.binding.targetHead &&
     latest.criteria_fingerprint === readiness.binding.criteriaFingerprint &&
     latest.evidence_fingerprint === readiness.binding.evidenceFingerprint;

@@ -36,10 +36,25 @@ describe("supplement Artifact custody", () => {
   });
 });
 
-const host = vi.hoisted(() => ({ parentCommand: "", validations: 0, afterValidation: null as null | (() => void), beforeValidation: null as null | (() => void) }));
+const host = vi.hoisted(() => ({ parentCommand: "", validations: 0, executorDirty: false, executorBlob: null as string | null, executorRevision: "e".repeat(40), afterValidation: null as null | (() => void), beforeValidation: null as null | (() => void) }));
 vi.mock("node:child_process", async original => {
   const actual = await original<typeof import("node:child_process")>();
-  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => args[0] === "ps" ? host.parentCommand : actual.execFileSync(...args) };
+  const fs = await import("node:fs");
+  const url = await import("node:url");
+  const root = url.fileURLToPath(new URL("../", import.meta.url)).replace(/\/$/, "");
+  const module = url.fileURLToPath(new URL("../src/operatorActions/operatorExecution.ts", import.meta.url));
+  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+    if (args[0] === "ps") return host.parentCommand;
+    const argv = args[1] as string[];
+    // Synthetic committed executor objects belong only to this disposable
+    // producer/consumer fixture. Native Git-object proof is checked separately.
+    if (args[0] === "git" && argv?.[0] === "-C") {
+      if (argv[1] === root && argv[2] === "rev-parse") return host.executorRevision;
+      if (argv[1] === root && argv[2] === "status") return host.executorDirty ? " M src/operatorActions/operatorExecution.ts" : "";
+      if (argv[2] === "show" && /^[ef]{40}(?:\^\{commit\})?:src\/operatorActions\/operatorExecution\.ts$/.test(argv[3] ?? "")) return host.executorBlob ?? fs.readFileSync(module, "utf8");
+    }
+    return actual.execFileSync(...args);
+  } };
 });
 vi.mock("../src/sessions/completionValidation.js", async original => {
   const actual = await original<typeof import("../src/sessions/completionValidation.js")>();
@@ -49,7 +64,7 @@ vi.mock("../src/sessions/completionValidation.js", async original => {
   } };
 });
 const rehearsals: Rehearsal[] = [];
-afterEach(() => { host.beforeValidation = null; host.afterValidation = null; vi.unstubAllEnvs(); for (const r of rehearsals.splice(0)) r.dispose(); });
+afterEach(() => { host.beforeValidation = null; host.afterValidation = null; host.executorDirty = false; host.executorBlob = null; host.executorRevision = "e".repeat(40); vi.unstubAllEnvs(); for (const r of rehearsals.splice(0)) r.dispose(); });
 function candidate() {
   const criteria = [`MARKER.md contains ${LINE_A}.`, "tests/proof.test.mjs passes with node --test."];
   const actionsYaml = ["write-marker-a", "write-marker-b"].map((id, index) => `  - id: ${id}
@@ -102,11 +117,9 @@ function produce(f: ReturnType<typeof candidate>) {
   expect(host.validations).toBe(before + 1); op.finish();
   return { op, pin };
 }
-describe("canonical append-only supplemental validation", () => {
-  it("executes actual checks once, binds retained evidence and leaves old immutable history unchanged", () => {
-    const f = candidate();
-    // Preserve four real legacy terminal non-pass receipts; code5 is the sole
-    // exceptional ordinal, not a reset or an unavailable-review allowance.
+function seedLegacyReviews(f: ReturnType<typeof candidate>) {
+  // Preserve four real legacy terminal non-pass receipts; code5 is the sole
+  // exceptional ordinal, not a reset or an unavailable-review allowance.
     withDatabase(f.r.workspace, db => {
       for (let ordinal = 1; ordinal <= 4; ordinal++) {
         const requestId = `legacy-code-review-${ordinal}`;
@@ -115,6 +128,12 @@ describe("canonical append-only supplemental validation", () => {
         finishIndependentVerdict(db, { session: f.session, repoRoot: f.r.repo, requestId, actorId: "code-reviewer", verdict: "failed", receipt: { verdict: "fail", substantive: true }, now: new Date() });
       }
     });
+
+}
+describe("canonical append-only supplemental validation", () => {
+  it("executes actual checks once, binds retained evidence and leaves old immutable history unchanged", () => {
+    const f = candidate();
+    seedLegacyReviews(f);
     const old = withDatabase(f.r.workspace, db => ({ exit: getSessionExitReceipt(db, f.session.id), preservation: db.prepare("SELECT * FROM candidate_preservation_receipts").all(), attempts: db.prepare("SELECT * FROM session_role_attempts").all() }));
     const original = withDatabase(f.r.workspace, db => independentVerdictReadiness(db, { session: f.session, repoRoot: f.r.repo }));
     expect(original.ready).toBe(true);
@@ -125,6 +144,9 @@ describe("canonical append-only supplemental validation", () => {
     const { op, pin } = produce(f); host.beforeValidation = null;
     const result = withDatabase(f.r.workspace, db => resolveCompletionSupplement(db, f.session, pin));
     expect(result.view.status).toBe("verified");
+    host.executorRevision = "f".repeat(40);
+    expect(withDatabase(f.r.workspace, db => resolveCompletionSupplement(db, f.session, pin)).view.status).toBe("verified");
+    host.executorRevision = "e".repeat(40);
     expect(result.view.status === "verified" && result.view.record.reports[0].tests[0].name).toContain("actual host proof");
     withDatabase(f.r.workspace, db => {
       expect({ exit: getSessionExitReceipt(db, f.session.id), preservation: db.prepare("SELECT * FROM candidate_preservation_receipts").all(), attempts: db.prepare("SELECT * FROM session_role_attempts").all() }).toEqual(old);
@@ -254,7 +276,10 @@ describe("canonical append-only supplemental validation", () => {
       for (const altered of [ { ...envelope, schema: "unknown/2" }, { ...envelope, binding: { ...envelope.binding, sessionId: "foreign" } },
         { ...envelope, binding: { ...envelope.binding, packetSha256: "0".repeat(64) } }, { ...envelope, binding: { ...envelope.binding, inputRevision: "0".repeat(64) } },
         { ...envelope, operator: { ...envelope.operator, descriptor: { ...envelope.operator.descriptor, sha256: "0".repeat(64) } } },
-        { ...envelope, validation: { ...envelope.validation, sha256: "0".repeat(64) } }, { ...envelope, after: "changed" } ]) {
+        { ...envelope, validation: { ...envelope.validation, sha256: "0".repeat(64) } },
+        { ...envelope, operator: { ...envelope.operator, executor: { ...envelope.operator.executor, sourceDirty: true } } },
+        { ...envelope, operator: { ...envelope.operator, executor: { ...envelope.operator.executor, moduleSha256: "0".repeat(64) } } },
+        { ...envelope, after: "changed" } ]) {
         const text = JSON.stringify(altered), sha256 = createHash("sha256").update(text).digest("hex");
         writeFileSync(artifact.path, text); writeFileSync(registrationFile, JSON.stringify({ ...registration, sha256 }));
         expect(() => resolveCompletionSupplement(db, f.session, { ...pin, sha256 })).toThrow();
@@ -263,6 +288,48 @@ describe("canonical append-only supplemental validation", () => {
       writeFileSync(artifact.path, bytes); writeFileSync(registrationFile, originalRegistration);
       writeFileSync(path.join(f.session.worktree_path, "later-code.txt"), "later code");
       expect(() => resolveCompletionSupplement(db, f.session, pin)).toThrow(/clean/);
+    });
+  });
+
+  it("R1-01 never returns or reuses PASS after central admission rejects a model pass", () => {
+    const f = candidate(); seedLegacyReviews(f); const { pin } = produce(f);
+    const card = operator(f, "code-review", pin), p = card.descriptor.completionSupplement!;
+    const stub = hostReviewHost(f.session, p.head);
+    const options = { workspace: f.r.workspace, role: "code-review" as const, pullRequest: p.pullRequest!, completionSupplement: pin,
+      expectedCandidate: { headSha: p.head, bodySha256: p.bodySha256!, inputRevision: p.inputRevision, maxOrdinal: 5 } };
+    const dependencies = { ...stub.dependencies, runCommand: (input: Parameters<NonNullable<typeof stub.dependencies.runCommand>>[0]) => {
+      if (input.command === "codex" && input.args[0] === "exec") f.r.deactivate();
+      return stub.dependencies.runCommand!(input);
+    } };
+    const capture = (rerun: boolean) => { try { return { data: runQaPrReviewCommand({ ...options, rerun }, dependencies).data, error: null }; }
+      catch (error) { return { data: null, error: error as { details?: { code?: string } } }; } };
+    const first = capture(true), replay = capture(false);
+    expect(stub.calls.reviewer).toBe(1);
+    expect(first.error?.details?.code).toBe("verdict_admission_refused");
+    expect(first.data?.verdict).not.toBe("pass"); expect(replay.data?.verdict).not.toBe("pass");
+    withDatabase(f.r.workspace, db => {
+      const attempt = db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(p.requestId) as { status: string; terminal_receipt_json: string };
+      expect(attempt.status).toBe("failed"); expect(JSON.parse(attempt.terminal_receipt_json).stale).toBe(true);
+      const historical = db.prepare("SELECT context_json FROM review_items WHERE resolved_intent = 'IndependentPullRequestCodeReview'").all() as { context_json: string }[];
+      expect(historical.some(row => JSON.parse(row.context_json).verdict === "pass")).toBe(true);
+      expect(independentVerdictGate(db, { session: f.session, repoRoot: f.r.repo }).satisfied).toBe(false);
+    });
+  });
+  it("R1-02 refuses dirty or revision-unbound executors before producer execution", () => {
+    const f = candidate(); const card = operator(f, "produce"); const count = host.validations;
+    host.executorDirty = true;
+    expect(() => completionSupplementOperator(card.file)).toThrow(/dirty/);
+    host.executorDirty = false; host.executorBlob = "a different committed module";
+    expect(() => completionSupplementOperator(card.file)).toThrow(/committed|revision|executor/);
+    expect(host.validations).toBe(count);
+    withDatabase(f.r.workspace, db => expect(db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE artifact_type = ?").get(kind)).toEqual({ n: 0 }));
+    host.executorBlob = null;
+    const { pin } = produce(f), review = operator(f, "code-review", pin);
+    host.executorDirty = true;
+    withDatabase(f.r.workspace, db => {
+      expect(() => beginIndependentVerdict(db, { session: f.session, repoRoot: f.r.repo, supplement: pin, role: "code-review",
+        requestId: review.descriptor.completionSupplement!.requestId, actorId: "independent", executionCwd: f.r.root, now: new Date() })).toThrow(/dirty/);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts WHERE role IN ('code-review','qa')").get()).toEqual({ n: 0 });
     });
   });
 

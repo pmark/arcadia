@@ -688,9 +688,10 @@ export function finishIndependentVerdict(db: Database.Database, input: {
   }
   const readiness = independentVerdictReadiness(db, input);
   let supplementAuthority = true;
+  let supplementAuthorityReason: string | null = null;
   if (input.supplement && readiness.ready) {
     try { assertSupplementVerdictAuthority(db, { ...input, role: attempt.role as IndependentVerdictRole }, readiness); }
-    catch { supplementAuthority = false; }
+    catch (error) { supplementAuthority = false; supplementAuthorityReason = error instanceof Error ? error.message : "Supplement authority is unavailable."; }
   }
   const current = supplementAuthority && readiness.ready && attemptVerdictIsCurrent({ ...attempt, status: "passed" }, {
     head: readiness.binding.targetHead, criteriaFingerprint: readiness.binding.criteriaFingerprint, evidenceFingerprint: readiness.binding.evidenceFingerprint
@@ -698,7 +699,7 @@ export function finishIndependentVerdict(db: Database.Database, input: {
   if (!current) {
     return {
       attempt: recordSessionRoleAttemptTerminal(db, { requestId: input.requestId, actorId: input.actorId, status: "failed", now: input.now,
-        receipt: { stale: true, verdict: input.verdict, reasons: readiness.ready ? ["The candidate binding changed while the reviewer ran."] : readiness.reasons, detail: input.receipt } }),
+        receipt: { stale: true, verdict: input.verdict, reasons: readiness.ready ? [supplementAuthorityReason ?? "The candidate binding changed while the reviewer ran."] : readiness.reasons, detail: input.receipt } }),
       stale: true
     };
   }

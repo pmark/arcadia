@@ -7,14 +7,23 @@
   "effective_effort": "medium",
   "effort_source": "native-runtime",
   "action_id": "operator-directed:#1793",
-  "pr": null,
+  "pr": 1794,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "R1-01-final-admission-and-PASS-reuse",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "R1-02-dirty-or-unbound-executor",
+      "caught_by": "independent-R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -27,9 +36,14 @@
       "id": "fixture-build-wording-and-existing-Artifact-ID-format",
       "cost_min": null,
       "fix_ref": "/tmp/ellis-supplement-integration-first.txt"
+    },
+    {
+      "id": "R1-two-failing-first-regressions",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1794#issuecomment-6422155225"
     }
   ],
   "outcome": "stopped",
   "notes": "Issue1793 source only; no Action. Actual native6.1-sol/medium. Disposable local checks, simulated reviewers; no live effects. Resource totals unknown. No merge/adoption/START authority.",
-  "stop_reason": "Draft PR handoff only; independent current-head review and CI required before any separate adoption decision."
+  "stop_reason": "R1 NO-GO preserved; one source repair batch awaits independent R2 delta and current-head CI. No merge/adoption authority."
 }

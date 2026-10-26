@@ -154,7 +154,19 @@ export function completionSupplementOperator(descriptorPath: string, now = new D
   const revision = execFileSync("git", ["-C", loadedRoot, "rev-parse", "HEAD"], { encoding: "utf8", timeout: 2000 }).trim();
   const sourceDirty = Boolean(execFileSync("git", ["-C", loadedRoot, "status", "--porcelain", "--", "src", "scripts/supplement-completion-validation.ts"], { encoding: "utf8", timeout: 2000 }).trim());
   const executor = { revision, sourceDirty, moduleSha256: createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") };
+  verifyCompletionSupplementExecutor(executor, loadedRoot);
   return { contract, executor, descriptor: { ref: snapshot, sha256: executedDescriptor.sha256 }, run: { ref, runId, scriptId: id, pid: process.ppid, startedAt: run.startedAt } };
+}
+/** Verify retained provenance against its committed blob, never against whatever
+ * HEAD happens to be now. Dirty or missing source is unknown, not trusted proof. */
+export function verifyCompletionSupplementExecutor(executor: CompletionSupplementOperator["executor"], repository: string): void {
+  if (!executor || executor.sourceDirty !== false || !/^[a-f0-9]{40}$/.test(executor.revision) || !/^[a-f0-9]{64}$/.test(executor.moduleSha256)) {
+    throw new Error("Completion supplement executor source is dirty or malformed.");
+  }
+  const committed = execFileSync("git", ["-C", repository, "show", `${executor.revision}^{commit}:src/operatorActions/operatorExecution.ts`], { timeout: 2000, maxBuffer: 1024 * 1024 });
+  if (createHash("sha256").update(committed).digest("hex") !== executor.moduleSha256) {
+    throw new Error("Completion supplement executor module is not bound to its declared committed revision.");
+  }
 }
 let supplementRegistration: CreateArtifactInput | null = null;
 /** The validated host producer scopes exactly one immutable registration. */

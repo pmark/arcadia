@@ -4,9 +4,10 @@ import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { refuseInExperimentWorkspace } from "../src/workspace/experimentGuard.js";
 import { resolveReadyWorkspace } from "../src/cli/workspace.js";
-import { withDatabase } from "../src/db/connection.js";
+import { getSessionRoleAttempt } from "../src/sessions/enrollment.js";
+import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { completionSupplementOperator, readSupplementJson, supplementDigest } from "../src/operatorActions/operatorExecution.js";
-import { completionSupplementDirectory, writeSupplementFile } from "../src/sessions/completionValidationEvidence.js";
+import { completionEvidenceText, completionSupplementDirectory, writeSupplementFile } from "../src/sessions/completionValidationEvidence.js";
 import { produceCompletionSupplement } from "../src/sessions/reconciliation.js";
 import { runQaPrReviewCommand } from "../src/qa/prReview.js";
 
@@ -33,17 +34,33 @@ if (mode === "--describe") {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const intent = path.join(directory, "review-intent.json");
     const terminal = path.join(directory, "review-result.json");
+    const review = (rerun: boolean) => runQaPrReviewCommand({ workspace: workspacePath, role: p.phase as "code-review" | "qa", pullRequest: p.pullRequest!,
+      completionSupplement: { workspace: workspacePath, ...p.artifact! },
+      expectedCandidate: { headSha: p.head, bodySha256: p.bodySha256!, inputRevision: p.inputRevision, maxOrdinal: p.phase === "code-review" ? 5 : 1 }, rerun });
     if (existsSync(intent)) {
       if (supplementDigest(readSupplementJson(intent, workspacePath).value) !== supplementDigest(p)) throw new Error("Review request replay changed its contract.");
       result = readSupplementJson(terminal, workspacePath).value;
+      const cached = result as { data?: { verdict?: string; artifact?: { id?: string } } };
+      if (cached.data?.verdict === "pass") {
+        const attempt = withReadOnlyDatabase(workspacePath, db => getSessionRoleAttempt(db, p.requestId));
+        if (!attempt || attempt.role !== p.phase || attempt.status !== "passed") throw new Error("Consumed review has no admitted terminal PASS; no reexecution is permitted.");
+        // Reuse the same canonical PR/lineage verifier. Its fixed consumed
+        // request cannot allocate/reexecute when a cached PASS no longer stands.
+        const verified = review(false);
+        if (!verified.data.reused || verified.data.verdict !== "pass" || verified.data.artifact.id !== cached.data.artifact?.id) {
+          throw new Error("Consumed review result is not a current admitted PASS.");
+        }
+      }
     } else {
       writeSupplementFile(workspacePath, intent, p);
-      result = runQaPrReviewCommand({ workspace: workspacePath, role: p.phase, pullRequest: p.pullRequest!,
-        completionSupplement: { workspace: workspacePath, ...p.artifact! },
-        expectedCandidate: { headSha: p.head, bodySha256: p.bodySha256!, inputRevision: p.inputRevision, maxOrdinal: p.phase === "code-review" ? 5 : 1 },
-        rerun: true });
+      try { result = review(true); }
+      catch (error) {
+        writeSupplementFile(workspacePath, terminal, { status: "refused", message: completionEvidenceText(error instanceof Error ? error.message : String(error), 1500) });
+        throw error;
+      }
       writeSupplementFile(workspacePath, terminal, result);
     }
   }
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  if (result && typeof result === "object" && "status" in result && result.status === "refused") process.exitCode = 1;
 }

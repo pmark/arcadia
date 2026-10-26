@@ -26,7 +26,7 @@ import { completionExecutionPassed, completionSupplementDirectory, writeSuppleme
 import { classifyPatchApplicability } from "../qa/patchApplicability.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
-import { COMPLETION_SUPPLEMENT_ARTIFACT, completionSupplementOperator, readSupplementJson, registerCompletionSupplementArtifact, supplementDigest, type CompletionSupplementOperator } from "../operatorActions/operatorExecution.js";
+import { COMPLETION_SUPPLEMENT_ARTIFACT, verifyCompletionSupplementExecutor, completionSupplementOperator, readSupplementJson, registerCompletionSupplementArtifact, supplementDigest, type CompletionSupplementOperator } from "../operatorActions/operatorExecution.js";
 import { completionSupplementLauncher, validateOperatorScriptContract } from "../operatorActions/libraryContract.js";
 import { parseDoc } from "../docs/parse.js";
 
@@ -1042,7 +1042,7 @@ export function resolveCompletionSupplement(db: Database.Database, session: Agen
     throw new Error("Supplement registration is partial or not its canonical producer receipt.");
   }
   const op = envelope.operator;
-  if (!op.executor || !/^[a-f0-9]{40}$/.test(op.executor.revision) || !/^[a-f0-9]{64}$/.test(op.executor.moduleSha256) || typeof op.executor.sourceDirty !== "boolean") throw new Error("Supplement executor provenance is unavailable.");
+  verifyCompletionSupplementExecutor(op.executor, session.repository_path);
   assertSupplementContract(state, op);
   const library = path.join(op.contract.repository, "artifacts/generated/operator-scripts");
   const runDirectory = path.join(library, "runs/operator", op.run.scriptId, op.run.runId);
