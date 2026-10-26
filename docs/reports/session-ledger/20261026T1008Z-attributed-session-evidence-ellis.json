@@ -1,0 +1,30 @@
+{
+  "session_id": "attributed-session-evidence-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "e2_standard",
+  "configured_effort": "e2_standard",
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1788",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "journey-fixture-exit-status-field",
+      "cost_min": null,
+      "fix_ref": "tests/journey.test.ts"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Source-only Issue1788 assignment, depth1 sole implementer; no governed Action. Native gpt-6.1-sol/medium; resources unknown. No merge, runtime, permissions, recovery or provider authority.",
+  "stop_reason": "Source candidate prepared for independent review and required CI; no live adoption proof."
+}

@@ -116,10 +116,14 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   }
 
   // Sessions that ended without an accepted completion are obstacles.
-  const exits = sessions.length > 0 && has("session_exit_receipts")
-    ? (db.prepare(`SELECT session_id, outcome, reason, created_at FROM session_exit_receipts
+  const hasExits = sessions.length > 0 && has("session_exit_receipts");
+  const exitEvidence = hasExits && (db.prepare("PRAGMA table_info(session_exit_receipts)").all() as Array<{ name: string }>).some(column => column.name === "evidence_json")
+    ? "evidence_json" : "NULL AS evidence_json";
+  const exits = hasExits
+    ? (db.prepare(`SELECT session_id, outcome, reason, created_at, ${exitEvidence} FROM session_exit_receipts
         WHERE session_id IN (${sessions.map(() => "?").join(", ")})`).all(...sessions.map((session) => session.id)) as ExitRow[])
     : [];
+  const latestExit = exits.find(exit => exit.session_id === latestSession?.id) ?? null;
   for (const exit of exits) {
     if (exit.outcome === "accepted_completion" || exit.outcome === "successful_exit") continue;
     const later = sessions.some((session) => session.prepared_at > exit.created_at);
@@ -303,7 +307,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
     ref: reached?.ref ?? latestPr
   };
 
-  const nowEvent = reached ? null : currentPosition({ now, latestSession, steps, escalation, latestPr, events });
+  const nowEvent = reached ? null : currentPosition({ now, latestSession, latestExit, steps, escalation, latestPr, events });
   const headVerdicts = verdicts.filter((attempt) => attempt.target_head === latestHead);
   const passedRoles = new Set(headVerdicts.filter((attempt) => attempt.status === "passed").map((attempt) => attempt.role));
   const gate: JourneyEvent | null = reached || !latestHead || (passedRoles.has("code-review") && passedRoles.has("qa"))
@@ -338,11 +342,13 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
       ];
 
   const activity = currentActivity({
-    db, has, actionKey, now, reached, latestSession, latestPr, steps, repairs, events, escalation, repairRounds
+    db, has, actionKey, now, reached, latestSession, latestExit, latestPr, steps, repairs, events, escalation, repairRounds
   });
   // The worker records what would unblock an escalation; it is the operator's move unless it says none is needed.
   const remedy = escalation?.remedy?.trim() ?? "";
-  activity.yourMove = !reached && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !NO_OPERATOR_STEP.test(remedy)
+  const wallRemedyUnproven = !reached && Boolean(latestSession && escalation && (escalation.kind === "environment_wall" || /additionalDirectories|workspace.write|sandbox.*write/i.test(remedy)) && !hasAttributedWall(latestExit));
+  if (wallRemedyUnproven) warnings.push("The recorded capability remedy has no attributable wall evidence for this Session; permission changes and a repair-budget reset are not established next steps.");
+  activity.yourMove = !reached && !wallRemedyUnproven && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !NO_OPERATOR_STEP.test(remedy)
     ? firstLine(remedy, 300)
     : null;
   const run = runPosition(db, has, actionKey);
@@ -386,6 +392,7 @@ function currentActivity(input: {
   now: Date;
   reached: { at: string; ref: JourneyRef | null } | null;
   latestSession: SessionRow | null;
+  latestExit: ExitRow | null;
   latestPr: JourneyRef | null;
   steps: StepRow[];
   repairs: RepairRow[];
@@ -402,15 +409,14 @@ function currentActivity(input: {
   if (reached) {
     return { phase: "arrived", headline: `Arrived:${pr || " PR"} merged`, detail: "The reviewed head is in the base branch.", since: reached.at };
   }
+  const stopped = latestSession ? stoppedSessionActivity(latestSession, input.latestExit) : null;
+  if (stopped) return stopped;
   if (latestSession && (latestSession.status === "prepared" || latestSession.status === "running")) {
     const repair = repairs.find((row) => row.repair_session_id === latestSession.id);
     const since = latestSession.started_at ?? latestSession.prepared_at;
     return repair
       ? { phase: "repairing", headline: `Under repair: round ${repair.round} of ${input.repairRounds.limit}`, detail: `Session ${latestSession.id} is fixing the failed ${repair.role}: ${firstLine(repair.summary, 200)}`, since }
       : { phase: "driving", headline: "Driving: a Session is working", detail: `Session ${latestSession.id} is ${latestSession.status} on ${latestSession.branch}.`, since };
-  }
-  if (latestSession?.status === "needs_input") {
-    return { phase: "blocked", headline: "Stopped: the Session needs input", detail: `Session ${latestSession.id} is waiting for input.`, since: latestSession.ended_at ?? latestSession.started_at ?? latestSession.prepared_at };
   }
   // Only the running production launches a queued repair; one left from an earlier run is not queued.
   const pendingRepair = active ? repairs.filter((row) => row.outcome === "pending" && row.policy_epoch === policy.epoch).at(-1) : undefined;
@@ -483,6 +489,7 @@ const KIND_ORDER: Record<JourneyEvent["kind"], number> = { launch: 0, obstacle: 
 function currentPosition(input: {
   now: Date;
   latestSession: SessionRow | null;
+  latestExit: ExitRow | null;
   steps: StepRow[];
   escalation: EscalationRow | undefined;
   latestPr: JourneyRef | null;
@@ -497,6 +504,9 @@ function currentPosition(input: {
   if (!latestSession) {
     return { at: input.now.toISOString(), kind: "now", label: "not launched", detail: "No Session has run for this Action yet.", class: null, ref: null, source: "agent_sessions" };
   }
+  const stopped = stoppedSessionActivity(latestSession, input.latestExit);
+  if (stopped) return { at: at(stopped.since ?? input.now.toISOString()), kind: "now", label: stopped.headline.replace(/^Stopped: /, ""), detail: stopped.detail, class: null,
+    ref: { kind: "session", id: latestSession.id, url: null }, source: input.latestExit ? "session_exit_receipts" : "agent_sessions" };
   if (isLive(latestSession)) {
     return {
       at: at(latestSession.started_at ?? latestSession.prepared_at),
@@ -531,6 +541,22 @@ function currentPosition(input: {
     ref: latestPr ?? { kind: "session", id: latestSession.id, url: null },
     source: "agent_sessions"
   };
+}
+
+/** Session status historically collapsed incomplete/resumable exits into needs_input. */
+function stoppedSessionActivity(session: SessionRow, exit: ExitRow | null): JourneyActivity | null {
+  const since = exit?.created_at ?? session.ended_at ?? session.started_at ?? session.prepared_at;
+  if (exit?.outcome === "incomplete_resumable") return { phase: "blocked", headline: "Stopped: the candidate is incomplete", detail: `Session ${session.id} retained an unfinished candidate. Its exit receipt does not establish a request for input.`, since };
+  if (exit?.outcome === "needs_input") return { phase: "blocked", headline: "Stopped: the Session needs input", detail: `Session ${session.id} has a matching exit receipt recording an explicit input request.`, since };
+  if (session.status === "needs_input") return { phase: "blocked", headline: "Stopped: exit cause unknown", detail: `Session ${session.id} has a legacy needs_input status without a matching input-request receipt. The cause remains unknown.`, since };
+  return null;
+}
+function hasAttributedWall(exit: ExitRow | null): boolean {
+  const observation = parseJson(exit?.evidence_json ?? null).sessionCapability;
+  if (!observation || typeof observation !== "object" || Array.isArray(observation)) return false;
+  const value = observation as Record<string, unknown>;
+  return value.version === 1 && value.status === "wall" && ["session_probe", "failed_tool_operation"].includes(String(value.provenance))
+    && Array.isArray(value.walls) && value.walls.some(wall => wall && typeof wall === "object" && ["workspace_write", "host_validation", "preservation"].includes(String((wall as Record<string, unknown>).wallClass)));
 }
 
 function stepPhase(outcome: Record<string, unknown>): string {
@@ -592,7 +618,7 @@ interface SessionRow { id: string; plan_slug: string; work_item_id: string; repo
 interface PreservationRow { branch: string; base_branch: string; commit_sha: string; pull_request_number: number | null; pull_request_url: string | null; created_at: string }
 interface StepRow { request_id: string; session_id: string; target_head: string; pull_request_url: string; failures: number; total_failures: number; failure_step: string | null; last_error: string | null; last_outcome_json: string | null; created_at: string; updated_at: string }
 interface RepairRow { request_id: string; policy_epoch: number; round: number; failed_session_id: string; failed_head: string; pull_request_url: string | null; role: string; verdict: string; summary: string; repair_session_id: string | null; outcome: string; reason: string | null; created_at: string; updated_at: string; closed_at: string | null }
-interface ExitRow { session_id: string; outcome: string; reason: string; created_at: string }
+interface ExitRow { session_id: string; outcome: string; reason: string; created_at: string; evidence_json: string | null }
 interface AttemptRow { role: string; ordinal: number; status: string; input_revision: string; target_head: string | null; terminal_receipt_json: string | null; created_at: string; updated_at: string }
 interface AlertRow { id: string; trigger: string; detail: string; status: string; first_seen_at: string }
 interface MergeRow { head: string; pull_request_url: string | null; outcome: string; code: string | null; reason: string; updated_at: string }

@@ -2099,6 +2099,15 @@ select `arcadia-unattended` explicitly. For Desktop Go tasks, select it as above
 pnpm arcadia go-broker status
 ```
 
+A stopped Session's capability diagnosis now prefers its nonce-bound probe.
+Otherwise it requires a structured failed tool operation tied to the capability;
+quoted notes and successful output do not prove a permission failure. The new
+exit receipt retains a bounded, sanitized observation. Journey distinguishes a
+matching incomplete/resumable exit from an explicit input request; older or
+missing attribution stays unknown, with no inferred permission-change or budget-
+reset prescription. These observations do not reset allowances or authorize
+recovery, relaunch or production.
+
 Broker releases include the Session capability probe and exit recorder. Status
 refuses an installation if either required script is missing or points outside
 the release. Repair requires a reviewed replacement release while production

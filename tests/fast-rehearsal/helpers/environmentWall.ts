@@ -4,9 +4,10 @@ import { sessionLogPath } from "../../../src/sessions/sessionRecording.js";
 
 /**
  * The 2026-10-12 00:40Z production Session's receipts, as the headless log
- * shapes the lifecycle already parses: no diff, `incomplete_resumable`, the
- * workspace write denied, sandbox refusals of the validation, no preservation
- * receipt, about 11M input tokens of which almost all were cached re-reads.
+ * shapes the lifecycle already parses: no diff, `incomplete_resumable`, legacy
+ * diagnostic prose and about11M input tokens, mostly cached re-reads. Preserve
+ * these bytes as recorded; the prose alone supplies no attributable failed tool
+ * operation or matched probe and is not a permission-failure proof.
  */
 export const ENVIRONMENT_WALL_SESSION = {
   /** Codex `turn.completed` usage: input_tokens is the total, cached a subset. */
