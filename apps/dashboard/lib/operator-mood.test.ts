@@ -36,6 +36,9 @@ describe("operator mood signal", () => {
     expect(loadMood(blocked, 5)).toEqual(defaultMood(5));
     expect(saveMood(blocked, defaultMood(5))).toBe(false);
     expect(loadMood(memory({ [MOOD_STORAGE_KEY]: "{not json" }), 5)).toEqual(defaultMood(5));
+    const huge = loadMood(memory({ [MOOD_STORAGE_KEY]: JSON.stringify({ atmosphere: "calm", now: thinking, setAt: 1e20, expiresAt: 1e20, decayMs: 1e20 }) }), 5);
+    expect(huge).toMatchObject({ setAt: 5, expiresAt: null, decayMs: defaultMood(5).decayMs });
+    expect(() => snapshot(huge)).not.toThrow();
     expect(loadMood(memory({ [MOOD_STORAGE_KEY]: JSON.stringify({ atmosphere: "hurricane" }) }), 5)).toEqual(defaultMood(5));
     expect(loadMood(memory({ [MOOD_STORAGE_KEY]: JSON.stringify({ atmosphere: "calm", now: { ...thinking, image: "javascript:alert(1)" } }) }), 5).now).toBeNull();
   });

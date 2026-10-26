@@ -105,7 +105,7 @@ export function mountWeather(canvas: HTMLCanvasElement, surface: HTMLElement, re
     for (let i = 0; i < Math.round(b.rise) && i < motes.length; i++) {
       const m = motes[i];
       if (move) { m.y -= m.v * dt * 0.03; m.x += Math.sin(now / 900 + m.o * 7) * 0.2; if (m.y < -4) { m.y = H + 4; m.x = Math.random() * W; } }
-      g.globalAlpha = (0.3 + 0.5 * Math.sin(now / 500 + m.o * 9) ** 2) * Math.min(1, b.rise / 20); g.beginPath(); g.arc(m.x, m.y, m.s, 0, 7); g.fill();
+      g.globalAlpha = (0.3 + 0.5 * Math.sin((move * now) / 500 + m.o * 9) ** 2) * Math.min(1, b.rise / 20); g.beginPath(); g.arc(m.x, m.y, m.s, 0, 7); g.fill();
     }
     g.globalAlpha = 1;
   }

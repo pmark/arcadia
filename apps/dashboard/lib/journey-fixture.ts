@@ -3,7 +3,7 @@ import type { JourneyPhase, PlanJourney, PlanJourneyAction } from "./journey-typ
 /**
  * Sample rover missions for /workspace/moonlet. A fixture, not workspace
  * records: the shapes are the real `arcadia-plan-journey-v1` wire shape, so a
- * later read of `/api/journey/<project>/plan:<slug>` can replace this list
+ * later read of `/api/journey/<project>/plan/<plan>` can replace this list
  * without changing the view. Add a mission by appending a `mission(...)`.
  */
 const GENERATED_AT = "2030-01-01T12:00:00.000Z";

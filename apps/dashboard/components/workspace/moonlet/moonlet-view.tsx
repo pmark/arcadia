@@ -76,6 +76,7 @@ export function MoonletView() {
   useEffect(() => { const loaded = loadMood(storage(), Date.now()); moodRef.current = loaded; setMood(loaded); setClock(Date.now()); }, []);
   useEffect(() => {
     const id = setInterval(() => {
+      if (document.hidden) return;
       const at = Date.now(); setClock(at);
       const settled = settle(moodRef.current, at);
       if (settled !== moodRef.current) commit(settled);

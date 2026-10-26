@@ -211,8 +211,8 @@ svg.trail .sat { fill: var(--ink); }
 .sending b { color: var(--ink); font-weight: 500; }
 
 @media (prefers-reduced-motion: reduce) {
-  .moonlet, .eye, .logo .orbit-dot, .msg, .card { animation: none !important; }
-  .chip { transition: opacity .2s; }
+  .moonlet, .eye, .logo .orbit-dot, .msg, .card, .scrim, .orbit-head, .ring-line, .now-pill, .now-pill.pop { animation: none !important; }
+  .chip, .now-pill { transition: none !important; }
 }
 </style>
 
@@ -275,7 +275,7 @@ svg.trail .sat { fill: var(--ink); }
         <div class="r"><input type="text" id="custom-emoji" maxlength="8" placeholder="Any emoji" aria-label="Any emoji"><button class="btn solid" id="custom-use">Use</button></div>
         <div class="r"><label class="btn" for="custom-file" style="flex:1">Upload a sticker or GIF</label><button class="btn" id="custom-cancel">Cancel</button></div>
         <input type="file" id="custom-file" accept="image/*" hidden>
-        <p id="custom-hint">Stickers stay in your orbit for next time. Up to 1.5 MB.</p>
+        <p id="custom-hint">Up to three of your own stay in your orbit, in this browser only. Images up to 1 MB.</p>
       </div>
     </div>
     <form class="composer" id="composer" autocomplete="off">
@@ -328,8 +328,12 @@ const DECAY_MS = 5 * 60 * 1000;
 const KEY = "arcadia-moonlet-v1";
 let S = { sky: "calm", now: { ...STATES[0] }, expiresAt: Date.now() + DECAY_MS, setAt: Date.now(), custom: [] };
 try { const r = localStorage.getItem(KEY); if (r) { const v = JSON.parse(r); if (v && SKIES[v.sky]) S = Object.assign(S, v); } } catch (e) {}
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
-const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const MAX_CUSTOM = 3;
+S.custom = (S.custom || []).slice(0, MAX_CUSTOM);
+// Returns false when the browser refuses the write (quota, privacy mode), so callers can say so.
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); return true; } catch (e) { return false; } };
+const reduceQuery = matchMedia("(prefers-reduced-motion: reduce)");
+let reduce = reduceQuery.matches;
 const $ = (id) => document.getElementById(id);
 
 // ---------------- sol sky (ported from /workspace) ----------------
@@ -504,7 +508,10 @@ function resize() {
   placeLabels(); layoutOrbits(); redraw();
 }
 function redraw() { const t = performance.now(); publish(); drawSky(); drawStars(); drawWeather(t); }
-function frame(t) { drawSky(); drawStars(); drawWeather(t); if (!reduce) requestAnimationFrame(frame); }
+let looping = false;
+function frame(t) { drawSky(); drawStars(); drawWeather(t); if (!reduce) requestAnimationFrame(frame); else looping = false; }
+function startLoop() { if (!reduce && !looping) { looping = true; requestAnimationFrame(frame); } }
+reduceQuery.addEventListener("change", e => { reduce = e.matches; if (reduce) redraw(); else startLoop(); });
 setInterval(() => { publish(); if (reduce) redraw(); }, 250);
 addEventListener("hashchange", redraw);
 darkQuery.addEventListener("change", redraw);
@@ -607,7 +614,7 @@ function buildOrbits() {
   cap = document.createElement("div"); cap.className = "caption"; cap.textContent = mode === "now" ? "How are you, right now?" : "Set your atmosphere";
   head.append(seg, cap); orbits.append(head);
   if (mode === "now") {
-    const extras = S.custom.slice(0, 3);
+    const extras = S.custom;
     const inner = STATES.slice(0, 5), outer = [...STATES.slice(5), ...extras, { add: true }];
     [...arc(inner, R1, 0), ...arc(outer, R2, 90)].forEach(({ it, x, y, d }) => {
       if (it.add) { const t = document.createElement("span"); t.textContent = "+"; orbits.append(chip(t, "Your own emoji, sticker or GIF", false, x, y, d, openCustom, "add")); return; }
@@ -637,17 +644,28 @@ document.addEventListener("pointerdown", e => {
   if (!$("custom").hidden && !$("custom").contains(e.target)) { $("custom").hidden = true; $("scrim").hidden = orbits.hidden; }
 });
 $("custom-cancel").addEventListener("click", () => { $("custom").hidden = true; $("scrim").hidden = orbits.hidden; moonlet.focus(); });
+// Keeps a new custom state only if the browser can store it; otherwise says so and keeps the earlier ones.
+function keepCustom(it, others) {
+  const before = S.custom;
+  S.custom = [it, ...others].slice(0, MAX_CUSTOM);
+  if (save()) return true;
+  S.custom = before;
+  $("custom-hint").textContent = "This browser is out of room, so this one is not kept. Your earlier ones are.";
+  return false;
+}
 $("custom-use").addEventListener("click", () => {
   const v = $("custom-emoji").value.trim(); if (!v) return;
   const it = { id: "c-" + Date.now(), label: "Custom", g: v, fx: "tap", face: "" };
-  S.custom = [it, ...S.custom.filter(c => c.g !== v)].slice(0, 6); $("custom-emoji").value = ""; $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it);
+  if (!keepCustom(it, S.custom.filter(c => c.g !== v))) return;
+  $("custom-emoji").value = ""; $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it);
 });
 $("custom-file").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
-  if (f.size > 1.5 * 1024 * 1024) { $("custom-hint").textContent = "That file is over 1.5 MB. Pick a smaller sticker or GIF."; return; }
+  if (f.size > 1024 * 1024) { $("custom-hint").textContent = "That file is over 1 MB. Pick a smaller sticker or GIF."; return; }
   const r = new FileReader();
   r.onload = () => { const it = { id: "s-" + Date.now(), label: f.name.replace(/\.[^.]+$/, "").slice(0, 18) || "Sticker", img: r.result, fx: "tap", face: "" };
-    S.custom = [it, ...S.custom].slice(0, 6); $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it); };
+    if (!keepCustom(it, S.custom)) return;
+    $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it); };
   r.readAsDataURL(f);
 });
 
@@ -677,5 +695,5 @@ addEventListener("resize", resize);
 $("when").addEventListener("change", e => { timeOverride = e.target.value || null; redraw(); });
 if (Object.hasOwn(FROZEN_PHASES, location.hash.slice(1))) $("when").value = location.hash.slice(1);
 resize(); render(false);
-if (!reduce) requestAnimationFrame(frame);
+startLoop();
 </script>

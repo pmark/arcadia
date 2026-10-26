@@ -47,9 +47,12 @@ the workspace layout so it keeps the real sol sky.
 
 - **Feed.** Read-only messages from the existing sources: next steps
   (`/api/next-steps`) under "Your move", Decisions and other to-do items
-  (`/api/approvals`) under "Waiting on you", and open pull requests
-  (`/api/pull-requests`). Each links to the control that already answers it;
-  the page adds no write path. `lib/moonlet-feed.ts` builds the order.
+  (`/api/approvals`) under "Waiting on you", wait steps under "Waiting on
+  others" (no link: nothing to press), and open pull requests
+  (`/api/pull-requests`). Each other item links to the control that already
+  answers it (a card step goes to its card on `/todo`); the page adds no write
+  path. `lib/moonlet-feed.ts` builds the order.
+- **Reach.** Nothing links to the page yet; open it by URL.
 - **Missions.** Expandable rover missions from `lib/journey-fixture.ts`, a
   sample in the real `arcadia-plan-journey-v1` shape, labelled "Sample data".
   Replacing it with live journey reads is its own Plan Action.

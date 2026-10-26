@@ -31,6 +31,14 @@ describe("moonlet feed", () => {
     expect(feedSections(items).map(s => [s.section, s.items.length])).toEqual([["Your move", 2], ["Waiting on you", 2], ["Pull requests", 2]]);
   });
 
+  it("sends card steps to their card on /todo and keeps wait steps out of your move", () => {
+    const card = { ...step("c1", "Answer Decision 0141"), kind: "answer", href: "#card-0141" } as NextStepsResponse["steps"][number];
+    const wait = { ...step("w1", "Waiting on #1770 checks"), kind: "wait", href: null, waitingFor: "required checks on #1770" } as NextStepsResponse["steps"][number];
+    const items = buildFeed({ approvals: null, pullRequests: null, nextSteps: { nowStep: null, steps: [card, wait] } as unknown as NextStepsResponse });
+    expect(items[0]).toMatchObject({ section: "Your move", href: "/todo#card-0141", external: false });
+    expect(items[1]).toMatchObject({ section: "Waiting on others", href: null, chip: "waiting", detail: "required checks on #1770", urgent: false });
+  });
+
   it("is empty, not failing, while every source is still unread", () => {
     expect(buildFeed({ approvals: null, nextSteps: null, pullRequests: null })).toEqual([]);
   });

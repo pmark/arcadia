@@ -19,6 +19,13 @@ function readCustom(): MomentaryState[] {
   } catch { return []; }
 }
 
+/** One emoji, however many code units it takes (a family emoji is eleven). */
+function firstGrapheme(text: string): string {
+  if (!text) return "";
+  const segments = typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text) : null;
+  return segments ? (segments[Symbol.iterator]().next().value?.segment ?? "") : Array.from(text)[0] ?? "";
+}
+
 function focusMoonlet(id: string) {
   document.getElementById(id)?.focus({ preventScroll: true });
 }
@@ -79,12 +86,13 @@ export function Moonlet({ mood, left, onMomentary, onAtmosphere }: {
     setCustom(next);
   }
   function applyEmoji() {
-    const glyph = emoji.trim(); if (!glyph) return;
+    const glyph = firstGrapheme(emoji.trim()); if (!glyph) return;
     const state: MomentaryState = { id: `custom-${Date.now()}`, label: "Custom", glyph, fx: "tap", face: "" };
     keepCustom(state); setEmoji(""); setCustomOpen(false); onMomentary(state);
   }
   function applyFile(file: File | undefined) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) { setHint("That file is not an image. Pick a sticker or GIF."); return; }
     if (file.size > MAX_IMAGE_BYTES) { setHint("That file is over 1 MB. Pick a smaller sticker or GIF."); return; }
     const reader = new FileReader();
     reader.onload = () => {
@@ -138,7 +146,7 @@ export function Moonlet({ mood, left, onMomentary, onAtmosphere }: {
         {chips}
       </div>}
       {customOpen && <div className="moonlet-custom" role="dialog" aria-label="Your own state">
-        <div className="row"><input type="text" maxLength={8} value={emoji} placeholder="Any emoji" aria-label="Any emoji" onChange={e => setEmoji(e.target.value)} onKeyDown={e => { if (e.key === "Enter") applyEmoji(); }} autoFocus /><button type="button" className="solid" onClick={applyEmoji}>Use</button></div>
+        <div className="row"><input type="text" maxLength={32} value={emoji} placeholder="Any emoji" aria-label="Any emoji" onChange={e => setEmoji(e.target.value)} onKeyDown={e => { if (e.key === "Enter") applyEmoji(); }} autoFocus /><button type="button" className="solid" onClick={applyEmoji}>Use</button></div>
         <div className="row"><label className="file">Upload a sticker or GIF<input type="file" accept="image/*" hidden onChange={e => { applyFile(e.target.files?.[0]); e.target.value = ""; }} /></label><button type="button" onClick={() => { setCustomOpen(false); focusMoonlet(buttonId); }}>Cancel</button></div>
         <p>{hint ?? `Up to ${MAX_CUSTOM} of your own stay in your orbit, in this browser only. Images up to 1 MB.`}</p>
       </div>}

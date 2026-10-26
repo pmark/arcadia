@@ -101,6 +101,9 @@ export function atmosphereOf(id: AtmosphereId): Atmosphere {
   return ATMOSPHERES.find(a => a.id === id) ?? ATMOSPHERES[0];
 }
 
+/** A timestamp `new Date()` can represent; anything else in storage is treated as corrupt. */
+const isTime = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 8.64e15;
+
 const isAtmosphere = (value: unknown): value is AtmosphereId => typeof value === "string" && ATMOSPHERES.some(a => a.id === value);
 
 function isState(value: unknown): value is MomentaryState {
@@ -118,10 +121,10 @@ export function loadMood(storage: Pick<Storage, "getItem"> | null, at: number): 
     if (!raw) return defaultMood(at);
     const v = JSON.parse(raw) as Partial<MoodState>;
     if (!isAtmosphere(v.atmosphere)) return defaultMood(at);
-    const decayMs = typeof v.decayMs === "number" && v.decayMs >= 0 ? v.decayMs : DEFAULT_DECAY_MS;
+    const decayMs = isTime(v.decayMs) && v.decayMs >= 0 ? v.decayMs : DEFAULT_DECAY_MS;
     const now = isState(v.now) ? v.now : null;
-    const expiresAt = now && typeof v.expiresAt === "number" ? v.expiresAt : null;
-    return settle({ atmosphere: v.atmosphere, now, expiresAt, setAt: typeof v.setAt === "number" ? v.setAt : at, decayMs }, at);
+    const expiresAt = now && isTime(v.expiresAt) ? v.expiresAt : null;
+    return settle({ atmosphere: v.atmosphere, now, expiresAt, setAt: isTime(v.setAt) ? v.setAt : at, decayMs }, at);
   } catch {
     return defaultMood(at);
   }
