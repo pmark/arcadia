@@ -20,6 +20,7 @@ export interface ProgressService {
   closedSpans: number;
   sessionHours: number | null;
   delivered: number;
+  cleared: number;
   failed: number;
   sessionIds: string[];
   source: "agent_sessions";
@@ -99,7 +100,7 @@ export function deriveJourneyProgress(db: Database.Database, project: string, pl
       let group = groups.get(key);
       if (!group) {
         group = { service: session.provider, configuredModel: session.model, configuredEffort: session.effort, runtimeModel: null, runtimeEffort: null,
-          workType: "managed development Session", sessions: 0, closedSpans: 0, sessionHours: null, delivered: 0, failed: 0, sessionIds: [], source: "agent_sessions" };
+          workType: "managed development Session", sessions: 0, closedSpans: 0, sessionHours: null, delivered: 0, cleared: 0, failed: 0, sessionIds: [], source: "agent_sessions" };
         groups.set(key,group);
       }
       group.sessions++; group.sessionIds.push(session.id);
@@ -109,6 +110,7 @@ export function deriveJourneyProgress(db: Database.Database, project: string, pl
         group.sessionHours = (group.sessionHours ?? 0) + (Math.min(to,end)-Math.max(started,start))/3_600_000;
       }
       group.delivered += items.filter(item => item.sessionId === session.id && item.kind === "delivered").length;
+      group.cleared += items.filter(item => item.sessionId === session.id && item.kind === "cleared").length;
       group.failed += items.filter(item => item.sessionId === session.id && item.kind === "failed").length;
     }
     for (const session of sessions) {
@@ -135,6 +137,7 @@ export function deriveJourneyProgress(db: Database.Database, project: string, pl
     "Service/model/effort groups use agent_sessions launch configuration, not runtime observation. Runtime model/effort and per-Session usage are unknown; no provider defaults are substituted. Work type is managed development Session; finer task classification and independent reviewer effort are not bound here. Outcomes are linked to their originating Session, not proof of comparative model effectiveness. Groups include Sessions with a span/start or dated outcome in the window; counts are denominators, not rankings.",
     "Recorded subset, not all work: only real managed Sessions in this Plan's current Actions. Simulations and records without a matching real Session are excluded. Zero means no qualifying evidence, not no work.",
     "Delivered counts unique Action/head worker merges; preserved PRs, review passes, accepted Session exits and document Done status are not deliveries. Manual merges and work outside managed Sessions are absent.",
+    "Alert clears without a matching real Session are excluded from totals and service groups; unattributed coverage is unknown. No service, model or effort is inferred for those alerts.",
     "Cleared counts unique alert IDs at their recorded cleared_at time, not obstacle importance. Reopened alerts overwrite prior episodes; historical clears, launch refusals and obstacles without a dated clear are absent. Reopening counts are unknown.",
     "Unaccepted exits count unique Sessions, including repeated failures and interruptions, not distinct defects. Rework effort cannot be isolated.",
     "Session elapsed hours include waiting and sum overlaps; occupied hours union those spans. Active agent effort, human effort, tokens and cost are unknown. Only closed valid spans are measured; missing bounds count is all-history for this scope.",

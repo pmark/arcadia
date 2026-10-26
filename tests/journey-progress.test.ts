@@ -41,7 +41,7 @@ describe("Journey period evidence", () => {
       INSERT INTO session_exit_receipts VALUES ('one','interrupted','2026-10-24T14:00:00Z'), ('one','interrupted','2026-10-24T14:00:00Z'), ('two','failed','2026-10-23T14:00:00Z');`);
     const result = deriveJourneyProgress(db,'p','plan',['a'],now);
     const { current, previous } = result.periods[0];
-    expect(current.services[0]).toMatchObject({ service: 'test-cli', configuredModel: 'configured-model', configuredEffort: 'high', runtimeModel: null, runtimeEffort: null, sessions: 3, closedSpans: 2, sessionHours: 4, delivered: 0, failed: 1 });
+    expect(current.services[0]).toMatchObject({ service: 'test-cli', configuredModel: 'configured-model', configuredEffort: 'high', runtimeModel: null, runtimeEffort: null, sessions: 3, closedSpans: 2, sessionHours: 4, delivered: 0, cleared: 1, failed: 1 });
     expect(current.services[0].sessionIds).toEqual(['one','two','open']);
     expect(current.cleared).toBe(1);
     expect(current.failed).toBe(1);

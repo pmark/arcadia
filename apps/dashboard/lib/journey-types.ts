@@ -124,6 +124,7 @@ export interface ProgressService {
   closedSpans: number;
   sessionHours: number | null;
   delivered: number;
+  cleared: number;
   failed: number;
   sessionIds: string[];
   source: "agent_sessions";

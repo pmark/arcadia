@@ -34,13 +34,14 @@ export function JourneyProgressPanel({ progress, project }: { progress: JourneyP
       </table>
     </div>
     <p className="mt-2 text-xs text-muted">Active effort unknown. {w.sessionsWithoutBounds} Sessions lack valid closed time bounds across this Plan's recorded history.</p>
+    <p className="mt-1 text-xs text-muted">Alert clears without a real Session binding are excluded; unattributed coverage is unknown.</p>
     <details className="mt-2 text-xs"><summary className="cursor-pointer">Service, model and effort evidence</summary>
       <p className="mt-2">Launch configuration is recorded below. Runtime model/effort, active effort and per-Session token usage are unknown. Outcomes belong to their originating Session; these small, different samples do not rank effectiveness.</p>
       {[{ label: "This window", value: w }, { label: "Previous window", value: previous }].map(({label,value}) => <div key={label} className="mt-2">
         <h3 className="font-semibold">{label}</h3>
         {value.services.length ? <ul className="space-y-2">{value.services.map(g => <li key={JSON.stringify([g.service,g.configuredModel,g.configuredEffort])} className="break-words">
           {g.service} · configured model {g.configuredModel ?? "unknown"} · configured effort {g.configuredEffort ?? "unknown"} · {g.workType}<br />
-          {g.sessions} Sessions · {g.closedSpans} closed spans · {number(g.sessionHours)} elapsed hours · {g.delivered} delivered heads · {g.failed} unaccepted exits<br />
+          {g.sessions} Sessions · {g.closedSpans} closed spans · {number(g.sessionHours)} elapsed hours · {g.delivered} delivered heads · {g.cleared ?? "unknown"} dated alert clears · {g.failed} unaccepted exits<br />
           Source {g.source}: {g.sessionIds.join(", ")}
         </li>)}</ul> : <p>No qualifying Sessions.</p>}
       </div>)}

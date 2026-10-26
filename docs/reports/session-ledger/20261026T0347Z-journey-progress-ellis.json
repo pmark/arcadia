@@ -13,12 +13,12 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "stopped",
   "notes": "Direct operator request; no governed Action. See Journey daily evidence handback; model/effort and resources unmeasured.",
-  "stop_reason": "R1 GO; later advisory stale-schema regression verified and repaired; R2 delta review and new-head CI pending at capture."
+  "stop_reason": "R2 GO; later warning-visibility and bound-clear group findings verified/fixed; R3 delta review and new-head CI pending at capture."
 }

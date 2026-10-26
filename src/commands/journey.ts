@@ -141,9 +141,12 @@ export function renderPlanJourneySuccess(response: CommandSuccess<PlanJourney>):
       lines.push(`Session elapsed: ${w.sessionHours?.toFixed(2) ?? "unknown"} hours; occupied: ${w.occupiedHours?.toFixed(2) ?? "unknown"} hours. Active effort unknown. ${w.sessionsWithoutBounds} Sessions lack valid closed bounds (all history).`);
     }
     for (const period of journey.progress.periods) for (const [label, window] of [["current",period.current],["previous",period.previous]] as const) for (const group of window.services) {
-      lines.push(`${period.days}d ${label} · ${group.service} · configured model ${group.configuredModel ?? "unknown"} · configured effort ${group.configuredEffort ?? "unknown"} · ${group.workType}: ${group.sessions} Sessions, ${group.closedSpans} closed spans, ${group.sessionHours?.toFixed(2) ?? "unknown"} elapsed hours, ${group.delivered} delivered heads, ${group.failed} unaccepted exits. Runtime model/effort unknown. Source agent_sessions: ${group.sessionIds.join(", ")}`);
+      lines.push(`${period.days}d ${label} · ${group.service} · configured model ${group.configuredModel ?? "unknown"} · configured effort ${group.configuredEffort ?? "unknown"} · ${group.workType}: ${group.sessions} Sessions, ${group.closedSpans} closed spans, ${group.sessionHours?.toFixed(2) ?? "unknown"} elapsed hours, ${group.delivered} delivered heads, ${group.cleared} dated alert clears, ${group.failed} unaccepted exits. Runtime model/effort unknown. Source agent_sessions: ${group.sessionIds.join(", ")}`);
     }
     lines.push(...journey.progress.limitations);
+  }
+  if (journey.warnings.length > 0) {
+    lines.push("Warnings:", ...journey.warnings.map(warning => `  ${warning}`));
   }
   for (const action of journey.actions) {
     const { activity } = action.journey;

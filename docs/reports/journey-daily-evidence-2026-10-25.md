@@ -123,3 +123,24 @@ large-history/measured-latency revival trigger. R1 summary:
 https://github.com/pmark/arcadia/pull/1777#issuecomment-6408010332.
 Production evidence remains in its own authority/evidence store; this repair neither reads nor
 modifies live first-job evidence and does not reinterpret the metric's runtime-unknown fields.
+
+## R3 visibility and bound-attribution repair
+
+After R2 GO on b2597240b, the pre-merge checkpoint found three new CodeRabbit outside-diff
+comments (review 5648347159). R3-F1/R3-F2: CLI and dashboard omitted the warning retained in
+JSON when optional progress failed. Verified against renderPlanJourneySuccess, writeSuccess and
+PlanJourneyList; fixed by rendering the stored warnings in both human surfaces while preserving
+Action navigation. R3-F3: service groups omitted dated alert-clear counts already bound to a real
+Session; fixed by aggregating only the existing filtered evidence and showing that count in both
+surfaces. No missing binding is inferred from provider/configuration. Clears without a matching real
+Session remain excluded; unattributed coverage is explicitly unknown in the shared limitations and
+visible dashboard copy.
+
+Before this batch, four focused expectations failed across producer, CLI and dashboard tests
+(`/tmp/journey-r3-before.txt`, exit 1). After repair the four-file suite passes 45 tests, including
+visible unavailable warnings without a progress object, retained Action links, rendered group clears,
+and existing unbound-alert exclusion. An initial lint failure on two literal regex spaces was corrected
+to the equivalent `{2}` quantifier; the stale-schema test and touched-file lint were rechecked.
+Current-head CI and independent R3 delta review remain required; no merge or live operation is
+claimed. R2 was published with attribution at
+https://github.com/pmark/arcadia/pull/1777#issuecomment-6410302362 and is prior-delta proof only.
