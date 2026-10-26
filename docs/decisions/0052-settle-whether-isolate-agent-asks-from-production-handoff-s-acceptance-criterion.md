@@ -4,7 +4,7 @@ type: decision
 id: "0052"
 slug: settle-whether-isolate-agent-asks-from-production-handoff-s-acceptance-criterion
 project: arcadia
-status: open
+status: approved
 question: Settle whether isolate-agent-asks-from-production-handoff's acceptance criterion 1 is satisfied by the already-merged reactive-recovery-only design, or whether proactive per-draft branch/worktree isolation is still required before this Action can be marked complete.
 gap_type: missing-decision
 recommendation: Reactive recovery satisfies criterion 1 as shipped
@@ -17,7 +17,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-09-13
+updated: 2026-10-25
+answer: Reactive recovery satisfies criterion 1 as shipped
+decided: 2026-10-25
 ---
 
 # Decision 0052: Settle whether isolate-agent-asks-from-production-handoff's acceptance criterion 1 is satisfied by the already-merged reactive-recovery-only design, or whether proactive per-draft branch/worktree isolation is still required before this Action can be marked complete.
