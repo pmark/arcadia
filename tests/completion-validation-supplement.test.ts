@@ -36,7 +36,17 @@ describe("supplement Artifact custody", () => {
   });
 });
 
-const host = vi.hoisted(() => ({ parentCommand: "", validations: 0, executorDirty: false, executorBlob: null as string | null, executorRevision: "e".repeat(40), afterValidation: null as null | (() => void), beforeValidation: null as null | (() => void) }));
+const host = vi.hoisted(() => ({ parentCommand: "", validations: 0, executorDirty: false, executorBlob: null as string | null, executorModule: null as string | null, executorRevision: "e".repeat(40), afterValidation: null as null | (() => void), beforeValidation: null as null | (() => void) }));
+vi.mock("node:fs", async original => {
+  const actual = await original<typeof import("node:fs")>();
+  const module = new URL("../src/operatorActions/operatorExecution.ts", import.meta.url).pathname;
+  return { ...actual, readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+    if (String(args[0]) === module && host.executorModule !== null) {
+      return args[1] ? host.executorModule : Buffer.from(host.executorModule);
+    }
+    return actual.readFileSync(...args);
+  } };
+});
 vi.mock("node:child_process", async original => {
   const actual = await original<typeof import("node:child_process")>();
   const fs = await import("node:fs");
@@ -64,7 +74,7 @@ vi.mock("../src/sessions/completionValidation.js", async original => {
   } };
 });
 const rehearsals: Rehearsal[] = [];
-afterEach(() => { host.beforeValidation = null; host.afterValidation = null; host.executorDirty = false; host.executorBlob = null; host.executorRevision = "e".repeat(40); vi.unstubAllEnvs(); for (const r of rehearsals.splice(0)) r.dispose(); });
+afterEach(() => { host.beforeValidation = null; host.afterValidation = null; host.executorDirty = false; host.executorBlob = null; host.executorModule = null; host.executorRevision = "e".repeat(40); vi.unstubAllEnvs(); for (const r of rehearsals.splice(0)) r.dispose(); });
 function candidate() {
   const criteria = [`MARKER.md contains ${LINE_A}.`, "tests/proof.test.mjs passes with node --test."];
   const actionsYaml = ["write-marker-a", "write-marker-b"].map((id, index) => `  - id: ${id}
@@ -314,6 +324,15 @@ describe("canonical append-only supplemental validation", () => {
       expect(historical.some(row => JSON.parse(row.context_json).verdict === "pass")).toBe(true);
       expect(independentVerdictGate(db, { session: f.session, repoRoot: f.r.repo }).satisfied).toBe(false);
     });
+  });
+  it("R2-01 refuses a clean source replacement after the executor module was loaded", () => {
+    const f = candidate(); const card = operator(f, "produce");
+    expect(completionSupplementOperator(card.file).executor.sourceDirty).toBe(false);
+    // This module is already imported. Model a new clean committed source B on
+    // disk while the process continues executing A; no candidate file is edited.
+    host.executorModule = readFileSync(new URL("../src/operatorActions/operatorExecution.ts", import.meta.url), "utf8") + "\n// clean replacement B\n";
+    host.executorBlob = host.executorModule; host.executorRevision = "f".repeat(40);
+    expect(() => completionSupplementOperator(card.file)).toThrow(/loaded|drift|changed/);
   });
   it("R1-02 refuses dirty or revision-unbound executors before producer execution", () => {
     const f = candidate(); const card = operator(f, "produce"); const count = host.validations;

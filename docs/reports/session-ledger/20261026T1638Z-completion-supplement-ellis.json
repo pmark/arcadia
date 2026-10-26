@@ -13,7 +13,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [
     {
       "class": "R1-01-final-admission-and-PASS-reuse",
@@ -22,6 +22,10 @@
     {
       "class": "R1-02-dirty-or-unbound-executor",
       "caught_by": "independent-R1"
+    },
+    {
+      "class": "1794-R2-01-loaded-executor-identity",
+      "caught_by": "independent-R2"
     }
   ],
   "operator_touches": null,
@@ -41,9 +45,14 @@
       "id": "R1-two-failing-first-regressions",
       "cost_min": null,
       "fix_ref": "https://github.com/pmark/arcadia/pull/1794#issuecomment-6422155225"
+    },
+    {
+      "id": "R2-loaded-source-drift-failing-first",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-1794-r2-loaded-failing-first.txt"
     }
   ],
   "outcome": "stopped",
   "notes": "Issue1793 source only; no Action. Actual native6.1-sol/medium. Disposable local checks, simulated reviewers; no live effects. Resource totals unknown. No merge/adoption/START authority.",
-  "stop_reason": "R1 NO-GO preserved; one source repair batch awaits independent R2 delta and current-head CI. No merge/adoption authority."
+  "stop_reason": "R1 and R2 NO-GO preserved; loaded-source identity repair awaits independent ordinary R3 and new-head CI. Prior dcdb CI cancelled before E2E tests; no retry. No merge/adoption authority."
 }

@@ -8,6 +8,10 @@ import type { NormalizedAgentAsk } from "../ask/agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { OperatorScriptContractError, validateOperatorScriptContract } from "./libraryContract.js";
 
+// Freeze the bytes that supplied this process, before any operator invocation.
+// A later clean checkout must not let loaded A claim committed source B.
+const loadedSupplementModuleSha256 = createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex");
+
 let activeRunnerDescriptor: string | null = null;
 /** Synchronous, in-process scope: a CLI flag or inherited environment cannot claim this. */
 export function withinPlanAmendmentRunner<T>(descriptorPath: string, run: () => T): T {
@@ -150,10 +154,13 @@ export function completionSupplementOperator(descriptorPath: string, now = new D
   if (path.basename(executable) !== "node" || normalize(command) !== normalize(`${executable} -e ${operatorScriptRunnerSource} ${argv.join(" ")}`)) {
     throw new Error("The parent process is not the exact canonical operator script runner and argv.");
   }
+  if (createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") !== loadedSupplementModuleSha256) {
+    throw new Error("Completion supplement loaded executor source changed; restart from the pinned clean revision.");
+  }
   const loadedRoot = path.resolve(import.meta.dirname, "../..");
   const revision = execFileSync("git", ["-C", loadedRoot, "rev-parse", "HEAD"], { encoding: "utf8", timeout: 2000 }).trim();
   const sourceDirty = Boolean(execFileSync("git", ["-C", loadedRoot, "status", "--porcelain", "--", "src", "scripts/supplement-completion-validation.ts"], { encoding: "utf8", timeout: 2000 }).trim());
-  const executor = { revision, sourceDirty, moduleSha256: createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") };
+  const executor = { revision, sourceDirty, moduleSha256: loadedSupplementModuleSha256 };
   verifyCompletionSupplementExecutor(executor, loadedRoot);
   return { contract, executor, descriptor: { ref: snapshot, sha256: executedDescriptor.sha256 }, run: { ref, runId, scriptId: id, pid: process.ppid, startedAt: run.startedAt } };
 }
