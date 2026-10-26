@@ -1,3 +1,4 @@
+import { JourneyProgressPanel } from "./journey-progress";
 import Link from "next/link";
 import type { JourneyPhase, PlanJourney } from "../lib/journey-types";
 import type { PathBrief } from "../lib/path-types";
@@ -30,6 +31,7 @@ export function PlanJourneyList({ journey, path = null, formatTime }: { journey:
       {context.project ? (
         <p className="mb-3 line-clamp-2 break-words text-[13px] text-muted">{journey.plan.milestone ?? context.project.milestone ?? context.project.goal}</p>
       ) : null}
+      {journey.progress ? <JourneyProgressPanel progress={journey.progress} project={journey.project} /> : null}
       <ul className="divide-y divide-line rounded-md border border-line bg-panel" aria-label="Actions in this Plan">
         {journey.actions.map((action) => {
           const { activity } = action.journey;

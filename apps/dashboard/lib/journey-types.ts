@@ -89,6 +89,7 @@ export interface PlanJourneyAction {
 }
 
 export interface PlanJourney {
+  progress?: JourneyProgress;
   schema: "arcadia-plan-journey-v1";
   generatedAt: string;
   project: string;
@@ -97,4 +98,54 @@ export interface PlanJourney {
   northStar: null;
   actions: PlanJourneyAction[];
   warnings: string[];
+}
+
+
+
+
+
+export interface ProgressEvidence {
+  at: string;
+  action: string;
+  source: string;
+  id: string;
+  sessionId: string;
+  kind: "delivered" | "cleared" | "failed";
+  url: string | null;
+}
+export interface ProgressService {
+  service: string;
+  configuredModel: string | null;
+  configuredEffort: string | null;
+  runtimeModel: null;
+  runtimeEffort: null;
+  workType: "managed development Session";
+  sessions: number;
+  closedSpans: number;
+  sessionHours: number | null;
+  delivered: number;
+  failed: number;
+  sessionIds: string[];
+  source: "agent_sessions";
+}
+export interface ProgressWindow {
+  services: ProgressService[];
+  start: string;
+  end: string;
+  elapsedDays: number;
+  delivered: number;
+  cleared: number;
+  failed: number;
+  deliveredPerDay: number;
+  clearedPerDay: number;
+  sessionHours: number | null;
+  occupiedHours: number | null;
+  sessionsWithoutBounds: number;
+  evidence: ProgressEvidence[];
+}
+export interface JourneyProgress {
+  generatedAt: string;
+  timezone: "UTC";
+  periods: Array<{ days: number; current: ProgressWindow; previous: ProgressWindow }>;
+  limitations: string[];
 }

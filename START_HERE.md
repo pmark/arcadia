@@ -2,6 +2,25 @@
 
 For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
 
+## Daily evidence in Journey
+
+Open a Plan's Journey (for Arcadia, [current Plan](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current))
+and use **Window** to compare the last 1, 7 or 30 elapsed days with the previous
+same-length period. `arcadia journey arcadia/plan:current` prints all three;
+`--json` includes the same evidence and source IDs.
+
+Delivered heads are recorded worker merges, not preserved PRs or review passes.
+Dated alert clears and unaccepted Session exits show a supported subset of the
+rocks crossed and interruptions met. Rates divide by elapsed 24-hour days in UTC.
+Session elapsed hours include waiting; occupied hours count overlapping spans
+once. Active effort remains unknown. Expand the limitations and evidence before
+comparing periods. The service/model/effort breakdown retains launch configuration
+and Session source IDs alongside elapsed spans and linked outcomes. Actual runtime
+model/effort and per-Session token usage remain unknown; samples do not rank model
+effectiveness. Work outside managed Sessions, undated clears, reopened alert
+history and manual merges are not fully measured. A zero is no qualifying record,
+not proof that no work happened. This view makes no model calls.
+
 ## Conversational workspace preview
 
 Start the dashboard with `pnpm dashboard`, then open <http://127.0.0.1:3020/workspace>.

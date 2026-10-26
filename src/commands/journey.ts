@@ -1,3 +1,4 @@
+import { deriveJourneyProgress } from "../journey/progress.js";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -117,6 +118,7 @@ export function derivePlanJourney(db: Database.Database, documents: ProjectDocum
       plan: { slug: plan.slug, milestone: plan.milestone ?? documents.project?.milestone ?? null, active: plan.slug === activeSlug, position: null, total: plan.actions.length, done: plan.actions.filter((a) => a.status === "done").length },
       action: null
     },
+    progress: deriveJourneyProgress(db, documents.slug, plan.slug, plan.actions.map(action => action.id), now),
     northStar: null,
     actions,
     warnings
@@ -126,6 +128,17 @@ export function derivePlanJourney(db: Database.Database, documents: ProjectDocum
 export function renderPlanJourneySuccess(response: CommandSuccess<PlanJourney>): string[] {
   const journey = response.data;
   const lines = [`${journey.project}/plan:${journey.plan.slug}${journey.plan.active ? " (active)" : ""}${journey.plan.milestone ? ` · ${journey.plan.milestone}` : ""}`];
+  if (journey.progress) {
+    for (const period of journey.progress.periods) {
+      const w = period.current, previous = period.previous;
+      lines.push(`Travel in ${period.days} elapsed days (UTC [${w.start}, ${w.end})): ${w.delivered} delivered (${w.deliveredPerDay.toFixed(2)}/day; previous ${previous.deliveredPerDay.toFixed(2)}/day), ${w.cleared} dated alert clears (${w.clearedPerDay.toFixed(2)}/day; previous ${previous.clearedPerDay.toFixed(2)}/day), ${w.failed} unaccepted exits.`);
+      lines.push(`Session elapsed: ${w.sessionHours?.toFixed(2) ?? "unknown"} hours; occupied: ${w.occupiedHours?.toFixed(2) ?? "unknown"} hours. Active effort unknown. ${w.sessionsWithoutBounds} Sessions lack valid closed bounds (all history).`);
+    }
+    for (const period of journey.progress.periods) for (const [label, window] of [["current",period.current],["previous",period.previous]] as const) for (const group of window.services) {
+      lines.push(`${period.days}d ${label} · ${group.service} · configured model ${group.configuredModel ?? "unknown"} · configured effort ${group.configuredEffort ?? "unknown"} · ${group.workType}: ${group.sessions} Sessions, ${group.closedSpans} closed spans, ${group.sessionHours?.toFixed(2) ?? "unknown"} elapsed hours, ${group.delivered} delivered heads, ${group.failed} unaccepted exits. Runtime model/effort unknown. Source agent_sessions: ${group.sessionIds.join(", ")}`);
+    }
+    lines.push(...journey.progress.limitations);
+  }
   for (const action of journey.actions) {
     const { activity } = action.journey;
     const glyph = action.journey.destination.reached ? "◆" : activity.phase === "blocked" ? "▲" : action.current ? "◉" : "○";
