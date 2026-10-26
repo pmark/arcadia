@@ -119,6 +119,7 @@ function operator(f: ReturnType<typeof candidate>, phase: "produce" | "code-revi
   for (const [key, value] of Object.entries({ ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: file, ARCADIA_OPERATOR_SCRIPT_ID: id, ARCADIA_OPERATOR_SCRIPT_RUN_ID: runId,
     ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: directory, ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR: snapshot })) vi.stubEnv(key, value);
   host.parentCommand = `${process.execPath} -e ${operatorScriptRunnerSource} ${path.join(library, descriptor.script)} ${runFile} ${path.join(library, "runs/state", `${id}.json`)} ${path.join(library, "runs/state", `${id}.lock`)} ${directory} ${runId} ${snapshot}`;
+  if (process.platform === "darwin") host.parentCommand = host.parentCommand.replace(/\n/g, "\\012");
   return { descriptor, file, runFile, run, finish: () => writeFileSync(runFile, JSON.stringify({ ...run, status: "succeeded", exitCode: 0, finishedAt: new Date().toISOString() })) };
 }
 function produce(f: ReturnType<typeof candidate>) {
