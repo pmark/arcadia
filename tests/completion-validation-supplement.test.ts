@@ -4,7 +4,7 @@ import path from "node:path";
 import { Rehearsal, LINE_A, hostReviewHost, HOST_REVIEW_PR_URL } from "./helpers/rehearsalHarness.js";
 import { runQaPrReviewCommand } from "../src/qa/prReview.js";
 import { withDatabase } from "../src/db/connection.js";
-import { completionSupplementOperator } from "../src/operatorActions/operatorExecution.js";
+import { completionSupplementOperator, operatorScriptRunnerSource } from "../src/operatorActions/operatorExecution.js";
 import { completionSupplementLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { completionSupplementState, produceCompletionSupplement, resolveCompletionSupplement, getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { beginIndependentVerdict, independentVerdictReadiness, finishIndependentVerdict, independentVerdictGate } from "../src/sessions/roleLineage.js";
@@ -88,12 +88,12 @@ function operator(f: ReturnType<typeof candidate>, phase: "produce" | "code-revi
       preservationSha256: state.binding.preservationSha256, head: state.binding.head, tree: state.binding.tree, commandsSha256: state.binding.commandsSha256,
       artifact: pin ? { artifactId: pin.artifactId, sha256: pin.sha256 } : null, pullRequest: phase === "produce" ? null : HOST_REVIEW_PR_URL, bodySha256: phase === "produce" ? null : createHash("sha256").update("## QA plan\nRead MARKER.md.").digest("hex") } };
   const file = path.join(library, `${id}.json`), snapshot = path.join(directory, "descriptor.json"), runFile = path.join(directory, "run.json");
-  writeFileSync(file, JSON.stringify(descriptor)); writeFileSync(snapshot, JSON.stringify(descriptor)); writeFileSync(path.join(library, descriptor.script), completionSupplementLauncher(id));
+  writeFileSync(file, JSON.stringify(descriptor)); writeFileSync(snapshot, JSON.stringify(descriptor, null, 2) + "\n"); writeFileSync(path.join(library, descriptor.script), completionSupplementLauncher(id));
   const run = { schema: "arcadia-operator-script-run-v1", runId, scriptId: id, pid: process.ppid, status: "running", startedAt: new Date().toISOString() };
   writeFileSync(runFile, JSON.stringify(run));
   for (const [key, value] of Object.entries({ ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: file, ARCADIA_OPERATOR_SCRIPT_ID: id, ARCADIA_OPERATOR_SCRIPT_RUN_ID: runId,
     ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: directory, ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR: snapshot })) vi.stubEnv(key, value);
-  host.parentCommand = `const writeState = canonical fixture ${snapshot} ${runFile} ${runId}`;
+  host.parentCommand = `${process.execPath} -e ${operatorScriptRunnerSource} ${path.join(library, descriptor.script)} ${runFile} ${path.join(library, "runs/state", `${id}.json`)} ${path.join(library, "runs/state", `${id}.lock`)} ${directory} ${runId} ${snapshot}`;
   return { descriptor, file, runFile, run, finish: () => writeFileSync(runFile, JSON.stringify({ ...run, status: "succeeded", exitCode: 0, finishedAt: new Date().toISOString() })) };
 }
 function produce(f: ReturnType<typeof candidate>) {
@@ -201,7 +201,7 @@ describe("canonical append-only supplemental validation", () => {
     writeFileSync(action.runFile, JSON.stringify({ ...action.run, pid: 0 }));
     expect(() => completionSupplementOperator(action.file)).toThrow(/running parent/);
     writeFileSync(action.runFile, JSON.stringify(action.run));
-    const parent = host.parentCommand; host.parentCommand = "ordinary inherited environment";
+    const parent = host.parentCommand; host.parentCommand = `node -e const writeState = forged ${operatorProof.descriptor.ref} ${operatorProof.run.ref} ${operatorProof.run.runId}`;
     expect(() => completionSupplementOperator(action.file)).toThrow(/canonical operator script runner/); host.parentCommand = parent;
     const expired = { ...action.descriptor, expires_at: "2020-01-01T00:00:00Z" };
     writeFileSync(action.file, JSON.stringify(expired)); expect(() => completionSupplementOperator(action.file)).toThrow(/expired/);
@@ -209,8 +209,13 @@ describe("canonical append-only supplemental validation", () => {
     expect(() => validateOperatorScriptContract(action.descriptor, action.descriptor.id, completionSupplementLauncher(action.descriptor.id) + "echo arbitrary command\n")).toThrow(/canonical launcher/);
     expect(host.validations).toBe(before);
     const { pin } = produce(f);
+    f.r.deactivate();
+    const reviewCard = operator(f, "code-review", pin);
     withDatabase(f.r.workspace, db => {
       const n = db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get();
+      expect(() => beginIndependentVerdict(db, { session: f.session, repoRoot: f.r.repo, supplement: pin, role: "code-review",
+        requestId: reviewCard.descriptor.completionSupplement!.requestId, actorId: "independent", executionCwd: f.r.root, now: new Date() })).toThrow(/production On/);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get()).toEqual(n);
       for (const selected of [undefined, { ...pin, sha256: "0".repeat(64) }, { ...pin, artifactId: "artifact_foreign" }, { ...pin, workspace: f.r.root }]) {
         expect(() => beginIndependentVerdict(db, { session: f.session, repoRoot: f.r.repo, supplement: selected, role: "code-review", requestId: "negative-fixture-request", actorId: "independent", executionCwd: f.r.root, now: new Date() })).toThrow();
         expect(db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get()).toEqual(n);

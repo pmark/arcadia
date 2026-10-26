@@ -134,22 +134,27 @@ export function completionSupplementOperator(descriptorPath: string, now = new D
   if (process.env.ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY !== directory || process.env.ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR !== snapshot) {
     throw new Error("The operator run does not bind the canonical receipt directory.");
   }
-  if (readSupplementJson(snapshot, library).sha256 !== raw.sha256) throw new Error("The executed descriptor differs from the operator snapshot.");
+  const executedDescriptor = readSupplementJson(snapshot, library);
+  if (supplementDigest(executedDescriptor.value) !== supplementDigest(raw.value)) throw new Error("The executed descriptor differs from the operator snapshot.");
   const ref = path.join(directory, "run.json");
   const run = readSupplementJson(ref, library).value as Record<string, unknown>;
   if (run.schema !== "arcadia-operator-script-run-v1" || run.runId !== runId || run.scriptId !== id || run.status !== "running" ||
       run.pid !== process.ppid || typeof run.startedAt !== "string" || !Number.isFinite(Date.parse(run.startedAt)) || Date.parse(run.startedAt) > now.getTime()) {
     throw new Error("The operator action is not the running parent of this host operation.");
   }
-  const command = execFileSync("ps", ["-p", String(process.ppid), "-o", "command="], { encoding: "utf8", timeout: 2000, maxBuffer: 65536 });
-  if (!command.includes("const writeState =") || !command.includes(snapshot) || !command.includes(ref) || !command.includes(runId)) {
-    throw new Error("The parent process is not the canonical operator script runner.");
+  const command = execFileSync("ps", ["-ww", "-p", String(process.ppid), "-o", "command="], { encoding: "utf8", timeout: 2000, maxBuffer: 65536 });
+  const executable = command.trimStart().split(" -e ")[0];
+  const argv = [path.join(library, `${id}.sh`), ref, path.join(library, "runs/state", `${id}.json`),
+    path.join(library, "runs/state", `${id}.lock`), directory, runId, snapshot];
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+  if (path.basename(executable) !== "node" || normalize(command) !== normalize(`${executable} -e ${operatorScriptRunnerSource} ${argv.join(" ")}`)) {
+    throw new Error("The parent process is not the exact canonical operator script runner and argv.");
   }
   const loadedRoot = path.resolve(import.meta.dirname, "../..");
   const revision = execFileSync("git", ["-C", loadedRoot, "rev-parse", "HEAD"], { encoding: "utf8", timeout: 2000 }).trim();
   const sourceDirty = Boolean(execFileSync("git", ["-C", loadedRoot, "status", "--porcelain", "--", "src", "scripts/supplement-completion-validation.ts"], { encoding: "utf8", timeout: 2000 }).trim());
   const executor = { revision, sourceDirty, moduleSha256: createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") };
-  return { contract, executor, descriptor: { ref: snapshot, sha256: raw.sha256 }, run: { ref, runId, scriptId: id, pid: process.ppid, startedAt: run.startedAt } };
+  return { contract, executor, descriptor: { ref: snapshot, sha256: executedDescriptor.sha256 }, run: { ref, runId, scriptId: id, pid: process.ppid, startedAt: run.startedAt } };
 }
 let supplementRegistration: CreateArtifactInput | null = null;
 /** The validated host producer scopes exactly one immutable registration. */
@@ -163,3 +168,56 @@ export function registerCompletionSupplementArtifact<T>(operator: CompletionSupp
 export function assertCompletionSupplementRegistration(input: CreateArtifactInput): void {
   if (supplementRegistration !== input) throw new Error("Reserved completion supplement kind requires the canonical host producer.");
 }
+
+/** Shared verbatim source used by the dashboard and host parent verification. */
+export const operatorScriptRunnerSource = String.raw`
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(1);
+const [scriptPath, firstStatePath, secondStatePath, lockPath, runDirectoryArg, runId, descriptorPath] = args;
+const runRecordPath = args.length >= 7 ? firstStatePath : firstStatePath;
+const latestStatePath = args.length >= 7 ? secondStatePath : firstStatePath;
+const runDirectory = runDirectoryArg || path.dirname(runRecordPath);
+const writeJson = (file, value) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = file + ".tmp-" + process.pid;
+  fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + "\n");
+  fs.renameSync(temporary, file);
+};
+const writeState = (value) => {
+  writeJson(latestStatePath, { ...value, ...(runId ? { runId } : {}) });
+  if (runRecordPath !== latestStatePath) {
+    const existing = fs.existsSync(runRecordPath) ? JSON.parse(fs.readFileSync(runRecordPath, "utf8")) : {};
+    writeJson(runRecordPath, { ...existing, ...value, ...(runId ? { runId } : {}) });
+  }
+};
+fs.mkdirSync(runDirectory, { recursive: true });
+const stdout = fs.openSync(path.join(runDirectory, "stdout.log"), "a");
+const stderr = fs.openSync(path.join(runDirectory, "stderr.log"), "a");
+const startedAt = new Date().toISOString();
+writeState({ status: "running", pid: process.pid, startedAt });
+const env = { ...process.env };
+env.ARCADIA_OPERATOR_SCRIPT_ID = path.basename(scriptPath, ".sh");
+env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR = scriptPath.replace(/\.sh$/, ".json");
+env.ARCADIA_OPERATOR_SCRIPT_RUN_ID = runId || "legacy";
+env.ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY = runDirectory;
+if (descriptorPath) env.ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR = descriptorPath;
+delete env.NODE_ENV;
+for (const key of Object.keys(env)) {
+  if (key.startsWith("NEXT_") || key.startsWith("__NEXT_")) delete env[key];
+}
+const child = spawn(scriptPath, ["run"], { stdio: ["ignore", stdout, stderr], env });
+let settled = false;
+const finish = (status, exitCode, message) => {
+  if (settled) return;
+  settled = true;
+  writeState({ status, startedAt, finishedAt: new Date().toISOString(), exitCode, ...(message ? { message } : {}) });
+  try { fs.closeSync(stdout); } catch {}
+  try { fs.closeSync(stderr); } catch {}
+  try { fs.unlinkSync(lockPath); } catch {}
+  process.exit(exitCode ?? 1);
+};
+child.once("error", (error) => finish("failed", null, error.message));
+child.once("close", (code) => finish(code === 0 ? "succeeded" : "failed", code, null));
+`;
