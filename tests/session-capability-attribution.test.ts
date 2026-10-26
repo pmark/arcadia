@@ -36,7 +36,7 @@ describe("capability failure attribution", () => {
     expect(detectEnvironmentWalls(codex("cat README.md", "validation operation not permitted"))).toEqual([]);
     expect(detectEnvironmentWalls(codex("pnpm test", 'AssertionError: expected text\nExpected: "validation sandbox permission denied"'))).toEqual([]);
   });
-  it.each(["Error: sandbox fixture assertion failed", 'Error: expected output "validation operation not permitted"', 'Error: "permission denied" is the expected fixture text'])("does not attribute generic test error prose: %s", output => {
+  it.each(["Error: sandbox fixture assertion failed", "Error: permission denied in fixture assertion", 'Error: expected output "validation operation not permitted"', 'Error: "permission denied" is the expected fixture text'])("does not attribute generic test error prose: %s", output => {
       expect(observeSessionCapability(codex("pnpm test", output), null)).toMatchObject({ status: "unknown", walls: [] });
     });
   it.each([[null], [{ name: "workspace_write", ok: "false" }], [{ name: "workspace_write", ok: false, error: {} }]])("retains unknown for a malformed matching probe: %j", (...items) => {

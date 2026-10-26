@@ -346,7 +346,7 @@ export function deriveJourney(db: Database.Database, actionKey: string, now: Dat
   });
   // The worker records what would unblock an escalation; it is the operator's move unless it says none is needed.
   const remedy = escalation?.remedy?.trim() ?? "";
-  const wallRemedyUnproven = !reached && Boolean(latestSession && escalation && (escalation.kind === "environment_wall" || /additionalDirectories|workspace.write|sandbox.*write/i.test(remedy)) && !hasAttributedWall(latestExit));
+  const wallRemedyUnproven = !reached && Boolean(latestSession && escalation && (escalation.kind === "environment_wall" || /additionalDirectories|workspace.write|sandbox.*write/i.test(remedy)) && !hasAttributedWall(latestExit, escalation.message, actionKey));
   if (wallRemedyUnproven) warnings.push("The recorded capability remedy has no attributable wall evidence for this Session; permission changes and a repair-budget reset are not established next steps.");
   activity.yourMove = !reached && !wallRemedyUnproven && escalation && !WAITING_ESCALATIONS.has(escalation.kind) && remedy && !NO_OPERATOR_STEP.test(remedy)
     ? firstLine(remedy, 300)
@@ -551,12 +551,26 @@ function stoppedSessionActivity(session: SessionRow, exit: ExitRow | null): Jour
   if (session.status === "needs_input") return { phase: "blocked", headline: "Stopped: exit cause unknown", detail: `Session ${session.id} has a legacy needs_input status without a matching input-request receipt. The cause remains unknown.`, since };
   return null;
 }
-function hasAttributedWall(exit: ExitRow | null): boolean {
+function hasAttributedWall(exit: ExitRow | null, message: string, actionKey: string): boolean {
+  // The existing canonical escalation records both its stage and named classes.
+  // A later host preflight has its own evidence; it creates no Session receipt.
+  const prefix = `Environment wall for ${actionKey} (`;
+  if (!message.startsWith(prefix)) return false;
+  const end = message.indexOf(")", prefix.length);
+  if (end < 0) return false;
+  const classes = message.slice(prefix.length, end).split(", ");
+  const known = ["workspace_write", "host_validation", "preservation"];
+  if (!classes.length || !classes.every(name => known.includes(name))) return false;
+  const stage = message.slice(end + 1);
+  if (stage.startsWith(" found by the worker probe (host-side, not Session evidence); no Session was launched and no tokens were spent.")) return true;
+  const provenance = stage.startsWith(" found by the session probe, run inside the Session as its first step") ? "session_probe"
+    : stage.startsWith(": the Session exited with no diff and will not be relaunched automatically.") ? "failed_tool_operation" : null;
+  if (!provenance) return false;
   const observation = parseJson(exit?.evidence_json ?? null).sessionCapability;
   if (!observation || typeof observation !== "object" || Array.isArray(observation)) return false;
   const value = observation as Record<string, unknown>;
-  return value.version === 1 && value.status === "wall" && ["session_probe", "failed_tool_operation"].includes(String(value.provenance))
-    && Array.isArray(value.walls) && value.walls.some(wall => wall && typeof wall === "object" && ["workspace_write", "host_validation", "preservation"].includes(String((wall as Record<string, unknown>).wallClass)));
+  return value.version === 1 && value.status === "wall" && value.provenance === provenance
+    && Array.isArray(value.walls) && classes.every(name => (value.walls as unknown[]).some(wall => wall && typeof wall === "object" && (wall as Record<string, unknown>).wallClass === name));
 }
 
 function stepPhase(outcome: Record<string, unknown>): string {

@@ -509,7 +509,7 @@ describe("runManagedProductionTick", () => {
     expect(read()!.evidence_json).toBe(original.evidence_json);
   });
 
-  it.each(["malformed probe", "generic test error", "quoted denial"])("retains an unknown exit without exhausting allowances for %s", kind => {
+  it.each(["malformed probe", "generic test error", "quoted denial", "denial-prefix fixture error"])("retains an unknown exit without exhausting allowances for %s", kind => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     activatePolicy(fixture);
@@ -525,7 +525,7 @@ describe("runManagedProductionTick", () => {
     writeFileSync(sessionProbeNoncePath(fixture.workspace, first.id), nonce);
     writeFileSync(file, kind === "malformed probe"
       ? JSON.stringify({ probe: "session-capability/v1", nonce, ok: true, checks: [null] })
-      : JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "pnpm test", exit_code: 1, aggregated_output: kind === "generic test error" ? "Error: sandbox fixture assertion failed" : 'Error: expected output "validation operation not permitted"' } }));
+      : JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "pnpm test", exit_code: 1, aggregated_output: kind === "denial-prefix fixture error" ? "Error: permission denied in fixture assertion" : kind === "generic test error" ? "Error: sandbox fixture assertion failed" : 'Error: expected output "validation operation not permitted"' } }));
     tmux.live.delete(first.tmux_session_name);
     tick();
     const receipt = withReadOnlyDatabase(fixture.workspace, db => getSessionExitReceipt(db, first.id));

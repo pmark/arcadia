@@ -78,10 +78,10 @@ export function detectEnvironmentWalls(log: string | null): SessionCapabilityObs
     // An assertion quoting a denial is still a failed test, not a permission error.
     const diagnostic = output.split(/\r?\n/).find(line => {
       if (/^Error \[(?:SQLITE_WORKSPACE_WRITE_DENIED|EACCES|EPERM)\]:/i.test(line)) return true;
-      const direct = line.replace(/^(?:arcadia(?:-preserve-broker)?:\s*)?(?:Error:\s*)?/i, "");
+      const direct = line.replace(/^arcadia(?:-preserve-broker)?:\s*/i, "").replace(/^Error:\s*(?=(?:EACCES|EPERM|SQLITE_WORKSPACE_WRITE_DENIED)\b)/i, "");
       // Generic Error prose (including quoted denials) is not an OS/database
       // denial. Keep unsupported diagnostic shapes unknown.
-      return /^(?:SQLITE_WORKSPACE_WRITE_DENIED:|EACCES\b|EPERM\b|operation not permitted\b|permission denied\b|attempt to write a readonly database\b|cannot write the workspace database\b|workspace (?:database )?write (?:was )?denied\b|preservation (?:denied|not permitted|unreachable|did not (?:produce|write)|no receipt)\b)/i.test(direct);
+      return /^(?:SQLITE_WORKSPACE_WRITE_DENIED:|EACCES\b|EPERM\b|operation not permitted$|permission denied$|attempt to write a readonly database\b|cannot write the workspace database\b|workspace (?:database )?write (?:was )?denied\b|preservation (?:denied|not permitted|unreachable|did not (?:produce|write)|no receipt)\b)/i.test(direct);
     });
     if (!diagnostic) return;
     for (const { wallClass, pattern } of WALL_PATTERNS) {

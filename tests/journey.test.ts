@@ -1,3 +1,4 @@
+import { describeEnvironmentWalls } from "../src/production/sessionCapability.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -211,6 +212,18 @@ describe("deriveJourney", () => {
       insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: "Host preflight refused before launch.", remedy: "Inspect the declared read-only profile.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
       expect(activity().yourMove).toBe("Inspect the declared read-only profile.");
     });
+    it("preserves a subsequent genuine host preflight after an older Session exit", () => {
+      session("s1", "claude/old", "2026-10-19T15:00:00.000Z", "needs_input");
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: describeEnvironmentWalls(KEY, [{ wallClass: "workspace_write", evidence: "read-only profile", remedy: "Inspect the declared read-only profile." }], "preflight").message, remedy: "Inspect the declared read-only profile.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBe("Inspect the declared read-only profile.");
+    });
+    it.each(["wrong class", "wrong provenance", "partial classes"])("does not justify an exit remedy using %s", kind => {
+      session("s1", "claude/wrong-wall", "2026-10-19T15:00:00.000Z", "needs_input");
+      const evidence = { sessionCapability: { version: 1, status: "wall", provenance: kind === "wrong provenance" ? "session_probe" : "failed_tool_operation", walls: [{ wallClass: "workspace_write" }] } };
+      db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE session_id = 's1'").run(JSON.stringify(evidence));
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: `Environment wall for ${KEY} (${kind === "wrong class" ? "host_validation" : kind === "partial classes" ? "workspace_write, host_validation" : "workspace_write"}): the Session exited with no diff and will not be relaunched automatically.`, remedy: "Inspect host validation access.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBeNull();
+    });
     it("never borrows an earlier Session's input request or wall evidence", () => {
       session("old", "claude/old", "2026-10-19T14:00:00.000Z");
       db.prepare("UPDATE session_exit_receipts SET outcome = 'needs_input' WHERE session_id = 'old'").run();
@@ -222,7 +235,7 @@ describe("deriveJourney", () => {
       session("s1", "claude/proven-wall", "2026-10-19T15:00:00.000Z", "needs_input");
       const evidence = { sessionCapability: { version: 1, status: "wall", provenance: "failed_tool_operation", walls: [{ wallClass: "workspace_write", operation: "arcadia agent-ask preview", deniedPath: "/fixture/workspace", evidence: "actual denied operation" }] } };
       db.prepare("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable', evidence_json = ? WHERE session_id = 's1'").run(JSON.stringify(evidence));
-      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: "Actual denied operation.", remedy: "Inspect the recorded operation before deciding on workspace access.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: describeEnvironmentWalls(KEY, [{ wallClass: "workspace_write", evidence: "actual denied operation", remedy: "Inspect workspace access." }], "exit").message, remedy: "Inspect the recorded operation before deciding on workspace access.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
       expect(activity().yourMove).toBe("Inspect the recorded operation before deciding on workspace access.");
       db.prepare("UPDATE session_exit_receipts SET evidence_json = '{' WHERE session_id = 's1'").run();
       expect(activity().yourMove).toBeNull();

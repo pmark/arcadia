@@ -13,7 +13,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 2,
   "blocking_findings": [
     {
       "class": "denial-attribution",
@@ -22,6 +22,14 @@
     {
       "class": "malformed-probe-receipt-rollback",
       "caught_by": "independent-R1"
+    },
+    {
+      "class": "host-preflight-provenance-and-capability-binding",
+      "caught_by": "CodeRabbit-verified"
+    },
+    {
+      "class": "denial-prefix-test-prose",
+      "caught_by": "CodeRabbit-verified"
     }
   ],
   "operator_touches": null,
@@ -36,9 +44,14 @@
       "id": "R1-attribution-and-malformed-probe",
       "cost_min": null,
       "fix_ref": "https://github.com/pmark/arcadia/pull/1790#issuecomment-6413721758"
+    },
+    {
+      "id": "late-CodeRabbit-findings-verified",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1790#discussion_r4376370977"
     }
   ],
   "outcome": "stopped",
   "notes": "Source-only Issue1788 assignment, depth1 sole implementer; no governed Action. Native gpt-6.1-sol/medium; resources unknown. No merge, runtime, permissions, recovery or provider authority.",
-  "stop_reason": "R1 blockers repaired; source awaits current-head independent delta review and CI. No live adoption proof."
+  "stop_reason": "Late feedback repaired after R2 GO; awaiting ordinary R3 delta review and new-head CI. No live adoption proof."
 }
