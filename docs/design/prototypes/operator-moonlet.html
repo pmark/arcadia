@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Throwaway UX prototype for Issue #1761 (operator moonlet). Open directly in a browser; not production code. See docs/design/operator-moonlet.md. -->
+<!-- Throwaway UX prototype for Issue #1761: the Expressive presence style (the moonlet). Open directly in a browser; not production code. See docs/design/operator-presence.md. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Arcadia Moonlet</title>
@@ -59,12 +59,6 @@ nav { display: flex; align-items: center; justify-content: space-between; gap: 1
 .avatar .badge { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
 .avatar .badge img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
 
-/* sky labels (Phobos / Deimos) */
-.moon-label { position: fixed; font-size: 12px; letter-spacing: .06em; color: var(--ink-soft); pointer-events: none; transition: color .6s, opacity .6s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.moon-label::before { content: ""; width: 34px; height: 1px; background: currentColor; opacity: .6; }
-.moon-label em { font-style: normal; opacity: 0; transition: opacity .6s; color: var(--ember); }
-.moon-label.lit em { opacity: 1; }
-.moon-label.lit { color: var(--ink); }
 
 /* conversation */
 .convo { overflow-y: auto; padding: 18px 0 24px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
@@ -219,8 +213,6 @@ svg.trail .sat { fill: var(--ink); }
 <canvas id="sky" aria-hidden="true"></canvas>
 <canvas id="stars" aria-hidden="true"></canvas>
 <canvas id="weather" aria-hidden="true"></canvas>
-<span class="moon-label" id="lbl-phobos">Phobos <em>· fear</em></span>
-<span class="moon-label" id="lbl-deimos">Deimos <em>· dread</em></span>
 
 <div class="app">
   <nav>
@@ -313,12 +305,12 @@ const SKIES = ATMOS;
 const STATES = [
   { id: "thinking",  label: "Thinking",     g: "🤔", fx: "tilt",   face: "side" },
   { id: "typing",    label: "Typing",       g: "⌨️", fx: "tap",    face: "flat" },
-  { id: "confused",  label: "Confused",     g: "😵‍💫", fx: "spin",   face: "dizzy", moon: "phobos" },
-  { id: "worried",   label: "Worried",      g: "😟", fx: "wobble", face: "worried", moon: "deimos" },
+  { id: "confused",  label: "Confused",     g: "😵‍💫", fx: "spin",   face: "dizzy" },
+  { id: "worried",   label: "Worried",      g: "😟", fx: "wobble", face: "worried" },
   { id: "rushing",   label: "Rushing",      g: "🏃", fx: "dash",   face: "flat" },
-  { id: "impatient", label: "Impatient",    g: "⏳", fx: "tap",    face: "angry", moon: "deimos" },
+  { id: "impatient", label: "Impatient",    g: "⏳", fx: "tap",    face: "angry" },
   { id: "angry",     label: "Angry",        g: "😠", fx: "shake",  face: "angry" },
-  { id: "freaking",  label: "Freaking out", g: "😱", fx: "panic",  face: "shock", moon: "phobos" },
+  { id: "freaking",  label: "Freaking out", g: "😱", fx: "panic",  face: "shock" },
   { id: "excited",   label: "Excited",      g: "🤩", fx: "hop",    face: "happy" },
   { id: "stoked",    label: "Stoked",       g: "🤙", fx: "hop",    face: "happy" },
   { id: "content",   label: "Content",      g: "😌", fx: "none",   face: "happy" },
@@ -451,11 +443,6 @@ function drawWeather(now) {
   for (const id in weights) weights[id] += ((id === S.sky ? 1 : 0) - weights[id]) * k;
   const b = blend(), night = nightAt(phase()), move = reduce ? 0 : 1;
   wx.clearRect(0, 0, W, H);
-  // Phobos and Deimos belong to the sky, so weather veils them too.
-  const show = .35 + .65 * night;
-  moonBody(W * .8, H * .15, Math.max(16, Math.min(W, H) * .045), show);
-  moonBody(W * .9, H * .25, 5, show);
-  $("lbl-phobos").style.opacity = $("lbl-deimos").style.opacity = String(.5 + .5 * night);
   if (b.aurora > .01) for (let i = 0; i < 3; i++) {
     wx.beginPath(); const y0 = H * (.2 + i * .07);
     for (let x = 0; x <= W; x += 12) { const y = y0 + Math.sin(x / 180 + move * now / (2600 + i * 700) + i) * 26 + Math.sin(x / 61 + move * now / 1700) * 8; x ? wx.lineTo(x, y) : wx.moveTo(x, y); }
@@ -488,14 +475,6 @@ function drawWeather(now) {
   }
   wx.globalAlpha = 1;
 }
-function moonBody(x, y, r, a) {
-  wx.globalAlpha = a;
-  const g = wx.createRadialGradient(x - r * .4, y - r * .4, r * .1, x, y, r);
-  g.addColorStop(0, "#e9dcd2"); g.addColorStop(1, "#6d5c58");
-  wx.fillStyle = g; wx.beginPath(); wx.ellipse(x, y, r * 1.08, r * .9, -.4, 0, 7); wx.fill();
-  if (r > 8) { wx.fillStyle = "rgba(90,60,50,.2)"; [[.3, .2, .18], [-.35, -.1, .12], [.05, -.42, .09]].forEach(([p, q, c]) => { wx.beginPath(); wx.arc(x + p * r, y + q * r, c * r, 0, 7); wx.fill(); }); }
-  wx.globalAlpha = 1;
-}
 
 function resize() {
   W = innerWidth; H = innerHeight; DPR = Math.min(2, devicePixelRatio || 1);
@@ -505,7 +484,7 @@ function resize() {
   const rd = seeded(99); dust = Array.from({ length: 340 }, () => ({ x: rd() * W, y: rd() * H, s: rd() * 1.6 + .4, v: rd() * .8 + .4, o: rd() }));
   const rm = seeded(41); motes = Array.from({ length: 60 }, () => ({ x: rm() * W, y: rm() * H, s: rm() * 1.4 + .6, v: rm() * .8 + .4, o: rm() }));
   const rc = seeded(17); clouds = Array.from({ length: 7 }, () => ({ x: rc() * W, y: H * (.08 + rc() * .55), r: 80 + rc() * 140, v: .3 + rc() * .6, o: .6 + rc() * .4 }));
-  placeLabels(); layoutOrbits(); redraw();
+  layoutOrbits(); redraw();
 }
 function redraw() { const t = performance.now(); publish(); drawSky(); drawStars(); drawWeather(t); }
 let looping = false;
@@ -515,14 +494,6 @@ reduceQuery.addEventListener("change", e => { reduce = e.matches; if (reduce) re
 setInterval(() => { publish(); if (reduce) redraw(); }, 250);
 addEventListener("hashchange", redraw);
 darkQuery.addEventListener("change", redraw);
-
-function placeLabels() {
-  const r = Math.max(16, Math.min(W, H) * .045);
-  const p = $("lbl-phobos"), d = $("lbl-deimos");
-  p.style.left = (W * .8 - r - 120) + "px"; p.style.top = (H * .15 - r - 12) + "px"; p.style.flexDirection = "row-reverse";
-  d.style.left = (W * .9 + 10) + "px"; d.style.top = (H * .25 + 4) + "px";
-  if (W < 520) { d.style.left = (W * .9 - 110) + "px"; d.style.flexDirection = "row-reverse"; }
-}
 
 // ---------------- state + render ----------------
 const moonlet = $("moonlet"), pill = $("now-pill"), trail = $("trail");
@@ -536,7 +507,7 @@ function setSky(id) {
   render();
 }
 function setNow(item) {
-  S.now = item ? { id: item.id, label: item.label, g: item.g || null, img: item.img || null, fx: item.fx || "tap", face: item.face || "", moon: item.moon || null } : null;
+  S.now = item ? { id: item.id, label: item.label, g: item.g || null, img: item.img || null, fx: item.fx || "tap", face: item.face || "" } : null;
   S.setAt = Date.now(); S.expiresAt = item ? Date.now() + DECAY_MS : null; save(); render(true);
 }
 function render(pop) {
@@ -552,8 +523,6 @@ function render(pop) {
   } else {
     pill.classList.add("off"); moonlet.dataset.fx = ""; moonlet.dataset.face = sky.face;
   }
-  $("lbl-phobos").classList.toggle("lit", !!(S.now && S.now.moon === "phobos"));
-  $("lbl-deimos").classList.toggle("lit", !!(S.now && S.now.moon === "deimos"));
   $("t-atmo").textContent = sky.label;
   $("t-now").textContent = S.now ? S.now.label : "—";
   moonlet.setAttribute("aria-label", `Your moonlet: ${S.now ? S.now.label + ", " : ""}${sky.label.toLowerCase()} atmosphere. Tap to change.`);

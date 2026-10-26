@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Approval } from "./approvals";
-import { buildFeed, feedSections } from "./moonlet-feed";
+import { buildFeed, feedSections } from "./workspace-feed";
 import type { NextStepsResponse } from "./next-steps-server";
 import type { DashboardOutstandingPullRequest, DashboardOutstandingPullRequests } from "./types";
 
@@ -12,7 +12,7 @@ const step = (id: string, title: string) => ({ id, order: 0, kind: "merge", titl
 const pr = (number: number, updatedAt: string, readiness: DashboardOutstandingPullRequest["readiness"] = "ready") =>
   ({ repository: "pmark/arcadia", number, title: `PR ${number}`, url: `https://github.com/pmark/arcadia/pull/${number}`, updatedAt, readiness, readinessLabel: readiness, summary: "" }) as DashboardOutstandingPullRequest;
 
-describe("moonlet feed", () => {
+describe("workspace feed", () => {
   it("orders your move, then waiting items with blocking Decisions first, then PRs newest first", () => {
     const now = step("1", "Merge #1");
     const items = buildFeed({
