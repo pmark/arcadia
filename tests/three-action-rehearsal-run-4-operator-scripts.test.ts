@@ -884,6 +884,9 @@ describe("the run-4 reset commits one validated line on run 3's head, pushes it 
     const { box, run2Head, run3Head, genesis, run1Tip, run2Tip, run3Tip, original, run2, run3 } = resetBox();
     // A later run-3 G8 that refused at its launch guard ran nothing and does not void run 3's terminal Off.
     writeReceipt(box, "20261005T200500Z-9", { id: RUN3_G8, runId: "20261005T200500Z-9", outcome: "refused", stage: "launch_context", offState: "unknown" });
+    // Keep the script and assertion on one deterministic day across UTC midnight.
+    const today = "2099-01-01";
+    box.rebind(RESET, [['RESET_DATE="$(date -u +%F)"', `RESET_DATE="${today}"`]]);
     const result = box.run(RESET, resetEnv);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     const { dir, json } = box.receipt(RESET);
@@ -913,12 +916,11 @@ describe("the run-4 reset commits one validated line on run 3's head, pushes it 
     ]);
     expect(json.priorHolders.map((h: { input: string; sessionId: string }) => [h.input, h.sessionId])).toEqual([["original", "session_run_1"], ["run2", "session_run_2"], ["run3", "session_run_3"]]);
     // One commit on run 3's head touching only the Plan: write-start-marker's next_action (and the date only when the reset's UTC date is later).
-    const today = new Date().toISOString().slice(0, 10);
     expect(git(box.fixture, ["rev-parse", "HEAD^"])).toBe(run3Head);
     expect(git(box.fixture, ["rev-parse", "HEAD^^"])).toBe(run2Head);
     expect(git(box.fixture, ["diff", "--name-only", run3Head, head])).toBe(PLAN_FILE);
     const changed = git(box.fixture, ["diff", "-U0", run3Head, head, "--", PLAN_FILE]).split("\n").filter((line) => /^[-+][^-+]/.test(line));
-    expect(changed).toEqual([...(today === "2026-10-05" ? [] : ["-updated: 2026-10-05", `+updated: ${today}`]), `-${OLD_LINE}`, `+${NEW_LINE}`]);
+    expect(changed).toEqual(["-updated: 2026-10-05", `+updated: ${today}`, `-${OLD_LINE}`, `+${NEW_LINE}`]);
     expect(json.planUpdated).toBe(today);
     expect(git(box.fixture, ["log", "-1", "--format=%an <%ae>%n%s"])).toBe("Arcadia Rehearsal Fixture <rehearsal@localhost>\nReset write-start-marker for three-Action rehearsal run 4");
     expect(git(box.fixture, ["status", "--porcelain"])).toBe("");
