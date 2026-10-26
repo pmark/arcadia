@@ -3,7 +3,7 @@ import type { NextStepsResponse } from "./next-steps-server";
 import type { DashboardOutstandingPullRequests } from "./types";
 
 /**
- * The /workspace/moonlet message feed: what Arcadia would say to the operator,
+ * The /workspace/feed message feed: what Arcadia would say to the operator,
  * built from the existing read-only sources. Every item links to the control
  * that already answers it; the feed itself changes nothing.
  */
