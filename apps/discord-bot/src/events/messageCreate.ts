@@ -27,6 +27,10 @@ export async function handleArcadiaMessage(
   const replyReviewId = await reviewIdFromReply(message, config.arcadiaWorkspace);
   // "0132 A": a Decision number and a letter, sent on its own, answers that Decision without a reply thread.
   const numberedLetter = !replyReviewId && /^\s*\d{3,5}\s+[a-z]\s*$/i.test(message.content);
+  // The review channel answers Decisions only; a request posted there is not an Ask.
+  if (!replyReviewId && !numberedLetter && message.channelId !== config.discordChannelId) {
+    return;
+  }
   let operation = replyReviewId || numberedLetter ? "Decision reply" : "ask";
   try {
     if (replyReviewId || numberedLetter) {
@@ -107,14 +111,16 @@ export async function handleArcadiaMessage(
 }
 
 /**
- * Guild and channel gating always apply. When `DISCORD_ALLOWED_USER_IDS` is
+ * Guild and channel gating always apply: the default channel, or the review
+ * channel for Decision answers. When `DISCORD_ALLOWED_USER_IDS` is
  * configured the author must also be listed; a refused author gets the reply
  * router's refusal reaction. When it is empty the bot fails open to guild and
  * channel gating only (loadConfig logs a startup warning), so an unset value
  * never locks the operator out.
  */
 async function isAllowedMessage(message: Message, config: BotConfig): Promise<boolean> {
-  if (message.author.bot || message.guildId !== config.discordGuildId || message.channelId !== config.discordChannelId) {
+  const channels = [config.discordChannelId, config.categoryChannels?.review].filter(Boolean);
+  if (message.author.bot || message.guildId !== config.discordGuildId || !channels.includes(message.channelId)) {
     return false;
   }
   const allowedUserIds = config.allowedUserIds ?? [];

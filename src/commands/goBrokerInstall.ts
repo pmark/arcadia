@@ -185,6 +185,7 @@ export function runGoBrokerInstallCommand(
       stageGoBrokerDatabaseSchema(repository, stagedRelease);
       const roleRegistry = stageGoBrokerRoleRegistry(repository, stagedRelease);
       stageGoBrokerWorkerDefaults(repository, stagedRelease);
+      stageGoBrokerSessionScripts(repository, stagedRelease);
       mkdirSync(path.join(stagedRelease, "dist", "scripts"), { recursive: true });
       copyFileSync(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
@@ -541,6 +542,7 @@ export function validateExistingRelease(releaseDirectory: string, revision: stri
   validateGoBrokerRoleRegistry(releaseDirectory);
   validateGoBrokerWorkerDefaults(releaseDirectory);
   validateGoBrokerWorkerCode(releaseDirectory);
+  validateGoBrokerSessionScripts(releaseDirectory);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { schema?: string; revision?: string };
   if (manifest.schema !== INSTALL_SCHEMA || manifest.revision !== revision) {
     throw validationError("The existing protected broker release manifest does not match its revision.", {
@@ -594,6 +596,30 @@ export function stageGoBrokerRoleRegistry(repository: string, stagedRelease: str
   }
   copyFileSync(source, destination);
   return validateGoBrokerRoleRegistry(stagedRelease, createHash("sha256").update(readFileSync(source)).digest("hex"));
+}
+
+/** Non-TypeScript launch assets are not emitted by tsc. Keep them release-local. */
+const SESSION_SCRIPT_NAMES = ["session-capability-probe.mjs", "record-session-exit.mjs"] as const;
+
+export function stageGoBrokerSessionScripts(repository: string, release: string): void {
+  const destination = path.join(release, "dist", "scripts");
+  mkdirSync(destination, { recursive: true });
+  for (const name of SESSION_SCRIPT_NAMES) {
+    copyFileSync(path.join(repository, "scripts", name), path.join(destination, name));
+  }
+  validateGoBrokerSessionScripts(release);
+}
+
+export function validateGoBrokerSessionScripts(release: string): void {
+  const root = realpathSync(release);
+  for (const name of SESSION_SCRIPT_NAMES) {
+    const file = path.join(root, "dist", "scripts", name);
+    try {
+      if (!lstatSync(file).isFile() || realpathSync(file) !== file) throw new Error("Non-local Session script");
+    } catch {
+      throw validationError("The protected broker Session launch script is missing or not release-local.", { file });
+    }
+  }
 }
 
 /** Required compiled startup entries; no source checkout fallback. */
@@ -804,6 +830,11 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
   }
   if (!existsSync(path.join(releaseDirectory, "scripts", "bridge-worktree-deps.mjs"))) {
     issues.push("broker dependency bridge helper is missing");
+  }
+  try {
+    validateGoBrokerSessionScripts(releaseDirectory);
+  } catch (error) {
+    issues.push(error instanceof Error ? error.message : "broker Session launch scripts are invalid");
   }
   try {
     validateGoBrokerRoleRegistry(releaseDirectory);

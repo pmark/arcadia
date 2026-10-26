@@ -22,9 +22,10 @@ export interface BotConfig {
   pingChannels: Record<string, string>;
   /**
    * Channels for categories of proactive notification, from
-   * `DISCORD_CATEGORY_CHANNELS="alerts=<id>,briefings=<id>,log=<id>"`. A
-   * category with no entry posts to `discordChannelId`, as before. Items that
-   * need the operator, replies and the ask ingress always use that channel.
+   * `DISCORD_CATEGORY_CHANNELS="alerts=<id>,briefings=<id>,log=<id>,review=<id>"`.
+   * A category with no entry posts to `discordChannelId`, as before. Decision
+   * replies are accepted there and in the review channel; the ask ingress and
+   * slash commands only in `discordChannelId`.
    */
   categoryChannels: CategoryChannels;
   arcadiaCliPath: string | null;

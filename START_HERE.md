@@ -1427,10 +1427,11 @@ Set `DISCORD_CATEGORY_CHANNELS` in the bot's `.env` (see
 channels you can mute separately. `alerts` gets production red alerts, CI-blocked
 pings, failed runs and blocked work; `briefings` gets the daily orientation
 packet and digests; `log` gets routine progress such as settlements and
-completed work. PR-opened and PR-ready are operator pings, so they go to the
-default channel. Anything that needs you (review items, opened
-Decisions, PR-ready pings) always stays in the default channel, which is also the
-only one that accepts requests. A category you leave unset, or a channel the bot
+completed work; `review` gets every Decision and approval waiting on you: review
+items, opened Decisions, PR-ready settlements, and runs or Codex tasks that need
+review. Answer a Decision in the review channel by replying to its message or by
+posting its number and letter (`0141 A`). The default channel stays the only one
+that accepts requests. A category you leave unset, or a channel the bot
 cannot reach, falls back to the default channel, so nothing is lost.
 
 ## Managed production: the standing authorization
@@ -2097,6 +2098,11 @@ select `arcadia-unattended` explicitly. For Desktop Go tasks, select it as above
 ```sh
 pnpm arcadia go-broker status
 ```
+
+Broker releases include the Session capability probe and exit recorder. Status
+refuses an installation if either required script is missing or points outside
+the release. Repair requires a reviewed replacement release while production
+is Off; status never repairs an installed release in place.
 
 Installation readiness is separate from runtime readiness: `status` succeeds for
 a correct install even before the worker starts. Its named

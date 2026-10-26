@@ -61,7 +61,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const frontmatter = (text: string) => parse(/^---\r?\n([\s\S]*?)\r?\n---/.exec(text)![1]) as Record<string, unknown>;
 const body = (text: string) => text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 
-function fixture(options: { amended?: boolean } = {}) {
+function fixture(options: { amended?: boolean; expiresAt?: string } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-next-run-pointer-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -111,13 +111,18 @@ function fixture(options: { amended?: boolean } = {}) {
   git("add", "-A"); git("commit", "-qm", "Pinned before-images");
   const base = git("rev-parse", "HEAD");
 
-  // Publish both cards exactly as reviewed, with this checkout pinned in place of the live one.
+  // Bind only these disposable copies to this checkout and a test-owned expiry.
+  // The checked-in historical card remains expired and is never extended.
   const input = structuredClone(pinned);
   input.checkout = { ...input.checkout, path: repo, origin, reviewedBase: base };
   writeFileSync(path.join(lib, `${AMEND_ID}.json`), JSON.stringify({ ...amendDescriptor, planAmendment: input }, null, 2) + "\n");
   writeFileSync(path.join(lib, `${AMEND_ID}.sh`), readFileSync(path.join(library, `${AMEND_ID}.sh`)), { mode: 0o755 });
-  copyFileSync(path.join(library, `${POINT_ID}.json`), path.join(lib, `${POINT_ID}.json`));
-  writeFileSync(path.join(lib, `${POINT_ID}.sh`), readFileSync(path.join(library, `${POINT_ID}.sh`)), { mode: 0o755 });
+  const expiresAt = options.expiresAt ?? "2099-01-01T00:00:00Z";
+  writeFileSync(path.join(lib, `${POINT_ID}.json`), JSON.stringify({ ...pointDescriptor, expires_at: expiresAt }, null, 2) + "\n");
+  const pointScript = readFileSync(path.join(library, `${POINT_ID}.sh`), "utf8")
+    .replace(/CARD_EXPIRES_AT="[^"]+"/, `CARD_EXPIRES_AT="${expiresAt}"`);
+  expect(pointScript).toContain(`CARD_EXPIRES_AT="${expiresAt}"`);
+  writeFileSync(path.join(lib, `${POINT_ID}.sh`), pointScript, { mode: 0o755 });
   chmodSync(path.join(lib, `${POINT_ID}.sh`), 0o755);
   git("add", "-A"); git("commit", "-qm", "Publish reviewed cards"); git("push", "-q", "origin", "main");
 
@@ -194,6 +199,19 @@ describe("next-run pointer preparation: real settlement and make-next", () => {
     expect(point.stderr + point.stdout).toContain(`press ${AMEND_ID} first`);
     expect(f.git("rev-parse", "HEAD")).toBe(head);
     expect(f.pointers()).toEqual(["first-unattended-run", "first-unattended-run"]);
+  }, 120_000);
+
+  it("refuses an expired disposable card before moving or publishing the pointer", () => {
+    const f = fixture({ amended: true, expiresAt: "2000-01-01T00:00:00Z" });
+    const head = f.git("rev-parse", "HEAD");
+    const order = f.order();
+    const point = f.point();
+    expect(point.status).not.toBe(0);
+    expect(point.stdout + point.stderr).toContain("this card expired at 2000-01-01T00:00:00Z");
+    expect(f.git("rev-parse", "HEAD")).toBe(head);
+    expect(f.git("ls-remote", "origin", "refs/heads/main").split(/\s/)[0]).toBe(head);
+    expect(f.pointers()).toEqual(["first-unattended-run", "first-unattended-run"]);
+    expect(f.order()).toEqual(order);
   }, 120_000);
 
   it("refuses outside the operator-action library", () => {
