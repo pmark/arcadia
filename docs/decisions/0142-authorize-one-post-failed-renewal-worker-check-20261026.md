@@ -4,7 +4,7 @@ type: decision
 id: "0142"
 slug: authorize-one-post-failed-renewal-worker-check-20261026
 project: arcadia
-status: open
+status: approved
 question: Authorize one post-failed-renewal worker check 20261026?
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-26
+answer: Authorize one worker Claude usage diagnostic 0c3926d7bd50d95e2d946e5f29b10afb0c0c706f1dd0d26a85a699d706d28de8
+decided: 2026-10-26
 ---
 
 # Decision 0142: Authorize one post-failed-renewal worker check 20261026?
