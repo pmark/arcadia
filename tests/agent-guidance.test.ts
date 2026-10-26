@@ -58,6 +58,19 @@ actions:
 }
 
 describe("compact Way instruction delivery", () => {
+  it("tears down scratch directories with retries for transient ENOTEMPTY", () => {
+    const tempDirs = [scratch(), scratch()];
+    for (const dir of tempDirs) {
+      put(dir, "a/b/c.txt", "content");
+      put(dir, "d/e/f.txt", "more");
+    }
+    expect(tempDirs.every(d => existsSync(d))).toBe(true);
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
+    expect(tempDirs.some(d => existsSync(d))).toBe(false);
+  });
+
   it("keeps Arcadia and an adopting Project below default budgets with reserved global and nested context", () => {
     expect(Buffer.byteLength(readAgentsContextBlock())).toBeLessThanOrEqual(INSTRUCTION_BUDGET.bootstrap);
     for (const root of [canonicalRoot, adopted()]) {
