@@ -4,7 +4,7 @@ type: decision
 id: "0105"
 slug: decide-the-first-real-distribution-boundary-for-arcadia-assets-after-the-local
 project: arcadia
-status: open
+status: approved
 question: Decide the first real distribution boundary for Arcadia Assets after the local Asset Service and deterministic mirror contract are proved.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-09
+updated: 2026-10-25
+answer: Local-only until a concrete consumer exists
+decided: 2026-10-25
 ---
 
 # Decision 0105: Decide the first real distribution boundary for Arcadia Assets after the local Asset Service and deterministic mirror contract are proved.
