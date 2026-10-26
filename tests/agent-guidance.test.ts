@@ -12,7 +12,7 @@ import { renderActionBrief } from "../src/sessions/actionBrief.js";
 
 const roots: string[] = [];
 const canonicalRoot = path.resolve(import.meta.dirname, "..");
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }); });
 function scratch(): string { const root = mkdtempSync(path.join(tmpdir(), "arcadia-guidance-")); roots.push(root); return root; }
 function put(root: string, file: string, content: string): void { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), content); }
 function adopted(): string { const root = scratch(); setupArcadiaProjectContext({ repoPath: root }); return root; }
