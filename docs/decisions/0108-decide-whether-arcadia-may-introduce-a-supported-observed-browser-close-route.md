@@ -4,7 +4,7 @@ type: decision
 id: "0108"
 slug: decide-whether-arcadia-may-introduce-a-supported-observed-browser-close-route
 project: arcadia
-status: open
+status: approved
 question: Decide whether Arcadia may introduce a supported observed browser-close route solely to prove the literal browser-close conjunct of prove-literal-split-browser-and-ledger, or must leave that criterion open until an already-governed production UI supplies such an event.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-09
+updated: 2026-10-25
+answer: Keep the criterion open until an existing governed production UI records browser closure
+decided: 2026-10-25
 ---
 
 # Decision 0108: Decide whether Arcadia may introduce a supported observed browser-close route solely to prove the literal browser-close conjunct of prove-literal-split-browser-and-ledger, or must leave that criterion open until an already-governed production UI supplies such an event.
