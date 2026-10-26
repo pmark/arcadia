@@ -1,0 +1,40 @@
+{
+  "session_id": "renewal-helper-output-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "configured_effort": null,
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1804",
+  "pr": 1806,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "1806-R1-01: native late-output fixture startup race",
+      "caught_by": "Mira independent gpt-6.1-sol/high R1"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "stdout-and-post-exit-evidence-loss",
+      "cost_min": null,
+      "fix_ref": "src/production/capacityPreAdmission.ts"
+    },
+    {
+      "id": "fake-cli-startup-sensitive-timeout",
+      "cost_min": null,
+      "fix_ref": "tests/claude-cli-self-refresh.test.ts"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Source-only1804; R1NO-GO fixture race repaired with readiness/IPC disconnect. Oldhead15CIgreen preserved. No provider/adoption/START; usage unknown.",
+  "stop_reason": "R1 repair submitted for independent R2 delta/current-head CI; no merge or runtime adoption authority."
+}
