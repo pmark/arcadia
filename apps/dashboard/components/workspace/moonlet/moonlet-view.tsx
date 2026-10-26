@@ -91,7 +91,8 @@ export function MoonletView() {
 
   const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data]);
   const sections = feedSections(items);
-  const loading = !approvals.hasLoaded || (!nextSteps.data && !nextSteps.failed) || prs.loading;
+  // A failed read is a finished read: the alert says so instead of an endless "Reading…".
+  const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
   const problems = [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter(Boolean);
   const atmosphere = atmosphereOf(mood.atmosphere);
   const left = remaining(mood, clock);
@@ -108,7 +109,7 @@ export function MoonletView() {
         <h1 id="moonlet-feed-title" className="moonlet-sr">Messages from Arcadia</h1>
         {problems.length > 0 && <p role="alert" className="moonlet-problem">Could not read {problems.join(", ")}. What is shown is the last good read.</p>}
         {loading && !items.length ? <p role="status" className="moonlet-quiet">Reading your work…</p>
-          : !items.length ? <p className="moonlet-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
+          : !items.length && !problems.length ? <p className="moonlet-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
           : sections.map(s => <section key={s.section} aria-label={s.section}><h2 className="moonlet-section">{s.section}</h2><ul className="moonlet-thread">{s.items.map(item => <FeedMessage key={item.key} item={item} />)}</ul></section>)}
       </section>
       <Missions />

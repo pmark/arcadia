@@ -147,7 +147,7 @@ export function Moonlet({ mood, left, onMomentary, onAtmosphere }: {
       </div>}
       {customOpen && <div className="moonlet-custom" role="dialog" aria-label="Your own state">
         <div className="row"><input type="text" maxLength={32} value={emoji} placeholder="Any emoji" aria-label="Any emoji" onChange={e => setEmoji(e.target.value)} onKeyDown={e => { if (e.key === "Enter") applyEmoji(); }} autoFocus /><button type="button" className="solid" onClick={applyEmoji}>Use</button></div>
-        <div className="row"><label className="file">Upload a sticker or GIF<input type="file" accept="image/*" hidden onChange={e => { applyFile(e.target.files?.[0]); e.target.value = ""; }} /></label><button type="button" onClick={() => { setCustomOpen(false); focusMoonlet(buttonId); }}>Cancel</button></div>
+        <div className="row"><label className="file">Upload a sticker or GIF<input type="file" accept="image/*" className="moonlet-sr" onChange={e => { applyFile(e.target.files?.[0]); e.target.value = ""; }} /></label><button type="button" onClick={() => { setCustomOpen(false); focusMoonlet(buttonId); }}>Cancel</button></div>
         <p>{hint ?? `Up to ${MAX_CUSTOM} of your own stay in your orbit, in this browser only. Images up to 1 MB.`}</p>
       </div>}
     </div>

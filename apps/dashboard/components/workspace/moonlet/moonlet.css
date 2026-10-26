@@ -138,12 +138,14 @@
 .moonlet-seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); }
 .workspace-shell .moonlet-seg button { all: unset; cursor: pointer; padding: 5px 14px; border-radius: 999px; font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
 .workspace-shell .moonlet-seg button[aria-selected="true"] { background: #f5f2ed; color: #241c28; }
+.workspace-shell .moonlet-seg button:focus-visible { outline: 2px solid #ffd9aa; outline-offset: 2px; }
 .moonlet-caption { font-family: Georgia, "Iowan Old Style", serif; font-size: 21px; height: 26px; white-space: nowrap; text-shadow: 0 1px 12px rgb(0 0 0 / .3); }
 .moonlet-custom { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -12px); width: min(320px, calc(100vw - 32px)); background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(18px); border-radius: 16px; padding: 12px; display: grid; gap: 8px; z-index: 9; }
 .moonlet-custom .row { display: flex; gap: 8px; }
 .moonlet-custom input[type="text"] { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--glass-line); background: var(--glass); color: inherit; }
 .workspace-shell .moonlet-custom :is(button, .file) { cursor: pointer; padding: 7px 14px; border-radius: 10px; font: inherit; font-size: 14px; border: 1px solid var(--glass-line); background: var(--glass); color: inherit; text-align: center; }
-.moonlet-custom .file { flex: 1; }
+.moonlet-custom .file { flex: 1; position: relative; }
+.moonlet-custom .file:focus-within { outline: 2px solid #ffd9aa; outline-offset: 2px; }
 .workspace-shell .moonlet-custom button.solid { background: #f5f2ed; color: #241c28; }
 .workspace-shell .moonlet-custom p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
 

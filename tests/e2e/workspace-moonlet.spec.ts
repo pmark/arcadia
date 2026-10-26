@@ -27,13 +27,14 @@ test("moonlet page shows the feed, missions and a one-tap mood over the sol sky"
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   const writes: string[] = [];
+  let todoDown = false;
   await page.route("**/api/**", route => {
     const request = route.request();
     const endpoint = new URL(request.url()).pathname;
     if (request.method() !== "GET") { writes.push(endpoint); return route.abort(); }
-    if (endpoint === "/api/approvals") return route.fulfill({ json: approvals });
-    if (endpoint === "/api/next-steps") return route.fulfill({ json: nextSteps });
-    if (endpoint === "/api/pull-requests") return route.fulfill({ json: inventory });
+    if (endpoint === "/api/approvals") return todoDown ? route.fulfill({ status: 503, json: { error: "Fixture to-do read refused" } }) : route.fulfill({ json: approvals });
+    if (endpoint === "/api/next-steps") return route.fulfill({ json: todoDown ? { ...nextSteps, state: "moving", nowStep: null, steps: [], total: 0 } : nextSteps });
+    if (endpoint === "/api/pull-requests") return route.fulfill({ json: todoDown ? { ...inventory, snapshot: { ...inventory.snapshot, pullRequests: [], counts: { ...inventory.snapshot.counts, total: 0, ready: 0 } } } : inventory });
     return route.abort();
   });
   try {
@@ -80,6 +81,22 @@ test("moonlet page shows the feed, missions and a one-tap mood over the sol sky"
     await expect(page.getByRole("button", { name: /Your moonlet/ })).toHaveAttribute("aria-label", /Freaking out, stressed atmosphere/);
     await page.locator(".moonlet-telemetry summary").click();
     await expect(page.locator(".moonlet-telemetry pre")).toContainText('"authority": "none"');
+
+    // The sticker upload is reachable from the keyboard.
+    await moonlet.click({ force: true });
+    await page.getByRole("button", { name: "Your own emoji, sticker or GIF" }).click();
+    await page.getByRole("textbox", { name: "Any emoji" }).press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(page.locator(".moonlet-custom input[type=file]")).toBeFocused();
+    await page.keyboard.press("Escape");
+
+    // A to-do list that keeps failing ends the loading state with an alert, not a false "nothing waiting".
+    todoDown = true;
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Messages from Arcadia" }).getByRole("alert")).toContainText("Could not read To-do list");
+    await expect(page.getByText("Reading your work…")).toBeHidden();
+    await expect(page.getByText("Nothing is waiting on you.")).toBeHidden();
+    todoDown = false;
 
     // Phone width: no horizontal page scroll.
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
