@@ -425,6 +425,17 @@ describe("buildLaunchPreview", () => {
   it("names an already-leased repository as a conflicting-execution prerequisite", () => {
     const fixture = preparedFixture();
     const dispatch = resolveDispatch(fixture.repo, "test-project");
+    const queriedNames: string[] = [];
+    const tmuxStub = {
+      available: () => true,
+      hasSession: (name: string) => {
+        queriedNames.push(name);
+        return false;
+      },
+      launch: () => {
+        throw new Error("tmux.launch() should not be called during prepareSession");
+      }
+    };
     withDatabase(fixture.workspace, (db) =>
       prepareSession({
         db,
@@ -437,9 +448,13 @@ describe("buildLaunchPreview", () => {
         baseRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture.repo, encoding: "utf8" }).trim(),
         branch: "claude/held",
         worktreePath: path.join(fixture.root, "held-worktree"),
-        now: fixture.now
+        now: fixture.now,
+        tmux: tmuxStub
       })
     );
+
+    expect(queriedNames.length).toBeGreaterThan(0);
+    expect(queriedNames.every((name) => name.startsWith("arcadia-test-project-"))).toBe(true);
 
     const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
       buildLaunchPreview({

@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # Mission Log: Arcadia
@@ -2680,3 +2680,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan unify-interactive-and-unattended-coordination-with-safe-concurrent-actions remains draft with completion state preserved. The three-Action milestone requires at least three ready Actions. The active unified Plan has only two open Actions with completed document dependencies. The draft unattended Plan contains the proposed trio rebuild-cover-mail-ack-receipt-kind-collision, isolate-launch-preview-tmux-name and bound-guidance-test-teardown-retries. This Ask contains no Action amendments. Only a separately reviewed shared plan-activation runner may apply activation, with exact before/after images and fresh canonical custody refusal gates. Restoring the Plan is not scope acceptance, packet approval, Session launch or production START. Preserve held cover-mail Action and PR1662, every existing claim/candidate and unfinished unified Actions; never reset or borrow evidence. Later production scope must explicitly allow only the reviewed trio, concurrency one, claude-code-cli, with fresh packet/runtime/capacity evidence and separate human START. Existing current-Action packet guard must run first or be re-reviewed because this Plan change invalidates its PROJECT/Plan pins. Human may instead retain unified coordination; no automatic restoration occurs.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-26 — Completed arcadia/isolate-launch-preview-tmux-name
+
+- **Did:** Completed Action arcadia/isolate-launch-preview-tmux-name from accepted evidence (Candidate f359792a250dba323401fbf15f94aa89f956f461).
+- **Result:** Every declared acceptance criterion was accepted as met: "In tests/launch-preview.test.ts, the prepareSession call in the test named 'names an already-leased repository as a conflicting-execution prerequisite' passes a tmux stub whose available() returns true, whose hasSession returns false while recording each queried name, and whose launch is never called; the test asserts at least one name was recorded and every recorded name starts with arcadia-test-project-, so that prepareSession call no longer consults the host tmux server (the buildLaunchPreview call may also receive the stub via its tmux input)."; "The test still asserts preview.ready is false and a prerequisite starting with 'conflicting execution', and every other test in the file passes unchanged."; "The change touches only tests/launch-preview.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-isolate-launch-preview-tmux-name-dbd2bc77c0f9).
