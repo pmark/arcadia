@@ -21,6 +21,8 @@ import { getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
 import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
+import { readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
+import { classifyPatchApplicability } from "../qa/patchApplicability.js";
 import { parseDoc } from "../docs/parse.js";
 
 /** Databases opened by narrow fixtures may predate the attempt store. */
@@ -433,6 +435,34 @@ export function settlementRecordFilesForReview(db: Database.Database, session: A
   return settlement ? settlementCommitRecordFiles(session.worktree_path, settlement, head) : [];
 }
 
+/** Host Session identity, never candidate-authored completion prose. */
+export function completionEvidenceBinding(session: AgentSession): CompletionEvidenceBinding {
+  return { sessionId: session.id, packetSha256: session.packet_sha256, actionId: session.action_id, base: session.base_revision,
+    repository: session.repository_path, worktree: session.worktree_path };
+}
+
+/** Read only: no validation, workspace migrations, retry, or settlement occurs here. */
+export function completionEvidenceForReview(db: Database.Database, workspace: string, session: AgentSession, head: string): CompletionEvidenceView {
+  let reference: CompletionEvidenceReference | undefined;
+  try {
+    const exit = getSessionExitReceipt(db, session.id);
+    reference = exit?.evidence_json ? JSON.parse(exit.evidence_json).completionValidation : undefined;
+    const tree = (revision: string) => git(session.worktree_path, ["rev-parse", "--verify", `${revision}^{tree}`]).trim();
+    const trees = [tree(head)];
+    const settlement = findCandidateSettledCompletion(db, session, head);
+    if (settlement && settlement.documentsCommit === head) {
+      const parent = git(session.worktree_path, ["rev-parse", `${head}^`]).trim();
+      const files = git(session.worktree_path, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", head]).trim().split("\n").filter(Boolean);
+      const patch = git(session.worktree_path, ["format-patch", "--stdout", "--no-signature", `${parent}..${head}`]);
+      const classified = classifyPatchApplicability(patch, { declaredFiles: files, declaredCommits: [head] });
+      // Exactly one canonical settlement, changing only supported governed records.
+      // An ancestor or a governance-shaped filename alone never extends the proof.
+      if (classified.inert && classified.files.length > 0 && classified.files.every(file => file.class === "governed-record")) trees.push(tree(parent));
+    }
+    return readCompletionEvidence(workspace, reference, completionEvidenceBinding(session), trees);
+  } catch { return { status: "unavailable", reason: "completion evidence or exact candidate/settlement binding could not be verified" }; }
+}
+
 /** The commit a settlement commit sits on (the Session's preserved candidate), or null when it cannot be read. */
 export function settlementPreservedCommit(worktree: string, documentsCommit: string): string | null {
   try {
@@ -501,6 +531,7 @@ function selfSettledCompletionRefusal(
   if (scopeRefusal) return scopeRefusal;
   const validation = validateCompletionCandidate({
     repository: session.repository_path, worktree, base: session.base_revision, workspace,
+    evidenceBinding: completionEvidenceBinding(session),
     commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),
     acceptanceCriteria: baseCriteria
   }, validationOptions);
@@ -562,6 +593,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
     validation ??= validateCompletionCandidate({
       repository: session.repository_path, worktree, base: session.base_revision, workspace,
+    evidenceBinding: completionEvidenceBinding(session),
       commands: decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands),
       acceptanceCriteria: action.acceptanceCriteria
     }, validationOptions);
@@ -806,11 +838,13 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   let nextMoveRepoRoot = repoRoot;
   let settlementNotInCandidate: { settlementId: string; reason: string; cause?: "self_settled_refused" } | null = null;
   let completionHold: CompletionHold | null = null;
+  let completionEvidence: CompletionEvidenceReference | undefined;
+  const validationOptions: CompletionValidationOptions = { ...input.completionValidation, onEvidence: reference => { completionEvidence = reference; input.completionValidation?.onEvidence?.(reference); } };
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     // Issue #1615: a completion the Session settled itself faces the same scope and named-test checks a host-settled draft does.
-    const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, input.completionValidation) : null;
-    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, input.completionValidation);
+    const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions) : null;
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions);
     const attempt = settledRefusal
       ? { completed: false, reason: settledRefusal }
       : settled
@@ -866,6 +900,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     candidate_revision: evidence.candidateRevision,
     evidence_json: JSON.stringify({
       ...evidence,
+      ...(completionEvidence ? { completionValidation: completionEvidence } : {}),
       ...(session.stop_reason ? { stopReason: session.stop_reason } : {}),
       ...(settlementNotInCandidate ? { completionSettlementNotInCandidate: settlementNotInCandidate } : {}),
       ...(completionHold ? { completionHold } : {}),

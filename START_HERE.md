@@ -2394,7 +2394,15 @@ The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
 its log: your Project's declared validation commands, the Action's named test
 commands, exact criteria-required `pnpm lint` / `pnpm exec tsc --noEmit` checks,
 and `arcadia agent-ask draft`. Host completion runs those required checks too;
-preservation retains its separate dependency-free check list. A candidate
+preservation retains its separate dependency-free check list. Completion now keeps
+its actual command arguments, exit results, durations and named-test report in
+Session preservation artifacts before removing execution scratch. Its hash-bound
+reference reaches the exit receipt, refreshed PR body and immutable reviewer
+input. Review evidence verifies the exact tree, or the immediate canonical
+settlement with only the existing supported governed-record changes; later code
+changes never inherit a pass. Legacy records and unsupported settlement shapes
+say evidence is unavailable. A failed evidence write refuses completion and
+retains scratch; it grants no retry or runtime authority. A candidate
 cannot replace its authorized lint-script manifest to pass completion. `--setting-sources ""` stops Claude
 merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
 `.claude/settings.json`) into it, so a headless Claude Session loads no user or

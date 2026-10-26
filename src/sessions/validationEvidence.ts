@@ -39,6 +39,7 @@
  * incomplete or unbound record, or a failed, timed-out or missing command,
  * renders its status, and the candidate is preserved exactly as before.
  */
+import { renderCompletionEvidence, type CompletionEvidenceView } from "./completionValidationEvidence.js";
 import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { code, inlineText } from "./operatorQaPlan.js";
@@ -96,6 +97,7 @@ export type ValidationEvidenceRead =
   | { status: "unreadable"; reason: string };
 
 export interface ValidationEvidenceInput {
+  completionExecutionEvidence?: CompletionEvidenceView;
   /** The receipt's `validationEvidenceRef`. */
   evidenceRef: string;
   evidence: ValidationEvidenceRead;
@@ -189,13 +191,17 @@ export function composePreservedPullRequestBody(
   maxChars: number = PRESERVED_PULL_REQUEST_BODY_MAX_CHARS
 ): string {
   const prepared = prepareValidationEvidence(input);
-  const join = (section: string) => `${planBody}\n\n${section}\n\n${COMPLETION_SETTLEMENT_LINE}`;
-  for (const tailBytes of TAIL_BYTE_STEPS) {
-    const body = join(formatSection(prepared, tailBytes));
-    if (body.length <= maxChars) return body;
+  const completion = input.completionExecutionEvidence;
+  const summaries = completion ? [renderCompletionEvidence(completion), "### Completion execution evidence\n\nDetails omitted to fit the pull-request body; the immutable reviewer input reads the retained host record separately."] : [""];
+  for (const summary of summaries) {
+    const join = (section: string) => `${planBody}${summary ? `\n\n${summary}` : ""}\n\n${section}\n\n${COMPLETION_SETTLEMENT_LINE}`;
+    for (const tailBytes of TAIL_BYTE_STEPS) {
+      const body = join(formatSection(prepared, tailBytes));
+      if (body.length <= maxChars) return body;
+    }
+    const minimal = join(formatSummary(prepared, maxChars));
+    if (minimal.length <= maxChars) return minimal;
   }
-  const minimal = join(formatSummary(prepared, maxChars));
-  if (minimal.length <= maxChars) return minimal;
   const settlementOnly = `${planBody}\n\n${COMPLETION_SETTLEMENT_LINE}`;
   return settlementOnly.length <= maxChars ? settlementOnly : planBody;
 }
