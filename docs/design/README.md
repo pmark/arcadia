@@ -15,5 +15,7 @@ The companion [article](../articles/2026-10-14-arcadia-spatial-background.md) ex
 
 - [Operator presence and the workspace feed](operator-presence.md) — the status sky, the Presence profile menu (Quiet or Expressive), the Journey button and the throwaway moonlet prototype (Issue 1761); the registered Plan Ask predates the 2026-10-26 revision and needs an amendment.
 
+- [Downlink: artifacts drawn in the sky's ink](downlink.md) — transparent schematics, annotated captures, reveals and sandboxed instruments that lift onto a Stage over the sol sky; artifact kinds, trust boundaries, choreography, candidate Actions, Decisions and a throwaway prototype (no Action yet).
+
 - [Implemented shell](conversational-ui-shell.md) — merged routes, React sky, captures and proof limits.
 - [Next Ask integration handoff](../reports/handoffs/20261015T0621Z-01a13dbc-5c50-7ef1-b48b-a9678ff4fb9b.md) — the next bounded implementation task and current coordination hold.
