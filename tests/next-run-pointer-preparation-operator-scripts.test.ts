@@ -61,7 +61,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const frontmatter = (text: string) => parse(/^---\r?\n([\s\S]*?)\r?\n---/.exec(text)![1]) as Record<string, unknown>;
 const body = (text: string) => text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 
-function fixture(options: { amended?: boolean } = {}) {
+function fixture(options: { amended?: boolean; pointExpiresAt?: string } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-next-run-pointer-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -116,8 +116,16 @@ function fixture(options: { amended?: boolean } = {}) {
   input.checkout = { ...input.checkout, path: repo, origin, reviewedBase: base };
   writeFileSync(path.join(lib, `${AMEND_ID}.json`), JSON.stringify({ ...amendDescriptor, planAmendment: input }, null, 2) + "\n");
   writeFileSync(path.join(lib, `${AMEND_ID}.sh`), readFileSync(path.join(library, `${AMEND_ID}.sh`)), { mode: 0o755 });
-  copyFileSync(path.join(library, `${POINT_ID}.json`), path.join(lib, `${POINT_ID}.json`));
-  writeFileSync(path.join(lib, `${POINT_ID}.sh`), readFileSync(path.join(library, `${POINT_ID}.sh`)), { mode: 0o755 });
+  // Behavioral fixtures remain fresh without renewing the historical library card (#1742).
+  const pointExpiresAt = options.pointExpiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString();
+  const expiryAssignment = /^CARD_EXPIRES_AT="[^"]+"$/m;
+  const pointSource = readFileSync(path.join(library, `${POINT_ID}.sh`), "utf8");
+  if (!expiryAssignment.test(pointSource)) throw new Error("Missing fixture card expiry assignment");
+  const fixturePointSource = pointSource.replace(expiryAssignment, `CARD_EXPIRES_AT="${pointExpiresAt}"`);
+  const fixturePointDescriptor = { ...pointDescriptor, expires_at: pointExpiresAt };
+  validateOperatorScriptContract(fixturePointDescriptor, POINT_ID, fixturePointSource);
+  writeFileSync(path.join(lib, `${POINT_ID}.json`), JSON.stringify(fixturePointDescriptor, null, 2) + "\n");
+  writeFileSync(path.join(lib, `${POINT_ID}.sh`), fixturePointSource, { mode: 0o755 });
   chmodSync(path.join(lib, `${POINT_ID}.sh`), 0o755);
   git("add", "-A"); git("commit", "-qm", "Publish reviewed cards"); git("push", "-q", "origin", "main");
 
@@ -156,6 +164,10 @@ describe("next-run pointer preparation: contracts", () => {
     const code = script.split("\n").filter((line) => !line.trimStart().startsWith("#")).join("\n");
     expect(code).not.toMatch(/agent-ask|--force|push -f|production activate|queue reorder|queue arrange/);
     expect(script).toContain("advance queue make-next");
+    // The published card keeps its real deadline; only behavioral fixtures get a fresh one.
+    expect(script).toContain('CARD_EXPIRES_AT="2026-10-26T00:00:00Z"');
+    expect(pointDescriptor.expires_at).toBe("2026-10-26T00:00:00Z");
+    expect(script).toContain('refuse "this card expired at $CARD_EXPIRES_AT; ask for a fresh card"');
   });
 });
 
@@ -192,6 +204,16 @@ describe("next-run pointer preparation: real settlement and make-next", () => {
     const point = f.point();
     expect(point.status).not.toBe(0);
     expect(point.stderr + point.stdout).toContain(`press ${AMEND_ID} first`);
+    expect(f.git("rev-parse", "HEAD")).toBe(head);
+    expect(f.pointers()).toEqual(["first-unattended-run", "first-unattended-run"]);
+  }, 120_000);
+
+  it("refuses an expired pointer card, writing nothing", () => {
+    const f = fixture({ amended: true, pointExpiresAt: "2026-10-26T00:00:00Z" });
+    const head = f.git("rev-parse", "HEAD");
+    const point = f.point();
+    expect(point.status).not.toBe(0);
+    expect(point.stderr + point.stdout).toContain("this card expired at 2026-10-26T00:00:00Z; ask for a fresh card");
     expect(f.git("rev-parse", "HEAD")).toBe(head);
     expect(f.pointers()).toEqual(["first-unattended-run", "first-unattended-run"]);
   }, 120_000);
