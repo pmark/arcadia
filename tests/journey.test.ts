@@ -497,7 +497,26 @@ describe("derivePlanJourney", () => {
       expect(run.journey.counts).toMatchObject({ victories: 3 });
       expect(run.journey.destination.reached).toBe(false);
       expect(journey.context.plan).toMatchObject({ slug: "demo-plan", total: 3, done: 1 });
-      expect(renderPlanJourneySuccess({ data: journey } as never)[0]).toContain("arcadia/plan:demo-plan (active)");
+      const rendered = renderPlanJourneySuccess({ data: journey } as never);
+      expect(rendered[0]).toContain("arcadia/plan:demo-plan (active)");
+      expect(rendered).toContainEqual(expect.stringMatching(/managed development Session: .*0 dated alert clears, .*Source agent_sessions:/));
+    });
+  });
+
+  it("keeps the Plan readable when optional progress meets a stale Session schema", () => {
+    withRepo((documents) => {
+      db.exec("ALTER TABLE agent_sessions DROP COLUMN is_simulated");
+      const journey = derivePlanJourney(db, documents, "demo-plan", NOW);
+      expect(journey.actions.map((action) => [action.id, action.current])).toEqual([["shipped", false], ["demo-action", true], ["later", false]]);
+      expect(journey.actions[0].journey.destination.reached).toBe(true);
+      expect(journey.progress).toBeUndefined();
+      expect(journey.warnings).toContainEqual(expect.stringMatching(/^Progress unavailable: .*is_simulated/));
+      const rendered = renderPlanJourneySuccess({ data: journey } as never);
+      expect(rendered).toContainEqual(expect.stringContaining("demo-action *"));
+      expect(rendered).toContain("Warnings:");
+      expect(rendered).toContainEqual(expect.stringMatching(/^ {2}Progress unavailable: .*is_simulated/));
+      // The read projection must not silently migrate the database to repair itself.
+      expect((db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).some((column) => column.name === "is_simulated")).toBe(false);
     });
   });
 
