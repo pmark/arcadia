@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BRIEF_CHILD_ENV, BRIEF_SELF_TEST_ENV } from "../src/briefSupervisor.js";
 import {
   stageBrokerLaunchers, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies,
-  stageGoBrokerRoleRegistry, stageGoBrokerWorkerDefaults, validateExistingRelease, validateGoBrokerRoleRegistry
+  stageGoBrokerRoleRegistry, stageGoBrokerWorkerDefaults, stageGoBrokerSessionScripts, validateExistingRelease, validateGoBrokerRoleRegistry, validateGoBrokerSessionScripts
 } from "../src/commands/goBrokerInstall.js";
 
 const repository = path.resolve(import.meta.dirname, "..");
@@ -40,6 +40,7 @@ beforeAll(() => {
   copyFileSync(path.join(repository, "config/defaults/agent-roles.json"), path.join(source, "config/defaults/agent-roles.json"));
   registry = stageGoBrokerRoleRegistry(source, release);
   stageGoBrokerWorkerDefaults(repository, release);
+  stageGoBrokerSessionScripts(repository, release);
   stageGoBrokerDatabaseSchema(repository, release);
   mkdirSync(path.join(release, "scripts"), { recursive: true });
   copyFileSync(path.join(repository, "scripts/bridge-worktree-deps.mjs"), path.join(release, "scripts/bridge-worktree-deps.mjs"));
@@ -98,6 +99,35 @@ describe("protected broker release role registry", () => {
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: true, command: "brief-broker.self-test", data: { readOnly: true }
     });
+  });
+
+  it.each(["session-capability-probe.mjs", "record-session-exit.mjs"])(
+    "ships %s without source fallback and refuses its absence before release reuse", (name) => {
+      const script = path.join(release, "dist/scripts", name);
+      const bytes = readFileSync(path.join(repository, "scripts", name));
+      expect(readFileSync(script).equals(bytes)).toBe(true);
+      rmSync(script);
+      try {
+        expect(() => validateExistingRelease(release, "fixture")).toThrow("Session launch script is missing or not release-local");
+      } finally {
+        writeFileSync(script, bytes);
+      }
+    }
+  );
+
+  it("rejects a Session script symlink outside the release", () => {
+    const script = path.join(release, "dist/scripts/session-capability-probe.mjs");
+    const bytes = readFileSync(script);
+    const external = path.join(root, "external-probe.mjs");
+    writeFileSync(external, bytes);
+    rmSync(script);
+    symlinkSync(external, script);
+    try {
+      expect(() => validateGoBrokerSessionScripts(release)).toThrow("Session launch script is missing or not release-local");
+    } finally {
+      rmSync(script);
+      writeFileSync(script, bytes);
+    }
   });
 
   it("refuses missing registry on reuse and reproduces the actual launcher's module-load refusal", () => {

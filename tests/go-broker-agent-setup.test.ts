@@ -25,6 +25,7 @@ import {
   runGoBrokerStatusCommand,
   stageBrokerLaunchers,
   stageGoBrokerWorkerDefaults,
+  stageGoBrokerSessionScripts,
   validateExistingRelease
 } from "../src/commands/goBrokerInstall.js";
 import {
@@ -541,6 +542,16 @@ describe("go broker agent setup", () => {
     ]));
   });
 
+  it.each(["session-capability-probe.mjs", "record-session-exit.mjs"])(
+    "refuses readiness when the installed release lacks %s", (name) => {
+      const fixture = createInstalledFixture();
+      const release = path.join(fixture.home, ".local/share/arcadia/test-revision");
+      rmSync(path.join(release, "dist/scripts", name));
+      expect(() => runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") }))
+        .toThrow("Protected broker setup is not ready");
+    }
+  );
+
   it("reports worker downtime separately from a correct install and refuses actual requests", async () => {
     const fixture = createInstalledFixture();
     vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
@@ -642,6 +653,7 @@ describe("go broker release staging covers every protected launcher", () => {
     write(path.join(release, "dist", "config", "defaults", "agent-roles.json"), canonicalRoleRegistry);
     write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
     write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
+    stageGoBrokerSessionScripts(path.resolve(import.meta.dirname, ".."), release);
     write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "staged-revision", brokerEntrypoint }));
     stageBrokerLaunchers(release, brokerEntrypoint);
     for (const agent of agents) {
@@ -673,6 +685,7 @@ describe("go broker release staging covers every protected launcher", () => {
     stageBrokerLaunchers(release, "/unused/arcadia-go-broker.js");
     // Keep this an otherwise-complete release; the negative case removes only enroll launchers.
     stageGoBrokerWorkerDefaults(path.resolve(import.meta.dirname, ".."), release);
+    stageGoBrokerSessionScripts(path.resolve(import.meta.dirname, ".."), release);
     for (const entry of ["cli.js", "commands/worker.js", "production/workerClaudeUsageDiagnostic.js",
       "codingAgents/providerUsage.js", "codingAgents/availability.js", "commands/workerHeartbeatBeacon.js",
       "sessions/preservationRequestWorker.js", "sessions/preservationRequestPayload.js", "sessions/preservationValidationClient.js"]) {
@@ -939,6 +952,7 @@ function createInstalledFixture(brief: "working" | "stale" = "working") {
   write(path.join(release, "dist", "config", "defaults", "agent-roles.json"), canonicalRoleRegistry);
   write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
   write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
+  stageGoBrokerSessionScripts(path.resolve(import.meta.dirname, ".."), release);
   write(path.join(release, "broker-manifest.json"), JSON.stringify({
     schema: "arcadia-go-broker-install-v1", roleRegistrySha256: roleRegistrySha256, revision: "test-revision", brokerEntrypoint
   }));
