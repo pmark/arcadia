@@ -13,7 +13,7 @@ This approval expires **2026-10-26 at 04:00 UTC**. Both repair stages consume se
 
 The private, reviewed manifest pins the exact old/new service records, source and runtime revisions, tools, configuration, worker identities, preservation constraints and controllers. It contains host details and remains private. The following digest binds this approval to those exact reviewed bytes; a changed digest requires another approval.
 
-Scope manifest SHA256: `1450b12f3e2579825c8f00db0473773240a8598a97331bc055e9b972e19f9d3e`
+Scope manifest SHA256: `aa6350b6a0106ccb30654e0b24f91eacebc15848f0a6fb12efb0d9e3c3526809`
 Scope ID: `restore-controls-and-three-action-recovery-20261025`
 Runtime recovery ID: `recover-three-action-runtime-20261025`
 
