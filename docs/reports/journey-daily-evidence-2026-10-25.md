@@ -104,3 +104,22 @@ exact current Action isolate-launch-preview-tmux-name (no overlap), identity and
 - `.agents/skills/arcadia-role/SKILL.md`: 11841 bytes
 - `.agents/skills/arcadia-guardrail/SKILL.md`: 5565 bytes
 - `.agents/skills/arcadia-rover-journey/SKILL.md`: 2915 bytes
+
+## Post-R1 advisory repair
+
+CodeRabbit inline 4373908111 identified a stale-schema availability regression at the optional
+progress call site. A disposable test drops `agent_sessions.is_simulated` and verifies the Plan
+still returns its Action list/current pointer, progress is unavailable, the error remains a warning,
+and the projection does not migrate the stale schema. Before the guard, the test failed with
+`SqliteError: no such column: is_simulated` from the new progress call; raw receipt retained at
+`/tmp/journey-stale-schema-before.txt`. The repair guards only optional progress and preserves the
+existing per-Action error handling. Existing passed checks are not reused as proof for this delta;
+focused validation, current-head CI and independent R2 delta review are required.
+After repair: the four-file focused Journey suite passes 44 tests; touched-file ESLint,
+root TypeScript, Session-ledger validation and git diff --check pass (all exit 0).
+
+R1's only P3 scaling concern is deferred to https://github.com/pmark/arcadia/issues/1778 with a
+large-history/measured-latency revival trigger. R1 summary:
+https://github.com/pmark/arcadia/pull/1777#issuecomment-6408010332.
+Production evidence remains in its own authority/evidence store; this repair neither reads nor
+modifies live first-job evidence and does not reinterpret the metric's runtime-unknown fields.

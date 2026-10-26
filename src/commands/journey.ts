@@ -108,6 +108,12 @@ export function derivePlanJourney(db: Database.Database, documents: ProjectDocum
       journey: { activity, destination: { reached: done || (journey?.destination.reached ?? false) }, counts }
     };
   });
+  let progress: PlanJourney["progress"];
+  try {
+    progress = deriveJourneyProgress(db, documents.slug, plan.slug, plan.actions.map(action => action.id), now);
+  } catch (error) {
+    warnings.push(`Progress unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return {
     schema: PLAN_JOURNEY_SCHEMA,
     generatedAt: now.toISOString(),
@@ -118,7 +124,7 @@ export function derivePlanJourney(db: Database.Database, documents: ProjectDocum
       plan: { slug: plan.slug, milestone: plan.milestone ?? documents.project?.milestone ?? null, active: plan.slug === activeSlug, position: null, total: plan.actions.length, done: plan.actions.filter((a) => a.status === "done").length },
       action: null
     },
-    progress: deriveJourneyProgress(db, documents.slug, plan.slug, plan.actions.map(action => action.id), now),
+    progress,
     northStar: null,
     actions,
     warnings

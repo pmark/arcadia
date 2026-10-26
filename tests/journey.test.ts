@@ -501,6 +501,20 @@ describe("derivePlanJourney", () => {
     });
   });
 
+  it("keeps the Plan readable when optional progress meets a stale Session schema", () => {
+    withRepo((documents) => {
+      db.exec("ALTER TABLE agent_sessions DROP COLUMN is_simulated");
+      const journey = derivePlanJourney(db, documents, "demo-plan", NOW);
+      expect(journey.actions.map((action) => [action.id, action.current])).toEqual([["shipped", false], ["demo-action", true], ["later", false]]);
+      expect(journey.actions[0].journey.destination.reached).toBe(true);
+      expect(journey.progress).toBeUndefined();
+      expect(journey.warnings).toContainEqual(expect.stringMatching(/^Progress unavailable: .*is_simulated/));
+      expect(renderPlanJourneySuccess({ data: journey } as never)).toContainEqual(expect.stringContaining("demo-action *"));
+      // The read projection must not silently migrate the database to repair itself.
+      expect((db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).some((column) => column.name === "is_simulated")).toBe(false);
+    });
+  });
+
   it("follows the active Plan for plan:current", () => {
     withRepo((documents) => {
       expect(derivePlanJourney(db, documents, "current", NOW).plan.slug).toBe("demo-plan");
