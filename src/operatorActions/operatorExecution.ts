@@ -117,6 +117,17 @@ export function readSupplementJson(file: string, root: string): { value: unknown
     return { value: JSON.parse(bytes.toString("utf8")), sha256: createHash("sha256").update(bytes).digest("hex") };
   } finally { closeSync(fd); }
 }
+/** Compare the observed parent with the complete canonical runner and pinned argv. */
+export function isCanonicalOperatorScriptParentCommand(command: string, argv: readonly string[], platform: NodeJS.Platform = process.platform): boolean {
+  const executable = command.trimStart().split(" -e ")[0];
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+  const expected = `${executable} -e ${operatorScriptRunnerSource} ${argv.join(" ")}`;
+  // Darwin ps displays embedded LF as literal \012. Render only the trusted
+  // expectation; never decode or reinterpret escapes in the observed command.
+  const displayed = platform === "darwin" ? expected.replace(/\n/g, "\\012") : expected;
+  return path.basename(executable) === "node" && normalize(command) === normalize(displayed);
+}
+
 /** This checks the actual dashboard runner's current receipt and parent process,
  * not a caller-supplied reference or an inherited environment label alone. */
 export function completionSupplementOperator(descriptorPath: string, now = new Date()): CompletionSupplementOperator {
@@ -150,11 +161,9 @@ export function completionSupplementOperator(descriptorPath: string, now = new D
     throw new Error("The operator action is not the running parent of this host operation.");
   }
   const command = execFileSync("ps", ["-ww", "-p", String(process.ppid), "-o", "command="], { encoding: "utf8", timeout: 2000, maxBuffer: 65536 });
-  const executable = command.trimStart().split(" -e ")[0];
   const argv = [path.join(library, `${id}.sh`), ref, path.join(library, "runs/state", `${id}.json`),
     path.join(library, "runs/state", `${id}.lock`), directory, runId, snapshot];
-  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
-  if (path.basename(executable) !== "node" || normalize(command) !== normalize(`${executable} -e ${operatorScriptRunnerSource} ${argv.join(" ")}`)) {
+  if (!isCanonicalOperatorScriptParentCommand(command, argv)) {
     throw new Error("The parent process is not the exact canonical operator script runner and argv.");
   }
   if (loadedSupplementModuleSha256 === null || createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") !== loadedSupplementModuleSha256) {

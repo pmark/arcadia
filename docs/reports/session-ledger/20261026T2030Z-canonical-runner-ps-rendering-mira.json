@@ -1,0 +1,35 @@
+{
+  "session_id": "canonical-runner-ps-rendering-mira",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "configured_effort": null,
+  "effective_effort": "high",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1802",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "macos-ps-multiline-canonical-parent-mismatch",
+      "cost_min": null,
+      "fix_ref": "src/operatorActions/operatorExecution.ts"
+    },
+    {
+      "id": "real-parent-display-failing-first",
+      "cost_min": null,
+      "fix_ref": "tests/operator-script-parent-command.test.ts"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Source-only Issue1802 repair, native gpt-6.1-sol/high. No governed Action or live producer/retry/adoption/START effects. Usage unknown.",
+  "stop_reason": "Prepared source handoff; independent review and current-head CI pending. No merge or runtime adoption authority."
+}
