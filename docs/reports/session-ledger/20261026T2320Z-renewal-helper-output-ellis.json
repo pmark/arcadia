@@ -1,0 +1,35 @@
+{
+  "session_id": "renewal-helper-output-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "configured_effort": null,
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1804",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "stdout-and-post-exit-evidence-loss",
+      "cost_min": null,
+      "fix_ref": "src/production/capacityPreAdmission.ts"
+    },
+    {
+      "id": "fake-cli-startup-sensitive-timeout",
+      "cost_min": null,
+      "fix_ref": "tests/claude-cli-self-refresh.test.ts"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Source-only1804; fakeCLI30pass, finalrunner8pass, tsc/lint0. Usage unknown. Preserve failed receipts in /tmp/ellis-1804-*. No live provider, consumed-profile edit, adoption or START.",
+  "stop_reason": "Source handoff only; required independent current-head review and CI. No merge/runtime adoption authority."
+}

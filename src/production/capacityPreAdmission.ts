@@ -16,6 +16,7 @@ import type { CodingAgentProfile } from "../intent/registries.js";
 import { queueOperatorPing } from "../ping/operatorPing.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
+import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js";
 import { readProductionPolicySafely } from "./policy.js";
 
 export const CLAUDE_PROVIDER_ID = "claude-code-cli";
@@ -57,6 +58,8 @@ export const CLAUDE_CLI_SELF_REFRESH_ARGS: readonly string[] = [
  */
 export const CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST: readonly string[] = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"];
 const MAX_SELF_REFRESH_DETAIL_CHARS = 300;
+const MAX_SELF_REFRESH_STREAM_BYTES = 4096;
+const SELF_REFRESH_STDIO_DRAIN_MS = 250;
 
 /**
  * Decision 0130: before an unattended launch the worker refreshes the Claude
@@ -143,36 +146,66 @@ async function selfRefreshClaudeSignIn(input: PreAdmissionRefreshInput, deadline
 export const runClaudeCliHeadless: ClaudeCliRunner = (args, timeoutMs) => new Promise((resolve) => {
   const env: NodeJS.ProcessEnv = {};
   for (const name of CLAUDE_CLI_SELF_REFRESH_ENV_ALLOWLIST) if (process.env[name] !== undefined) env[name] = process.env[name];
+  const clean = (text: string) => redactSecrets(sanitizeOutput(text)).replace(/\s+/g, " ").trim();
   let cwd: string;
   try {
     cwd = mkdtempSync(path.join(os.tmpdir(), "arcadia-claude-refresh-"));
   } catch (error) {
-    resolve({ ok: false, detail: `no private cwd: ${error instanceof Error ? error.message : String(error)}` });
+    resolve({ ok: false, detail: clean(`no private cwd: ${error instanceof Error ? error.message : String(error)}`).slice(0, MAX_SELF_REFRESH_DETAIL_CHARS) });
     return;
   }
-  // The kill timer exists only once the child does; finish may run before that.
-  const kill: { timer?: NodeJS.Timeout } = {};
+  let child: ReturnType<typeof spawn> | undefined;
+  const timers: { kill?: NodeJS.Timeout; drain?: NodeJS.Timeout } = {};
+  let settled = false;
+  let timedOut = false;
+  let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+  let stdout = Buffer.alloc(0), stderr = Buffer.alloc(0);
   const finish = (result: { ok: boolean; detail: string }) => {
-    if (kill.timer) clearTimeout(kill.timer);
+    if (settled) return;
+    settled = true;
+    if (timers.kill) clearTimeout(timers.kill);
+    if (timers.drain) clearTimeout(timers.drain);
+    // A descendant can retain a pipe after the direct child exits. Never wait forever.
+    child?.stdout?.destroy();
+    child?.stderr?.destroy();
     rmSync(cwd, { recursive: true, force: true });
-    resolve(result);
+    resolve({ ok: result.ok, detail: clean(result.detail).slice(0, MAX_SELF_REFRESH_DETAIL_CHARS) });
   };
-  let stderr = "";
-  let child: ReturnType<typeof spawn>;
+  const finishExit = (incomplete = false) => {
+    const why = exited?.signal ? `signal ${exited.signal}` : timedOut ? "timeout SIGKILL" : `exit ${String(exited?.code ?? null)}`;
+    // Redact before truncating and before returning anything a caller may persist.
+    const out = clean(stdout.toString("utf8")).slice(0, 118), err = clean(stderr.toString("utf8")).slice(0, 118);
+    const output = out && err ? `stderr: ${err}; stdout: ${out}` : err || out;
+    const detail = [why, incomplete ? "stdio drain deadline" : "", output].filter(Boolean).join(": ");
+    finish({ ok: exited?.code === 0 && !timedOut && !incomplete, detail: exited?.code === 0 && !timedOut && !incomplete ? why : detail });
+  };
+  const boundDrain = () => { if (!settled) timers.drain ??= setTimeout(() => finishExit(true), SELF_REFRESH_STDIO_DRAIN_MS); };
   try {
-    child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
+    child = spawn("claude", [...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
-    // A synchronous spawn failure (EINVAL, E2BIG) still removes the private cwd.
     finish({ ok: false, detail: `spawn failed: ${error instanceof Error ? error.message : String(error)}` });
     return;
   }
-  child.stderr?.on("data", (chunk: Buffer) => { if (stderr.length < MAX_SELF_REFRESH_DETAIL_CHARS) stderr += chunk.toString("utf8"); });
-  kill.timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+  // Keep draining both pipes after their capture caps to avoid output backpressure.
+  child.stdout?.on("data", (chunk: Buffer) => {
+    if (stdout.length < MAX_SELF_REFRESH_STREAM_BYTES) stdout = Buffer.concat([stdout, chunk.subarray(0, MAX_SELF_REFRESH_STREAM_BYTES - stdout.length)]);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (stderr.length < MAX_SELF_REFRESH_STREAM_BYTES) stderr = Buffer.concat([stderr, chunk.subarray(0, MAX_SELF_REFRESH_STREAM_BYTES - stderr.length)]);
+  });
+  timers.kill = setTimeout(() => {
+    timedOut = true;
+    child?.kill("SIGKILL");
+    boundDrain();
+  }, timeoutMs);
   child.once("error", (error) => finish({ ok: false, detail: error.message }));
   child.once("exit", (code, signal) => {
-    const why = signal ? `signal ${signal}` : `exit ${String(code)}`;
-    finish({ ok: code === 0, detail: code === 0 ? why : `${why}${stderr.trim() ? `: ${stderr.trim()}` : ""}` });
+    exited = { code, signal };
+    if (timers.kill) clearTimeout(timers.kill);
+    boundDrain();
   });
+  // Unlike exit, close observes drained stdio. The guard bounds inherited open pipes.
+  child.once("close", () => finishExit());
 });
 
 export const CLAUDE_UNAUTHORIZED_PING =
