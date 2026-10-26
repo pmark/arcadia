@@ -13,10 +13,12 @@ const DEFAULT_ID = "999999999999999999";
 const ALERTS_ID = "111111111111111111";
 const BRIEFINGS_ID = "222222222222222222";
 const LOG_ID = "333333333333333333";
+const REVIEW_ID = "444444444444444444";
 const config = {
   discordChannelId: DEFAULT_ID,
-  categoryChannels: { alerts: ALERTS_ID, briefings: BRIEFINGS_ID, log: LOG_ID }
+  categoryChannels: { alerts: ALERTS_ID, briefings: BRIEFINGS_ID, log: LOG_ID, review: REVIEW_ID }
 };
+const unrouted = { discordChannelId: DEFAULT_ID, categoryChannels: { alerts: ALERTS_ID, briefings: BRIEFINGS_ID, log: LOG_ID } };
 
 function settlement(id: string, overrides: Partial<AgentAskNotificationItem>): AgentAskNotificationItem {
   return {
@@ -52,26 +54,26 @@ describe("categorizeNotification", () => {
     ["agent-ask:red", "alerts"],
     ["agent-ask:ci", "alerts"],
     ["agent-ask:recover", "alerts"],
-    ["agent-ask:decision", null],
-    ["agent-ask:ready", null],
+    ["agent-ask:decision", "review"],
+    ["agent-ask:ready", "review"],
     ["agent-ask:opened", "log"],
     ["agent-ask:complete", "log"],
     ["agent-ask:plain", "log"],
     ["agent-ask:rejected", "log"],
-    ["agent-ask:decision-recover", null],
+    ["agent-ask:decision-recover", "review"],
     ["agent-ask:red-ready", "alerts"],
     ["agent-ask:not-in-the-snapshot", null],
-    ["requires-review:abc", null],
-    ["requires-review:transition", null],
+    ["requires-review:abc", "review"],
+    ["requires-review:transition", "review"],
     ["blocked:w1", "alerts"],
     ["artifact:a1", "log"],
     ["milestone:m1", "log"],
     ["run:r-failed", "alerts"],
-    ["run:r-review", null],
+    ["run:r-review", "review"],
     ["run:r-done", "log"],
     ["run:r-unknown", null],
     ["codex:t1:failed", "alerts"],
-    ["codex:t1:requires_review", null],
+    ["codex:t1:requires_review", "review"],
     ["codex:t1:completed", "log"],
     ["codex:t1:started", "log"],
     ["something-new:1", null]
@@ -79,9 +81,11 @@ describe("categorizeNotification", () => {
     expect(categorizeNotification(key, context)).toBe(expected);
   });
 
-  it("keeps everything that needs the operator in the default channel", () => {
-    for (const key of ["agent-ask:decision", "agent-ask:ready", "requires-review:abc", "run:r-review", "codex:t1:requires_review"]) {
-      expect(resolveCategoryChannel(categorizeNotification(key, context), config)).toBe(DEFAULT_ID);
+  it("sends every Decision and approval to the review channel, else the default channel", () => {
+    const keys = ["agent-ask:decision", "agent-ask:ready", "requires-review:abc", "requires-review:transition", "run:r-review", "codex:t1:requires_review"];
+    for (const key of keys) {
+      expect(resolveCategoryChannel(categorizeNotification(key, context), config)).toBe(REVIEW_ID);
+      expect(resolveCategoryChannel(categorizeNotification(key, context), unrouted)).toBe(DEFAULT_ID);
     }
   });
 });
@@ -90,6 +94,7 @@ describe("DISCORD_CATEGORY_CHANNELS", () => {
   it("parses categories and leaves unset ones to the default channel", () => {
     expect(parseCategoryChannels(undefined)).toEqual({});
     expect(parseCategoryChannels(` alerts=${ALERTS_ID}, log=${LOG_ID} `)).toEqual({ alerts: ALERTS_ID, log: LOG_ID });
+    expect(parseCategoryChannels(`review=${REVIEW_ID}`)).toEqual({ review: REVIEW_ID });
     expect(resolveCategoryChannel("briefings", { discordChannelId: DEFAULT_ID, categoryChannels: { alerts: ALERTS_ID } })).toBe(DEFAULT_ID);
     expect(resolveCategoryChannel(null, config)).toBe(DEFAULT_ID);
   });
@@ -110,8 +115,10 @@ describe("sendToCategory", () => {
     const send = async (channelId: string) => { posted.push(channelId); return { id: `m${posted.length}` }; };
     await sendToCategory(send, config, "alerts", "x", quiet);
     await sendToCategory(send, config, "log", "x", quiet);
+    const review = await sendToCategory(send, config, "review", "x", quiet);
     await sendToCategory(send, config, null, "x", quiet);
-    expect(posted).toEqual([ALERTS_ID, LOG_ID, DEFAULT_ID]);
+    expect(posted).toEqual([ALERTS_ID, LOG_ID, REVIEW_ID, DEFAULT_ID]);
+    expect(review).toEqual({ id: "m3", channelId: REVIEW_ID });
   });
 
   it("falls back to the default channel, with a note and a warning, when the category channel is unsendable", async () => {
@@ -123,7 +130,7 @@ describe("sendToCategory", () => {
       return { id: "fallback" };
     };
     const sent = await sendToCategory(send, config, "alerts", "RED ALERT body", (level, obj) => logs.push([level, obj]));
-    expect(sent.id).toBe("fallback");
+    expect(sent).toEqual({ id: "fallback", channelId: DEFAULT_ID });
     expect(posted).toHaveLength(1);
     expect(posted[0][0]).toBe(DEFAULT_ID);
     expect(posted[0][1]).toContain("RED ALERT body");

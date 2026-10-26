@@ -5,13 +5,14 @@ import type { LogLevel } from "../logging.js";
 
 /**
  * Where a proactive notification lands. `alerts` is something is wrong,
- * `briefings` is a scheduled read, `log` is routine progress. Anything that
- * needs the operator's answer or attention is not a category: it stays in the
- * default channel, where replies, review items and the ask ingress live.
+ * `briefings` is a scheduled read, `log` is routine progress, `review` is a
+ * Decision or approval waiting on the operator's answer. Replies to a review
+ * message are accepted in the review channel; the ask ingress stays in the
+ * default channel.
  */
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 
-export const NOTIFICATION_CATEGORIES = ["alerts", "briefings", "log"] as const;
+export const NOTIFICATION_CATEGORIES = ["alerts", "briefings", "log", "review"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 export type CategoryChannels = Partial<Record<NotificationCategory, string>>;
@@ -39,15 +40,18 @@ export function categorizeNotification(key: string, context: CategorizationConte
     const run = context.runs.find((candidate) => candidate.id === key.slice("run:".length));
     if (run?.status === "failed") return "alerts";
     if (run?.status === "completed") return "log";
+    if (run?.status === "requires_review") return "review";
     return null;
   }
   if (key.startsWith("codex:")) {
     const event = key.slice(key.lastIndexOf(":") + 1);
     if (event === "failed") return "alerts";
     if (event === "started" || event === "completed") return "log";
+    if (event === "requires_review") return "review";
     return null;
   }
-  // requires-review items and their transition, and anything unrecognized.
+  // Review items (Decisions awaiting an answer) and their count transition.
+  if (key.startsWith("requires-review:")) return "review";
   return null;
 }
 
@@ -56,9 +60,9 @@ export function categorizeAgentAsk(notification: AgentAskNotificationItem): Noti
   // A production red alert wins over everything else.
   if (notification.desiredResult?.startsWith("RED ALERT")) return "alerts";
   // Needs the operator: a Decision was opened, or a pull request is ready for
-  // their call. These stay in the default channel even when the settlement also
-  // carries a recovery note, because that is where they can answer.
-  if (notification.intent === "decision" || requestId.startsWith("pr-ready-")) return null;
+  // their call. These go to review even when the settlement also carries a
+  // recovery note, because that is where they answer.
+  if (notification.intent === "decision" || requestId.startsWith("pr-ready-")) return "review";
   // Something broke: a CI check an agent could not clear, or a settlement whose
   // recovery is incomplete.
   if (requestId.startsWith("ci-blocked-") || notification.recovery) return "alerts";
@@ -86,18 +90,19 @@ export async function sendToCategory(
   category: NotificationCategory | null,
   content: string,
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
-): Promise<{ id: string }> {
+): Promise<{ id: string; channelId: string }> {
   const channelId = resolveCategoryChannel(category, config);
-  if (channelId === config.discordChannelId) return send(channelId, content);
+  if (channelId === config.discordChannelId) return { ...(await send(channelId, content)), channelId };
   try {
-    return await send(channelId, content);
+    return { ...(await send(channelId, content)), channelId };
   } catch (error) {
     logJson("warn", {
       msg: "category channel unsendable; using default",
       category,
       error: error instanceof Error ? error.message : String(error)
     });
-    return send(config.discordChannelId, `(Routed from "${category}", whose channel was unavailable.)\n${content}`);
+    const sent = await send(config.discordChannelId, `(Routed from "${category}", whose channel was unavailable.)\n${content}`);
+    return { ...sent, channelId: config.discordChannelId };
   }
 }
 

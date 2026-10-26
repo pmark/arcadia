@@ -1000,6 +1000,45 @@ describe("discord free-text message allowlist and actor", () => {
     );
     expect(calledWith).toEqual({ reply: "A", id: "review_1", actor: "424242" });
   });
+
+  it("answers Decisions in the review channel but takes no Asks there", async () => {
+    const workspace = scratchWorkspace();
+    const config = { ...testConfig(workspace, ["424242"]), categoryChannels: { review: "review_channel" } };
+    const resolved: string[] = [];
+    const asked: string[] = [];
+    const cli = {
+      ...askCli(asked),
+      reviewResolveReply: async (reply: string) => {
+        resolved.push(reply);
+        return {
+          ok: true,
+          command: "review.resolve-reply",
+          workspace,
+          data: {
+            item: { ...sampleReviewItem(), id: "review_1", slug: "R1" },
+            action: "approved",
+            selectedOption: "approve",
+            feedback: null,
+            result: { status: "approved", summary: "Action approved." },
+            approval: null,
+            confirmation: "R1 approved."
+          },
+          artifacts: [],
+          warnings: []
+        };
+      }
+    } as unknown as ArcadiaCli;
+    const inReview = (content: string) =>
+      ({ ...(fakeMessage({ content, authorId: "424242" }) as object), channelId: "review_channel" }) as never;
+
+    await handleArcadiaMessage(inReview("0141 A"), config, cli);
+    await handleArcadiaMessage(inReview("please do something"), config, cli);
+    expect(resolved).toEqual(["0141 A"]);
+    expect(asked).toEqual([]);
+
+    await handleArcadiaMessage(inReview("0141 A"), testConfig(workspace, ["424242"]), cli);
+    expect(resolved).toEqual(["0141 A"]);
+  });
 });
 
 describe("discord bot notifications", () => {
