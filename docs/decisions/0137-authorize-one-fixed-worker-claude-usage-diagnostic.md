@@ -4,7 +4,7 @@ type: decision
 id: "0137"
 slug: authorize-one-fixed-worker-claude-usage-diagnostic
 project: arcadia
-status: open
+status: approved
 question: Authorize one fixed worker Claude usage diagnostic?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-25
+answer: Do not authorize the diagnostic
+decided: 2026-10-25
 ---
 
 # Decision 0137: Authorize one fixed worker Claude usage diagnostic?
