@@ -6,7 +6,7 @@ import { DECISION_CARD_SCHEMA } from "../../src/decisions/card";
 import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 
 // Ids with ":" and "/" are what next-step links percent-encode (src/decisions/nextSteps.ts).
-const ids = Array.from({ length: 6 }, (_, i) => `decision:arcadia/01${40 + i}`);
+const ids = Array.from({ length: 10 }, (_, i) => `decision:arcadia/01${40 + i}`);
 const view = (id: string) => ({
   card: {
     schema: DECISION_CARD_SCHEMA, id, kind: "decision", what: `Decide ${id}`, verb: "answer", expires: "2030-01-02T00:00:00Z", policy_match: null, receipt: null, pins: { stateHash: "s" }, evidence: [],
@@ -38,18 +38,26 @@ test("a next-step card link scrolls to its card once the late-loading cards rend
   const card = (id: string) => page.locator("article", { has: page.getByRole("heading", { name: `Decide ${id}`, exact: true }) });
   try {
     await waitForHttp(`${url}/todo`, server);
-    const target = ids[ids.length - 1];
+    // A middle card, so the page can scroll it to the top rather than bottoming out first.
+    const target = ids[5];
 
     // The encoded form next-step links use.
     await page.goto(`${url}/todo#card-${encodeURIComponent(target)}`);
     await expect(card(target)).toBeInViewport();
     await expect(card(ids[0])).not.toBeInViewport();
+    // The card's title clears the sticky page header rather than sitting under it.
+    const header = await page.locator("header").first().boundingBox();
+    const title = await page.getByRole("heading", { name: `Decide ${target}`, exact: true }).boundingBox();
+    expect(title!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
 
-    // A fragment the browser leaves partly unencoded still finds the same card.
-    await page.goto(`${url}/todo`);
-    await expect(card(ids[0])).toBeInViewport();
+    // A fragment the browser leaves partly unencoded still finds the same card, on a fresh load too.
+    await page.goto("about:blank");
     await page.goto(`${url}/todo#card-${target}`);
     await expect(card(target)).toBeInViewport();
+    await expect(card(ids[0])).not.toBeInViewport();
+    // Plain /todo stays at the top.
+    await page.goto(`${url}/todo`);
+    await expect(card(ids[0])).toBeInViewport();
     expect(errors).toEqual([]);
   } finally {
     await server.stop();

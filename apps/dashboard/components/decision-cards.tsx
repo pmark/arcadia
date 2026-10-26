@@ -104,7 +104,7 @@ export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, head
           const pressableIds = Object.keys(view.pressable);
           const badge = view.duplicates === null ? undefined : badges[`${view.duplicates.project}:${view.duplicates.id}`];
           return (
-            <article key={card.id} id={cardAnchor(card.id)} className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+            <article key={card.id} id={cardAnchor(card.id)} className="min-w-0 scroll-mt-16 rounded-md border border-line bg-panel p-4 shadow-soft">
               {badge?.blocking ? (
                 <p className="mb-2 inline-block rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">Blocking progress</p>
               ) : null}
