@@ -694,6 +694,28 @@ describe("native coordination: receipt-kind collision and unconditional unverifi
     expect(status.independentlyCheckedEffect).toBeNull();
     expect(status.receipts.some((receipt) => receipt.kind === "effect_receipt")).toBe(true);
   });
+
+  it("acknowledges a message without disposing it, then refuses both reportMailResult and disposeMailMessage with the collision request id", () => {
+    const workspacePath = workspace();
+    const { message } = withDatabase(workspacePath, (db) => sendMailMessage(db, baseOffer({ requestId: "req-ack-collision" })));
+    const ackRequestId = `${message.id}:acknowledgment`;
+
+    withDatabase(workspacePath, (db) => acknowledgeMailMessage(db, { messageId: message.id, ...SCOPE, actor: "claude-rm-1" }));
+
+    expect(() =>
+      withDatabase(workspacePath, (db) =>
+        reportMailResult(db, { messageId: message.id, requestId: ackRequestId, ...SCOPE, actor: "x", result: { outcome: "x" } })
+      )
+    ).toThrow("already recorded as a different operation (acknowledgment)");
+
+    expect(() =>
+      withDatabase(workspacePath, (db) => disposeMailMessage(db, { messageId: message.id, requestId: ackRequestId, ...SCOPE, actor: "x" }))
+    ).toThrow("already recorded as a different operation (acknowledgment)");
+
+    // The message status is still acknowledged after the collision attempts.
+    const status = withDatabase(workspacePath, (db) => mailStatus(db, message.id));
+    expect(status.explicitlyAcknowledged).toBe(true);
+  });
 });
 
 describe("native mail: round-5 review follow-ups (expired disposal, non-spoofable self-report flag)", () => {
