@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import type { Approval } from "../lib/approvals";
 import type { DecisionCardRefusalView, DecisionCardView, LegacyBadges } from "../lib/decision-cards";
 import { TodoCard } from "./todo-card";
@@ -31,6 +34,47 @@ function safeHref(url: string | undefined): string | null {
 }
 
 /**
+ * A card's anchor, encoded exactly as next-step links build it (`#card-${encodeURIComponent(id)}` in
+ * src/decisions/nextSteps.ts), so a link always names its card whatever characters the id holds.
+ */
+export const cardAnchor = (id: string): string => `card-${encodeURIComponent(id)}`;
+
+/** The card a `#card-…` hash names, accepting a fragment the browser left partly unencoded (`:` and `/`). */
+function hashedCard(hash: string): string | null {
+  if (!hash.startsWith("#card-")) return null;
+  try {
+    return cardAnchor(decodeURIComponent(hash.slice("#card-".length)));
+  } catch {
+    return hash.slice(1);
+  }
+}
+
+/**
+ * Cards arrive after the page loads, so the browser's own jump to `#card-…` finds nothing. Once the named card is
+ * rendered, scroll to it, once per hash: the 15-second refresh never pulls the operator back.
+ */
+function useScrollToHashedCard(renderedIds: string) {
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    const go = () => {
+      const target = hashedCard(window.location.hash);
+      if (target === null || scrolledTo.current === target) return;
+      const element = document.getElementById(target);
+      if (!element) return;
+      scrolledTo.current = target;
+      element.scrollIntoView({ block: "start" });
+    };
+    go();
+    const onHashChange = () => {
+      scrolledTo.current = null;
+      go();
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [renderedIds]);
+}
+
+/**
  * Pinned decision cards: what is being decided, what every option does, the evidence, and one verb button per
  * pressable option. The button posts only the card id and the option's pinned fingerprint. All card text is rendered
  * as text; nothing here is HTML.
@@ -39,6 +83,7 @@ export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, head
   const shown = views.filter((view) => verbs === undefined || verbs.includes(view.card.verb));
   // Refusals concern Decision cards; the run-card view lists only its own verbs.
   const refusals = verbs === undefined ? refused : [];
+  useScrollToHashedCard(shown.map((view) => view.card.id).join("\n"));
   if (shown.length === 0 && refusals.length === 0) return null;
   return (
     <section aria-label={heading} className="mb-6" data-testid="decision-cards">
@@ -59,7 +104,7 @@ export function DecisionCards({ views, pendingId, outcomes, onPress, verbs, head
           const pressableIds = Object.keys(view.pressable);
           const badge = view.duplicates === null ? undefined : badges[`${view.duplicates.project}:${view.duplicates.id}`];
           return (
-            <article key={card.id} id={`card-${card.id}`} className="min-w-0 rounded-md border border-line bg-panel p-4 shadow-soft">
+            <article key={card.id} id={cardAnchor(card.id)} className="min-w-0 scroll-mt-16 rounded-md border border-line bg-panel p-4 shadow-soft">
               {badge?.blocking ? (
                 <p className="mb-2 inline-block rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">Blocking progress</p>
               ) : null}
