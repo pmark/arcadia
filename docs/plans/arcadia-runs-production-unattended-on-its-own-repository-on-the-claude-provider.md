@@ -315,10 +315,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1628"]
   - id: bound-guidance-test-teardown-retries
     title: "Make the scratch-directory teardown in the agent-guidance test retry a transient ENOTEMPTY instead of failing the shard, closing Issue #1419."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement bounded retries in the agent-guidance test's scratch-directory teardown so a transient ENOTEMPTY no longer fails the shard, closing Issue #1419."
+    next_action: Completed via Agent Ask auto-settle-arcadia-bound-guidance-test-teardown-retries-d446e3a2cfca; no further action.
     expected_artifact: Evidence satisfying Agent Ask bound-guidance-test-teardown-retries
     clarification: clarified
     confidence: high
@@ -353,7 +353,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: bound-guidance-test-teardown-retries
+current_action: rebuild-cover-mail-ack-receipt-kind-collision
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
