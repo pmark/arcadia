@@ -76,7 +76,13 @@ export function detectEnvironmentWalls(log: string | null): SessionCapabilityObs
   const found = new Map<EnvironmentWallClass, SessionCapabilityObservation["walls"][number]>();
   const failed = (command: string, output: string) => {
     // An assertion quoting a denial is still a failed test, not a permission error.
-    const diagnostic = output.split(/\r?\n/).find(line => /^(?:Error(?: \[[A-Z_]+\])?:|SQLITE_WORKSPACE_WRITE_DENIED:|arcadia:|arcadia-preserve-broker\b|preservation\s+|EACCES\b|EPERM\b|operation not permitted\b|permission denied\b)/i.test(line));
+    const diagnostic = output.split(/\r?\n/).find(line => {
+      if (/^Error \[(?:SQLITE_WORKSPACE_WRITE_DENIED|EACCES|EPERM)\]:/i.test(line)) return true;
+      const direct = line.replace(/^(?:arcadia(?:-preserve-broker)?:\s*)?(?:Error:\s*)?/i, "");
+      // Generic Error prose (including quoted denials) is not an OS/database
+      // denial. Keep unsupported diagnostic shapes unknown.
+      return /^(?:SQLITE_WORKSPACE_WRITE_DENIED:|EACCES\b|EPERM\b|operation not permitted\b|permission denied\b|attempt to write a readonly database\b|cannot write the workspace database\b|workspace (?:database )?write (?:was )?denied\b|preservation (?:denied|not permitted|unreachable|did not (?:produce|write)|no receipt)\b)/i.test(direct);
+    });
     if (!diagnostic) return;
     for (const { wallClass, pattern } of WALL_PATTERNS) {
       if (found.has(wallClass) || !operationCanEstablish(wallClass, command) || !pattern.test(`${command} ${diagnostic}`)) continue;
@@ -255,6 +261,12 @@ export const SESSION_PROBE_TOKEN_BUDGET = 5_000;
 export interface SessionProbeCheck { name: string; ok: boolean; error?: string }
 export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; nonce?: string | null; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
 
+function isSessionProbeCheck(value: unknown): value is SessionProbeCheck {
+  const check = record(value);
+  return Boolean(check && typeof check.name === "string" && typeof check.ok === "boolean"
+    && (check.error === undefined || typeof check.error === "string"));
+}
+
 function probesFromString(text: string, nonce: string, out: SessionProbeResult[]): void {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -264,7 +276,9 @@ function probesFromString(text: string, nonce: string, out: SessionProbeResult[]
       // Only a line echoing this Session's recorded nonce counts: a probe-looking
       // line from a cat'd file or injected text cannot carry it.
       if (value.probe === SESSION_PROBE_ID && value.nonce === nonce && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
-        out.push(value as SessionProbeResult);
+        // A malformed matching probe still takes precedence, as unknown. It
+        // must neither throw during receipt creation nor expose a partial wall.
+        out.push({ ...value, checks: value.checks.every(isSessionProbeCheck) ? value.checks : [] } as SessionProbeResult);
       }
     } catch { /* not the probe line */ }
   }
@@ -300,7 +314,7 @@ export function parseSessionProbe(log: string | null, nonce: string | null): Ses
 
 /** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
 export function sessionProbeWalls(result: SessionProbeResult | null): EnvironmentWall[] {
-  if (!result || (result.ok && result.checks.every((check) => check.ok))) return [];
+  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck) || (result.ok && result.checks.every((check) => check.ok))) return [];
   const failed: SessionProbeCheck[] = result.checks.filter((check) => check && check.ok === false && typeof check.name === "string");
   const evidenceJson = clip(JSON.stringify(result), 600);
   const known: ReadonlySet<string> = new Set<EnvironmentWallClass>(["workspace_write", "host_validation", "preservation"]);

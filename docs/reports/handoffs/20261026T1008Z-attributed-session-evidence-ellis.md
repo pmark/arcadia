@@ -47,3 +47,11 @@ Instruction source sizes at retrieval (bytes; unchanged guidance reused, relevan
 - `docs/agent-guidance/pull-requests.md`: 21758
 - `docs/agent-guidance/arcadia-repository.md`: 30312
 - `tests/fast-rehearsal/README.md`: 25161
+
+## PR1790 R1 correction
+
+PR https://github.com/pmark/arcadia/pull/1790 original head `29f204f7d1026a7f2bf42425d798d5956f23b404` had all15 required CI jobs green in run40305888774, plus advisory draft-skip CodeRabbit success. Independent full-scope R1 `/root/review_1789_recovery`, native gpt-6.1-sol/high, source/author-receipt inspection only, returned NO-GO with two P2 blockers. Published with fresh identity at https://github.com/pmark/arcadia/pull/1790#issuecomment-6413721758 . No registered reviewer admission or reviewer-executed checks claimed.
+
+R1-01: generic Error prose plus the test command could match the broad wall regex. Source now first requires a direct OS/database/preservation denial diagnostic; generic sandbox fixture errors and quoted denial text stay unknown. R1-02: malformed matching probe checks could throw and roll back the new receipt. Check elements now validate before use; a malformed matching probe normalizes to empty checks, so its nonce-bound precedence remains unknown and its receipt is retained. Exported wall conversion also rejects malformed check arrays.
+
+Before-fix regressions:8 failed/1 passed, exit1 (`/tmp/ellis-1790-r1-regressions-before.txt`). After-fix focused regressions:10 passed, exit0 (`/tmp/ellis-1790-r1-regressions-after.txt`), including three worker receipt/no-exhaustion cases and genuine-wall retention. Full five affected suites:160 passed, exit0,118.63s (`/tmp/ellis-1790-r1-full-tests.txt`). Initial R1 lint failed two no-unexpected-multiline formatting errors in the new parameterized tests (full lint and delta lint exits1, retained raw logs). Corrected call formatting only. Typecheck, ledger and diff individually exited0; final lint receipt accompanies push. No canonical offline fixture behavior changed in this delta. The prior green CI certifies only the old head; new push requires new CI and independent R2 delta review. No new source authority or live proof.

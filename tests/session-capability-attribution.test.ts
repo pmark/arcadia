@@ -36,6 +36,14 @@ describe("capability failure attribution", () => {
     expect(detectEnvironmentWalls(codex("cat README.md", "validation operation not permitted"))).toEqual([]);
     expect(detectEnvironmentWalls(codex("pnpm test", 'AssertionError: expected text\nExpected: "validation sandbox permission denied"'))).toEqual([]);
   });
+  it.each(["Error: sandbox fixture assertion failed", 'Error: expected output "validation operation not permitted"', 'Error: "permission denied" is the expected fixture text'])("does not attribute generic test error prose: %s", output => {
+      expect(observeSessionCapability(codex("pnpm test", output), null)).toMatchObject({ status: "unknown", walls: [] });
+    });
+  it.each([[null], [{ name: "workspace_write", ok: "false" }], [{ name: "workspace_write", ok: false, error: {} }]])("retains unknown for a malformed matching probe: %j", (...items) => {
+      const checks = items.length === 1 && Array.isArray(items[0]) ? items[0] : items;
+      const log = JSON.stringify({ probe: "session-capability/v1", nonce, ok: true, checks });
+      expect(observeSessionCapability(log, nonce)).toMatchObject({ status: "unknown", provenance: "session_probe", walls: [] });
+    });
   it("prefers the matching nonce probe and never treats a foreign nonce or unknown probe check as a wall", () => {
     const log = claude("arcadia agent-ask preview", denial);
     expect(observeSessionCapability(`${probe(true)}\n${log}`, nonce)).toMatchObject({ status: "clear", provenance: "session_probe", walls: [] });

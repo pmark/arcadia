@@ -7,14 +7,23 @@
   "effective_effort": "medium",
   "effort_source": "native-runtime",
   "action_id": "operator-directed:#1788",
-  "pr": null,
+  "pr": 1790,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "denial-attribution",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "malformed-probe-receipt-rollback",
+      "caught_by": "independent-R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -22,9 +31,14 @@
       "id": "journey-fixture-exit-status-field",
       "cost_min": null,
       "fix_ref": "tests/journey.test.ts"
+    },
+    {
+      "id": "R1-attribution-and-malformed-probe",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1790#issuecomment-6413721758"
     }
   ],
   "outcome": "stopped",
   "notes": "Source-only Issue1788 assignment, depth1 sole implementer; no governed Action. Native gpt-6.1-sol/medium; resources unknown. No merge, runtime, permissions, recovery or provider authority.",
-  "stop_reason": "Source candidate prepared for independent review and required CI; no live adoption proof."
+  "stop_reason": "R1 blockers repaired; source awaits current-head independent delta review and CI. No live adoption proof."
 }
