@@ -272,7 +272,7 @@ svg.trail .sat { fill: var(--ink); }
       <span class="now-pill off" id="now-pill" aria-hidden="true"></span>
       <div class="orbits" id="orbits" hidden role="dialog" aria-label="How do you feel?"></div>
       <div class="custom" id="custom" hidden>
-        <div class="r"><input type="text" id="custom-emoji" maxlength="8" placeholder="Any emoji" aria-label="Any emoji"><button class="btn solid" id="custom-use">Use</button></div>
+        <div class="r"><input type="text" id="custom-emoji" maxlength="32" placeholder="Any emoji" aria-label="Any emoji"><button class="btn solid" id="custom-use">Use</button></div>
         <div class="r"><label class="btn" for="custom-file" style="flex:1">Upload a sticker or GIF</label><button class="btn" id="custom-cancel">Cancel</button></div>
         <input type="file" id="custom-file" accept="image/*" hidden>
         <p id="custom-hint">Up to three of your own stay in your orbit, in this browser only. Images up to 1 MB.</p>
@@ -651,10 +651,14 @@ function keepCustom(it, others) {
   if (save()) return true;
   S.custom = before;
   $("custom-hint").textContent = "This browser is out of room, so this one is not kept. Your earlier ones are.";
+  setNow(it); // Still show it for now; it just won't be in the orbit next time.
   return false;
 }
 $("custom-use").addEventListener("click", () => {
-  const v = $("custom-emoji").value.trim(); if (!v) return;
+  const raw = $("custom-emoji").value.trim();
+  // One emoji, however many code units it takes (a family emoji is eleven).
+  const v = typeof Intl !== "undefined" && Intl.Segmenter ? ([...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(raw)][0]?.segment ?? "") : (Array.from(raw)[0] ?? "");
+  if (!v) return;
   const it = { id: "c-" + Date.now(), label: "Custom", g: v, fx: "tap", face: "" };
   if (!keepCustom(it, S.custom.filter(c => c.g !== v))) return;
   $("custom-emoji").value = ""; $("custom").hidden = true; $("scrim").hidden = orbits.hidden; setNow(it);

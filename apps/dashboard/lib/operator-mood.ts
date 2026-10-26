@@ -76,6 +76,8 @@ export const MOMENTARY_STATES: readonly MomentaryState[] = [
 
 export const MOOD_STORAGE_KEY = "arcadia.workspace.mood.v1";
 export const DEFAULT_DECAY_MS = 5 * 60_000;
+/** The longest fade a saved setting may ask for; anything longer is treated as corrupt. */
+export const MAX_DECAY_MS = 24 * 60 * 60_000;
 
 export interface MoodState {
   atmosphere: AtmosphereId;
@@ -121,7 +123,7 @@ export function loadMood(storage: Pick<Storage, "getItem"> | null, at: number): 
     if (!raw) return defaultMood(at);
     const v = JSON.parse(raw) as Partial<MoodState>;
     if (!isAtmosphere(v.atmosphere)) return defaultMood(at);
-    const decayMs = isTime(v.decayMs) && v.decayMs >= 0 ? v.decayMs : DEFAULT_DECAY_MS;
+    const decayMs = isTime(v.decayMs) && v.decayMs >= 0 && v.decayMs <= MAX_DECAY_MS ? v.decayMs : DEFAULT_DECAY_MS;
     const now = isState(v.now) ? v.now : null;
     const expiresAt = now && isTime(v.expiresAt) ? v.expiresAt : null;
     return settle({ atmosphere: v.atmosphere, now, expiresAt, setAt: isTime(v.setAt) ? v.setAt : at, decayMs }, at);
@@ -159,13 +161,16 @@ export function remaining(mood: MoodState, at: number): number | null {
   return Math.max(0, Math.min(1, (mood.expiresAt - at) / mood.decayMs));
 }
 
+/** An ISO time, or null for anything a Date cannot represent, so a bad value never breaks rendering. */
+const iso = (at: number | null) => (at !== null && isTime(at) ? new Date(at).toISOString() : null);
+
 export function snapshot(mood: MoodState): MoodSnapshot {
   return {
     signal: "operator.mood",
     atmosphere: mood.atmosphere,
     now: mood.now ? (mood.now.image ? "custom:sticker" : mood.now.id) : null,
-    since: new Date(mood.setAt).toISOString(),
-    expires: mood.expiresAt === null ? null : new Date(mood.expiresAt).toISOString(),
+    since: iso(mood.setAt) ?? new Date(0).toISOString(),
+    expires: iso(mood.expiresAt),
     authority: "none"
   };
 }
