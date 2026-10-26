@@ -2411,7 +2411,20 @@ input. Review evidence verifies the exact tree, or the immediate canonical
 settlement with only the existing supported governed-record changes; later code
 changes never inherit a pass. Legacy records and unsupported settlement shapes
 say evidence is unavailable. A failed evidence write refuses completion and
-retains scratch; it grants no retry or runtime authority. A candidate
+retains scratch; it grants no retry or runtime authority.
+A separately approved completion-supplement operator action can execute the
+original named checks again and attach a new immutable Artifact without changing
+an old exit, preservation receipt or verdict. It requires a typed canonical action
+and actual run receipt, an exact clean Session/input/packet/head/tree binding, and
+an exclusive once-only request. An incomplete or failed request stays consumed;
+registration alone is not proof. Review consumers must pin the Artifact ID and
+content hash explicitly. A registered supplement holds automatic review until
+that pin verifies; absence preserves legacy fingerprints. The separately approved
+review context still requires production Active and permits only code-review
+ordinal 5, then QA ordinal 1 after that code review passes. It permits no repair,
+reset, additional ordinal or activation. These source capabilities do not publish
+an action or authorize using one.
+A candidate
 cannot replace its authorized lint-script manifest to pass completion. `--setting-sources ""` stops Claude
 merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
 `.claude/settings.json`) into it, so a headless Claude Session loads no user or

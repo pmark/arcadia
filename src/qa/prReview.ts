@@ -1,3 +1,5 @@
+import { completionSupplementOperator } from "../operatorActions/operatorExecution.js";
+import type { CompletionSupplementPin } from "../sessions/completionValidationEvidence.js";
 import { renderCompletionEvidence } from "../sessions/completionValidationEvidence.js";
 import { withPrReviewExecutionClaim } from "./executionClaim.js";
 import { spawnSync } from "node:child_process";
@@ -14,7 +16,7 @@ import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
-import { completionEvidenceForReview, settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
+import { completionSupplementArtifacts, resolveCompletionSupplement, completionEvidenceForReview, settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
 import {
   selectCompliantCodingAgent,
   type SelectedCodingAgentConfiguration
@@ -187,6 +189,7 @@ export interface QaPrReviewOptions {
   reviewerProfile?: string;
   rerun?: boolean;
   /** An operator recovery may narrow the candidate; it never grants review authority. */
+  completionSupplement?: CompletionSupplementPin;
   expectedCandidate?: { headSha: string; bodySha256: string; inputRevision: string; maxOrdinal: number };
   /**
    * Bound on the reviewer-model process. The CLI keeps its 30-minute default;
@@ -231,6 +234,7 @@ export interface RawPullRequest {
   completionExecutionEvidence?: string;
   /** Set only by the host attachment; absent proof preserves historical fingerprints. */
   completionExecutionEvidenceVerified?: boolean;
+  completionSupplement?: { artifactId: string; sha256: string; fingerprint: string };
   number: number;
   title: string;
   url: string;
@@ -350,18 +354,33 @@ export function runQaPrReviewCommand(
   }
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const profile = PR_REVIEW_ROLES[options.role ?? "qa"];
+  const supplementOperator = options.completionSupplement ? completionSupplementOperator(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR ?? "") : undefined;
+  if (supplementOperator && (supplementOperator.contract.phase !== profile.role || supplementOperator.contract.workspace !== workspacePath ||
+      supplementOperator.contract.pullRequest !== options.pullRequest || !options.expectedCandidate ||
+      supplementOperator.contract.bodySha256 !== options.expectedCandidate.bodySha256 || supplementOperator.contract.head !== options.expectedCandidate.headSha ||
+      supplementOperator.contract.inputRevision !== options.expectedCandidate.inputRevision)) {
+    throw validationError("Supplement review requires the exact current typed operator context and immutable PR/input pins.");
+  }
   const runCommand = dependencies.runCommand ?? executeCommand;
   const now = dependencies.now ?? (() => new Date());
   const reference = parsePullRequestReference(options.pullRequest);
   const project = withDatabase(workspacePath, (db) => resolveConfiguredProject(db, reference.repository, runCommand));
   const attachCompletionEvidence = (pr: RawPullRequest | null): RawPullRequest | null => {
     if (!pr) return null;
-    const completionExecutionEvidence = withReadOnlyDatabase(workspacePath, db => {
+    const evidence = withReadOnlyDatabase(workspacePath, db => {
       const session = lineageBoundSessionForBranch(db, { repositoryPath: project.repositoryPath, branch: pr.headRefName });
-      return session ? completionEvidenceForReview(db, workspacePath, session, pr.headRefOid)
-        : { status: "unavailable" as const, reason: "no managed Session completion evidence binding" };
+      if (session && (options.completionSupplement || completionSupplementArtifacts(db, session).length)) {
+        if (!options.completionSupplement) throw validationError("Supplemental evidence hold requires an explicit verified Artifact ID/hash before any review or receipt reuse.");
+        const verified = resolveCompletionSupplement(db, session, options.completionSupplement);
+        if (verified.envelope.binding.head !== pr.headRefOid) throw validationError("Supplement head differs from the immutable PR input.");
+        return { view: verified.view, supplement: { artifactId: verified.pin.artifactId, sha256: verified.pin.sha256, fingerprint: verified.fingerprint } };
+      }
+      if (options.completionSupplement) throw validationError("Supplement review requires its managed Session.");
+      return { view: session ? completionEvidenceForReview(db, workspacePath, session, pr.headRefOid)
+        : { status: "unavailable" as const, reason: "no managed Session completion evidence binding" }, supplement: undefined };
     });
-    return { ...pr, completionExecutionEvidence: renderCompletionEvidence(completionExecutionEvidence), completionExecutionEvidenceVerified: completionExecutionEvidence.status === "verified" };
+    return { ...pr, completionExecutionEvidence: renderCompletionEvidence(evidence.view), completionExecutionEvidenceVerified: evidence.view.status === "verified",
+      completionSupplement: evidence.supplement };
   };
   const pullRequest = attachCompletionEvidence(readPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))!;
   if (pullRequest.state.toUpperCase() !== "OPEN") {
@@ -387,8 +406,8 @@ export function runQaPrReviewCommand(
   if (!options.rerun) {
     const persisted = readPersistedReceipt(workspacePath, canonicalReceiptPath, evidenceFingerprint, profile);
     const stands = persisted && withDatabase(workspacePath, (db) => {
-      recoverInFlightVerdict(db, { profile, repositoryPath: project.repositoryPath, persisted, now: now() });
-      return lineageReceiptStands(db, { profile, repositoryPath: project.repositoryPath, pullRequest });
+      recoverInFlightVerdict(db, { profile, repositoryPath: project.repositoryPath, persisted, now: now(), supplement: options.completionSupplement });
+      return lineageReceiptStands(db, { profile, repositoryPath: project.repositoryPath, pullRequest, supplement: options.completionSupplement });
     });
     if (persisted && stands) {
       const { lineageRequestId: _lineageRequestId, ...reused } = persisted;
@@ -454,7 +473,7 @@ export function runQaPrReviewCommand(
       if (options.expectedCandidate) throw validationError("Pinned recovery requires managed candidate lineage.");
       return null;
     }
-    const readiness = independentVerdictReadiness(db, { session, repoRoot: project.repositoryPath });
+    const readiness = independentVerdictReadiness(db, { session, repoRoot: project.repositoryPath, supplement: options.completionSupplement });
     if (options.expectedCandidate && (!readiness.ready || readiness.requirement.inputRevision !== options.expectedCandidate.inputRevision)) {
       throw validationError("Pinned recovery requirement changed before attempt allocation.");
     }
@@ -468,8 +487,8 @@ export function runQaPrReviewCommand(
       ? Math.min(options.expectedCandidate.maxOrdinal, verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, profile.role))
       : undefined;
     const begun = beginIndependentVerdict(db, {
-      role: profile.role, session, repoRoot: project.repositoryPath, maxOrdinal,
-      requestId: `${profile.role}-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
+      role: profile.role, session, repoRoot: project.repositoryPath, maxOrdinal, supplement: options.completionSupplement,
+      requestId: supplementOperator?.contract.requestId ?? `${profile.role}-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
       actorId: reviewerActorId, executionCwd: process.cwd(), reviewerBindingId: reviewer.bindingId, retryAuthorized: options.rerun === true, now: now()
     });
     return {
@@ -712,7 +731,7 @@ export function runQaPrReviewCommand(
   // crash-recovering rerun would read back (see recoverInFlightVerdict).
   if (lineage) {
     withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
-      requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath,
+      requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath, supplement: options.completionSupplement,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
       receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
         reviewerUnavailable, varianceReason })
@@ -754,6 +773,7 @@ function recoverInFlightVerdict(db: Database.Database, input: {
   repositoryPath: string;
   persisted: NonNullable<ReturnType<typeof readPersistedReceipt>>;
   now: Date;
+  supplement?: CompletionSupplementPin;
 }): void {
   const { persisted } = input;
   if (!persisted.lineageRequestId) return;
@@ -764,7 +784,7 @@ function recoverInFlightVerdict(db: Database.Database, input: {
   const session = lineageBoundSessionForBranch(db, { repositoryPath: input.repositoryPath, branch: persisted.candidate.headBranch });
   if (!session) return;
   finishIndependentVerdict(db, {
-    requestId: attempt.request_id, actorId, session, repoRoot: input.repositoryPath,
+    requestId: attempt.request_id, actorId, session, repoRoot: input.repositoryPath, supplement: input.supplement,
     verdict: persisted.verdict === "pass" ? "passed" : "failed", now: input.now,
     receipt: lineageVerdictReceipt({ verdict: persisted.verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id,
       headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint,
@@ -796,10 +816,10 @@ function assertManagedProductionOn(db: Database.Database, profile: PrReviewRoleP
  * old receipt. A candidate that cannot take a new verdict (not ready, or a PR
  * head other than its ready head) keeps the receipt as evidence, as before.
  */
-function lineageReceiptStands(db: Database.Database, input: { profile: PrReviewRoleProfile; repositoryPath: string; pullRequest: RawPullRequest }): boolean {
+function lineageReceiptStands(db: Database.Database, input: { profile: PrReviewRoleProfile; repositoryPath: string; pullRequest: RawPullRequest; supplement?: CompletionSupplementPin }): boolean {
   const session = lineageBoundSessionForBranch(db, { repositoryPath: input.repositoryPath, branch: input.pullRequest.headRefName });
   if (!session) return true;
-  const readiness = independentVerdictReadiness(db, { session, repoRoot: input.repositoryPath });
+  const readiness = independentVerdictReadiness(db, { session, repoRoot: input.repositoryPath, supplement: input.supplement });
   if (!readiness.ready || readiness.binding.targetHead !== input.pullRequest.headRefOid) return true;
   const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.profile.role);
   return latest !== null && (latest.status === "passed" || latest.status === "failed") &&
@@ -1753,6 +1773,7 @@ function fingerprintPullRequestEvidence(pullRequest: RawPullRequest): string {
     baseRefOid: pullRequest.baseRefOid,
     body: pullRequest.body,
     ...(pullRequest.completionExecutionEvidenceVerified ? { completionExecutionEvidence: pullRequest.completionExecutionEvidence } : {}),
+    ...(pullRequest.completionSupplement ? { completionSupplement: pullRequest.completionSupplement } : {}),
     files: pullRequest.files,
     // An advisory entry never gates, so its state changing mid-review (CodeRabbit
     // finishing) does not make the evidence stale. A rollup without one hashes

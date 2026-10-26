@@ -1,0 +1,35 @@
+{
+  "session_id": "completion-supplement-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "e2_standard",
+  "configured_effort": "e2_standard",
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1793",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "generic-artifact-forgery-and-mutation-failing-first",
+      "cost_min": null,
+      "fix_ref": "tests/completion-validation-supplement.test.ts"
+    },
+    {
+      "id": "fixture-build-wording-and-existing-Artifact-ID-format",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-supplement-integration-first.txt"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Issue1793 source only; no Action. Actual native6.1-sol/medium. Disposable local checks, simulated reviewers; no live effects. Resource totals unknown. No merge/adoption/START authority.",
+  "stop_reason": "Draft PR handoff only; independent current-head review and CI required before any separate adoption decision."
+}

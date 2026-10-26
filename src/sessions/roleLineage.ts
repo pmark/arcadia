@@ -1,3 +1,6 @@
+import { completionSupplementOperator, supplementDigest } from "../operatorActions/operatorExecution.js";
+import { readProductionPolicySafely } from "../production/policy.js";
+import type { CompletionSupplementPin } from "./completionValidationEvidence.js";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import path from "node:path";
@@ -25,7 +28,7 @@ import {
   type VerdictBinding
 } from "./enrollment.js";
 import type { AgentSession } from "./index.js";
-import { getSessionExitReceipt, type SessionExitOutcome } from "./reconciliation.js";
+import { completionSupplementArtifacts, resolveCompletionSupplement, getSessionExitReceipt, type SessionExitOutcome } from "./reconciliation.js";
 
 /**
  * Wiring of the fixed five-role attempt store (`session_role_attempts`) into
@@ -415,13 +418,22 @@ export function judgedCriteriaFingerprint(criteriaFingerprint: string, revision:
  * governed criteria change, or the preserved validation evidence changes, and
  * every verdict bound to the old binding is then no longer current.
  */
-export function independentVerdictReadiness(db: Database.Database, input: { session: AgentSession; repoRoot: string }): VerdictReadiness {
+export function independentVerdictReadiness(db: Database.Database, input: { session: AgentSession; repoRoot: string; supplement?: CompletionSupplementPin }): VerdictReadiness {
   const { session } = input;
   const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
   const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
   if (!action) return { ready: false, requirement: null, reasons: ["The governed Action is not in the checked-in Plan."] };
   const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
   const reasons: string[] = [];
+  let supplementFingerprint: string | undefined;
+  const supplements = completionSupplementArtifacts(db, session);
+  if (input.supplement || supplements.length) {
+    if (!input.supplement) reasons.push("The Session has a supplemental evidence hold; an explicit verified Artifact ID/hash is required.");
+    else {
+      try { supplementFingerprint = resolveCompletionSupplement(db, session, input.supplement).fingerprint; }
+      catch { reasons.push("The explicit completion supplement is unavailable or not bound to this exact current candidate."); }
+    }
+  }
   const developer = effectiveDevelopmentAttempt(db, requirement.requirementId, requirement.inputRevision);
   if (developer?.status !== "passed" || !developer.target_head) {
     reasons.push("No passed development attempt exists for the current governed Action input.");
@@ -459,7 +471,7 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
     binding: {
       targetHead: head,
       criteriaFingerprint: judgedCriteriaFingerprint(requirement.criteriaFingerprint),
-      evidenceFingerprint: sha256([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256, ...(completionEvidence ? [completionEvidence] : [])])
+      evidenceFingerprint: sha256([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256, ...(completionEvidence ? [completionEvidence] : []), ...(supplementFingerprint ? [{ completionSupplement: supplementFingerprint }] : [])])
     }
   };
 }
@@ -577,6 +589,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
   role: IndependentVerdictRole;
   session: AgentSession;
   repoRoot: string;
+  supplement?: CompletionSupplementPin;
   requestId: string;
   actorId: string;
   executionCwd: string;
@@ -586,8 +599,12 @@ export function beginIndependentVerdict(db: Database.Database, input: {
   maxOrdinal?: number;
   now: Date;
 }): { attempt: SessionRoleAttempt; binding: VerdictBinding } {
+  return writeTransaction(db, () => {
   if (!(INDEPENDENT_VERDICT_ROLES as readonly string[]).includes(input.role)) {
     throw validationError("Only code review and QA record independent verdicts.", { code: "unknown_attempt_role" });
+  }
+  if (input.supplement && getSessionRoleAttempt(db, input.requestId)) {
+    throw validationError("A supplemental attempt request is already consumed; return its exact retained operator result, never execute again.", { code: "supplement_attempt_consumed" });
   }
   const replay = getSessionRoleAttempt(db, input.requestId);
   if (replay && replay.target_head && replay.criteria_fingerprint && replay.evidence_fingerprint) {
@@ -603,6 +620,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
       code: "verdict_not_ready", reasons: readiness.reasons
     });
   }
+  if (input.supplement) assertSupplementVerdictAuthority(db, input, readiness);
   assertIndependentOf(db, input.session, input);
   // Restart: the same reviewer resumes its own unfinished attempt on the same
   // binding instead of allocating a duplicate under a fresh transport id.
@@ -629,12 +647,13 @@ export function beginIndependentVerdict(db: Database.Database, input: {
     mutationOwner: false,
     retryAuthorized: input.retryAuthorized ?? false,
     authorityCurrent: true,
-    maxOrdinal: input.maxOrdinal ?? verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.role),
+    maxOrdinal: input.supplement ? (input.role === "code-review" ? 5 : 1) : input.maxOrdinal ?? verdictAttemptLimit(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.role),
     binding: readiness.binding,
     now: input.now
   });
   if (attempt.status === "pending") markSessionRoleAttemptRunning(db, { requestId: attempt.request_id, actorId: attempt.actor_id, now: input.now });
   return { attempt: getSessionRoleAttempt(db, attempt.request_id)!, binding: readiness.binding };
+  });
 }
 
 /**
@@ -648,6 +667,7 @@ export function finishIndependentVerdict(db: Database.Database, input: {
   actorId: string;
   session: AgentSession;
   repoRoot: string;
+  supplement?: CompletionSupplementPin;
   verdict: "passed" | "failed";
   receipt: unknown;
   now: Date;
@@ -659,10 +679,20 @@ export function finishIndependentVerdict(db: Database.Database, input: {
     // Transport replay of a finished verdict returns its immutable receipt.
     const stale = (JSON.parse(attempt.terminal_receipt_json ?? "{}") as { stale?: boolean } | null)?.stale === true;
     if (!stale && attempt.status !== input.verdict) throw validationError("A terminal attempt receipt is immutable.", { code: "attempt_terminal_changed" });
+    if (input.supplement) {
+      const current = independentVerdictReadiness(db, input);
+      if (!current.ready || !attemptVerdictIsCurrent({ ...attempt, status: "passed" }, { head: current.binding.targetHead,
+          criteriaFingerprint: current.binding.criteriaFingerprint, evidenceFingerprint: current.binding.evidenceFingerprint })) return { attempt, stale: true };
+    }
     return { attempt, stale };
   }
   const readiness = independentVerdictReadiness(db, input);
-  const current = readiness.ready && attemptVerdictIsCurrent({ ...attempt, status: "passed" }, {
+  let supplementAuthority = true;
+  if (input.supplement && readiness.ready) {
+    try { assertSupplementVerdictAuthority(db, { ...input, role: attempt.role as IndependentVerdictRole }, readiness); }
+    catch { supplementAuthority = false; }
+  }
+  const current = supplementAuthority && readiness.ready && attemptVerdictIsCurrent({ ...attempt, status: "passed" }, {
     head: readiness.binding.targetHead, criteriaFingerprint: readiness.binding.criteriaFingerprint, evidenceFingerprint: readiness.binding.evidenceFingerprint
   });
   if (!current) {
@@ -673,7 +703,7 @@ export function finishIndependentVerdict(db: Database.Database, input: {
     };
   }
   return {
-    attempt: recordSessionRoleAttemptTerminal(db, { requestId: input.requestId, actorId: input.actorId, status: input.verdict, now: input.now, receipt: input.receipt }),
+    attempt: recordSessionRoleAttemptTerminal(db, { requestId: input.requestId, actorId: input.actorId, status: input.verdict, now: input.now, receipt: input.supplement ? { ...(input.receipt && typeof input.receipt === "object" ? input.receipt : { detail: input.receipt }), completionSupplement: input.supplement } : input.receipt }),
     stale: false
   };
 }
@@ -689,7 +719,8 @@ export type VerdictGate =
  * earlier head, criteria or evidence does not satisfy it.
  */
 export function independentVerdictGate(db: Database.Database, input: { session: AgentSession; repoRoot: string }): VerdictGate {
-  const readiness = independentVerdictReadiness(db, input);
+  const terminalPin = terminalCompletionSupplementPin(db, input);
+  const readiness = independentVerdictReadiness(db, { ...input, ...(terminalPin ? { supplement: terminalPin } : {}) });
   if (!readiness.ready) {
     return { satisfied: false, code: "verdict_readiness_failed", head: null, missing: [],
       reason: `Integration waits on deterministic verdict readiness: ${readiness.reasons.join(" ")}` };
@@ -740,5 +771,57 @@ export function assertVerdictHead(binding: VerdictBinding, reviewedHead: string)
     throw validationError("The reviewed head is not the candidate's deterministically ready head; no reviewer may judge it.", {
       code: "verdict_not_ready", reasons: [`reviewed ${reviewedHead}, ready ${binding.targetHead}`]
     });
+  }
+}
+
+/** A stored terminal pin is only a selector, never execution authority. The
+ * shared resolver still verifies all current files, metadata and bindings. */
+export function terminalCompletionSupplementPin(db: Database.Database, input: { session: AgentSession; repoRoot: string }): CompletionSupplementPin | undefined {
+  const plan = discoverDocs(input.repoRoot).docs.find(doc => doc.type === "plan" && doc.project === input.session.project_slug && doc.slug === input.session.plan_slug);
+  const action = plan?.type === "plan" ? plan.actions.find(entry => entry.id === input.session.action_id) : undefined;
+  if (!action) return undefined;
+  const r = requirementIdentity({ projectSlug: input.session.project_slug, planSlug: input.session.plan_slug, action });
+  let selected: CompletionSupplementPin | undefined;
+  for (const role of INDEPENDENT_VERDICT_ROLES) {
+    const attempt = latestRoleAttempt(db, r.requirementId, r.inputRevision, role);
+    if (!attempt || attempt.status !== "passed") continue;
+    try {
+      const pin = JSON.parse(attempt.terminal_receipt_json ?? "{}").completionSupplement as CompletionSupplementPin | undefined;
+      if (!pin) continue;
+      if (selected && supplementDigest(selected) !== supplementDigest(pin)) return undefined;
+      resolveCompletionSupplement(db, input.session, pin);
+      selected = pin;
+    } catch { return undefined; }
+  }
+  return selected;
+}
+function assertSupplementVerdictAuthority(db: Database.Database, input: {
+  session: AgentSession; repoRoot: string; supplement?: CompletionSupplementPin; role: IndependentVerdictRole; requestId: string;
+}, readiness: Extract<VerdictReadiness, { ready: true }>): void {
+  const operator = completionSupplementOperator(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR ?? "");
+  const p = operator.contract;
+  const pin = input.supplement!;
+  const verified = resolveCompletionSupplement(db, input.session, pin);
+  if (p.phase !== input.role || p.requestId !== input.requestId || p.sessionId !== input.session.id ||
+      p.workspace !== pin.workspace || supplementDigest(p.artifact) !== supplementDigest({ artifactId: pin.artifactId, sha256: pin.sha256 }) ||
+      ["inputRevision", "head", "tree", "packetSha256", "preservationSha256", "commandsSha256", "repository"].some(key =>
+        p[key as keyof typeof p] !== verified.envelope.binding[key as keyof typeof verified.envelope.binding])) {
+    throw validationError("Supplement reviewer context differs from the pinned current Artifact/input.", { code: "supplement_authority_mismatch" });
+  }
+  const policy = readProductionPolicySafely(db);
+  if (policy.status !== "ok" || policy.policy.desiredState !== "active") throw validationError("Supplement reviews still require managed production On.", { code: "managed_production_off" });
+  const rows = db.prepare("SELECT * FROM session_role_attempts WHERE requirement_id = ? AND input_revision = ? AND role = ? ORDER BY ordinal")
+    .all(readiness.requirement.requirementId, readiness.requirement.inputRevision, input.role) as SessionRoleAttempt[];
+  const previousRows = rows.filter(row => row.request_id !== input.requestId);
+  const requiredPrevious = input.role === "code-review" ? 4 : 0;
+  if (previousRows.length !== requiredPrevious || previousRows.some((row, i) => row.ordinal !== i + 1 || !["passed", "failed"].includes(row.status))) {
+    throw validationError("Supplement permits only code-review ordinal 5 and QA ordinal 1, once; no repair or unavailable-review extension.", { code: "supplement_attempt_limit" });
+  }
+  if (input.role === "qa") {
+    const code = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, "code-review");
+    if (!code || code.ordinal !== 5 || !attemptVerdictIsCurrent(code, { head: readiness.binding.targetHead,
+        criteriaFingerprint: readiness.binding.criteriaFingerprint, evidenceFingerprint: readiness.binding.evidenceFingerprint })) {
+      throw validationError("Supplement QA1 requires a current passed supplemental code-review5.", { code: "supplement_code_review_required" });
+    }
   }
 }

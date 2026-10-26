@@ -28,6 +28,7 @@ export interface OperatorScriptDescriptor {
    * never relaxes or adds an execution gate; the script still checks everything.
    */
   next_after?: NextAfter;
+  completionSupplement?: CompletionSupplementContract;
   planAmendment?: PlanAmendmentInput;
   /** A pinned one-shot activation of a draft Plan; it runs through the same shared runner. */
   planActivation?: PlanActivationInput;
@@ -56,6 +57,49 @@ export interface OperatorScriptDescriptor {
    * fingerprint, another proposal and an Ask someone else already settled.
    */
   agentAskSettlement?: AgentAskSettlementPin;
+}
+/** One concrete host validation/review operation; evidence never authorizes execution. */
+export interface CompletionSupplementContract {
+  schema: "arcadia-completion-supplement-action-v1";
+  phase: "produce" | "code-review" | "qa";
+  requestId: string;
+  workspace: string;
+  repository: string;
+  sessionId: string;
+  inputRevision: string;
+  packetSha256: string;
+  preservationSha256: string;
+  head: string;
+  tree: string;
+  commandsSha256: string;
+  artifact: { artifactId: string; sha256: string } | null;
+  pullRequest: string | null;
+  bodySha256: string | null;
+}
+export function completionSupplementLauncher(id: string): string {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) throw new OperatorScriptContractError("INVALID_OPERATOR_CONTRACT", "Invalid action id.");
+  return '#!/usr/bin/env bash\nset -euo pipefail\nlibrary_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nrepo="$(cd "$library_dir/../../.." && pwd)"\nexec mise exec -- node --import tsx "$repo/scripts/supplement-completion-validation.ts" "$library_dir/' + id + '.json" "${1:-}"\n';
+}
+function validateCompletionSupplement(d: OperatorScriptDescriptor, id: string, script: string): void {
+  const p = d.completionSupplement!;
+  const keys = "artifact,bodySha256,commandsSha256,head,inputRevision,packetSha256,phase,preservationSha256,pullRequest,repository,requestId,schema,sessionId,tree,workspace";
+  const digest = (v: unknown) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
+  if (!p || typeof p !== "object" || Object.keys(p).sort().join(",") !== keys ||
+      p.schema !== "arcadia-completion-supplement-action-v1" || !["produce", "code-review", "qa"].includes(p.phase) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(p.requestId) || !/^[A-Za-z0-9_-]{1,128}$/.test(p.sessionId) ||
+      !path.isAbsolute(p.workspace ?? "") || !path.isAbsolute(p.repository ?? "") ||
+      ![p.inputRevision, p.packetSha256, p.preservationSha256, p.commandsSha256].every(digest) ||
+      ![p.head, p.tree].every(v => typeof v === "string" && /^[a-f0-9]{40}$/.test(v)) ||
+      (p.phase === "produce" ? p.artifact !== null || p.pullRequest !== null || p.bodySha256 !== null :
+        !p.artifact || Object.keys(p.artifact).sort().join(",") !== "artifactId,sha256" ||
+        !/^art_[a-f0-9]{18}$/.test(p.artifact.artifactId) || !digest(p.artifact.sha256) || !digest(p.bodySha256) ||
+        typeof p.pullRequest !== "string" || !/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(p.pullRequest)) ||
+      d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined ||
+      d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined ||
+      d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined || d.workspaceConfigEdit !== undefined) {
+    fail("INVALID_COMPLETION_SUPPLEMENT", "A completion supplement needs one exact bounded producer or code-review5/QA1 contract, expiry and no other capability.");
+  }
+  if (script !== completionSupplementLauncher(id)) fail("COMPLETION_SUPPLEMENT_RUNNER_REQUIRED", "Completion supplements require exactly the canonical launcher.");
 }
 export interface AgentAskSettlementPin {
   schema: "arcadia-agent-ask-settlement-v1";
@@ -167,7 +211,7 @@ const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\
 export function assertProjectLibraryEntry(value: unknown, project: string): void {
   const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
   if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
-  if (d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
+  if (d.completionSupplement !== undefined || d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
     fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit or next_after; those runners and hints exist only in Arcadia's library.");
   }
   if (d.agentAskRejections !== undefined || (d.agentAsk !== undefined && d.agentAskSettlement === undefined)) {
@@ -186,6 +230,8 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
       (d.kind === "grant" && d.repeatable === true && d.expires_at === undefined)) {
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
+  if (d.completionSupplement !== undefined) validateCompletionSupplement(d, id, script);
+  if (d.completionSupplement === undefined && script.includes("supplement-completion-validation")) fail("COMPLETION_SUPPLEMENT_RUNNER_REQUIRED", "The supplement runner requires a typed completionSupplement contract.");
   if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
   if (d.project !== undefined && (typeof d.project !== "string" || !slug.test(d.project))) {
     fail("INVALID_OPERATOR_CONTRACT", "project must be a registered Project slug.");

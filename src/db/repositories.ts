@@ -1,3 +1,4 @@
+import { assertCompletionSupplementRegistration, COMPLETION_SUPPLEMENT_ARTIFACT } from "../operatorActions/operatorExecution.js";
 import type Database from "better-sqlite3";
 import { assertRepoPathAllowed, workspaceOfDatabase } from "../workspace/experimentGuard.js";
 import {
@@ -426,6 +427,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
 }
 
 function insertArtifact(db: Database.Database, input: CreateArtifactInput, timestamp: string): Artifact {
+  if (input.artifactType === COMPLETION_SUPPLEMENT_ARTIFACT) assertCompletionSupplementRegistration(input);
   const artifact: Artifact = {
     id: createId("artifact"),
     project_id: input.projectId ?? null,
@@ -1201,6 +1203,9 @@ export function updateArtifact(
   id: string,
   input: UpdateArtifactInput
 ): ArtifactSummary | null {
+  if (getArtifact(db, id)?.artifact_type === COMPLETION_SUPPLEMENT_ARTIFACT || input.artifactType === COMPLETION_SUPPLEMENT_ARTIFACT) {
+    throw new Error("Reserved completion supplement Artifacts are immutable producer records.");
+  }
   const updates: string[] = [];
   const parameters: Record<string, string | null> = { id };
 
