@@ -430,11 +430,17 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
   if (!preserved?.validationEvidenceRef || !preserved.candidateFingerprint || preserved.actionId !== session.action_id) {
     reasons.push("The candidate has no canonical worker preservation receipt with passing validation evidence.");
   }
-  let completionEvidence: unknown = "legacy-unavailable";
+  let completionEvidence: { ref: string; sha256: string } | undefined;
   try {
     const exit = getSessionExitReceipt(db, session.id);
     const reference = JSON.parse(exit?.evidence_json ?? "{}").completionValidation;
-    if (reference && typeof reference.ref === "string" && typeof reference.sha256 === "string") completionEvidence = { ref: reference.ref, sha256: reference.sha256 };
+    const retained = preserved?.completionValidation;
+    // Preservation adds this reference only after verifying its retained bytes and tree.
+    // Missing legacy evidence must preserve the original binding, including failed verdicts.
+    if (reference && typeof reference.ref === "string" && /^[a-f0-9]{64}$/.test(reference.sha256)
+      && retained && retained.ref === reference.ref && retained.sha256 === reference.sha256) {
+      completionEvidence = { ref: reference.ref, sha256: reference.sha256 };
+    }
   } catch { /* Older or malformed evidence is never manufactured. */ }
   const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
   const status = tryGit(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
@@ -453,7 +459,7 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
     binding: {
       targetHead: head,
       criteriaFingerprint: judgedCriteriaFingerprint(requirement.criteriaFingerprint),
-      evidenceFingerprint: sha256([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256, completionEvidence])
+      evidenceFingerprint: sha256([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256, ...(completionEvidence ? [completionEvidence] : [])])
     }
   };
 }

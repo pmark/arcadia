@@ -10,7 +10,7 @@ Operator goal quoted in the assignment: “I want production to start as soon as
 
 - Completion execution retains versioned, size-bounded sanitized argv/results/output/named reports before scratch cleanup, in existing Session preservation artifacts.
 - Binding uses Session, packet, Action, base, repository, worktree, tree and content hash; read paths run no validation and perform no schema migration.
-- Exit receipt carries reference/hash through preservation receipt and body to immutable PR reviewer input and fingerprint. Independent verdict binding includes retained reference/hash or explicit legacy-unavailable marker.
+- Exit receipt carries reference/hash through preservation receipt and body to immutable PR reviewer input and fingerprint. Independent verdict binding adds the preservation-verified retained reference/hash; absent legacy evidence preserves its historical binding and is rendered unavailable in newly built reviewer inputs.
 - Exact tree is required. Only an immediate canonical settlement supported by the existing governed-record classifier may preserve the parent tree's execution proof. Final-Plan completion transformations unsupported by that classifier stay unavailable. A later code edit cannot inherit proof.
 - Failure/timeout/custody remain refusals; write failure retains scratch and refuses completion. Legacy records remain readable, with missing proof explicitly unavailable.
 - Continuation correction: redact at retention time, including refusal reason, so secrets cannot remain on disk merely because read output is sanitized.
@@ -46,3 +46,18 @@ Instruction file sizes at retrieval (bytes; targeted sections above, not a claim
 - `docs/agent-guidance/arcadia-repository.md`: 30312
 - `docs/agent-guidance/continuation.md`: 7462
 - `docs/agent-guidance/session-roles-and-briefs.md`: 15378
+
+
+## R2 repair continuation
+
+R1 ended at model capacity and is incomplete/consumed. R2 full-scope source review at `17cb2104470df3c06e02884e0dec35e51089223f` by fresh generic read-only context `/root/review_1789_recovery`, gpt-6.1-sol/high, returned NO-GO. Report: https://github.com/pmark/arcadia/pull/1789#issuecomment-6412359758 . It ran no tests; it proves no registered admission.
+
+- R2-01/P1: historical absence was appended into both review fingerprints, making stored real failed/pass verdicts stale without new evidence. Repair keeps the original format when proof is absent. Lineage adds a retained reference only after the exit reference matches the preservation-verified receipt; PR fingerprint adds only the verified host view. Independent literal base-format stored passed/substantive-failed fixture regressions assert zero new reviewer execution.
+- R2-02/P2: self-settled preservation already pushed the accepted head, so the unchanged-head return omitted receipt/body refresh after reconciliation retained evidence. Repair refreshes that head without another push behind the existing accepted-completion, local-only, operator-launch, exact branch/ancestry and Active remote-policy guards. The end-to-end fixture retains a real named-test report and asserts matching exit/preservation references plus verified PR body, one push and zero reviewer calls.
+
+Initial R2 tsc failed2 for nullable receipt narrowing and delta eslint failed1 for an unbound test adapter method; raw receipts `/tmp/ellis-1789-r2-tsc.txt` and `/tmp/ellis-1789-r2-lint.txt` retained. Corrected with a local narrowed retained-reference value and bound adapter method; no check weakened. Follow-up results are recorded on the PR and in the coordinator handback. Next independent review is R3 delta; beyond three rounds requires a significant defect and never exceeds five. No runtime, held-candidate, merge or adoption authority changed.
+
+
+R2 acceptance-focused checks: new tick cases3/3 exit0 (`/tmp/ellis-1789-r2-tick-focused.txt`), full PR-review suite25/25 exit0 (`/tmp/ellis-1789-r2-prreview-v2.txt`), final source tsc exit0 (`/tmp/ellis-1789-r2-tsc-v2.txt`), full lint exit0 (`/tmp/ellis-1789-r2-full-lint.txt`), delta lint exit0, ledger exit0 (`/tmp/ellis-1789-r2-ledger-v2.txt`). The broader three-file batch initially loaded the two new QA tests before their fixture correction; its failed QA cases are superseded by the full25-case pass, and its remaining suites are still running at commit preparation. Final result remains explicit on the PR/coordinator handback.
+
+Additional preserved fixture failures: new historical receipt assertions initially read a fingerprint omitted from the fresh CLI output; corrected to inspect canonical `result.json` (`/tmp/ellis-1789-r2-receipt-debug.txt`, then2/2 pass in `-receipt-v2.txt`). Ledger initial update used a URL instead of integer PR and string finding entries; corrected to existing schema. Useful learning capture was attempted once but the sandbox returned `SQLITE_WORKSPACE_WRITE_DENIED` at the configured live workspace, so no lesson receipt exists (`/tmp/ellis-1789-r2-learning.json`, stderr retained by tool). No workspace permissions changed and no retry bypassed the source-only boundary. Exact observation for coordinator capture: “Historical absence of newly retained completion evidence must preserve the original review fingerprint; adding a legacy-unavailable marker invalidates stored passed and substantive failed verdicts and can spend unintended reviewer attempts. Cover compatibility with literal base-format stored receipts and zero-new-execution regressions.”

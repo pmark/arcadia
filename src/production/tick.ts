@@ -1210,7 +1210,12 @@ function publishSettledCandidateHead(
     if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
       || preservation.state === "LOCAL ONLY") return;
     const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
-    if (!head || head === preservation.commitSha) return;
+    if (!head) return;
+    const needsPush = head !== preservation.commitSha;
+    // A self-settled candidate was already pushed before reconciliation retained
+    // its execution evidence. Refresh that evidence without another source push.
+    const hasCompletionEvidence = Boolean(JSON.parse(receipt.evidence_json ?? "{}").completionValidation);
+    if (!needsPush && !hasCompletionEvidence) return;
     if (tryGit(input.repoRoot, ["rev-parse", `refs/heads/${session.branch}`])?.trim() !== head
       || !isAncestor(session.worktree_path, preservation.commitSha, head)) {
       log(`Did not push the settled head of ${session.branch} for ${actionKey}: the branch is not a fast-forward of preserved commit ${preservation.commitSha.slice(0, 12)} at ${head.slice(0, 12)}.`);
@@ -1222,8 +1227,8 @@ function publishSettledCandidateHead(
       return;
     }
     const changed = (tryGit(session.worktree_path, ["diff", "--name-only", preservation.commitSha, head]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
-    if (!findCandidateSettledCompletion(db, session, head) || changed.length === 0) return;
-    input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
+    if (!findCandidateSettledCompletion(db, session, head) || (needsPush && changed.length === 0)) return;
+    if (needsPush) input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
     // The PR body's Operator QA plan was rendered at the preserved commit; re-render it at this head.
     if (preservation.qaPlan) {
       try {
@@ -1234,7 +1239,7 @@ function publishSettledCandidateHead(
         log(`Re-rendering the pull-request Operator QA plan of ${session.branch} failed (the pushed head stands): ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
+    if (needsPush) log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
   } catch (error) {
     log(`Pushing the settled head of ${session.branch} for ${actionKey} failed (the review step retries it before any verdict): ${error instanceof Error ? error.message : String(error)}`);
   }

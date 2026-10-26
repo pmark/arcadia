@@ -7,18 +7,27 @@
   "effective_effort": "medium",
   "effort_source": "native-runtime",
   "action_id": "operator-directed-completion-evidence-1785",
-  "pr": null,
+  "pr": 1789,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "historical fingerprint compatibility",
+      "caught_by": "independent R2"
+    },
+    {
+      "class": "self-settled completion evidence refresh",
+      "caught_by": "independent R2"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "stopped",
-  "notes": "Issue1785 sole implementer continuation. Native gpt-6.1-sol medium; registry e2_standard. Predecessor unknown separately. Source-only PR; no governed Action, merge, installed or runtime proof.",
+  "notes": "Issue1785 continuation; gpt-6.1-sol/medium, e2_standard. R1 capacity incomplete; R2 NO-GO verified and repaired, R3 pending. Source-only PR1789; no Action, merge or installed/runtime proof.",
   "stop_reason": "Authority-adjacent source candidate prepared for independent review and CI."
 }

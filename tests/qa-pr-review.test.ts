@@ -16,6 +16,7 @@ import {
   type QaPrModelVerdict,
   type QaPrReviewDependencies
 } from "../src/qa/prReview.js";
+import { JUDGEMENT_REVISION } from "../src/qa/reviewCriteria.js";
 import { ADVISORY_CHECK_CONTEXTS, normalizeStatusCheck } from "../src/workMonitoring/pullRequests.js";
 import { rollup, rollupOrigin } from "./helpers/statusCheckRollups.js";
 import { allocateSessionRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
@@ -28,6 +29,31 @@ afterEach(() => {
 });
 
 describe("minimal independent pull-request QA", () => {
+  it.each(["pass", "fail"] as const)("reuses a stored base-format %s receipt with zero new reviewer executions when completion evidence is absent", verdict => {
+    const fixture = createFixture();
+    const checks = () => [check("fast", "SUCCESS", "https://ci/fast")];
+    const model = passingModelVerdict("Historical verdict.");
+    if (verdict === "fail") {
+      model.verdict = "fail";
+      model.findings = [{ severity: "blocker", title: "Historical defect", evidence: "a.ts", recommendation: "Fix the defect." }];
+      model.checks[0].status = "fail";
+    }
+    const first = runQaWithRollup(checks, undefined, fixture, model);
+    expect(first.error).toBeNull();
+    expect(first.result?.data.verdict).toBe(verdict);
+    // Literal base-format object, no new completion field and no production fingerprint helper.
+    const legacyFingerprint = createHash("sha256").update(JSON.stringify({ judgementRevision: JUDGEMENT_REVISION, ...rawPullRequest(checks()) })).digest("hex");
+    const receiptPath = path.resolve(path.dirname(path.join(fixture.workspace, first.result!.data.reportPath)), "..", "..", "result.json");
+    const stored = JSON.parse(readFileSync(receiptPath, "utf8"));
+    expect(stored.evidenceFingerprint).toBe(legacyFingerprint);
+    stored.evidenceFingerprint = legacyFingerprint;
+    writeFileSync(receiptPath, JSON.stringify(stored));
+    const second = runQaWithRollup(checks, undefined, fixture, model);
+    expect(second.error).toBeNull();
+    expect(second.reviewerInvocations).toBe(0);
+    expect(second.result?.data).toMatchObject({ reused: true, verdict, evidenceFingerprint: legacyFingerprint });
+  });
+
   it("rejects a malformed recovery cap before any external command", () => {
     expect(() => runQaPrReviewCommand({ workspace: "/unused", pullRequest: "https://github.com/pmark/arcadia/pull/77", expectedCandidate: { headSha: HEAD_SHA, bodySha256: "0".repeat(64), inputRevision: "pinned-input", maxOrdinal: NaN } }, {
       runCommand: () => { throw new Error("must not execute"); }
@@ -800,7 +826,7 @@ describe("review readiness reads real statusCheckRollup shapes", () => {
   });
 });
 
-function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined, fixture = createFixture()): {
+function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined, fixture = createFixture(), model = passingModelVerdict("All applicable evidence passes.")): {
   result: ReturnType<typeof runQaPrReviewCommand> | null;
   error: unknown;
   reviewerInvocations: number;
@@ -818,7 +844,7 @@ function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => 
         if (command === "codex") {
           reviewerInvocations += 1;
           duringReview();
-          writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(passingModelVerdict("All applicable evidence passes."))}\n`, "utf8");
+          writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(model)}\n`, "utf8");
           return success();
         }
         return failure("unexpected command");

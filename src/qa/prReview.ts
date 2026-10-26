@@ -229,6 +229,8 @@ export function effectivenessParentRequestId(
 export interface RawPullRequest {
   /** Verified host evidence, reconstructed locally; never sourced from GitHub prose. */
   completionExecutionEvidence?: string;
+  /** Set only by the host attachment; absent proof preserves historical fingerprints. */
+  completionExecutionEvidenceVerified?: boolean;
   number: number;
   title: string;
   url: string;
@@ -359,7 +361,7 @@ export function runQaPrReviewCommand(
       return session ? completionEvidenceForReview(db, workspacePath, session, pr.headRefOid)
         : { status: "unavailable" as const, reason: "no managed Session completion evidence binding" };
     });
-    return { ...pr, completionExecutionEvidence: renderCompletionEvidence(completionExecutionEvidence) };
+    return { ...pr, completionExecutionEvidence: renderCompletionEvidence(completionExecutionEvidence), completionExecutionEvidenceVerified: completionExecutionEvidence.status === "verified" };
   };
   const pullRequest = attachCompletionEvidence(readPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))!;
   if (pullRequest.state.toUpperCase() !== "OPEN") {
@@ -1750,7 +1752,7 @@ function fingerprintPullRequestEvidence(pullRequest: RawPullRequest): string {
     baseRefName: pullRequest.baseRefName,
     baseRefOid: pullRequest.baseRefOid,
     body: pullRequest.body,
-    completionExecutionEvidence: pullRequest.completionExecutionEvidence,
+    ...(pullRequest.completionExecutionEvidenceVerified ? { completionExecutionEvidence: pullRequest.completionExecutionEvidence } : {}),
     files: pullRequest.files,
     // An advisory entry never gates, so its state changing mid-review (CodeRabbit
     // finishing) does not make the evidence stale. A rollup without one hashes
