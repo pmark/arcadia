@@ -50,6 +50,11 @@
       "id": "R2-loaded-source-drift-failing-first",
       "cost_min": null,
       "fix_ref": "/tmp/ellis-1794-r2-loaded-failing-first.txt"
+    },
+    {
+      "id": "R2-load-digest-dashboard-bundle-unknown-filename",
+      "cost_min": null,
+      "fix_ref": "/tmp/ellis-1794-r3-dashboard-ci-log.txt"
     }
   ],
   "outcome": "stopped",

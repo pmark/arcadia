@@ -10,7 +10,10 @@ import { OperatorScriptContractError, validateOperatorScriptContract } from "./l
 
 // Freeze the bytes that supplied this process, before any operator invocation.
 // A later clean checkout must not let loaded A claim committed source B.
-const loadedSupplementModuleSha256 = createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex");
+// Dashboard bundles have no native module filename. Import remains safe there;
+// an invocation with unknown load identity is refused, never reconstructed later.
+const loadedSupplementModuleSha256 = typeof import.meta.filename === "string"
+  ? createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") : null;
 
 let activeRunnerDescriptor: string | null = null;
 /** Synchronous, in-process scope: a CLI flag or inherited environment cannot claim this. */
@@ -154,7 +157,7 @@ export function completionSupplementOperator(descriptorPath: string, now = new D
   if (path.basename(executable) !== "node" || normalize(command) !== normalize(`${executable} -e ${operatorScriptRunnerSource} ${argv.join(" ")}`)) {
     throw new Error("The parent process is not the exact canonical operator script runner and argv.");
   }
-  if (createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") !== loadedSupplementModuleSha256) {
+  if (loadedSupplementModuleSha256 === null || createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex") !== loadedSupplementModuleSha256) {
     throw new Error("Completion supplement loaded executor source changed; restart from the pinned clean revision.");
   }
   const loadedRoot = path.resolve(import.meta.dirname, "../..");
