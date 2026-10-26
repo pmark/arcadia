@@ -4,7 +4,7 @@ type: decision
 id: "0143"
 slug: record-already-given-standing-approval-for-bounded-small-usage-claude-renewal
 project: arcadia
-status: open
+status: approved
 question: Record already-given standing approval for bounded small-usage Claude renewal and worker checks
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-10-26
+answer: Record the operator-approved small-usage renewal and worker-check class
+decided: 2026-10-26
 ---
 
 # Decision 0143: Record already-given standing approval for bounded small-usage Claude renewal and worker checks
