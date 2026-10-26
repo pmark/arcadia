@@ -49,7 +49,8 @@ describe.runIf(process.platform !== "win32")("bounded Claude CLI output receipts
     cleaned(record);
   });
   it("drains output arriving after direct-child exit before reporting failure", async () => {
-    const record = fakeClaude("require('node:child_process').spawn(process.execPath, ['-e', \"setTimeout(() => process.stdout.write('late stdout diagnostic'), 40)\"], {stdio:['ignore','inherit','inherit']}).unref(); process.exit(1);");
+    // Readiness removes process startup from the drain window. IPC closes on parent exit.
+    const record = fakeClaude("const child = require('node:child_process').spawn(process.execPath, ['-e', \"process.once('disconnect', () => process.stdout.write('late stdout diagnostic')); process.send('ready');\"], {stdio:['ignore','inherit','inherit','ipc']}); child.once('message', () => process.exit(1));");
     const result = await runClaudeCliHeadless([], 2000);
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("late stdout diagnostic");

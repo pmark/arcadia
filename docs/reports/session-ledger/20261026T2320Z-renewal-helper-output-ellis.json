@@ -7,14 +7,19 @@
   "effective_effort": "medium",
   "effort_source": "native-runtime",
   "action_id": "operator-directed:#1804",
-  "pr": null,
+  "pr": 1806,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "1806-R1-01: native late-output fixture startup race",
+      "caught_by": "Mira independent gpt-6.1-sol/high R1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -30,6 +35,6 @@
     }
   ],
   "outcome": "stopped",
-  "notes": "Source-only1804; fakeCLI30pass, finalrunner8pass, tsc/lint0. Usage unknown. Preserve failed receipts in /tmp/ellis-1804-*. No live provider, consumed-profile edit, adoption or START.",
-  "stop_reason": "Source handoff only; required independent current-head review and CI. No merge/runtime adoption authority."
+  "notes": "Source-only1804; R1NO-GO fixture race repaired with readiness/IPC disconnect. Oldhead15CIgreen preserved. No provider/adoption/START; usage unknown.",
+  "stop_reason": "R1 repair submitted for independent R2 delta/current-head CI; no merge or runtime adoption authority."
 }
