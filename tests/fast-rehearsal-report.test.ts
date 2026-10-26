@@ -11,9 +11,9 @@ const tmp = () => { const d = mkdtempSync(path.join(tmpdir(), "fast-rehearsal-re
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("the recorded environment-wall Session builder", () => {
-  it("builds a log that names all three wall classes and carries the recorded token shape", () => {
+  it("keeps legacy diagnostic prose unattributed while carrying its recorded token shape", () => {
     const log = environmentWallSessionLog();
-    expect(detectEnvironmentWalls(log).map((w) => w.wallClass)).toEqual(["workspace_write", "host_validation", "preservation"]);
+    expect(detectEnvironmentWalls(log)).toEqual([]);
     expect(sessionTokensFromLog(log)).toEqual({
       inputTokens: ENVIRONMENT_WALL_SESSION.totalInputTokens - ENVIRONMENT_WALL_SESSION.cachedInputTokens,
       cachedInputTokens: ENVIRONMENT_WALL_SESSION.cachedInputTokens,

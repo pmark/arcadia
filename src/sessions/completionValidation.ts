@@ -1,3 +1,4 @@
+import { writeCompletionEvidence, completionEvidenceText, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceRecord, type CompletionExecution } from "./completionValidationEvidence.js";
 import { runOwnedValidation } from "./preservationProcessLifecycle.js";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -64,6 +65,8 @@ const MAX_REASON_CHARS = 1_500;
 export interface CompletionValidationOptions {
   /** The checkout whose installed `node_modules` trees the named tests resolve against. Defaults to the Session's repository. */
   dependencyRoot?: string;
+  /** Host receipt propagation only; never passed into candidate processes. */
+  onEvidence?: (reference: CompletionEvidenceReference) => void;
   /** Bound on the whole validation (configured commands and named tests together). */
   timeoutMs?: number;
   /**
@@ -76,6 +79,7 @@ export interface CompletionValidationOptions {
 }
 
 export interface CompletionValidationCandidate {
+  evidenceBinding?: CompletionEvidenceBinding;
   repository: string;
   worktree: string;
   base: string;
@@ -252,18 +256,20 @@ interface VitestReport {
 // Runs the command in its own process group, output discarded so no
 // descendant holds the host's pipes, and kills the whole group at the bound.
 /** Run the Action's declared validation against the candidate's exact tree. Synchronous, bounded by `timeoutMs` in total. */
-export function validateCompletionCandidate(candidate: CompletionValidationCandidate, given: CompletionValidationOptions = {}): CompletionValidationResult {
+function runCompletionValidation(candidate: CompletionValidationCandidate, given: CompletionValidationOptions = {}): CompletionValidationResult {
   // The unconfined seam exists for test runs only; anywhere else it is ignored.
   const options = given.unconfinedForTests && !process.env.VITEST ? { ...given, unconfinedForTests: false } : given;
   const namedTests = namedTestFiles(candidate.acceptanceCriteria);
   const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
   const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0) return { status: "not_required" };
-  const deny = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures);
+  let outcome: CompletionValidationResult | undefined;
+  const finish = (result: CompletionValidationResult) => { outcome = result; return result; };
+  const deny = (why: string, failures: string[] = []) => finish(refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures));
   // A timeout is host load or a hung test: counted on its own small budget before it holds (Issue #1613).
   const timeout = (why: string, failures: string[] = []): CompletionValidationResult => ({ ...unavailable(why, failures) as Extract<CompletionValidationResult, { status: "refused" }>, timedOut: true });
   // Host-side only (no workspace or commands, non-darwin, runner not installed, spawn error): the candidate cannot fix it (Issue #1613). Errors from the candidate's own content stay ordinary resumable denials.
-  const unavailable = (why: string, failures: string[] = []) => refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures, true);
+  const unavailable = (why: string, failures: string[] = []) => finish(refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures, true));
   if (namedTests.length > MAX_NAMED_TEST_FILES) return deny(`the acceptance criteria name ${namedTests.length} test files; at most ${MAX_NAMED_TEST_FILES} run before acceptance.`);
   if (process.platform !== "darwin" && !options.unconfinedForTests) return unavailable("protected candidate validation requires the macOS Seatbelt host.");
   if (!candidate.workspace) return unavailable("the workspace was not given, so candidate code could not be kept from reading it.");
@@ -287,6 +293,8 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
   mkdirSync(source); mkdirSync(scratch);
   const startedAt = performance.now();
   let terminalProven = true;
+  const executions: CompletionExecution[] = [];
+  const reports: CompletionEvidenceRecord["reports"] = [];
   try {
     try {
       materializeCandidateTree(candidate.repository, tree, source);
@@ -351,23 +359,27 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       + (readable.length ? `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) ` : "")
       + `(allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target same-sandbox)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
     const env: NodeJS.ProcessEnv = { PATH: `${path.join(source, "node_modules", ".bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1", COREPACK_ENABLE_NETWORK: "0" };
-    const run = (argv: string[], bound: number) => {
+    const run = (argv: string[], bound: number, command: string) => {
       const remaining = Math.floor(deadline - performance.now());
       if (remaining <= 0) return { status: null, timedOut: true, error: null, output: "" };
       const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
       const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
       terminalProven = false;
+      const commandStarted = performance.now();
       const result = runOwnedValidation({ argv: confined, cwd: source, env, timeoutMs: limit, executionRoot: root, workspace: candidate.workspace });
       terminalProven = result.terminalProven;
       const timedOut = result.timedOut;
       const error = !terminalProven ? "validation descendants have no terminal proof; execution root retained" : result.error ?? null;
+      const clean = (text: string) => completionEvidenceText(text.replaceAll(source, "[candidate]").replaceAll(scratch, "[scratch]").replaceAll(root, "[execution]").replaceAll(home, "[home]"));
+      executions.push({ command: clean(command), argv: argv.map(clean), exitStatus: result.status, signal: result.signal, timedOut, terminalProven,
+        durationMs: Math.round(performance.now() - commandStarted), error: error === null ? null : clean(error), stdout: clean(result.stdout), stderr: clean(result.stderr) });
       return { status: result.status, timedOut, error, output: untrusted(result.stderr || result.stdout, 600) };
     };
     const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
 
     for (const command of commands) {
-      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS);
+      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS, command);
       if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
@@ -378,20 +390,21 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       // proves it ran and passed at least one test.
       for (const file of namedTests) {
         const report = path.join(scratch, `completion-node-test-${namedTests.indexOf(file)}.tap`);
-        const result = run([process.execPath, "--test", "--test-reporter=tap", `--test-reporter-destination=${report}`, file], COMPLETION_VALIDATION_TIMEOUT_MS);
+        const result = run([process.execPath, "--test", "--test-reporter=tap", `--test-reporter-destination=${report}`, file], COMPLETION_VALIDATION_TIMEOUT_MS, `node --test ${file}`);
         if (result.timedOut) return timeout(timedOutWhy, [`${file} (timed out)`]);
         if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
         let tap = "";
         try { tap = readFileSync(report, "utf8"); } catch { tap = ""; }
+        reports.push({ file, tests: [...tap.matchAll(/^\s*(ok|not ok) \d+ - (.+)$/gm)].slice(0, 2000).map(match => ({ name: completionEvidenceText(match[2], 300), status: match[1] === "ok" ? "passed" : "failed" })) });
         const failing = [...tap.matchAll(/^\s*not ok \d+ - (.+)$/gm)].map((match) => `${file} > ${match[1]}`);
         if (result.status !== 0) return deny(`the named tests failed (node --test exited ${result.status}).`, failing.length ? failing : [file]);
         if (!/^# pass [1-9]\d*$/m.test(tap) || !/^# fail 0$/m.test(tap)) return deny("node --test exited 0 but did not report a passing test for every named file.", [file]);
       }
-      return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
+      return finish({ status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) });
     }
 
     const report = path.join(scratch, "completion-vitest-report.json");
-    const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=json", `--outputFile.json=${report}`], COMPLETION_VALIDATION_TIMEOUT_MS);
+    const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=json", `--outputFile.json=${report}`], COMPLETION_VALIDATION_TIMEOUT_MS, `vitest run ${namedTests.join(" ")}`);
     if (result.timedOut) return timeout(timedOutWhy, namedTests.map((file) => `${file} (timed out)`));
     if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
     let parsed: VitestReport | null = null;
@@ -399,6 +412,7 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
     const relativeName = (name: string | undefined) => name ? path.relative(source, name).split(path.sep).join("/") : "(unknown file)";
     const failures: string[] = [];
     for (const file of parsed?.testResults ?? []) {
+      reports.push({ file: completionEvidenceText(relativeName(file.name), 500), tests: (file.assertionResults ?? []).slice(0, 2000).map(test => ({ name: completionEvidenceText(test.fullName ?? test.title ?? "(unnamed test)", 300), status: completionEvidenceText(test.status ?? "unknown", 30) })) });
       const failed = (file.assertionResults ?? []).filter((test) => test.status === "failed");
       for (const test of failed) failures.push(`${relativeName(file.name)} > ${test.fullName ?? test.title ?? "(unnamed test)"}`);
       if (!failed.length && file.status === "failed") failures.push(`${relativeName(file.name)} (${file.message ? untrusted(file.message, 120) : "failed to run"})`);
@@ -412,8 +426,32 @@ export function validateCompletionCandidate(candidate: CompletionValidationCandi
       return !entry || entry.status !== "passed" || !(entry.assertionResults ?? []).some((test) => test.status === "passed");
     });
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
-    return { status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) };
+    return finish({ status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) });
   } finally {
+    if (candidate.evidenceBinding && candidate.workspace) {
+      {
+        const reference = retainCompletionEvidence(candidate.workspace, { version: 1, producer: "arcadia-completion-validation-v1", binding: candidate.evidenceBinding,
+          tree, commands, namedTests, executions, reports, outcome: outcome?.status === "passed" ? "passed" : "refused",
+          reason: outcome?.status === "refused" ? outcome.reason : outcome ? null : "validation interrupted without terminal result",
+          durationMs: Math.round(performance.now() - startedAt) });
+        options.onEvidence?.(reference);
+      }
+    }
     if (terminalProven) rmSync(root, { recursive: true, force: true });
+  }
+}
+
+class CompletionEvidenceWriteError extends Error {}
+function retainCompletionEvidence(workspace: string, record: CompletionEvidenceRecord): CompletionEvidenceReference {
+  try { return writeCompletionEvidence(workspace, record); }
+  catch { throw new CompletionEvidenceWriteError(); }
+}
+/** An execution without durable evidence cannot authorize completion. Scratch is retained on write failure. */
+export function validateCompletionCandidate(candidate: CompletionValidationCandidate, options: CompletionValidationOptions = {}): CompletionValidationResult {
+  try { return runCompletionValidation(candidate, options); }
+  catch (error) {
+    if (!(error instanceof CompletionEvidenceWriteError)) throw error;
+    return { status: "refused", namedTests: namedTestFiles(candidate.acceptanceCriteria), failures: [], hostFault: true,
+      reason: "Pre-acceptance validation evidence could not be retained; completion refused and execution scratch retained." };
   }
 }

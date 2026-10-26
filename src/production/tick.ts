@@ -55,11 +55,10 @@ import { sessionLogPath } from "../sessions/sessionRecording.js";
 import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
-  detectEnvironmentWalls,
+  observeSessionCapability,
+  type SessionCapabilityObservation,
   ENVIRONMENT_WALL_ESCALATION_KIND,
-  parseSessionProbe,
   SESSION_PROBE_TOKEN_BUDGET,
-  sessionProbeWalls,
   sessionTokensFromLog,
   type EnvironmentWall
 } from "./sessionCapability.js";
@@ -1179,7 +1178,7 @@ export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_set
 function publishSettledCandidateHead(
   db: Database.Database,
   input: {
-    session: AgentSession; repoRoot: string; preservation: PreservationStep; operatorLaunch: boolean;
+    session: AgentSession; repoRoot: string; workspace: string; preservation: PreservationStep; operatorLaunch: boolean;
     receipt: { outcome: string; reason: string; evidence_json: string | null };
     remote: Pick<CandidatePreservationRemote, "push" | "upsertDraftPullRequest">; now: Date; log: (message: string) => void;
   }
@@ -1210,7 +1209,12 @@ function publishSettledCandidateHead(
     if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
       || preservation.state === "LOCAL ONLY") return;
     const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
-    if (!head || head === preservation.commitSha) return;
+    if (!head) return;
+    const needsPush = head !== preservation.commitSha;
+    // A self-settled candidate was already pushed before reconciliation retained
+    // its execution evidence. Refresh that evidence without another source push.
+    const hasCompletionEvidence = Boolean(JSON.parse(receipt.evidence_json ?? "{}").completionValidation);
+    if (!needsPush && !hasCompletionEvidence) return;
     if (tryGit(input.repoRoot, ["rev-parse", `refs/heads/${session.branch}`])?.trim() !== head
       || !isAncestor(session.worktree_path, preservation.commitSha, head)) {
       log(`Did not push the settled head of ${session.branch} for ${actionKey}: the branch is not a fast-forward of preserved commit ${preservation.commitSha.slice(0, 12)} at ${head.slice(0, 12)}.`);
@@ -1222,19 +1226,19 @@ function publishSettledCandidateHead(
       return;
     }
     const changed = (tryGit(session.worktree_path, ["diff", "--name-only", preservation.commitSha, head]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
-    if (!findCandidateSettledCompletion(db, session, head) || changed.length === 0) return;
-    input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
+    if (!findCandidateSettledCompletion(db, session, head) || (needsPush && changed.length === 0)) return;
+    if (needsPush) input.remote.push({ repositoryPath: input.repoRoot, branch: session.branch, commitSha: head });
     // The PR body's Operator QA plan was rendered at the preserved commit; re-render it at this head.
     if (preservation.qaPlan) {
       try {
-        if (refreshPreservedPullRequestBody(db, { requestId: `worker-tick-preserve-${session.id}`, plan: preservation.qaPlan, headSha: head }, input.remote)) {
+        if (refreshPreservedPullRequestBody(db, { requestId: `worker-tick-preserve-${session.id}`, plan: preservation.qaPlan, headSha: head, workspace: input.workspace, sessionId: session.id }, input.remote)) {
           log(`Re-rendered the pull-request Operator QA plan of ${session.branch} at the settled head ${head.slice(0, 12)}.`);
         }
       } catch (error) {
         log(`Re-rendering the pull-request Operator QA plan of ${session.branch} failed (the pushed head stands): ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
+    if (needsPush) log(`Pushed the settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey} (its completion settlement, on top of preserved commit ${preservation.commitSha.slice(0, 12)}).`);
   } catch (error) {
     log(`Pushing the settled head of ${session.branch} for ${actionKey} failed (the review step retries it before any verdict): ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -2075,16 +2079,22 @@ export function runManagedProductionTick(
             }
             // Tokens per attempt and the environment-wall stop commit with the
             // receipt, so a crash cannot lose the wall and relaunch into it.
-            recordSessionExitAccounting(db, {
+            const capability = recordSessionExitAccounting(db, {
               workspace, projectSlug: project.slug, session: lease, outcome: receipt.outcome,
               candidateRevision: receipt.candidate_revision, now, log
             });
+            if (capability) {
+              // This is the new receipt's creation transaction, never a read-side backfill.
+              receipt.evidence_json = JSON.stringify({ ...JSON.parse(receipt.evidence_json ?? "{}"), sessionCapability: capability });
+              db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE id = ? AND session_id = ?")
+                .run(receipt.evidence_json, receipt.id, lease.id);
+            }
           }
         });
         // Issue #1518: a completion the worker settled after preservation
         // pushed the candidate must reach the pushed branch (and its PR) now,
         // and a settlement that never reached the candidate is escalated.
-        publishSettledCandidateHead(db, { session: lease, repoRoot, preservation, operatorLaunch: Boolean(operatorAuthorization),
+        publishSettledCandidateHead(db, { session: lease, repoRoot, workspace, preservation, operatorLaunch: Boolean(operatorAuthorization),
           receipt: result.receipt, remote: options.handoff?.preserve?.remote ?? systemPreservationRemote, now, log });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
@@ -2944,8 +2954,8 @@ export function recordSessionExitAccounting(
     now: Date;
     log: (message: string) => void;
   }
-): void {
-  if (!input.session.action_id) return;
+): SessionCapabilityObservation | null {
+  if (!input.session.action_id) return null;
   const actionKey = `${input.projectSlug}/${input.session.action_id}`;
   let text: string | null = null;
   try {
@@ -2958,18 +2968,17 @@ export function recordSessionExitAccounting(
          VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(actionKey, input.session.id, tokens.inputTokens, tokens.cachedInputTokens, tokens.outputTokens, input.outcome, input.now.toISOString());
   }
-  // The Session's own first-step probe is the only truthful capability evidence,
-  // matched by this Session's recorded nonce. A passing probe is logged with its
-  // recorded budget here rather than on the reconcile receipt: that receipt is
-  // written by session reconciliation before this accounting runs.
-  const probe = parseSessionProbe(text, readSessionProbeNonce(input.workspace, input.session.id));
-  if (probe?.ok && probe.checks.every((check) => check.ok)) {
-    input.log(`Session probe passed for ${actionKey} in ${probe.ms ?? "?"} ms (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
+  // Prefer the nonce-bound probe; otherwise only an attributable failed tool
+  // operation can establish a wall. The creation callback retains this bounded
+  // observation in the same new-receipt transaction.
+  const capability = observeSessionCapability(text, readSessionProbeNonce(input.workspace, input.session.id));
+  if (capability.provenance === "session_probe" && capability.status === "clear") {
+    input.log(`Session probe passed for ${actionKey} (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
   }
-  if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return;
-  // A failed check ends the attempt even though the Session never got to edit.
-  const probeWalls = sessionProbeWalls(probe);
-  const walls = [...probeWalls, ...detectEnvironmentWalls(text).filter((wall) => !probeWalls.some((hit) => hit.wallClass === wall.wallClass))];
+  if (input.outcome === "accepted_completion" || input.outcome === "successful_exit") return capability;
+  // Only attributable failure evidence can name a capability wall.
+  const walls = capability.walls;
+  const probeFailed = capability.provenance === "session_probe" && walls.length > 0;
   const breach = tokens
     ? decideTokenCeilingBreach(tokens, resolveSessionTokenCeiling(db, {
         workspace: input.workspace, session: { provider: input.session.provider ?? "", model: input.session.model ?? "" }
@@ -2991,13 +3000,13 @@ export function recordSessionExitAccounting(
       actionKey, kind: BUDGET_EXHAUSTED_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
     });
     if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${BUDGET_EXHAUSTED_ESCALATION_KIND}): ${named.message}`);
-    return;
+    return capability;
   }
-  if (walls.length === 0) return;
+  if (walls.length === 0) return capability;
   const startRevision = input.session.launch_revision ?? input.session.base_revision;
   const noDiff = input.candidateRevision === startRevision && tryGit(input.session.worktree_path, ["status", "--porcelain"]) === "";
-  if (!noDiff && probeWalls.length === 0) return;
-  const named = describeEnvironmentWalls(actionKey, walls, probeWalls.length > 0 ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
+  if (!noDiff && !probeFailed) return capability;
+  const named = describeEnvironmentWalls(actionKey, walls, probeFailed ? "session_probe" : "exit", tokens ? tokens.inputTokens + tokens.cachedInputTokens : null);
   const at = input.now.toISOString();
   const attempts = Math.max(getRepairAttempts(db, actionKey).attempts + 1, PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   db.prepare(
@@ -3010,6 +3019,7 @@ export function recordSessionExitAccounting(
     actionKey, kind: ENVIRONMENT_WALL_ESCALATION_KIND, message: named.message, remedy: named.remedy, now: input.now
   });
   if (newlyDetected) input.log(`Escalated ${actionKey} to the operator (${ENVIRONMENT_WALL_ESCALATION_KIND}): ${named.message}`);
+  return capability;
 }
 
 export interface ProductionAttemptTokens {

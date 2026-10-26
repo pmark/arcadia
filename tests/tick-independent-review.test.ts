@@ -1,10 +1,13 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { withPrReviewExecutionClaim } from "../src/qa/executionClaim.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { runProductionResetRepairBudgetCommand } from "../src/commands/production.js";
 import { withDatabase } from "../src/db/connection.js";
 import { listReviewSteps } from "../src/production/independentReview.js";
 import { roleAttemptsOnHead } from "../src/sessions/enrollment.js";
+import { JUDGEMENT_REVISION } from "../src/qa/reviewCriteria.js";
+import { requirementForSession, judgedCriteriaFingerprint } from "../src/sessions/roleLineage.js";
 import { MAX_VERDICT_ATTEMPTS } from "../src/sessions/roleLineage.js";
 import { policyAuthorizesPullRequestReadiness, PRODUCTION_CONTROL_DEADLINES } from "../src/production/policy.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
@@ -34,7 +37,7 @@ const FAILED: PullRequestCheckRun[] = [{ name: "fast", status: "COMPLETED", conc
 const GREEN: PullRequestCheckRun[] = [{ name: "fast", status: "COMPLETED", conclusion: "SUCCESS" }];
 
 /** A started rehearsal whose Action A Session has just finished; the next tick is its exit tick. */
-function finishedA(options: RehearsalOptions = {}, finish: "settled" | "sandboxed" = "settled"): { rehearsal: Rehearsal; a: AgentSession } {
+function finishedA(options: RehearsalOptions = {}, finish: "settled" | "sandboxed" = "settled", criteria = CRITERIA_A): { rehearsal: Rehearsal; a: AgentSession } {
   const rehearsal = new Rehearsal({ independentReviewers: "tick", ...options });
   rehearsals.push(rehearsal);
   // A "fail" verdict judges only correctness: a failed authority criterion is a
@@ -46,8 +49,8 @@ function finishedA(options: RehearsalOptions = {}, finish: "settled" | "sandboxe
   rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
   const a = rehearsal.lease()!;
   rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
-  if (finish === "settled") rehearsal.agentFinish(a, CRITERIA_A);
-  else rehearsal.agentFinishSandboxed(a, CRITERIA_A);
+  if (finish === "settled") rehearsal.agentFinish(a, criteria);
+  else rehearsal.agentFinishSandboxed(a, criteria);
   rehearsal.tmux.exit(a.tmux_session_name);
   return { rehearsal, a };
 }
@@ -92,6 +95,86 @@ function verdicts(rehearsal: Rehearsal, role: "code-review" | "qa") {
 }
 
 describe("tick-driven independent review", () => {
+  it.each(["passed", "failed"] as const)("keeps a stored base-format %s verdict without executing a new reviewer", status => {
+    const { rehearsal, a } = finishedA();
+    exitTick(rehearsal);
+    const candidate = head(rehearsal, a);
+    withDatabase(rehearsal.workspace, db => {
+      const preserved = JSON.parse((db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${a.id}`) as { receipt_json: string }).receipt_json);
+      // Literal pre-1789 algorithm, independent of the production fingerprint function.
+      const legacyFingerprint = createHash("sha256").update(JSON.stringify([preserved.id, preserved.commitSha, preserved.validationEvidenceRef, preserved.candidateFingerprint, preserved.packetSha256])).digest("hex");
+      const requirement = requirementForSession(rehearsal.repo, a)!;
+      for (const role of status === "passed" ? ["code-review", "qa"] : ["code-review"]) {
+        db.prepare(`INSERT INTO session_role_attempts (id, requirement_id, input_revision, role, ordinal, request_id, actor_id, mutation_owner, status,
+          target_head, criteria_fingerprint, evidence_fingerprint, terminal_receipt_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 1, ?, 'historical-independent-reviewer', 0, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(`historical-${role}`, requirement.requirementId, requirement.inputRevision, role, `historical-${role}`, status,
+            candidate, judgedCriteriaFingerprint(requirement.criteriaFingerprint, JUDGEMENT_REVISION), legacyFingerprint,
+            JSON.stringify({ verdict: status === "passed" ? "pass" : "fail", findings: status === "failed" ? [{ severity: "blocker", title: "Authority boundary", evidence: "MARKER.md", recommendation: "Operator review required" }] : [] }), a.created_at, a.created_at);
+      }
+    });
+    for (let i = 0; i < 3; i += 1) rehearsal.tick();
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    expect(verdicts(rehearsal, "code-review").map(attempt => [attempt.request_id, attempt.status])).toEqual([["historical-code-review", status]]);
+    if (status === "passed") {
+      expect(verdicts(rehearsal, "qa").map(attempt => attempt.request_id)).toEqual(["historical-qa"]);
+      expect(git(rehearsal.repo, ["rev-list", "main"]).split("\n")).toContain(candidate);
+    } else {
+      expect(verdicts(rehearsal, "qa")).toEqual([]);
+      expect(git(rehearsal.repo, ["rev-list", "main"]).split("\n")).not.toContain(candidate);
+    }
+  });
+
+  it("refreshes completion evidence on the already pushed self-settled head without a second push", () => {
+    const namedCriterion = "tests/evidence.test.mjs passes.";
+    const fixturePlan = { firstAction: "write-marker-a", genesisFiles: { "tests/evidence.test.mjs": "import test from 'node:test'; import assert from 'node:assert/strict'; test('retained self-settled report', () => assert.equal(1, 1));\n" }, actionsYaml: `  - id: write-marker-a
+    title: Implement marker and retain named execution
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Implement the marker.
+    expected_artifact: MARKER.md
+    acceptance_criteria:
+      - ${JSON.stringify(CRITERIA_A[0])}
+      - ${JSON.stringify(namedCriterion)}
+    depends_on: []
+    decisions: []
+  - id: write-marker-b
+    title: Implement the next marker
+    status: open
+    responsibility: agent
+    effort: session
+    clarification: clarified
+    next_action: Implement the next marker.
+    expected_artifact: next.md
+    acceptance_criteria:
+      - The next marker exists.
+    depends_on: [write-marker-a]
+    decisions: []
+` };
+    const { rehearsal, a } = finishedA({ fixturePlan }, "settled", [...CRITERIA_A, namedCriterion]);
+    const publications: string[] = [];
+    const original = rehearsal.github.remote.upsertDraftPullRequest.bind(rehearsal.github.remote);
+    rehearsal.github.remote.upsertDraftPullRequest = input => { publications.push(input.body); return original(input); };
+    exitTick(rehearsal);
+    const candidate = head(rehearsal, a);
+    const retained = withDatabase(rehearsal.workspace, db => {
+      const preserved = JSON.parse((db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${a.id}`) as { receipt_json: string }).receipt_json);
+      const exit = JSON.parse((db.prepare("SELECT evidence_json FROM session_exit_receipts WHERE session_id = ?").get(a.id) as { evidence_json: string }).evidence_json);
+      return { preserved, exit };
+    });
+    expect(retained.preserved.commitSha).toBe(candidate);
+    expect(retained.exit.completionValidation).toMatchObject({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(retained.preserved.completionValidation).toEqual(retained.exit.completionValidation);
+    expect(publications).toHaveLength(2);
+    expect(publications[1]).toContain('"status": "verified"');
+    expect(publications[1]).toContain("retained self-settled report");
+    expect(rehearsal.github.pushes).toHaveLength(1);
+    expect(rehearsal.github.headOf(a.branch)).toBe(candidate);
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+  });
+
   it("waits on a manual QA execution claim without spending retries, then reconciles one QA pass", () => {
     const { rehearsal } = finishedA();
     exitTick(rehearsal);

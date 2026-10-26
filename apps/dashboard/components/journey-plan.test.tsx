@@ -19,6 +19,14 @@ const journey: PlanJourney = {
 };
 
 describe("PlanJourneyList", () => {
+  it("shows evidence warnings without progress and retains Action navigation", () => {
+    const html = renderToStaticMarkup(<PlanJourneyList journey={{ ...journey, progress: undefined, warnings: ["Progress unavailable: stale Session schema"] }} formatTime={(iso) => iso} />);
+    expect(html).toContain('aria-label="Journey warnings"');
+    expect(html).toContain("Progress unavailable: stale Session schema");
+    expect(html).toContain('href="/journey/arcadia/b#now"');
+    expect(html).not.toContain("Travel recorded along the way");
+  });
+
   it("renders one linked row per Action, the current one marked, with a Your move chip", () => {
     const html = renderToStaticMarkup(<PlanJourneyList journey={journey} formatTime={(iso) => iso.slice(11, 16)} />);
     expect(html.match(/<li/g)).toHaveLength(3);

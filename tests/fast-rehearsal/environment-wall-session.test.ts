@@ -42,16 +42,16 @@ afterAll(() => {
 });
 
 describe("the recorded environment-wall Session", () => {
-  it("ends in exactly one named environment_wall blocker, without a second launch", () => {
+  it("keeps one token-ceiling blocker without borrowing unproven wall attribution or relaunching", () => {
     expect(world.tmux.launches).toHaveLength(1);
     expect(world.sessions().map((s) => [s.action_id, s.status])).toEqual([[ACTION_1, expect.any(String)]]);
     const escalations = world.escalations();
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ actionKey: world.actionKey(ACTION_1), kind: "budget_exhausted" });
     expect(escalations[0]?.message).toContain("3000000");
-    expect(escalations[0]?.message).toContain("workspace_write");
-    expect(escalations[0]?.message).toContain("host_validation");
-    expect(escalations[0]?.message).toContain("preservation");
+    expect(escalations[0]?.message).not.toContain("workspace_write");
+    expect(escalations[0]?.message).not.toContain("host_validation");
+    expect(escalations[0]?.message).not.toContain("preservation");
     expect(escalations[0]?.remedy).toContain("reset this Action's repair budget");
     expect(escalations[0]?.remedy).toContain("/todo");
     expect(git(world.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(baseBefore);

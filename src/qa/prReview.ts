@@ -1,3 +1,4 @@
+import { renderCompletionEvidence } from "../sessions/completionValidationEvidence.js";
 import { withPrReviewExecutionClaim } from "./executionClaim.js";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -13,13 +14,13 @@ import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
-import { settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
+import { completionEvidenceForReview, settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
 import {
   selectCompliantCodingAgent,
   type SelectedCodingAgentConfiguration
 } from "../codingAgents/providerAdapters.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   createArtifactRecord,
   createReviewItem,
@@ -226,6 +227,10 @@ export function effectivenessParentRequestId(
 }
 
 export interface RawPullRequest {
+  /** Verified host evidence, reconstructed locally; never sourced from GitHub prose. */
+  completionExecutionEvidence?: string;
+  /** Set only by the host attachment; absent proof preserves historical fingerprints. */
+  completionExecutionEvidenceVerified?: boolean;
   number: number;
   title: string;
   url: string;
@@ -349,7 +354,16 @@ export function runQaPrReviewCommand(
   const now = dependencies.now ?? (() => new Date());
   const reference = parsePullRequestReference(options.pullRequest);
   const project = withDatabase(workspacePath, (db) => resolveConfiguredProject(db, reference.repository, runCommand));
-  const pullRequest = readPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand);
+  const attachCompletionEvidence = (pr: RawPullRequest | null): RawPullRequest | null => {
+    if (!pr) return null;
+    const completionExecutionEvidence = withReadOnlyDatabase(workspacePath, db => {
+      const session = lineageBoundSessionForBranch(db, { repositoryPath: project.repositoryPath, branch: pr.headRefName });
+      return session ? completionEvidenceForReview(db, workspacePath, session, pr.headRefOid)
+        : { status: "unavailable" as const, reason: "no managed Session completion evidence binding" };
+    });
+    return { ...pr, completionExecutionEvidence: renderCompletionEvidence(completionExecutionEvidence), completionExecutionEvidenceVerified: completionExecutionEvidence.status === "verified" };
+  };
+  const pullRequest = attachCompletionEvidence(readPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))!;
   if (pullRequest.state.toUpperCase() !== "OPEN") {
     throw validationError("Pull-request QA requires an open Candidate.", {
       pullRequest: pullRequest.url,
@@ -489,7 +503,7 @@ export function runQaPrReviewCommand(
   }), lineage?.settlementRecords ?? [], lineage?.settled);
   writeFileSync(promptPath, prompt, "utf8");
   const preReviewPullRequest = sandboxProof.passed
-    ? tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand)
+    ? attachCompletionEvidence(tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))
     : pullRequest;
   const preReviewFingerprint = preReviewPullRequest ? fingerprintPullRequestEvidence(preReviewPullRequest) : null;
   const evidenceCurrentBeforeReview = preReviewFingerprint === evidenceFingerprint;
@@ -540,7 +554,7 @@ export function runQaPrReviewCommand(
 
   const parsedModel = parseModelVerdict(reviewRun, modelOutputPath, profile);
   const latestPullRequest = evidenceCurrentBeforeReview
-    ? tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand)
+    ? attachCompletionEvidence(tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))
     : preReviewPullRequest;
   const latestFingerprint = latestPullRequest ? fingerprintPullRequestEvidence(latestPullRequest) : null;
   const deterministic = evaluateDeterministicEvidence(
@@ -1136,7 +1150,7 @@ export function requiredCiEvidenceSection(rollup: ReadonlyArray<PullRequestCheck
   const { gating } = readPullRequestChecks(rollup);
   return [
     "## Criteria verified by required CI",
-    "A headless Session runs only its named focused tests and the preservation self-check; `pnpm lint`, `tsc` (type checking) and the build are verified by the repository's required CI on this exact head (lint job: `pnpm lint`; unit shards and build: `pnpm build:artifacts`, which runs `tsc`). For a criterion naming lint, tsc or build, these green required checks are the supplied evidence: do not mark it fail or not-checked solely because the Session produced no lint/tsc output. Focused tests the criteria name must still be exercised by the patch's test diff. Required checks on this head:",
+    "Retained host completion execution evidence, when verified below, names the checks actually run. Older Sessions may have only named focused tests and the preservation self-check; `pnpm lint`, `tsc` (type checking) and the build are verified by the repository's required CI on this exact head (lint job: `pnpm lint`; unit shards and build: `pnpm build:artifacts`, which runs `tsc`). For a criterion naming lint, tsc or build, these green required checks are the supplied evidence: do not mark it fail or not-checked solely because the Session produced no lint/tsc output. For focused named-test execution, use verified retained completion evidence when present; otherwise the test diff and other supplied evidence determine what is proven. Missing retained execution is explicitly unavailable, never an invented pass. Required checks on this head:",
     ...gating.map((check) => `- ${JSON.stringify(check.name)}: ${check.conclusion ?? check.status ?? "unknown"}`),
     ""
   ];
@@ -1181,6 +1195,7 @@ export function buildReviewPrompt(
     "## Candidate",
     JSON.stringify(candidate, null, 2),
     "",
+    "The completionExecutionEvidence field is reconstructed from host receipts, with Session, packet, base, content hash and exact tree binding checked. Verified means this execution record is attributable; judge its outcome and contents separately from product correctness. Unavailable means no such proof is supplied.",
     "## Pull-request body and deterministic evidence",
     JSON.stringify(pullRequest, null, 2),
     "",
@@ -1737,6 +1752,7 @@ function fingerprintPullRequestEvidence(pullRequest: RawPullRequest): string {
     baseRefName: pullRequest.baseRefName,
     baseRefOid: pullRequest.baseRefOid,
     body: pullRequest.body,
+    ...(pullRequest.completionExecutionEvidenceVerified ? { completionExecutionEvidence: pullRequest.completionExecutionEvidence } : {}),
     files: pullRequest.files,
     // An advisory entry never gates, so its state changing mid-review (CodeRabbit
     // finishing) does not make the evidence stale. A rollup without one hashes
