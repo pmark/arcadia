@@ -2687,3 +2687,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/launch-preview.test.ts, the prepareSession call in the test named 'names an already-leased repository as a conflicting-execution prerequisite' passes a tmux stub whose available() returns true, whose hasSession returns false while recording each queried name, and whose launch is never called; the test asserts at least one name was recorded and every recorded name starts with arcadia-test-project-, so that prepareSession call no longer consults the host tmux server (the buildLaunchPreview call may also receive the stub via its tmux input)."; "The test still asserts preview.ready is false and a prerequisite starting with 'conflicting execution', and every other test in the file passes unchanged."; "The change touches only tests/launch-preview.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-isolate-launch-preview-tmux-name-dbd2bc77c0f9).
+
+## 2026-10-26 — Completed arcadia/bound-guidance-test-teardown-retries
+
+- **Did:** Completed Action arcadia/bound-guidance-test-teardown-retries from accepted evidence (Candidate 88cf045bae3b24b35b082c2f987bebcc05756004).
+- **Result:** Every declared acceptance criterion was accepted as met: "In tests/agent-guidance.test.ts, the afterEach rmSync of the scratch roots passes recursive true, force true, maxRetries of at least 3 and retryDelay of at least 50 milliseconds."; "Every existing assertion in that file remains unchanged and no test in it is marked skip or todo."; "The change touches only tests/agent-guidance.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-bound-guidance-test-teardown-retries-54bcce6e3f80).
