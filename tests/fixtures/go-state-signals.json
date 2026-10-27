@@ -1,0 +1,941 @@
+[
+  {
+    "agent": "codex",
+    "scenario": "selected-a-assigned-b",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": true,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": null,
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          }
+        ],
+        "ongoingTotal": 1,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Continue the caller-owned Action within existing authority."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia codex: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\n1 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Continue the caller-owned Action within existing authority. Details available on demand.\n\nCompact state signals — codex:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  },
+  {
+    "agent": "codex",
+    "scenario": "no-session-no-workers",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "selected-plan",
+        "action": {
+          "id": "selected-a",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": null,
+        "session": null,
+        "ongoing": [],
+        "ongoingTotal": 0,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Use the existing protected Go path to obtain an assignment before implementation."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 SP selected-a · selected; unassigned",
+      "pr": "🔨🟣 SP selected-a · selected; unassigned",
+      "ci": "🔨🟡 SP selected-a · selected; unassigned",
+      "waiting": "🔨🟠 SP selected-a · selected; unassigned",
+      "blocked": "🔨🔴 SP selected-a · selected; unassigned",
+      "done": "🔨🟢 SP selected-a · selected; unassigned",
+      "parked": "🔨⏸ SP selected-a · selected; unassigned"
+    },
+    "opening": "Arcadia codex: assigned none; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\nNo ongoing ownership recorded; no active workers verified by this brief.\nNext: Use the existing protected Go path to obtain an assignment before implementation. Details available on demand.\n\nCompact state signals — codex:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 SP selected-a · selected; unassigned\n  pr: 🔨🟣 SP selected-a · selected; unassigned\n  ci: 🔨🟡 SP selected-a · selected; unassigned\n  waiting: 🔨🟠 SP selected-a · selected; unassigned\n  blocked: 🔨🔴 SP selected-a · selected; unassigned\n  done: 🔨🟢 SP selected-a · selected; unassigned\n  parked: 🔨⏸ SP selected-a · selected; unassigned"
+  },
+  {
+    "agent": "codex",
+    "scenario": "selected-a-assigned-b-blocked",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [
+        {
+          "relativePath": "external",
+          "field": "dependency",
+          "message": "Fixture dependency unavailable",
+          "remedy": "Wait for external dependency."
+        }
+      ],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": {
+          "id": "fixture-session",
+          "status": "running"
+        },
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          },
+          {
+            "source": "session",
+            "id": "fixture-session",
+            "action": "assigned-b",
+            "status": "running"
+          }
+        ],
+        "ongoingTotal": 2,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Wait for external dependency."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia codex: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: fixture-session [running] (stored observation). Native activity does not prove governed Session admission.\n2 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Wait for external dependency. Details available on demand.\n\nCompact state signals — codex:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  },
+  {
+    "agent": "claude",
+    "scenario": "selected-a-assigned-b",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": true,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": null,
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          }
+        ],
+        "ongoingTotal": 1,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Continue the caller-owned Action within existing authority."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia claude: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\n1 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Continue the caller-owned Action within existing authority. Details available on demand.\n\nCompact state signals — claude:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  },
+  {
+    "agent": "claude",
+    "scenario": "no-session-no-workers",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "selected-plan",
+        "action": {
+          "id": "selected-a",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": null,
+        "session": null,
+        "ongoing": [],
+        "ongoingTotal": 0,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Use the existing protected Go path to obtain an assignment before implementation."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 SP selected-a · selected; unassigned",
+      "pr": "🔨🟣 SP selected-a · selected; unassigned",
+      "ci": "🔨🟡 SP selected-a · selected; unassigned",
+      "waiting": "🔨🟠 SP selected-a · selected; unassigned",
+      "blocked": "🔨🔴 SP selected-a · selected; unassigned",
+      "done": "🔨🟢 SP selected-a · selected; unassigned",
+      "parked": "🔨⏸ SP selected-a · selected; unassigned"
+    },
+    "opening": "Arcadia claude: assigned none; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\nNo ongoing ownership recorded; no active workers verified by this brief.\nNext: Use the existing protected Go path to obtain an assignment before implementation. Details available on demand.\n\nCompact state signals — claude:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 SP selected-a · selected; unassigned\n  pr: 🔨🟣 SP selected-a · selected; unassigned\n  ci: 🔨🟡 SP selected-a · selected; unassigned\n  waiting: 🔨🟠 SP selected-a · selected; unassigned\n  blocked: 🔨🔴 SP selected-a · selected; unassigned\n  done: 🔨🟢 SP selected-a · selected; unassigned\n  parked: 🔨⏸ SP selected-a · selected; unassigned"
+  },
+  {
+    "agent": "claude",
+    "scenario": "selected-a-assigned-b-blocked",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [
+        {
+          "relativePath": "external",
+          "field": "dependency",
+          "message": "Fixture dependency unavailable",
+          "remedy": "Wait for external dependency."
+        }
+      ],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": {
+          "id": "fixture-session",
+          "status": "running"
+        },
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          },
+          {
+            "source": "session",
+            "id": "fixture-session",
+            "action": "assigned-b",
+            "status": "running"
+          }
+        ],
+        "ongoingTotal": 2,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Wait for external dependency."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia claude: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: fixture-session [running] (stored observation). Native activity does not prove governed Session admission.\n2 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Wait for external dependency. Details available on demand.\n\nCompact state signals — claude:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  },
+  {
+    "agent": "opencode",
+    "scenario": "selected-a-assigned-b",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": true,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": null,
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          }
+        ],
+        "ongoingTotal": 1,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Continue the caller-owned Action within existing authority."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia opencode: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\n1 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Continue the caller-owned Action within existing authority. Details available on demand.\n\nCompact state signals — opencode:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  },
+  {
+    "agent": "opencode",
+    "scenario": "no-session-no-workers",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "selected-plan",
+        "action": {
+          "id": "selected-a",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": null,
+        "session": null,
+        "ongoing": [],
+        "ongoingTotal": 0,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Use the existing protected Go path to obtain an assignment before implementation."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 SP selected-a · selected; unassigned",
+      "pr": "🔨🟣 SP selected-a · selected; unassigned",
+      "ci": "🔨🟡 SP selected-a · selected; unassigned",
+      "waiting": "🔨🟠 SP selected-a · selected; unassigned",
+      "blocked": "🔨🔴 SP selected-a · selected; unassigned",
+      "done": "🔨🟢 SP selected-a · selected; unassigned",
+      "parked": "🔨⏸ SP selected-a · selected; unassigned"
+    },
+    "opening": "Arcadia opencode: assigned none; selected selected-plan#selected-a.\nCanonical Session: no active Session evidence. Native activity does not prove governed Session admission.\nNo ongoing ownership recorded; no active workers verified by this brief.\nNext: Use the existing protected Go path to obtain an assignment before implementation. Details available on demand.\n\nCompact state signals — opencode:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 SP selected-a · selected; unassigned\n  pr: 🔨🟣 SP selected-a · selected; unassigned\n  ci: 🔨🟡 SP selected-a · selected; unassigned\n  waiting: 🔨🟠 SP selected-a · selected; unassigned\n  blocked: 🔨🔴 SP selected-a · selected; unassigned\n  done: 🔨🟢 SP selected-a · selected; unassigned\n  parked: 🔨⏸ SP selected-a · selected; unassigned"
+  },
+  {
+    "agent": "opencode",
+    "scenario": "selected-a-assigned-b-blocked",
+    "next": {
+      "context": {
+        "repoRoot": "/fixture/candidate",
+        "projectName": "Fixture",
+        "projectStatus": "active",
+        "planPath": "docs/plans/fixture.md",
+        "planStatus": "active",
+        "planTokenImpact": "none",
+        "planTokenBudget": "No models.",
+        "milestone": null,
+        "actionPath": "docs/plans/fixture.md",
+        "requiredDecisions": [],
+        "authorization": "Fixture only.",
+        "projectSlug": "fixture",
+        "activePlan": "assigned-plan",
+        "action": {
+          "id": "assigned-b",
+          "title": "Fixture Action",
+          "acceptanceCriteria": [],
+          "references": [],
+          "responsibility": "agent",
+          "status": "open",
+          "clarification": "clarified",
+          "nextAction": "Inspect fixture."
+        },
+        "constitution": null,
+        "planRecommendedModel": null,
+        "planRecommendedReasoningEffort": null
+      },
+      "blockers": [
+        {
+          "relativePath": "external",
+          "field": "dependency",
+          "message": "Fixture dependency unavailable",
+          "remedy": "Wait for external dependency."
+        }
+      ],
+      "operatorQuestion": null,
+      "dispatchable": false,
+      "projectId": "fixture",
+      "repoRoot": "/fixture/candidate",
+      "operatorAlerts": [],
+      "orientation": {
+        "source": "managed-documents+canonical-workspace",
+        "observedAt": "2026-10-27T12:00:00.000Z",
+        "repository": "/fixture/base",
+        "worktree": "/fixture/candidate",
+        "baseRevision": "fixture-base",
+        "callerRevision": "fixture-base",
+        "selected": {
+          "context": {
+            "repoRoot": "/fixture/candidate",
+            "projectName": "Fixture",
+            "projectStatus": "active",
+            "planPath": "docs/plans/fixture.md",
+            "planStatus": "active",
+            "planTokenImpact": "none",
+            "planTokenBudget": "No models.",
+            "milestone": null,
+            "actionPath": "docs/plans/fixture.md",
+            "requiredDecisions": [],
+            "authorization": "Fixture only.",
+            "projectSlug": "fixture",
+            "activePlan": "selected-plan",
+            "action": {
+              "id": "selected-a",
+              "title": "Selected Action"
+            },
+            "constitution": null,
+            "planRecommendedModel": null,
+            "planRecommendedReasoningEffort": null
+          },
+          "blockers": [],
+          "operatorQuestion": null
+        },
+        "assigned": {
+          "plan": "assigned-plan",
+          "action": "assigned-b",
+          "claimId": "fixture-claim",
+          "generation": "fixture-generation"
+        },
+        "session": {
+          "id": "fixture-session",
+          "status": "running"
+        },
+        "ongoing": [
+          {
+            "source": "claim",
+            "id": "fixture-claim",
+            "action": "assigned-b",
+            "status": "reserved"
+          },
+          {
+            "source": "session",
+            "id": "fixture-session",
+            "action": "assigned-b",
+            "status": "running"
+          }
+        ],
+        "ongoingTotal": 2,
+        "relatedPlans": [],
+        "relatedPlanTotal": 0,
+        "nextStep": "Wait for external dependency."
+      }
+    },
+    "sessionTitles": {
+      "working": "🔨🔵 AP assigned-b",
+      "pr": "🔨🟣 AP assigned-b",
+      "ci": "🔨🟡 AP assigned-b",
+      "waiting": "🔨🟠 AP assigned-b",
+      "blocked": "🔨🔴 AP assigned-b",
+      "done": "🔨🟢 AP assigned-b",
+      "parked": "🔨⏸ AP assigned-b"
+    },
+    "opening": "Arcadia opencode: assigned assigned-plan#assigned-b; selected selected-plan#selected-a.\nCanonical Session: fixture-session [running] (stored observation). Native activity does not prove governed Session admission.\n2 ongoing ownership records (claims/Sessions); no active workers verified by this brief.\nNext: Wait for external dependency. Details available on demand.\n\nCompact state signals — opencode:\nImmediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.\nReport observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.\nUse the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.\nKeep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.\nIdle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.\nIf no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.\n  working: 🔨🔵 AP assigned-b\n  pr: 🔨🟣 AP assigned-b\n  ci: 🔨🟡 AP assigned-b\n  waiting: 🔨🟠 AP assigned-b\n  blocked: 🔨🔴 AP assigned-b\n  done: 🔨🟢 AP assigned-b\n  parked: 🔨⏸ AP assigned-b"
+  }
+]

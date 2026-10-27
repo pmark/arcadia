@@ -47,6 +47,14 @@ Use a stable short workstream label across the parent and its helpers. Record th
 
 Use exactly one starred coordinator per workstream. At an explicit custody handoff, remove the predecessor’s star and mark it parked before starring the successor. A title change alone never transfers custody.
 
+Use the caller-owned assignment from the brief, even when the Project selects a
+different Action. The map keeps that assignment across all states. If unassigned,
+keep the `selected; unassigned` detail; a native chat does not establish a Session.
+A readiness gate alone does not change the kind of assigned work. The map does
+not detect a PR, review, checks, completion or hold: verify the transition first.
+If the host exposes no title tool, disclose the limitation and suggested title;
+never report that the title changed without a successful tool result.
+
 Update titles when responsibility or observed state changes. An idle flag, silence, or the end of a turn does not prove completion, pause, blockage or released ownership. Never mark a chat parked or former coordinator without an actual handoff or hold. A question title points to the existing Decision, Agent Ask, PR or handoff containing the full question, choices and consequences. Resolve the title when that record is resolved.
 
 These are display conventions requested by the operator on October 15, 2026, with the explicit current-contact star requested on October 25, 2026. They do not change claims, budgets, approval boundaries, model bindings, review independence or work authority. Use the generated title as the base: keep its kind, current state, Plan abbreviation and exact Action wording, then prepend the helper arrow or append the specific need. `arcadia session title` composes the full title, including the relationship marker and attention wording, from explicit inputs; it does not detect parentage. The coordinator supplies the relationship, and an agent still sets the title through the host's title tool. For a deliberately parked chat, use ⏸ in place of its state dot while preserving its kind and scope. Do not patch the harness.

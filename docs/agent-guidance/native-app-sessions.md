@@ -53,6 +53,18 @@ independent Sessions under Decision 0114; native role dispatch refuses them.
 
 Read [chat titles and attention signals](chat-titles.md) when naming or retitling the Lead and its helpers; record each helper's actual parent in its brief or handoff.
 
+## Compact state signals
+
+Follow [continuation's compact acknowledgment](continuation.md#compact-acknowledgment-and-observed-changes)
+and [chat titles](chat-titles.md) in all three apps. Immediately state actual
+assignment, selected work when different, canonical Session evidence and the next
+permitted step; offer detail on demand. Update on observed transitions. With no
+verified workers, describe one caller, not an active team. Native activity proves
+no governed Session admission. Title maps are suggestions until a host title tool
+succeeds; disclose a missing tool with the suggested title. Codex, Claude Code and
+OpenCode rendered source fixtures are local proof only; native title-tool support
+remains unverified until separately observed in the actual app.
+
 ## 3. Start protocol
 
 1. Name the app and surface (iOS thin client, Mac with host) in the first reply.

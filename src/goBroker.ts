@@ -11,7 +11,7 @@ import { isDispatchable } from "./docs/dispatch.js";
 import { requirementIdentity } from "./sessions/roleLineage.js";
 import { existingDirectory } from "./git/worktrees.js";
 import { canonicalPath, SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
-import { sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
+import { renderStateSignalInstructions, sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 import { withReadOnlyDatabase } from "./db/connection.js";
 import { loadModelTierRegistry } from "./codingAgents/modelTiers.js";
@@ -75,6 +75,20 @@ export interface BriefCommandData {
   sessionTitles: Record<SessionTitleState, string>;
   /** The supervising parent's id for this invocation, when supervised. */
   correlationId?: string;
+}
+
+/** Compact projection of the same caller evidence used by the detailed brief. */
+export function renderGoAcknowledgment(next: NextCommandData, agent: GoBrokerAgent): string[] {
+  const observed = next.orientation;
+  if (!observed) return [`Arcadia ${agent}: caller assignment, canonical Session and workers unverified.`,
+    "Read the detailed brief before continuing; details available on demand."];
+  const selected = observed.selected.context;
+  return [
+    `Arcadia ${agent}: assigned ${observed.assigned ? `${observed.assigned.plan}#${observed.assigned.action}` : "none"}; selected ${selected ? `${selected.activePlan}#${selected.action.id}` : "unresolved"}.`,
+    `Canonical Session: ${observed.session ? `${observed.session.id} [${observed.session.status}] (stored observation)` : "no active Session evidence"}. Native activity does not prove governed Session admission.`,
+    `${observed.ongoingTotal === 0 ? "No ongoing ownership recorded" : `${observed.ongoingTotal} ongoing ownership records (claims/Sessions)`}; no active workers verified by this brief.`,
+    `Next: ${observed.nextStep} Details available on demand.`
+  ];
 }
 
 /**
@@ -210,14 +224,20 @@ export function runGoBroker(
     const workMonitor = runBriefStage("work-monitor", () =>
       workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }), briefContext);
     const next = runBriefStage("next", () => nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source }), briefContext);
-    const rendered = runBriefStage("render", () => ({
-      dispatchBrief: [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
-      sessionTitles: sessionTitlesByState({
-        kind: next.data.dispatchable ? "build" : "repair",
+    const rendered = runBriefStage("render", () => {
+      const sessionTitles = sessionTitlesByState({
+        kind: next.data.context ? "build" : "repair",
         plan: next.data.context?.activePlan ?? null,
-        action: next.data.context?.action.id ?? null
-      })
-    }), briefContext);
+        action: next.data.context?.action.id ?? null,
+        details: next.data.orientation && !next.data.orientation.assigned ? ["selected; unassigned"] : []
+      });
+      return {
+        dispatchBrief: [...renderGoAcknowledgment(next.data, request.agent), "",
+          ...renderStateSignalInstructions(request.agent, sessionTitles), "", ...renderNextSuccess(next), "",
+          ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
+        sessionTitles
+      };
+    }, briefContext);
     return {
       ok: true,
       command: "brief-broker",

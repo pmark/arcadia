@@ -2066,6 +2066,33 @@ path and sha256, and the single safe next step, which retires the worktree only
 after every draft is settled or copied out. Any other dirt still gets the
 original refusal, now with `candidateKind`.
 
+Go's protected brief now starts with a compact observation: your assigned Action,
+the Project's selected Action, canonical Session evidence and the next permitted
+step. An assigned B remains your title scope even when the Project selects A.
+No active Session evidence or verified workers means the reply must say so;
+a native chat or helper does not establish governed admission or an active team.
+Titles change with observed work, PR/review, checks, input, external block,
+completion or deliberate hold. If the app has no title tool, the agent reports
+`Title tool unavailable; suggested title: ...`. An idle flag or ended reply does
+not mean the work paused or ownership was released.
+
+Source-only QA (operator and end-user procedure are the same):
+
+1. In the candidate checkout, run `node scripts/bridge-worktree-deps.mjs` if
+   dependencies are absent, then `pnpm exec vitest run tests/go-state-signals.test.ts tests/session-title.test.ts tests/action-brief.test.ts tests/go-broker.test.ts`.
+   Expect all tests to pass without provider calls or installation.
+2. Open `tests/fixtures/go-state-signals.json`. Each of Codex, Claude Code and
+   OpenCode has a rendered assigned-B/selected-A and no-Session/no-workers opening,
+   seven canonical title states, and missing-title-tool disclosure. These are local
+   fixtures, not screenshots, native title updates or live-provider acceptance.
+3. After a separate approved installation/live-proof assignment, use the existing
+   protected brief launcher in an authorized native app. Compare the compact reply
+   to its caller evidence. Verify the actual host title-tool result for a genuine
+   state change, or the explicit unavailable-tool reply. Record app/version,
+   assignment, canonical Session evidence, tool result and exact title. Repeat for
+   each provider only within its authorization; source tests alone prove no runtime
+   support. This change installs, launches and activates nothing.
+
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
 launcher or an `arcadia go` prefix. Install the protected broker from a clean,
 reviewed Arcadia commit as an explicit operator action:
