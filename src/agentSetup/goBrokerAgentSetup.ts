@@ -698,6 +698,39 @@ function codexTomlSyntax(content: string): string[] {
   return result;
 }
 
+/** Classify one TOML key segment, including quoted Unicode-equivalent spellings.
+ * This does not parse values; it prevents aliases from bypassing managed guards.
+ */
+function codexTomlLeadingKey(text: string): { key: string; rest: string; quoted: boolean } | null {
+  const match = text.match(/^\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*(?=[.=\]])/);
+  if (!match) return null;
+  const token = match[1];
+  let key = token;
+  if (token.startsWith("'")) key = token.slice(1, -1);
+  else if (token.startsWith('"')) {
+    key = "";
+    const escapes: Record<string, string> = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", '"': '"', "\\": "\\" };
+    for (let index = 1; index < token.length - 1; index += 1) {
+      if (token[index] !== "\\") { key += token[index]; continue; }
+      const escape = token[++index];
+      if (escape === "u" || escape === "U") {
+        const count = escape === "u" ? 4 : 8;
+        const digits = token.slice(index + 1, index + 1 + count);
+        const codePoint = Number.parseInt(digits, 16);
+        if (!new RegExp(`^[0-9a-fA-F]{${count}}$`).test(digits) || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+          throw validationError("Codex config has unsupported quoted key syntax.");
+        }
+        key += String.fromCodePoint(codePoint);
+        index += count;
+      } else {
+        if (!(escape in escapes)) throw validationError("Codex config has unsupported quoted key syntax.");
+        key += escapes[escape];
+      }
+    }
+  }
+  return { key, rest: text.slice(match[0].length), quoted: token.startsWith('"') || token.startsWith("'") };
+}
+
 /** Refuse ambiguous structures before any file is written instead of guessing their scope. */
 function assertSupportedCodexManagedSyntax(content: string): void {
   let root = true;
@@ -708,12 +741,14 @@ function assertSupportedCodexManagedSyntax(content: string): void {
     if (/^\s*(?:#.*)?$/.test(line)) continue;
     if (/^\s*\[/.test(line)) {
       root = false;
-      permissionsParent = /^\s*\[\s*(?:permissions|["']permissions["'])\s*\]\s*$/.test(line);
-      managed = /^\s*\[\[?\s*(?:permissions|["']permissions["'])\s*\.\s*(?:arcadia-unattended|["']arcadia-unattended["'])(?:\s*[.\]]|\s*$)/.test(line);
+      const firstKey = codexTomlLeadingKey(line.replace(/^\s*\[\[?/, ""));
+      permissionsParent = firstKey?.key === "permissions" && /^\]\s*$/.test(firstKey.rest);
+      const secondKey = firstKey?.rest.startsWith(".") ? codexTomlLeadingKey(firstKey.rest.slice(1)) : null;
+      managed = firstKey?.key === "permissions" && secondKey?.key === "arcadia-unattended";
       if (managed && !/^\s*\[permissions\.arcadia-unattended(?:\.[^\]]+)?\]\s*$/.test(line)) {
         throw validationError("Codex config has an unsupported managed permission table spelling.");
       }
-    } else if (permissionsParent && /^\s*(?:arcadia-unattended|["']arcadia-unattended["'])\s*[.=]/.test(line)) {
+    } else if (permissionsParent && codexTomlLeadingKey(line)?.key === "arcadia-unattended") {
       throw validationError("Codex config has an unsupported inline or dotted managed permission profile.");
     } else if (managed && line.includes("@multiline@")) {
       throw validationError("Codex managed permission values use unsupported multiline syntax.");
@@ -722,8 +757,11 @@ function assertSupportedCodexManagedSyntax(content: string): void {
       if (defaults > 1 || !/^\s*default_permissions\s*=\s*(?:"[^"\\]+"|'[^']+')\s*(?:#.*)?$/.test(line)) {
         throw validationError("Codex config has duplicate or unsupported default_permissions entries.");
       }
-    } else if (root && /^\s*(?:["'](?:approval_policy|default_permissions|sandbox_mode)["']|permissions\s*[.=])/.test(line)) {
-      throw validationError("Codex config has unsupported managed root syntax.");
+    } else if (root) {
+      const firstKey = codexTomlLeadingKey(line);
+      if (firstKey?.key === "permissions" || (firstKey?.quoted && ["approval_policy", "default_permissions", "sandbox_mode"].includes(firstKey.key))) {
+        throw validationError("Codex config has unsupported managed root syntax.");
+      }
     }
   }
 }

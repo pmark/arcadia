@@ -351,6 +351,39 @@ describe("go broker agent setup", () => {
     }
   );
 
+  it.each([
+    '"permissions" = { "arcadia-unattended" = { extends = ":read-only" } }',
+    "'permissions' = { 'arcadia-unattended' = { extends = ':read-only' } }",
+    '"permissions"."arcadia-unattended".extends = ":read-only"',
+    "'permissions'.'arcadia-unattended'.extends = ':read-only'",
+    '"per\\u006dissions" = { "arcadia-unattended" = { extends = ":read-only" } }',
+    '"\\U00000070ermissions"."arcadia-unattended".extends = ":read-only"'
+  ])("R3 refuses quoted managed root assignments before writes: %s", (assignment) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    // Use the real TOML escape, rather than a JavaScript-decoded equivalent.
+    const config = `${assignment.replace(/\\\\/g, "\\")}\n`;
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported.*root/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+  });
+
+  it("R3 preserves unrelated quoted and escaped user root keys and comments", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const user = '"per\\u006donal" = "keep value" # keep comment\n\'permissions.notes\' = "keep literal dotted key"\n';
+    const config = `${user}${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
   it.each([null, ":workspace", "personal", "arcadia-unattended"])(
     "preserves the interactive default %s while installing the separate Go profile",
     (defaultProfile) => {
