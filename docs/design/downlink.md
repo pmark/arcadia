@@ -249,7 +249,7 @@ The Uplink lifts onto the Stage like a Downlink:
 - **Watch** is the default. It shows the Session's live output read-only, so joining never interrupts the work.
 - **Talk** is a deliberate second step. Typed input reaches the agent as the operator's turn in its conversation. The agent sees when the operator joins and when they leave.
 - **Dock** shrinks the Uplink back to its leg, which keeps a one-line live status.
-- **Pin** keeps a faint live tail behind the feed. Under the pin rule above, it clears with a quiet note when the Session ends or its Action closes.
+- **Pin** keeps a faint live tail behind the feed. Because it shows a Session rather than an Action, the Session's end is what clears it, with the quiet note from the pin rule above. Settling the Action happens before the Session ends, so closing the Action alone leaves the tail up.
 - **Leave** ends Talk. The Session goes back to running on its own, with no restart and no handoff ceremony.
 
 ### Rules
