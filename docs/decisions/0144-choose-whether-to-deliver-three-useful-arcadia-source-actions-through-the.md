@@ -1,0 +1,37 @@
+---
+arcadia: v1
+type: decision
+id: "0144"
+slug: choose-whether-to-deliver-three-useful-arcadia-source-actions-through-the
+project: arcadia
+status: approved
+question: Choose whether to deliver three useful Arcadia source Actions through the existing assisted Codex loop while Claude is blocked, or keep the batch unselected and continue waiting for Claude recovery. The three proposed deliveries are installer semantic-no-op repair (Issue1800), existing add-git-change-checkpoint-guidance, and existing prove-git-change-checkpoint-scenarios. Keep production Off and strict first-unattended-run acceptance unchanged.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Approve the assisted three-Action source batch using existing Codex contexts while production stays Off (recommended)
+options:
+  - label: Approve the assisted three-Action source batch using existing Codex contexts while production stays Off (recommended)
+    consequence: "Select installer Issue1800 repair, then the two existing PR1801 checkpoint Actions in dependency order. Use only existing included Codex native contexts: current Lead/coordinator, one implementer gpt-6.1-sol/medium and one existing independent reviewer gpt-6.1-sol/high. This is not a paid provider fallback, model-registry change, new runtime or registered-role admission. Delegate only their strictly necessary canonical new-Action creation, placement/make-next, later existing-Plan activation and record publication through supported preview/apply routes with fresh exact fingerprints, preserving all held work. Explicitly authorize merge of PR1801 exact reviewed head 00ed89458aaa076f5ac0fb5e2f597d1c87b82848 after current required checks, independent review and clean merge are reverified; changed substantive head requires fresh review. For PR1801 ONLY, if GitHub rejects the canonical agents.arcadia.local author email for its server-created squash, permit the authenticated GitHub account author metadata on that squash while preserving truthful agent author/reviewer attribution in the PR and squash body. Canonical agent-authored commits retain resolved agent identities; no Git config/account change or exception for other PRs. Future source PRs retain normal gates; authority-adjacent merges remain human gates unless separately and exactly authorized. Production stays Off; no START, Claude call, credentials, sign-in rotation, installation or runtime operation. Assisted delivery does not satisfy strict unattended acceptance."
+    recommended: true
+  - label: Keep this batch unselected and wait for the existing Claude recovery investigation
+    consequence: Create no installer Action, make no queue/pointer/activation change and do not merge PR1801 under this Decision. Continue only separately authorized bounded recovery/preparation; morning source delivery remains uncertain. Consumed renewals and held candidate budgets remain unchanged; this choice authorizes no renewal, retry, login or START.
+    recommended: false
+confidence: high
+plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
+updated: 2026-10-26
+answer: Approve the assisted three-Action source batch using existing Codex contexts while production stays Off (recommended)
+decided: 2026-10-26
+---
+
+# Decision 0144: Choose whether to deliver three useful Arcadia source Actions through the existing assisted Codex loop while Claude is blocked, or keep the batch unselected and continue waiting for Claude recovery. The three proposed deliveries are installer semantic-no-op repair (Issue1800), existing add-git-change-checkpoint-guidance, and existing prove-git-change-checkpoint-scenarios. Keep production Off and strict first-unattended-run acceptance unchanged.
+
+## Options
+
+- **Approve the assisted three-Action source batch using existing Codex contexts while production stays Off (recommended)** (recommended): Select installer Issue1800 repair, then the two existing PR1801 checkpoint Actions in dependency order. Use only existing included Codex native contexts: current Lead/coordinator, one implementer gpt-6.1-sol/medium and one existing independent reviewer gpt-6.1-sol/high. This is not a paid provider fallback, model-registry change, new runtime or registered-role admission. Delegate only their strictly necessary canonical new-Action creation, placement/make-next, later existing-Plan activation and record publication through supported preview/apply routes with fresh exact fingerprints, preserving all held work. Explicitly authorize merge of PR1801 exact reviewed head 00ed89458aaa076f5ac0fb5e2f597d1c87b82848 after current required checks, independent review and clean merge are reverified; changed substantive head requires fresh review. For PR1801 ONLY, if GitHub rejects the canonical agents.arcadia.local author email for its server-created squash, permit the authenticated GitHub account author metadata on that squash while preserving truthful agent author/reviewer attribution in the PR and squash body. Canonical agent-authored commits retain resolved agent identities; no Git config/account change or exception for other PRs. Future source PRs retain normal gates; authority-adjacent merges remain human gates unless separately and exactly authorized. Production stays Off; no START, Claude call, credentials, sign-in rotation, installation or runtime operation. Assisted delivery does not satisfy strict unattended acceptance.
+- **Keep this batch unselected and wait for the existing Claude recovery investigation**: Create no installer Action, make no queue/pointer/activation change and do not merge PR1801 under this Decision. Continue only separately authorized bounded recovery/preparation; morning source delivery remains uncertain. Consumed renewals and held candidate budgets remain unchanged; this choice authorizes no renewal, retry, login or START.
+
+## Rationale
+
+The registered selection proposal agentask_a5fc9748774b474f81 is preparation only. The current ready projection consists of held historical Actions. Actual corrected renewal returned Not logged in; no verification followed and its original attempt remains consumed. Verified watcher direction allows an equivalent semi-unattended human loop by morning, but does not itself request this source implementation. A single explicit selection can authorize bounded native source work and mechanical governance follow-through without another launcher or three separate approval ceremonies. PR1801 is currently open, exact head 00ed89458aaa076f5ac0fb5e2f597d1c87b82848, internally reviewed with no blockers and 15 passing CI jobs in run40390489602; merge is a real first gate before its inactive Plan can be activated. Root must independently review this proposed Decision before settlement or operator presentation. This immutable v2 supersedes the unaccepted preparation proposal agentask_86bb2bc67873bb8ab3; settle only v2 into one actual Decision. No Decision or operator question was created from v1. Existing offsite Claude authentication has no supported phone/browser-only completion; do not ask the operator for host CLI work, a token in chat or an invented login flow.
+
+Proposed by Agent Ask decide-morning-assisted-source-batch-20261027-v2.
