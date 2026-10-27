@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Agents notice governed changes on main at their existing checkpoints and re-read the changed record before acting, using git alone.
-active_plan: demo-first-delivery
-current_action: automate-proof-artifacts
+milestone: Make Arcadia Go orient one caller truthfully before authorized work.
+active_plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
+current_action: reuse-go-context-through-authorized-continuation
 updated: 2026-10-27
 ---
 

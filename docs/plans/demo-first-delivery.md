@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: demo-first-delivery
 project: arcadia
-status: active
+status: draft
 milestone: Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release
 token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
@@ -465,7 +465,6 @@ actions:
     depends_on: [govern-release-and-delivery]
 questions: []
 decisions: ["0007", "0008"]
-current_action: automate-proof-artifacts
 ---
 
 # Demo-first delivery
