@@ -129,6 +129,7 @@ export interface PlanJourneyAction {
 
 /** A whole Plan's journey (`arcadia-plan-journey-v1`): one summary line per Action, in Plan order. */
 export interface PlanJourney {
+  progress?: import("./progress.js").JourneyProgress;
   schema: typeof PLAN_JOURNEY_SCHEMA;
   generatedAt: string;
   project: string;

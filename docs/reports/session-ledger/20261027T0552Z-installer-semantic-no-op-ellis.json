@@ -1,0 +1,30 @@
+{
+  "session_id": "installer-semantic-no-op-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "configured_effort": "medium",
+  "effective_effort": "medium",
+  "effort_source": "actual native assignment; registry default5.6-terra is not runtime telemetry",
+  "action_id": "preserve-codex-config-on-semantic-no-op",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-dependencies-unbridged",
+      "cost_min": null,
+      "fix_ref": "scripts/bridge-worktree-deps.mjs"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "WIP tests only; seven expected failing regressions. No production patch, no completion settlement. Coordinator requests preservation for session transfer.",
+  "stop_reason": "Explicit coordinator transfer: preserve incomplete draft PR, release same candidate; successor implements Issue1800 repair."
+}

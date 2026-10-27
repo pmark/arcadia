@@ -1,0 +1,19 @@
+$ git fetch origin
+exit=0
+
+$ git rev-parse --verify origin/main^{commit}
+51124acfe7378fb64cede3e7f9a85cd96ca59da8
+exit=0
+
+$ git rev-parse --verify 51124acfe7378fb64cede3e7f9a85cd96ca59da8^{commit}
+51124acfe7378fb64cede3e7f9a85cd96ca59da8
+exit=0
+
+$ git merge-base --is-ancestor 51124acfe7378fb64cede3e7f9a85cd96ca59da8 51124acfe7378fb64cede3e7f9a85cd96ca59da8
+exit=0
+
+$ git log --format=fuller --name-status 51124acfe7378fb64cede3e7f9a85cd96ca59da8..51124acfe7378fb64cede3e7f9a85cd96ca59da8 -- docs/decisions PROJECT.md docs/plans
+exit=0
+
+$ git log --first-parent --format=%H %s%n%b 51124acfe7378fb64cede3e7f9a85cd96ca59da8..51124acfe7378fb64cede3e7f9a85cd96ca59da8
+exit=0

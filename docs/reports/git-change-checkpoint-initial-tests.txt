@@ -1,0 +1,48 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/git-change-checkpoint-guidance/arcadia
+
+ ❯ tests/agent-guidance.test.ts (19 tests | 1 failed) 1043ms
+     × delivers the shared Git checkpoint procedure through adoption and each checkpoint trigger 24ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/agent-guidance.test.ts > compact Way instruction delivery > delivers the shared Git checkpoint procedure through adoption and each checkpoint trigger
+AssertionError: expected '<!-- ARCADIA_CONTEXT_START -->\n# Det…' to be '# Detailed Way guidance: shared check…' // Object.is equality
+
+- Expected
++ Received
+
+@@ -1,5 +1,6 @@
++ <!-- ARCADIA_CONTEXT_START -->
+  # Detailed Way guidance: shared checkpoints and native-mail
+
+  Read this procedure at each of the four checkpoints below, and before checking,
+  acknowledging or replying to local native-mail or briefing a native manager.
+  The Git check applies to every session, regardless of native-mail assignment or
+@@ -128,7 +129,8 @@
+    configured workspace (`arcadia workspace resolve --json` reports
+    `missing`), the native-mail check is a precise blocker, never a skipped or
+    simulated pass. The independent Git check needs no Arcadia workspace.
+  - Experiment workspaces refuse native-mail writes; they cannot originate mail
+    read by real native sessions.
+- - Leave real managers untouched until separately authorized onboarding.
++ - Leave real managers untouched until separately authorized onboarding.
++ <!-- ARCADIA_CONTEXT_END -->
+
+
+ ❯ tests/agent-guidance.test.ts:266:40
+    264|     const entries = guidanceEntries(file(root, GUIDANCE_INDEX));
+    265|     expect(entries.filter((entry) => entry.path === checkpointPath)).t…
+    266|     expect(file(root, checkpointPath)).toBe(file(canonicalRoot, checkp…
+       |                                        ^
+    267|     for (const operation of ["onboarding", "between batches", "before …
+    268|       expect(renderGuidanceRetrieval(root, undefined, operation).join(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 22 passed (23)
+   Start at  07:11:17
+   Duration  3.07s (transform 1.73s, setup 0ms, import 2.17s, tests 1.05s, environment 0ms)
+

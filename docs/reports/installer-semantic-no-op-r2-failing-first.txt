@@ -1,0 +1,106 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/installer-semantic-no-op-resume/arcadia
+
+ ❯ tests/go-broker-agent-setup.test.ts (72 tests | 6 failed | 66 skipped) 325ms
+     × R2 preserves exact config with unrelated TOML headers: [[my.items]]
+name = "keep array table"
+ 30ms
+     × R2 preserves exact config with unrelated TOML headers: [features."a]b"]
+value = "keep quoted bracket"
+ 14ms
+     × R2 preserves exact config with unrelated TOML headers: [permissions.arcadia-unattended-custom]
+extends = ":read-only"
+ 14ms
+     × R2 refuses an inline managed profile before writing any configuration 16ms
+     × R2 refuses multiline trust before writing any configuration: """trusted""" 126ms
+     × R2 refuses multiline trust before writing any configuration: """untrusted
+retained value""" 123ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 preserves exact config with unrelated TOML headers: [[my.items]]
+name = "keep array table"
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 preserves exact config with unrelated TOML headers: [features."a]b"]
+value = "keep quoted bracket"
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 preserves exact config with unrelated TOML headers: [permissions.arcadia-unattended-custom]
+extends = ":read-only"
+
+ArcadiaError: Agent configuration did not pass its post-install verification.
+ ❯ validationError src/cli/errors.ts:70:10
+     68|
+     69| export function validationError(message: string, details: ArcadiaError…
+     70|   return new ArcadiaError("VALIDATION_ERROR", message, 2, details);
+       |          ^
+     71| }
+     72|
+ ❯ configureGoBrokerAgents src/agentSetup/goBrokerAgentSetup.ts:201:11
+ ❯ tests/go-broker-agent-setup.test.ts:320:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 refuses an inline managed profile before writing any configuration
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/go-broker-agent-setup.test.ts:333:52
+    331|     write(paths.codexConfig, config);
+    332|     const claude = readFileSync(paths.claudeSettings, "utf8");
+    333|     expect(() => configureGoBrokerAgents(options)).toThrow(/unsupporte…
+       |                                                    ^
+    334|     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    335|     expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 refuses multiline trust before writing any configuration: """trusted"""
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/go-broker-agent-setup.test.ts:348:54
+    346|       write(paths.codexConfig, config);
+    347|       const claude = readFileSync(paths.claudeSettings, "utf8");
+    348|       expect(() => configureGoBrokerAgents(options)).toThrow(/unsuppor…
+       |                                                      ^
+    349|       expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    350|       expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R2 refuses multiline trust before writing any configuration: """untrusted
+retained value"""
+AssertionError: expected [Function] to throw error matching /unsupported.*trust|trust.*multiline/ but got 'Codex config contains an unterminated…'
+
+- Expected:
+/unsupported.*trust|trust.*multiline/
+
++ Received:
+"Codex config contains an unterminated multiline string."
+
+ ❯ tests/go-broker-agent-setup.test.ts:348:54
+    346|       write(paths.codexConfig, config);
+    347|       const claude = readFileSync(paths.claudeSettings, "utf8");
+    348|       expect(() => configureGoBrokerAgents(options)).toThrow(/unsuppor…
+       |                                                      ^
+    349|       expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    350|       expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 66 skipped (72)
+   Start at  23:19:34
+   Duration  2.12s (transform 1.37s, setup 0ms, import 1.68s, tests 325ms, environment 0ms)
+

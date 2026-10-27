@@ -1,0 +1,95 @@
+/* /workspace/feed: the message feed, the Journey panel and its button, over a sky that shows system status. Scoped to the workspace surface; see docs/design/operator-presence.md. */
+.workspace-shell .feed-main { --glass: rgb(38 36 62 / .46); --glass-strong: rgb(16 20 38 / .9); --glass-line: rgb(255 255 255 / .16); --ink-soft: rgb(243 236 230 / .74); --ember: #e58f6f;
+  max-width: 1240px; margin: auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px)); }
+.feed-weather { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; display: block; pointer-events: none; }
+.feed-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.phase-arrived, .group-arrived { --phase: #7fd8a4; } .phase-in-review { --phase: #8ea2ff; } .phase-driving, .group-moving { --phase: #f2b13f; } .phase-launching { --phase: #ffd27a; }
+.phase-repairing { --phase: #ef7a45; } .phase-blocked, .group-blocked { --phase: #ff6b6b; } .phase-waiting, .group-waiting { --phase: #a39bb8; } .phase-parked { --phase: #6f7890; }
+
+/* system status */
+.feed-sky { position: relative; width: fit-content; margin: 0 0 18px auto; font-size: 12px; }
+.feed-sky summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); }
+.feed-sky summary::-webkit-details-marker { display: none; }
+.feed-sky .k { color: var(--ink-soft); text-transform: uppercase; font-size: 10.5px; letter-spacing: .14em; }
+.feed-sky b { font-weight: 500; }
+.feed-sky-weather { color: var(--ink-soft); }
+.feed-sky-dot { width: 8px; height: 8px; border-radius: 50%; background: #9fb7d9; }
+.feed-sky-dot.sky-active { background: #f2b13f; } .feed-sky-dot.sky-attention { background: #ffd27a; } .feed-sky-dot.sky-storm { background: #ff6b6b; } .feed-sky-dot.sky-static { background: #8f9bb0; }
+.feed-sky[open] > div { position: absolute; right: 0; top: 34px; z-index: 5; width: min(320px, calc(100vw - 32px)); background: #0c1224; border: 1px solid var(--glass-line); border-radius: 12px; padding: 10px 14px; }
+.feed-sky ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.workspace-shell .feed-sky p { margin: 0; }
+
+/* feed */
+.feed-grid { display: grid; grid-template-columns: minmax(0, 760px); justify-content: center; gap: 22px; align-items: start; }
+.view-journey .feed-grid { grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); justify-content: stretch; }
+@media (max-width: 900px) {
+  .view-journey .feed-grid { grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the Journey replaces the feed; the button brings it back. */
+  .view-journey .feed-feed { display: none; }
+}
+.feed-feed { min-width: 0; }
+.feed-section { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #e4c8a9; margin: 18px 0 10px 34px; }
+.feed-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.feed-msg { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
+.feed-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--ember); margin-top: 14px; flex: none; box-shadow: 0 0 18px rgb(229 143 111 / .6); }
+.workspace-shell .feed-bubble { position: relative; display: grid; gap: 4px; min-width: 0; flex: 1; max-width: 620px; padding: 12px 40px 12px 18px; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px); color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.workspace-shell a.feed-bubble:hover { background: rgb(52 48 80 / .6); text-decoration: none; }
+.feed-bubble strong { font-weight: 500; font-size: 16px; line-height: 1.4; }
+.feed-detail { display: block; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.feed-go { position: absolute; right: 16px; top: 12px; color: var(--ink-soft); }
+.feed-chip { justify-self: start; font-size: 11px; letter-spacing: .04em; padding: 2px 9px; border-radius: 999px; background: rgb(255 255 255 / .08); border: 1px solid var(--glass-line); color: var(--ink-soft); }
+.feed-chip.kind-decision { color: #ffd9aa; }
+.feed-chip.urgent { color: #ffe3cf; border-color: rgb(229 143 111 / .7); background: rgb(229 143 111 / .18); }
+.workspace-shell .feed-quiet, .workspace-shell .feed-problem { margin: 12px 0 0 34px; padding: 12px 18px; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); width: fit-content; }
+.workspace-shell .feed-problem { border-color: rgb(229 143 111 / .6); }
+
+/* journey */
+.feed-journey { min-width: 0; padding: 16px 18px; border-radius: 22px; background: rgb(12 18 36 / .86); border: 1px solid rgb(236 226 211 / .24); }
+.feed-journey-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.feed-journey h2 { margin: 0; font-size: 18px; font-weight: 450; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.feed-journey h2:focus { outline: none; }
+.feed-journey h2:focus-visible { outline: 2px solid #ffd9aa; outline-offset: 3px; border-radius: 4px; }
+.workspace-shell .feed-back { all: unset; cursor: pointer; flex-basis: 100%; font-size: 12.5px; color: #ffd9aa; }
+.workspace-shell .feed-back:focus-visible { outline: 2px solid #ffd9aa; outline-offset: 2px; }
+.feed-fixture { font-size: 11px; letter-spacing: .06em; color: #e4c8a9; }
+.workspace-shell .feed-fleet-phrase { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+.feed-pinned { display: grid; gap: 6px; margin-top: 12px; }
+.workspace-shell .feed-pinned button { all: unset; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 8px 12px; border-radius: 12px; font-size: 13px; color: #ffe3cf; background: rgb(255 107 107 / .12); border: 1px solid rgb(255 107 107 / .45); overflow-wrap: anywhere; }
+.feed-fleet { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.workspace-shell .feed-rover { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgb(236 226 211 / .18); }
+.workspace-shell .feed-rover:hover { background: rgb(255 255 255 / .05); }
+.workspace-shell :is(.feed-rover, .feed-pinned button):focus-visible { outline: 2px solid #ffd9aa; outline-offset: 2px; }
+.feed-rover-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.feed-rover-title strong { font-weight: 500; overflow-wrap: anywhere; }
+.feed-rover-project { font-size: 12px; color: var(--ink-soft); }
+.feed-your-move { font-size: 12.5px; color: #ffe3cf; }
+.workspace-shell p.feed-your-move { margin: 8px 0 0; }
+.feed-track { position: relative; display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+.feed-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed rgb(236 226 211 / .3); }
+.feed-track .leg { position: relative; flex: 1; height: 8px; border-radius: 4px; background: rgb(255 255 255 / .12); }
+.feed-track .leg:not(.phase-parked):not(.phase-waiting) { background: var(--phase); }
+.feed-track .leg.current::after { content: ""; position: absolute; right: -2px; top: -5px; width: 18px; height: 18px; border-radius: 6px 6px 4px 4px; background: #f0d6c2; box-shadow: 0 0 10px rgb(240 214 194 / .7), inset 0 -4px 0 #8f6450; }
+.feed-phase { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--phase, #c6cbd9); white-space: nowrap; }
+.workspace-shell .feed-milestone { margin: 10px 0 4px; font-size: 13px; color: var(--ink-soft); }
+.feed-legs { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.feed-legs li { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.feed-legs li.current strong { color: #ffe0bd; }
+.feed-legs strong { font-weight: 500; font-size: 14px; display: block; }
+.feed-counts { display: block; font-size: 11.5px; color: var(--ink-soft); }
+.workspace-shell .feed-note { font-size: 12px; color: var(--ink-soft); }
+
+/* the Journey button: one ring segment per rover, the count of what waits on the operator */
+.workspace-shell .feed-fab { all: unset; cursor: pointer; position: fixed; z-index: 8; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgb(0 0 0 / .35); -webkit-tap-highlight-color: transparent; }
+.workspace-shell .feed-fab:hover { background: rgb(28 32 56 / .95); }
+.workspace-shell .feed-fab:focus-visible { outline: 2px solid #ffd9aa; outline-offset: 3px; }
+.feed-fab-ring { position: relative; width: 48px; height: 48px; display: grid; place-items: center; }
+.feed-fab-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
+.feed-fab-ring circle { fill: none; stroke-width: 5; }
+.feed-fab-ring .track { stroke: rgb(255 255 255 / .1); }
+.feed-fab-ring .seg { stroke: var(--phase); stroke-linecap: butt; }
+.feed-fab-count { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.feed-fab-label { font-size: 14px; font-weight: 500; }
+/* Something urgent waits: a slow ember halo, still under reduced motion. */
+.feed-fab.alert .feed-fab-ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ember); animation: feed-halo 2.4s ease-in-out infinite; }
+@keyframes feed-halo { 50% { box-shadow: 0 0 0 2px var(--ember), 0 0 14px 2px rgb(229 143 111 / .55); } }
+@media (prefers-reduced-motion: reduce) { .feed-fab.alert .feed-fab-ring::after { animation: none; } }

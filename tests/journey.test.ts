@@ -1,3 +1,4 @@
+import { describeEnvironmentWalls } from "../src/production/sessionCapability.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -193,6 +194,60 @@ describe("deriveJourney", () => {
 
   describe("activity", () => {
     const activity = () => deriveJourney(db, KEY, NOW).activity;
+
+    it.each(["incomplete_resumable", "needs_input", "legacy"])("distinguishes %s from the matching exit receipt without a permission prescription", outcome => {
+      session("s1", "claude/incomplete", "2026-10-19T15:00:00.000Z", "needs_input");
+      db.prepare("UPDATE agent_sessions SET exit_status = 0 WHERE id = 's1'").run();
+      if (outcome === "legacy") db.prepare("DELETE FROM session_exit_receipts WHERE session_id = 's1'").run();
+      else db.prepare("UPDATE session_exit_receipts SET outcome = ?, evidence_json = '{}' WHERE session_id = 's1'").run(outcome);
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: "Quoted SQLITE_WORKSPACE_WRITE_DENIED", remedy: "Grant permissions.additionalDirectories workspace write, then reset the repair budget.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      db.pragma("query_only = ON");
+      const result = deriveJourney(db, KEY, NOW);
+      expect(result.activity.headline).toBe(outcome === "incomplete_resumable" ? "Stopped: the candidate is incomplete" : outcome === "needs_input" ? "Stopped: the Session needs input" : "Stopped: exit cause unknown");
+      expect(result.activity.yourMove).toBeNull();
+      expect(result.now?.label).not.toContain("running");
+      expect(result.warnings).toContainEqual(expect.stringContaining("no attributable wall evidence"));
+    });
+    it("preserves an existing preflight remedy before any Session has launched", () => {
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: "Host preflight refused before launch.", remedy: "Inspect the declared read-only profile.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBe("Inspect the declared read-only profile.");
+    });
+    it("preserves a subsequent genuine host preflight after an older Session exit", () => {
+      session("s1", "claude/old", "2026-10-19T15:00:00.000Z", "needs_input");
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: describeEnvironmentWalls(KEY, [{ wallClass: "workspace_write", evidence: "read-only profile", remedy: "Inspect the declared read-only profile." }], "preflight").message, remedy: "Inspect the declared read-only profile.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBe("Inspect the declared read-only profile.");
+    });
+    it.each(["wrong class", "wrong provenance", "partial classes"])("does not justify an exit remedy using %s", kind => {
+      session("s1", "claude/wrong-wall", "2026-10-19T15:00:00.000Z", "needs_input");
+      const evidence = { sessionCapability: { version: 1, status: "wall", provenance: kind === "wrong provenance" ? "session_probe" : "failed_tool_operation", walls: [{ wallClass: "workspace_write" }] } };
+      db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE session_id = 's1'").run(JSON.stringify(evidence));
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: `Environment wall for ${KEY} (${kind === "wrong class" ? "host_validation" : kind === "partial classes" ? "workspace_write, host_validation" : "workspace_write"}): the Session exited with no diff and will not be relaunched automatically.`, remedy: "Inspect host validation access.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBeNull();
+    });
+    it("never borrows an earlier Session's input request or wall evidence", () => {
+      session("old", "claude/old", "2026-10-19T14:00:00.000Z");
+      db.prepare("UPDATE session_exit_receipts SET outcome = 'needs_input' WHERE session_id = 'old'").run();
+      session("new", "claude/new", "2026-10-19T15:00:00.000Z", "needs_input");
+      db.prepare("DELETE FROM session_exit_receipts WHERE session_id = 'new'").run();
+      expect(activity().headline).toBe("Stopped: exit cause unknown");
+    });
+    it("keeps the worker's wall remedy only with attributable evidence for the matching exit", () => {
+      session("s1", "claude/proven-wall", "2026-10-19T15:00:00.000Z", "needs_input");
+      const evidence = { sessionCapability: { version: 1, status: "wall", provenance: "failed_tool_operation", walls: [{ wallClass: "workspace_write", operation: "arcadia agent-ask preview", deniedPath: "/fixture/workspace", evidence: "actual denied operation" }] } };
+      db.prepare("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable', evidence_json = ? WHERE session_id = 's1'").run(JSON.stringify(evidence));
+      insert("production_operator_escalations", { action_key: KEY, kind: "environment_wall", message: describeEnvironmentWalls(KEY, [{ wallClass: "workspace_write", evidence: "actual denied operation", remedy: "Inspect workspace access." }], "exit").message, remedy: "Inspect the recorded operation before deciding on workspace access.", first_detected_at: NOW.toISOString(), last_seen_at: NOW.toISOString() });
+      expect(activity().yourMove).toBe("Inspect the recorded operation before deciding on workspace access.");
+      db.prepare("UPDATE session_exit_receipts SET evidence_json = '{' WHERE session_id = 's1'").run();
+      expect(activity().yourMove).toBeNull();
+    });
+    it("reads an older exit table without evidence_json as unknown, without migrating it", () => {
+      session("s1", "claude/legacy", "2026-10-19T15:00:00.000Z", "needs_input");
+      db.prepare("UPDATE session_exit_receipts SET outcome = 'incomplete_resumable' WHERE session_id = 's1'").run();
+      db.exec("ALTER TABLE session_exit_receipts DROP COLUMN evidence_json");
+      db.pragma("query_only = ON");
+      expect(activity().headline).toBe("Stopped: the candidate is incomplete");
+      expect((db.prepare("PRAGMA table_info(session_exit_receipts)").all() as Array<{ name: string }>).some(column => column.name === "evidence_json")).toBe(false);
+    });
 
     it("is in review while the PR waits for checks, and stopped on an open obstacle", () => {
       seedPath();
@@ -497,7 +552,26 @@ describe("derivePlanJourney", () => {
       expect(run.journey.counts).toMatchObject({ victories: 3 });
       expect(run.journey.destination.reached).toBe(false);
       expect(journey.context.plan).toMatchObject({ slug: "demo-plan", total: 3, done: 1 });
-      expect(renderPlanJourneySuccess({ data: journey } as never)[0]).toContain("arcadia/plan:demo-plan (active)");
+      const rendered = renderPlanJourneySuccess({ data: journey } as never);
+      expect(rendered[0]).toContain("arcadia/plan:demo-plan (active)");
+      expect(rendered).toContainEqual(expect.stringMatching(/managed development Session: .*0 dated alert clears, .*Source agent_sessions:/));
+    });
+  });
+
+  it("keeps the Plan readable when optional progress meets a stale Session schema", () => {
+    withRepo((documents) => {
+      db.exec("ALTER TABLE agent_sessions DROP COLUMN is_simulated");
+      const journey = derivePlanJourney(db, documents, "demo-plan", NOW);
+      expect(journey.actions.map((action) => [action.id, action.current])).toEqual([["shipped", false], ["demo-action", true], ["later", false]]);
+      expect(journey.actions[0].journey.destination.reached).toBe(true);
+      expect(journey.progress).toBeUndefined();
+      expect(journey.warnings).toContainEqual(expect.stringMatching(/^Progress unavailable: .*is_simulated/));
+      const rendered = renderPlanJourneySuccess({ data: journey } as never);
+      expect(rendered).toContainEqual(expect.stringContaining("demo-action *"));
+      expect(rendered).toContain("Warnings:");
+      expect(rendered).toContainEqual(expect.stringMatching(/^ {2}Progress unavailable: .*is_simulated/));
+      // The read projection must not silently migrate the database to repair itself.
+      expect((db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).some((column) => column.name === "is_simulated")).toBe(false);
     });
   });
 

@@ -1,3 +1,4 @@
+import { sessionProbeNoncePath } from "../src/sessions/sessionProbeCommand.js";
 import { execFileSync } from "node:child_process";
 import { runReviewRequiredCommand } from "../src/commands/review.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -437,7 +438,7 @@ describe("runManagedProductionTick", () => {
     expect(rows[0]).toMatchObject({ kind: "environment_wall", remedy: expect.stringContaining("Use a workspace-write profile.") });
   });
 
-  it("replays a no-diff Session that hit workspace-write and sandbox refusals: one named blocker, no second launch (A12)", () => {
+  it("retains a legacy no-diff token-ceiling stop without inventing attribution for diagnostic prose (A12)", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     activatePolicy(fixture);
@@ -461,7 +462,7 @@ describe("runManagedProductionTick", () => {
     const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ kind: "budget_exhausted" });
-    expect(escalations[0]?.message).toContain("workspace_write");
+    expect(escalations[0]?.message).not.toContain("workspace_write");
     expect(escalations[0]?.message).toContain("11100000 input tokens (11100000 uncached + 0 cached)");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listProductionAttemptTokens(db, "test-project/define-contract")))
       .toEqual([expect.objectContaining({ sessionId: first.id, inputTokens: 11_100_000, cachedInputTokens: 0, outputTokens: 4000 })]);
@@ -481,6 +482,58 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) =>
       (db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") as { attempts: number }).attempts))
       .toBeGreaterThanOrEqual(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+  });
+
+  it("retains attributed capability evidence atomically with the exit, without replaying or clearing its stop", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, db => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000), capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, db => getRepositoryLease(db, fixture.repo))!;
+    const file = sessionLogPath(fixture.workspace, first.id);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "arcadia agent-ask preview", exit_code: 1, status: "failed", aggregated_output: "Error [SQLITE_WORKSPACE_WRITE_DENIED]: attempt to write a readonly database, open '/fixture/workspace/database/arcadia.sqlite3'" } }));
+    tmux.live.delete(first.tmux_session_name);
+    tick();
+    const read = () => withReadOnlyDatabase(fixture.workspace, db => getSessionExitReceipt(db, first.id));
+    const original = read()!;
+    expect(JSON.parse(original.evidence_json!).sessionCapability).toMatchObject({ version: 1, provenance: "failed_tool_operation", status: "wall", walls: [{ wallClass: "workspace_write", operation: "arcadia agent-ask preview", deniedPath: "/fixture/workspace/database/arcadia.sqlite3" }] });
+    const stop = withReadOnlyDatabase(fixture.workspace, db => listOperatorEscalations(db)).find(row => row.kind === "environment_wall");
+    expect(stop).toBeDefined();
+    tick(); tick();
+    expect(tmux.launches).toHaveLength(1);
+    expect(read()!.evidence_json).toBe(original.evidence_json);
+  });
+
+  it.each(["malformed probe", "generic test error", "quoted denial", "denial-prefix fixture error"])("retains an unknown exit without exhausting allowances for %s", kind => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, db => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000), capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, db => getRepositoryLease(db, fixture.repo))!;
+    const file = sessionLogPath(fixture.workspace, first.id);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const nonce = "fixture-nonce";
+    writeFileSync(sessionProbeNoncePath(fixture.workspace, first.id), nonce);
+    writeFileSync(file, kind === "malformed probe"
+      ? JSON.stringify({ probe: "session-capability/v1", nonce, ok: true, checks: [null] })
+      : JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "pnpm test", exit_code: 1, aggregated_output: kind === "denial-prefix fixture error" ? "Error: permission denied in fixture assertion" : kind === "generic test error" ? "Error: sandbox fixture assertion failed" : 'Error: expected output "validation operation not permitted"' } }));
+    tmux.live.delete(first.tmux_session_name);
+    tick();
+    const receipt = withReadOnlyDatabase(fixture.workspace, db => getSessionExitReceipt(db, first.id));
+    expect(receipt).not.toBeNull();
+    expect(JSON.parse(receipt!.evidence_json!).sessionCapability).toMatchObject({ version: 1, status: "unknown", walls: [] });
+    expect(withReadOnlyDatabase(fixture.workspace, db => listOperatorEscalations(db)).some(row => row.kind === "environment_wall")).toBe(false);
+    const attempts = withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") as { attempts: number } | undefined);
+    expect(attempts?.attempts ?? 0).toBeLessThan(PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
   });
 
   it("clears the no-progress retry count when a resumed candidate actually advances", () => {

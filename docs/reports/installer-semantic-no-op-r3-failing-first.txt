@@ -1,0 +1,43 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/installer-semantic-no-op-resume/arcadia
+
+ ❯ tests/go-broker-agent-setup.test.ts (79 tests | 6 failed | 72 skipped) 146ms
+     × R3 refuses quoted managed root assignments before writes: "permissions" = { "arcadia-unattended" = { extends = ":read-only" } } 34ms
+     × R3 refuses quoted managed root assignments before writes: 'permissions' = { 'arcadia-unattended' = { extends = ':read-only' } } 18ms
+     × R3 refuses quoted managed root assignments before writes: "permissions"."arcadia-unattended".extends = ":read-only" 17ms
+     × R3 refuses quoted managed root assignments before writes: 'permissions'.'arcadia-unattended'.extends = ':read-only' 18ms
+     × R3 refuses quoted managed root assignments before writes: "per\u006dissions" = { "arcadia-unattended" = { extends = ":read-only" } } 18ms
+     × R3 refuses quoted managed root assignments before writes: "\U00000070ermissions"."arcadia-unattended".extends = ":read-only" 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: "permissions" = { "arcadia-unattended" = { extends = ":read-only" } }
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: 'permissions' = { 'arcadia-unattended' = { extends = ':read-only' } }
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: "permissions"."arcadia-unattended".extends = ":read-only"
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: 'permissions'.'arcadia-unattended'.extends = ':read-only'
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: "per\u006dissions" = { "arcadia-unattended" = { extends = ":read-only" } }
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R3 refuses quoted managed root assignments before writes: "\U00000070ermissions"."arcadia-unattended".extends = ":read-only"
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/go-broker-agent-setup.test.ts:370:52
+    368|     write(paths.codexConfig, config);
+    369|     const claude = readFileSync(paths.claudeSettings, "utf8");
+    370|     expect(() => configureGoBrokerAgents(options)).toThrow(/unsupporte…
+       |                                                    ^
+    371|     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    372|     expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 1 passed | 72 skipped (79)
+   Start at  23:26:48
+   Duration  2.60s (transform 1.86s, setup 0ms, import 2.27s, tests 146ms, environment 0ms)
+

@@ -1,0 +1,93 @@
+docs/reports/installer-semantic-no-op-failing-first.txt:21: trailing whitespace.
++- approval_policy = 'on-request' # keep approval comment
+docs/reports/installer-semantic-no-op-failing-first.txt:23: trailing whitespace.
++- default_permissions = ":workspace"
+docs/reports/installer-semantic-no-op-failing-first.txt:24: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:25: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:26: trailing whitespace.
++- [permissions.arcadia-unattended.network]
+docs/reports/installer-semantic-no-op-failing-first.txt:27: trailing whitespace.
++- enabled = false
+docs/reports/installer-semantic-no-op-failing-first.txt:28: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:29: trailing whitespace.
++- [permissions.arcadia-unattended.filesystem.":workspace_roots"]
+docs/reports/installer-semantic-no-op-failing-first.txt:30: trailing whitespace.
++- ".env" = "deny"
+docs/reports/installer-semantic-no-op-failing-first.txt:31: trailing whitespace.
++- ".env.*" = "deny"
+docs/reports/installer-semantic-no-op-failing-first.txt:32: trailing whitespace.
++- "**/*.env" = "deny"
+docs/reports/installer-semantic-no-op-failing-first.txt:33: trailing whitespace.
++- "**/.env" = "deny"
+docs/reports/installer-semantic-no-op-failing-first.txt:34: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:35: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:48: trailing whitespace.
++- [permissions.arcadia-unattended.workspace_roots]
+docs/reports/installer-semantic-no-op-failing-first.txt:50: trailing whitespace.
++- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.codex/worktrees" = true
+docs/reports/installer-semantic-no-op-failing-first.txt:52: trailing whitespace.
++- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.claude/worktrees" = true
+docs/reports/installer-semantic-no-op-failing-first.txt:54: trailing whitespace.
++- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.opencode/worktrees" = true
+docs/reports/installer-semantic-no-op-failing-first.txt:55: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:56: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:59: trailing whitespace.
++- [permissions.arcadia-unattended]
+docs/reports/installer-semantic-no-op-failing-first.txt:60: trailing whitespace.
++- description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
+docs/reports/installer-semantic-no-op-failing-first.txt:61: trailing whitespace.
++- extends   = ':workspace' # keep profile comment
+docs/reports/installer-semantic-no-op-failing-first.txt:62: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:63: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:64: trailing whitespace.
++- [projects."/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/project"]
+docs/reports/installer-semantic-no-op-failing-first.txt:65: trailing whitespace.
++- trust_level = "trusted"
+docs/reports/installer-semantic-no-op-failing-first.txt:66: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:67: trailing whitespace.
++- # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
+docs/reports/installer-semantic-no-op-failing-first.txt:68: trailing whitespace.
++- 
+docs/reports/installer-semantic-no-op-failing-first.txt:69: trailing whitespace.
++- # keep final comment
+docs/reports/installer-semantic-no-op-failing-first.txt:365: new blank line at EOF.
+docs/reports/installer-semantic-no-op-format-passing.txt:9: new blank line at EOF.
+docs/reports/installer-semantic-no-op-passing.txt:9: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r2-failing-first.txt:106: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r2-full-passing.txt:9: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r2-passing.txt:9: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:6: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:8: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:14: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:26: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:28: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:38: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:40: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:48: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:50: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:56: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-branch-diff-check.txt:60: trailing whitespace.
+++- 
+docs/reports/installer-semantic-no-op-r3-failing-first.txt:43: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r3-full-passing.txt:9: new blank line at EOF.
+docs/reports/installer-semantic-no-op-r3-passing.txt:9: new blank line at EOF.

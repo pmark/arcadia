@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
 project: arcadia
-status: draft
+status: active
 milestone: Make Arcadia Go orient one caller truthfully before authorized work.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-16
+updated: 2026-10-27
 actions:
   - id: resolve-go-caller-context
     title: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
@@ -67,6 +67,9 @@ actions:
     references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "docs/agent-guidance/continuation.md", "docs/agents-context.md", "src/sessions/actionBrief.ts", "tests/action-brief.test.ts", "START_HERE.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers"]
 questions: []
 decisions: []
+current_action: reuse-go-context-through-authorized-continuation
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Make Arcadia Go orient one caller truthfully before authorized work.

@@ -186,6 +186,18 @@ describe("five-role attempt lineage through the real tick", () => {
     setEvidence(original);
     expect(gate(rehearsal, session).satisfied).toBe(true);
 
+    // Completion execution evidence is a separate retained record from preservation's self-check.
+    const exitEvidence = withDatabase(rehearsal.workspace, db => (db.prepare("SELECT evidence_json FROM session_exit_receipts WHERE session_id = ?").get(session.id) as { evidence_json: string }).evidence_json);
+    withDatabase(rehearsal.workspace, db => db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE session_id = ?").run(
+      JSON.stringify({ ...JSON.parse(exitEvidence), completionValidation: { ref: "/fixture/completion/validation.json", sha256: "a".repeat(64) } }), session.id));
+    // An exit-only reference has not yet been verified/published by preservation.
+    expect(gate(rehearsal, session).satisfied).toBe(true);
+    setEvidence(JSON.stringify({ ...JSON.parse(original), completionValidation: { ref: "/fixture/completion/validation.json", sha256: "a".repeat(64) } }));
+    expect(gate(rehearsal, session)).toMatchObject({ satisfied: false, reason: expect.stringMatching(/code-review: stale; qa: stale/) });
+    setEvidence(original);
+    withDatabase(rehearsal.workspace, db => db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE session_id = ?").run(exitEvidence, session.id));
+    expect(gate(rehearsal, session).satisfied).toBe(true);
+
     // Re-judging a binding that already passed is refused: it is neither a superseded binding nor a retry after failure.
     expect(code(() => verdict(rehearsal, session, "qa", { actorId: "qa-reviewer:second" }))).toBe("attempt_retry_not_authorized");
 

@@ -1,0 +1,1 @@
+docs/reports/handoffs/20261027-installer-semantic-no-op-ellis-repair.md: file name must be <YYYYMMDDTHHMMZ>-<session_id>.md

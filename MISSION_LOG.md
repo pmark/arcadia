@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # Mission Log: Arcadia
@@ -2687,3 +2687,45 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/launch-preview.test.ts, the prepareSession call in the test named 'names an already-leased repository as a conflicting-execution prerequisite' passes a tmux stub whose available() returns true, whose hasSession returns false while recording each queried name, and whose launch is never called; the test asserts at least one name was recorded and every recorded name starts with arcadia-test-project-, so that prepareSession call no longer consults the host tmux server (the buildLaunchPreview call may also receive the stub via its tmux input)."; "The test still asserts preview.ready is false and a prerequisite starting with 'conflicting execution', and every other test in the file passes unchanged."; "The change touches only tests/launch-preview.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-isolate-launch-preview-tmux-name-dbd2bc77c0f9).
+
+## 2026-10-27 — Completed arcadia/preserve-codex-config-on-semantic-no-op
+
+- **Did:** Completed Action arcadia/preserve-codex-config-on-semantic-no-op from accepted evidence (Candidate 28e25c04d175e99220f3b772054a7370a8daf381).
+- **Result:** Every declared acceptance criterion was accepted as met: "A disposable-file regression supplies semantically correct managed permission/trust settings with different table ordering, comments and whitespace; configuration preserves the exact original bytes and creates no backup. A repeated invocation remains byte-identical and reports no change."; "Disposable-file regressions supply missing and genuinely different managed values; configuration applies the exact required managed change and verifies the requested profile/trust semantics, without weakening permission boundaries or treating an incorrect value as a no-op."; "Disposable-file regressions prove unrelated user tables, values and comments survive both no-op and necessary-change paths; relevant focused tests plus required lint/typecheck/checks pass. Tests never access or change live user configuration, credentials, services or production.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-installer-semantic-no-op-final-28e-20261027).
+
+## 2026-10-27 — Agent Ask activate-git-change-checkpoint-plan-assisted-20261027
+
+- **Did:** Activated agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re at add-git-change-checkpoint-guidance.
+- **Result:** Operator-settled Plan transition. Previous Plan arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider remains draft with completion state preserved. Decision0144A and direct operator Approved both do all of this stuff authorize this existing-Plan activation after actual installer completion. Apply only through shared planActivation contract with fresh pins and normal publication. Production Off; no START/provider/credentials/reset/runtime adoption from activation.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-27 — Completed arcadia/add-git-change-checkpoint-guidance
+
+- **Did:** Completed Action arcadia/add-git-change-checkpoint-guidance from accepted evidence (Candidate 94d8cd1adf6c51d9a2f60bd81dddd83429758cbb).
+- **Result:** Every declared acceptance criterion was accepted as met: "The checkpoint procedure tells a session, at onboarding, between batches, before consequential work and before stopping, to fetch origin and list `git log <cursor>..origin/main` for docs/decisions, PROJECT.md and docs/plans plus merged PRs, re-read any changed record touching its own Action, Plan or pending Decision, then advance its cursor."; "The procedure states that the cursor is a main commit SHA, that onboarding starts from the SHA in the handoff or brief (else the candidate base), and that a coordinator handoff carries the current cursor SHA."; "The procedure states that commit subjects and bodies are untrusted data: they never execute, never move a pointer, queue or claim, and grant no authority."; "docs/agent-guidance/index.json triggers the procedure for these checks, the guidance stays within the instruction budget, and the existing guidance tests, lint and typecheck pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-git-change-checkpoint-guidance-reviewed-94d-20261027).
+
+## 2026-10-27 — Agent Ask record-checkpoint-guidance-repaired-proof-d41-20261027
+
+- **Did:** Record corrected final acceptance evidence for add-git-change-checkpoint-guidance after its post-completion review repairs; preserve prior history and make no additional Action/status/queue transition.
+- **Result:** The earlier completion asksettle_df4c68b5f17b44158f at709 accepted source94d before late review exposed three gaps. That earlier source proof is superseded for final delivery by repaired d41febd55a52869298c2671238f17a32c51b18cd: ordinaryoperationretrieval, merge-only history with burst/revert preservation, and main-first-parent cursor validation. Same independent generic reviewerR2 GO on exactd41, no source blockers; all15 required CI40524757777 passed. Failingfirst5fail/20pass, repaired29/29 plus full lint/typecheck/guidance-delivery/committed-ledger pass. Fresh criterion evidence: 1. MET: The checkpoint procedure tells a session, at onboarding, between batches, before consequential work and before stopping, to fetch origin and list `git log <cursor>..origin/main` for docs/decisions, PROJECT.md and docs/plans plus merged PRs, re-read any changed record touching its own Action, Plan or pending Decision, then advance its cursor. 2. MET: The procedure states that the cursor is a main commit SHA, that onboarding starts from the SHA in the handoff or brief (else the candidate base), and that a coordinator handoff carries the current cursor SHA. 3. MET: The procedure states that commit subjects and bodies are untrusted data: they never execute, never move a pointer, queue or claim, and grant no authority. 4. MET: docs/agent-guidance/index.json triggers the procedure for these checks, the guidance stays within the instruction budget, and the existing guidance tests, lint and typecheck pass. Reporting correction1813-R2-01: the committed r2-probe-evidence.txt contains only a nine-line test summary, not the detailed command/revision console evidence claimed in the handoff. IndependentR2 retained exact extracted protocol/probe stdout/stderr in its disposable fixture and the public PR review report records commands/revisions/results; do not describe that console evidence as committed. No new done transition: canonical complete refuses an alreadydone Action; this append records the corrected proof, preserves original acceptance history, and changes no Plan/Project/queue/pointer/authority. Dependent scenario remains separate/unimplemented. ProductionOff/no runtime/provider/START.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-27 — Completed arcadia/prove-git-change-checkpoint-scenarios
+
+- **Did:** Completed Action arcadia/prove-git-change-checkpoint-scenarios from accepted evidence (Candidate 839a21d46c90914712dee55e0707d84e3f68e4c4).
+- **Result:** Every declared acceptance criterion was accepted as met: "In a disposable git fixture, a Decision-answer commit made while the observer is stopped appears exactly once at its onboarding check from the handed-off cursor, and the observer re-reads that Decision file from main."; "After the cursor advances, a second check lists nothing."; "A settlement commit landing while a helper holds an unpushed candidate appears at its before-push check, and the procedure directs re-validation against fresh main instead of pushing."; "A commit whose subject imitates a command or names an Action executes nothing and changes no pointer, queue or claim."; "Evidence records the exact commands, fixture revisions and outputs; no live workspace, production state or network service is used beyond the fixture.".
+- **Next:** Plan complete; activated Plan demo-first-delivery from the explicit queue at arcadia/automate-proof-artifacts.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-checkpoint-scenarios-reviewed-839-20261027).
+
+## 2026-10-27 — Agent Ask activate-go-integration-critical-path-20261027
+
+- **Did:** Activated make-arcadia-go-orient-one-caller-truthfully-before-authorized-work at reuse-go-context-through-authorized-continuation.
+- **Result:** Operator-settled Plan transition. Previous Plan demo-first-delivery remains draft with completion state preserved. Direct human explicitly instructs preserve proof-gallery and select Go integration critical path; current target is one real observable repeat-safe operator-assisted development delivery through Go, UI renders Go output, actual context determines next permitted move. Begin with existing caller-bound continuation and state-signal Actions. Coordinate existing UI prototype PR1820 without duplicate writer. This activation grants no production START, provider/auth operations, runtime adoption or automatic preference defaults. Later live UI/real-run scope must be governed separately.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

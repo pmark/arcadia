@@ -154,8 +154,9 @@ printf '{"args":"%s","key":"%s","auth":"%s","oauth":"%s","base":"%s","bedrock":"
   });
 
   it.runIf(process.platform !== "win32")("kills a CLI call at its bound and reports why", async () => {
-    fakeClaude("echo 'stuck waiting' >&2; sleep 30");
-    const result = await runClaudeCliHeadless(CLAUDE_CLI_SELF_REFRESH_ARGS, 500);
+    // Keep the sleeping process as the direct child and allow startup under CI load.
+    fakeClaude("echo 'stuck waiting' >&2; exec sleep 30");
+    const result = await runClaudeCliHeadless(CLAUDE_CLI_SELF_REFRESH_ARGS, 2_000);
     expect(result).toEqual({ ok: false, detail: "signal SIGKILL: stuck waiting" });
   });
 

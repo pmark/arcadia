@@ -9,7 +9,7 @@
 .workspace-header {display:flex;align-items:center;gap:24px;max-width:1400px;margin:auto;padding:28px 40px;}
 .workspace-wordmark {font-size:29px;letter-spacing:-1.5px;font-weight:500;}
 .workspace-header>span {color:#e1e4ed;font-size:13px;flex:1;}
-.workspace-header>a:last-child {font-size:13px;padding:12px;}
+.workspace-header>a:not(.workspace-wordmark) {font-size:13px;padding:12px;}
 .workspace-main {max-width:1240px;margin:auto;padding:20px 32px 28px;}
 .workspace-breadcrumbs {display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;font-size:13px;margin:0 0 20px;overflow-wrap:anywhere;}
 .workspace-breadcrumbs [aria-current="page"] {color:#ffe0bd;}
@@ -43,7 +43,7 @@
 .workspace-facts {font-size:13px;line-height:1.7;}.workspace-facts dt {color:#d8bea0;margin-top:14px;}.workspace-facts dd {margin:0;}
 .workspace-footer {font-size:11px;text-align:center;margin-top:28px;color:#e5e7ef;}
 .workspace-skip {position:absolute;left:16px;top:0;transform:translateY(-150%);background:#11192e;padding:12px;z-index:3;}.workspace-skip:focus {transform:translateY(0);}
-@media(max-width:760px){.workspace-header{padding:16px 20px;gap:12px;}.workspace-header>span{display:none;}.workspace-header>a:last-child{margin-left:auto;}.workspace-main{padding:12px 16px 24px;}.workspace-grid{grid-template-columns:minmax(0,1fr);gap:16px;}.workspace-conversation{min-height:430px;}.workspace-context{padding:20px;}.workspace-conversation-slot{padding:28px 24px;}.workspace-context-panel{padding:20px;}.workspace-breadcrumbs{font-size:12px;}.workspace-history{padding:10px 20px;}}
+@media(max-width:760px){.workspace-header{padding:16px 20px;gap:12px;}.workspace-header>span{display:none;}.workspace-header>a:not(.workspace-wordmark){padding:12px 6px;}.workspace-header>a:nth-of-type(2){margin-left:auto;}.workspace-main{padding:12px 16px 24px;}.workspace-grid{grid-template-columns:minmax(0,1fr);gap:16px;}.workspace-conversation{min-height:430px;}.workspace-context{padding:20px;}.workspace-conversation-slot{padding:28px 24px;}.workspace-context-panel{padding:20px;}.workspace-breadcrumbs{font-size:12px;}.workspace-history{padding:10px 20px;}}
 @media(prefers-reduced-motion:reduce){.workspace-entities a{transition:none;}}
 
 

@@ -4,6 +4,28 @@ This is the **single canonical checklist** for the remaining unattended-producti
 
 ## Operator view: the rover’s route from here
 
+**Production is Off. One of the three jobs has been delivered; the other two remain held.** The [current Journey](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current) is the operator's status view. The old October25 START buttons are historical: their allowances are consumed and the daily START/STOP delegation expired. They are not a next action to press.
+
+Derived **2026-10-26** from the coordinator's retained receipts and exact merged source, with production last confirmed **Off revision83 / epoch46 / zero admissions**. This refresh records known state; it performs no new runtime observation or operation.
+
+| State | Evidence and remaining gate |
+| --- | --- |
+| Delivered | [PR1779](https://github.com/pmark/arcadia/pull/1779) is the only delivered job in this three-job acceptance record. This does not prove the full unattended milestone. |
+| Held | [PR1783](https://github.com/pmark/arcadia/pull/1783) and [PR1787](https://github.com/pmark/arcadia/pull/1787) retain their original candidates, exit records, attempts and review history. Source repairs do not accept or restart either candidate. Held PR1662 also stays untouched. |
+| Source merged; not installed | [PR1794](https://github.com/pmark/arcadia/pull/1794) merged at `76457a9974fd3fbd6ab5e6270a844bcc894301d1`, following the merged completion-evidence and attribution repairs. It adds the bounded supplemental evidence producer and explicitly pinned verified consumer. Exact-head R3 review and all15 CI jobs passed. Source publication is not runtime adoption, producer execution or a live review result. |
+| Next approval package | Prepare one exact guarded adoption that preserves the canonical pointer history and incorporates the merged fixes. Then retain the separate exact supplemental-producer authority, Artifact ID/hash pins, finite production-Active review authority and a fresh two-Action START scope. These operations remain unapproved; preparing this checklist or a preservation PR grants none of them. |
+| Capacity authority; consumption unknown | [Decision0141](decisions/0141-record-standing-daily-claude-renewal-and-verification-approval.md) permits at most one needed bounded renewal-and-worker-verification sequence per America/Los_Angeles day, within its exact class. It explicitly counts0139/0140 as **October25 consumed**. **October26 consumption coverage is UNKNOWN:** the authoritative daily-ledger path/implementation has not been established in the known receipt locations. Absence of a found marker does not prove the day unused. Do not renew or probe until that coverage and fresh exact bindings are established; no additional human approval is required within the Decision's unchanged class. |
+| Unproved | Both remaining real deliveries and the full `first-unattended-run` acceptance record, including allowed operator touches. Only their complete evidence can close the milestone. |
+
+**The next operator gate is a concrete reviewed adoption/continuation package, not an old START button.** Runtime adoption, supplemental validation, Artifact-pinned Active reviews and a new two-Action START each retain their exact authority and evidence requirements. No new START is authorized by this status refresh. Failures and uncertain attempts remain consumed; no reset, reused nonce, credential inference or automatic retry is implied.
+
+Evidence custody remains `artifacts/generated/session-closeouts/20261023-rowan-offline/READINESS-HANDOFF.md`, its retained renewal/verification and runtime receipts, canonical Decisions and the named PR records. Generated evidence is host-local and ignored; a repository link does not make it portable. Rowan retains sole coordination; no new watch or live operation is created here.
+
+<details>
+<summary>Superseded October25 executive readiness — historical source pins, consumed allowances and expired START advice</summary>
+
+## Operator view: the rover’s route from here
+
 **The rover has its route, three job cards and a working fuel gauge. It is still parked.** Production remains Off until you separately approve **START**. The live [Journey](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current) reports **“Parked: production is Off.”**
 
 **Five milestones remain.** Practice-drive evidence is reconciled and independently reviewed. These are milestones, not five approvals. **Your next move is START:** the [reviewed button](http://arcadia-1.alpine-rattlesnake.ts.net:3020/actions/start-three-claude-actions-20261025) is live and ready.
@@ -38,6 +60,8 @@ Derived **2026-10-25**, from current canonical Project/Plan state, production Of
 Current source changes to lint/tsc validation binding and workspace-wide read-only reservation inventory are published and adopted. Earlier twice-per-Action validator and bounded lint/tsc receipts remain reusable preflight evidence; they do not waive checks on future live candidates. Cached capacity may be stale before START: the established grant permits only this stale-only condition because the actual worker refreshes before admission; unknown/exhausted/unmetered states still refuse.
 
 Evidence custody: `artifacts/generated/session-closeouts/20261023-rowan-offline/READINESS-HANDOFF.md`, `postrenewal-usage-worker-receipt.json`, `start-readiness-20261025/` and the canonical Decision records. Generated evidence is host-local, ignored and preserved separately; repository publication alone does not make it portable. One Rowan coordinator and one half-hour heartbeat remain; no duplicate watch. The Journey’s “Before START” visibility proposal is recorded and is not a launch prerequisite.
+
+</details>
 
 ## Preserved earlier derivation
 

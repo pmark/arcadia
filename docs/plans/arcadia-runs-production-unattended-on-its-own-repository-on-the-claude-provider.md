@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 project: arcadia
-status: active
+status: draft
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-26
+updated: 2026-10-27
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -349,11 +349,28 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/pull/1662", "https://github.com/pmark/arcadia/issues/1470"]
+  - id: preserve-codex-config-on-semantic-no-op
+    title: "Preserve existing Codex config bytes when the protected installer finds the requested managed configuration already semantically correct; implementer, standard tier, size S, operator gate: reviewed source merge only, no live setup operation."
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Completed via Agent Ask complete-installer-semantic-no-op-final-28e-20261027; no further action.
+    expected_artifact: Evidence satisfying Agent Ask preserve-codex-config-on-semantic-no-op
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-installer-semantic-no-op-action-20261027
+    why: "Prevent the observed needless config rewrite from consuming a future adoption attempt."
+    acceptance_criteria:
+      - A disposable-file regression supplies semantically correct managed permission/trust settings with different table ordering, comments and whitespace; configuration preserves the exact original bytes and creates no backup. A repeated invocation remains byte-identical and reports no change.
+      - Disposable-file regressions supply missing and genuinely different managed values; configuration applies the exact required managed change and verifies the requested profile/trust semantics, without weakening permission boundaries or treating an incorrect value as a no-op.
+      - Disposable-file regressions prove unrelated user tables, values and comments survive both no-op and necessary-change paths; relevant focused tests plus required lint/typecheck/checks pass. Tests never access or change live user configuration, credentials, services or production.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1800", "src/agentSetup/goBrokerAgentSetup.ts", "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"]
 questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: rebuild-cover-mail-ack-receipt-kind-collision
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

@@ -1,0 +1,142 @@
+{
+  "wallMs": 12972,
+  "vitestStatus": 0,
+  "reportDir": "[temporary rehearsal report directory]",
+  "scenarios": [
+    {
+      "scenario": "environment-wall-session",
+      "file": "environment-wall-session.test.ts",
+      "validator": "seatbelt",
+      "wallMs": 4137,
+      "ticks": 9,
+      "actions": [
+        {
+          "actionId": "write-marker-a",
+          "outcome": "launched",
+          "phases": {
+            "queueWait": {
+              "ms": 748.1,
+              "ticks": 1
+            },
+            "agentExecution": {
+              "ms": 0,
+              "ticks": 0
+            },
+            "validation": {
+              "ms": 0,
+              "ticks": 0
+            },
+            "gitFinalization": {
+              "ms": 2499.6,
+              "ticks": 8
+            },
+            "review": {
+              "ms": 0,
+              "ticks": 0
+            },
+            "integration": {
+              "ms": 0,
+              "ticks": 0
+            },
+            "advancement": {
+              "ms": 0,
+              "ticks": 0
+            }
+          }
+        }
+      ],
+      "tickLog": [
+        {
+          "tick": 1,
+          "ms": 748,
+          "phase": "queueWait",
+          "actionId": "write-marker-a",
+          "summary": "launch launched two-action-rehearsal-v4/write-marker-a"
+        },
+        {
+          "tick": 2,
+          "ms": 405,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch skipped (Repository was just reconciled this tick; deferring admission one tick for its merge to land.); reconciled missing_evidence; preservation not_applicable; integration refused"
+        },
+        {
+          "tick": 3,
+          "ms": 299,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 4,
+          "ms": 336,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 5,
+          "ms": 323,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 6,
+          "ms": 342,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 7,
+          "ms": 278,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 8,
+          "ms": 269,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        },
+        {
+          "tick": 9,
+          "ms": 247,
+          "phase": "gitFinalization",
+          "actionId": "write-marker-a",
+          "summary": "launch repair_budget_exhausted two-action-rehearsal-v4/write-marker-a (Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or)"
+        }
+      ],
+      "errors": [
+        {
+          "kind": "lifecycle",
+          "command": "worker tick: integration",
+          "cwd": "<scenario>/fixture",
+          "exitCode": null,
+          "stderr": "Integration waits on a preserved candidate: The candidate has no commits or changes beyond its base revision.",
+          "expected": true
+        },
+        {
+          "kind": "lifecycle",
+          "command": "worker tick: launch",
+          "cwd": "<scenario>/fixture",
+          "exitCode": null,
+          "stderr": "Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or over its platform ceiling of 3000000. It will not be relaunched automatically.",
+          "expected": true
+        }
+      ],
+      "notes": [
+        "setup (fixture, import, sync, approval, activation): 779 ms",
+        "clock advanced 240 simulated minutes before tick 6"
+      ],
+      "workerLog": [
+        "[tick 1] Launched Session session_f662a004a58a4e4097 for two-action-rehearsal-v4/write-marker-a under the standing production policy.",
+        "[tick 2] Escalated two-action-rehearsal-v4/write-marker-a to the operator (budget_exhausted): Budget exhausted for two-action-rehearsal-v4/write-marker-a: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or over its platform ceiling of 3000000. It will not be relaunched automatically.",
+        "[tick 2] Reconciled Session session_f662a004a58a4e4097 for two-action-rehearsal-v4: missing_evidence (Stopped by Arcadia: budget_exhausted: the Session used 11100000 input tokens (700000 uncached + 10400000 cached), at or over its platform ceiling of 3000000. A zero exit status alone is not evidence of completed work; no Run was recorded.)"
+      ]
+    }
+  ]
+}

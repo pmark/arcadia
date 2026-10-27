@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
-active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
-current_action: rebuild-cover-mail-ack-receipt-kind-collision
-updated: 2026-10-26
+milestone: Make Arcadia Go orient one caller truthfully before authorized work.
+active_plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
+current_action: reuse-go-context-through-authorized-continuation
+updated: 2026-10-27
 ---
 
 # Arcadia

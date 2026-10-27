@@ -2,6 +2,25 @@
 
 For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
 
+## Daily evidence in Journey
+
+Open a Plan's Journey (for Arcadia, [current Plan](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current))
+and use **Window** to compare the last 1, 7 or 30 elapsed days with the previous
+same-length period. `arcadia journey arcadia/plan:current` prints all three;
+`--json` includes the same evidence and source IDs.
+
+Delivered heads are recorded worker merges, not preserved PRs or review passes.
+Dated alert clears and unaccepted Session exits show a supported subset of the
+rocks crossed and interruptions met. Rates divide by elapsed 24-hour days in UTC.
+Session elapsed hours include waiting; occupied hours count overlapping spans
+once. Active effort remains unknown. Expand the limitations and evidence before
+comparing periods. The service/model/effort breakdown retains launch configuration
+and Session source IDs alongside elapsed spans and linked outcomes. Actual runtime
+model/effort and per-Session token usage remain unknown; samples do not rank model
+effectiveness. Work outside managed Sessions, undated clears, reopened alert
+history and manual merges are not fully measured. A zero is no qualifying record,
+not proof that no work happened. This view makes no model calls.
+
 ## Conversational workspace preview
 
 Start the dashboard with `pnpm dashboard`, then open <http://127.0.0.1:3020/workspace>.
@@ -2099,6 +2118,15 @@ select `arcadia-unattended` explicitly. For Desktop Go tasks, select it as above
 pnpm arcadia go-broker status
 ```
 
+A stopped Session's capability diagnosis now prefers its nonce-bound probe.
+Otherwise it requires a structured failed tool operation tied to the capability;
+quoted notes and successful output do not prove a permission failure. The new
+exit receipt retains a bounded, sanitized observation. Journey distinguishes a
+matching incomplete/resumable exit from an explicit input request; older or
+missing attribution stays unknown, with no inferred permission-change or budget-
+reset prescription. These observations do not reset allowances or authorize
+recovery, relaunch or production.
+
 Broker releases include the Session capability probe and exit recorder. Status
 refuses an installation if either required script is missing or points outside
 the release. Repair requires a reviewed replacement release while production
@@ -2375,7 +2403,28 @@ The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
 its log: your Project's declared validation commands, the Action's named test
 commands, exact criteria-required `pnpm lint` / `pnpm exec tsc --noEmit` checks,
 and `arcadia agent-ask draft`. Host completion runs those required checks too;
-preservation retains its separate dependency-free check list. A candidate
+preservation retains its separate dependency-free check list. Completion now keeps
+its actual command arguments, exit results, durations and named-test report in
+Session preservation artifacts before removing execution scratch. Its hash-bound
+reference reaches the exit receipt, refreshed PR body and immutable reviewer
+input. Review evidence verifies the exact tree, or the immediate canonical
+settlement with only the existing supported governed-record changes; later code
+changes never inherit a pass. Legacy records and unsupported settlement shapes
+say evidence is unavailable. A failed evidence write refuses completion and
+retains scratch; it grants no retry or runtime authority.
+A separately approved completion-supplement operator action can execute the
+original named checks again and attach a new immutable Artifact without changing
+an old exit, preservation receipt or verdict. It requires a typed canonical action
+and actual run receipt, an exact clean Session/input/packet/head/tree binding, and
+an exclusive once-only request. An incomplete or failed request stays consumed;
+registration alone is not proof. Review consumers must pin the Artifact ID and
+content hash explicitly. A registered supplement holds automatic review until
+that pin verifies; absence preserves legacy fingerprints. The separately approved
+review context still requires production Active and permits only code-review
+ordinal 5, then QA ordinal 1 after that code review passes. It permits no repair,
+reset, additional ordinal or activation. These source capabilities do not publish
+an action or authorize using one.
+A candidate
 cannot replace its authorized lint-script manifest to pass completion. `--setting-sources ""` stops Claude
 merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
 `.claude/settings.json`) into it, so a headless Claude Session loads no user or

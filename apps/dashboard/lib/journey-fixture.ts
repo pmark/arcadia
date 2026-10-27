@@ -1,7 +1,7 @@
 import type { JourneyPhase, PlanJourney, PlanJourneyAction } from "./journey-types";
 
 /**
- * Sample rover missions for /workspace/moonlet. A fixture, not workspace
+ * Sample rover missions for /workspace/feed. A fixture, not workspace
  * records: the shapes are the real `arcadia-plan-journey-v1` wire shape, so a
  * later read of `/api/journey/<project>/plan/<plan>` can replace this list
  * without changing the view. Add a mission by appending a `mission(...)`.
@@ -50,10 +50,10 @@ export const JOURNEY_FIXTURE: PlanJourney[] = [
     ["refuse-packets-without-validation", "Refuse packets without validation commands", "driving", "Implementer on its second commit", { since: "2030-01-01T11:42:00.000Z" }],
     ["prove-two-action-unattended", "Prove two-Action unattended production", "waiting", "Waits on the two Actions before it"]
   ]),
-  mission("arcadia", "operator-moonlet", "The operator says how they feel in one tap", false, [
-    ["define-operator-mood-signal", "Define the operator mood signal", "launching", "Preparing an isolated worktree", { since: "2030-01-01T11:58:00.000Z" }],
-    ["add-workspace-moonlet", "Add the workspace moonlet", "parked", "Parked until the signal lands"],
-    ["layer-atmosphere-weather-on-sol-sky", "Layer atmosphere weather on the sol sky", "parked", "Parked"]
+  mission("arcadia", "operator-presence", "The operator shares how they are in one tap", false, [
+    ["define-operator-presence-signal", "Define the operator presence signal", "launching", "Preparing an isolated worktree", { since: "2030-01-01T11:58:00.000Z" }],
+    ["add-presence-profile-menu", "Add the Presence profile menu", "parked", "Parked until the signal lands"],
+    ["drive-sky-from-system-status", "Drive the sky from system status", "parked", "Parked"]
   ]),
   mission("mission-control-site", "field-notes", "MartianRover Field Notes is published", true, [
     ["draft-first-note", "Draft the first field note", "arrived", "Landed in #44"],

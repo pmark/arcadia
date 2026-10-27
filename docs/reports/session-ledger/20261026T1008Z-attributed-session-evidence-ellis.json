@@ -1,0 +1,57 @@
+{
+  "session_id": "attributed-session-evidence-ellis",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "e2_standard",
+  "configured_effort": "e2_standard",
+  "effective_effort": "medium",
+  "effort_source": "native-runtime",
+  "action_id": "operator-directed:#1788",
+  "pr": 1790,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "denial-attribution",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "malformed-probe-receipt-rollback",
+      "caught_by": "independent-R1"
+    },
+    {
+      "class": "host-preflight-provenance-and-capability-binding",
+      "caught_by": "CodeRabbit-verified"
+    },
+    {
+      "class": "denial-prefix-test-prose",
+      "caught_by": "CodeRabbit-verified"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "journey-fixture-exit-status-field",
+      "cost_min": null,
+      "fix_ref": "tests/journey.test.ts"
+    },
+    {
+      "id": "R1-attribution-and-malformed-probe",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1790#issuecomment-6413721758"
+    },
+    {
+      "id": "late-CodeRabbit-findings-verified",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1790#discussion_r4376370977"
+    }
+  ],
+  "outcome": "stopped",
+  "notes": "Source-only Issue1788 assignment, depth1 sole implementer; no governed Action. Native gpt-6.1-sol/medium; resources unknown. No merge, runtime, permissions, recovery or provider authority.",
+  "stop_reason": "Late feedback repaired after R2 GO; awaiting ordinary R3 delta review and new-head CI. No live adoption proof."
+}
