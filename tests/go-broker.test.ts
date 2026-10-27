@@ -6,8 +6,29 @@ import { ArcadiaError } from "../src/cli/errors.js";
 import { permissionSnippets, renderGoBrokerLauncher, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 import * as broker from "../src/goBroker.js";
+import * as workspaceResolution from "../src/workspace/resolve.js";
+
+
+const goOrientation = { ok: true as const, command: "next", data: { context: null, blockers: [], operatorQuestion: null,
+  dispatchable: false, projectId: "fixture", repoRoot: "/tmp/finished", operatorAlerts: [] }, artifacts: [], warnings: [] };
+function fixtureGoBroker(agent: "codex" | "claude", runner: Parameters<typeof runGoBroker>[1]) {
+  return runGoBroker({ source: "/tmp/finished", agent, operation: "go" }, runner, undefined, undefined,
+    () => "/tmp/workspace", () => goOrientation, () => "fixture");
+}
 
 describe("protected Arcadia go broker", () => {
+  it("rejects a missing source before resolving an unconfigured workspace", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-missing-go-source-"));
+    const missing = path.join(root, "missing");
+    const workspace = vi.spyOn(workspaceResolution, "requireResolvedWorkspace").mockImplementation(() => {
+      throw new ArcadiaError("USAGE_ERROR", "Arcadia workspace is not configured.", 2);
+    });
+    try {
+      expect(() => runGoBroker({ source: missing, agent: "claude", operation: "go" }))
+        .toThrow("The repository path does not exist.");
+      expect(workspace).not.toHaveBeenCalled();
+    } finally { workspace.mockRestore(); rmSync(root, { recursive: true, force: true }); }
+  });
   it("derives the source from cwd and accepts only fixed launcher inputs", () => {
     expect(parseGoBrokerArguments(["codex", "go"], "./finished")).toEqual({
       source: path.resolve("./finished"),
@@ -115,26 +136,34 @@ describe("protected Arcadia go broker", () => {
   it.each([
     { agent: "codex", sandbox: "seatbelt" },
     { agent: "claude", sandbox: "" },
+    { agent: "opencode", sandbox: "" },
     { agent: "codex", sandbox: "" }
   ])("routes $agent go through transport with sandbox signal '$sandbox'", async ({ agent, sandbox }) => {
     const response = { ok: true, command: "go-broker", data: { nextWorktree: { path: "/tmp/next" } } };
-    const requestAgentGo = vi.fn().mockResolvedValue(response);
+    const order: string[] = [];
+    const requestAgentGo = vi.fn(async () => { order.push("effect"); return response; });
     vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentGo, requestCandidatePreservation: vi.fn() }));
+    vi.doMock("../src/briefSupervisor.js", async importOriginal => ({
+      ...await importOriginal<typeof import("../src/briefSupervisor.js")>(),
+      superviseBrief: vi.fn(async () => ({ receipt: JSON.stringify({ ok: true, data: { dispatchBrief: "read-only caller orientation" } }) + "\n", exitCode: 0 }))
+    }));
     const directBroker = vi.spyOn(broker, "runGoBroker");
     const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-    const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const errors = vi.spyOn(process.stderr, "write").mockImplementation(() => { order.push("orientation"); return true; });
     const argv = process.argv;
     const exitCode = process.exitCode;
     vi.stubEnv("CODEX_SANDBOX", sandbox);
     process.argv = ["node", "arcadia-go-broker", agent, "go"];
     try {
       if (agent === "claude") await import("../scripts/arcadia-go-broker.js?claude-go-request");
+      else if (agent === "opencode") await import("../scripts/arcadia-go-broker.js?opencode-go-request");
       else if (sandbox) await import("../scripts/arcadia-go-broker.js?go-request");
       else await import("../scripts/arcadia-go-broker.js?host-go-request");
       expect(requestAgentGo).toHaveBeenCalledExactlyOnceWith(process.cwd(), agent);
       expect(directBroker).not.toHaveBeenCalled();
       expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
-      expect(errors).not.toHaveBeenCalled();
+      expect(errors).toHaveBeenCalledWith("read-only caller orientation\n");
+      expect(order).toEqual(["orientation", "effect"]);
       expect(process.exitCode).toBe(exitCode);
     } finally {
       process.argv = argv;
@@ -142,6 +171,32 @@ describe("protected Arcadia go broker", () => {
       vi.unstubAllEnvs();
       vi.restoreAllMocks();
       vi.doUnmock("../src/sessions/preservationTransport.js");
+      vi.doUnmock("../src/briefSupervisor.js");
+    }
+  });
+
+  it("never submits a Go effect when its supervised opening orientation refuses", async () => {
+    const requestAgentGo = vi.fn();
+    const receipt = JSON.stringify({ ok: false, error: { code: "BRIEF_DEADLINE_EXCEEDED", details: { stage: "next" } } }) + "\n";
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentGo }));
+    vi.doMock("../src/briefSupervisor.js", async importOriginal => ({
+      ...await importOriginal<typeof import("../src/briefSupervisor.js")>(),
+      superviseBrief: vi.fn(async () => ({ receipt, exitCode: 1 }))
+    }));
+    const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const argv = process.argv;
+    const exitCode = process.exitCode;
+    process.argv = ["node", "arcadia-go-broker", "codex", "go"];
+    try {
+      await import("../scripts/arcadia-go-broker.js?refused-opening-orientation");
+      expect(output).toHaveBeenCalledExactlyOnceWith(receipt);
+      expect(requestAgentGo).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.argv = argv; process.exitCode = exitCode;
+      vi.restoreAllMocks();
+      vi.doUnmock("../src/sessions/preservationTransport.js");
+      vi.doUnmock("../src/briefSupervisor.js");
     }
   });
 
@@ -155,7 +210,7 @@ describe("protected Arcadia go broker", () => {
     };
     const runner = vi.fn().mockReturnValue(response);
 
-    const result = runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never);
+    const result = fixtureGoBroker("codex", runner as never);
 
     expect(runner).toHaveBeenNthCalledWith(1, {
       repo: "/tmp/finished",
@@ -172,12 +227,37 @@ describe("protected Arcadia go broker", () => {
     expect(result.command).toBe("go-broker");
   });
 
+  it("returns orientation observed before any optional Go effect, without transporting another identity", () => {
+    const order: string[] = [];
+    const runner = vi.fn(() => { order.push("go"); return { ok: true as const, command: "go", data: { applied: true }, artifacts: [], warnings: [] }; });
+    const next = vi.fn(() => { order.push("orientation"); return goOrientation; });
+    const result = runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => "/tmp/workspace", next, () => "fixture");
+    expect(order).toEqual(["orientation", "go", "go"]);
+    expect(result.data).toMatchObject({ orientation: goOrientation.data });
+    expect(next).toHaveBeenCalledWith({ workspace: "/tmp/workspace", project: "fixture", repo: "/tmp/finished" });
+  });
+
+  it("keeps root scenarios without a dispatchable selected snapshot outside the new fence", () => {
+    const runner = vi.fn().mockReturnValue({ ok: true, command: "go", data: { applied: true }, artifacts: [], warnings: [] });
+    const next = { ...goOrientation, data: { ...goOrientation.data, orientation: {
+      repository: "/tmp/finished", worktree: "/tmp/finished", assigned: null, selected: goOrientation.data
+    } } };
+    runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => "/tmp/workspace", () => next as never, () => "fixture");
+    for (const [options] of runner.mock.calls) {
+      expect(options).not.toHaveProperty("initialSelection");
+      expect(options).not.toHaveProperty("strictAction");
+      expect(options).not.toHaveProperty("enrollment");
+    }
+  });
+
   it("stops after a refused preview", () => {
     const runner = vi.fn(() => {
       throw new ArcadiaError("VALIDATION_ERROR", "unsafe source", 2);
     });
 
-    expect(() => runGoBroker({ source: "/tmp/finished", agent: "claude", operation: "go" }, runner as never)).toThrow("unsafe source");
+    expect(() => fixtureGoBroker("claude", runner as never)).toThrow("unsafe source");
     expect(runner).toHaveBeenCalledTimes(1);
   });
 

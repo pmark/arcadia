@@ -57,10 +57,40 @@ describe("caller-bound read-only Go orientation", () => {
     expect(snapshots(f)).toEqual(before);
     expect(renderNextSuccess(first).join("\n")).toContain("Current action: b");
     expect(renderNextSuccess(first).join("\n")).toContain("no canonical active Session evidence");
-    const project = readFileSync(path.join(f.caller, "PROJECT.md"), "utf8").replace("current_action: a", "current_action: c");
-    doc(f.caller, "PROJECT.md", project); doc(f.caller, "docs/plans/selected.md", plan("selected", crossPlan ? ["a", "c"] : ["a", "b", "c"]).replace("current_action: a", "current_action: c"));
+    const project = readFileSync(path.join(f.repo, "PROJECT.md"), "utf8").replace("current_action: a", "current_action: c");
+    doc(f.repo, "PROJECT.md", project); doc(f.repo, "docs/plans/selected.md", plan("selected", crossPlan ? ["a", "c"] : ["a", "b", "c"]).replace("current_action: a", "current_action: c"));
     expect(f.read().data.context?.action.id).toBe("b"); expect(f.read().data.orientation?.selected.context?.action.id).toBe("c");
   });
+  it("renders bounded orientation from metadata-heavy inputs within the supervisor contract", () => {
+    const f = fixture(true); f.claim();
+    for (let i = 0; i < 80; i++) doc(f.repo, `docs/plans/related-${i}.md`, plan(`related-${i}`, [`related-action-${i}`]));
+    const before = snapshots(f);
+    const started = performance.now();
+    const result = f.read();
+    const rendered = renderNextSuccess(result).join("\n");
+    expect(performance.now() - started).toBeLessThan(25_000);
+    expect(rendered).toContain("Current action: b");
+    expect(result.data.orientation).toMatchObject({ assigned: { action: "b" }, selected: { context: { action: { id: "a" } } } });
+    expect(result.data.orientation!.ongoing.length).toBeLessThanOrEqual(5);
+    expect(result.data.orientation!.relatedPlans.length).toBeLessThanOrEqual(2);
+    expect(snapshots(f)).toEqual(before);
+  });
+
+  it("does not apply an initial-root selection fence to a caller-owned B reconciliation", () => {
+    const f = fixture(true); f.claim();
+    const runner = vi.fn((options: { apply?: boolean }) => ({ ok: true, command: "go", data: { applied: options.apply === true }, artifacts: [], warnings: [] }));
+    runGoBroker({ source: f.caller, agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => f.workspace);
+    expect(runner).toHaveBeenCalledTimes(2);
+    for (const [options] of runner.mock.calls) {
+      expect(options).not.toHaveProperty("initialSelection");
+      expect(options).not.toHaveProperty("strictAction");
+      expect(options).not.toHaveProperty("enrollment");
+    }
+    expect(f.read().data.context?.action.id).toBe("b");
+    expect(f.read().data.orientation?.selected.context?.action.id).toBe("a");
+  });
+
   it("uses the same assigned Action in advance, next and combined-brief titles", () => {
     const f = fixture(); f.claim();
     expect(runAdvanceCommand({ workspace: f.workspace, repo: f.caller }).data.claimedAction).toBe("b");
@@ -120,6 +150,18 @@ describe("caller-bound read-only Go orientation", () => {
   it("refuses an unknown or cross-Project repository", () => {
     const f = fixture(); expect(() => runNextReadOnlyCommand({ workspace: f.workspace, project: "demo", repo: f.root })).toThrow("repository could not be resolved");
     doc(f.caller, "PROJECT.md", readFileSync(path.join(f.caller, "PROJECT.md"), "utf8").replace("slug: demo", "slug: other")); expect(f.read).toThrow("Caller Project");
+  });
+  it.each([false, true])("retains distinct caller-only malformed Decision blockers once (assigned: %s)", assigned => {
+    const f = fixture();
+    if (assigned) f.claim();
+    for (const id of ["0100", "0101"]) doc(f.caller, `docs/decisions/${id}-malformed.md`,
+      `---\narcadia: v1\ntype: decision\nid: '${id}'\nproject: demo\nstatus: open\naction: a\nquestion: Should we proceed?\nupdated: 2026-10-27\noptions:\n  - label: Proceed\n    consequence: The fixture proceeds.\n---\n`);
+    const response = f.read();
+    expect(response.data.orientation?.selected.blockers).toEqual([]);
+    expect(response.data.dispatchable).toBe(false);
+    for (const id of ["0100", "0101"]) expect(response.data.blockers.filter(blocker =>
+      blocker.relativePath === `docs/decisions/${id}-malformed.md` && blocker.field === "slug"))
+      .toEqual([expect.objectContaining({ message: "`slug` is required.", remedy: expect.any(String) })]);
   });
   it("retains malformed selected evidence and bounds ownership without exposing secret fields", () => {
     const f = fixture(true); f.claim();

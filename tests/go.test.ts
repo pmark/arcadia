@@ -10,6 +10,7 @@ import { renderGoSuccess, runGoCommand } from "../src/commands/go.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
 import { runGoBroker } from "../src/goBroker.js";
 import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
@@ -1233,6 +1234,7 @@ describe("arcadia go — base branch remote sync", () => {
     git(fixture.remote, ["commit", "-m", "remote-only commit"]);
     commitGovernance(fixture.main, "governed local state\n");
     const agentRoot = path.join(fixture.root, "broker-agent-worktrees");
+    registerBrokerProject(fixture);
 
     const result = runGoBroker(
       { source: fixture.main, agent: "codex", operation: "go" },
@@ -1242,7 +1244,7 @@ describe("arcadia go — base branch remote sync", () => {
         workspace: fixture.workspace,
         agentWorktreeRoot: agentRoot,
         now: new Date("2026-09-19T23:30:00.000Z")
-      })
+      }), undefined, undefined, () => fixture.workspace
     );
 
     expect(result.command).toBe("go-broker");
@@ -1423,6 +1425,7 @@ describe("arcadia go — base branch remote sync", () => {
     git(fixture.remote, ["commit", "-m", "remote follow-up"]);
     commitGovernance(fixture.main, "governed local state\n");
     const agentRoot = path.join(fixture.root, "integrated-source-agent-worktrees");
+    registerBrokerProject(fixture);
 
     const brokerResult = runGoBroker(
       { source: fixture.feature, agent: "codex", operation: "go" },
@@ -1431,7 +1434,7 @@ describe("arcadia go — base branch remote sync", () => {
         model: "gpt-5.6-terra",
         workspace: fixture.workspace,
         agentWorktreeRoot: agentRoot
-      })
+      }), undefined, undefined, () => fixture.workspace
     );
     if (!("baseRemoteSync" in brokerResult.data)) throw new Error("Expected protected Go receipt");
     const result = brokerResult.data;
@@ -2052,3 +2055,10 @@ const planDocumentWithModel = planDocument.replace(
   "recommended_model: opus\n" +
     "recommended_reasoning_effort: high\n"
 );
+
+function registerBrokerProject(fixture: { workspace: string; main: string }): void {
+  withDatabase(fixture.workspace, db => {
+    const project = upsertProject(db, { name: "Test Project", mission: "Prove safe handoffs.", status: "active" });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: fixture.main });
+  });
+}

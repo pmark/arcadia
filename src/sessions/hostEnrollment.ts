@@ -6,8 +6,10 @@ import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.j
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { renderNextSuccess, runNextReadOnlyCommand } from "../commands/next.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "../commands/go.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
+import { assertClean } from "../git/worktrees.js";
 import { discoverDocs } from "../docs/discover.js";
+import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { runGoBroker, type GoBrokerAgent } from "../goBroker.js";
 import { loadPhase3Registries, type CodingAgentProfile } from "../intent/registries.js";
 import { listAdmissions, readProductionPolicySafely, type AdmissionReceipt } from "../production/policy.js";
@@ -87,8 +89,8 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
   const workspace = input.workspace ?? requireResolvedWorkspace({ cwd: source });
   const project = discoverDocs(source).docs.find(doc => doc.type === "project");
   if (!project || project.type !== "project") throw validationError("Enrollment source has no managed Project document.");
-  const next = runNextReadOnlyCommand({ workspace, project: project.slug });
-  const repoRoot = next.data.repoRoot;
+  const selected = runNextReadOnlyCommand({ workspace, project: project.slug });
+  const repoRoot = selected.data.repoRoot;
   // An unleased helper enrolls from the Project's repository root. A leased
   // worktree already has its one principal, and running `go` from it would
   // finish that candidate instead of preparing a governed one.
@@ -98,11 +100,46 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
       remedy: "Run the fixed enroll launcher from the Project repository root; a prepared or leased worktree already has its principal."
     });
   }
+  const now = input.now ?? (() => new Date());
+  // Only an existing request's positive own-effect evidence may orient replay
+  // from its candidate. A changed selected pointer is not a new assignment.
+  const prior = withReadOnlyDatabase(workspace, db => db.prepare(`SELECT caller_id, mode, project_slug, plan_slug, action_id,
+    effect_claim_id, effect_claim_generation, effect_worktree, receipt_json FROM session_enrollments WHERE request_id = ?`)
+    .get(requestId) as { caller_id: string; mode: string; project_slug: string; plan_slug: string; action_id: string;
+      effect_claim_id: string | null; effect_claim_generation: string | null; effect_worktree: string | null; receipt_json: string | null } | undefined);
+  const priorReceipt = prior?.receipt_json ? JSON.parse(prior.receipt_json) as EnrollmentReceipt : null;
+  const ownPrior = prior?.caller_id === callerId && prior.mode === mode;
+  const priorWorktree = ownPrior ? prior.effect_worktree ?? priorReceipt?.principal.worktree : null;
+  let orientationSource = source;
+  if (priorWorktree) {
+    const claim = withReadOnlyDatabase(workspace, db => getActiveActionClaim(db, repoRoot, prior!.project_slug, prior!.action_id, now()));
+    const expectedClaim = prior!.effect_claim_id ?? priorReceipt?.claim?.id;
+    const expectedGeneration = prior!.effect_claim_generation ?? priorReceipt?.claim?.generation;
+    if (!claim || claim.id !== expectedClaim || claim.claim_generation !== expectedGeneration || canonicalPath(claim.worktree_path) !== canonicalPath(priorWorktree)) {
+      throw validationError("The enrollment's candidate ownership changed; its historical receipt grants no continuation.", { code: "enrollment_claim_changed", requestId });
+    }
+    const lease = withReadOnlyDatabase(workspace, db => getRepositoryLease(db, repoRoot));
+    if (lease && (lease.admission_request_id !== `${requestId}:admission` || canonicalPath(lease.worktree_path) !== canonicalPath(priorWorktree))) {
+      throw validationError("Another Session owns repository custody; the historical enrollment is not re-issued.", { code: "action_claimed", sessionId: lease.id });
+    }
+    orientationSource = priorWorktree;
+    assertClean(orientationSource, "enrolled candidate");
+  }
+  let next = runNextReadOnlyCommand({ workspace, project: project.slug, repo: orientationSource, now: now() });
   const dispatch = next.data.context;
   if (!next.data.dispatchable || !dispatch) {
     throw validationError("The configured Project has no dispatchable Action to enroll.", {
       code: "enrollment_not_dispatchable", blockers: next.data.blockers
     });
+  }
+  if (priorWorktree) {
+    const authoritative = resolveDispatch(repoRoot, dispatch.projectSlug, { planSlug: dispatch.activePlan, actionId: dispatch.action.id });
+    const candidateIdentity = requirementIdentity({ projectSlug: dispatch.projectSlug, planSlug: dispatch.activePlan, action: dispatch.action });
+    const baseContext = authoritative.context;
+    const baseIdentity = baseContext ? requirementIdentity({ projectSlug: baseContext.projectSlug, planSlug: baseContext.activePlan, action: baseContext.action }) : null;
+    if (!isDispatchable(authoritative) || baseIdentity?.inputRevision !== candidateIdentity.inputRevision) {
+      throw validationError("The enrolled Action's canonical input or authority changed.", { code: "enrollment_governance_changed" });
+    }
   }
   // The same requirement identity the guarded launcher's development attempt
   // and every verdict bind, so a receipt and its attempt lineage always agree.
@@ -121,7 +158,6 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
     inputRevision,
     ...(mode === "native-adopt" ? { nativeRuntimeId: callerId } : {})
   };
-  const now = input.now ?? (() => new Date());
 
   return withDatabase(workspace, db => {
     const registries = input.registries ?? loadRegistries(workspace);
@@ -134,6 +170,12 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
       .get(requestId) as { effect_claim_id: string | null } | undefined)?.effect_claim_id ?? null;
 
     const resolve = (): GovernedEnrollmentContext => {
+      next = runNextReadOnlyCommand({ workspace, project: project.slug, repo: orientationSource, now: now() });
+      const fresh = next.data.context;
+      const identity = fresh ? requirementIdentity({ projectSlug: fresh.projectSlug, planSlug: fresh.activePlan, action: fresh.action }) : null;
+      if (!next.data.dispatchable || identity?.requirementId !== requirementId || identity.inputRevision !== inputRevision) {
+        throw validationError("The caller-bound Action changed before enrollment's effect.", { code: "enrollment_governance_changed" });
+      }
       const policy = readProductionPolicySafely(db);
       preview = registries?.adapters ? buildLaunchPreview({
         db, workspace, repoRoot, projectSlug: dispatch.projectSlug, requestId,
@@ -210,9 +252,10 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
           ...options,
           workspace,
           strictAction: true,
-          enrollment: { requestId, actionId: dispatch.action.id },
+          enrollment: { requestId, actionId: dispatch.action.id, requirementId, inputRevision },
           ...(input.agentWorktreeRoot ? { agentWorktreeRoot: input.agentWorktreeRoot } : {})
-        })
+        }),
+        undefined, undefined, () => workspace
       );
       const data = response.data as { nextWorktree?: { path: string } | null };
       if (!data.nextWorktree) throw validationError("Protected enrollment did not produce a candidate.", { code: "enrollment_no_candidate" });

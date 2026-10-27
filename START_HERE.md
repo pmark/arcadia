@@ -2255,6 +2255,30 @@ bound to the caller, mode, Action and input revision. Managed dispatch supplies
 the runtime's own host-observable session id is used. With neither, enrollment
 refuses before writing a request with `enrollment_identity_unavailable`.
 
+Protected Go first renders the existing supervised read-only brief on stderr,
+before submitting its host request. A brief refusal or timeout submits no Go
+effect; the opening brief retains its 25-second deadline. Stdout remains one
+final JSON result, including the host's separately revalidated caller orientation.
+A downstream UI must explicitly display stderr to show that opening brief; this
+source change does not prove live UI delivery. The read-only combined brief also
+remains the way to inspect orientation without preparing anything. Selected work comes from the registered
+base; a valid caller-owned candidate retains its own Action when an unrelated
+selected pointer advances. Initial preparation from the registered root also binds the selected Action
+input across preview/apply and refuses a changed selection; it does not silently
+walk to unobserved work when that selection is claimed. Caller-owned candidate
+reconciliation and root cases with no dispatchable initial selection retain their
+existing path. Enrollment rechecks the initial Action input before
+claiming, and replay verifies its own claim generation, canonical Action input and
+candidate cleanliness. A historical receipt cannot revive revoked ownership.
+
+The ordinary `arcadia-go-broker-*` request still has only a transport nonce; it
+has no stable enrollment request/caller identity. Repeat-safe enrollment proof
+uses the existing `arcadia-enroll-broker-*` boundary. Source tests do not prove
+that the installed worker adopted this change or that a live delivery ran.
+Offline QA: run `pnpm exec vitest run tests/go-caller-context.test.ts tests/go-broker.test.ts tests/host-enrollment-managed.test.ts`;
+expect the moved-pointer, changed-input, revoked-claim and three fixed-provider
+entry fixtures to pass with no live provider or host installation.
+
 Success is the printed receipt, and running the same launcher again proves it:
 an exact replay returns the identical receipt (same `enrollmentId`) without a
 second worktree, admission or Session. A preparation receipt names

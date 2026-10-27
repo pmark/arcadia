@@ -7,8 +7,10 @@ import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./comma
 import { renderNextSuccess, runNextReadOnlyCommand, type NextCommandData } from "./commands/next.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
 import { discoverDocs } from "./docs/discover.js";
+import { isDispatchable } from "./docs/dispatch.js";
+import { requirementIdentity } from "./sessions/roleLineage.js";
 import { existingDirectory } from "./git/worktrees.js";
-import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
+import { canonicalPath, SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import { sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 import { withReadOnlyDatabase } from "./db/connection.js";
@@ -185,7 +187,7 @@ export function runGoBroker(
   runner: GoBrokerRunner = runGoCommand,
   advanceRunner: AdvanceBrokerRunner = runAdvanceCommand,
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,
-  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source }),
+  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: existingDirectory(source, "repository") }),
   nextRunner: NextBrokerRunner = runNextReadOnlyCommand,
   resolveProjectSlug: BrokerProjectSlugResolver = resolveProjectSlugFromRepository,
   briefContext: BriefRunContext = {}
@@ -207,8 +209,7 @@ export function runGoBroker(
     const advance = runBriefStage("advance", () => advanceRunner({ workspace, repo: request.source }), briefContext);
     const workMonitor = runBriefStage("work-monitor", () =>
       workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }), briefContext);
-    const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source), briefContext);
-    const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug, repo: request.source }));
+    const next = runBriefStage("next", () => nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source }), briefContext);
     const rendered = runBriefStage("render", () => ({
       dispatchBrief: [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
       sessionTitles: sessionTitlesByState({
@@ -232,10 +233,21 @@ export function runGoBroker(
       warnings: []
     };
   }
+  const workspace = resolveWorkspace(request.source);
+  const orientation = nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source });
+  const caller = orientation.data.orientation;
+  const selected = caller?.selected;
+  // Bind only initial preparation from the registered primary root. An owned
+  // candidate may legitimately reconcile B and continue to newly selected C.
+  const initialSelection = caller && !caller.assigned && canonicalPath(request.source) === caller.repository
+    && selected?.context && isDispatchable(selected)
+    ? requirementIdentity({ projectSlug: selected.context.projectSlug, planSlug: selected.context.activePlan, action: selected.context.action })
+    : null;
   const options = {
     repo: request.source,
     source: request.source,
-    agent: request.agent
+    agent: request.agent,
+    ...(initialSelection ? { initialSelection, strictAction: true } : {})
   } satisfies GoCommandOptions;
 
   try {
@@ -244,5 +256,5 @@ export function runGoBroker(
     if (!(error instanceof ArcadiaError) || error.details.requiresProtectedRemoteObservation !== true) throw error;
   }
   const applied = runner({ ...options, apply: true });
-  return { ...applied, command: "go-broker" };
+  return { ...applied, command: "go-broker", data: { ...applied.data, orientation: orientation.data } };
 }

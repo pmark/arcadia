@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Make Arcadia Go orient one caller truthfully before authorized work.
 active_plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
-current_action: reuse-go-context-through-authorized-continuation
+current_action: project-go-context-as-compact-state-signals
 updated: 2026-10-27
 ---
 

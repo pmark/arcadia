@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,8 @@ import {
   normalizeProductionScope
 } from "../src/production/policy.js";
 import { runGoCommand } from "../src/commands/go.js";
+import { runGoBroker } from "../src/goBroker.js";
+import { setWorktreeLivenessProbeForTests } from "../src/sessions/worktreeLiveness.js";
 import { executeHostEnrollment, type HostEnrollmentInput } from "../src/sessions/hostEnrollment.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import type { TmuxAdapter } from "../src/sessions/index.js";
@@ -60,6 +62,7 @@ class FakeTmux implements TmuxAdapter {
 beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
 afterEach(() => {
   vi.unstubAllEnvs();
+  setWorktreeLivenessProbeForTests(null);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -282,6 +285,15 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
     expect(f.tmux.launches).toHaveLength(1);
   });
 
+  it("refuses replay when another admission has taken custody of the retained Session", () => {
+    const f = fixture(); activate(f);
+    enroll(f);
+    withDatabase(f.workspace, db => db.prepare("UPDATE agent_sessions SET admission_request_id = 'foreign-admission'").run());
+    expect(refusal(() => enroll(f)).details.code).toBe("action_claimed");
+    expect(f.tmux.launches).toHaveLength(1);
+    expect(state(f).claims).toBe(1);
+  });
+
   it("hands back its own Session after a lost receipt even when production is now Off", () => {
     const f = fixture();
     activate(f);
@@ -429,6 +441,123 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
   });
 });
 
+describe("fixed enrollment entries use the supported host receipt boundary", () => {
+  it.each(["codex", "claude", "opencode"] as const)("%s entry retains its request and preparation identity on replay", async agent => {
+    const f = fixture();
+    const requestId = `enroll:${agent}:fixed-entry-0001`;
+    const requestAgentEnrollment = vi.fn(async () => enroll(f, { agent, mode: "prepare", requestId, callerId: `${agent}:fixed-entry-0001` }));
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({ requestAgentEnrollment }));
+    const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const argv = process.argv;
+    const exitCode = process.exitCode;
+    process.argv = ["node", "arcadia-go-broker", agent, "enroll"];
+    try {
+      if (agent === "codex") {
+        await import("../scripts/arcadia-go-broker.js?codex-receipt-first");
+        await import("../scripts/arcadia-go-broker.js?codex-receipt-replay");
+      } else if (agent === "claude") {
+        await import("../scripts/arcadia-go-broker.js?claude-receipt-first");
+        await import("../scripts/arcadia-go-broker.js?claude-receipt-replay");
+      } else {
+        await import("../scripts/arcadia-go-broker.js?opencode-receipt-first");
+        await import("../scripts/arcadia-go-broker.js?opencode-receipt-replay");
+      }
+      expect(errors).not.toHaveBeenCalled();
+      const receipts = output.mock.calls.map(([value]) => JSON.parse(String(value)) as ReturnType<typeof executeHostEnrollment>);
+      expect(receipts).toHaveLength(2);
+      expect(receipts[1]).toEqual(receipts[0]);
+      expect(receipts[0]).toMatchObject({ requestId, principal: { kind: "prepared" } });
+      expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, sessions: 0, liveAdmissions: 0 });
+      expect(worktrees(f)).toBe(2);
+    } finally {
+      process.argv = argv;
+      process.exitCode = exitCode;
+      vi.restoreAllMocks();
+      vi.doUnmock("../src/sessions/preservationTransport.js");
+    }
+  });
+});
+
+describe("ordinary initial Go selection fence", () => {
+  it.each(["unchanged", "pointer", "input"])("checks %s selection inside the resume dispatch transaction before any handout", change => {
+    const f = fixture();
+    setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [] }));
+    const candidate = runGoCommand({ repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace,
+      agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW }).data.nextWorktree!;
+    const draftPath = path.join(candidate.path, ".arcadia/asks/agent-ask-resume-fence.yaml");
+    mkdirSync(path.dirname(draftPath), { recursive: true });
+    const draft = JSON.stringify({ agent_ask: "v1", request_id: "resume-fence", project: "test-project", intent: "proposal" });
+    writeFileSync(draftPath, draft);
+    const snapshot = () => withReadOnlyDatabase(f.workspace, db => ({
+      claims: db.prepare("SELECT * FROM agent_worktree_reservations").all(),
+      recoveries: db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_draft_recoveries'").get()
+        ? db.prepare("SELECT * FROM candidate_draft_recoveries").all() : []
+    }));
+    const before = snapshot();
+    const run = () => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => runGoCommand({
+      ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux,
+      now: new Date(NOW.getTime() + 3_600_000), testHooks: { beforeDispatchTransaction() {
+        if (change === "pointer") {
+          writeFileSync(path.join(f.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: write-proof"));
+          writeFileSync(path.join(f.repo, "docs/plans/copy-proof.md"), planDocument.replace("current_action: define-contract", "current_action: write-proof").replace("actions:\n", "actions:\n  - id: write-proof\n    title: Write proof\n    status: open\n    responsibility: agent\n    clarification: clarified\n    next_action: Write the proof.\n    expected_artifact: proof.md\n    acceptance_criteria: [Proof exists.]\n"));
+        } else if (change === "input") {
+          writeFileSync(path.join(f.repo, "docs/plans/copy-proof.md"), planDocument.replace("Define the bounded contract.", "Define a changed bounded contract."));
+        }
+      } }
+    }), undefined, undefined, () => f.workspace);
+    if (change === "unchanged") {
+      expect(run().data.nextWorktree?.path).toBe(candidate.path);
+      expect(snapshot().recoveries).toEqual([expect.objectContaining({ resumed_route: "go", resumed_at: expect.any(String) })]);
+    } else {
+      expect(refusal(run).details.code).toBe("go_selection_changed");
+      expect(snapshot()).toEqual(before);
+    }
+    expect(worktrees(f)).toBe(2);
+    expect(readFileSync(draftPath, "utf8")).toBe(draft);
+  });
+
+  it("does not enable queue walking when its bound initial A is claimed", () => {
+    const f = fixture();
+    enroll(f, { mode: "prepare" });
+    const before = worktrees(f);
+    expect(() => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => {
+      expect(options.strictAction).toBe(true);
+      expect(options.initialSelection).toBeDefined();
+      expect(options.enrollment).toBeUndefined();
+      return runGoCommand({ ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW });
+    }, undefined, undefined, () => f.workspace)).toThrow("already claims this Action");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, pending: 0, sessions: 0 });
+  });
+
+  it.each(["pointer-before-preview", "pointer-before-apply", "input-before-preview", "input-before-apply"])("refuses %s without a candidate or enrollment marker", change => {
+    const f = fixture();
+    const before = worktrees(f);
+    let changed = false;
+    const error = refusal(() => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => {
+      if (!changed && (change.endsWith("preview") || options.apply)) {
+        changed = true;
+        const planPath = path.join(f.repo, "docs/plans/copy-proof.md");
+        if (change.startsWith("pointer")) {
+          writeFileSync(path.join(f.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: write-proof"));
+          writeFileSync(planPath, planDocument.replace("current_action: define-contract", "current_action: write-proof").replace("actions:\n", "actions:\n  - id: write-proof\n    title: Write proof\n    status: open\n    responsibility: agent\n    clarification: clarified\n    next_action: Write the proof.\n    expected_artifact: proof.md\n    acceptance_criteria: [Proof exists.]\n"));
+        } else {
+          writeFileSync(planPath, planDocument.replace("Define the bounded contract.", "Define a changed bounded contract."));
+        }
+        git(f.repo, ["commit", "-qam", "change initial selection after orientation"]);
+      }
+      expect(options.enrollment).toBeUndefined();
+      expect(options.initialSelection).toBeDefined();
+      expect(options.strictAction).toBe(true);
+      return runGoCommand({ ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW });
+    }, undefined, undefined, () => f.workspace));
+    expect(error.details.code).toBe("go_selection_changed");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f)).toMatchObject({ claims: 0, enrollments: 0, pending: 0, sessions: 0 });
+  });
+});
+
 describe("host enrollment: preparation through strict arcadia go", () => {
   it("returns the canonical candidate with its fenced claim, holds no production authority, and replays", () => {
     const f = fixture();
@@ -448,6 +577,52 @@ describe("host enrollment: preparation through strict arcadia go", () => {
 
     expect(enroll(f, { mode: "prepare" })).toEqual(receipt);
     expect(worktrees(f)).toBe(before + 1);
+  });
+
+  it("replays its own B after selected A moves to C, without another candidate, and refuses revoked B", () => {
+    const f = fixture();
+    const receipt = enroll(f, { mode: "prepare" });
+    const before = worktrees(f);
+    // Only the registered base pointer moves; the caller-owned candidate is unchanged.
+    writeFileSync(path.join(f.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: write-proof"));
+    writeFileSync(path.join(f.repo, "docs/plans/copy-proof.md"), planDocument.replace("current_action: define-contract", "current_action: write-proof").replace("actions:\n", "actions:\n  - id: write-proof\n    title: Write proof\n    status: open\n    responsibility: agent\n    clarification: clarified\n    next_action: Write the proof.\n    expected_artifact: proof.md\n    acceptance_criteria: [Proof exists.]\n"));
+    git(f.repo, ["commit", "-qam", "select unrelated write-proof"]);
+    expect(enroll(f, { mode: "prepare" })).toEqual(receipt);
+    expect(worktrees(f)).toBe(before);
+    expect(state(f).claims).toBe(1);
+    withDatabase(f.workspace, db => db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'revoked-generation'").run());
+    expect(refusal(() => enroll(f, { mode: "prepare" })).details.code).toBe("enrollment_claim_changed");
+    expect(worktrees(f)).toBe(before);
+  });
+
+  it("refuses changed canonical B input and dirty own candidates on receipt replay", () => {
+    const changed = fixture();
+    enroll(changed, { mode: "prepare" });
+    const planPath = path.join(changed.repo, "docs/plans/copy-proof.md");
+    writeFileSync(planPath, readFileSync(planPath, "utf8").replace("Define the bounded contract.", "Define a changed bounded contract."));
+    expect(refusal(() => enroll(changed, { mode: "prepare" })).details.code).toBe("enrollment_governance_changed");
+    expect(state(changed).claims).toBe(1);
+    const dirty = fixture();
+    const receipt = enroll(dirty, { mode: "prepare" });
+    writeFileSync(path.join(receipt.principal.worktree!, "unfinished.txt"), "unique work\n");
+    expect(() => enroll(dirty, { mode: "prepare" })).toThrow("not clean");
+    expect(state(dirty).claims).toBe(1);
+    expect(readFileSync(path.join(receipt.principal.worktree!, "unfinished.txt"), "utf8")).toBe("unique work\n");
+  });
+
+  it("refuses changed input under the same selected Action before preparing any claim", () => {
+    const f = fixture();
+    const before = worktrees(f);
+    expect(refusal(() => enroll(f, { mode: "prepare", runGo: options => {
+      if (options.apply) {
+        const file = path.join(f.repo, "docs/plans/copy-proof.md");
+        writeFileSync(file, readFileSync(file, "utf8").replace("Define the bounded contract.", "Define a changed bounded contract."));
+        git(f.repo, ["commit", "-qam", "change selected input before apply"]);
+      }
+      return runGoCommand(options);
+    } })).details.code).toBe("enrollment_governance_changed");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f).claims).toBe(0);
   });
 
   it("refuses a second helper for the claimed Action instead of creating a duplicate principal", () => {
