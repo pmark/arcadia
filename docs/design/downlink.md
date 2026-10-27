@@ -193,11 +193,77 @@ sandbox.
 - **Storage** beyond the workspace `artifacts/` root, such as thumbnails or remote storage.
 - **Showing Downlinks to agents** or attaching them to Asks, following the Presence precedent.
 
-## Open questions for the operator
+## Operator answers (2026-10-27)
 
-- Is Downlink the right name, with Stage and Schematic ink?
-- Should reveals appear on the main `/workspace` Ask view as well as the feed?
-- Should screenshots get an ink frame, or a transparent cut-out?
-- Any sound at all?
-- Should pinned Downlinks persist across sessions?
-- Should agent guidance ask agents to emit blueprint SVG or Mermaid by default, so their artifacts arrive ready for the motif?
+The operator chose the two matters of taste, and accepted the defaults that
+follow from UX practice for the other four.
+
+- **Names:** Downlink, Stage and Schematic ink stay as the design and docs vocabulary. On screen, controls use plain words, such as "Open", "Pin", "Diagram" and "Screenshot".
+- **Where Downlinks appear:** where their work happens, and in the feed. A Downlink from an Ask or Action sits beside that Ask or Action. A Downlink from a PR, such as a Reveal, sits on that PR's feed item and on the Journey leg the PR belongs to. There is one Stage component, so a Downlink behaves the same everywhere.
+- **Screenshots:** a screenshot is evidence, so the source bitmap is never cut out or edited. The viewer adds a thin ink frame, and any callouts are non-destructive overlays drawn over the image.
+- **Sound:** none by default. A later opt-in switch would also start off.
+- **Pinned Downlinks:** a pin persists on that device until the operator unpins it or the work behind it finishes. A Run-linked pin clears when the Run ends, an Action-linked pin when the Action closes, and a PR-linked pin when the PR merges or closes. A quiet note says when a pin clears, so it never disappears unexplained.
+- **Agent output:** agent guidance asks agents to send diagrams as Mermaid source or as transparent SVG that follows the Schematic ink contract. Screenshots and charts keep their own formats.
+
+## Uplink: the operator's channel into a live Session
+
+Operator request, 2026-10-27, for the human-assisted, semi-autonomous production
+capability being built with Cody. This section describes the interaction in
+Downlink's terms. It is a design proposal and authorizes nothing.
+
+A Downlink is the rover's work coming to the operator. An **Uplink** is the
+operator talking straight to the rover. It is a direct, terminal-style channel
+into any live Session, opened by the operator at any time.
+
+The agent keeps driving. The operator can watch, speak, step away, and let it
+carry on alone. This is the human-assisted part of semi-autonomous production:
+- autonomy is the default;
+- an Uplink is how the operator assists;
+- Downlinks bring the results back.
+
+The names reuse Arcadia's existing terms (Session, claim, `needs_input`,
+Journey, Stage, Schematic ink); "Uplink" is the only new one.
+
+### Opening one
+
+An Uplink opens from anywhere a Session appears:
+- a rover's leg on its Journey mission screen;
+- a feed item tied to that Session;
+- a `needs_input` item in "Waiting on you".
+
+Per the operator's answers, on-screen labels are plain words: **Watch** and
+**Talk**. Nothing ever opens an Uplink by itself, not even a `needs_input`. That
+raises the needs-you count and the halo on the Journey button, and the operator
+decides when to join.
+
+### Presentation
+
+The Uplink lifts onto the Stage like a Downlink:
+- The feed dims behind it.
+- The terminal is drawn in Schematic ink: monospace text in the sky's line color, over a transparent background.
+- Where the sky's contrast would fall below the floor, a vellum plate appears behind the text.
+- On a phone it replaces the feed, as the Journey does.
+
+### Watch, Talk, Dock, Pin and Leave
+
+- **Watch** is the default. It shows the Session's live output read-only, so joining never interrupts the work.
+- **Talk** is a deliberate second step. Typed input reaches the agent as the operator's turn in its conversation. The agent sees when the operator joins and when they leave.
+- **Dock** shrinks the Uplink back to its leg, which keeps a one-line live status.
+- **Pin** keeps a faint live tail behind the feed. Because it shows a Session rather than an Action, the Session's end is what clears it, with the quiet note from the pin rule above. Settling the Action happens before the Session ends, so closing the Action alone leaves the tail up.
+- **Leave** ends Talk. The Session goes back to running on its own, with no restart and no handoff ceremony.
+
+### Rules
+
+- **Joining takes nothing.** The agent keeps its claim and lease. An Uplink is not a takeover: takeover stays the governed `arcadia-peer-takeover-request-v1` path.
+- **The operator's words carry the operator's authority, and nothing more.** Merge, deployment, production, credentials, spending and messaging still need their Decisions. "Merge it" said in an Uplink goes through the governed path. The Uplink is a channel, not a bypass.
+- **Decisions made in conversation are recorded.** A decision reached while talking is recorded through an Agent Ask or a Decision. The transcript is kept as Session evidence, but a chat line never stands as the record.
+- **An attended Session is not stalled.** While the operator is joined, peer watch reads the Session as attended. A Session the operator answered moves from `needs_input` back to `working`.
+- **Presence stays private.** The operator's Presence is not shown to the agent without a Decision, the same rule that applies to Presence everywhere.
+- **One Uplink on the Stage at a time.** Others stay docked or pinned, so the operator always knows which Session they are speaking to.
+- **Talk is offered only where the provider can take input.** Where a provider (Codex, Claude Code or OpenCode) cannot accept an operator turn, the Uplink offers Watch and says plainly that Talk is unavailable. It never invents a session link or turns on remote control. The same rule applies to the Go prototype's native-session links.
+
+### Open question
+
+Should a `needs_input` item offer **Talk** right in the feed, or always go
+through the Journey first? UX practice favors offering it in place, as long as
+it still takes the operator's tap.
