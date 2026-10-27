@@ -89,7 +89,7 @@ Fast-rehearsal report:
   in `session-probe-wall`. That existing fixture explicitly injects EROFS and asserts one environment_wall/no relaunch
   (`tests/fast-rehearsal/session-probe-wall.test.ts:28`, `:55`). Its report classification is not a new source failure;
   no harness changes or rerun were made. Revival trigger for classification cleanup: a task changes that fixture/reporting
-  or requires a zero-unexpected-errors report. Parent owns any further intake.
+  or requires a zero-unexpected-errors report. Existing OPEN [Issue #1322](https://github.com/pmark/arcadia/issues/1322) owns this exact classification gap; parent will update its evidence. The five-minute limit is warning-only (`scripts/fast-rehearsal.mjs:88`), not an acceptance assertion.
 - No installed adoption, real provider execution, successful native title update, capacity reservation, governed Session
   admission or live performance guarantee is proved. Runtime title-tool support remains unverified for all three providers.
   Rehearsal providers/GitHub are simulated; its reported validator modes remain as emitted.
