@@ -199,8 +199,8 @@ The operator chose the two matters of taste, and accepted the defaults that
 follow from UX practice for the other four.
 
 - **Names:** Downlink, Stage and Schematic ink stay as the design and docs vocabulary. On screen, controls use plain words, such as "Open", "Pin", "Diagram" and "Screenshot".
-- **Where Downlinks appear:** where their work happens, next to the Ask or Action that produced them, and in the feed. There is one Stage component, so a Downlink behaves the same everywhere.
-- **Screenshots:** keep a thin ink frame. A screenshot is evidence, so it is never cut out or edited.
+- **Where Downlinks appear:** where their work happens, and in the feed. A Downlink from an Ask or Action sits beside that Ask or Action. A Downlink from a PR, such as a Reveal, sits on that PR's feed item and on the Journey leg the PR belongs to. There is one Stage component, so a Downlink behaves the same everywhere.
+- **Screenshots:** a screenshot is evidence, so the source bitmap is never cut out or edited. The viewer adds a thin ink frame, and any callouts are non-destructive overlays drawn over the image.
 - **Sound:** none by default. A later opt-in switch would also start off.
-- **Pinned Downlinks:** a pin persists on that device until the operator unpins it or the work behind it finishes, for example when its Action closes or its PR merges or closes. A quiet note says when a pin clears, so it never disappears unexplained.
+- **Pinned Downlinks:** a pin persists on that device until the operator unpins it or the work behind it finishes. A Run-linked pin clears when the Run ends, an Action-linked pin when the Action closes, and a PR-linked pin when the PR merges or closes. A quiet note says when a pin clears, so it never disappears unexplained.
 - **Agent output:** agent guidance asks agents to send diagrams as Mermaid source or as transparent SVG that follows the Schematic ink contract. Screenshots and charts keep their own formats.
