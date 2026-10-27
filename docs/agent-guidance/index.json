@@ -178,10 +178,10 @@
     },
     {
       "id": "native-mail-checkpoints",
-      "trigger": "git change check, governed changes on main, main cursor, onboarding, between batches, before consequential work, before stopping, native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge",
+      "trigger": "git change check, governed changes on main, main cursor, onboarding, between batches, before consequential work, before stopping, native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge, push, settle, settlement, stop, handoff, merge, Agent Ask, operator gate",
       "path": "docs/agent-guidance/native-mail-checkpoints.md",
       "read_before": "At onboarding, between batches, before consequential work and before stopping: check main from the recorded cursor; before native-mail operations or briefing a manager. Explicit checkpoints only, no polling or hooks; grants no authority.",
-      "sha256": "7eec04350f5d37157981814ff41218dc1dcd2d607f1b17684347692b695fea34"
+      "sha256": "b8b2d87d8f21127277e05856501ebbbc34614cc0af162d3610a34e4465d6e7df"
     },
     {
       "id": "process-critic",

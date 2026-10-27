@@ -1,0 +1,13 @@
+$ sh -c git fetch origin || { printf '%s\n' CHECKPOINT_FETCH_FAILED; exit 1; }
+checkpoint_main=$(git rev-parse --verify 'origin/main^{commit}') || { printf '%s\n' CHECKPOINT_MAIN_MISSING; exit 1; }
+checkpoint_cursor=$(git rev-parse --verify "${cursor}^{commit}") || { printf '%s\n' CHECKPOINT_CURSOR_MISSING; exit 1; }
+git merge-base --is-ancestor "$checkpoint_cursor" "$checkpoint_main" || { printf '%s\n' CHECKPOINT_CURSOR_NOT_ANCESTOR; exit 1; }
+# N first-parent steps back from main must resolve to the cursor itself.
+checkpoint_distance=$(git rev-list --first-parent --count "${checkpoint_cursor}..${checkpoint_main}") || exit 1
+checkpoint_main_cursor=$(git rev-parse --verify "${checkpoint_main}~${checkpoint_distance}") || exit 1
+[ "$checkpoint_main_cursor" = "$checkpoint_cursor" ] || { printf '%s\n' CHECKPOINT_CURSOR_NOT_MAIN; exit 1; }
+git log --full-history -m --format=fuller --name-status "${checkpoint_cursor}..${checkpoint_main}" -- docs/decisions PROJECT.md docs/plans || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
+git log --first-parent --format='%H %s%n%b' "${checkpoint_cursor}..${checkpoint_main}" || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
+
+
+exit=0

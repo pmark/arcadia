@@ -1,0 +1,160 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/git-change-checkpoint-guidance/arcadia
+
+stdout | tests/git-change-checkpoint-regressions.test.ts > shared checkpoint review regressions > lists a governed edit introduced only by a merge commit
+{"command":["sh","-c","git fetch origin || { printf '%s\\n' CHECKPOINT_FETCH_FAILED; exit 1; }\ncheckpoint_main=$(git rev-parse --verify 'origin/main^{commit}') || { printf '%s\\n' CHECKPOINT_MAIN_MISSING; exit 1; }\ngit rev-parse --verify \"${cursor}^{commit}\" >/dev/null || { printf '%s\\n' CHECKPOINT_CURSOR_MISSING; exit 1; }\ngit merge-base --is-ancestor \"$cursor\" \"$checkpoint_main\" || { printf '%s\\n' CHECKPOINT_CURSOR_NOT_ANCESTOR; exit 1; }\ngit log --format=fuller --name-status \"${cursor}..${checkpoint_main}\" -- docs/decisions PROJECT.md docs/plans || { printf '%s\\n' CHECKPOINT_LOG_FAILED; exit 1; }\ngit log --first-parent --format='%H %s%n%b' \"${cursor}..${checkpoint_main}\" || { printf '%s\\n' CHECKPOINT_LOG_FAILED; exit 1; }\n"],"cwd":"/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-checkpoint-regression-tUkaZN/observer","cursor":"95bb546c4a803318c6dd5b996a9652f96e642a07","main":"6ec2fb227a0edaa321af94f2a39fe63825759c6b","status":0,"stdout":"commit 6ec2fb227a0edaa321af94f2a39fe63825759c6b\nMerge: df3665e 5b5fa7a\nAuthor:     Fixture <fixture@example.invalid>\nAuthorDate: Tue Oct 27 07:45:27 2026 -0700\nCommit:     Fixture <fixture@example.invalid>\nCommitDate: Tue Oct 27 07:45:27 2026 -0700\n\n    merge-resolution decision (#fixture)\n6ec2fb227a0edaa321af94f2a39fe63825759c6b merge-resolution decision (#fixture)\n\ndf3665e9b48a825421f100affe63c7ffc442e1cb main work\n\n","stderr":"From /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-checkpoint-regression-tUkaZN/origin\n   95bb546..6ec2fb2  main       -> origin/main\n"}
+
+stdout | tests/git-change-checkpoint-regressions.test.ts > shared checkpoint review regressions > rejects an ancestor cursor from a merged side branch rather than skipping unread main
+{"command":["sh","-c","git fetch origin || { printf '%s\\n' CHECKPOINT_FETCH_FAILED; exit 1; }\ncheckpoint_main=$(git rev-parse --verify 'origin/main^{commit}') || { printf '%s\\n' CHECKPOINT_MAIN_MISSING; exit 1; }\ngit rev-parse --verify \"${cursor}^{commit}\" >/dev/null || { printf '%s\\n' CHECKPOINT_CURSOR_MISSING; exit 1; }\ngit merge-base --is-ancestor \"$cursor\" \"$checkpoint_main\" || { printf '%s\\n' CHECKPOINT_CURSOR_NOT_ANCESTOR; exit 1; }\ngit log --format=fuller --name-status \"${cursor}..${checkpoint_main}\" -- docs/decisions PROJECT.md docs/plans || { printf '%s\\n' CHECKPOINT_LOG_FAILED; exit 1; }\ngit log --first-parent --format='%H %s%n%b' \"${cursor}..${checkpoint_main}\" || { printf '%s\\n' CHECKPOINT_LOG_FAILED; exit 1; }\n"],"cwd":"/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-checkpoint-regression-QxaTYL/observer","cursor":"f14911133a7ce3108ac5e64d7510cad2436e443b","main":"d0efbdd078dcd80c3124adc11988400bea818292","status":0,"stdout":"d0efbdd078dcd80c3124adc11988400bea818292 merge side\n\n","stderr":"From /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-checkpoint-regression-QxaTYL/origin\n   6eac84a..d0efbdd  main       -> origin/main\n"}
+
+ ❯ tests/git-change-checkpoint-regressions.test.ts (3 tests | 2 failed) 3011ms
+     × lists a governed edit introduced only by a merge commit 1126ms
+     × rejects an ancestor cursor from a merged side branch rather than skipping unread main 1032ms
+ ❯ tests/agent-guidance.test.ts (22 tests | 3 failed) 1231ms
+     × retrieves shared checkpoints for ordinary operation push 43ms
+     × retrieves shared checkpoints for ordinary operation settle 36ms
+     × retrieves shared checkpoints for ordinary operation stop 30ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/agent-guidance.test.ts > compact Way instruction delivery > retrieves shared checkpoints for ordinary operation push
+AssertionError: expected '\nMandatory guidance retrieval before…' to contain 'Read docs/agent-guidance/native-mail-…'
+
+- Expected
++ Received
+
+- Read docs/agent-guidance/native-mail-checkpoints.md:
++
++ Mandatory guidance retrieval before the next operation:
++ Read docs/agent-guidance/index.json; match the task/failure trigger and read its authoritative procedure before acting.
++   Read docs/agent-guidance/continuation.md: Before starting or handing off any Action.
++   Read docs/agent-guidance/pull-requests.md: Before any PR operation; retain exact-head review and approval gates.
++   Read docs/agent-guidance/learning.md: Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.
++   Read docs/working-copy-safety.md: Before editing code or reconciling Git, and before stopping.
++ First search docs/notes-to-self.md with targeted rg for this Action's commands, subsystem and symptoms; read matching evidence.
++ Capture useful discovery with `arcadia learn "<exact text>" --scope project:<slug>`; bare capture is observation/high, and uncertainty uses `--provenance inference --confidence low --evidence "<source>"`. It is zero-model evidence, not authority: no Action, Decision, promotion or rollout. Exact replay records supplied evidence/observations (otherwise a receipt); similar wording remains separate.
++ Record retrieved paths/sections and failed receipts. Before a commit/comment, read the indexed Git identity procedure and resolve the current model's identity.
++ Default instruction delivery (repository only; provider global guidance not selected): project 8232/24576 bytes; combined 8232/32768 bytes.
++   /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-guidance-IgTPgs/AGENTS.md: 8232 bytes, sha256 d3b4ec1f1c86f3563c238a23d0cc07faf4e8d1e72aadcfef33f275d90b2c2edb
++ These are default-discovery file receipts, not proof of a provider's effective prompt or agent understanding. Verify actual loaded guidance/retrieval in the provider session trace; custom profiles/overrides need their own evidence.
+
+ ❯ tests/agent-guidance.test.ts:277:81
+    275|
+    276|   it.each(["push", "settle", "stop"])("retrieves shared checkpoints fo…
+    277|     expect(renderGuidanceRetrieval(adopted(), undefined, operation).jo…
+       |                                                                                 ^
+    278|   });
+    279|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/agent-guidance.test.ts > compact Way instruction delivery > retrieves shared checkpoints for ordinary operation settle
+AssertionError: expected '\nMandatory guidance retrieval before…' to contain 'Read docs/agent-guidance/native-mail-…'
+
+- Expected
++ Received
+
+- Read docs/agent-guidance/native-mail-checkpoints.md:
++
++ Mandatory guidance retrieval before the next operation:
++ Read docs/agent-guidance/index.json; match the task/failure trigger and read its authoritative procedure before acting.
++   Read docs/agent-guidance/continuation.md: Before starting or handing off any Action.
++   Read docs/agent-guidance/agent-asks.md: Before submitting a request or changing Project state; direct proposal capture needs no implementation Action; use ordinary host permission recovery or preserve a blocked validated Ask.
++   Read docs/agent-guidance/learning.md: Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.
++   Read docs/working-copy-safety.md: Before editing code or reconciling Git, and before stopping.
++ First search docs/notes-to-self.md with targeted rg for this Action's commands, subsystem and symptoms; read matching evidence.
++ Capture useful discovery with `arcadia learn "<exact text>" --scope project:<slug>`; bare capture is observation/high, and uncertainty uses `--provenance inference --confidence low --evidence "<source>"`. It is zero-model evidence, not authority: no Action, Decision, promotion or rollout. Exact replay records supplied evidence/observations (otherwise a receipt); similar wording remains separate.
++ Record retrieved paths/sections and failed receipts. Before a commit/comment, read the indexed Git identity procedure and resolve the current model's identity.
++ Default instruction delivery (repository only; provider global guidance not selected): project 8232/24576 bytes; combined 8232/32768 bytes.
++   /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-guidance-VWnRFH/AGENTS.md: 8232 bytes, sha256 d3b4ec1f1c86f3563c238a23d0cc07faf4e8d1e72aadcfef33f275d90b2c2edb
++ These are default-discovery file receipts, not proof of a provider's effective prompt or agent understanding. Verify actual loaded guidance/retrieval in the provider session trace; custom profiles/overrides need their own evidence.
+
+ ❯ tests/agent-guidance.test.ts:277:81
+    275|
+    276|   it.each(["push", "settle", "stop"])("retrieves shared checkpoints fo…
+    277|     expect(renderGuidanceRetrieval(adopted(), undefined, operation).jo…
+       |                                                                                 ^
+    278|   });
+    279|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/agent-guidance.test.ts > compact Way instruction delivery > retrieves shared checkpoints for ordinary operation stop
+AssertionError: expected '\nMandatory guidance retrieval before…' to contain 'Read docs/agent-guidance/native-mail-…'
+
+- Expected
++ Received
+
+- Read docs/agent-guidance/native-mail-checkpoints.md:
++
++ Mandatory guidance retrieval before the next operation:
++ Read docs/agent-guidance/index.json; match the task/failure trigger and read its authoritative procedure before acting.
++   Read docs/agent-guidance/continuation.md: Before starting or handing off any Action.
++   Read docs/agent-guidance/learning.md: Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.
++   Read docs/working-copy-safety.md: Before editing code or reconciling Git, and before stopping.
++ First search docs/notes-to-self.md with targeted rg for this Action's commands, subsystem and symptoms; read matching evidence.
++ Capture useful discovery with `arcadia learn "<exact text>" --scope project:<slug>`; bare capture is observation/high, and uncertainty uses `--provenance inference --confidence low --evidence "<source>"`. It is zero-model evidence, not authority: no Action, Decision, promotion or rollout. Exact replay records supplied evidence/observations (otherwise a receipt); similar wording remains separate.
++ Record retrieved paths/sections and failed receipts. Before a commit/comment, read the indexed Git identity procedure and resolve the current model's identity.
++ Default instruction delivery (repository only; provider global guidance not selected): project 8232/24576 bytes; combined 8232/32768 bytes.
++   /var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-guidance-pJgl12/AGENTS.md: 8232 bytes, sha256 d3b4ec1f1c86f3563c238a23d0cc07faf4e8d1e72aadcfef33f275d90b2c2edb
++ These are default-discovery file receipts, not proof of a provider's effective prompt or agent understanding. Verify actual loaded guidance/retrieval in the provider session trace; custom profiles/overrides need their own evidence.
+
+ ❯ tests/agent-guidance.test.ts:277:81
+    275|
+    276|   it.each(["push", "settle", "stop"])("retrieves shared checkpoints fo…
+    277|     expect(renderGuidanceRetrieval(adopted(), undefined, operation).jo…
+       |                                                                                 ^
+    278|   });
+    279|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/git-change-checkpoint-regressions.test.ts > shared checkpoint review regressions > lists a governed edit introduced only by a merge commit
+AssertionError: expected 'commit 6ec2fb227a0edaa321af94f2a39fe6…' to contain 'docs/decisions/0001.md'
+
+- Expected
++ Received
+
+- docs/decisions/0001.md
++ commit 6ec2fb227a0edaa321af94f2a39fe63825759c6b
++ Merge: df3665e 5b5fa7a
++ Author:     Fixture <fixture@example.invalid>
++ AuthorDate: Tue Oct 27 07:45:27 2026 -0700
++ Commit:     Fixture <fixture@example.invalid>
++ CommitDate: Tue Oct 27 07:45:27 2026 -0700
++
++     merge-resolution decision (#fixture)
++ 6ec2fb227a0edaa321af94f2a39fe63825759c6b merge-resolution decision (#fixture)
++
++ df3665e9b48a825421f100affe63c7ffc442e1cb main work
++
++
+
+ ❯ tests/git-change-checkpoint-regressions.test.ts:47:27
+     45|     const result = checkpoint(observer, base);
+     46|     expect(result.status).toBe(0);
+     47|     expect(result.stdout).toContain("docs/decisions/0001.md");
+       |                           ^
+     48|     expect(git(observer, "show", `${merge}:docs/decisions/0001.md`)).t…
+     49|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/git-change-checkpoint-regressions.test.ts > shared checkpoint review regressions > rejects an ancestor cursor from a merged side branch rather than skipping unread main
+AssertionError: expected +0 not to be +0 // Object.is equality
+ ❯ tests/git-change-checkpoint-regressions.test.ts:60:31
+     58|     git(writer, "merge-base", "--is-ancestor", sideCursor, "main");
+     59|     const result = checkpoint(observer, sideCursor);
+     60|     expect(result.status).not.toBe(0);
+       |                               ^
+     61|     expect(result.stdout).toContain("CHECKPOINT_CURSOR_NOT_MAIN");
+     62|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  5 failed | 20 passed (25)
+   Start at  07:45:26
+   Duration  3.22s (transform 1.56s, setup 0ms, import 1.92s, tests 4.24s, environment 0ms)
+

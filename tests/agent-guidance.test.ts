@@ -273,6 +273,10 @@ describe("compact Way instruction delivery", () => {
     expect(computeWayPropagationPlan(root).changes).toEqual([]);
   });
 
+  it.each(["push", "settle", "stop"])("retrieves shared checkpoints for ordinary operation %s", (operation) => {
+    expect(renderGuidanceRetrieval(adopted(), undefined, operation).join("\n")).toContain("Read docs/agent-guidance/native-mail-checkpoints.md:");
+  });
+
   it("keeps a new bootstrap and its resource installation together in the governing propagation tier", () => {
     const root = scratch(); put(root, "AGENTS.md", "# Old guidance");
     const plan = computeWayPropagationPlan(root);

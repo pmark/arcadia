@@ -39,6 +39,8 @@ id. Onboarding starts from the cursor SHA in the handoff or brief; if none was
 supplied, use the candidate base SHA from its preparation evidence. Do not guess
 from the current candidate head. A coordinator handoff carries the current
 cursor SHA so a restarted session checks everything it has not yet read.
+The cursor must be on fetched main's **first-parent chain**; a merged side-branch
+ancestor is not a main cursor and may already include unread main changes.
 
 At every checkpoint, fetch origin and inspect `git log <cursor>..origin/main`.
 Pin the observed main SHA after fetching so another worktree's later fetch
@@ -47,13 +49,21 @@ cannot move this check's upper bound. With `cursor` set to the recorded SHA:
 ```sh
 git fetch origin || { printf '%s\n' CHECKPOINT_FETCH_FAILED; exit 1; }
 checkpoint_main=$(git rev-parse --verify 'origin/main^{commit}') || { printf '%s\n' CHECKPOINT_MAIN_MISSING; exit 1; }
-git rev-parse --verify "${cursor}^{commit}" >/dev/null || { printf '%s\n' CHECKPOINT_CURSOR_MISSING; exit 1; }
-git merge-base --is-ancestor "$cursor" "$checkpoint_main" || { printf '%s\n' CHECKPOINT_CURSOR_NOT_ANCESTOR; exit 1; }
-git log --format=fuller --name-status "${cursor}..${checkpoint_main}" -- docs/decisions PROJECT.md docs/plans || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
-git log --first-parent --format='%H %s%n%b' "${cursor}..${checkpoint_main}" || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
+checkpoint_cursor=$(git rev-parse --verify "${cursor}^{commit}") || { printf '%s\n' CHECKPOINT_CURSOR_MISSING; exit 1; }
+git merge-base --is-ancestor "$checkpoint_cursor" "$checkpoint_main" || { printf '%s\n' CHECKPOINT_CURSOR_NOT_ANCESTOR; exit 1; }
+# N first-parent steps back from main must resolve to the cursor itself.
+checkpoint_distance=$(git rev-list --first-parent --count "${checkpoint_cursor}..${checkpoint_main}") || exit 1
+checkpoint_main_cursor=$(git rev-parse --verify "${checkpoint_main}~${checkpoint_distance}") || exit 1
+[ "$checkpoint_main_cursor" = "$checkpoint_cursor" ] || { printf '%s\n' CHECKPOINT_CURSOR_NOT_MAIN; exit 1; }
+git log --full-history -m --format=fuller --name-status "${checkpoint_cursor}..${checkpoint_main}" -- docs/decisions PROJECT.md docs/plans || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
+git log --first-parent --format='%H %s%n%b' "${checkpoint_cursor}..${checkpoint_main}" || { printf '%s\n' CHECKPOINT_LOG_FAILED; exit 1; }
 ```
 
-The first listing identifies changed governed records. The second includes
+The first listing walks full per-commit history and compares merges with each
+parent, so merge-resolution-only edits and change-then-revert bursts are visible
+instead of being hidden by path simplification or a net tip diff. A merge SHA
+may appear for multiple parents; these are comparisons of the same commit.
+The second listing includes
 merged PR references in main's commit subjects/bodies, including squash commits;
 it also includes direct main commits. Git history is the source for this check,
 not proof that a model received a message. Inspect both listings; an empty range
@@ -72,7 +82,8 @@ This check does not checkout, merge, reset or edit the candidate automatically.
 Only after both listings and the relevant records are read and revalidation is
 complete, advance the cursor to `checkpoint_main` and record that SHA in session
 evidence. Include it in the next coordinator handoff. On a failed fetch, missing
-cursor/base, unreadable relevant record, failed listing or non-ancestor cursor,
+cursor/base, unreadable relevant record, failed listing, non-ancestor cursor or
+cursor outside main's first-parent chain,
 stop the affected work, preserve the old cursor and report the exact failure;
 never reset it to current main to hide an unread gap. Retry only through the
 ordinary permission/recovery path. No polling, hook, service or new cursor store.
