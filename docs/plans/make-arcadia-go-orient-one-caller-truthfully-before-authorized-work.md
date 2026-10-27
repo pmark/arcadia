@@ -30,10 +30,10 @@ actions:
     references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "src/commands/advance.ts", "src/commands/next.ts", "src/briefSupervisor.ts", "src/sessions/hostEnrollment.ts", "tests/brief-supervisor.test.ts", "tests/go-broker.test.ts", "docs/agent-guidance/continuation.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers", "src/goBroker.ts"]
   - id: reuse-go-context-through-authorized-continuation
     title: "Use the caller-bound orientation in the existing protected Go continuation while preserving stable replay and all host authority gates. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Use the caller-bound orientation in the existing protected Go continuation while preserving stable replay and all host authority gates. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
+    next_action: Completed via Agent Ask complete-go-caller-continuation-20261027-01a17e94; no further action.
     expected_artifact: Evidence satisfying Agent Ask reuse-go-context-through-authorized-continuation
     clarification: clarified
     confidence: high
@@ -67,7 +67,7 @@ actions:
     references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "docs/agent-guidance/continuation.md", "docs/agents-context.md", "src/sessions/actionBrief.ts", "tests/action-brief.test.ts", "START_HERE.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers"]
 questions: []
 decisions: []
-current_action: reuse-go-context-through-authorized-continuation
+current_action: project-go-context-as-compact-state-signals
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
