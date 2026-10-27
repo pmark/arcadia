@@ -24,6 +24,40 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const temporary: string[] = [];
 
+
+/** Assert the new opening independently, keeping the canonical detailed tail byte-exact. */
+function checkedDetailedBrief(brief: string, titles: Record<string, string>, nextStep: string): string {
+  const boundary = brief.indexOf("\n\nObserved: ");
+  expect(boundary).toBeGreaterThan(0);
+  const opening = brief.slice(0, boundary);
+  expect(opening.split("\n").slice(0, 6)).toEqual([
+    "Arcadia codex: assigned none; selected sample-plan#ship-it.",
+    "Canonical Session: no active Session evidence. Native activity does not prove governed Session admission.",
+    "No ongoing ownership recorded; no active workers verified by this brief.",
+    `Next: ${nextStep} Details available on demand.`,
+    "", "Compact state signals — codex:"
+  ]);
+  expect(opening).toContain("Immediately acknowledge the actual observed assignment");
+  expect(opening).toContain("only after observing the transition");
+  expect(opening).toContain("helper arrow only for a verified named parent assignment");
+  expect(opening).toContain("Selected A never replaces caller-assigned B");
+  expect(opening).toContain("Idle, silence and end-of-turn alone never imply pause, completion or custody release");
+  expect(opening).toContain("Title tool unavailable; suggested title: <matching title>");
+  expect(opening).toContain("Never assert a title update without a successful tool result");
+  const expectedTitles = {
+    working: "🔨🔵 SP ship-it · selected; unassigned",
+    pr: "🔨🟣 SP ship-it · selected; unassigned",
+    ci: "🔨🟡 SP ship-it · selected; unassigned",
+    waiting: "🔨🟠 SP ship-it · selected; unassigned",
+    blocked: "🔨🔴 SP ship-it · selected; unassigned",
+    done: "🔨🟢 SP ship-it · selected; unassigned",
+    parked: "🔨⏸ SP ship-it · selected; unassigned"
+  };
+  expect(titles).toEqual(expectedTitles);
+  expect(opening.split("\n").slice(-7)).toEqual(Object.entries(expectedTitles).map(([state, title]) => `  ${state}: ${title}`));
+  return brief.slice(boundary + 2);
+}
+
 afterEach(() => {
   for (const directory of temporary.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -383,7 +417,8 @@ describe("sandbox-callable broker dispatch brief", () => {
       expect(dispatch).toEqual(canonical.data);
       expect(orientation?.assigned).toBeNull();
       expect(data.next.dispatchable).toBe(!blocked);
-      expect(data.dispatchBrief).toBe(
+      const detailed = checkedDetailedBrief(data.dispatchBrief, data.sessionTitles, orientation?.nextStep ?? "");
+      expect(detailed).toBe(
         [...renderNextSuccess({ ...canonical, data: data.next }), "", ...renderBriefIdentity(canonical.data, "codex", workspace, repo)].join("\n")
       );
       // The Plan recommends gpt-5.6-terra, Codex's standard binding.
