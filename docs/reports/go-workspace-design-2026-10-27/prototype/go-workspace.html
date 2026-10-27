@@ -1,0 +1,1051 @@
+<!doctype html>
+<!-- Arcadia Go workspace prototype. Throwaway, explicitly simulated mockup for docs/reports/go-workspace-design-2026-10-27/claude-prompt.md.
+     Fictional data only. No network requests, no external scripts, no live Arcadia API, provider or credential calls. Open this file directly in a browser. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arcadia Go</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: Context | Work (feed rail + crafting table) | Direction over a dusk sol sky. Phone: one focused work area, compact trail, pinned composer. */
+:root {
+  --sky-top: #1d2140; --sky-mid: #4a3f66; --sky-low: #b98479;
+  --panel: rgb(16 20 38 / .84); --panel-2: rgb(26 30 54 / .9); --glass: rgb(255 255 255 / .05);
+  --line: rgb(255 255 255 / .13); --line-strong: rgb(255 255 255 / .26);
+  --text: #f3efe9; --soft: rgb(243 239 233 / .72); --faint: rgb(243 239 233 / .5);
+  --ember: #e58f6f; --ember-ink: #2a1610; --focus: #ffd9aa;
+  --ok: #8fe0b0; --warn: #f6c065; --bad: #ff8a8a; --info: #9fc4ff; --sim: #c9b6ff;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font: 14px/1.45 var(--ui); color: var(--text); background: linear-gradient(180deg, var(--sky-top), var(--sky-mid) 60%, var(--sky-low)) fixed; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--soft); }
+.faint { color: var(--faint); }
+
+/* header */
+.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); background: rgb(12 15 30 / .9); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+.mark { font-size: 20px; font-weight: 500; letter-spacing: -.5px; }
+.mark b { font-weight: 600; color: var(--ember); margin-left: 4px; }
+.trail { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; font-size: 13px; }
+.trail button { all: unset; cursor: pointer; padding: 3px 6px; border-radius: 6px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.trail button:hover { background: var(--glass); color: var(--text); }
+.trail button[aria-current="page"] { color: var(--text); font-weight: 500; }
+.trail button:focus-visible { outline: 2px solid var(--focus); }
+.trail .sep { color: var(--faint); }
+.simbadge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px dashed var(--sim); color: var(--sim); font-size: 12px; white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--glass); color: var(--text); font-size: 13px; text-align: left; }
+.btn:hover { background: rgb(255 255 255 / .1); }
+.btn.primary { background: var(--ember); border-color: var(--ember); color: var(--ember-ink); font-weight: 600; }
+.btn.primary:hover { background: #ee9e80; }
+.btn.quiet { border-color: transparent; background: none; color: var(--soft); }
+.btn.quiet:hover { color: var(--text); background: var(--glass); }
+.btn.danger { border-color: rgb(255 138 138 / .6); color: #ffd0d0; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.btn.small { padding: 4px 9px; font-size: 12px; border-radius: 7px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* three concepts */
+.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr) 330px; gap: 14px; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 18px max(16px, env(safe-area-inset-left, 0px)); max-width: 1680px; margin: 0 auto; align-items: start; }
+.concept { min-width: 0; display: grid; gap: 12px; align-content: start; }
+.concept > h2.concept-title { margin: 0 2px; font: 600 11px/1 var(--ui); letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+.panel { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.panel h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.panel h3 .faint { font-weight: 400; }
+.context { position: sticky; top: 64px; max-height: calc(100vh - 78px); overflow: auto; padding-bottom: 4px; }
+/* Direction: moves scroll; the composer stays put at the bottom of the column. */
+.direction { position: sticky; top: 64px; height: calc(100vh - 78px); display: flex; flex-direction: column; gap: 12px; }
+.direction > .moves { flex: 1; min-height: 0; overflow: auto; align-content: start; }
+.work-grid { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.table { container-type: inline-size; }
+@media (max-width: 1280px) { .layout { grid-template-columns: 250px minmax(0, 1fr) 330px; } .work-grid { grid-template-columns: minmax(0, 1fr); } .feed-panel { max-height: 300px; overflow: auto; } }
+@media (max-width: 1060px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 320px; }
+  .context { display: none; }
+  .context.sheet-open { display: grid; position: fixed; inset: var(--top-h, 56px) auto 0 0; width: min(340px, 92vw); max-height: none; z-index: 30; padding: 12px; background: rgb(12 15 30 / .97); border-right: 1px solid var(--line); }
+  .only-wide { display: none !important; }
+}
+.only-narrow { display: none !important; }
+@media (max-width: 1060px) { .only-narrow { display: inline-flex !important; } }
+
+/* outline + map */
+.tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul { padding-left: 12px; border-left: 1px solid var(--line); margin-left: 7px; }
+.tree li { margin: 1px 0; }
+.node { all: unset; box-sizing: border-box; cursor: pointer; display: flex; gap: 6px; align-items: baseline; width: 100%; padding: 3px 6px; border-radius: 6px; color: var(--soft); font-size: 13px; }
+.node:hover { background: var(--glass); color: var(--text); }
+.node[aria-current="true"] { background: rgb(229 143 111 / .18); color: var(--text); box-shadow: inset 2px 0 0 var(--ember); }
+.node:focus-visible { outline: 2px solid var(--focus); }
+.kind { font: 10px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); flex: none; min-width: 3.2em; }
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; border: 1px solid var(--line); background: var(--glass); }
+.seg button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 7px; font-size: 12px; color: var(--soft); }
+.seg button[aria-pressed="true"] { background: var(--text); color: #1b1726; }
+.seg button:focus-visible { outline: 2px solid var(--focus); }
+.map { position: relative; min-height: 220px; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.map svg path { fill: none; stroke: rgb(255 255 255 / .28); stroke-width: 1.2; }
+.map svg path.cross { stroke-dasharray: 4 3; stroke: rgb(201 182 255 / .55); }
+/* The lens reads top to bottom: ancestors, the selected node, then its children and cross-links. */
+.map-rows { position: relative; display: grid; gap: 22px; padding: 4px 0; }
+.map-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.map-node { all: unset; box-sizing: border-box; cursor: pointer; display: block; max-width: 100%; flex: 0 1 auto; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel-2); font-size: 12px; line-height: 1.25; text-align: center; overflow-wrap: break-word; }
+.map-node .kind { display: block; min-width: 0; }
+.map-node.self { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.map-node.cross { border-style: dashed; border-color: rgb(201 182 255 / .6); }
+.map-node:focus-visible { outline: 2px solid var(--focus); }
+
+/* journey */
+.track { display: flex; gap: 4px; margin: 8px 0 6px; }
+.leg { flex: 1; height: 7px; border-radius: 4px; background: rgb(255 255 255 / .12); position: relative; }
+.leg.arrived { background: var(--ok); } .leg.review { background: var(--info); } .leg.needs { background: var(--warn); } .leg.blocked { background: var(--bad); }
+.leg.current::after { content: ""; position: absolute; right: -3px; top: -5px; width: 15px; height: 15px; border-radius: 5px 5px 3px 3px; background: #f0d6c2; box-shadow: inset 0 -3px 0 #8f6450; }
+dl.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 6px 0 0; font-size: 12.5px; }
+dl.facts dt { color: var(--faint); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+
+/* feed */
+.feed-panel { padding: 10px 10px 12px; }
+.feed-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 6px; }
+.newpill { all: unset; cursor: pointer; display: block; margin: 4px 0 8px; padding: 6px 10px; border-radius: 999px; text-align: center; font-size: 12px; background: rgb(159 196 255 / .14); border: 1px solid rgb(159 196 255 / .5); color: #dbe8ff; }
+.newpill:focus-visible { outline: 2px solid var(--focus); }
+.fsec { margin: 10px 4px 4px; font: 600 10.5px/1 var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.feed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.fitem { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 2px; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; }
+.fitem:hover { background: var(--glass); }
+.fitem[aria-current="true"] { background: rgb(229 143 111 / .14); border-color: rgb(229 143 111 / .45); }
+.fitem:focus-visible { outline: 2px solid var(--focus); }
+.fitem .t { font-size: 13.5px; font-weight: 500; }
+.fitem .d { font-size: 12px; color: var(--soft); }
+.fitem .meta { display: flex; gap: 8px; font-size: 11px; color: var(--faint); }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line-strong); color: var(--soft); white-space: nowrap; }
+.tag.needs { border-color: rgb(246 192 101 / .7); color: #ffe4b5; }
+.tag.ok { border-color: rgb(143 224 176 / .6); color: #cff5dd; }
+.tag.bad { border-color: rgb(255 138 138 / .7); color: #ffd0d0; }
+.tag.info { border-color: rgb(159 196 255 / .6); color: #dbe8ff; }
+.tag.sim { border-style: dashed; border-color: var(--sim); color: var(--sim); }
+.tag.stale { border-color: rgb(246 192 101 / .7); color: #ffe4b5; border-style: dashed; }
+.notice { padding: 8px 10px; border-radius: 10px; font-size: 12.5px; background: rgb(255 255 255 / .05); border: 1px solid var(--line); }
+.notice.warn { border-color: rgb(246 192 101 / .6); background: rgb(246 192 101 / .1); }
+.notice.bad { border-color: rgb(255 138 138 / .6); background: rgb(255 138 138 / .1); }
+.notice.info { border-color: rgb(159 196 255 / .5); background: rgb(159 196 255 / .08); }
+.notice.sim { border-style: dashed; border-color: var(--sim); background: rgb(201 182 255 / .07); }
+
+/* crafting table */
+.table { padding: 14px 16px 18px; }
+.table-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 14px; }
+.table-head h1 { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.25; flex: 1; min-width: 14ch; text-wrap: balance; }
+.table-head h1:focus { outline: none; }
+.table-head h1:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ladder-steps { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 4px; }
+.ladder-steps span { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--faint); }
+.ladder-steps span.on { color: var(--text); border-color: var(--line-strong); background: var(--glass); }
+details.section { border-top: 1px solid var(--line); padding: 10px 0 2px; margin-top: 10px; }
+details.section > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 10px; font-weight: 600; font-size: 14px; }
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary::before { content: "▸"; color: var(--faint); font-size: 11px; transition: transform .15s; }
+details.section[open] > summary::before { transform: rotate(90deg); }
+details.section > summary .lvl { font: 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-weight: 400; }
+.sbody { padding: 8px 0 4px; display: grid; gap: 10px; }
+.rec { border-radius: 12px; border: 1px solid rgb(229 143 111 / .55); background: rgb(229 143 111 / .08); padding: 10px 12px; display: grid; gap: 6px; }
+.rec .why { color: var(--soft); font-size: 13px; }
+.alts { display: grid; gap: 6px; }
+.alt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.alt .c { grid-column: 1; font-size: 12px; color: var(--soft); }
+.alt.blocked { border-style: dashed; opacity: .8; }
+.compare { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; }
+@container (max-width: 600px) { .compare { grid-template-columns: minmax(0, 1fr); } }
+.copycard, .evcard { border-radius: 12px; border: 1px solid var(--line); background: rgb(255 255 255 / .03); padding: 10px 12px; display: grid; gap: 8px; min-width: 0; }
+.field-label { font: 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.copytext { font-size: 16px; line-height: 1.4; margin: 2px 0 0; }
+.claims { display: flex; flex-wrap: wrap; gap: 5px; }
+.claim { font-size: 11.5px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); }
+.claim.ok { border-color: rgb(143 224 176 / .5); }
+.claim.none { border-color: rgb(255 138 138 / .7); background: rgb(255 138 138 / .08); }
+.claim.contested { border-color: rgb(246 192 101 / .7); background: rgb(246 192 101 / .08); }
+.ev { display: grid; gap: 2px; padding: 7px 9px; border-radius: 9px; background: rgb(255 255 255 / .03); border: 1px solid var(--line); }
+.ev.new { border-color: rgb(159 196 255 / .6); }
+.ev q { font-style: italic; quotes: "“" "”"; }
+.ev .src { font-size: 11.5px; color: var(--faint); }
+.evref { font: 600 11px var(--mono); color: #ffe0bd; }
+ins { text-decoration: none; background: rgb(143 224 176 / .2); border-radius: 3px; padding: 0 2px; }
+del { color: #ffc0c0; background: rgb(255 138 138 / .14); border-radius: 3px; padding: 0 2px; }
+.revs { display: grid; gap: 6px; }
+.rev { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); font-size: 12.5px; }
+.rev[aria-current="true"] { border-color: var(--line-strong); background: var(--glass); }
+.audit pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11.5px/1.5 var(--mono); color: var(--soft); max-height: 260px; overflow: auto; }
+.preview { border-radius: 14px; overflow: hidden; border: 1px solid var(--line-strong); background: #f6f1ea; color: #2c2420; }
+.preview .bar { display: flex; gap: 6px; padding: 7px 10px; background: #e7dfd3; font: 11px var(--mono); color: #6b5d52; }
+.preview .hero { padding: 26px 22px 16px; }
+.preview .hero h4 { margin: 0 0 8px; font: 600 24px/1.2 Georgia, "Iowan Old Style", serif; color: #2c2420; }
+.preview .hero p { margin: 0; color: #5a4b42; }
+.preview .recog { margin: 0 22px 22px; padding: 12px 14px; border-left: 3px solid #c9876c; background: #efe6db; font-size: 14px; }
+.form { display: grid; gap: 8px; }
+.form label { display: grid; gap: 4px; font-size: 12.5px; color: var(--soft); }
+.form input, .form textarea { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line-strong); background: rgb(0 0 0 / .2); font-size: 14px; }
+.form textarea { min-height: 96px; resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+.cmp2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@container (max-width: 560px) { .cmp2 { grid-template-columns: minmax(0, 1fr); } }
+.choice { border-radius: 12px; border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 6px; align-content: start; }
+.choice.picked { border-color: var(--ember); }
+
+/* direction */
+.moves { display: grid; gap: 12px; }
+.nextmove { display: grid; gap: 8px; }
+.nextmove .scope { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.receipts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.receipt { border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; display: grid; gap: 6px; font-size: 12.5px; }
+.receipt .text { color: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+.steps li { font-size: 10.5px; text-align: center; padding: 3px 2px; border-radius: 6px; border: 1px solid var(--line); color: var(--faint); overflow-wrap: anywhere; }
+.steps li.done { color: var(--text); border-color: rgb(143 224 176 / .55); background: rgb(143 224 176 / .1); }
+.steps li.now { color: var(--text); border-color: var(--warn); background: rgb(246 192 101 / .1); }
+.steps li.no { color: #ffd0d0; border-color: rgb(255 138 138 / .6); }
+.composer { flex: none; display: grid; gap: 8px; background: rgb(18 22 42); border-color: var(--line-strong); }
+.composer, .composer > *, .composer .target { min-width: 0; }
+.composer .target { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
+.composer .chip { min-width: 0; flex: 1 1 12ch; }
+.chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--ember); background: rgb(229 143 111 / .12); font-size: 12.5px; overflow: hidden; }
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer textarea { width: 100%; min-height: 84px; resize: vertical; padding: 9px 11px; border-radius: 11px; border: 1px solid var(--line-strong); background: rgb(0 0 0 / .25); font-size: 14px; line-height: 1.45; }
+.composer select { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel-2); font-size: 12.5px; }
+.quick { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* simulation console + sheets */
+.console { position: fixed; z-index: 40; top: calc(var(--top-h, 56px) + 4px); right: max(16px, env(safe-area-inset-right, 0px)); width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 70px); overflow: auto; background: rgb(14 16 32 / .98); border: 1px dashed var(--sim); border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; box-shadow: 0 18px 48px rgb(0 0 0 / .45); }
+.console[hidden] { display: none; }
+.console h2 { margin: 0; font-size: 14px; color: var(--sim); }
+.console .grp { display: grid; gap: 6px; }
+.console .grp h3 { margin: 4px 0 0; font: 600 10.5px/1 var(--ui); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.console label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.scrim { position: fixed; inset: 0; z-index: 25; background: rgb(6 8 18 / .5); }
+.scrim[hidden] { display: none; }
+
+/* phone */
+.phonebar { display: none; }
+@media (max-width: 760px) {
+  body { font-size: 14px; }
+  .top { gap: 8px; padding-block: 8px; }
+  .mark .full { display: none; }
+  .simbadge .long { display: none; }
+  .trail { font-size: 12px; }
+  .trail button { max-width: 14ch; }
+  .layout { grid-template-columns: minmax(0, 1fr); padding-top: 10px; padding-bottom: 230px; }
+  .concept > h2.concept-title { display: none; }
+  .work-grid { grid-template-columns: minmax(0, 1fr); }
+  .feed-panel { max-height: none; }
+  body[data-phone="feed"] .table-panel { display: none; }
+  body[data-phone="work"] .feed-panel { display: none; }
+  .direction { position: static; height: auto; display: block; }
+  .top { flex-wrap: wrap; row-gap: 6px; }
+  .top .mark { flex: 1; }
+  .trail { order: 5; flex: 1 1 100%; overflow-x: auto; }
+  .direction .moves { display: none; }
+  .direction.sheet-open .moves { display: grid; position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-height: 78vh; overflow: auto; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: rgb(12 15 30 / .98); border-top: 1px solid var(--line-strong); border-radius: 16px 16px 0 0; }
+  .composer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22; border-radius: 16px 16px 0 0; padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .composer textarea { min-height: 52px; font-size: 16px; }
+  .phonebar { display: flex; gap: 6px; }
+  .phone-hide { display: none !important; }
+  .context.sheet-open { top: var(--top-h, 96px); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<header class="top">
+  <span class="mark">arcadia<b>Go</b></span>
+  <button class="btn small only-narrow" type="button" data-act="toggle-context" aria-expanded="false" aria-controls="context">Context</button>
+  <nav class="trail" id="trail" aria-label="Scope"></nav>
+  <span class="simbadge" title="Everything on this page is fictional and simulated. Nothing here calls Arcadia, an agent, GitHub or production."><span aria-hidden="true">◇</span>Simulation<span class="long"> · fictional data</span></span>
+  <button class="btn small" type="button" data-act="toggle-console" aria-expanded="false" aria-controls="console">Console</button>
+</header>
+
+<div class="phonebar" style="padding: 8px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px))" role="group" aria-label="Phone view">
+  <div class="seg" role="group" aria-label="Show">
+    <button type="button" data-act="phone" data-view="feed" aria-pressed="true">Feed</button>
+    <button type="button" data-act="phone" data-view="work" aria-pressed="false">Work</button>
+  </div>
+  <button class="btn small" type="button" data-act="toggle-moves" aria-expanded="false">Direction</button>
+</div>
+
+<div class="scrim" id="scrim" hidden data-act="close-sheets"></div>
+
+<div class="layout">
+  <nav class="concept context" id="context" aria-label="Context">
+    <h2 class="concept-title">Context</h2>
+    <section class="panel" aria-labelledby="scope-h">
+      <div class="row" style="justify-content: space-between; margin-bottom: 6px">
+        <h3 id="scope-h" style="margin:0">Where you are</h3>
+        <div class="seg" role="group" aria-label="Navigation lens">
+          <button type="button" data-act="lens" data-lens="outline" aria-pressed="true">Outline</button>
+          <button type="button" data-act="lens" data-lens="map" aria-pressed="false">Map</button>
+        </div>
+      </div>
+      <div id="lens"></div>
+    </section>
+    <section class="panel" aria-labelledby="journey-h"><h3 id="journey-h">Journey</h3><div id="journey"></div></section>
+  </nav>
+
+  <main class="concept" aria-label="Work">
+    <h2 class="concept-title">Work</h2>
+    <div class="work-grid">
+      <section class="panel feed-panel" aria-labelledby="feed-h">
+        <div class="feed-head"><h3 id="feed-h" style="margin:0">Activity</h3><span class="faint" id="feed-fresh" style="font-size:11.5px"></span></div>
+        <div id="feed"></div>
+      </section>
+      <section class="panel table table-panel" aria-labelledby="table-title" id="table"></section>
+    </div>
+  </main>
+
+  <aside class="concept direction" id="direction" aria-label="Direction">
+    <h2 class="concept-title">Direction</h2>
+    <div class="moves" id="moves"></div>
+    <form class="panel composer" id="composer" aria-labelledby="composer-h" autocomplete="off">
+      <h3 id="composer-h" class="phone-hide" style="margin:0">Direction</h3>
+      <div class="target">
+        <span class="faint">To</span>
+        <span class="chip" id="target-chip" title=""><span id="target-label"></span></span>
+        <select id="mode" aria-label="What this input does">
+          <option value="direction">Direction for existing work</option>
+          <option value="ask">New Ask</option>
+          <option value="plan">Propose a plan change</option>
+        </select>
+      </div>
+      <div id="target-hint" class="notice info" hidden></div>
+      <label class="sr" for="draft">Your direction</label>
+      <textarea id="draft" placeholder="Write a direction. It goes only to the target shown above."></textarea>
+      <div class="quick phone-hide" id="quick" aria-label="Insert evidence reference"></div>
+      <div id="send-warn" hidden></div>
+      <div class="row" style="justify-content: space-between">
+        <span class="faint" id="draft-state" style="font-size:11.5px"></span>
+        <button class="btn primary" type="submit" id="send">Send direction</button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<section class="console" id="console" hidden aria-labelledby="console-h">
+  <div class="row" style="justify-content: space-between"><h2 id="console-h">Simulation console</h2><button class="btn small quiet" type="button" data-act="toggle-console">Close</button></div>
+  <p class="faint" style="margin:0; font-size:12.5px">Drives the fictional fixture. Nothing here is a real control, and nothing leaves this page.</p>
+  <div class="grp">
+    <h3>Timing</h3>
+    <label><input type="checkbox" id="auto"> Advance simulated transitions automatically</label>
+    <label><input type="checkbox" id="auto-events"> Allow automatic arriving events</label>
+  </div>
+  <div class="grp"><h3>Arrivals and changes</h3>
+    <button class="btn small" type="button" data-act="sim" data-sim="arrive">Arrive a feed event now</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="evidence">New practitioner evidence (makes the recommendation stale)</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="manual">Operator edits hero copy directly (source change)</button>
+  </div>
+  <div class="grp"><h3>Failures</h3>
+    <button class="btn small" type="button" data-act="sim" data-sim="stop">Stop the A3 agent session</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="flaky">Next send loses its connection</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="prs">Pull request source unavailable</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="empty">Empty feed</button>
+    <button class="btn small" type="button" data-act="sim" data-sim="reload">Reload the page mid-send</button>
+  </div>
+  <div class="grp"><h3>Demo state</h3>
+    <button class="btn small danger" type="button" data-act="reset">Reset the demo</button>
+  </div>
+  <div class="grp"><h3>Simulation log</h3><pre id="simlog" class="mono faint" style="margin:0; white-space:pre-wrap; font-size:11px; max-height:160px; overflow:auto"></pre></div>
+</section>
+
+<div class="sr" aria-live="polite" id="live"></div>
+
+<script>
+(() => {
+"use strict";
+const KEY = "arcadia.go.prototype.v1";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clockLabel = m => { const t = 10 * 60 + 20 + m; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+const phone = () => matchMedia("(max-width: 760px)").matches;
+
+// ---------- fictional fixture: one identity per object ----------
+const OBJ = {
+  portfolio: { kind: "Portfolio", title: "Portfolio", parent: null },
+  ppn: { kind: "Project", title: "Private Practice Now", parent: "portfolio", outcome: "Authentic, practitioner-grounded copy" },
+  "ppn-plan": { kind: "Plan", title: "Improve the evidence-to-copy workflow", parent: "ppn", milestone: "Authentic section copy accepted", destination: "Trusted launch" },
+  A1: { kind: "Action", title: "Structure practitioner interview evidence", parent: "ppn-plan", topics: ["T-evidence"] },
+  A2: { kind: "Action", title: "Normalize the practitioner profile", parent: "ppn-plan", topics: ["T-evidence"], deps: ["A1"] },
+  A3: { kind: "Action", title: "Compare and revise Hero/Recognition copy", parent: "ppn-plan", topics: ["T-evidence", "T-generation"], deps: ["A2"], decisions: ["D04"], artifacts: ["ART1"] },
+  A4: { kind: "Action", title: "Human copy acceptance", parent: "ppn-plan", topics: ["T-acceptance"], deps: ["A3"], decisions: ["D04"] },
+  A5: { kind: "Action", title: "Assemble the explainable site preview", parent: "ppn-plan", topics: ["T-acceptance"], deps: ["A4"], artifacts: ["ART1"] },
+  "T-evidence": { kind: "Topic", title: "Practitioner evidence", parent: null, related: ["A1", "A2", "A3"] },
+  "T-generation": { kind: "Topic", title: "Authentic copy generation", parent: null, related: ["A3"] },
+  "T-acceptance": { kind: "Topic", title: "Copy acceptance", parent: null, related: ["A4", "A5", "D04"] },
+  D04: { kind: "Decision", title: "Voice: colleague-to-colleague or clinical?", parent: "ppn", related: ["A3", "A4"] },
+  ART1: { kind: "Artifact", title: "Landing preview (Hero and Recognition)", parent: "ppn", related: ["A3", "A5"] },
+  arc: { kind: "Project", title: "Arcadia", parent: "portfolio", summary: "Unattended production: review round 2 of 3 on the current head." },
+  garden: { kind: "Project", title: "Moon garden", parent: "portfolio", summary: "First website: all three Actions arrived; nothing needs you." },
+  notes: { kind: "Project", title: "Field notes", parent: "portfolio", summary: "Publishing is blocked on Decision 0017 (publish now or after review)." }
+};
+const PLAN_ACTIONS = ["A1", "A2", "A3", "A4", "A5"];
+const RECIPIENTS = new Set(["portfolio", "ppn", "ppn-plan", "A1", "A2", "A3", "A4", "A5", "arc", "garden", "notes"]);
+const childrenOf = id => Object.keys(OBJ).filter(k => OBJ[k].parent === id && OBJ[k].kind !== "Topic");
+
+const EVIDENCE = {
+  E1: { who: "Dr. Lena Ortiz (fictional), LMFT, solo practice", quote: "I don't want to grow fast. I want fewer no-shows and my evenings back.", src: "Interview 2 · structured in A1" },
+  E2: { who: "Practitioner survey (fictional), n = 42", quote: "71% said after-session admin is the biggest drain on their week.", src: "Survey · normalized in A2" },
+  E3: { who: "Sam Reyes (fictional), LCSW, group practice", quote: "Most marketing makes me feel like a product. Talk to me like a colleague.", src: "Review call · structured in A1" },
+  E4: { who: "Practitioner call notes (fictional), 5 attendees", quote: "Two of five read 'evenings back' as a promise about hours that no software can keep.", src: "Call notes · arrived after r3" }
+};
+
+// Revisions the simulated agent can produce, in order. Claims cite evidence or are flagged.
+const REV_LIBRARY = [
+  { hero: "Grow your private practice with proven marketing.", recog: "The #1 platform for therapists.",
+    claims: [["Grow your practice", []], ["proven marketing", []], ["#1 platform", []]] },
+  { hero: "Transform your private practice overnight with proven growth systems.", recog: "Trusted by thousands of therapists nationwide.",
+    claims: [["overnight transformation", []], ["proven growth systems", []], ["thousands of therapists", []]] },
+  { hero: "Fewer no-shows. Evenings back. A calmer private practice.", recog: "Shaped by 42 practicing therapists who told us after-session admin is their biggest drain.",
+    claims: [["Fewer no-shows", ["E1"]], ["Evenings back", ["E1"], "E4"], ["calmer practice", ["E3"]], ["42 practicing therapists", ["E2"]]] },
+  { hero: "Fewer no-shows. Less after-hours admin. A calmer private practice.", recog: "Shaped by 42 practicing therapists, written colleague to colleague.",
+    claims: [["Fewer no-shows", ["E1"]], ["less after-hours admin", ["E2", "E4"]], ["calmer practice", ["E3"]], ["colleague to colleague", ["E3"]]] },
+  { hero: "Fewer no-shows and less after-hours admin, so your practice feels calmer.", recog: "Shaped by 42 practicing therapists, written colleague to colleague.",
+    claims: [["Fewer no-shows", ["E1"]], ["less after-hours admin", ["E2", "E4"]], ["practice feels calmer", ["E3"]], ["colleague to colleague", ["E3"]]] }
+];
+
+const FEED0 = [
+  { id: "f1", sec: "Your next move", obj: "A3", t: "Hero/Recognition copy r2 needs your review", d: "3 claims in r2 have no practitioner evidence.", tags: [["needs", "needs you"]], at: 0 },
+  { id: "f2", sec: "Waiting on operator judgment", obj: "D04", t: "Decision D-04: colleague-to-colleague or clinical voice?", d: "Snapshot from 09:58.", tags: [["needs", "decision"]], at: -22, snapshot: true },
+  { id: "f3", sec: "Significant changes", obj: "A2", t: "Practitioner profile normalized (A2 arrived)", d: "Three fictional sources: E1, E2, E3.", tags: [["ok", "arrived"]], at: -14 },
+  { id: "f4", sec: "Waiting on dependencies", obj: "A5", t: "Site preview waits on Human copy acceptance", d: "A5 starts after A4 passes its review gate.", tags: [["", "waiting"]], at: -30 },
+  { id: "f5", sec: "Reviewed candidates and delivered results", obj: "garden", t: "Moon garden: planting guide delivered", d: "Merged and verified (fictional #8).", tags: [["ok", "delivered"]], at: -60, source: "prs" },
+  { id: "f6", sec: "Waiting on operator judgment", obj: "notes", t: "Field notes: Decision 0017, publish now or after review?", d: "Publishing is blocked until you answer.", tags: [["needs", "decision"]], at: -45 },
+  { id: "f7", sec: "Significant changes", obj: "arc", t: "Arcadia: review round 2 of 3 on unattended production", d: "Implementer on its second commit.", tags: [["info", "in review"]], at: -8, source: "prs" }
+];
+const FEED_SECTIONS = ["Your next move", "Significant changes", "Waiting on operator judgment", "Waiting on dependencies", "Reviewed candidates and delivered results"];
+const ARRIVALS = [
+  { sec: "Significant changes", obj: "arc", t: "Arcadia: review round 2 passed; round 3 queued", d: "No action needed from you.", tags: [["info", "in review"]] },
+  { sec: "Reviewed candidates and delivered results", obj: "garden", t: "Moon garden: phone layout check passed", d: "Verified on a 390 px screenshot.", tags: [["ok", "verified"]] },
+  { sec: "Significant changes", obj: "notes", t: "Field notes: draft 2 of the first note is ready", d: "Still waits on Decision 0017 to publish.", tags: [["", "waiting"]] }
+];
+
+function initial() {
+  return {
+    v: 1, clock: 0, selected: "A3", back: [], lens: "outline", mapWide: false, phone: "feed",
+    draft: { text: "", target: "A3", mode: "direction" },
+    revs: [ { n: 1, lib: 0, by: "agent", at: -40 }, { n: 2, lib: 1, by: "agent", at: -8 } ], accepted: null,
+    sends: [], seq: 0, evidence: ["E1", "E2", "E3"], e4At: null,
+    recipient: "running", pause: "running", pauseAt: null, pauseEvidence: null, flaky: false,
+    feed: FEED0.map(f => ({ ...f })), unseen: [], arrivalsUsed: 0, prs: "ok", emptyFeed: false,
+    d04Answered: true, d04Refreshed: false, manual: null, recSeen: null,
+    continuation: null, proposals: [], adoptPreview: null, adopted: [], preview: null,
+    auto: true, autoEvents: true, autoArrivalDone: false, autoStaleDone: false,
+    open: { understand: true, compare: true, verify: true, audit: false },
+    log: ["10:20 Demo loaded with fictional fixture state."]
+  };
+}
+let S;
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) { const v = JSON.parse(raw); if (v && v.v === 1) return v; } } catch {}
+  return initial();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }
+function log(msg) { S.log.push(`${clockLabel(S.clock)} ${msg}`); if (S.log.length > 80) S.log.shift(); }
+function tick(n = 1) { S.clock += n; }
+function say(msg) { const l = $("live"); l.textContent = ""; setTimeout(() => { l.textContent = msg; }, 30); }
+
+// ---------- derived state ----------
+const latest = () => S.revs[S.revs.length - 1];
+const revCopy = r => (r.manual ? r.manual : REV_LIBRARY[r.lib]);
+const inFlight = target => S.sends.filter(s => s.target === target && ["submitted", "delivered", "acknowledged", "held"].includes(s.status));
+function unsupported(r) { return revCopy(r).claims.filter(c => !c[1].length).length; }
+function contested(r) { return S.evidence.includes("E4") ? revCopy(r).claims.filter(c => c[2] === "E4").length : 0; }
+
+function recommendation() {
+  const r = latest();
+  const blocked = [{ label: "Start A5: assemble the site preview", why: "Waits on Human copy acceptance (A4), which needs an accepted A3 revision." }];
+  if (S.recipient === "stopped") return { v: `stopped-${r.n}`, title: "Resume the A3 session before sending more", why: "The agent session for A3 stopped. Directions wait in the Action's inbox and are not read until a session resumes.", consequence: "Resuming starts a session with the current evidence; nothing publishes.", primary: ["resume-recipient", "Resume A3 (simulated)"], alts: [], blocked };
+  if (S.pause === "paused" || S.pause === "pause-requested") return { v: `pause-${S.pause}`, title: S.pause === "paused" ? "A3 is paused at a checkpoint" : "Pause requested: A3 stops at its next checkpoint", why: S.pause === "paused" ? "Nothing runs on A3 until you resume. Directions you send are held." : "The agent is finishing its current step. It is not paused yet.", consequence: "Resume continues with the current evidence.", primary: S.pause === "paused" ? ["resume", "Resume with current evidence"] : null, alts: [], blocked };
+  const pending = inFlight("A3");
+  if (pending.length) return { v: `wait-${pending[0].id}-${pending[0].status}`, title: `Direction #${pending[0].n} is ${statusWord(pending[0].status)}`, why: "The agent has your direction. A revision is not ready yet, and an acknowledgment is not a result.", consequence: "You can keep working anywhere; the result arrives in the feed and here.", primary: null, alts: [], blocked };
+  if (S.accepted === r.n) return { v: `accepted-${r.n}`, title: "Nothing on A3 needs you right now", why: `r${r.n} is accepted. The agent continues to the Proof section (simulated). You can still intervene at any time.`, consequence: "Directions you send now reopen A3 for another revision.", primary: ["preview-continuation", "Preview continuation through A5"], alts: [], blocked: [] };
+  const un = unsupported(r), ct = contested(r);
+  if (un) return { v: `rev-${r.n}-u${un}`, title: `Ask for a revision of r${r.n}`, why: `${un} of ${revCopy(r).claims.length} claims in r${r.n} have no practitioner evidence (${S.evidence.join(", ")}).`, consequence: "The agent revises Hero/Recognition. Nothing publishes and A4 does not start.", primary: ["focus-composer", "Write a revision direction"],
+    alts: [{ act: "approve", label: `Approve r${r.n} as is`, c: `Moves ${un} unsupported claim${un > 1 ? "s" : ""} on to Human copy acceptance (A4). You can still revise later.` }, { act: "pause", label: "Pause A3", c: "The agent stops at its next checkpoint." }], blocked };
+  if (ct) return { v: `rev-${r.n}-c${ct}-e4`, title: "Ask for a softer hero line", changed: S.e4At !== null ? `New evidence E4 arrived at ${clockLabel(S.e4At)}: two of five practitioners read “Evenings back” as a promise about hours.` : null,
+    why: `r${r.n} cites evidence for every claim, but E4 contests “Evenings back”.`, consequence: "The agent revises the hero line only. Recognition stays as written.", primary: ["focus-composer", "Write a revision direction"],
+    alts: [{ act: "approve", label: `Approve r${r.n} anyway`, c: "Ships the contested line to Human copy acceptance. Your choice is recorded with E4 visible." }], blocked };
+  return { v: `ok-${r.n}-${S.evidence.length}`, title: `Approve r${r.n} and continue`, why: `Every claim in r${r.n} cites practitioner evidence.`, consequence: "A3 continues to the Proof section and r" + r.n + " goes to Human copy acceptance (A4). You can intervene again at any time.", primary: ["approve", `Approve r${r.n} and continue (simulated)`],
+    alts: [{ act: "focus-composer", label: "Ask for another revision", c: "There is no limit on how many times you redirect." }], blocked };
+}
+function statusWord(s) { return { submitted: "submitted", delivered: "delivered to the agent", acknowledged: "acknowledged, not yet acted on", acted: "acted on", verified: "verified", unknown: "unconfirmed", held: "held", superseded: "replaced", duplicate: "kept as one" }[s] || s; }
+
+// ---------- rendering ----------
+// Re-render a region without stealing focus, scroll or anything the operator typed into it.
+function patch(el, html) {
+  const a = document.activeElement, key = a && el.contains(a) ? a.dataset.k : null;
+  const typed = [...el.querySelectorAll("input[data-k], textarea[data-k]")].map(f => [f.dataset.k, f.value, f.selectionStart]);
+  const st = el.scrollTop;
+  el.innerHTML = html; el.scrollTop = st;
+  for (const [k, v, pos] of typed) { const f = el.querySelector(`[data-k="${CSS.escape(k)}"]`); if (f) { f.value = v; if (k === key && pos != null) try { f.selectionStart = f.selectionEnd = pos; } catch {} } }
+  if (key) { const n = el.querySelector(`[data-k="${CSS.escape(key)}"]`); if (n) n.focus({ preventScroll: true }); }
+}
+const ancestors = id => { const out = []; let p = OBJ[id]?.parent; while (p) { out.unshift(p); p = OBJ[p].parent; } return out; };
+
+function renderTrail() {
+  const id = S.selected, chain = [...ancestors(id), id];
+  if (OBJ[id].kind === "Topic") chain.splice(0, chain.length, "portfolio", "ppn", id);
+  patch($("trail"), chain.map((c, i) => `${i ? '<span class="sep" aria-hidden="true">›</span>' : ""}<button type="button" data-k="trail-${c}" data-act="select" data-id="${c}" ${c === id ? 'aria-current="page"' : ""} title="${esc(OBJ[c].kind)}: ${esc(OBJ[c].title)}">${esc(OBJ[c].title)}</button>`).join(""));
+}
+
+function outlineNode(id) {
+  const o = OBJ[id], kids = childrenOf(id);
+  const btn = `<button class="node" type="button" data-k="out-${id}" data-act="select" data-id="${id}" ${S.selected === id ? 'aria-current="true"' : ""}><span class="kind">${esc(o.kind)}</span><span>${esc(o.title)}</span></button>`;
+  return `<li>${btn}${kids.length ? `<ul>${kids.map(outlineNode).join("")}</ul>` : ""}</li>`;
+}
+function renderLens() {
+  document.querySelectorAll('[data-act="lens"]').forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lens === S.lens)));
+  if (S.lens === "outline") {
+    const topics = ["T-evidence", "T-generation", "T-acceptance"];
+    patch($("lens"), `<ul class="tree" aria-label="Portfolio outline">${outlineNode("portfolio")}</ul>
+      <p class="fsec" style="margin-left:0">Related capabilities</p>
+      <ul class="tree">${topics.map(t => `<li><button class="node" type="button" data-k="out-${t}" data-act="select" data-id="${t}" ${S.selected === t ? 'aria-current="true"' : ""}><span class="kind">Topic</span><span>${esc(OBJ[t].title)}</span></button></li>`).join("")}</ul>`);
+    return;
+  }
+  // Map lens: the selected node, its ancestors, and its immediate links; expand for more.
+  const id = S.selected, o = OBJ[id];
+  const anc = OBJ[id].kind === "Topic" ? ["ppn"] : ancestors(id).slice(-2);
+  const cross = [...(o.deps || []), ...(o.topics || []), ...(o.decisions || []), ...(o.artifacts || []), ...(o.related || [])];
+  let kids = childrenOf(id).filter(k => OBJ[k].kind !== "Decision" && OBJ[k].kind !== "Artifact");
+  if (S.mapWide) { const sib = o.parent ? childrenOf(o.parent).filter(k => k !== id && OBJ[k].kind === o.kind) : []; kids = [...new Set([...kids, ...sib])]; }
+  const nodeBtn = (n, cls, rel) => `<button class="map-node ${cls}" type="button" data-k="map-${n}" data-act="select" data-id="${n}" data-map="${n}" data-rel="${rel}"><span class="kind">${esc(OBJ[n].kind)}${cls === "cross" ? " · link" : ""}</span>${esc(OBJ[n].title)}</button>`;
+  const below = [...new Set([...kids, ...cross])];
+  patch($("lens"), `<div class="map" id="map"><svg aria-hidden="true" id="map-lines"></svg><div class="map-rows">
+      ${anc.length ? `<div class="map-row">${anc.slice(-1).map(n => nodeBtn(n, "", "up")).join("")}</div>` : ""}
+      <div class="map-row">${nodeBtn(id, "self", "self")}</div>
+      ${below.length ? `<div class="map-row">${below.map(n => nodeBtn(n, kids.includes(n) ? "" : "cross", "down")).join("")}</div>` : ""}
+    </div></div>
+    <div class="row" style="margin-top:8px; justify-content: space-between"><button class="btn small quiet" type="button" data-k="map-wide" data-act="map-wide">${S.mapWide ? "Show fewer relationships" : "Expand broader relationships"}</button>
+    ${S.back.length ? `<button class="btn small quiet" type="button" data-k="map-back" data-act="back">← Back to ${esc(OBJ[S.back[S.back.length - 1]].title)}</button>` : ""}</div>
+    <p class="faint" style="font-size:11.5px; margin:6px 0 0">Dashed nodes are cross-links. Selecting a node opens it in the crafting table; map links never launch work. A local lens, not Markmap.</p>`);
+  requestAnimationFrame(drawMap);
+}
+function drawMap() {
+  const map = $("map"), svg = $("map-lines"); if (!map || !svg) return;
+  const box = map.getBoundingClientRect(), self = map.querySelector(".map-node.self"); if (!self) return;
+  const c = el => { const r = el.getBoundingClientRect(); return { x: r.left - box.left + r.width / 2, t: r.top - box.top, b: r.bottom - box.top }; };
+  const s = c(self), paths = [];
+  map.querySelectorAll(".map-node").forEach(n => {
+    if (n === self) return; const p = c(n), up = n.dataset.rel === "up";
+    const [x1, y1, x2, y2] = up ? [p.x, p.b, s.x, s.t] : [s.x, s.b, p.x, p.t], my = (y1 + y2) / 2;
+    paths.push(`<path class="${n.classList.contains("cross") ? "cross" : ""}" d="M${x1} ${y1} C${x1} ${my}, ${x2} ${my}, ${x2} ${y2}"/>`);
+  });
+  svg.innerHTML = paths.join("");
+}
+
+function renderJourney() {
+  const phase = a => {
+    if (a === "A1" || a === "A2") return ["arrived", "Arrived"];
+    if (a === "A3") return S.accepted === latest().n ? ["arrived", "Accepted"] : S.recipient === "stopped" ? ["blocked", "Stopped"] : S.pause === "paused" ? ["blocked", "Paused"] : inFlight("A3").length ? ["review", "Revising"] : ["needs", "Needs you"];
+    if (a === "A4") return S.accepted === latest().n ? ["review", "Review gate"] : ["", "Waiting"];
+    return ["", "Parked"];
+  };
+  const cur = S.accepted === latest().n ? "A4" : "A3";
+  const r = latest(), obstacles = unsupported(r) ? `${unsupported(r)} unsupported claim${unsupported(r) > 1 ? "s" : ""} in r${r.n} (open)` : contested(r) ? "“Evenings back” contested by E4 (open)" : "Unsupported claims (cleared)";
+  patch($("journey"), `<div class="muted" style="font-size:12.5px">${esc(OBJ.ppn.title)} · ${esc(OBJ["ppn-plan"].title)}</div>
+    <div class="track" role="img" aria-label="Action ${PLAN_ACTIONS.indexOf(cur) + 1} of ${PLAN_ACTIONS.length}">${PLAN_ACTIONS.map(a => `<i class="leg ${phase(a)[0]} ${a === cur ? "current" : ""}" title="${esc(OBJ[a].title)}: ${phase(a)[1]}"></i>`).join("")}</div>
+    <dl class="facts">
+      <dt>Destination</dt><dd>${esc(OBJ["ppn-plan"].destination)}</dd>
+      <dt>Milestone</dt><dd>${esc(OBJ["ppn-plan"].milestone)}</dd>
+      <dt>Position</dt><dd>${esc(cur)} of ${PLAN_ACTIONS.length}: ${esc(OBJ[cur].title)}</dd>
+      <dt>Done</dt><dd>A1, A2${S.accepted === r.n ? ", A3" : ""}</dd>
+      <dt>Obstacle</dt><dd>${esc(obstacles)}</dd>
+      <dt>Review gate</dt><dd>Human copy acceptance (A4)</dd>
+      <dt>Allowance</dt><dd>2 of 3 automatic repair rounds left (one produced r2). Your directions never use it; redirect as often as you need.</dd>
+      <dt>Evidence</dt><dd>${S.evidence.join(", ")} · as of ${clockLabel(S.e4At ?? 0)}</dd>
+    </dl>`);
+}
+
+function feedItemHtml(f) {
+  let tags = f.tags.map(([c, t]) => `<span class="tag ${c}">${esc(t)}</span>`).join(" ");
+  let d = f.d;
+  if (f.obj === "D04" && S.d04Refreshed) { tags = '<span class="tag ok">answered</span>'; d = "Answered 10:05: colleague-to-colleague."; }
+  if (f.source === "prs" && S.prs === "down") tags += ' <span class="tag stale">last good read 10:12</span>';
+  return `<li><button class="fitem" type="button" data-k="feed-${f.id}" data-act="select" data-id="${f.obj}" data-feed="${f.id}" ${S.selected === f.obj ? 'aria-current="true"' : ""}>
+    <span class="t">${esc(f.t)}</span><span class="d">${esc(d)}</span><span class="meta"><span>${clockLabel(f.at)}</span>${tags}</span></button></li>`;
+}
+function renderFeed() {
+  $("feed-fresh").textContent = S.emptyFeed ? `read ${clockLabel(S.clock)}` : `read ${clockLabel(S.clock)} · fictional`;
+  if (S.emptyFeed) { patch($("feed"), `<p class="notice">Nothing needs you right now. Last read ${clockLabel(S.clock)}; ${S.accepted ? "A3 continues" : "3 Actions are moving"} without you. New activity appears here without moving you.</p><button class="btn small quiet" type="button" data-k="unempty" data-act="sim" data-sim="empty">Show the fixture feed again</button>`); return; }
+  const parts = [];
+  if (S.prs === "down") parts.push(`<p class="notice warn" style="margin:0 0 6px">Pull requests could not be read since ${clockLabel(S.clock)}. Items from that source show their last good read, marked.</p>`);
+  if (S.unseen.length) parts.push(`<button class="newpill" type="button" data-k="newpill" data-act="show-unseen">${S.unseen.length} new ${S.unseen.length === 1 ? "item" : "items"} · show at top</button>`);
+  for (const sec of FEED_SECTIONS) {
+    const items = S.feed.filter(f => f.sec === sec).sort((a, b) => b.at - a.at);
+    if (items.length) parts.push(`<p class="fsec">${esc(sec)}</p><ul class="feed-list">${items.map(feedItemHtml).join("")}</ul>`);
+  }
+  patch($("feed"), parts.join(""));
+}
+
+function claimsHtml(r) {
+  return `<div class="claims">${revCopy(r).claims.map(([t, ev, contest]) => {
+    const isContested = contest && S.evidence.includes(contest);
+    const cls = !ev.length ? "none" : isContested ? "contested" : "ok";
+    const note = !ev.length ? "no evidence" : ev.map(e => `[${e}]`).join("") + (isContested ? ` · contested by ${contest}` : "");
+    return `<span class="claim ${cls}" title="${esc(note)}">${esc(t)} <span class="evref">${esc(note)}</span></span>`;
+  }).join("")}</div>`;
+}
+function diffWords(a, b) {
+  const A = a.split(/(\s+)/), B = b.split(/(\s+)/), m = A.length, n = B.length, L = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) for (let j = n - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  let i = 0, j = 0, out = "";
+  while (i < m && j < n) { if (A[i] === B[j]) { out += esc(A[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) { out += `<del>${esc(A[i++])}</del>`; } else { out += `<ins>${esc(B[j++])}</ins>`; } }
+  while (i < m) out += `<del>${esc(A[i++])}</del>`; while (j < n) out += `<ins>${esc(B[j++])}</ins>`;
+  return out;
+}
+function sendSteps(s) {
+  const order = ["submitted", "delivered", "acknowledged", "acted", "verified"];
+  const label = { submitted: "Submitted", delivered: "Delivered", acknowledged: "Acknowledged", acted: "Acted on", verified: "Verified" };
+  const at = order.indexOf(s.status);
+  return `<ol class="steps" aria-label="Delivery state">${order.map((st, i) => {
+    let cls = i <= at ? "done" : ""; if (i === at + 1 && ["submitted", "delivered", "acknowledged"].includes(s.status)) cls = "now";
+    if (s.status === "unknown") cls = i === 0 ? "no" : ""; if (s.status === "held") cls = i === 0 ? "done" : i === 1 ? "no" : "";
+    return `<li class="${cls}">${label[st]}</li>`;
+  }).join("")}</ol>`;
+}
+
+// Stale only when the operator was shown the approve recommendation for this same revision and the facts changed since.
+function isStale(rec) { return Boolean(rec.changed) && S.recSeen !== rec.v && typeof S.recSeen === "string" && S.recSeen.startsWith(`ok-${latest().n}-`); }
+function recBlock(where) {
+  const rec = recommendation();
+  const compact = where === "m";
+  const stale = isStale(rec);
+  if (stale) return `<div class="notice warn" role="status"><strong>This recommendation changed while you were looking.</strong><br>${esc(rec.changed)}<br>The earlier choice (“Approve r${latest().n} and continue”) would now ship a contested line. Review the new choices before acting.
+    <div class="row" style="margin-top:8px"><button class="btn small primary" type="button" data-k="${where}-ack" data-act="ack-rec">Review the new recommendation</button></div></div>`;
+  const primary = rec.primary ? `<button class="btn ${rec.primary[0] === "approve" ? "primary" : "primary"}" type="button" data-k="${where}-primary" data-act="${rec.primary[0]}">${esc(rec.primary[1])}</button>` : "";
+  return `<div class="rec"><div class="row" style="justify-content: space-between"><strong>${esc(rec.title)}</strong><span class="tag sim">recommended</span></div>
+    <div class="why">${esc(rec.why)}</div><div style="font-size:12.5px"><span class="faint">Consequence:</span> ${esc(rec.consequence)}</div>
+    ${rec.changed ? `<div style="font-size:12.5px"><span class="faint">What changed:</span> ${esc(rec.changed)}</div>` : ""}
+    ${primary ? `<div class="row">${primary}${compact && (rec.alts.length || rec.blocked.length) ? `<button class="btn small quiet" type="button" data-k="m-choices" data-act="see-choices">All choices</button>` : ""}</div>` : ""}</div>
+    ${!compact && (rec.alts.length || rec.blocked.length) ? `<div class="alts">${rec.alts.map((a, i) => `<div class="alt"><span>${esc(a.label)}</span><button class="btn small" type="button" data-k="${where}-alt-${i}" data-act="${a.act}">Choose</button><span class="c">${esc(a.c)}</span></div>`).join("")}
+      ${rec.blocked.map(b => `<div class="alt blocked"><span>${esc(b.label)}</span><span class="tag">blocked</span><span class="c">${esc(b.why)}</span></div>`).join("")}</div>` : ""}`;
+}
+
+function sectionTag(id, lvl, title, body) {
+  return `<details class="section" data-sec="${id}" ${S.open[id] ? "open" : ""}><summary data-k="sum-${id}"><span>${esc(title)}</span><span class="lvl">${lvl}</span></summary><div class="sbody">${body}</div></details>`;
+}
+
+function renderAction(id) {
+  const o = OBJ[id];
+  if (id !== "A3") {
+    const st = id === "A1" || id === "A2" ? ["ok", "Arrived"] : id === "A4" ? (S.accepted ? ["info", "Review gate open"] : ["", "Waiting on A3"]) : ["", "Parked until A4"];
+    return head(o, `<span class="tag ${st[0]}">${st[1]}</span>`) + `<p class="muted">${esc(o.title)} is part of ${esc(OBJ["ppn-plan"].title)}.</p>
+      <dl class="facts"><dt>Depends on</dt><dd>${(o.deps || []).map(link).join(", ") || "nothing"}</dd><dt>Topics</dt><dd>${(o.topics || []).map(link).join(", ")}</dd>${o.decisions ? `<dt>Decisions</dt><dd>${o.decisions.map(link).join(", ")}</dd>` : ""}${o.artifacts ? `<dt>Artifacts</dt><dd>${o.artifacts.map(link).join(", ")}</dd>` : ""}</dl>
+      ${backBtn()}`;
+  }
+  const r = latest(), prev = S.revs[S.revs.length - 2];
+  const state = S.recipient === "stopped" ? ["bad", "Session stopped"] : S.pause === "paused" ? ["bad", "Paused"] : S.pause === "pause-requested" ? ["needs", "Pause requested"] : inFlight("A3").length ? ["info", "Revising"] : S.accepted === r.n ? ["ok", `r${r.n} accepted`] : ["needs", "Needs you"];
+  const glance = `<p style="margin:6px 0 0">${esc(`r${r.n} is the current proposal.`)} ${unsupported(r) ? `<strong>${unsupported(r)} claims lack evidence.</strong>` : contested(r) ? "<strong>One claim is contested by new evidence.</strong>" : "Every claim cites evidence."}</p>
+    <div class="ladder-steps" aria-label="Disclosure depth"><span class="on">Glance</span><span class="${S.open.understand ? "on" : ""}">Understand</span><span class="${S.open.compare ? "on" : ""}">Act</span><span class="${S.open.verify ? "on" : ""}">Verify</span><span class="${S.open.audit ? "on" : ""}">Audit</span></div>`;
+  const manualNote = S.manual && S.manual.rev === r.n ? `<div class="notice warn">You edited the hero line directly at ${clockLabel(S.manual.at)}, outside Arcadia. The comparison now uses your edit as r${r.n}. ${S.manual.conflict ? `<strong>Direction #${S.manual.conflict} is still in flight and also changes the hero line.</strong> <div class="row" style="margin-top:6px"><button class="btn small" type="button" data-k="m-keep" data-act="manual-keep">Keep my edit; tell the agent</button><button class="btn small" type="button" data-k="m-apply" data-act="manual-apply">Let direction #${S.manual.conflict} apply on top</button></div>` : "No pending direction conflicts with it."}</div>` : "";
+  const ev = S.evidence.map(e => `<div class="ev ${e === "E4" ? "new" : ""}"><span class="evref">${e}${e === "E4" ? " · new" : ""}</span><q>${esc(EVIDENCE[e].quote)}</q><span class="src">${esc(EVIDENCE[e].who)} · ${esc(EVIDENCE[e].src)}</span></div>`).join("");
+  const copy = revCopy(r);
+  const compare = `<div class="compare"><div class="copycard"><div class="row" style="justify-content: space-between"><span class="field-label">Proposed copy · r${r.n}${r.manual ? " (your edit)" : ""}</span><button class="btn small quiet" type="button" data-k="open-art" data-act="select" data-id="ART1">View in preview</button></div>
+      <div><span class="field-label">Hero</span><p class="copytext">${esc(copy.hero)}</p></div>
+      <div><span class="field-label">Recognition</span><p class="copytext" style="font-size:14.5px">${esc(copy.recog)}</p></div>
+      <div><span class="field-label">Claims and their evidence</span>${claimsHtml(r)}</div></div>
+    <div class="evcard"><span class="field-label">Practitioner evidence (fictional)</span>${ev}
+      <button class="btn small quiet" type="button" data-k="to-topic" data-act="select" data-id="T-evidence">Open the Practitioner evidence topic →</button></div></div>`;
+  const lastSend = S.sends.filter(s => s.target === "A3").slice(-1)[0];
+  const verify = `${lastSend ? `<div><span class="field-label">Direction #${lastSend.n}</span>${sendSteps(lastSend)}<div class="faint" style="font-size:12px">${esc(sendNote(lastSend))}</div></div>` : ""}
+    ${prev ? `<div><span class="field-label">What changed: r${prev.n} → r${r.n}</span><p style="margin:4px 0"><span class="faint">Hero:</span> ${diffWords(revCopy(prev).hero, copy.hero)}</p><p style="margin:4px 0"><span class="faint">Recognition:</span> ${diffWords(revCopy(prev).recog, copy.recog)}</p></div>` : ""}
+    <div class="revs" role="list">${S.revs.slice().reverse().map(x => `<div class="rev" role="listitem" ${x === r ? 'aria-current="true"' : ""}><span class="mono">r${x.n}</span><span>${esc(x.manual ? "Your direct edit" : x.dir ? `Agent revision for direction #${x.dir}` : "Agent proposal")} · ${unsupported(x) ? `${unsupported(x)} unsupported` : "all claims cited"}</span><span class="faint">${clockLabel(x.at)}${S.accepted === x.n ? " · accepted" : ""}</span></div>`).join("")}</div>`;
+  const audit = `<div class="audit"><pre>${esc([
+    "object        A3  (fictional)",
+    "plan          ppn-plan · Improve the evidence-to-copy workflow",
+    `revisions     ${S.revs.map(x => "r" + x.n).join(", ")}`,
+    `accepted      ${S.accepted ? "r" + S.accepted : "none"}`,
+    "session       sim-session-a3 (simulated; no provider session exists)",
+    ...S.sends.filter(s => s.target === "A3").map(s => `receipt       rcpt-sim-${String(s.n).padStart(3, "0")}  #${s.n} ${s.status}  ${clockLabel(s.at)}`),
+    "",
+    ...S.log.slice(-12)
+  ].join("\n"))}</pre>
+    <div class="row" style="margin-top:8px"><button class="btn small" type="button" disabled aria-describedby="native-why">Open in Claude Code</button><button class="btn small" type="button" disabled aria-describedby="native-why">Open in Codex</button></div>
+    <p class="faint" id="native-why" style="font-size:12px; margin:4px 0 0">Unavailable: this fictional Session has no verified native destination. Go never invents session links or turns on remote control.</p></div>`;
+  return head(o, `<span class="tag ${state[0]}">${esc(state[1])}</span>`) + glance + manualNote +
+    sectionTag("understand", "Understand", "Situation and recommendation", recBlock("t")) +
+    sectionTag("compare", "Act", "Copy and evidence", compare) +
+    sectionTag("verify", "Verify", "Directions and revisions", verify) +
+    sectionTag("audit", "Audit", "Receipts, IDs and log", audit) + backBtn();
+}
+function sendNote(s) {
+  return {
+    submitted: "Arcadia recorded your direction. The agent has not received it yet.",
+    delivered: "Delivered to the agent's inbox. Delivery does not mean it has been read.",
+    acknowledged: s.waiting ? "Acknowledged, then the session stopped or paused. No revision is produced until A3 resumes." : "The agent acknowledged it. That is not a result; no revision exists yet.",
+    acted: s.rev ? `The agent produced r${s.rev}. Compare it with the evidence; it is verified only when you accept it.` : "Recorded as a note on that work (simulated). There is no result to compare.",
+    verified: `You accepted r${s.rev}.`,
+    unknown: "The connection dropped. We cannot tell whether this arrived, and it is not resent automatically.",
+    held: "The recipient session is stopped or paused. The direction waits and is delivered when work resumes.",
+    superseded: "Replaced by a later direction at your request.",
+    duplicate: "Not sent again: it matched a direction already in flight."
+  }[s.status] || "";
+}
+const link = id => `<button class="btn small quiet" type="button" data-k="lnk-${id}" data-act="select" data-id="${id}">${esc(OBJ[id].title)}</button>`;
+const backBtn = () => S.back.length ? `<div class="row" style="margin-top:14px"><button class="btn small" type="button" data-k="back" data-act="back">← Back to ${esc(OBJ[S.back[S.back.length - 1]].title)}</button></div>` : "";
+function head(o, extra) {
+  return `<div class="table-head"><button class="btn small only-phone-back phone-back" type="button" data-k="phone-feed" data-act="phone" data-view="feed" style="display:none">← Feed</button>
+    <div style="flex:1; min-width: 14ch"><div class="faint" style="font-size:11.5px">${esc(o.kind)}${OBJ[S.selected].parent ? " · " + esc(OBJ[OBJ[S.selected].parent].title) : ""}</div><h1 id="table-title" tabindex="-1">${esc(o.title)}</h1></div>${extra}</div>`;
+}
+
+function renderTopic(id) {
+  const o = OBJ[id];
+  const body = id === "T-evidence"
+    ? `<p class="muted">Interviews, surveys and calls that copy must cite. Durable meaning lives here; operational facts stay on the Actions.</p>${S.evidence.map(e => `<div class="ev ${e === "E4" ? "new" : ""}"><span class="evref">${e}</span><q>${esc(EVIDENCE[e].quote)}</q><span class="src">${esc(EVIDENCE[e].who)}</span></div>`).join("")}`
+    : id === "T-generation" ? `<p class="muted">How section copy is drafted from structured evidence: every claim cites a source, and unsupported claims are flagged before review.</p>`
+    : `<p class="muted">The human boundary: copy reaches the site only after a practitioner-facing review accepts it.</p>`;
+  return head(o, '<span class="tag">topic</span>') + `<div class="sbody">${body}<dl class="facts"><dt>Used by</dt><dd>${o.related.map(link).join(" ")}</dd></dl>
+    <p class="faint" style="font-size:12px; margin:0">Topics cannot receive direction. Your draft stays addressed to its own target.</p></div>${backBtn()}`;
+}
+function renderDecision() {
+  const o = OBJ.D04;
+  return head(o, `<span class="tag ok">answered</span>`) + `<div class="sbody">
+    ${!S.d04Refreshed ? `<div class="notice warn" role="status">The feed item you opened came from a 09:58 snapshot. This Decision was <strong>already answered at 10:05</strong>; there is nothing to approve. <div class="row" style="margin-top:6px"><button class="btn small" type="button" data-k="d04-refresh" data-act="d04-refresh">Refresh the feed item</button></div></div>` : ""}
+    <dl class="facts"><dt>Question</dt><dd>Should PPN copy speak colleague-to-colleague or in a clinical register?</dd><dt>Answer</dt><dd>Colleague-to-colleague (operator, 10:05)</dd><dt>Evidence</dt><dd>E3</dd><dt>Affects</dt><dd>${o.related.map(link).join(" ")}</dd></dl></div>${backBtn()}`;
+}
+function renderArtifact() {
+  const r = latest(), c = revCopy(r);
+  return head(OBJ.ART1, `<span class="tag">r${r.n}</span>`) + `<div class="sbody"><div class="preview" role="img" aria-label="Fictional landing preview with the r${r.n} hero and recognition copy">
+    <div class="bar"><span>preview.ppn.example (fictional)</span><span>· r${r.n}${S.accepted === r.n ? " · accepted" : " · not accepted"}</span></div>
+    <div class="hero"><h4>${esc(c.hero)}</h4><p>Scheduling, notes and reminders for therapists in private practice.</p></div><div class="recog">${esc(c.recog)}</div></div>
+    <p class="faint" style="font-size:12px; margin:0">A static mock of the preview artifact. No site is built or deployed.</p></div>${backBtn()}`;
+}
+function renderPlan() {
+  const c = S.continuation;
+  const pick = S.preview || "one";
+  return head(OBJ["ppn-plan"], '<span class="tag info">active</span>') + `<div class="sbody">
+    <ul class="feed-list">${PLAN_ACTIONS.map(a => `<li>${link(a)}</li>`).join("")}</ul>
+    <h3 style="margin:8px 0 0">Preview continuation</h3>
+    <div class="cmp2">
+      ${[["one", "Continue one Action", "A3 only", "Stops after the next revision is ready for you."], ["bounded", "Continue a bounded plan", "A3 → A5", "Stops at the Human copy acceptance gate (A4) and at any Decision."]].map(([k, t, tgt, stop]) => `
+      <div class="choice ${pick === k ? "picked" : ""}"><strong>${t}</strong><dl class="facts"><dt>Target</dt><dd>${tgt}</dd><dt>Owner</dt><dd>You (operator); one writing session</dd><dt>Agent</dt><dd>Claude Code, chosen for copy and evidence tooling. Codex and OpenCode are available; you can override.</dd><dt>Limits</dt><dd>3 review rounds, 90 minutes. ${stop}</dd><dt>Approval</dt><dd>Carries through this scope only.</dd></dl>
+        <button class="btn small ${pick === k ? "primary" : ""}" type="button" data-k="pick-${k}" data-act="pick-cont" data-cont="${k}">${pick === k ? "Selected" : "Select"}</button></div>`).join("")}
+    </div>
+    <div class="row"><button class="btn primary" type="button" data-k="launch" data-act="launch">Launch (simulated)</button><span class="faint" style="font-size:12px">Nothing starts for real; this records a simulated launch.</span></div>
+    ${c ? `<div class="notice sim" role="status">${esc(c)}</div>` : ""}${S.running ? `<div class="row"><button class="btn small" type="button" data-k="stop-cont" data-act="stop-cont">Stop the simulated continuation</button></div>` : ""}</div>${backBtn()}`;
+}
+function renderProject(id) {
+  const o = OBJ[id];
+  if (id !== "ppn") return head(o, '<span class="tag">fictional summary</span>') + `<div class="sbody"><p class="muted">${esc(o.summary)}</p><p class="faint" style="font-size:12px; margin:0">Fictional status summary for portfolio context only.</p></div>${backBtn()}`;
+  return head(o, '<span class="tag info">active</span>') + `<div class="sbody"><dl class="facts"><dt>Outcome</dt><dd>${esc(o.outcome)}</dd><dt>Plan</dt><dd>${link("ppn-plan")}</dd></dl>
+    <h3 style="margin:6px 0 0">Eligible next work in this Project</h3>${eligible("ppn")}
+    <h3 style="margin:6px 0 0">Adopt a plan developed elsewhere</h3>${adoptForm()}</div>${backBtn()}`;
+}
+function eligible(scope) {
+  const rows = scope === "ppn"
+    ? [["A3", "Compare and revise Hero/Recognition copy", "Eligible: needs your review", ""], ["A4", "Human copy acceptance", "Not yet: needs an accepted A3 revision", "blocked"], ["A5", "Assemble the site preview", "Not yet: waits on A4", "blocked"]]
+    : [["A3", "PPN: revise Hero/Recognition copy", "Highest priority: you set PPN first this morning", ""], ["notes", "Field notes: answer Decision 0017", "Eligible: a decision only you can make", ""], ["arc", "Arcadia: unattended production", "Moving without you (review round 2)", "blocked"], ["garden", "Moon garden", "Done: nothing eligible", "blocked"]];
+  return `<div class="alts">${rows.map(([id, t, why, b]) => `<div class="alt ${b}"><span>${esc(t)}</span>${b ? '<span class="tag">not now</span>' : `<button class="btn small" type="button" data-k="el-${scope}-${id}" data-act="select" data-id="${id}">Open</button>`}<span class="c">${esc(why)}</span></div>`).join("")}</div>`;
+}
+const ADOPT_SAMPLE = "# Plan: Testimonials page\n- Collect consented practitioner quotes\n- Draft the testimonials section from E1–E3\n- Review with two practitioners";
+function adoptForm() {
+  const p = S.adoptPreview;
+  return `<div class="form"><label>Paste the plan's Markdown<textarea id="adopt-text" data-k="adopt-text">${esc(S.adoptText ?? ADOPT_SAMPLE)}</textarea></label>
+    <div class="row"><button class="btn small" type="button" data-k="adopt-preview" data-act="adopt-preview">Preview adoption</button></div>
+    ${p ? `<div class="notice info"><strong>${esc(p.title)}</strong> becomes a proposed Plan with ${p.items.length} candidate Actions:<ol style="margin:6px 0; padding-left:18px">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ol>Nothing runs until you accept it as a Plan. <div class="row" style="margin-top:6px"><button class="btn small primary" type="button" data-k="adopt-go" data-act="adopt-go">Adopt as a proposal (simulated)</button></div></div>` : ""}
+    ${S.adopted.map(a => `<div class="notice sim">Proposal receipt rcpt-sim-plan-${a.n}: “${esc(a.title)}” is recorded as a proposal, not an executable Plan.</div>`).join("")}</div>`;
+}
+function renderPortfolio() {
+  return head(OBJ.portfolio, "") + `<div class="sbody"><h3 style="margin:0">Next eligible work across Projects</h3>${eligible("portfolio")}
+    <h3 style="margin:8px 0 0">Propose a new Project or feature</h3>
+    <div class="form"><label>Name<input id="prop-name" data-k="prop-name" value="PPN: practitioner FAQ"></label><label>Why now<input id="prop-why" data-k="prop-why" value="Practitioners ask the same five onboarding questions."></label>
+      <div class="row"><button class="btn small" type="button" data-k="prop-go" data-act="propose">Submit proposal (simulated)</button></div>
+      ${S.proposals.map(p => `<div class="notice sim">Proposal receipt rcpt-sim-prop-${p.n}: “${esc(p.name)}” waits for your acceptance. It is not a Project or Plan yet.</div>`).join("")}</div></div>${backBtn()}`;
+}
+function renderTable() {
+  const o = OBJ[S.selected];
+  const html = o.kind === "Action" ? renderAction(S.selected) : o.kind === "Topic" ? renderTopic(S.selected) : o.kind === "Decision" ? renderDecision() : o.kind === "Artifact" ? renderArtifact() : o.kind === "Plan" ? renderPlan() : o.kind === "Project" ? renderProject(S.selected) : renderPortfolio();
+  patch($("table"), html);
+  document.querySelectorAll(".phone-back").forEach(b => { b.style.display = phone() ? "inline-flex" : "none"; });
+}
+
+function renderMoves() {
+  const sel = OBJ[S.selected];
+  const nm = `<section class="panel nextmove" aria-labelledby="nm-h"><div class="scope"><h3 id="nm-h" style="margin:0">Next move <span class="faint">· A3</span></h3><span class="faint" style="font-size:11.5px">PPN first today</span></div>${recBlock("m")}</section>`;
+  const a3 = S.selected === "A3" || sel.parent === "ppn-plan" || S.selected === "ppn-plan";
+  const controls = `<section class="panel" aria-labelledby="ctl-h"><h3 id="ctl-h">Moves for A3</h3><div class="row">
+      ${S.pause === "running" ? `<button class="btn small" type="button" data-k="c-pause" data-act="pause">Pause</button>` : S.pause === "pause-requested" ? `<button class="btn small" type="button" disabled>Pause requested…</button>` : `<button class="btn small" type="button" data-k="c-resume" data-act="resume">Resume with current evidence</button>`}
+      <button class="btn small" type="button" data-k="c-cont" data-act="preview-continuation">Preview continuation</button>
+      <button class="btn small" type="button" data-k="c-art" data-act="select" data-id="ART1">View preview artifact</button></div>
+      <p class="faint" style="font-size:12px; margin:6px 0 0">${S.pause === "pause-requested" ? "Pause requested: the agent stops at its next checkpoint. It is still running." : S.pause === "paused" ? `Paused at a checkpoint since ${clockLabel(S.pauseAt)}. Directions are held.` : S.recipient === "stopped" ? "The session is stopped. Resume starts one with current evidence." : "Running in a simulated session. All moves here are simulated."}</p></section>`;
+  const recs = S.sends.slice().reverse();
+  const receipts = `<section class="panel" aria-labelledby="rc-h"><h3 id="rc-h">Your directions <span class="faint">· ${recs.length}</span></h3>${recs.length ? `<ul class="receipts">${recs.map(s => `<li class="receipt"><div class="row" style="justify-content: space-between"><strong>#${s.n} → ${esc(OBJ[s.target].title)}</strong><span class="faint">${clockLabel(s.at)}</span></div>
+      <div class="text">${esc(s.text)}</div>${["superseded", "duplicate"].includes(s.status) ? `<span class="tag">${statusWord(s.status)}</span>` : sendSteps(s)}<div class="faint" style="font-size:11.5px">${esc(sendNote(s))}</div>
+      ${s.status === "unknown" ? `<div class="row"><button class="btn small" type="button" data-k="chk-${s.id}" data-act="check-receipt" data-send="${s.id}">Check receipt</button><button class="btn small quiet" type="button" data-k="cpy-${s.id}" data-act="copy-back" data-send="${s.id}">Copy text back to draft</button></div>` : ""}
+      ${!S.auto && ["submitted", "delivered", "acknowledged"].includes(s.status) ? `<button class="btn small" type="button" data-k="adv-${s.id}" data-act="advance" data-send="${s.id}">Advance simulated step</button>` : ""}
+      ${s.status === "held" && S.recipient === "stopped" ? `<button class="btn small" type="button" data-k="res-${s.id}" data-act="resume-recipient">Resume A3 (simulated)</button>` : ""}</li>`).join("")}</ul>` : `<p class="faint" style="margin:0; font-size:12.5px">None yet. Directions you send appear here with every delivery state.</p>`}</section>`;
+  patch($("moves"), nm + (a3 ? controls : "") + receipts);
+}
+
+function renderComposer() {
+  const t = OBJ[S.draft.target];
+  $("target-label").textContent = `${t.kind} · ${t.title}`;
+  $("target-chip").title = `${t.kind}: ${t.title}`;
+  $("mode").value = S.draft.mode;
+  if ($("draft").value !== S.draft.text) $("draft").value = S.draft.text;
+  const hint = $("target-hint"), sel = S.selected;
+  if (sel !== S.draft.target && S.draft.text.trim()) {
+    hint.hidden = false;
+    patch(hint, RECIPIENTS.has(sel)
+      ? `You're viewing ${esc(OBJ[sel].kind)}: ${esc(OBJ[sel].title)}. This draft is still addressed to <strong>${esc(t.title)}</strong>. <button class="btn small" type="button" data-k="retarget" data-act="retarget">Address it to ${esc(OBJ[sel].title)} instead</button>`
+      : `You're viewing ${esc(OBJ[sel].kind)}: ${esc(OBJ[sel].title)}, which can't receive direction. This draft is still addressed to <strong>${esc(t.title)}</strong>.`);
+  } else hint.hidden = true;
+  $("draft-state").textContent = S.draft.text.trim() ? `Draft kept in this browser · ${S.draft.text.trim().length} characters` : "";
+  patch($("quick"), S.evidence.map(e => `<button class="btn small quiet" type="button" data-k="cite-${e}" data-act="cite" data-ev="${e}">Cite ${e}</button>`).join(""));
+  $("auto").checked = S.auto; $("auto-events").checked = S.autoEvents;
+  $("simlog").textContent = S.log.slice().reverse().join("\n");
+  document.querySelectorAll('[data-act="phone"]').forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === S.phone)));
+}
+
+function render() {
+  document.body.dataset.phone = S.phone;
+  document.documentElement.style.setProperty("--top-h", `${document.querySelector(".top").offsetHeight}px`);
+  const rec = recommendation(); if (!isStale(rec)) S.recSeen = rec.v;
+  renderTrail(); renderLens(); renderJourney(); renderFeed(); renderTable(); renderMoves(); renderComposer();
+  save();
+}
+
+// ---------- actions ----------
+function select(id, { fromBack = false } = {}) {
+  if (!OBJ[id] || id === S.selected) { if (phone()) { S.phone = "work"; render(); } return; }
+  if (!fromBack) { S.back.push(S.selected); if (S.back.length > 20) S.back.shift(); }
+  S.selected = id;
+  // An empty draft may follow the selection; a written draft never changes target silently.
+  if (!S.draft.text.trim() && RECIPIENTS.has(id) && S.draft.mode === "direction") S.draft.target = id;
+  if (phone()) S.phone = "work";
+  closeSheets();
+  render();
+  const h = $("table-title"); if (h && phone()) h.focus({ preventScroll: false });
+}
+function seeRec() { S.recSeen = recommendation().v; }
+function schedule(fn, ms) { setTimeout(() => { fn(); render(); }, ms); }
+
+function sendDirection(force) {
+  const text = S.draft.text.trim(); if (!text) { say("Write a direction first."); $("draft").focus(); return; }
+  const target = S.draft.target, warn = $("send-warn");
+  const flying = inFlight(target);
+  if (!force) {
+    const dup = S.sends.find(s => s.target === target && s.text.trim().toLowerCase() === text.toLowerCase() && !["superseded", "duplicate", "verified"].includes(s.status));
+    if (dup) { warn.hidden = false; warn.className = "notice warn"; warn.innerHTML = `This matches direction #${dup.n} (${statusWord(dup.status)}). <div class="row" style="margin-top:6px"><button class="btn small" type="button" data-act="dup-keep">Keep one</button><button class="btn small" type="button" data-act="send-anyway">Send again anyway</button></div>`; return; }
+    if (flying.length && target === "A3") { const f = flying[0]; warn.hidden = false; warn.className = "notice warn"; warn.innerHTML = `Direction #${f.n} to this Action is ${statusWord(f.status)} and not yet acted on. Your new direction may contradict it. <div class="row" style="margin-top:6px"><button class="btn small" type="button" data-act="send-follow">Send as a follow-up (both apply)</button><button class="btn small" type="button" data-act="send-replace" data-send="${f.id}">Replace #${f.n}</button><button class="btn small quiet" type="button" data-act="send-cancel">Cancel</button></div>`; return; }
+  }
+  warn.hidden = true;
+  tick(2);
+  const s = { id: `s${++S.seq}`, n: S.seq, target, mode: S.draft.mode, text, status: "submitted", at: S.clock, rev: null };
+  S.sends.push(s);
+  log(`Direction #${s.n} submitted to ${target} (${s.mode}).`);
+  S.draft.text = ""; $("draft").value = "";
+  if (S.flaky) { S.flaky = false; s.status = "unknown"; log(`Direction #${s.n}: connection lost; outcome unknown; not resent.`); say(`Direction #${s.n}: we can't confirm it arrived. It was not resent.`); render(); return; }
+  if (target === "A3" && (S.recipient === "stopped" || S.pause === "paused")) { s.status = "held"; log(`Direction #${s.n} held: recipient ${S.recipient === "stopped" ? "stopped" : "paused"}.`); say(`Direction #${s.n} is held until A3 resumes.`); render(); return; }
+  say(`Direction #${s.n} submitted to ${OBJ[target].title}.`);
+  render();
+  if (S.auto) advanceLater(s);
+}
+// One pending timer per send; a timer that fires after automatic timing was switched off does nothing.
+const scheduled = new Set();
+function advanceLater(s) {
+  const next = s && { submitted: 1200, delivered: 1600, acknowledged: 2600 }[s.status];
+  if (!next || scheduled.has(s.id)) return;
+  scheduled.add(s.id);
+  setTimeout(() => { scheduled.delete(s.id); if (!S.auto) return; if (advance(s.id)) { render(); advanceLater(S.sends.find(x => x.id === s.id)); } }, next);
+}
+const a3Halted = () => S.recipient === "stopped" || S.pause === "paused";
+function advance(id) {
+  const s = S.sends.find(x => x.id === id); if (!s) return false;
+  if (s.target === "A3" && a3Halted() && ["submitted", "delivered"].includes(s.status)) { s.status = "held"; return true; }
+  // An acknowledged direction waits too: no revision is produced while the session is stopped or paused.
+  if (s.target === "A3" && a3Halted() && s.status === "acknowledged") { if (!s.waiting) { s.waiting = true; log(`#${s.n} acknowledged but waiting: A3 is ${S.recipient === "stopped" ? "stopped" : "paused"}.`); return true; } return false; }
+  if (s.status === "submitted") { s.status = "delivered"; tick(); log(`#${s.n} delivered.`); return true; }
+  if (s.status === "delivered") { s.status = "acknowledged"; tick(); log(`#${s.n} acknowledged by the simulated agent (no result yet).`); say(`Direction #${s.n} acknowledged. No revision yet.`); return true; }
+  if (s.status === "acknowledged") {
+    s.waiting = false;
+    tick(3);
+    if (s.target === "A3") {
+      const lib = Math.min(REV_LIBRARY.length - 1, Math.max(2, latest().lib + 1));
+      const n = latest().n + 1;
+      S.revs.push({ n, lib, by: "agent", at: S.clock, dir: s.n });
+      if (S.manual && S.manual.conflict === s.n) S.manual.conflict = null;
+      s.status = "acted"; s.rev = n;
+      log(`#${s.n} acted on: simulated agent produced r${n}.`); say(`r${n} is ready to compare.`);
+      retireReviewItems(`superseded by r${n}`);
+      addFeed({ sec: "Your next move", obj: "A3", t: `r${n} of the Hero/Recognition copy is ready`, d: `Produced for your direction #${s.n}. Compare it with the evidence.`, tags: [["needs", "needs you"]] }, false);
+      if (S.autoEvents && !S.autoStaleDone && n === 3) { S.autoStaleDone = true; schedule(() => addEvidence(true), 6000); }
+    } else { s.status = "acted"; log(`#${s.n} acted on (simulated note recorded on ${s.target}).`); }
+    return true;
+  }
+  return false;
+}
+// Review items for A3 leave "Your next move" once a newer revision or an acceptance answers them.
+function retireReviewItems(why) {
+  S.feed.forEach(f => { if (f.obj === "A3" && f.sec === "Your next move") { f.sec = "Reviewed candidates and delivered results"; f.tags = [["", why]]; } });
+}
+function addFeed(item, unseen = true) {
+  tick();
+  const f = { id: `n${Date.now()}${Math.random().toString(16).slice(2, 6)}`, at: S.clock, ...item };
+  if (unseen) { S.unseen.push(f); say(`${S.unseen.length} new feed ${S.unseen.length === 1 ? "item" : "items"}. Your place is kept.`); }
+  else S.feed.push(f);
+}
+function arrive() {
+  const a = ARRIVALS[S.arrivalsUsed % ARRIVALS.length]; S.arrivalsUsed++;
+  addFeed({ ...a }); log(`Feed event arrived (${a.t}); selection, focus and draft unchanged.`);
+}
+function addEvidence(auto) {
+  if (S.evidence.includes("E4")) return;
+  tick(); S.evidence.push("E4"); S.e4At = S.clock;
+  addFeed({ sec: "Significant changes", obj: "T-evidence", t: "New practitioner evidence E4 (call notes)", d: "Contests “Evenings back” in the hero line.", tags: [["info", "evidence"]] });
+  log(`Evidence E4 arrived${auto ? " (automatic)" : ""}; recommendation re-derived.`);
+}
+function approve() {
+  const r = latest();
+  const rec = recommendation();
+  if (isStale(rec)) { say("The recommendation changed. Review it first."); return; }
+  tick(); S.accepted = r.n; retireReviewItems(`r${r.n} accepted`);
+  const s = S.sends.filter(x => x.target === "A3" && x.rev === r.n).slice(-1)[0]; if (s) s.status = "verified";
+  log(`Operator accepted r${r.n} (simulated). A3 continues to the Proof section.`); say(`r${r.n} accepted. A3 continues; you can intervene again at any time.`);
+  addFeed({ sec: "Reviewed candidates and delivered results", obj: "A3", t: `r${r.n} accepted; A3 continues to the Proof section`, d: "Simulated continuation. Human copy acceptance (A4) is next.", tags: [["ok", "accepted"], ["sim", "simulated"]] }, false);
+  seeRec();
+}
+
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]"); if (!el || el.disabled) return;
+  const act = el.dataset.act;
+  if (el.tagName === "BUTTON" && el.type === "submit") return;
+  switch (act) {
+    case "select": select(el.dataset.id); break;
+    case "back": { const id = S.back.pop(); if (id) select(id, { fromBack: true }); break; }
+    case "lens": S.lens = el.dataset.lens; render(); break;
+    case "map-wide": S.mapWide = !S.mapWide; render(); break;
+    case "phone": S.phone = el.dataset.view; render(); break;
+    case "toggle-console": { const c = $("console"); c.hidden = !c.hidden; document.querySelectorAll('[data-act="toggle-console"]').forEach(b => b.setAttribute("aria-expanded", String(!c.hidden))); if (!c.hidden) c.querySelector("button, input").focus(); break; }
+    case "toggle-context": { const c = $("context"); const open = !c.classList.contains("sheet-open"); closeSheets(); if (open) openSheet(c, el); break; }
+    case "toggle-moves": { const d = $("direction"); const open = !d.classList.contains("sheet-open"); closeSheets(); if (open) openSheet(d, el, $("moves")); break; }
+    case "close-sheets": closeSheets(); break;
+    case "show-unseen": S.feed.push(...S.unseen); S.unseen = []; render(); break;
+    case "focus-composer": if (!S.draft.text.trim()) S.draft.target = "A3"; if (phone()) closeSheets(); render(); $("draft").focus(); break;
+    case "approve": approve(); render(); break;
+    case "ack-rec": seeRec(); render(); break;
+    case "see-choices": S.open.understand = true; closeSheets(); select("A3"); if (S.selected === "A3") render(); document.querySelector('[data-sec="understand"]')?.scrollIntoView({ block: "start" }); break;
+    case "retarget": S.draft.target = S.selected; log(`Draft retargeted to ${S.selected} by the operator.`); say(`Draft now addressed to ${OBJ[S.selected].title}.`); render(); break;
+    case "cite": { const t = $("draft"); const ins = `[${el.dataset.ev}] `; const p = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, p) + ins + t.value.slice(p); S.draft.text = t.value; t.focus(); t.selectionStart = t.selectionEnd = p + ins.length; render(); break; }
+    case "dup-keep": $("send-warn").hidden = true; tick(); S.sends.push({ id: `s${++S.seq}`, n: S.seq, target: S.draft.target, mode: S.draft.mode, text: S.draft.text.trim(), status: "duplicate", at: S.clock }); log(`Duplicate direction kept as one; not sent.`); S.draft.text = ""; $("draft").value = ""; render(); break;
+    case "send-anyway": sendDirection(true); break;
+    case "send-follow": sendDirection(true); break;
+    case "send-replace": { const f = S.sends.find(x => x.id === el.dataset.send); if (f) { f.status = "superseded"; log(`#${f.n} replaced by the operator.`); } sendDirection(true); break; }
+    case "send-cancel": $("send-warn").hidden = true; break;
+    case "check-receipt": { const s = S.sends.find(x => x.id === el.dataset.send); if (s) { tick(); s.status = "delivered"; log(`#${s.n}: receipt check found it recorded; continuing without resending.`); say(`Direction #${s.n} was recorded. It was not sent twice.`); render(); if (S.auto) advanceLater(s); } break; }
+    case "copy-back": {
+      const s = S.sends.find(x => x.id === el.dataset.send); if (!s) break;
+      if (S.draft.text.trim() && (S.draft.text.trim() !== s.text || S.draft.target !== s.target)) {
+        const w = $("send-warn"); w.hidden = false; w.className = "notice warn";
+        w.innerHTML = `Your current draft to <strong>${esc(OBJ[S.draft.target].title)}</strong> would be replaced by direction #${s.n}'s text, addressed to <strong>${esc(OBJ[s.target].title)}</strong>. <div class="row" style="margin-top:6px"><button class="btn small" type="button" data-act="copy-confirm" data-send="${s.id}">Replace my draft</button><button class="btn small quiet" type="button" data-act="send-cancel">Keep my draft</button></div>`;
+        w.querySelector("button").focus(); break;
+      }
+      S.draft.text = s.text; S.draft.target = s.target; render(); $("draft").focus(); break;
+    }
+    case "copy-confirm": { const s = S.sends.find(x => x.id === el.dataset.send); if (s) { $("send-warn").hidden = true; S.draft.text = s.text; S.draft.target = s.target; log(`Operator replaced the draft with direction #${s.n}'s text.`); render(); $("draft").focus(); } break; }
+    case "advance": if (advance(el.dataset.send)) render(); break;
+    case "pause": S.pause = "pause-requested"; tick(); log("Pause requested for A3."); say("Pause requested. A3 is still running until its next checkpoint."); render(); setTimeout(() => { if (S.pause === "pause-requested") { S.pause = "paused"; S.pauseAt = S.clock; S.pauseEvidence = S.evidence.length; tick(); log("A3 paused at a checkpoint."); say("A3 is paused."); render(); } }, S.auto ? 2400 : 50); break;
+    case "resume": { const changed = S.evidence.length !== S.pauseEvidence; S.pause = "running"; tick(); log(`A3 resumed${changed ? " with new evidence E4" : "; no evidence changed since the pause"}.`); say(changed ? "Resumed. Evidence changed while paused: E4 was added." : "Resumed. Nothing changed while paused."); releaseHeld(); render(); break; }
+    case "resume-recipient": S.recipient = "running"; tick(); log("A3 session resumed with current evidence (simulated)."); say("A3 resumed. Held directions are delivered now."); releaseHeld(); render(); break;
+    case "preview-continuation": select("ppn-plan"); break;
+    case "pick-cont": S.preview = el.dataset.cont; render(); break;
+    case "launch": {
+      tick(); const scope = (S.preview || "one") === "one" ? "A3 only" : "A3 → A5, stopping at the A4 gate";
+      if (S.running === scope) { S.continuation = `Already running for ${scope}. No second writer was created; this launch was not repeated.`; log("Repeated launch refused: same scope already running (simulated)."); }
+      else if (S.running) { S.continuation = `A continuation is already running for ${S.running}. Launching ${scope} would add a second writer on A3, so nothing was launched. Stop the current continuation first.`; log("Overlapping launch refused: a continuation already writes on A3 (simulated)."); }
+      else { S.running = scope; S.continuation = `Simulated launch recorded for ${scope} at ${clockLabel(S.clock)}. Nothing started for real.`; log(`Simulated continuation launched: ${scope}.`); }
+      render(); break;
+    }
+    case "stop-cont": tick(); log(`Simulated continuation stopped: ${S.running}.`); S.continuation = `Stopped the simulated continuation for ${S.running}.`; S.running = null; render(); break;
+    case "adopt-preview": { const txt = $("adopt-text").value; const title = (txt.match(/^#\s*(?:Plan:\s*)?(.+)$/m) || [, "Untitled plan"])[1].trim(); const items = [...txt.matchAll(/^\s*[-*]\s+(.+)$/gm)].map(m => m[1].trim()); S.adoptPreview = { title, items }; render(); break; }
+    case "adopt-go": if (S.adoptPreview) { S.adopted.push({ n: S.adopted.length + 1, title: S.adoptPreview.title }); log(`External plan adopted as a proposal: ${S.adoptPreview.title}.`); S.adoptPreview = null; render(); } break;
+    case "propose": { const name = $("prop-name").value.trim() || "Untitled"; S.proposals.push({ n: S.proposals.length + 1, name }); tick(); addFeed({ sec: "Waiting on operator judgment", obj: "portfolio", t: `Proposal: ${name}`, d: "Waits for your acceptance; not a Plan yet.", tags: [["needs", "proposal"], ["sim", "simulated"]] }, false); log(`Proposal submitted: ${name}.`); render(); break; }
+    case "d04-refresh": S.d04Refreshed = true; log("Feed snapshot refreshed: D-04 already answered."); render(); break;
+    case "manual-keep": S.manual.conflict = null; log("Operator kept the direct edit; agent told to build on it."); render(); break;
+    case "manual-apply": S.manual.conflict = null; log("Operator let the pending direction apply on top of the edit."); render(); break;
+    case "sim": simulate(el.dataset.sim); break;
+    case "reset": try { localStorage.removeItem(KEY); } catch {} S = initial(); $("draft").value = ""; $("send-warn").hidden = true; render(); say("Demo reset."); break;
+  }
+});
+function releaseHeld() {
+  if (a3Halted()) return;
+  S.sends.filter(s => s.target === "A3" && (s.status === "held" || (s.status === "acknowledged" && s.waiting))).forEach(s => { if (s.status === "held") s.status = "submitted"; if (S.auto) advanceLater(s); });
+}
+let sheetOpener = null;
+const focusables = root => [...root.querySelectorAll("button:not([disabled]), [href], input, select, textarea, summary")].filter(n => n.offsetParent !== null);
+function openSheet(sheet, opener, area = sheet) {
+  sheet.classList.add("sheet-open"); $("scrim").hidden = false; opener.setAttribute("aria-expanded", "true"); sheetOpener = opener;
+  (focusables(area)[0] || area).focus();
+}
+function openSheetArea() { return $("context").classList.contains("sheet-open") ? $("context") : $("direction").classList.contains("sheet-open") ? $("moves") : null; }
+function closeSheets() {
+  const wasOpen = openSheetArea();
+  $("context").classList.remove("sheet-open"); $("direction").classList.remove("sheet-open"); $("scrim").hidden = true;
+  document.querySelectorAll('[data-act="toggle-context"], [data-act="toggle-moves"]').forEach(b => b.setAttribute("aria-expanded", "false"));
+  if (wasOpen && sheetOpener && wasOpen.contains(document.activeElement)) sheetOpener.focus();
+}
+function simulate(kind) {
+  if (kind === "arrive") arrive();
+  if (kind === "evidence") addEvidence(false);
+  if (kind === "stop") { S.recipient = "stopped"; tick(); log("A3 agent session stopped (simulated)."); inFlight("A3").filter(s => ["submitted", "delivered"].includes(s.status)).forEach(s => { s.status = "held"; }); }
+  if (kind === "flaky") { S.flaky = true; log("Next send will lose its connection."); }
+  if (kind === "prs") { S.prs = S.prs === "down" ? "ok" : "down"; log(`Pull request source ${S.prs === "down" ? "unavailable" : "restored"}.`); }
+  if (kind === "empty") { S.emptyFeed = !S.emptyFeed; }
+  if (kind === "manual") {
+    tick(); const base = revCopy(latest()); const pending = inFlight("A3")[0];
+    const manual = { hero: "Fewer no-shows. A calmer private practice.", recog: base.recog, claims: [["Fewer no-shows", ["E1"]], ["calmer practice", ["E3"]], ...base.claims.filter(c => !/no-shows|calmer|Evenings|after-hours|overnight|growth|proven|Grow/i.test(c[0]))] };
+    const n = latest().n + 1; S.revs.push({ n, lib: latest().lib, manual, by: "operator", at: S.clock });
+    S.manual = { rev: n, at: S.clock, conflict: pending ? pending.n : null };
+    log(`Operator edited hero.md directly (simulated); comparison re-based on r${n}.`);
+  }
+  if (kind === "reload") {
+    // With a draft, submit it and reload before any confirmation arrives; otherwise just reload to show the draft survives.
+    if (S.draft.text.trim()) { const auto = S.auto; S.auto = false; sendDirection(true); S.auto = auto; }
+    save(); location.reload(); return;
+  }
+  render();
+}
+
+$("draft").addEventListener("input", e => {
+  const had = S.draft.text.trim().length > 0;
+  S.draft.text = e.target.value;
+  if (!had && S.draft.text.trim() && S.autoEvents && !S.autoArrivalDone) { S.autoArrivalDone = true; setTimeout(() => { arrive(); render(); }, 3500); }
+  $("send-warn").hidden = true;
+  save(); renderComposerHintOnly();
+});
+function renderComposerHintOnly() { const keepFocus = document.activeElement; renderComposer(); if (keepFocus === $("draft")) $("draft").focus({ preventScroll: true }); }
+document.addEventListener("input", e => { if (e.target.id === "adopt-text") { S.adoptText = e.target.value; save(); } });
+$("mode").addEventListener("change", e => { S.draft.mode = e.target.value; save(); renderComposer(); });
+$("composer").addEventListener("submit", e => { e.preventDefault(); sendDirection(false); });
+$("draft").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendDirection(false); } });
+$("auto").addEventListener("change", e => { S.auto = e.target.checked; render(); if (S.auto) S.sends.filter(s => ["submitted", "delivered", "acknowledged"].includes(s.status)).forEach(advanceLater); });
+$("auto-events").addEventListener("change", e => { S.autoEvents = e.target.checked; save(); });
+document.addEventListener("toggle", e => { const d = e.target; if (d.matches && d.matches("details.section") && S.open[d.dataset.sec] !== d.open) { S.open[d.dataset.sec] = d.open; if (d.dataset.sec === "understand" && d.open) seeRec(); save(); const steps = document.querySelector(".ladder-steps"); if (steps) renderTable(); } }, true);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (!$("console").hidden) { $("console").hidden = true; document.querySelector('[data-act="toggle-console"]').focus(); }
+    const area = openSheetArea(); if (area) { const back = sheetOpener; closeSheets(); back?.focus(); }
+  }
+  // Keep Tab inside an open sheet.
+  if (e.key === "Tab") { const area = openSheetArea(); if (!area) return; const f = focusables(area); if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (!area.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } }
+});
+addEventListener("resize", () => { renderTable(); if (S.lens === "map") drawMap(); });
+
+// ---------- boot ----------
+S = load();
+// A send that was only submitted when the page reloaded has no confirmation: it becomes unknown, never resent.
+S.sends.forEach(s => { if (s.status === "submitted") { s.status = "unknown"; S.log.push(`${clockLabel(S.clock)} Reload interrupted #${s.n} before confirmation; marked unknown and not resent.`); } });
+render();
+S.sends.filter(s => ["delivered", "acknowledged"].includes(s.status)).forEach(s => { if (S.auto) advanceLater(s); });
+})();
+</script>
