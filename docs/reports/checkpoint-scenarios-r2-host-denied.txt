@@ -1,0 +1,22 @@
+failed to load config from /Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EPERM: operation not permitted, open '/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/node_modules/.vite-temp/vitest.config.ts.timestamp-1793116272835-fd01c7a90e54b.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1222:14)
+    at async loadConfigFromBundledFile (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:35004:3)
+    at async bundleAndLoadConfigFile (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:34872:17)
+    at async loadConfigFromFile (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:34839:42)
+    at async resolveConfig (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:34465:22)
+    at async _createServer (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:26197:65)
+    at async createViteServer (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vitest@4.1.8_@types+node@24.13.1_vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0_/node_modules/vitest/dist/chunks/cli-api.BfdDOPPI.js:8819:17)
+    at async createVitest (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vitest@4.1.8_@types+node@24.13.1_vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0_/node_modules/vitest/dist/chunks/cli-api.BfdDOPPI.js:14205:18)
+    at async prepareVitest (file:///Users/pmark/Dev/MR/Arcadia/arcadia/node_modules/.pnpm/vitest@4.1.8_@types+node@24.13.1_vite@8.0.16_@types+node@24.13.1_esbuild@0.28.0_jiti@1.21.7_tsx@4.22.4_yaml@2.9.0_/node_modules/vitest/dist/chunks/cli-api.BfdDOPPI.js:14572:14) {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'open',
+  path: '/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/node_modules/.vite-temp/vitest.config.ts.timestamp-1793116272835-fd01c7a90e54b.mjs'
+}
+
+
+

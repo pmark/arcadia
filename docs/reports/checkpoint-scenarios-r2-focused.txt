@@ -1,0 +1,9 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia
+
+
+ Test Files  4 passed (4)
+      Tests  36 passed (36)
+   Start at  08:50:49
+   Duration  3.39s (transform 1.65s, setup 0ms, import 2.14s, tests 7.53s, environment 0ms)
+

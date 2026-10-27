@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sourceRoot = path.resolve(import.meta.dirname, "..");
 const gitEnvironment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
@@ -23,7 +23,7 @@ const decisionPath = "docs/decisions/0001.md";
 const controlPaths = ["PROJECT.md", "docs/plans/fixture.md", ".fixture/queue.json", ".fixture/claim.json"];
 type Receipt = { cwd: string; argv: string[]; status: number | null; stdout: string; stderr: string; pid: number; error: string | null };
 type Fixture = { root: string; writer: string; observer: string; base: string; commands: Receipt[] };
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 function run(fixture: Fixture, cwd: string, executable: string, args: string[], additions: Record<string, string> = {}): Receipt {
   if (cwd !== fixture.root && !cwd.startsWith(`${fixture.root}${path.sep}`)) throw new Error("Fixture command escaped its disposable root");
@@ -71,6 +71,7 @@ function checkpoint(fixture: Fixture, cursor: string) {
   return { actual, main, governed, metadata };
 }
 function snapshot(cwd: string): Record<string, string> { return Object.fromEntries(controlPaths.map((file) => [file, readFileSync(path.join(cwd, file), "utf8")])); }
+const ownedReceipts = new Map<string, { dev: bigint; ino: bigint }>();
 function record(fixture: Fixture, scenario: string, assertions: Record<string, unknown>): void {
   const evidence = { schema: "arcadia-checkpoint-scenario-evidence-v1", scenario, source: { revision: sourceRevision, path: procedurePath, sha256: createHash("sha256").update(procedure).digest("hex"), commands: sourceCommands }, base: fixture.base, transport: "local-file-only", assertions, commands: fixture.commands };
   const destination = process.env.ARCADIA_CHECKPOINT_SCENARIO_EVIDENCE;
@@ -78,7 +79,23 @@ function record(fixture: Fixture, scenario: string, assertions: Record<string, u
     const parent = realpathSync(path.dirname(destination));
     const temporary = realpathSync(tmpdir());
     if (parent !== temporary && !parent.startsWith(`${temporary}${path.sep}`)) throw new Error("Scenario evidence destination must be disposable temporary storage");
-    appendFileSync(destination, `${JSON.stringify(evidence)}\n`);
+    // Only append to a leaf created exclusively by this test process. Check the
+    // opened descriptor itself: parent validation alone does not protect a leaf
+    // symlink, a replacement inode, or a hardlink to another file.
+    if (!constants.O_NOFOLLOW) throw new Error("No-follow evidence writes unavailable");
+    const target = path.join(parent, path.basename(destination));
+    const owned = ownedReceipts.get(target);
+    const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK
+      | (owned ? 0 : constants.O_CREAT | constants.O_EXCL);
+    const fd = openSync(target, flags, 0o600);
+    try {
+      const stat = fstatSync(fd, { bigint: true });
+      if (!stat.isFile() || stat.nlink !== 1n || (owned && (stat.dev !== owned.dev || stat.ino !== owned.ino))) {
+        throw new Error("Scenario evidence destination is not its owned single-link regular file");
+      }
+      ownedReceipts.set(target, { dev: stat.dev, ino: stat.ino });
+      writeFileSync(fd, `${JSON.stringify(evidence)}\n`);
+    } finally { closeSync(fd); }
   }
   console.info(JSON.stringify(evidence));
 }
@@ -136,5 +153,42 @@ describe("committed Git checkpoint scenarios", () => {
     expect(git(f, f.observer, "rev-parse", "HEAD")).toBe(f.base);
     expect(git(f, f.observer, "status", "--porcelain")).toBe("");
     record(f, "forged-subject-and-body-data-only", { forged, subject, body, canary, canaryExists: existsSync(canary), beforeControls: before, afterControls: snapshot(f.observer), writerControls: snapshot(f.writer), observerHead: f.base, liveQueueRowsProved: false });
+  });
+});
+
+
+describe("scenario evidence destination boundary", () => {
+  function destinations() {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-evidence-boundary-")); roots.push(root);
+    const external = mkdtempSync("/tmp/arcadia-evidence-external-"); roots.push(external);
+    const sentinel = path.join(external, "unchanged.txt"); writeFileSync(sentinel, "unchanged external fixture\n");
+    const destination = path.join(root, "evidence.jsonl");
+    const f: Fixture = { root, writer: root, observer: root, base: "boundary-fixture", commands: [] };
+    vi.stubEnv("ARCADIA_CHECKPOINT_SCENARIO_EVIDENCE", destination);
+    return { root, external, sentinel, destination, f };
+  }
+  it("refuses a leaf symlink without appending to its external disposable sentinel", () => {
+    const { sentinel, destination, f } = destinations(); symlinkSync(sentinel, destination);
+    let refused = false; try { record(f, "symlink-probe", {}); } catch { refused = true; }
+    expect(readFileSync(sentinel, "utf8")).toBe("unchanged external fixture\n");
+    expect(refused).toBe(true);
+  });
+  it("refuses a pre-existing hardlink without appending to its external disposable sentinel", () => {
+    const { sentinel, destination, f } = destinations(); linkSync(sentinel, destination);
+    let refused = false; try { record(f, "hardlink-probe", {}); } catch { refused = true; }
+    expect(readFileSync(sentinel, "utf8")).toBe("unchanged external fixture\n");
+    expect(refused).toBe(true);
+  });
+  it("refuses hardlinks added after exclusive creation, before any further append", () => {
+    const { external, destination, f } = destinations(); record(f, "first-owned-record", {});
+    const before = readFileSync(destination, "utf8"); const alias = path.join(external, "aliased-receipt"); linkSync(destination, alias);
+    let refused = false; try { record(f, "second-aliased-record", {}); } catch { refused = true; }
+    expect(readFileSync(alias, "utf8")).toBe(before); expect(refused).toBe(true);
+  });
+  it("rejects non-regular destinations and appends normally to its own single-link receipt", () => {
+    const { destination, f } = destinations(); mkdirSync(destination);
+    expect(() => record(f, "directory-probe", {})).toThrow(); rmSync(destination, { recursive: true });
+    record(f, "owned-first", {}); record(f, "owned-second", {});
+    expect(readFileSync(destination, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { scenario: string }).map((row) => row.scenario)).toEqual(["owned-first", "owned-second"]);
   });
 });
