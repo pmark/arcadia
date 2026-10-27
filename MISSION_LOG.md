@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # Mission Log: Arcadia
@@ -2687,3 +2687,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/launch-preview.test.ts, the prepareSession call in the test named 'names an already-leased repository as a conflicting-execution prerequisite' passes a tmux stub whose available() returns true, whose hasSession returns false while recording each queried name, and whose launch is never called; the test asserts at least one name was recorded and every recorded name starts with arcadia-test-project-, so that prepareSession call no longer consults the host tmux server (the buildLaunchPreview call may also receive the stub via its tmux input)."; "The test still asserts preview.ready is false and a prerequisite starting with 'conflicting execution', and every other test in the file passes unchanged."; "The change touches only tests/launch-preview.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-isolate-launch-preview-tmux-name-dbd2bc77c0f9).
+
+## 2026-10-27 — Completed arcadia/preserve-codex-config-on-semantic-no-op
+
+- **Did:** Completed Action arcadia/preserve-codex-config-on-semantic-no-op from accepted evidence (Candidate 28e25c04d175e99220f3b772054a7370a8daf381).
+- **Result:** Every declared acceptance criterion was accepted as met: "A disposable-file regression supplies semantically correct managed permission/trust settings with different table ordering, comments and whitespace; configuration preserves the exact original bytes and creates no backup. A repeated invocation remains byte-identical and reports no change."; "Disposable-file regressions supply missing and genuinely different managed values; configuration applies the exact required managed change and verifies the requested profile/trust semantics, without weakening permission boundaries or treating an incorrect value as a no-op."; "Disposable-file regressions prove unrelated user tables, values and comments survive both no-op and necessary-change paths; relevant focused tests plus required lint/typecheck/checks pass. Tests never access or change live user configuration, credentials, services or production.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-installer-semantic-no-op-final-28e-20261027).
