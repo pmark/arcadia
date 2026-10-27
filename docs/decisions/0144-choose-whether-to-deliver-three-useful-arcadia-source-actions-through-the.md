@@ -4,7 +4,7 @@ type: decision
 id: "0144"
 slug: choose-whether-to-deliver-three-useful-arcadia-source-actions-through-the
 project: arcadia
-status: open
+status: approved
 question: Choose whether to deliver three useful Arcadia source Actions through the existing assisted Codex loop while Claude is blocked, or keep the batch unselected and continue waiting for Claude recovery. The three proposed deliveries are installer semantic-no-op repair (Issue1800), existing add-git-change-checkpoint-guidance, and existing prove-git-change-checkpoint-scenarios. Keep production Off and strict first-unattended-run acceptance unchanged.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
-updated: 2026-10-27
+updated: 2026-10-26
+answer: Approve the assisted three-Action source batch using existing Codex contexts while production stays Off (recommended)
+decided: 2026-10-26
 ---
 
 # Decision 0144: Choose whether to deliver three useful Arcadia source Actions through the existing assisted Codex loop while Claude is blocked, or keep the batch unselected and continue waiting for Claude recovery. The three proposed deliveries are installer semantic-no-op repair (Issue1800), existing add-git-change-checkpoint-guidance, and existing prove-git-change-checkpoint-scenarios. Keep production Off and strict first-unattended-run acceptance unchanged.
