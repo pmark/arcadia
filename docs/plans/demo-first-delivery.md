@@ -9,7 +9,7 @@ token_impact: xlarge
 token_budget: "Stage the program Action by Action; builds, health checks, Playwright capture, and metadata sync use no LLM tokens, while implementation, failure diagnosis, visual interpretation, and independent QA reviews are model-bearing and must be batched per Candidate."
 recommended_model: opus
 recommended_reasoning_effort: high
-updated: 2026-08-25
+updated: 2026-10-27
 actions:
   - id: build-qa-queue-vertical-slice
     title: Give the operator one QA queue for active Candidate work
@@ -465,6 +465,7 @@ actions:
     depends_on: [govern-release-and-delivery]
 questions: []
 decisions: ["0007", "0008"]
+current_action: automate-proof-artifacts
 ---
 
 # Demo-first delivery
