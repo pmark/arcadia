@@ -707,6 +707,7 @@ describe("native coordination: receipt-kind collision and unconditional unverifi
         reportMailResult(db, { messageId: message.id, requestId: ackRequestId, ...SCOPE, actor: "x", result: { outcome: "x" } })
       )
     ).toThrow("already recorded as a different operation (acknowledgment)");
+    expect(withDatabase(workspacePath, (db) => getMailMessage(db, message.id))?.status).toBe("acknowledged");
 
     expect(() =>
       withDatabase(workspacePath, (db) => disposeMailMessage(db, { messageId: message.id, requestId: ackRequestId, ...SCOPE, actor: "x" }))
@@ -715,6 +716,7 @@ describe("native coordination: receipt-kind collision and unconditional unverifi
     // The message status is still acknowledged after the collision attempts.
     const status = withDatabase(workspacePath, (db) => mailStatus(db, message.id));
     expect(status.explicitlyAcknowledged).toBe(true);
+    expect(status.message.status).toBe("acknowledged");
   });
 });
 
