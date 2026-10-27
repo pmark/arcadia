@@ -177,6 +177,58 @@ describe("go broker agent setup", () => {
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
   });
 
+  it("preserves exact semantic no-op config bytes across reordered tables, quotes, comments and repeated installs", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const original = readFileSync(paths.codexConfig, "utf8");
+    const tables = original.split(/(?=^\[)/m);
+    const rearranged = tables.reverse().map((table) => table.split("\n").map((line) =>
+      line.startsWith("extends = ") ? "extends   = ':workspace' # keep this profile comment" : line
+    ).join("\n")).join("\n");
+    // Keep root values before any table while changing the table order and newline style.
+    const root = tables.pop()!;
+    const config = `${root.replace('approval_policy = "on-request"', "approval_policy = 'on-request' # keep approval comment")}\n${tables.join("\n")}\n# keep final comment\n`
+      .replace('extends = ":workspace"', "extends   = ':workspace' # keep profile comment").replace(/\n/g, "\r\n");
+    expect(rearranged).not.toBe(original);
+    write(paths.codexConfig, config);
+    for (let invocation = 0; invocation < 2; invocation += 1) {
+      const result = configureGoBrokerAgents(options);
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+      expect(result.changed).toEqual([]);
+      expect(result.backups).toEqual([]);
+      expect(result.status.ready).toBe(true);
+    }
+  });
+
+  it.each([
+    ['enabled = false', 'enabled = true'],
+    ['extends = ":workspace"', 'extends = ":danger-full-access"'],
+    ['".env" = "deny"', '".env" = "allow"'],
+    ['".env.*" = "deny"', ''],
+    ['enabled = false', 'enabled = "false"'],
+    ['enabled = false', 'enabled = false\nproxy_url = "https://unexpected.invalid"']
+  ])("repairs incorrect or missing managed semantics %s without losing unrelated tables and comments", (before, after) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const required = readFileSync(paths.codexConfig, "utf8");
+    const unrelated = '# keep user comment\n[features]\nvoice = true # keep inline comment\n';
+    write(paths.codexConfig, `${required.replace(before, after)}\n${unrelated}`);
+    const result = configureGoBrokerAgents(options);
+    expect(result.changed).toEqual([paths.codexConfig]);
+    expect(result.backups).toHaveLength(1);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(updated).toContain(before);
+    expect(updated).toContain(unrelated);
+    expect(updated).not.toContain('proxy_url = "https://unexpected.invalid"');
+    expect(result.status.ready).toBe(true);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+  });
+
   it.each([null, ":workspace", "personal", "arcadia-unattended"])(
     "preserves the interactive default %s while installing the separate Go profile",
     (defaultProfile) => {

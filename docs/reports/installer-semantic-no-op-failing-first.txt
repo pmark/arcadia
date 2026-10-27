@@ -1,0 +1,365 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/installer-semantic-no-op/arcadia
+
+ ❯ tests/go-broker-agent-setup.test.ts (52 tests | 7 failed | 45 skipped) 248ms
+     × preserves exact semantic no-op config bytes across reordered tables, quotes, comments and repeated installs 155ms
+     × repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments 18ms
+     × repairs incorrect or missing managed semantics extends = ":workspace" without losing unrelated tables and comments 15ms
+     × repairs incorrect or missing managed semantics ".env" = "deny" without losing unrelated tables and comments 14ms
+     × repairs incorrect or missing managed semantics ".env.*" = "deny" without losing unrelated tables and comments 16ms
+     × repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments 14ms
+     × repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > preserves exact semantic no-op config bytes across reordered tables, quotes, comments and repeated installs
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to be 'approval_policy = \'on-request\' # ke…' // Object.is equality
+
+- Expected
++ Received
+
+- approval_policy = 'on-request' # keep approval comment
++ approval_policy = "on-request"
+- default_permissions = ":workspace"
+- 
+- 
+- [permissions.arcadia-unattended.network]
+- enabled = false
+- 
+- [permissions.arcadia-unattended.filesystem.":workspace_roots"]
+- ".env" = "deny"
+- ".env.*" = "deny"
+- "**/*.env" = "deny"
+- "**/.env" = "deny"
+- 
+- 
++ default_permissions = ":workspace"
++
++ [projects."/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/project"]
++ trust_level = "trusted"
++
++ # keep final comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
+- [permissions.arcadia-unattended.workspace_roots]
++ [permissions.arcadia-unattended.workspace_roots]
+- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.codex/worktrees" = true
+- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.claude/worktrees" = true
+- "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.opencode/worktrees" = true
+- 
+- 
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/.opencode/worktrees" = true
++
+- [permissions.arcadia-unattended]
+- description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
+- extends   = ':workspace' # keep profile comment
+- 
+- 
+- [projects."/private/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-az1xpO/project"]
+- trust_level = "trusted"
+- 
+- # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
+- 
+- # keep final comment
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:199:55
+    197|     for (let invocation = 0; invocation < 2; invocation += 1) {
+    198|       const result = configureGoBrokerAgents(options);
+    199|       expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+       |                                                       ^
+    200|       expect(result.changed).toEqual([]);
+    201|       expect(result.backups).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-XfKBjQ/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-XfKBjQ/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-XfKBjQ/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics extends = ":workspace" without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-swM0XZ/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-swM0XZ/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-swM0XZ/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics ".env" = "deny" without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-HsCg8f/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-HsCg8f/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-HsCg8f/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics ".env.*" = "deny" without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-4hCqwL/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-4hCqwL/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-4hCqwL/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-T6TOq9/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-T6TOq9/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-T6TOq9/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > repairs incorrect or missing managed semantics enabled = false without losing unrelated tables and comments
+AssertionError: expected 'approval_policy = "on-request"\ndefau…' to contain '# keep user comment\n[features]\nvoic…'
+
+- Expected
++ Received
+
+- # keep user comment
+- [features]
+- voice = true # keep inline comment
++ approval_policy = "on-request"
++ default_permissions = ":workspace"
++
++ [features]
++ voice = true # keep inline comment
++
++ # Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.
++ [permissions.arcadia-unattended]
++ description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."
++ extends = ":workspace"
++
++ [permissions.arcadia-unattended.workspace_roots]
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-YlmJC7/.codex/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-YlmJC7/.claude/worktrees" = true
++ "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-agent-setup-YlmJC7/.opencode/worktrees" = true
++
++ [permissions.arcadia-unattended.filesystem.":workspace_roots"]
++ ".env" = "deny"
++ ".env.*" = "deny"
++ "**/*.env" = "deny"
++ "**/.env" = "deny"
++
++ [permissions.arcadia-unattended.network]
++ enabled = false
+
+
+ ❯ tests/go-broker-agent-setup.test.ts:226:21
+    224|     const updated = readFileSync(paths.codexConfig, "utf8");
+    225|     expect(updated).toContain(before);
+    226|     expect(updated).toContain(unrelated);
+       |                     ^
+    227|     expect(updated).not.toContain('proxy_url = "https://unexpected.inv…
+    228|     expect(result.status.ready).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 45 skipped (52)
+   Start at  22:49:10
+   Duration  1.96s (transform 1.29s, setup 0ms, import 1.58s, tests 248ms, environment 0ms)
+
