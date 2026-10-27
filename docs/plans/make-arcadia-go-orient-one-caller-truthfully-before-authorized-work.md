@@ -74,14 +74,15 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask project-go-orientation-for-the-operator
     clarification: clarified
     confidence: high
-    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
     acceptance_criteria:
       - A read-only route returns, per Project, Go's selected Plan and Action, its dispatchable verdict, the operator question or first blocker with its remedy, and ongoing claims and Sessions with source and observed time, using the existing dispatch and gate resolution rather than a second resolver.
       - Read-only adapter spies and before/after snapshots prove zero dispatch-journal, Project, queue, claim, admission, Git and worktree writes and zero provider calls; identical pinned inputs give identical output, and an unreadable Project is listed with its exact error, never dropped.
       - The workspace reads this route instead of the journaled continuation GET; the existing workspace end-to-end suite passes unchanged in intent.
+      - Registry and discovery fixtures retain every configured Project, including unreadable directory, stat and document-read failures, with the exact per-Project error and source; no discovery exception silently drops a Project or produces a dispatchable verdict from missing evidence.
     depends_on: [resolve-go-caller-context]
     decisions: []
-    references: []
+    references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
   - id: show-receipts-for-operator-directions
     title: "Record and show an operator direction's receipts as distinct evidence-backed states: submitted, delivered, acknowledged, continued and verified, plus unknown and held."
     status: open
@@ -91,14 +92,16 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-receipts-for-operator-directions
     clarification: clarified
     confidence: high
-    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
     acceptance_criteria:
       - An operator direction addressed to an explicit Project, Plan or Action carries a stable request id; exact replay returns the same receipt and changed input under the same id refuses.
       - "Each state is set only by its own evidence: delivered when a native checkpoint that the recipient reads records it, acknowledged from the recipient's compact acknowledgment, continued from a subsequently observed state change; storage alone never implies delivered or acknowledged."
       - A stopped or paused recipient leaves the direction held, and an uncertain submission shows as unknown and is never resent automatically; the workspace renders every state with end-to-end coverage for held and unknown.
+      - A submitted state requires a durable accepted direction receipt that pins the stable request id, target and content; a rejected submission records its refusal and an uncertain submission remains unknown. A transition fixture names the evidence artifact, source and observed time for every submitted, delivered, acknowledged, continued, verified, unknown and held state.
+      - A verified state requires separately observed acceptance evidence tied to the direction and resulting revision or artifact, with its verification result and provenance; recipient self-report, storage, delivery, acknowledgment or continuation alone never sets verified. Transition fixtures refuse missing, stale or mismatched evidence and preserve the last supported state with the unresolved reason shown.
     depends_on: [reuse-go-context-through-authorized-continuation, project-go-context-as-compact-state-signals]
     decisions: []
-    references: []
+    references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
   - id: continue-from-go-in-the-workspace
     title: Offer Go's next permitted move as a Continue control in the workspace through the existing protected continuation, and complete one bounded real operator-assisted delivery through it.
     status: open
@@ -108,14 +111,35 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask continue-from-go-in-the-workspace
     clarification: clarified
     confidence: high
-    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
     acceptance_criteria:
       - Continue appears only when Go's resolution for the shown Action is dispatchable, previews target, owner, provider and limits before commitment, and invokes the existing protected Go continuation with a stable request id so that repeated or concurrent presses produce at most one claim, candidate and Session.
       - A resolution that changed after it was shown refuses with the changed facts and offers a fresh read; no approval, credential or production gate is bypassed, and Production stays Off unless separately started.
       - One bounded real operator-assisted delivery through the workspace is recorded with its receipts and pull request, with source, installed adoption and live proof recorded as separate stages.
+      - The delivery record names separate evidence artifacts and verification results for source revision and required checks, installed adoption revision and receipt, and live attempt receipts and observed outcome. A failed, blocked or unknown stage is recorded explicitly and never inferred successful from another stage; real-delivery acceptance requires the declared live proof under separately valid authority.
     depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions]
     decisions: []
-    references: []
+    references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
+  - id: continue-through-approved-scope-from-the-workspace
+    title: Let the operator approve one bounded scope of eligible Actions once in the workspace, and have Go continue through it one Action at a time, stopping at the first gate with the reason shown.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let the operator approve one bounded scope of eligible Actions once in the workspace, and have Go continue through it one Action at a time, stopping at the first gate with the reason shown.
+    expected_artifact: Evidence satisfying Agent Ask continue-through-approved-scope-from-the-workspace
+    clarification: clarified
+    confidence: high
+    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
+    acceptance_criteria:
+      - Implementation starts only after the separate bounded-continuation scope Decision from Agent Ask propose-go-bounded-continuation-scope-decision-20261027 is opened and answered by the operator, the answered option permits bounded continuation, and a fresh named source assignment is recorded; fixtures implement that answered option. Until then the workspace offers only the separately authorized one-Action Continue. If the operator selects one Action per press, the fourth Action is not built.
+      - The preview names the exact ordered Actions in scope from Go's own resolution, the owner, provider and limits for each, and every stop condition; an approval covers only that recorded scope and expires when Go's resolution for it changes, and the workspace never selects or reorders work.
+      - Go continues to the next Action in scope only after the previous one completes through its governed settlement, one Session at a time, reusing the protected continuation's stable identity so repeated or concurrent presses create no second writer.
+      - Continuation stops and shows the reason at the first open Decision, review or merge gate, failure, exhausted repair or usage limit, Action outside the scope, pause request or changed resolution; it never answers a Decision, merges, crosses an approval boundary or starts Production, which stays Off unless separately started.
+      - End-to-end coverage proves a scope of at least two Actions continuing through one settlement and stopping at a gate, plus a pause mid-scope; one real bounded run through the workspace is recorded with its receipts, with source, installed adoption and live proof as separate stages.
+      - The delivery record names separate evidence artifacts and verification results for source revision and required checks, installed adoption revision and receipt, and live attempt receipts and observed outcome. A failed, blocked or unknown stage is recorded explicitly and never inferred successful from another stage; real-delivery acceptance requires the declared live proof under separately valid authority.
+    depends_on: [continue-from-go-in-the-workspace]
+    decisions: []
+    references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
 questions: []
 decisions: []
 current_action: project-go-context-as-compact-state-signals
