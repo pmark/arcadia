@@ -99,6 +99,8 @@ async function waitStatus(page, n, word, timeout = 12000) {
   check("7. Recommendation goes stale and names the changed facts", staleText.includes("changed while you were looking") && staleText.includes("E4"));
   check("7. No approve action is offered until the change is reviewed", (await page.locator('#table [data-act="approve"]').count()) === 0);
   await page.screenshot({ path: path.join(OUT, "desktop-5-stale-recommendation.png") });
+  await page.reload(); await page.waitForSelector("#table-title", { state: "attached" });
+  check("7. The stale gate survives a reload (no silent clearing)", (await page.locator("#table").innerText()).includes("changed while you were looking"));
   await page.click('#table [data-act="ack-rec"]');
   check("7. Refreshed recommendation explains the new choice", (await page.locator("#table .rec").first().innerText()).includes("Ask for a softer hero line"));
   await page.click('#table .alt:has-text("Approve r3 anyway") button');
@@ -158,6 +160,39 @@ async function waitStatus(page, n, word, timeout = 12000) {
   const afterReload = await page.locator(".receipt", { hasText: "#9 →" }).innerText().catch(() => "");
   check("Reload mid-send: the unconfirmed direction is not silently resent", afterReload.includes("cannot tell whether this arrived") && (await page.locator(".receipt").count()) === 9);
 
+  // Copying an old direction back never overwrites a different draft without asking.
+  await page.click('.node:has-text("Field notes")');
+  await page.locator("#draft").fill("my unsent draft");
+  await page.click('.receipt:has-text("#9 →") [data-act="copy-back"]');
+  check("Copy-back asks before replacing a different draft", (await page.locator("#send-warn").innerText()).includes("would be replaced") && (await draftValue(page)) === "my unsent draft");
+  await page.click('#send-warn [data-act="send-cancel"]');
+  check("Keeping the draft leaves its text and target", (await draftValue(page)) === "my unsent draft" && (await page.locator("#target-label").innerText()).includes("Field notes"));
+  await page.locator("#draft").fill("");
+  await page.click('.node:has-text("Compare and revise")');
+
+  // A session that stops after acknowledging produces nothing until it resumes.
+  const revsBefore = await page.locator("#table .rev").count();
+  await page.locator("#draft").fill("Halt test: tighten the recognition line.");
+  await page.click("#send");
+  await waitStatus(page, 10, "acknowledged it");
+  await console_(page, "stop");
+  await sleep(4000);
+  check("Stop after acknowledgment: no revision while stopped", (await page.locator("#table .rev").count()) === revsBefore && (await page.locator(".receipt", { hasText: "#10 →" }).innerText()).includes("No revision is produced until A3 resumes"));
+  await page.click('#moves [data-act="resume-recipient"]');
+  check("Resume lets the acknowledged direction finish", (await waitStatus(page, 10, "The agent produced", 6000)) !== null);
+
+  // Switching automatic timing off mid-send stops the pending transition.
+  await page.locator("#draft").fill("Manual step test.");
+  await page.click("#send");
+  await page.click('header [data-act="toggle-console"]'); await page.click("#auto"); await page.click('#console [data-act="toggle-console"]');
+  await sleep(3000);
+  check("Auto off: the direction stays submitted", (await page.locator(".receipt", { hasText: "#11 →" }).innerText()).includes("Arcadia recorded your direction"));
+  await page.click('.receipt:has-text("#11 →") [data-act="advance"]');
+  check("Auto off: one manual step advances one state", (await page.locator(".receipt", { hasText: "#11 →" }).innerText()).includes("Delivered to the agent"));
+  await page.click('header [data-act="toggle-console"]'); await page.click("#auto"); await page.click('#console [data-act="toggle-console"]');
+  check("Auto back on: the direction finishes once", (await waitStatus(page, 11, "The agent produced", 8000)) !== null && (await page.locator(".receipt").count()) === 11);
+  check("Allowance never counts operator directions", (await page.locator("#journey").innerText()).includes("Your directions never use it"));
+
   await page.click('.fitem:has-text("Decision D-04")');
   check("Answered approval in an older snapshot is called out", (await page.locator("#table").innerText()).includes("already answered at 10:05"));
   await page.click('#table [data-act="d04-refresh"]');
@@ -187,8 +222,15 @@ async function waitStatus(page, n, word, timeout = 12000) {
   check("Launch is simulated and says so", (await page.locator("#table .notice.sim").innerText()).includes("Nothing started for real"));
   await page.click('#table [data-act="launch"]');
   check("Repeated launch creates no second writer", (await page.locator("#table .notice.sim").innerText()).includes("No second writer"));
+  await page.click('#table [data-cont="one"]');
+  await page.click('#table [data-act="launch"]');
+  check("An overlapping launch with a different scope is refused", (await page.locator("#table .notice.sim").innerText()).includes("would add a second writer"));
   await page.screenshot({ path: path.join(OUT, "desktop-6-continuation.png") });
   await page.click('#trail [data-id="ppn"]');
+  await page.locator("#adopt-text").fill("# Plan: Testimonials page\n- Collect consented practitioner quotes\n- Draft the testimonials section\n- Review with two practitioners");
+  await page.click('.node:has-text("Practitioner evidence")');
+  await page.click('[data-act="back"] >> nth=0');
+  check("Pasted plan Markdown survives navigation", (await page.locator("#adopt-text").inputValue()).startsWith("# Plan: Testimonials page\n- Collect consented"));
   await page.click('#table [data-act="adopt-preview"]');
   check("External plan preview lists candidate Actions", (await page.locator("#table .notice.info").innerText()).includes("3 candidate Actions"));
   await page.click('#table [data-act="adopt-go"]');
@@ -210,6 +252,14 @@ async function waitStatus(page, n, word, timeout = 12000) {
   check("Keyboard: Enter on a trail item navigates", (await title(page)) === "Portfolio");
   const ring = await page.evaluate(() => { const b = document.querySelector('[data-k="trail-portfolio"]') || document.querySelector("#trail button"); b.focus(); return getComputedStyle(b).outlineStyle; });
   check("Keyboard: focused controls show a visible outline", ring !== "none", ring);
+  // An arrival while focus is on a composer control (not the textarea) keeps that focus.
+  const p2 = await ctx.newPage(); p2.on("pageerror", e => errors.push(e.message));
+  await fresh(p2);
+  await p2.locator("#draft").pressSequentially("x");
+  await p2.locator('[data-k="cite-E2"]').focus();
+  await p2.waitForSelector(".newpill", { timeout: 8000 }).catch(() => {});
+  check("Arrival keeps focus on a Cite button", (await p2.evaluate(() => document.activeElement?.dataset.k)) === "cite-E2" && (await p2.locator(".newpill").isVisible()));
+  await p2.close();
   check("No page errors on desktop", errors.length === 0, errors.join(" | "));
   check("No network requests (no live API, no CDN)", external.length === 0, external.join(" "));
   await ctx.close();
@@ -231,10 +281,13 @@ async function waitStatus(page, n, word, timeout = 12000) {
   check("Phone: clear return to the feed", await ph.locator("#feed").isVisible());
   await ph.tap('[data-act="toggle-moves"]');
   check("Phone: Direction sheet opens with the next move", await ph.locator("#moves .rec").isVisible());
+  check("Phone: focus moves into the Direction sheet", await ph.evaluate(() => document.getElementById("moves").contains(document.activeElement)));
   await ph.screenshot({ path: path.join(OUT, "phone-3-direction.png") });
-  await ph.tap("#scrim");
+  await ph.keyboard.press("Escape");
+  check("Phone: Escape closes the sheet and returns focus", (await ph.locator("#direction.sheet-open").count()) === 0 && (await ph.evaluate(() => document.activeElement?.dataset.act)) === "toggle-moves");
   await ph.tap('[data-act="toggle-context"]');
   check("Phone: Context opens as a sheet", await ph.locator("#context.sheet-open").isVisible());
+  check("Phone: Context sheet sits below the header and trail", await ph.evaluate(() => document.getElementById("context").getBoundingClientRect().top >= document.querySelector(".top").getBoundingClientRect().bottom - 1));
   await ph.screenshot({ path: path.join(OUT, "phone-4-context.png") });
   check("Phone: no page errors with reduced motion", perr.length === 0, perr.join(" | "));
   await browser.close();
