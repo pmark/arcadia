@@ -1,0 +1,107 @@
+[
+  {
+    "path": "AGENTS.md",
+    "bytes": 12236,
+    "sha256": "3406ac39fe4d242cfa8ad8f9bf01297b1e9e0af92c2a3d0e487a2b3917b27315"
+  },
+  {
+    "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+    "bytes": 539,
+    "sha256": "80968f45ffd52d50d1bf0695ff9191638e720ab9e4c9c1e5e33b8f8f6b9ec182"
+  },
+  {
+    "path": ".arcadia/repo-context.md",
+    "bytes": 703,
+    "sha256": "783d7108cc76ab9843b8c15f6697b08484ad8ea390933a8d71733d313a00df50"
+  },
+  {
+    "path": ".arcadia/context-policy.json",
+    "bytes": 870,
+    "sha256": "9b52b6a15adad198e6cfea6ac49bea0662a21415bc84b920817bb88c4360d0e6"
+  },
+  {
+    "path": "CONSTITUTION.md",
+    "bytes": 3320,
+    "sha256": "984897f9445ec2332e9bc7352b7f413b89961b198e2b6eb93694f9ad71d816a8"
+  },
+  {
+    "path": "PROJECT.md",
+    "bytes": 31436,
+    "sha256": "a4de732142ec6577f9584348f7bba89eb8b765fb5b2b7326b8ae5bbf78d78fbc"
+  },
+  {
+    "path": "docs/plans/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work.md",
+    "bytes": 21079,
+    "sha256": "859f799e8ba17c6f003fbe9118eb87f4c9180b89c91d5e4dea541bc806ef67ff"
+  },
+  {
+    "path": "docs/agent-guidance/index.json",
+    "bytes": 12038,
+    "sha256": "f2859053c3abf3b89b233c6431e6a728a1f36948a2c7b93139316afad40f680c"
+  },
+  {
+    "path": "docs/agent-guidance/continuation.md",
+    "bytes": 8704,
+    "sha256": "01846479331661f9b9bc7f1ab90d4e3a9305d0b3f4df1698012461e345e7c2d3"
+  },
+  {
+    "path": "docs/agent-guidance/chat-titles.md",
+    "bytes": 6539,
+    "sha256": "45224135a7229fe7ae871d103aa469e3412c1f292c651e561228a0c01569e0cc"
+  },
+  {
+    "path": "docs/agent-guidance/native-app-sessions.md",
+    "bytes": 9829,
+    "sha256": "872f7ee293c5557a7522ce6ea1754ba24acdaa6bd05d1348bedd28c039c1a592"
+  },
+  {
+    "path": "docs/agent-guidance/learning.md",
+    "bytes": 2458,
+    "sha256": "0e23186653006ebf4cd4620276fde96fec4122e81a7dc839127337b71ef503ad"
+  },
+  {
+    "path": "docs/agent-guidance/git-identity.md",
+    "bytes": 5248,
+    "sha256": "b613888f440a9c5a61af3195ae978e179899beb26e967224d88990d1123d924a"
+  },
+  {
+    "path": "docs/working-copy-safety.md",
+    "bytes": 16202,
+    "sha256": "0a3d6fd400d23bc42ef08db21a1e5c625a51888cab312d0f18a2dc5105395d46"
+  },
+  {
+    "path": "docs/agent-guidance/pull-requests.md",
+    "bytes": 21758,
+    "sha256": "45e937b77c26949e3b9c8f48c9861ed148703594297cd519d608ded04a661d78"
+  },
+  {
+    "path": "docs/agent-guidance/standard-harness.md",
+    "bytes": 5569,
+    "sha256": "1a8c9d1d23068fe036e83e9b9acc6e550c13f5dc650e5ca9ae529e3f39f5c7e6"
+  },
+  {
+    "path": "docs/agent-guidance/arcadia-repository.md",
+    "bytes": 30312,
+    "sha256": "9887c078abb59740cecfb88478af89323ae55c1b684051c7279f9d04adb914c8"
+  },
+  {
+    "path": "docs/arcadia-semantics.md",
+    "bytes": 22613,
+    "sha256": "43c75fb4ac9a3e58a559980ef8d3db67a3ee606a267cb1b28aae3c47a00a3f95"
+  },
+  {
+    "path": "docs/agent-guidance/session-roles-and-briefs.md",
+    "bytes": 15378,
+    "sha256": "8cc6059b7c88e9ed1c0d279e819cd6a88aa36ec1efc3e6251be2b8f01e86aac5"
+  },
+  {
+    "path": ".agents/skills/arcadia-role/SKILL.md",
+    "bytes": 11841,
+    "sha256": "82062ec3056442472665b13cff22ba27f9b03cb4668411ce9b6f1e8a0f58a9e0"
+  },
+  {
+    "path": ".agents/skills/arcadia-guardrail/SKILL.md",
+    "bytes": 5565,
+    "sha256": "9a68171099ddb1f71378a1e2f401b6a33e1ff70eb87a859fe80cefb50e4fa24a"
+  }
+]
