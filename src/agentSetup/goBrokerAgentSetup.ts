@@ -15,6 +15,7 @@ import {
   writeFileSync
 } from "node:fs";
 import path from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { validationError } from "../cli/errors.js";
 import { SESSION_AGENTS } from "../sessions/index.js";
 
@@ -68,6 +69,7 @@ export interface AgentSetupStatus {
   checks: {
     preservationLauncher: boolean;
     brokerExecutables: boolean;
+    codexConfigValid: boolean;
     codexGuardrails: boolean;
     codexWorktreeDirectories: boolean;
     codexNativeProfile: boolean;
@@ -212,7 +214,7 @@ export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOpt
   const paths = resolveAgentSetupPaths(options.home);
   renderManagedSkill(options.skillTemplate, options.executables);
   renderAgentAskManagedSkill(options.agentAskSkillTemplate);
-  setCodexPermissionProfile(readOptional(paths.codexConfig), options.home);
+  prepareCodexConfig(readOptional(paths.codexConfig), options.home, planWorkspaceTrust(options.projectRepositories ?? [], options.home).trusted);
   readClaudeSettings(paths.claudeSettings, true);
   readClaudeState(paths.claudeState, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
@@ -224,6 +226,9 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const expectedSkill = renderManagedSkill(options.skillTemplate, options.executables);
   const expectedAgentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   const codexConfig = readOptional(paths.codexConfig);
+  const codexConfigValid = isValidCodexToml(codexConfig);
+  // Invalid user TOML is a reported failed check, never semantic readiness.
+  const codexInspectionContent = codexConfigValid ? codexConfig : "";
   const codexRule = readOptional(paths.codexManagedRules);
   const legacyCodexRules = findLegacyCodexRules(paths.codexRulesDirectory, paths.codexManagedRules);
   const claude = readClaudeSettings(paths.claudeSettings, false);
@@ -233,21 +238,22 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const trustPlan = planWorkspaceTrust(options.projectRepositories ?? [], options.home);
   const workspaceTrust: WorkspaceTrustStatus = {
     required: trustPlan.trusted,
-    missing: trustPlan.trusted.filter((repository) => codexTrustLevel(codexConfig, repository) !== "trusted"),
+    missing: trustPlan.trusted.filter((repository) => codexTrustLevel(codexInspectionContent, repository) !== "trusted"),
     refused: trustPlan.refused
   };
   const checks = {
+    codexConfigValid,
     preservationLauncher: brokerAgents().every((agent) => existsSync(options.executables.preserve[agent])),
     brokerExecutables: Object.values(options.executables).every((providers) =>
       brokerAgents().every((agent) => existsSync(providers[agent]))
     ),
     codexGuardrails:
-      topLevelTomlValue(codexConfig, "approval_policy") === "on-request",
-    codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexConfig, expectedCodexWorktreeRoots(options.home)),
-    codexNativeProfile: hasNativeUnattendedProfile(codexConfig, expectedCodexWorktreeRoots(options.home)),
-    noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexConfig),
+      topLevelTomlValue(codexInspectionContent, "approval_policy") === "on-request",
+    codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexInspectionContent, expectedCodexWorktreeRoots(options.home)),
+    codexNativeProfile: hasNativeUnattendedProfile(codexInspectionContent, expectedCodexWorktreeRoots(options.home)),
+    noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexInspectionContent),
     // Codex refuses to load a config that defines [permissions.*] profiles without a default.
-    codexDefaultPermissions: !hasCodexPermissionProfiles(codexConfig) || hasTopLevelTomlKey(codexConfig, "default_permissions"),
+    codexDefaultPermissions: !hasCodexPermissionProfiles(codexInspectionContent) || hasTopLevelTomlKey(codexInspectionContent, "default_permissions"),
     codexProfileGuardrails: !paths.codexProfileConfigs.some((file) =>
       codexProfileName(file) === "arcadia-unattended" && hasLegacyCodexSandbox(readOptional(file))
     ),
@@ -364,14 +370,26 @@ function codexProjectHeader(repository: string): RegExp {
 }
 
 function codexTrustLevel(content: string, repository: string): string | null {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const start = lines.findIndex((line) => codexProjectHeader(repository).test(line));
-  if (start < 0) return null;
-  for (let index = start + 1; index < lines.length && !/^\s*\[/.test(lines[index]); index += 1) {
-    const match = lines[index].match(/^\s*trust_level\s*=\s*["']([^"']*)["']/);
-    if (match) return match[1];
+  const lines = codexTomlSyntax(content);
+  const starts = lines.flatMap((line, index) => codexProjectHeader(repository).test(line) ? [index] : []);
+  if (starts.length > 1) throw validationError("Codex config contains duplicate project trust tables.", { repository });
+  if (starts.length === 0) return null;
+  let trust: string | null = null;
+  let entries = 0;
+  for (let index = starts[0] + 1; index < lines.length && !/^\s*\[/.test(lines[index]); index += 1) {
+    if (/^\s*["']trust_level["']\s*=/.test(lines[index])) {
+      throw validationError("Codex config has unsupported project trust syntax.", { repository });
+    }
+    if (!/^\s*trust_level\s*=/.test(lines[index])) continue;
+    entries += 1;
+    if (lines[index].includes("@multiline@")) {
+      throw validationError("Codex project trust uses unsupported multiline syntax.", { repository });
+    }
+    const match = lines[index].match(/^\s*trust_level\s*=\s*(?:"([^"\\]*)"|'([^']*)')\s*(?:#.*)?$/);
+    if (match) trust = match[1] ?? match[2];
   }
-  return null;
+  if (entries > 1) throw validationError("Codex config contains duplicate trust_level entries.", { repository });
+  return trust;
 }
 
 /**
@@ -385,11 +403,11 @@ export function setCodexWorkspaceTrust(content: string, repositories: string[]):
   for (const repository of repositories) {
     if (codexTrustLevel(lines.join("\n"), repository) === "trusted") continue;
     const header = codexProjectHeader(repository);
-    const start = lines.findIndex((line) => header.test(line));
+    const start = codexTomlSyntax(lines.join("\n")).findIndex((line) => header.test(line));
     if (start >= 0) {
       let end = start + 1;
-      while (end < lines.length && !/^\s*\[/.test(lines[end])) end += 1;
-      const existing = lines.slice(start + 1, end).findIndex((line) => /^\s*trust_level\s*=/.test(line));
+      while (end < lines.length && !/^\s*\[/.test(codexTomlSyntax(lines.join("\n"))[end])) end += 1;
+      const existing = codexTomlSyntax(lines.join("\n")).slice(start + 1, end).findIndex((line) => /^\s*trust_level\s*=/.test(line));
       if (existing >= 0) lines[start + 1 + existing] = 'trust_level = "trusted"';
       else lines.splice(start + 1, 0, 'trust_level = "trusted"');
       continue;
@@ -401,6 +419,26 @@ export function setCodexWorkspaceTrust(content: string, repositories: string[]):
   return lines.join("\n");
 }
 
+/** Parse only for structural validation. Never serialize or expose parser diagnostics. */
+function isValidCodexToml(content: string): boolean {
+  try {
+    parseToml(content, { integersAsBigInt: "asNeeded" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function prepareCodexConfig(content: string, home: string, trustedRepositories: string[]): string {
+  const prepared = setCodexWorkspaceTrust(setCodexPermissionProfile(content, home), trustedRepositories);
+  // Validate the entire result before any installer write or backup. Checking
+  // only the managed scalars misses TOML table/dotted-key namespace conflicts.
+  if (!isValidCodexToml(prepared)) {
+    throw validationError("Prepared Codex configuration is not valid TOML; no configuration files were changed.");
+  }
+  return prepared;
+}
+
 function updateCodexConfigs(
   paths: AgentSetupPaths,
   trustedRepositories: string[],
@@ -408,8 +446,9 @@ function updateCodexConfigs(
   backups: string[],
   timestamp: string
 ): void {
-  const updated = setCodexWorkspaceTrust(
-    setCodexPermissionProfile(readOptional(paths.codexConfig), path.dirname(path.dirname(paths.codexConfig))),
+  const updated = prepareCodexConfig(
+    readOptional(paths.codexConfig),
+    path.dirname(path.dirname(paths.codexConfig)),
     trustedRepositories
   );
   writeManagedFile(paths.codexConfig, updated, changed, backups, timestamp, true);
@@ -572,13 +611,14 @@ function agentCallableExecutables(executables: BrokerExecutables): ProviderExecu
 
 function setTopLevelTomlValues(content: string, values: Record<string, string>): string {
   const lines = content ? content.replace(/\r\n/g, "\n").split("\n") : [];
-  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const syntax = codexTomlSyntax(content);
+  const firstTable = syntax.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
   const additions: string[] = [];
   for (const [key, value] of Object.entries(values)) {
     const matches: number[] = [];
     for (let index = 0; index < boundary; index += 1) {
-      if (new RegExp(`^\\s*${key}\\s*=`).test(lines[index])) matches.push(index);
+      if (new RegExp(`^\\s*${key}\\s*=`).test(syntax[index])) matches.push(index);
     }
     if (matches.length > 1) {
       throw validationError(`Codex config contains duplicate top-level ${key} entries.`, { key });
@@ -599,6 +639,8 @@ const CODEX_SANDBOX_MODE_PERMISSIONS: Record<string, string> = {
 };
 
 function setCodexPermissionProfile(content: string, home: string): string {
+  assertSupportedCodexManagedSyntax(content);
+  if (hasExactManagedCodexPermissions(content, expectedCodexWorktreeRoots(home))) return content;
   // Codex refuses a config with [permissions.*] profiles but no top-level default_permissions,
   // so carry the retired sandbox_mode forward as its built-in profile; never overwrite a choice.
   const defaultPermissions = hasTopLevelTomlKey(content, "default_permissions")
@@ -608,12 +650,11 @@ function setCodexPermissionProfile(content: string, home: string): string {
     .split("\n")
     .filter((line) => line !== CODEX_MANAGED_PROFILE_COMMENT)
     .join("\n");
-  for (const table of [
-    "permissions.arcadia-unattended.workspace_roots",
-    'permissions.arcadia-unattended.filesystem.":workspace_roots"',
-    "permissions.arcadia-unattended.network",
-    "permissions.arcadia-unattended"
-  ]) withoutManagedProfile = removeTomlTable(withoutManagedProfile, table);
+  const managedTables = codexTomlSyntax(content).flatMap((line) => {
+    const header = line.match(/^\s*\[(permissions\.arcadia-unattended(?:\.[^\]]+)?)\]\s*(?:#.*)?$/);
+    return header ? [header[1]] : [];
+  });
+  for (const table of new Set(managedTables)) withoutManagedProfile = removeTomlTable(withoutManagedProfile, table);
   const withTopLevel = setTopLevelTomlValues(withoutManagedProfile, {
     approval_policy: "on-request",
     ...(defaultPermissions === null ? {} : { default_permissions: defaultPermissions })
@@ -640,26 +681,200 @@ function setCodexPermissionProfile(content: string, home: string): string {
   ].join("\n")}`;
 }
 
+/** Mask multiline string bodies for line-oriented edits, retaining all original bytes.
+ * This is lexical scope tracking only; managed values still require exact scalar proof.
+ */
+function codexTomlSyntax(content: string): string[] {
+  let multiline = "";
+  const result = content.replace(/\r\n/g, "\n").split("\n").map((line) => {
+    let syntax = "";
+    let quote = "";
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (multiline) {
+        let escapes = 0;
+        for (let previous = index - 1; previous >= 0 && line[previous] === "\\"; previous -= 1) escapes += 1;
+        if (line.startsWith(multiline, index) && (multiline[0] === "'" || escapes % 2 === 0)) {
+          index += 2;
+          multiline = "";
+        }
+        continue;
+      }
+      if (quote) {
+        syntax += char;
+        if (char === "\\" && quote === '"') syntax += line[++index] ?? "";
+        else if (char === quote) quote = "";
+      } else if (char === "#") {
+        break;
+      } else if ((char === '"' || char === "'") && line.startsWith(char.repeat(3), index)) {
+        multiline = char.repeat(3);
+        syntax += "@multiline@";
+        index += 2;
+      } else {
+        syntax += char;
+        if (char === '"' || char === "'") quote = char;
+      }
+    }
+    // Whitespace around the owned bare table path does not change its meaning.
+    if (/^\s*\[\s*permissions\s*\.\s*arcadia-unattended(?:\s*[.\]])/.test(syntax)) {
+      return syntax.replace(/^\s*\[\s*/, "[").replace(/\s*\]\s*$/, "]").replace(/\s*\.\s*/g, ".");
+    }
+    return syntax;
+  });
+  if (multiline) throw validationError("Codex config contains an unterminated multiline string.");
+  return result;
+}
+
+/** Classify one TOML key segment, including quoted Unicode-equivalent spellings.
+ * This does not parse values; it prevents aliases from bypassing managed guards.
+ */
+function codexTomlLeadingKey(text: string): { key: string; rest: string; quoted: boolean } | null {
+  const match = text.match(/^\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*(?=[.=\]])/);
+  if (!match) return null;
+  const token = match[1];
+  let key = token;
+  if (token.startsWith("'")) key = token.slice(1, -1);
+  else if (token.startsWith('"')) {
+    key = "";
+    const escapes: Record<string, string> = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", '"': '"', "\\": "\\" };
+    for (let index = 1; index < token.length - 1; index += 1) {
+      if (token[index] !== "\\") { key += token[index]; continue; }
+      const escape = token[++index];
+      if (escape === "u" || escape === "U") {
+        const count = escape === "u" ? 4 : 8;
+        const digits = token.slice(index + 1, index + 1 + count);
+        const codePoint = Number.parseInt(digits, 16);
+        if (!new RegExp(`^[0-9a-fA-F]{${count}}$`).test(digits) || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+          throw validationError("Codex config has unsupported quoted key syntax.");
+        }
+        key += String.fromCodePoint(codePoint);
+        index += count;
+      } else {
+        if (!(escape in escapes)) throw validationError("Codex config has unsupported quoted key syntax.");
+        key += escapes[escape];
+      }
+    }
+  }
+  return { key, rest: text.slice(match[0].length), quoted: token.startsWith('"') || token.startsWith("'") };
+}
+
+/** Refuse ambiguous structures before any file is written instead of guessing their scope. */
+function assertSupportedCodexManagedSyntax(content: string): void {
+  let root = true;
+  let managed = false;
+  let permissionsParent = false;
+  let defaults = 0;
+  for (const line of codexTomlSyntax(content)) {
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    if (/^\s*\[/.test(line)) {
+      root = false;
+      const firstKey = codexTomlLeadingKey(line.replace(/^\s*\[\[?/, ""));
+      permissionsParent = firstKey?.key === "permissions" && /^\]\s*$/.test(firstKey.rest);
+      const secondKey = firstKey?.rest.startsWith(".") ? codexTomlLeadingKey(firstKey.rest.slice(1)) : null;
+      managed = firstKey?.key === "permissions" && secondKey?.key === "arcadia-unattended";
+      if (managed && !/^\s*\[permissions\.arcadia-unattended(?:\.[^\]]+)?\]\s*$/.test(line)) {
+        throw validationError("Codex config has an unsupported managed permission table spelling.");
+      }
+    } else if (permissionsParent && codexTomlLeadingKey(line)?.key === "arcadia-unattended") {
+      throw validationError("Codex config has an unsupported inline or dotted managed permission profile.");
+    } else if (managed && line.includes("@multiline@")) {
+      throw validationError("Codex managed permission values use unsupported multiline syntax.");
+    } else if (root && /^\s*default_permissions\s*=/.test(line)) {
+      defaults += 1;
+      if (defaults > 1 || !/^\s*default_permissions\s*=\s*(?:"[^"\\]+"|'[^']+')\s*(?:#.*)?$/.test(line)) {
+        throw validationError("Codex config has duplicate or unsupported default_permissions entries.");
+      }
+    } else if (root) {
+      const firstKey = codexTomlLeadingKey(line);
+      if (firstKey?.key === "permissions" || (firstKey?.quoted && ["approval_policy", "default_permissions", "sandbox_mode"].includes(firstKey.key))) {
+        throw validationError("Codex config has unsupported managed root syntax.");
+      }
+    }
+  }
+}
+
+/** Only the scalar-only syntax emitted for our managed profile supplies no-op proof.
+ * Unknown keys, duplicate tables/entries and unsupported syntax require repair.
+ */
+function hasExactManagedCodexPermissions(content: string, expectedRoots: string[]): boolean {
+  if (hasLegacyCodexSandbox(content)) return false;
+  const expected = new Map<string, Map<string, string | boolean>>([
+    ["permissions.arcadia-unattended", new Map([["description", "Arcadia local worktrees: edit and run locally; network and credential files remain denied."], ["extends", ":workspace"]])],
+    ["permissions.arcadia-unattended.workspace_roots", new Map(expectedRoots.map((root) => [root, true]))],
+    ['permissions.arcadia-unattended.filesystem.":workspace_roots"', new Map([".env", ".env.*", "**/*.env", "**/.env"].map((key) => [key, "deny"]))],
+    ["permissions.arcadia-unattended.network", new Map([["enabled", false]])]
+  ]);
+  let table = "";
+  let approval = false;
+  let defaultPermissions = false;
+  const seenTables = new Set<string>();
+  for (const line of codexTomlSyntax(content)) {
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    if (/^\s*\[/.test(line)) {
+      const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+      // Unrelated array tables and quoted names may contain brackets. Their
+      // entries cannot prove or invalidate our owned scalar tables.
+      table = header ? header[1].trim() : "<unrelated>";
+      if (/^permissions\.arcadia-unattended(?:\.|$)/.test(table) && !expected.has(table)) return false;
+      if (expected.has(table)) {
+        if (seenTables.has(table)) return false;
+        seenTables.add(table);
+      }
+      continue;
+    }
+    if (table !== "" && !expected.has(table)) continue;
+    // Unrelated root values may use other TOML types; only managed root keys matter.
+    if (table === "" && !/^\s*(?:approval_policy|default_permissions|["'](?:approval_policy|default_permissions)["'])\s*=/.test(line)) continue;
+    const entry = line.match(/^\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*'|true|false)\s*(?:#.*)?$/);
+    if (!entry) return false;
+    let key: string;
+    let value: string | boolean;
+    try {
+      key = entry[1].startsWith('"') ? JSON.parse(entry[1]) as string : entry[1].replace(/^'|'$/g, "");
+      value = entry[2].startsWith('"') ? JSON.parse(entry[2]) as string : entry[2].startsWith("'") ? entry[2].slice(1, -1) : entry[2] === "true";
+    } catch { return false; }
+    if (table === "") {
+      if (key === "approval_policy") {
+        if (approval || value !== "on-request") return false;
+        approval = true;
+      } else if (key === "default_permissions") {
+        if (defaultPermissions || typeof value !== "string" || !value) return false;
+        defaultPermissions = true;
+      }
+    } else {
+      const entries = expected.get(table)!;
+      if (!entries.has(key) || entries.get(key) !== value) return false;
+      entries.delete(key);
+    }
+  }
+  return approval && defaultPermissions && seenTables.size === expected.size && [...expected.values()].every((entries) => entries.size === 0);
+}
+
 function removeTopLevelTomlKeys(content: string, keys: string[]): string {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const syntax = codexTomlSyntax(content);
+  const firstTable = syntax.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
-  return lines.filter((line, index) => index >= boundary || !keys.some((key) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`).test(line))).join("\n");
+  return lines.filter((line, index) => index >= boundary || !keys.some((key) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`).test(syntax[index]))).join("\n");
 }
 
 function removeTomlTable(content: string, tableName: string): string {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const pattern = new RegExp(`^\\s*\\[${escapeRegExp(tableName)}\\]\\s*(?:#.*)?$`);
-  for (let start = lines.findIndex((line) => pattern.test(line)); start >= 0; start = lines.findIndex((line) => pattern.test(line))) {
-    const end = lines.findIndex((line, index) => index > start && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
-    lines.splice(start, (end < 0 ? lines.length : end) - start);
+  for (let start = codexTomlSyntax(lines.join("\n")).findIndex((line) => pattern.test(line)); start >= 0; start = codexTomlSyntax(lines.join("\n")).findIndex((line) => pattern.test(line))) {
+    const end = codexTomlSyntax(lines.join("\n")).findIndex((line, index) => index > start && /^\s*\[{1,2}[^\]]+\]{1,2}/.test(line));
+    const boundary = end < 0 ? lines.length : end;
+    // Comments can describe the next user table. Keep their exact text on repair.
+    const comments = lines.slice(start + 1, boundary).filter((line) => /^\s*#/.test(line));
+    lines.splice(start, boundary - start, ...comments);
   }
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+  return lines.join("\n");
 }
 
 function topLevelTomlValue(content: string, key: string): string | null {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const lines = codexTomlSyntax(content);
+  const syntax = codexTomlSyntax(content);
+  const firstTable = syntax.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
   for (let index = 0; index < boundary; index += 1) {
     const match = lines[index].match(new RegExp(`^\\s*${key}\\s*=\\s*(?:"([^"]+)"|'([^']+)')`));
@@ -669,8 +884,9 @@ function topLevelTomlValue(content: string, key: string): string | null {
 }
 
 function hasTopLevelTomlKey(content: string, key: string): boolean {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const firstTable = lines.findIndex((line) => /^\s*\[/.test(line));
+  const lines = codexTomlSyntax(content);
+  const syntax = codexTomlSyntax(content);
+  const firstTable = syntax.findIndex((line) => /^\s*\[/.test(line));
   const boundary = firstTable < 0 ? lines.length : firstTable;
   return lines.slice(0, boundary).some((line) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`).test(line));
 }
@@ -684,15 +900,11 @@ function hasExpectedCodexWorktreeRoots(content: string, expectedRoots: string[])
 }
 
 function hasNativeUnattendedProfile(content: string, expectedRoots: string[]): boolean {
-  if (hasLegacyCodexSandbox(content)) return false;
-  const roots = expectedRoots.every((root) => new RegExp(`^\\s*${escapeRegExp(JSON.stringify(root))}\\s*=\\s*true\\s*$`, "m").test(content));
-  return roots &&
-    /\[permissions\.arcadia-unattended\][\s\S]*?extends\s*=\s*":workspace"/.test(content) &&
-    /\[permissions\.arcadia-unattended\.network\][\s\S]*?enabled\s*=\s*false/.test(content);
+  return hasExactManagedCodexPermissions(content, expectedRoots);
 }
 
 function hasLegacyCodexSandbox(content: string): boolean {
-  return /^\s*sandbox_mode\s*=/m.test(content) || /^\s*\[sandbox_workspace_write\]\s*$/m.test(content);
+  return codexTomlSyntax(content).some((line) => /^\s*sandbox_mode\s*=/.test(line) || /^\s*\[sandbox_workspace_write\]\s*$/.test(line));
 }
 
 function listCodexProfileConfigs(codexDirectory: string): string[] {

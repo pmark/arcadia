@@ -1,0 +1,9 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/installer-semantic-no-op-resume/arcadia
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed | 66 skipped (72)
+   Start at  23:20:13
+   Duration  2.04s (transform 1.35s, setup 0ms, import 1.65s, tests 269ms, environment 0ms)
+

@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -175,6 +176,280 @@ describe("go broker agent setup", () => {
       now: new Date("2026-09-06T12:35:56.000Z")
     });
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+  });
+
+  it("preserves exact semantic no-op config bytes across reordered tables, quotes, comments and repeated installs", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const original = readFileSync(paths.codexConfig, "utf8");
+    const tables = original.split(/(?=^\[)/m);
+    const rearranged = tables.reverse().map((table) => table.split("\n").map((line) =>
+      line.startsWith("extends = ") ? "extends   = ':workspace' # keep this profile comment" : line
+    ).join("\n")).join("\n");
+    // Keep root values before any table while changing the table order and newline style.
+    const root = tables.pop()!;
+    const config = `${root.replace('approval_policy = "on-request"', "approval_policy = 'on-request' # keep approval comment")}\n${tables.join("\n")}\n# keep final comment\n`
+      .replace('extends = ":workspace"', "extends   = ':workspace' # keep profile comment").replace("[permissions.arcadia-unattended.network]", "  [ permissions . arcadia-unattended . network ] # keep table comment").replace(/\n/g, "\r\n");
+    expect(rearranged).not.toBe(original);
+    write(paths.codexConfig, config);
+    for (let invocation = 0; invocation < 2; invocation += 1) {
+      const result = configureGoBrokerAgents(options);
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+      expect(result.changed).toEqual([]);
+      expect(result.backups).toEqual([]);
+      expect(result.status.ready).toBe(true);
+    }
+  });
+
+  it.each([
+    ['enabled = false', 'enabled = true'],
+    ['extends = ":workspace"', 'extends = ":danger-full-access"'],
+    ['".env" = "deny"', '".env" = "allow"'],
+    ['".env.*" = "deny"', ''],
+    ['enabled = false', 'enabled = "false"'],
+    ['enabled = false', 'enabled = false\nproxy_url = "https://unexpected.invalid"'],
+    ['enabled = false', 'enabled = false\nenabled = true'],
+    ['enabled = false', 'enabled = false garbage'],
+    ['enabled = false', 'enabled = false\n[permissions.arcadia-unattended.extra]\nallow = true']
+  ])("repairs incorrect or missing managed semantics %s without losing unrelated tables and comments", (before, after) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const required = readFileSync(paths.codexConfig, "utf8");
+    const unrelated = '# keep user comment\n[features]\nvoice = true # keep inline comment\n';
+    write(paths.codexConfig, `${required.replace(before, after)}\n${unrelated}`);
+    const result = configureGoBrokerAgents(options);
+    expect(result.changed).toEqual([paths.codexConfig]);
+    expect(result.backups).toHaveLength(1);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(updated).toContain(before);
+    expect(updated).toContain(unrelated);
+    expect(updated).not.toContain('proxy_url = "https://unexpected.invalid"');
+    expect(result.status.ready).toBe(true);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+  });
+
+  it.each([
+    '[permissions."arcadia-unattended".network]\nenabled = false',
+    '[[permissions.arcadia-unattended.network]]\nenabled = false',
+    '"approval_policy" = "on-request"',
+    'default_permissions = false',
+    'default_permissions = ":workspace"',
+    'description = """bad\nvalue"""\n[permissions.arcadia-unattended.network]\nenabled = """false"""'
+  ])("refuses ambiguous managed syntax without writing config or backups: %s", (ambiguous) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `${ambiguous}\n${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported|multiline/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it.each([false, true])("preserves unrelated multiline strings and table names on repair=%s", (repair) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const original = readFileSync(paths.codexConfig, "utf8");
+    const root = 'notes = """\n[permissions.arcadia-unattended.network]\nenabled = true\napproval_policy = "never"\n"""\n';
+    const unrelated = '[my."arcadia-unattended"] # keep arcadia-unattended\ntext = """user\n\n\n[permissions.arcadia-unattended]\ntext"""\n';
+    const config = `${root}${repair ? original.replace('enabled = false', 'enabled = true') : original}\n${unrelated}`;
+    write(paths.codexConfig, config);
+    const result = configureGoBrokerAgents(options);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(updated).toContain(root);
+    expect(updated).toContain(unrelated);
+    expect(result.status.ready).toBe(true);
+    if (!repair) {
+      expect(updated).toBe(config);
+      expect(result).toMatchObject({ changed: [], backups: [] });
+    }
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+  });
+
+  it.each([
+    'trust_level = "trusted"\ntrust_level = "untrusted"',
+    '"trust_level" = "trusted"'
+  ])("refuses ambiguous trust entries without writing config: %s", (trust) => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', trust);
+    write(paths.codexConfig, config);
+    expect(() => configureGoBrokerAgents(options)).toThrow(/duplicate|unsupported/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it("repairs missing permission tables and incorrect trust while retaining user values", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const unrelated = '# keep root comment\nmodel = "gpt-test"\ncount = 3\nflags = [true, false]\n';
+    const userTable = '# keep user table comment\n[features]\nvoice = true # keep inline\n';
+    write(paths.codexConfig, `${unrelated}\n[projects.${JSON.stringify(repository)}]\ntrust_level = "untrusted"\n\n${userTable}`);
+    const result = configureGoBrokerAgents(options);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(result.status.ready).toBe(true);
+    expect(updated).toContain(unrelated);
+    expect(updated).toContain(userTable);
+    expect(updated).toContain('trust_level = "trusted"');
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(updated);
+  });
+
+  it.each([
+    '[[my.items]]\nname = "keep array table"\n',
+    '[features."a]b"]\nvalue = "keep quoted bracket"\n',
+    '[permissions.arcadia-unattended-custom]\nextends = ":read-only"\n'
+  ])("R2 preserves exact config with unrelated TOML headers: %s", (unrelated) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `${readFileSync(paths.codexConfig, "utf8")}\n${unrelated}`;
+    write(paths.codexConfig, config);
+    for (let invocation = 0; invocation < 2; invocation += 1) {
+      expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    }
+  });
+
+  it("R2 refuses an inline managed profile before writing any configuration", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = '[permissions]\narcadia-unattended = { extends = ":read-only" }\n';
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+  });
+
+  it.each(['"""trusted"""', '"""untrusted\nretained value"""'])(
+    "R2 refuses multiline trust before writing any configuration: %s", (trust) => {
+      const fixture = createFixture();
+      const repository = createRepository(fixture.home, "project");
+      const options = setupOptions(fixture, [repository]);
+      configureGoBrokerAgents(options);
+      const paths = resolveAgentSetupPaths(fixture.home);
+      const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', `trust_level = ${trust}`);
+      write(paths.codexConfig, config);
+      const claude = readFileSync(paths.claudeSettings, "utf8");
+      expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported.*trust|trust.*multiline/);
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+      expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    }
+  );
+
+  it.each([
+    '"permissions" = { "arcadia-unattended" = { extends = ":read-only" } }',
+    "'permissions' = { 'arcadia-unattended' = { extends = ':read-only' } }",
+    '"permissions"."arcadia-unattended".extends = ":read-only"',
+    "'permissions'.'arcadia-unattended'.extends = ':read-only'",
+    '"per\\u006dissions" = { "arcadia-unattended" = { extends = ":read-only" } }',
+    '"\\U00000070ermissions"."arcadia-unattended".extends = ":read-only"'
+  ])("R3 refuses quoted managed root assignments before writes: %s", (assignment) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    // Use the real TOML escape, rather than a JavaScript-decoded equivalent.
+    const config = `${assignment.replace(/\\\\/g, "\\")}\n`;
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported.*root/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+  });
+
+  it("R3 preserves unrelated quoted and escaped user root keys and comments", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const user = '"per\\u006donal" = "keep value" # keep comment\n\'permissions.notes\' = "keep literal dotted key"\n';
+    const config = `${user}${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it.each([
+    "approval_policy.user = 'never'\n",
+    "default_permissions.user = ':read-only'\n",
+    "[approval_policy]\nuser = 'never'\n",
+    "[default_permissions]\nuser = ':read-only'\n",
+    "[[permissions]]\narcadia-unattended = { extends = ':read-only' }\n",
+    '[["per\\u006dissions"]]\narcadia-unattended = { extends = ":read-only" }\n'
+  ])("R4 refuses structurally conflicting namespaces before writes/backups: %s", (config) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    const backups = readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"));
+    expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    expect(readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"))).toEqual(backups);
+  });
+
+  it.each([
+    "trust_level.user = 'untrusted'",
+    '"trust\\u005flevel" = "untrusted"',
+    '"\\U00000074rust_level" = "untrusted"',
+    "'trust_level'.user = 'untrusted'",
+    '[projects.REPOSITORY.trust_level]\nuser = "untrusted"'
+  ])("R4 refuses conflicting trust representations before writes/backups: %s", (trust) => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', trust.replace("REPOSITORY", JSON.stringify(repository)));
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    const backups = readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"));
+    expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    expect(readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"))).toEqual(backups);
+  });
+
+  it("R4 public inspection never reports invalid TOML ready", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `approval_policy.user = 'never'\n${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(inspectGoBrokerAgentSetup(options).ready).toBe(false);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it("R4 preserves large integers, dates and literal dotted trust keys without serializing", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const user = "huge = 9223372036854775807 # retain integer\ncreated = 1979-05-27T07:32:00Z\n";
+    const config = `${user}${readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', 'trust_level = "trusted"\n\'trust_level.user\' = "unrelated"')}`;
+    write(paths.codexConfig, config);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
   });
 
   it.each([null, ":workspace", "personal", "arcadia-unattended"])(

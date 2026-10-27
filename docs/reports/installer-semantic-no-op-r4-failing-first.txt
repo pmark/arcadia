@@ -1,0 +1,113 @@
+
+ RUN  v4.1.8 /Users/pmark/.codex/worktrees/installer-semantic-no-op-resume/arcadia
+
+ ❯ tests/go-broker-agent-setup.test.ts (92 tests | 12 failed | 79 skipped) 803ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: approval_policy.user = 'never'
+ 28ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: default_permissions.user = ':read-only'
+ 16ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: [approval_policy]
+user = 'never'
+ 14ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: [default_permissions]
+user = ':read-only'
+ 15ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: [[permissions]]
+arcadia-unattended = { extends = ':read-only' }
+ 13ms
+     × R4 refuses structurally conflicting namespaces before writes/backups: [["per\u006dissions"]]
+arcadia-unattended = { extends = ":read-only" }
+ 14ms
+     × R4 refuses conflicting trust representations before writes/backups: trust_level.user = 'untrusted' 125ms
+     × R4 refuses conflicting trust representations before writes/backups: "trust\u005flevel" = "untrusted" 114ms
+     × R4 refuses conflicting trust representations before writes/backups: "\U00000074rust_level" = "untrusted" 114ms
+     × R4 refuses conflicting trust representations before writes/backups: 'trust_level'.user = 'untrusted' 110ms
+     × R4 refuses conflicting trust representations before writes/backups: [projects.REPOSITORY.trust_level]
+user = "untrusted" 111ms
+     × R4 public inspection never reports invalid TOML ready 13ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: approval_policy.user = 'never'
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: default_permissions.user = ':read-only'
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: [approval_policy]
+user = 'never'
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: [default_permissions]
+user = ':read-only'
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: [[permissions]]
+arcadia-unattended = { extends = ':read-only' }
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses structurally conflicting namespaces before writes/backups: [["per\u006dissions"]]
+arcadia-unattended = { extends = ":read-only" }
+
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/go-broker-agent-setup.test.ts:403:52
+    401|     const claude = readFileSync(paths.claudeSettings, "utf8");
+    402|     const backups = readdirSync(path.dirname(paths.codexConfig)).filte…
+    403|     expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML…
+       |                                                    ^
+    404|     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    405|     expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses conflicting trust representations before writes/backups: trust_level.user = 'untrusted'
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses conflicting trust representations before writes/backups: "trust\u005flevel" = "untrusted"
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses conflicting trust representations before writes/backups: "\U00000074rust_level" = "untrusted"
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses conflicting trust representations before writes/backups: 'trust_level'.user = 'untrusted'
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 refuses conflicting trust representations before writes/backups: [projects.REPOSITORY.trust_level]
+user = "untrusted"
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/go-broker-agent-setup.test.ts:425:52
+    423|     const claude = readFileSync(paths.claudeSettings, "utf8");
+    424|     const backups = readdirSync(path.dirname(paths.codexConfig)).filte…
+    425|     expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML…
+       |                                                    ^
+    426|     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    427|     expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  tests/go-broker-agent-setup.test.ts > go broker agent setup > R4 public inspection never reports invalid TOML ready
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/go-broker-agent-setup.test.ts:438:54
+    436|     const config = `approval_policy.user = 'never'\n${readFileSync(pat…
+    437|     write(paths.codexConfig, config);
+    438|     expect(inspectGoBrokerAgentSetup(options).ready).toBe(false);
+       |                                                      ^
+    439|     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    440|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  12 failed | 1 passed | 79 skipped (92)
+   Start at  23:37:24
+   Duration  2.62s (transform 1.36s, setup 0ms, import 1.66s, tests 803ms, environment 0ms)
+
