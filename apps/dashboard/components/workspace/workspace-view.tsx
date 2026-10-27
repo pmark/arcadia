@@ -39,14 +39,14 @@ function PlanLink({ project, plan, current = false }: { project: string; plan: P
  * Go's current Plan leads (from Go's last good read, labelled when a later read failed); other active Plans
  * follow; not-yet-active and finished Plans wait behind disclosures. A label never claims Go named a Plan it did not.
  */
-function ProjectPlans({ project, plans, goPlan, stale }: { project: string; plans: PlanRow[]; goPlan: string | null; stale: boolean }) {
+function ProjectPlans({ project, plans, goPlan, goNamedNone, stale }: { project: string; plans: PlanRow[]; goPlan: string | null; goNamedNone: boolean; stale: boolean }) {
   const groups = groupPlans(plans, goPlan);
   const list = (rows: PlanRow[]) => <ul className="workspace-entities">{rows.map(p => <PlanLink key={p.slug} project={project} plan={p} />)}</ul>;
   const heading = groups.source === "go" ? `Go's current Plan${stale ? " · last good read" : ""}` : "Recorded active Plan";
   return <>
-    {groups.missingGoPlan && <p className="workspace-muted" role="status">Go names Plan {groups.missingGoPlan}, which this list does not include yet. Refresh to read the list again.</p>}
+    {groups.missingGoPlan && <p className="workspace-muted">Go{stale ? "'s last good read" : ""} names Plan {groups.missingGoPlan}, which this list does not include yet. Refresh to read the list again.</p>}
     {groups.current ? <><h3 className="workspace-group">{heading}</h3><ul className="workspace-entities"><PlanLink project={project} plan={groups.current} current /></ul></>
-      : <p>No active Plan is recorded{goPlan ? "" : ", and Go names none"}.</p>}
+      : <p>No active Plan is recorded{goNamedNone ? ", and Go names none" : ""}.</p>}
     {groups.otherActive.length > 0 && <><h3 className="workspace-group">{groups.current ? "Also marked active" : "Marked active"} ({groups.otherActive.length})</h3>
       {groups.source === "go" && <p className="workspace-muted">Their status says active, but Go is not working on them.</p>}{list(groups.otherActive)}</>}
     {groups.upcoming.length > 0 && <details className="workspace-group-more"><summary>Not yet active ({groups.upcoming.length})</summary>{list(groups.upcoming)}</details>}
@@ -112,7 +112,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
         <div className="workspace-section-heading"><h2>In this {listed.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>
         {!scope || missing ? <div role="status"><h3>Context not found</h3><p>{missing}</p><Link href="/workspace">Return to portfolio</Link></div> : failure ? <div role="alert"><h3>Context unavailable</h3><p>{failure}</p><p>Refresh to try the read again.</p></div> : loading ? <p role="status">Reading your work…</p> : <>
           {level === "Portfolio" && (portfolio.kind === "ready" && portfolio.data.projects.length ? <ul className="workspace-entities">{portfolio.data.projects.map(p => <li key={p.slug}><Link href={workspaceHref({ project: p.slug })}><span className="workspace-entity-kind">Project · {p.status}</span><strong>{p.name}</strong><span>{p.error ? "Plans unavailable" : `${p.plans?.length ?? 0} Plans`} <span aria-hidden="true">↗</span></span></Link></li>)}</ul> : <p>No Projects are in this workspace yet.</p>)}
-          {level === "Project" && project && (project.plans?.length ? <ProjectPlans project={project.slug} plans={project.plans} goPlan={goPlan} stale={go.status === "error"} /> : <p>No Plan documents are available for this Project.</p>)}
+          {level === "Project" && project && (project.plans?.length ? <ProjectPlans project={project.slug} plans={project.plans} goPlan={goPlan} goNamedNone={move?.kind === "none"} stale={go.status === "error"} /> : <p>No Plan documents are available for this Project.</p>)}
           {(level === "Plan" || level === "Action") && detail.kind === "ready" && <>{plan?.milestone && <p>{plan.milestone}</p>}{detail.data.progress.actions.length ? <ul className="workspace-entities">{detail.data.progress.actions.map(a => {
             const id = workspaceActionId(a.key);
             return <li key={a.key}><Link href={workspaceHref({ ...scope, action: id })} aria-current={id === scope.action ? "true" : undefined}><span className="workspace-entity-kind">Action · {a.status}{id === goActionId ? " · Go's current Action" : ""}</span><strong>{a.title}</strong></Link></li>;
