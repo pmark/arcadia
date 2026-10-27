@@ -35,6 +35,23 @@ selection does not automatically amend those records. Select **Open Artifact**
 on a linked output card to view SVG, PNG, JPEG, WebP or supported plain text
 (up to 4 MiB). Close or Escape returns to the same draft, receipt and context.
 Missing or unsupported files show a clear error in the viewer.
+
+The workspace has three areas:
+- **Context** lists what is in the selected scope.
+- **Work** shows the selected record.
+- **Direction** holds the **Next move** and the Ask.
+
+Select a Project and **Next move** shows Go's own resolution for it:
+- **Ready to continue** with Go's current Action and its next step;
+- **Waiting** with Go's exact question or blocker and its remedy;
+- or **No current Action**.
+
+It says whether the selected Plan or Action is Go's current work, and links to it when it is not. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
+
+Go is read when you first select a Project, after five minutes, or on **Read again**. Each read runs `arcadia next` through the existing continuation route, so it is never polled. A failed read keeps the last good one, labelled with its time. Nothing here starts work: **this Project's page** keeps the existing Get to work control and its checks.
+
+On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
+
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
 [opening Artifacts](docs/design/workspace-artifact-opening.md).

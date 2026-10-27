@@ -1,28 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useRead } from "./use-read";
 import { WorkspaceAsk } from "./workspace-ask";
-import { useEffect, useState } from "react";
+import { WorkspaceNextMove, useGoRead, type GoRead } from "./workspace-next-move";
 import type { AllPlansResponse, PlanDetailResponse } from "../../lib/plans-types";
+import { goRelation } from "../../lib/workspace-go";
 import { parseWorkspaceScope, workspaceActionId, workspaceHref } from "../../lib/workspace-scope";
 
-type ReadState<T> = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; data: T };
-function useRead<T>(url: string | null, revision: number): ReadState<T> {
-  const [result, setResult] = useState<{ url: string; revision: number; state: ReadState<T> } | null>(null);
-  useEffect(() => {
-    if (!url) return;
-    const controller = new AbortController();
-    fetch(url, { cache: "no-store", signal: controller.signal }).then(async response => {
-      const body = await response.json() as T & { error?: string };
-      if (controller.signal.aborted) return;
-      if (!response.ok) throw new Error(body.error ?? "Arcadia could not read this context.");
-      setResult({ url, revision, state: { kind: "ready", data: body } });
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setResult({ url, revision, state: { kind: "error", message: error instanceof Error ? error.message : String(error) } });
-    });
-    return () => controller.abort();
-  }, [url, revision]);
-  return result?.url === url && result.revision === revision ? result.state : { kind: "loading" };
+/** Go's recorded details for the selected Action, shown only when it is Go's current Action. */
+function GoActionDetails({ go }: { go: GoRead }) {
+  const move = go.last?.move;
+  if (!move || move.kind === "none") return null;
+  const { action } = move;
+  return <section className="workspace-go-work" aria-labelledby="workspace-go-work-title">
+    <h2 id="workspace-go-work-title">What Go has for this Action</h2>
+    <dl className="workspace-facts">
+      <dt>Next</dt><dd>{action.next ?? "None recorded"}</dd>
+      <dt>Expected result</dt><dd>{action.artifact ?? "None recorded"}</dd>
+    </dl>
+    {action.decisions.length > 0 && <><h3>Decisions it needs</h3><ul>{action.decisions.map(d => <li key={d.slug}>{d.question} · {d.resolved ? "answered" : "open"}</li>)}</ul></>}
+    {action.acceptance.length > 0 && <details><summary>Acceptance criteria ({action.acceptance.length})</summary><ol>{action.acceptance.map(c => <li key={c}>{c}</li>)}</ol></details>}
+  </section>;
 }
 
 export function WorkspaceView({ parts }: { parts: string[] }) {
@@ -43,6 +43,13 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
     : portfolio.kind === "ready" && scope.plan && project?.plans && !project.error && !plan ? "This Plan is not in the selected Project."
     : !loading && !failure && scope.action && !action ? "This Action is not in the selected Plan." : null;
   const up = scope?.action ? { project: scope.project, plan: scope.plan } : scope?.plan ? { project: scope.project } : {};
+  // Go is asked only about a Project the portfolio read verified; an unknown address never reaches it.
+  const goProject = project && !missing ? { id: project.id, slug: project.slug } : null;
+  const go = useGoRead(goProject?.id);
+  const move = go.last?.move ?? null;
+  const relation = move && scope ? goRelation(move, scope) : null;
+  const goActionId = move && move.kind !== "none" && plan?.slug === move.plan ? move.action.id : null;
+  const listed = level === "Action" ? "Plan" : level;
   return <main className="workspace-main">
     <nav aria-label="Selected context" className="workspace-breadcrumbs">
       <Link href="/workspace" aria-current={scope && !scope.project ? "page" : undefined}>Portfolio</Link>
@@ -51,25 +58,35 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
       {scope?.action && <><span aria-hidden="true">/</span><span aria-current="page">{action?.title ?? scope.action}</span></>}
     </nav>
     <div className="workspace-grid">
-      <section className="workspace-conversation workspace-panel" aria-labelledby="workspace-title">
-        <div className="workspace-context" id="workspace-context" tabIndex={-1}>
-          <p className="workspace-eyebrow">Selected context · {level}</p><h1 id="workspace-title">{title}</h1>
-          {scope?.project && <Link href={workspaceHref(up)} className="workspace-up">← Up to {scope.action ? "Plan" : scope.plan ? "Project" : "portfolio"}</Link>}
-        </div>
-        <div className="workspace-conversation-slot">
-          <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
-        </div>
-      </section>
-      <aside className="workspace-context-panel workspace-panel" aria-label="Work overview">
-        <div className="workspace-section-heading"><h2>In this {level.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>
+      <aside className="workspace-context-panel workspace-panel" aria-label="Context">
+        <div className="workspace-section-heading"><h2>In this {listed.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>
         {!scope || missing ? <div role="status"><h3>Context not found</h3><p>{missing}</p><Link href="/workspace">Return to portfolio</Link></div> : failure ? <div role="alert"><h3>Context unavailable</h3><p>{failure}</p><p>Refresh to try the read again.</p></div> : loading ? <p role="status">Reading your work…</p> : <>
           {level === "Portfolio" && (portfolio.kind === "ready" && portfolio.data.projects.length ? <ul className="workspace-entities">{portfolio.data.projects.map(p => <li key={p.slug}><Link href={workspaceHref({ project: p.slug })}><span className="workspace-entity-kind">Project · {p.status}</span><strong>{p.name}</strong><span>{p.error ? "Plans unavailable" : `${p.plans?.length ?? 0} Plans`} <span aria-hidden="true">↗</span></span></Link></li>)}</ul> : <p>No Projects are in this workspace yet.</p>)}
           {level === "Project" && (project?.plans?.length ? <ul className="workspace-entities">{project.plans.map(p => <li key={p.slug}><Link href={workspaceHref({ project: project.slug, plan: p.slug })}><span className="workspace-entity-kind">Plan · {p.status}{p.isActivePlan ? " · active" : ""}</span><strong>{p.slug}</strong>{p.milestone && <span>{p.milestone}</span>}</Link></li>)}</ul> : <p>No Plan documents are available for this Project.</p>)}
-          {level === "Plan" && detail.kind === "ready" && <>{plan?.milestone && <p>{plan.milestone}</p>}{detail.data.progress.actions.length ? <ul className="workspace-entities">{detail.data.progress.actions.map(a => <li key={a.key}><Link href={workspaceHref({ ...scope, action: workspaceActionId(a.key) })}><span className="workspace-entity-kind">Action · {a.status}</span><strong>{a.title}</strong></Link></li>)}</ul> : <p>No Actions are recorded in this Plan.</p>}</>}
-          {level === "Action" && action && <dl className="workspace-facts"><dt>Recorded status</dt><dd>{action.status}</dd><dt>Dependencies</dt><dd>{action.dependsOn.length ? action.dependsOn.join(", ") : "None recorded"}</dd></dl>}
+          {(level === "Plan" || level === "Action") && detail.kind === "ready" && <>{plan?.milestone && <p>{plan.milestone}</p>}{detail.data.progress.actions.length ? <ul className="workspace-entities">{detail.data.progress.actions.map(a => {
+            const id = workspaceActionId(a.key);
+            return <li key={a.key}><Link href={workspaceHref({ ...scope, action: id })} aria-current={id === scope.action ? "page" : undefined}><span className="workspace-entity-kind">Action · {a.status}{id === goActionId ? " · Go's current Action" : ""}</span><strong>{a.title}</strong></Link></li>;
+          })}</ul> : <p>No Actions are recorded in this Plan.</p>}</>}
         </>}
-
       </aside>
+      <section className="workspace-work workspace-panel" aria-labelledby="workspace-title">
+        <div className="workspace-context" id="workspace-context" tabIndex={-1}>
+          <p className="workspace-eyebrow">Selected context · {level}</p><h1 id="workspace-title">{title}</h1>
+          {scope?.project && <Link href={workspaceHref(up)} className="workspace-up">← Up to {scope.action ? "Plan" : scope.plan ? "Project" : "portfolio"}</Link>}
+          <a href="#workspace-go-title" className="workspace-jump">Go&apos;s next move and your Ask ↓</a>
+        </div>
+        <div className="workspace-work-body">
+          {level === "Portfolio" && <p>Choose a Project under Context. Go&apos;s next move for it appears under Direction. Your Ask keeps the target you chose.</p>}
+          {level === "Project" && move && move.kind !== "none" && <dl className="workspace-facts"><dt>Go is working toward</dt><dd>{move.milestone ?? "No milestone recorded"}</dd><dt>Go&apos;s current Plan</dt><dd><Link href={workspaceHref({ project: scope?.project, plan: move.plan })}>{move.plan}</Link></dd></dl>}
+          {level === "Plan" && plan?.milestone && <dl className="workspace-facts"><dt>Milestone</dt><dd>{plan.milestone}</dd></dl>}
+          {level === "Action" && action && <dl className="workspace-facts"><dt>Recorded status</dt><dd>{action.status}</dd><dt>Dependencies</dt><dd>{action.dependsOn.length ? action.dependsOn.join(", ") : "None recorded"}</dd></dl>}
+          {level === "Action" && action && relation === "here" && <GoActionDetails go={go} />}
+        </div>
+      </section>
+      <section className="workspace-direction workspace-panel" aria-label="Direction">
+        <WorkspaceNextMove go={go} project={goProject} relation={relation} />
+        <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
+      </section>
     </div>
     <footer className="workspace-footer">Explore the context. Keep the thread.</footer>
   </main>;
