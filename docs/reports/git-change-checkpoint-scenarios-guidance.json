@@ -1,0 +1,67 @@
+{
+  "schema": "arcadia-guidance-delivery-evidence-v1",
+  "evidence": [
+    {
+      "cwd": ".",
+      "agent": "codex",
+      "sources": [
+        {
+          "path": "/Users/pmark/.codex/AGENTS.md",
+          "bytes": 3053,
+          "sha256": "ae807d3d69d221fc40d6edd065164435d5e0bd2e123648357badc44827e2b4a3"
+        },
+        {
+          "path": "/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/AGENTS.md",
+          "bytes": 12236,
+          "sha256": "3406ac39fe4d242cfa8ad8f9bf01297b1e9e0af92c2a3d0e487a2b3917b27315"
+        }
+      ],
+      "projectBytes": 12236,
+      "combinedBytes": 15291,
+      "problems": []
+    },
+    {
+      "cwd": ".",
+      "agent": "claude",
+      "sources": [
+        {
+          "path": "/Users/pmark/.claude/CLAUDE.md",
+          "bytes": 680,
+          "sha256": "40d3cfb108de5a6f6dff671ca589496274f6a240de0f5919a551a99ff1af610b"
+        },
+        {
+          "path": "/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/AGENTS.md",
+          "bytes": 12236,
+          "sha256": "3406ac39fe4d242cfa8ad8f9bf01297b1e9e0af92c2a3d0e487a2b3917b27315"
+        },
+        {
+          "path": "/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/CLAUDE.md",
+          "bytes": 378,
+          "sha256": "f59354aef057dca0afc2a7aa5eba9ceba878829ff86685a985d89e9ea93eae61"
+        }
+      ],
+      "projectBytes": 12616,
+      "combinedBytes": 13298,
+      "problems": []
+    },
+    {
+      "cwd": ".",
+      "agent": "opencode",
+      "sources": [
+        {
+          "path": "/Users/pmark/.config/opencode/AGENTS.md",
+          "bytes": 680,
+          "sha256": "40d3cfb108de5a6f6dff671ca589496274f6a240de0f5919a551a99ff1af610b"
+        },
+        {
+          "path": "/Users/pmark/.codex/worktrees/git-change-checkpoint-scenarios/arcadia/AGENTS.md",
+          "bytes": 12236,
+          "sha256": "3406ac39fe4d242cfa8ad8f9bf01297b1e9e0af92c2a3d0e487a2b3917b27315"
+        }
+      ],
+      "projectBytes": 12236,
+      "combinedBytes": 12918,
+      "problems": []
+    }
+  ]
+}
