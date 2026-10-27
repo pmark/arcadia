@@ -15,6 +15,7 @@ import {
   writeFileSync
 } from "node:fs";
 import path from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { validationError } from "../cli/errors.js";
 import { SESSION_AGENTS } from "../sessions/index.js";
 
@@ -68,6 +69,7 @@ export interface AgentSetupStatus {
   checks: {
     preservationLauncher: boolean;
     brokerExecutables: boolean;
+    codexConfigValid: boolean;
     codexGuardrails: boolean;
     codexWorktreeDirectories: boolean;
     codexNativeProfile: boolean;
@@ -212,7 +214,7 @@ export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOpt
   const paths = resolveAgentSetupPaths(options.home);
   renderManagedSkill(options.skillTemplate, options.executables);
   renderAgentAskManagedSkill(options.agentAskSkillTemplate);
-  setCodexPermissionProfile(readOptional(paths.codexConfig), options.home);
+  prepareCodexConfig(readOptional(paths.codexConfig), options.home, planWorkspaceTrust(options.projectRepositories ?? [], options.home).trusted);
   readClaudeSettings(paths.claudeSettings, true);
   readClaudeState(paths.claudeState, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
@@ -224,6 +226,9 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const expectedSkill = renderManagedSkill(options.skillTemplate, options.executables);
   const expectedAgentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   const codexConfig = readOptional(paths.codexConfig);
+  const codexConfigValid = isValidCodexToml(codexConfig);
+  // Invalid user TOML is a reported failed check, never semantic readiness.
+  const codexInspectionContent = codexConfigValid ? codexConfig : "";
   const codexRule = readOptional(paths.codexManagedRules);
   const legacyCodexRules = findLegacyCodexRules(paths.codexRulesDirectory, paths.codexManagedRules);
   const claude = readClaudeSettings(paths.claudeSettings, false);
@@ -233,21 +238,22 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const trustPlan = planWorkspaceTrust(options.projectRepositories ?? [], options.home);
   const workspaceTrust: WorkspaceTrustStatus = {
     required: trustPlan.trusted,
-    missing: trustPlan.trusted.filter((repository) => codexTrustLevel(codexConfig, repository) !== "trusted"),
+    missing: trustPlan.trusted.filter((repository) => codexTrustLevel(codexInspectionContent, repository) !== "trusted"),
     refused: trustPlan.refused
   };
   const checks = {
+    codexConfigValid,
     preservationLauncher: brokerAgents().every((agent) => existsSync(options.executables.preserve[agent])),
     brokerExecutables: Object.values(options.executables).every((providers) =>
       brokerAgents().every((agent) => existsSync(providers[agent]))
     ),
     codexGuardrails:
-      topLevelTomlValue(codexConfig, "approval_policy") === "on-request",
-    codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexConfig, expectedCodexWorktreeRoots(options.home)),
-    codexNativeProfile: hasNativeUnattendedProfile(codexConfig, expectedCodexWorktreeRoots(options.home)),
-    noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexConfig),
+      topLevelTomlValue(codexInspectionContent, "approval_policy") === "on-request",
+    codexWorktreeDirectories: hasExpectedCodexWorktreeRoots(codexInspectionContent, expectedCodexWorktreeRoots(options.home)),
+    codexNativeProfile: hasNativeUnattendedProfile(codexInspectionContent, expectedCodexWorktreeRoots(options.home)),
+    noLegacyCodexSandbox: !hasLegacyCodexSandbox(codexInspectionContent),
     // Codex refuses to load a config that defines [permissions.*] profiles without a default.
-    codexDefaultPermissions: !hasCodexPermissionProfiles(codexConfig) || hasTopLevelTomlKey(codexConfig, "default_permissions"),
+    codexDefaultPermissions: !hasCodexPermissionProfiles(codexInspectionContent) || hasTopLevelTomlKey(codexInspectionContent, "default_permissions"),
     codexProfileGuardrails: !paths.codexProfileConfigs.some((file) =>
       codexProfileName(file) === "arcadia-unattended" && hasLegacyCodexSandbox(readOptional(file))
     ),
@@ -413,6 +419,26 @@ export function setCodexWorkspaceTrust(content: string, repositories: string[]):
   return lines.join("\n");
 }
 
+/** Parse only for structural validation. Never serialize or expose parser diagnostics. */
+function isValidCodexToml(content: string): boolean {
+  try {
+    parseToml(content, { integersAsBigInt: "asNeeded" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function prepareCodexConfig(content: string, home: string, trustedRepositories: string[]): string {
+  const prepared = setCodexWorkspaceTrust(setCodexPermissionProfile(content, home), trustedRepositories);
+  // Validate the entire result before any installer write or backup. Checking
+  // only the managed scalars misses TOML table/dotted-key namespace conflicts.
+  if (!isValidCodexToml(prepared)) {
+    throw validationError("Prepared Codex configuration is not valid TOML; no configuration files were changed.");
+  }
+  return prepared;
+}
+
 function updateCodexConfigs(
   paths: AgentSetupPaths,
   trustedRepositories: string[],
@@ -420,8 +446,9 @@ function updateCodexConfigs(
   backups: string[],
   timestamp: string
 ): void {
-  const updated = setCodexWorkspaceTrust(
-    setCodexPermissionProfile(readOptional(paths.codexConfig), path.dirname(path.dirname(paths.codexConfig))),
+  const updated = prepareCodexConfig(
+    readOptional(paths.codexConfig),
+    path.dirname(path.dirname(paths.codexConfig)),
     trustedRepositories
   );
   writeManagedFile(paths.codexConfig, updated, changed, backups, timestamp, true);

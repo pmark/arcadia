@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -379,6 +380,73 @@ describe("go broker agent setup", () => {
     const paths = resolveAgentSetupPaths(fixture.home);
     const user = '"per\\u006donal" = "keep value" # keep comment\n\'permissions.notes\' = "keep literal dotted key"\n';
     const config = `${user}${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it.each([
+    "approval_policy.user = 'never'\n",
+    "default_permissions.user = ':read-only'\n",
+    "[approval_policy]\nuser = 'never'\n",
+    "[default_permissions]\nuser = ':read-only'\n",
+    "[[permissions]]\narcadia-unattended = { extends = ':read-only' }\n",
+    '[["per\\u006dissions"]]\narcadia-unattended = { extends = ":read-only" }\n'
+  ])("R4 refuses structurally conflicting namespaces before writes/backups: %s", (config) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    const backups = readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"));
+    expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    expect(readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"))).toEqual(backups);
+  });
+
+  it.each([
+    "trust_level.user = 'untrusted'",
+    '"trust\\u005flevel" = "untrusted"',
+    '"\\U00000074rust_level" = "untrusted"',
+    "'trust_level'.user = 'untrusted'",
+    '[projects.REPOSITORY.trust_level]\nuser = "untrusted"'
+  ])("R4 refuses conflicting trust representations before writes/backups: %s", (trust) => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', trust.replace("REPOSITORY", JSON.stringify(repository)));
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    const backups = readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"));
+    expect(() => configureGoBrokerAgents(options)).toThrow(/valid TOML/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    expect(readdirSync(path.dirname(paths.codexConfig)).filter((name) => name.includes(".arcadia-backup-"))).toEqual(backups);
+  });
+
+  it("R4 public inspection never reports invalid TOML ready", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `approval_policy.user = 'never'\n${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(inspectGoBrokerAgentSetup(options).ready).toBe(false);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it("R4 preserves large integers, dates and literal dotted trust keys without serializing", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const user = "huge = 9223372036854775807 # retain integer\ncreated = 1979-05-27T07:32:00Z\n";
+    const config = `${user}${readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', 'trust_level = "trusted"\n\'trust_level.user\' = "unrelated"')}`;
     write(paths.codexConfig, config);
     expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
     expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
