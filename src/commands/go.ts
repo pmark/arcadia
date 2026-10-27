@@ -131,6 +131,8 @@ export interface GoCommandOptions {
    * pending enrollment row inside the claim's own transaction.
    */
   enrollment?: { requestId: string; actionId: string; requirementId?: string; inputRevision?: string };
+  /** Protected broker only: bind initial root preparation, without enrollment identity or writes. */
+  initialSelection?: { requirementId: string; inputRevision: string };
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -346,7 +348,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       code: "enrollment_governance_changed", expected: options.enrollment.actionId, actual: sourceDispatch.context?.action.id ?? null
     });
   }
-  assertEnrollmentInput(options, sourceDispatch);
+  assertPreparationInput(options, sourceDispatch);
   let activationResult: ActivateNextPlanResult | null = null;
   let activationHold: ScopeActivationHold | null = null;
   let workspaceForActivation: string | null = null;
@@ -571,7 +573,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       });
     }
 
-    assertEnrollmentInput(options, dispatch);
+    assertPreparationInput(options, dispatch);
 
     // A session that produced no commits over the base (`commitsToIntegrate`
     // is proven current above) yet still ends on the exact same Action it
@@ -897,7 +899,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               model,
               effort,
               beforeCreate(prepared) {
-                assertEnrollmentInput(options, resolveDispatch(controlWorktree, projectSlug));
+                assertPreparationInput(options, resolveDispatch(controlWorktree, projectSlug));
                 const reservation = reserveAgentWorktree(db, {
                   repositoryPath: controlWorktree,
                   worktreePath: prepared.path,
@@ -2272,15 +2274,18 @@ function resolveProjectSlug(repoRoot: string): string {
   return projects[0].slug;
 }
 
-/** Recheck the existing enrollment fence before any claim is committed. */
-function assertEnrollmentInput(options: GoCommandOptions, dispatch: DispatchResolution): void {
-  const expected = options.enrollment;
+/** Recheck a protected initial snapshot before preparation or a claim commit. */
+function assertPreparationInput(options: GoCommandOptions, dispatch: DispatchResolution): void {
+  const expected = options.enrollment?.inputRevision ? options.enrollment : options.initialSelection;
   if (!expected?.inputRevision) return;
   const context = dispatch.context;
   const actual = context ? requirementIdentity({ projectSlug: context.projectSlug, planSlug: context.activePlan, action: context.action }) : null;
   if (!isDispatchable(dispatch) || actual?.inputRevision !== expected.inputRevision || actual.requirementId !== expected.requirementId) {
-    throw validationError("The enrolled Action input changed before preparation; nothing was claimed.", {
-      code: "enrollment_governance_changed", expected: expected.inputRevision, actual: actual?.inputRevision ?? null
+    throw validationError(options.enrollment
+      ? "The enrolled Action input changed before preparation; nothing was claimed."
+      : "The initial Go selection changed or became unavailable before preparation; nothing was claimed.", {
+      code: options.enrollment ? "enrollment_governance_changed" : "go_selection_changed",
+      expected: expected.inputRevision, actual: actual?.inputRevision ?? null
     });
   }
 }

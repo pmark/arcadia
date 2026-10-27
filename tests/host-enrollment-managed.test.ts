@@ -28,6 +28,7 @@ import {
   normalizeProductionScope
 } from "../src/production/policy.js";
 import { runGoCommand } from "../src/commands/go.js";
+import { runGoBroker } from "../src/goBroker.js";
 import { executeHostEnrollment, type HostEnrollmentInput } from "../src/sessions/hostEnrollment.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import type { TmuxAdapter } from "../src/sessions/index.js";
@@ -473,6 +474,48 @@ describe("fixed enrollment entries use the supported host receipt boundary", () 
       vi.restoreAllMocks();
       vi.doUnmock("../src/sessions/preservationTransport.js");
     }
+  });
+});
+
+describe("ordinary initial Go selection fence", () => {
+  it("does not enable queue walking when its bound initial A is claimed", () => {
+    const f = fixture();
+    enroll(f, { mode: "prepare" });
+    const before = worktrees(f);
+    expect(() => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => {
+      expect(options.strictAction).toBe(true);
+      expect(options.initialSelection).toBeDefined();
+      expect(options.enrollment).toBeUndefined();
+      return runGoCommand({ ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW });
+    }, undefined, undefined, () => f.workspace)).toThrow("already claims this Action");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, pending: 0, sessions: 0 });
+  });
+
+  it.each(["pointer-before-preview", "pointer-before-apply", "input-before-preview", "input-before-apply"])("refuses %s without a candidate or enrollment marker", change => {
+    const f = fixture();
+    const before = worktrees(f);
+    let changed = false;
+    const error = refusal(() => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => {
+      if (!changed && (change.endsWith("preview") || options.apply)) {
+        changed = true;
+        const planPath = path.join(f.repo, "docs/plans/copy-proof.md");
+        if (change.startsWith("pointer")) {
+          writeFileSync(path.join(f.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: write-proof"));
+          writeFileSync(planPath, planDocument.replace("current_action: define-contract", "current_action: write-proof").replace("actions:\n", "actions:\n  - id: write-proof\n    title: Write proof\n    status: open\n    responsibility: agent\n    clarification: clarified\n    next_action: Write the proof.\n    expected_artifact: proof.md\n    acceptance_criteria: [Proof exists.]\n"));
+        } else {
+          writeFileSync(planPath, planDocument.replace("Define the bounded contract.", "Define a changed bounded contract."));
+        }
+        git(f.repo, ["commit", "-qam", "change initial selection after orientation"]);
+      }
+      expect(options.enrollment).toBeUndefined();
+      expect(options.initialSelection).toBeDefined();
+      expect(options.strictAction).toBe(true);
+      return runGoCommand({ ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW });
+    }, undefined, undefined, () => f.workspace));
+    expect(error.details.code).toBe("go_selection_changed");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f)).toMatchObject({ claims: 0, enrollments: 0, pending: 0, sessions: 0 });
   });
 });
 

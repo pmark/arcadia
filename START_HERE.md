@@ -2238,7 +2238,11 @@ A downstream UI must explicitly display stderr to show that opening brief; this
 source change does not prove live UI delivery. The read-only combined brief also
 remains the way to inspect orientation without preparing anything. Selected work comes from the registered
 base; a valid caller-owned candidate retains its own Action when an unrelated
-selected pointer advances. Enrollment rechecks the initial Action input before
+selected pointer advances. Initial preparation from the registered root also binds the selected Action
+input across preview/apply and refuses a changed selection; it does not silently
+walk to unobserved work when that selection is claimed. Caller-owned candidate
+reconciliation and root cases with no dispatchable initial selection retain their
+existing path. Enrollment rechecks the initial Action input before
 claiming, and replay verifies its own claim generation, canonical Action input and
 candidate cleanliness. A historical receipt cannot revive revoked ownership.
 

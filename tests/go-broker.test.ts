@@ -225,6 +225,20 @@ describe("protected Arcadia go broker", () => {
     expect(next).toHaveBeenCalledWith({ workspace: "/tmp/workspace", project: "fixture", repo: "/tmp/finished" });
   });
 
+  it("keeps root scenarios without a dispatchable selected snapshot outside the new fence", () => {
+    const runner = vi.fn().mockReturnValue({ ok: true, command: "go", data: { applied: true }, artifacts: [], warnings: [] });
+    const next = { ...goOrientation, data: { ...goOrientation.data, orientation: {
+      repository: "/tmp/finished", worktree: "/tmp/finished", assigned: null, selected: goOrientation.data
+    } } };
+    runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => "/tmp/workspace", () => next as never, () => "fixture");
+    for (const [options] of runner.mock.calls) {
+      expect(options).not.toHaveProperty("initialSelection");
+      expect(options).not.toHaveProperty("strictAction");
+      expect(options).not.toHaveProperty("enrollment");
+    }
+  });
+
   it("stops after a refused preview", () => {
     const runner = vi.fn(() => {
       throw new ArcadiaError("VALIDATION_ERROR", "unsafe source", 2);

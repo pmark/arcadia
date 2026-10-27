@@ -76,6 +76,21 @@ describe("caller-bound read-only Go orientation", () => {
     expect(snapshots(f)).toEqual(before);
   });
 
+  it("does not apply an initial-root selection fence to a caller-owned B reconciliation", () => {
+    const f = fixture(true); f.claim();
+    const runner = vi.fn((options: { apply?: boolean }) => ({ ok: true, command: "go", data: { applied: options.apply === true }, artifacts: [], warnings: [] }));
+    runGoBroker({ source: f.caller, agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => f.workspace);
+    expect(runner).toHaveBeenCalledTimes(2);
+    for (const [options] of runner.mock.calls) {
+      expect(options).not.toHaveProperty("initialSelection");
+      expect(options).not.toHaveProperty("strictAction");
+      expect(options).not.toHaveProperty("enrollment");
+    }
+    expect(f.read().data.context?.action.id).toBe("b");
+    expect(f.read().data.orientation?.selected.context?.action.id).toBe("a");
+  });
+
   it("uses the same assigned Action in advance, next and combined-brief titles", () => {
     const f = fixture(); f.claim();
     expect(runAdvanceCommand({ workspace: f.workspace, repo: f.caller }).data.claimedAction).toBe("b");

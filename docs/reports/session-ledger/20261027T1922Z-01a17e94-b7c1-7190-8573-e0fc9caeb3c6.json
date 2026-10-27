@@ -1,0 +1,45 @@
+{
+  "session_id": "01a17e94-b7c1-7190-8573-e0fc9caeb3c6",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/reuse-go-context-through-authorized-continuation",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "ordinary-go-initial-selection-snapshot-race",
+      "caught_by": "independent-R1"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "pre-profile-child-kept-old-filesystem-policy",
+      "cost_min": null,
+      "fix_ref": "docs/reports/go-caller-continuation-source-2026-10-27.md"
+    },
+    {
+      "id": "named-profile-network-denies-git-publication",
+      "cost_min": null,
+      "fix_ref": "src/agentSetup/goBrokerAgentSetup.ts"
+    },
+    {
+      "id": "stale-dependency-bridge-after-base-merge",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1825"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Local source prepared; permitted Git checkpoint/publication and full regression proof remain. No Action completion, managed admission or runtime adoption.",
+  "notes": "Native source coordination; actual model/effort unavailable. Mail-ACK reviewed locally; Go repaired after R1. Review count includes pending R2, not governed ordinals."
+}

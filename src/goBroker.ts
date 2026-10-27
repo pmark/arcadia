@@ -7,8 +7,10 @@ import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./comma
 import { renderNextSuccess, runNextReadOnlyCommand, type NextCommandData } from "./commands/next.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
 import { discoverDocs } from "./docs/discover.js";
+import { isDispatchable } from "./docs/dispatch.js";
+import { requirementIdentity } from "./sessions/roleLineage.js";
 import { existingDirectory } from "./git/worktrees.js";
-import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
+import { canonicalPath, SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import { sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 import { withReadOnlyDatabase } from "./db/connection.js";
@@ -233,10 +235,19 @@ export function runGoBroker(
   }
   const workspace = resolveWorkspace(request.source);
   const orientation = nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source });
+  const caller = orientation.data.orientation;
+  const selected = caller?.selected;
+  // Bind only initial preparation from the registered primary root. An owned
+  // candidate may legitimately reconcile B and continue to newly selected C.
+  const initialSelection = caller && !caller.assigned && canonicalPath(request.source) === caller.repository
+    && selected?.context && isDispatchable(selected)
+    ? requirementIdentity({ projectSlug: selected.context.projectSlug, planSlug: selected.context.activePlan, action: selected.context.action })
+    : null;
   const options = {
     repo: request.source,
     source: request.source,
-    agent: request.agent
+    agent: request.agent,
+    ...(initialSelection ? { initialSelection, strictAction: true } : {})
   } satisfies GoCommandOptions;
 
   try {
