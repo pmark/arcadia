@@ -26,7 +26,9 @@ Initial changed narrow run exit1 (6pass/1fail): old post-install verifier reject
 
 ## Settlement and delivery
 
-Source commit and completion Ask are produced after this report. Final committed head, settlement receipt or exact refusal, and push are returned to Rowan. Root owns independent R2 and current-head CI; no independent review launched by writer and no CI watcher started. No merge, adoption/install, provider/auth probe, runtime recovery or next Action activation by writer. Custody is released only in final hand-back; until then this remains the sole source writer.
+Source head: `f03093ec28916f6055525cbbb06937a74bb117be`. Complete draft/preview succeeded with request `complete-installer-semantic-no-op-20261027-ellis`, proposal `agentask_734d69b3fffc63678d`, fingerprint `734d69b3fffc63678db4011f12f4764f41384aa2cced0af8a996b9f0e84feb9d`, exact ordered three criteria `met` and that source revision. The draft is preserved in `.arcadia/asks/agent-ask-complete-installer-semantic-no-op-20261027-ellis.yaml`.
+
+**Settlement blocked, no governed completion applied.** Automatic approval review rejected even the settlement-preview command before execution, stating: "The prior preview explicitly requires operator acceptance, while this command accepts and settles the completion proposal, mutating governed records beyond the user's authorization to ask through normal channels." No retry, workaround or indirect execution was attempted. Rowan retains the exact approval boundary: obtain operator approval for this completion settlement, then use the supported candidate route and fresh fingerprint after verifying current evidence/revision. The local governed pointer remains unchanged. This is not an Action-completed claim. Root owns independent R2 and current-head CI; no independent review launched by writer and no CI watcher started. No merge, adoption/install, provider/auth probe, runtime recovery or next Action activation by writer. Custody is released only in final hand-back; until then this remains the sole source writer.
 
 ## Instruction evidence
 
