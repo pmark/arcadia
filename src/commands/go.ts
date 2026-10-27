@@ -1,3 +1,5 @@
+import { requirementIdentity } from "../sessions/roleLineage.js";
+import type { NextCommandData } from "./next.js";
 import { recordEnrollmentClaim } from "../sessions/enrollment.js";
 import { assertLocalBrowserAuditReady, localBrowserAuditBlocker } from "../sessions/localBrowserAuditReadiness.js";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -128,7 +130,7 @@ export interface GoCommandOptions {
    * resumed for the caller, and the new claim's identity is recorded on the
    * pending enrollment row inside the claim's own transaction.
    */
-  enrollment?: { requestId: string; actionId: string };
+  enrollment?: { requestId: string; actionId: string; requirementId?: string; inputRevision?: string };
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -172,6 +174,8 @@ export interface BaseRemoteSync {
 }
 
 export interface GoCommandData {
+  /** Read-only caller context observed before protected reconciliation. */
+  orientation?: NextCommandData;
   applied: boolean;
   preservation?: PreservationReadiness;
   projectSlug: string;
@@ -342,6 +346,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       code: "enrollment_governance_changed", expected: options.enrollment.actionId, actual: sourceDispatch.context?.action.id ?? null
     });
   }
+  assertEnrollmentInput(options, sourceDispatch);
   let activationResult: ActivateNextPlanResult | null = null;
   let activationHold: ScopeActivationHold | null = null;
   let workspaceForActivation: string | null = null;
@@ -565,6 +570,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         code: "enrollment_governance_changed", expected: options.enrollment.actionId, actual: actionId
       });
     }
+
+    assertEnrollmentInput(options, dispatch);
 
     // A session that produced no commits over the base (`commitsToIntegrate`
     // is proven current above) yet still ends on the exact same Action it
@@ -890,6 +897,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               model,
               effort,
               beforeCreate(prepared) {
+                assertEnrollmentInput(options, resolveDispatch(controlWorktree, projectSlug));
                 const reservation = reserveAgentWorktree(db, {
                   repositoryPath: controlWorktree,
                   worktreePath: prepared.path,
@@ -2262,4 +2270,17 @@ function resolveProjectSlug(repoRoot: string): string {
     });
   }
   return projects[0].slug;
+}
+
+/** Recheck the existing enrollment fence before any claim is committed. */
+function assertEnrollmentInput(options: GoCommandOptions, dispatch: DispatchResolution): void {
+  const expected = options.enrollment;
+  if (!expected?.inputRevision) return;
+  const context = dispatch.context;
+  const actual = context ? requirementIdentity({ projectSlug: context.projectSlug, planSlug: context.activePlan, action: context.action }) : null;
+  if (!isDispatchable(dispatch) || actual?.inputRevision !== expected.inputRevision || actual.requirementId !== expected.requirementId) {
+    throw validationError("The enrolled Action input changed before preparation; nothing was claimed.", {
+      code: "enrollment_governance_changed", expected: expected.inputRevision, actual: actual?.inputRevision ?? null
+    });
+  }
 }

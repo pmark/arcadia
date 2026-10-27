@@ -207,8 +207,7 @@ export function runGoBroker(
     const advance = runBriefStage("advance", () => advanceRunner({ workspace, repo: request.source }), briefContext);
     const workMonitor = runBriefStage("work-monitor", () =>
       workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }), briefContext);
-    const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source), briefContext);
-    const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug, repo: request.source }));
+    const next = runBriefStage("next", () => nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source }), briefContext);
     const rendered = runBriefStage("render", () => ({
       dispatchBrief: [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
       sessionTitles: sessionTitlesByState({
@@ -232,6 +231,8 @@ export function runGoBroker(
       warnings: []
     };
   }
+  const workspace = resolveWorkspace(request.source);
+  const orientation = nextRunner({ workspace, project: resolveProjectSlug(request.source), repo: request.source });
   const options = {
     repo: request.source,
     source: request.source,
@@ -244,5 +245,5 @@ export function runGoBroker(
     if (!(error instanceof ArcadiaError) || error.details.requiresProtectedRemoteObservation !== true) throw error;
   }
   const applied = runner({ ...options, apply: true });
-  return { ...applied, command: "go-broker" };
+  return { ...applied, command: "go-broker", data: { ...applied.data, orientation: orientation.data } };
 }

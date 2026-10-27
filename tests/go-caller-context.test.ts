@@ -57,10 +57,25 @@ describe("caller-bound read-only Go orientation", () => {
     expect(snapshots(f)).toEqual(before);
     expect(renderNextSuccess(first).join("\n")).toContain("Current action: b");
     expect(renderNextSuccess(first).join("\n")).toContain("no canonical active Session evidence");
-    const project = readFileSync(path.join(f.caller, "PROJECT.md"), "utf8").replace("current_action: a", "current_action: c");
-    doc(f.caller, "PROJECT.md", project); doc(f.caller, "docs/plans/selected.md", plan("selected", crossPlan ? ["a", "c"] : ["a", "b", "c"]).replace("current_action: a", "current_action: c"));
+    const project = readFileSync(path.join(f.repo, "PROJECT.md"), "utf8").replace("current_action: a", "current_action: c");
+    doc(f.repo, "PROJECT.md", project); doc(f.repo, "docs/plans/selected.md", plan("selected", crossPlan ? ["a", "c"] : ["a", "b", "c"]).replace("current_action: a", "current_action: c"));
     expect(f.read().data.context?.action.id).toBe("b"); expect(f.read().data.orientation?.selected.context?.action.id).toBe("c");
   });
+  it("renders bounded orientation from metadata-heavy inputs within the supervisor contract", () => {
+    const f = fixture(true); f.claim();
+    for (let i = 0; i < 80; i++) doc(f.repo, `docs/plans/related-${i}.md`, plan(`related-${i}`, [`related-action-${i}`]));
+    const before = snapshots(f);
+    const started = performance.now();
+    const result = f.read();
+    const rendered = renderNextSuccess(result).join("\n");
+    expect(performance.now() - started).toBeLessThan(25_000);
+    expect(rendered).toContain("Current action: b");
+    expect(result.data.orientation).toMatchObject({ assigned: { action: "b" }, selected: { context: { action: { id: "a" } } } });
+    expect(result.data.orientation!.ongoing.length).toBeLessThanOrEqual(5);
+    expect(result.data.orientation!.relatedPlans.length).toBeLessThanOrEqual(2);
+    expect(snapshots(f)).toEqual(before);
+  });
+
   it("uses the same assigned Action in advance, next and combined-brief titles", () => {
     const f = fixture(); f.claim();
     expect(runAdvanceCommand({ workspace: f.workspace, repo: f.caller }).data.claimedAction).toBe("b");

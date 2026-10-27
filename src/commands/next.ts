@@ -25,7 +25,7 @@ import {
 } from "../docs/journal.js";
 import { operatorGateBlockers, renderOperatorAlerts, type OperatorGateItem } from "../docs/operatorGate.js";
 import type { PlanDoc } from "../docs/types.js";
-import { discoverDocs } from "../docs/discover.js";
+import { discoverDocs, isAuthoritativeControlPath } from "../docs/discover.js";
 import { existingDirectory, parseWorktrees, tryGit } from "../git/worktrees.js";
 import { canonicalPath, getActiveWorktreeReservation, hasWorktreeReservationTable, listActiveAgentSessions } from "../sessions/index.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
@@ -120,7 +120,7 @@ function resolveCallerNext(options: NextCommandOptions): CommandSuccess<NextComm
   if (projects.length !== 1 || projects[0].slug !== registered.project.slug) {
     throw validationError("Caller Project is missing, ambiguous or different from the registered Project.");
   }
-  const selected = resolveDispatch(worktree, registered.project.slug);
+  const selected = resolveDispatch(registered.repoRoot, registered.project.slug);
   const evidence = withReadOnlyDatabase(workspacePath, db => {
     const claim = getActiveWorktreeReservation(db, repository, worktree, now);
     const claims = hasWorktreeReservationTable(db) ? db.prepare(`SELECT id, project, action_id, worktree_path, expires_at
@@ -160,7 +160,10 @@ function resolveCallerNext(options: NextCommandOptions): CommandSuccess<NextComm
   const readySet = resolveReadySet(worktree, registered.project.slug);
   const gate = withReadOnlyDatabase(workspacePath, db => resolveOperatorGate({ db, repoRoot: worktree,
     projectSlug: registered.project.slug, selectedActionId: resolution.context?.action.id ?? null, readySetCandidates: readySet.candidates }));
-  const blockers = [...resolution.blockers, ...operatorGateBlockers(gate.blocking), ...(ownershipBlocker ? [ownershipBlocker] : [])];
+  const callerParseBlockers = discovered.errors.filter(error => isAuthoritativeControlPath(error.relativePath)).map(error => ({
+    ...error, remedy: "Repair the caller's malformed control document before continuing."
+  }));
+  const blockers = [...resolution.blockers, ...callerParseBlockers, ...operatorGateBlockers(gate.blocking), ...(ownershipBlocker ? [ownershipBlocker] : [])];
   const dispatchable = isDispatchable({ ...resolution, blockers });
   const ongoing: CallerOrientation["ongoing"] = [
     ...evidence.sessions.filter(row => row.project_slug === registered.project.slug).map(row => ({ source: "session" as const,

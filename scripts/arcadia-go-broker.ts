@@ -26,8 +26,26 @@ let briefStage: BriefStage = "spawn";
 try {
   const request = parseGoBrokerArguments(process.argv.slice(2));
   if (request.operation === "go") {
-    const response = await requestAgentGo(request.source, request.agent);
-    process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+    // Reuse the ordinary bounded read-only brief before submitting any effect.
+    // Human-readable orientation goes to stderr; stdout remains one final JSON.
+    const opening = await superviseBrief({
+      command: process.execPath,
+      args: [...process.execArgv, process.argv[1], request.agent, "brief"],
+      cwd: process.cwd(),
+      env: process.env,
+      correlationId: randomUUID(),
+      deadlineMs: briefDeadlineMs()
+    });
+    if (opening.exitCode !== 0) {
+      process.stdout.write(opening.receipt);
+      process.exitCode = opening.exitCode;
+    } else {
+      const brief = JSON.parse(opening.receipt) as { data?: { dispatchBrief?: unknown } };
+      if (typeof brief.data?.dispatchBrief !== "string") throw new Error("The opening Go brief returned no dispatch brief.");
+      process.stderr.write(`${brief.data.dispatchBrief}\n`);
+      const response = await requestAgentGo(request.source, request.agent);
+      process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+    }
   } else if (request.operation === "enroll") {
     const response = await requestAgentEnrollment(request.source, request.agent);
     process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
