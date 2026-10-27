@@ -193,11 +193,14 @@ sandbox.
 - **Storage** beyond the workspace `artifacts/` root, such as thumbnails or remote storage.
 - **Showing Downlinks to agents** or attaching them to Asks, following the Presence precedent.
 
-## Open questions for the operator
+## Operator answers (2026-10-27)
 
-- Is Downlink the right name, with Stage and Schematic ink?
-- Should reveals appear on the main `/workspace` Ask view as well as the feed?
-- Should screenshots get an ink frame, or a transparent cut-out?
-- Any sound at all?
-- Should pinned Downlinks persist across sessions?
-- Should agent guidance ask agents to emit blueprint SVG or Mermaid by default, so their artifacts arrive ready for the motif?
+The operator chose the two matters of taste, and accepted the defaults that
+follow from UX practice for the other four.
+
+- **Names:** Downlink, Stage and Schematic ink stay as the design and docs vocabulary. On screen, controls use plain words, such as "Open", "Pin", "Diagram" and "Screenshot".
+- **Where Downlinks appear:** where their work happens, next to the Ask or Action that produced them, and in the feed. There is one Stage component, so a Downlink behaves the same everywhere.
+- **Screenshots:** keep a thin ink frame. A screenshot is evidence, so it is never cut out or edited.
+- **Sound:** none by default. A later opt-in switch would also start off.
+- **Pinned Downlinks:** a pin persists on that device until the operator unpins it or the work behind it finishes, for example when its Action closes or its PR merges or closes. A quiet note says when a pin clears, so it never disappears unexplained.
+- **Agent output:** agent guidance asks agents to send diagrams as Mermaid source or as transparent SVG that follows the Schematic ink contract. Screenshots and charts keep their own formats.
