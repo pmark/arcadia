@@ -2729,3 +2729,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan demo-first-delivery remains draft with completion state preserved. Direct human explicitly instructs preserve proof-gallery and select Go integration critical path; current target is one real observable repeat-safe operator-assisted development delivery through Go, UI renders Go output, actual context determines next permitted move. Begin with existing caller-bound continuation and state-signal Actions. Coordinate existing UI prototype PR1820 without duplicate writer. This activation grants no production START, provider/auth operations, runtime adoption or automatic preference defaults. Later live UI/real-run scope must be governed separately.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-27 — Completed arcadia/rebuild-cover-mail-ack-receipt-kind-collision
+
+- **Did:** Completed Action arcadia/rebuild-cover-mail-ack-receipt-kind-collision from accepted evidence (Candidate 47563505506eeca79cad56be02a50fa5087408d5).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."; "The same test asserts the message status is still acknowledged afterwards, and every other test in the file passes unchanged."; "The change touches only tests/native-mail.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Next ready Action in this inactive Plan: cover-mail-ack-receipt-kind-collision.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-mail-ack-source-concurrent-20261027-01a17e94).
