@@ -305,6 +305,52 @@ describe("go broker agent setup", () => {
     expect(readFileSync(paths.codexConfig, "utf8")).toBe(updated);
   });
 
+  it.each([
+    '[[my.items]]\nname = "keep array table"\n',
+    '[features."a]b"]\nvalue = "keep quoted bracket"\n',
+    '[permissions.arcadia-unattended-custom]\nextends = ":read-only"\n'
+  ])("R2 preserves exact config with unrelated TOML headers: %s", (unrelated) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `${readFileSync(paths.codexConfig, "utf8")}\n${unrelated}`;
+    write(paths.codexConfig, config);
+    for (let invocation = 0; invocation < 2; invocation += 1) {
+      expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    }
+  });
+
+  it("R2 refuses an inline managed profile before writing any configuration", () => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = '[permissions]\narcadia-unattended = { extends = ":read-only" }\n';
+    write(paths.codexConfig, config);
+    const claude = readFileSync(paths.claudeSettings, "utf8");
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+    expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+  });
+
+  it.each(['"""trusted"""', '"""untrusted\nretained value"""'])(
+    "R2 refuses multiline trust before writing any configuration: %s", (trust) => {
+      const fixture = createFixture();
+      const repository = createRepository(fixture.home, "project");
+      const options = setupOptions(fixture, [repository]);
+      configureGoBrokerAgents(options);
+      const paths = resolveAgentSetupPaths(fixture.home);
+      const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', `trust_level = ${trust}`);
+      write(paths.codexConfig, config);
+      const claude = readFileSync(paths.claudeSettings, "utf8");
+      expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported.*trust|trust.*multiline/);
+      expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+      expect(readFileSync(paths.claudeSettings, "utf8")).toBe(claude);
+    }
+  );
+
   it.each([null, ":workspace", "personal", "arcadia-unattended"])(
     "preserves the interactive default %s while installing the separate Go profile",
     (defaultProfile) => {

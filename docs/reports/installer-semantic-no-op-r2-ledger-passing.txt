@@ -1,0 +1,1 @@
+session ledger valid: /Users/pmark/.codex/worktrees/installer-semantic-no-op-resume/arcadia

@@ -376,6 +376,9 @@ function codexTrustLevel(content: string, repository: string): string | null {
     }
     if (!/^\s*trust_level\s*=/.test(lines[index])) continue;
     entries += 1;
+    if (lines[index].includes("@multiline@")) {
+      throw validationError("Codex project trust uses unsupported multiline syntax.", { repository });
+    }
     const match = lines[index].match(/^\s*trust_level\s*=\s*(?:"([^"\\]*)"|'([^']*)')\s*(?:#.*)?$/);
     if (match) trust = match[1] ?? match[2];
   }
@@ -699,15 +702,19 @@ function codexTomlSyntax(content: string): string[] {
 function assertSupportedCodexManagedSyntax(content: string): void {
   let root = true;
   let managed = false;
+  let permissionsParent = false;
   let defaults = 0;
   for (const line of codexTomlSyntax(content)) {
     if (/^\s*(?:#.*)?$/.test(line)) continue;
     if (/^\s*\[/.test(line)) {
       root = false;
+      permissionsParent = /^\s*\[\s*(?:permissions|["']permissions["'])\s*\]\s*$/.test(line);
       managed = /^\s*\[\[?\s*(?:permissions|["']permissions["'])\s*\.\s*(?:arcadia-unattended|["']arcadia-unattended["'])(?:\s*[.\]]|\s*$)/.test(line);
       if (managed && !/^\s*\[permissions\.arcadia-unattended(?:\.[^\]]+)?\]\s*$/.test(line)) {
         throw validationError("Codex config has an unsupported managed permission table spelling.");
       }
+    } else if (permissionsParent && /^\s*(?:arcadia-unattended|["']arcadia-unattended["'])\s*[.=]/.test(line)) {
+      throw validationError("Codex config has an unsupported inline or dotted managed permission profile.");
     } else if (managed && line.includes("@multiline@")) {
       throw validationError("Codex managed permission values use unsupported multiline syntax.");
     } else if (root && /^\s*default_permissions\s*=/.test(line)) {
@@ -740,9 +747,10 @@ function hasExactManagedCodexPermissions(content: string, expectedRoots: string[
     if (/^\s*(?:#.*)?$/.test(line)) continue;
     if (/^\s*\[/.test(line)) {
       const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
-      if (!header) return false;
-      table = header[1].trim();
-      if (table.startsWith("permissions.arcadia-unattended") && !expected.has(table)) return false;
+      // Unrelated array tables and quoted names may contain brackets. Their
+      // entries cannot prove or invalidate our owned scalar tables.
+      table = header ? header[1].trim() : "<unrelated>";
+      if (/^permissions\.arcadia-unattended(?:\.|$)/.test(table) && !expected.has(table)) return false;
       if (expected.has(table)) {
         if (seenTables.has(table)) return false;
         seenTables.add(table);
