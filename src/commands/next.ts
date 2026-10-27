@@ -120,7 +120,7 @@ function resolveCallerNext(options: NextCommandOptions): CommandSuccess<NextComm
   if (projects.length !== 1 || projects[0].slug !== registered.project.slug) {
     throw validationError("Caller Project is missing, ambiguous or different from the registered Project.");
   }
-  const selected = resolveDispatch(registered.repoRoot, registered.project.slug);
+  const selected = resolveDispatch(canonicalPath(registered.repoRoot), registered.project.slug);
   const evidence = withReadOnlyDatabase(workspacePath, db => {
     const claim = getActiveWorktreeReservation(db, repository, worktree, now);
     const claims = hasWorktreeReservationTable(db) ? db.prepare(`SELECT id, project, action_id, worktree_path, expires_at
@@ -160,7 +160,9 @@ function resolveCallerNext(options: NextCommandOptions): CommandSuccess<NextComm
   const readySet = resolveReadySet(worktree, registered.project.slug);
   const gate = withReadOnlyDatabase(workspacePath, db => resolveOperatorGate({ db, repoRoot: worktree,
     projectSlug: registered.project.slug, selectedActionId: resolution.context?.action.id ?? null, readySetCandidates: readySet.candidates }));
-  const callerParseBlockers = discovered.errors.filter(error => isAuthoritativeControlPath(error.relativePath)).map(error => ({
+  const callerParseBlockers = discovered.errors.filter(error => isAuthoritativeControlPath(error.relativePath)
+    && !resolution.blockers.some(blocker => blocker.relativePath === error.relativePath
+      && blocker.field === error.field && blocker.message === error.message)).map(error => ({
     ...error, remedy: "Repair the caller's malformed control document before continuing."
   }));
   const blockers = [...resolution.blockers, ...callerParseBlockers, ...operatorGateBlockers(gate.blocking), ...(ownershipBlocker ? [ownershipBlocker] : [])];

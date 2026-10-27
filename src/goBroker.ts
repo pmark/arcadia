@@ -187,7 +187,7 @@ export function runGoBroker(
   runner: GoBrokerRunner = runGoCommand,
   advanceRunner: AdvanceBrokerRunner = runAdvanceCommand,
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,
-  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source }),
+  resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: existingDirectory(source, "repository") }),
   nextRunner: NextBrokerRunner = runNextReadOnlyCommand,
   resolveProjectSlug: BrokerProjectSlugResolver = resolveProjectSlugFromRepository,
   briefContext: BriefRunContext = {}

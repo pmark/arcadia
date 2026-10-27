@@ -151,6 +151,18 @@ describe("caller-bound read-only Go orientation", () => {
     const f = fixture(); expect(() => runNextReadOnlyCommand({ workspace: f.workspace, project: "demo", repo: f.root })).toThrow("repository could not be resolved");
     doc(f.caller, "PROJECT.md", readFileSync(path.join(f.caller, "PROJECT.md"), "utf8").replace("slug: demo", "slug: other")); expect(f.read).toThrow("Caller Project");
   });
+  it.each([false, true])("retains distinct caller-only malformed Decision blockers once (assigned: %s)", assigned => {
+    const f = fixture();
+    if (assigned) f.claim();
+    for (const id of ["0100", "0101"]) doc(f.caller, `docs/decisions/${id}-malformed.md`,
+      `---\narcadia: v1\ntype: decision\nid: '${id}'\nproject: demo\nstatus: open\naction: a\nquestion: Should we proceed?\nupdated: 2026-10-27\noptions:\n  - label: Proceed\n    consequence: The fixture proceeds.\n---\n`);
+    const response = f.read();
+    expect(response.data.orientation?.selected.blockers).toEqual([]);
+    expect(response.data.dispatchable).toBe(false);
+    for (const id of ["0100", "0101"]) expect(response.data.blockers.filter(blocker =>
+      blocker.relativePath === `docs/decisions/${id}-malformed.md` && blocker.field === "slug"))
+      .toEqual([expect.objectContaining({ message: "`slug` is required.", remedy: expect.any(String) })]);
+  });
   it("retains malformed selected evidence and bounds ownership without exposing secret fields", () => {
     const f = fixture(true); f.claim();
     withDatabase(f.workspace, db => { for (let i = 0; i < 8; i++) db.prepare(`INSERT INTO agent_worktree_reservations

@@ -6,6 +6,7 @@ import { ArcadiaError } from "../src/cli/errors.js";
 import { permissionSnippets, renderGoBrokerLauncher, stageGoBrokerDatabaseSchema, stageGoBrokerDependencies } from "../src/commands/goBrokerInstall.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 import * as broker from "../src/goBroker.js";
+import * as workspaceResolution from "../src/workspace/resolve.js";
 
 
 const goOrientation = { ok: true as const, command: "next", data: { context: null, blockers: [], operatorQuestion: null,
@@ -16,6 +17,18 @@ function fixtureGoBroker(agent: "codex" | "claude", runner: Parameters<typeof ru
 }
 
 describe("protected Arcadia go broker", () => {
+  it("rejects a missing source before resolving an unconfigured workspace", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-missing-go-source-"));
+    const missing = path.join(root, "missing");
+    const workspace = vi.spyOn(workspaceResolution, "requireResolvedWorkspace").mockImplementation(() => {
+      throw new ArcadiaError("USAGE_ERROR", "Arcadia workspace is not configured.", 2);
+    });
+    try {
+      expect(() => runGoBroker({ source: missing, agent: "claude", operation: "go" }))
+        .toThrow("The repository path does not exist.");
+      expect(workspace).not.toHaveBeenCalled();
+    } finally { workspace.mockRestore(); rmSync(root, { recursive: true, force: true }); }
+  });
   it("derives the source from cwd and accepts only fixed launcher inputs", () => {
     expect(parseGoBrokerArguments(["codex", "go"], "./finished")).toEqual({
       source: path.resolve("./finished"),
