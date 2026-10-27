@@ -13,7 +13,7 @@
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 2,
+  "review_rounds": 3,
   "blocking_findings": [
     {
       "class": "ordinary-go-initial-selection-snapshot-race",
@@ -37,9 +37,14 @@
       "id": "stale-dependency-bridge-after-base-merge",
       "cost_min": null,
       "fix_ref": "https://github.com/pmark/arcadia/issues/1825"
+    },
+    {
+      "id": "snapshot-fence-coverage-missed-resume",
+      "cost_min": null,
+      "fix_ref": "docs/reports/go-snapshot-fence-process-critic-2026-10-27.md"
     }
   ],
   "outcome": "stopped",
   "stop_reason": "Local source prepared; permitted Git checkpoint/publication and full regression proof remain. No Action completion, managed admission or runtime adoption.",
-  "notes": "Native source coordination; actual model/effort unavailable. Mail-ACK reviewed locally; Go repaired after R1. Review count includes pending R2, not governed ordinals."
+  "notes": "Native source coordination; actual model/effort unavailable. Mail-ACK reviewed locally; Go repaired after R1/R2. Review count includes queued R3, not governed ordinals."
 }

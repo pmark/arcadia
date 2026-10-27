@@ -835,6 +835,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             break;
           }
 
+          // Recheck inside the atomic dispatch transaction after candidate and
+          // gate evaluation, before either a resumed handout or fresh claim.
+          if (options.initialSelection || options.enrollment?.inputRevision) {
+            assertPreparationInput(options, resolveDispatch(fallbackDispatchRoot(), projectSlug));
+          }
+
           if (candidate.kind === "resume" && options.enrollment) {
             // Enrollment hands out only a candidate this request creates; an
             // existing candidate belongs to its prior owner.
