@@ -16,7 +16,7 @@ All evidence below is newly produced by `tests/git-change-checkpoint-scenarios.t
 
 ## Validation and artifacts
 
-- Explicit structured-evidence run of `node node_modules/vitest/vitest.mjs run tests/git-change-checkpoint-scenarios.test.ts --silent=false` with tempfile-only `ARCADIA_CHECKPOINT_SCENARIO_EVIDENCE`: exit0,3/3pass; three actual JSONL records/59777bytes verified before copying. Console output was suppressed even with --silent=false, so the console-only transcript is not claimed as command evidence. Optional JSONL destination is constrained to real temporary storage, never repository files; normal test runs need no output path.
+- Explicit structured-evidence run of `node node_modules/vitest/vitest.mjs run tests/git-change-checkpoint-scenarios.test.ts --silent=false` with tempfile-only `ARCADIA_CHECKPOINT_SCENARIO_EVIDENCE`: exit0,3/3pass; three actual JSONL records/59783UTF-8 bytes verified before copying. Console output was suppressed even with --silent=false, so the console-only transcript is not claimed as command evidence. Optional JSONL destination is constrained to real temporary storage, never repository files; normal test runs need no output path.
 - `node node_modules/vitest/vitest.mjs run tests/git-change-checkpoint-scenarios.test.ts tests/git-change-checkpoint-regressions.test.ts tests/agent-guidance.test.ts tests/standard-harness-guidance.test.ts`: exit0,32/32pass across4files.
 - Full lint `node node_modules/eslint/bin/eslint.js src test tests scripts apps/dashboard apps/discord-bot`: exit0.
 - `node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit`: exit0.
