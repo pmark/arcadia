@@ -191,7 +191,7 @@ describe("go broker agent setup", () => {
     // Keep root values before any table while changing the table order and newline style.
     const root = tables.pop()!;
     const config = `${root.replace('approval_policy = "on-request"', "approval_policy = 'on-request' # keep approval comment")}\n${tables.join("\n")}\n# keep final comment\n`
-      .replace('extends = ":workspace"', "extends   = ':workspace' # keep profile comment").replace(/\n/g, "\r\n");
+      .replace('extends = ":workspace"', "extends   = ':workspace' # keep profile comment").replace("[permissions.arcadia-unattended.network]", "  [ permissions . arcadia-unattended . network ] # keep table comment").replace(/\n/g, "\r\n");
     expect(rearranged).not.toBe(original);
     write(paths.codexConfig, config);
     for (let invocation = 0; invocation < 2; invocation += 1) {
@@ -209,7 +209,10 @@ describe("go broker agent setup", () => {
     ['".env" = "deny"', '".env" = "allow"'],
     ['".env.*" = "deny"', ''],
     ['enabled = false', 'enabled = "false"'],
-    ['enabled = false', 'enabled = false\nproxy_url = "https://unexpected.invalid"']
+    ['enabled = false', 'enabled = false\nproxy_url = "https://unexpected.invalid"'],
+    ['enabled = false', 'enabled = false\nenabled = true'],
+    ['enabled = false', 'enabled = false garbage'],
+    ['enabled = false', 'enabled = false\n[permissions.arcadia-unattended.extra]\nallow = true']
   ])("repairs incorrect or missing managed semantics %s without losing unrelated tables and comments", (before, after) => {
     const fixture = createFixture();
     const options = setupOptions(fixture, []);
@@ -227,6 +230,79 @@ describe("go broker agent setup", () => {
     expect(updated).not.toContain('proxy_url = "https://unexpected.invalid"');
     expect(result.status.ready).toBe(true);
     expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+  });
+
+  it.each([
+    '[permissions."arcadia-unattended".network]\nenabled = false',
+    '[[permissions.arcadia-unattended.network]]\nenabled = false',
+    '"approval_policy" = "on-request"',
+    'default_permissions = false',
+    'default_permissions = ":workspace"',
+    'description = """bad\nvalue"""\n[permissions.arcadia-unattended.network]\nenabled = """false"""'
+  ])("refuses ambiguous managed syntax without writing config or backups: %s", (ambiguous) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = `${ambiguous}\n${readFileSync(paths.codexConfig, "utf8")}`;
+    write(paths.codexConfig, config);
+    expect(() => configureGoBrokerAgents(options)).toThrow(/unsupported|multiline/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it.each([false, true])("preserves unrelated multiline strings and table names on repair=%s", (repair) => {
+    const fixture = createFixture();
+    const options = setupOptions(fixture, []);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const original = readFileSync(paths.codexConfig, "utf8");
+    const root = 'notes = """\n[permissions.arcadia-unattended.network]\nenabled = true\napproval_policy = "never"\n"""\n';
+    const unrelated = '[my."arcadia-unattended"] # keep arcadia-unattended\ntext = """user\n\n\n[permissions.arcadia-unattended]\ntext"""\n';
+    const config = `${root}${repair ? original.replace('enabled = false', 'enabled = true') : original}\n${unrelated}`;
+    write(paths.codexConfig, config);
+    const result = configureGoBrokerAgents(options);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(updated).toContain(root);
+    expect(updated).toContain(unrelated);
+    expect(result.status.ready).toBe(true);
+    if (!repair) {
+      expect(updated).toBe(config);
+      expect(result).toMatchObject({ changed: [], backups: [] });
+    }
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+  });
+
+  it.each([
+    'trust_level = "trusted"\ntrust_level = "untrusted"',
+    '"trust_level" = "trusted"'
+  ])("refuses ambiguous trust entries without writing config: %s", (trust) => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    configureGoBrokerAgents(options);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const config = readFileSync(paths.codexConfig, "utf8").replace('trust_level = "trusted"', trust);
+    write(paths.codexConfig, config);
+    expect(() => configureGoBrokerAgents(options)).toThrow(/duplicate|unsupported/);
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(config);
+  });
+
+  it("repairs missing permission tables and incorrect trust while retaining user values", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "project");
+    const options = setupOptions(fixture, [repository]);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const unrelated = '# keep root comment\nmodel = "gpt-test"\ncount = 3\nflags = [true, false]\n';
+    const userTable = '# keep user table comment\n[features]\nvoice = true # keep inline\n';
+    write(paths.codexConfig, `${unrelated}\n[projects.${JSON.stringify(repository)}]\ntrust_level = "untrusted"\n\n${userTable}`);
+    const result = configureGoBrokerAgents(options);
+    const updated = readFileSync(paths.codexConfig, "utf8");
+    expect(result.status.ready).toBe(true);
+    expect(updated).toContain(unrelated);
+    expect(updated).toContain(userTable);
+    expect(updated).toContain('trust_level = "trusted"');
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [] });
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(updated);
   });
 
   it.each([null, ":workspace", "personal", "arcadia-unattended"])(
