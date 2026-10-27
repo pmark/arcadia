@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOOTSTRAP_MARKER, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, inspectGuidanceDelivery, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
+import { BOOTSTRAP_MARKER, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, guidanceFingerprint, inspectGuidanceDelivery, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
 import { readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan } from "../src/projects/wayPropagation.js";
 import { renderDispatchResolution } from "../src/commands/next.js";
@@ -256,6 +256,21 @@ describe("compact Way instruction delivery", () => {
     const relevant = renderGuidanceRetrieval(root, undefined, "PREVIEW GOVERNANCE, then a PULL REQUEST").join("\n");
     expect(relevant).toContain("Read docs/agent-guidance/agent-asks.md:");
     expect(relevant).toContain("Read docs/agent-guidance/pull-requests.md:");
+  });
+
+  it("delivers the shared Git checkpoint procedure through adoption and each checkpoint trigger", () => {
+    const root = adopted();
+    const checkpointPath = "docs/agent-guidance/native-mail-checkpoints.md";
+    const entries = guidanceEntries(file(root, GUIDANCE_INDEX));
+    expect(entries.filter((entry) => entry.path === checkpointPath)).toHaveLength(1);
+    expect(guidanceFingerprint(file(root, checkpointPath))).toBe(guidanceFingerprint(file(canonicalRoot, checkpointPath)));
+    for (const operation of ["onboarding", "between batches", "before consequential work", "before stopping", "git change check", "governed changes on main"]) {
+      expect(renderGuidanceRetrieval(root, undefined, operation).join("\n")).toContain(`Read ${checkpointPath}:`);
+    }
+    // Procedure retrieval stays on demand: no expansion of the default bootstrap.
+    expect(file(root, "AGENTS.md")).not.toContain("checkpoint_main=");
+    expect(audit(root, root, "G".repeat(8192)).problems).toEqual([]);
+    expect(computeWayPropagationPlan(root).changes).toEqual([]);
   });
 
   it("keeps a new bootstrap and its resource installation together in the governing propagation tier", () => {
