@@ -9,7 +9,11 @@ import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 const counts = { open: 2, in_progress: 0, done: 0, blocked: 0 };
 const goPlan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: counts, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const draftPlan = { ...goPlan, slug: "later-ideas", status: "draft", milestone: "Ideas for later", isActivePlan: false, relativePath: "docs/plans/later-ideas.md" };
-const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: goPlan.slug, plans: [goPlan, draftPlan], error: null }] };
+const staleActive = { ...goPlan, slug: "old-greenhouse", milestone: "A greenhouse we stopped building", isActivePlan: false, relativePath: "docs/plans/old-greenhouse.md" };
+const pitch = { ...draftPlan, slug: "night-lights", status: "proposed", governed: false, milestone: "Lights for evening visits", actionCounts: null, relativePath: "docs/plans/night-lights.md" };
+const finished = { ...goPlan, slug: "fence", status: "complete", milestone: "A fence around the beds", isActivePlan: false, actionCounts: { open: 0, in_progress: 0, done: 3, blocked: 0 }, relativePath: "docs/plans/fence.md" };
+// Listed in the order a Project returns them: Go's Plan is not first.
+const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: goPlan.slug, plans: [finished, draftPlan, staleActive, goPlan, pitch], error: null }] };
 function detail(plan: typeof goPlan, actions: Array<{ key: string; title: string }>): PlanDetailResponse {
   return { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { ...counts, deferred: 0, total: actions.length }, isActivePlan: plan.isActivePlan, current: null, currentNote: null, next: [], blocked: [], actions: actions.map(a => ({ ...a, status: "open", dependsOn: [] })), note: "Fixture records" } };
 }
@@ -96,6 +100,21 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(page.locator(".workspace-work").getByText(/^From Go · read at/)).toBeVisible();
     await expect(page.locator(".workspace-work").getByRole("link", { name: "first-website" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Go's next move and your Ask ↓" })).toBeHidden();
+    // Context leads with Go's Plan; other active Plans follow; drafts and finished Plans wait behind disclosures.
+    const context = page.getByRole("complementary", { name: "Context" });
+    await expect(context.getByRole("heading", { name: "Go's current Plan" })).toBeVisible();
+    const firstPlan = context.getByRole("link", { name: /^Plan ·/ }).first();
+    await expect(firstPlan).toContainText("first-website");
+    await expect(firstPlan).toContainText("2 open");
+    await expect(context.getByRole("heading", { name: "Also marked active (1)" })).toBeVisible();
+    await expect(context.getByRole("link", { name: /old-greenhouse/ })).toBeVisible();
+    await expect(context.getByRole("link", { name: /later-ideas/ })).toBeHidden();
+    await expect(context.getByRole("link", { name: /fence/ })).toBeHidden();
+    await context.getByText("Drafts and proposals (2)").click();
+    await expect(context.getByRole("link", { name: /later-ideas/ })).toBeVisible();
+    await expect(context.getByRole("link", { name: /night-lights/ })).toBeVisible();
+    await context.getByText("Finished (1)").click();
+    await expect(context.getByRole("link", { name: /fence/ })).toContainText("3 done");
     await page.screenshot({ path: testInfo.outputPath("go-project-desktop.png") });
 
     // Go's Plan: Context marks Go's current Action; navigation alone never re-asks Go.

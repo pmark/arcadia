@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useRead } from "./use-read";
 import { WorkspaceAsk } from "./workspace-ask";
 import { GoSource, WorkspaceNextMove, useGoRead, type GoRead } from "./workspace-next-move";
-import type { AllPlansResponse, PlanDetailResponse } from "../../lib/plans-types";
+import type { AllPlansResponse, PlanDetailResponse, PlanRow } from "../../lib/plans-types";
+import { groupPlans, planProgress } from "../../lib/workspace-plans";
 import { goRelation } from "../../lib/workspace-go";
 import { parseWorkspaceScope, workspaceActionId, workspaceHref } from "../../lib/workspace-scope";
 
@@ -24,6 +25,26 @@ function GoActionDetails({ go }: { go: GoRead }) {
     {action.decisions.length > 0 && <><h3>Decisions it needs</h3><ul>{action.decisions.map((d, i) => <li key={i}>{d.question} · {d.resolved ? "answered" : "open"}</li>)}</ul></>}
     {action.acceptance.length > 0 && <details><summary>Acceptance criteria ({action.acceptance.length})</summary><ol>{action.acceptance.map((c, i) => <li key={i}>{c}</li>)}</ol></details>}
   </section>;
+}
+
+function PlanLink({ project, plan, current = false }: { project: string; plan: PlanRow; current?: boolean }) {
+  const progress = planProgress(plan);
+  return <li><Link href={workspaceHref({ project, plan: plan.slug })} className={current ? "workspace-current" : undefined}>
+    <span className="workspace-entity-kind">Plan · {plan.status}{plan.isActivePlan ? " · active" : ""}</span>
+    <strong>{plan.slug}</strong>{plan.milestone && <span>{plan.milestone}</span>}{progress && <span>{progress}</span>}
+  </Link></li>;
+}
+
+/** Go's current Plan leads; other active Plans follow; drafts and finished Plans wait behind a disclosure. */
+function ProjectPlans({ project, plans, goPlan }: { project: string; plans: PlanRow[]; goPlan: string | null }) {
+  const groups = groupPlans(plans, goPlan);
+  const list = (rows: PlanRow[]) => <ul className="workspace-entities">{rows.map(p => <PlanLink key={p.slug} project={project} plan={p} />)}</ul>;
+  return <>
+    {groups.current ? <><h3 className="workspace-group">{goPlan ? "Go's current Plan" : "Recorded active Plan"}</h3><ul className="workspace-entities"><PlanLink project={project} plan={groups.current} current /></ul></> : <p>No Plan is active for this Project.</p>}
+    {groups.otherActive.length > 0 && <><h3 className="workspace-group">Also marked active ({groups.otherActive.length})</h3><p className="workspace-muted">Their status says active, but Go is not working on them.</p>{list(groups.otherActive)}</>}
+    {groups.upcoming.length > 0 && <details className="workspace-group-more"><summary>Drafts and proposals ({groups.upcoming.length})</summary>{list(groups.upcoming)}</details>}
+    {groups.finished.length > 0 && <details className="workspace-group-more"><summary>Finished ({groups.finished.length})</summary>{list(groups.finished)}</details>}
+  </>;
 }
 
 export function WorkspaceView({ parts }: { parts: string[] }) {
@@ -50,7 +71,8 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
   const move = go.last?.move ?? null;
   const relation = move && scope ? goRelation(move, scope) : null;
   // The marker is a navigation aid, so it is withheld while Go's last read is known to have failed since.
-  const goActionId = go.status !== "error" && move && move.kind !== "none" && plan?.slug === move.plan ? move.action.id : null;
+  const goPlan = go.status !== "error" && move && move.kind !== "none" ? move.plan : null;
+  const goActionId = goPlan && move && move.kind !== "none" && plan?.slug === goPlan ? move.action.id : null;
   const listed = level === "Action" ? "Plan" : level;
   // DOM order is Work, Direction, Context, so reading and focus order match the phone layout; CSS places Context first on desktop.
   return <main className="workspace-main">
@@ -83,7 +105,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
         <div className="workspace-section-heading"><h2>In this {listed.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>
         {!scope || missing ? <div role="status"><h3>Context not found</h3><p>{missing}</p><Link href="/workspace">Return to portfolio</Link></div> : failure ? <div role="alert"><h3>Context unavailable</h3><p>{failure}</p><p>Refresh to try the read again.</p></div> : loading ? <p role="status">Reading your work…</p> : <>
           {level === "Portfolio" && (portfolio.kind === "ready" && portfolio.data.projects.length ? <ul className="workspace-entities">{portfolio.data.projects.map(p => <li key={p.slug}><Link href={workspaceHref({ project: p.slug })}><span className="workspace-entity-kind">Project · {p.status}</span><strong>{p.name}</strong><span>{p.error ? "Plans unavailable" : `${p.plans?.length ?? 0} Plans`} <span aria-hidden="true">↗</span></span></Link></li>)}</ul> : <p>No Projects are in this workspace yet.</p>)}
-          {level === "Project" && (project?.plans?.length ? <ul className="workspace-entities">{project.plans.map(p => <li key={p.slug}><Link href={workspaceHref({ project: project.slug, plan: p.slug })}><span className="workspace-entity-kind">Plan · {p.status}{p.isActivePlan ? " · active" : ""}</span><strong>{p.slug}</strong>{p.milestone && <span>{p.milestone}</span>}</Link></li>)}</ul> : <p>No Plan documents are available for this Project.</p>)}
+          {level === "Project" && project && (project.plans?.length ? <ProjectPlans project={project.slug} plans={project.plans} goPlan={goPlan} /> : <p>No Plan documents are available for this Project.</p>)}
           {(level === "Plan" || level === "Action") && detail.kind === "ready" && <>{plan?.milestone && <p>{plan.milestone}</p>}{detail.data.progress.actions.length ? <ul className="workspace-entities">{detail.data.progress.actions.map(a => {
             const id = workspaceActionId(a.key);
             return <li key={a.key}><Link href={workspaceHref({ ...scope, action: id })} aria-current={id === scope.action ? "true" : undefined}><span className="workspace-entity-kind">Action · {a.status}{id === goActionId ? " · Go's current Action" : ""}</span><strong>{a.title}</strong></Link></li>;

@@ -47,7 +47,7 @@ Select a Project and **Next move** shows Go's own resolution for it:
 - **Not an agent's to take** with Go's authorization text, when nothing blocks the Action but it is the operator's or an outside party's;
 - or **No current Action**.
 
-It says whether the selected Plan or Action is Go's current work, and links to it when it is not. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
+It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**. Other Plans still marked active follow, and drafts, proposals and finished Plans sit behind collapsed sections with their counts. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
 
 Each read runs `arcadia next` through the existing continuation route, which journals it, so the workspace never polls. Go is read:
 - the first time a page loads for a Project;
