@@ -51,3 +51,7 @@ Complete generated brief `/tmp/rowan-checkpoint-writer-brief.json`, 7908bytes, r
 - `docs/agent-guidance/agent-asks.md`: 23384bytes
 - `docs/notes-to-self.md`: 44338bytes
 - `docs/plans/agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re.md`: 3995bytes
+
+## Source and proposed completion
+
+Committed source:96736ddf3329a34b8e3060fed905d64263919bbf. Fresh complete draft/preview registered request `complete-git-change-checkpoint-guidance-20261027-ellis`, proposal `agentask_bf9f68a8657e04dcdc`, fingerprint `bf9f68a8657e04dcdc9cd87131b770d7b15087d6a920c1871a3d276e716e3db0`, all4criteria verbatim/inorder met against that source head. Workspace status previewed, conflicts/refused/discoveryfailures empty; Project writes false. Draft is preserved in `.arcadia/asks/agent-ask-complete-git-change-checkpoint-guidance-20261027-ellis.yaml`. No settlement command attempted; Rowan owns review and supported settlement after review.
