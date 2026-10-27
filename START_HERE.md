@@ -43,12 +43,20 @@ The workspace has three areas:
 
 Select a Project and **Next move** shows Go's own resolution for it:
 - **Ready to continue** with Go's current Action and its next step;
-- **Waiting** with Go's exact question or blocker and its remedy;
+- **Waiting** with Go's question and every blocker, each with its own remedy;
+- **Not an agent's to take** with Go's authorization text, when nothing blocks the Action but it is the operator's or an outside party's;
 - or **No current Action**.
 
 It says whether the selected Plan or Action is Go's current work, and links to it when it is not. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
 
-Go is read when you first select a Project, after five minutes, or on **Read again**. Each read runs `arcadia next` through the existing continuation route, so it is never polled. A failed read keeps the last good one, labelled with its time. Nothing here starts work: **this Project's page** keeps the existing Get to work control and its checks.
+Each read runs `arcadia next` through the existing continuation route, which journals it, so the workspace never polls. Go is read:
+- the first time a page loads for a Project;
+- on the next workspace navigation more than five minutes after the last attempt, including a failed one;
+- on **Read again**.
+
+Only one read per Project runs at a time. A reload or new tab starts fresh and reads again.
+
+A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker is withheld until Go reads cleanly again. Nothing here starts work: **this Project's page** keeps the existing Get to work control and its checks.
 
 On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
 
