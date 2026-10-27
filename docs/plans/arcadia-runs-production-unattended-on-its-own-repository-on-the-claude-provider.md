@@ -333,10 +333,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1419"]
   - id: rebuild-cover-mail-ack-receipt-kind-collision
     title: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement a fresh native-mail acknowledgment receipt-kind collision test from the then-current reviewed base, preserving held PR1662 and obtaining fresh canonical evidence for the replacement.
+    next_action: Completed via Agent Ask complete-mail-ack-source-concurrent-20261027-01a17e94; no further action.
     expected_artifact: Evidence satisfying Agent Ask rebuild-cover-mail-ack-receipt-kind-collision
     clarification: clarified
     confidence: high

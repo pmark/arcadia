@@ -35,6 +35,31 @@ selection does not automatically amend those records. Select **Open Artifact**
 on a linked output card to view SVG, PNG, JPEG, WebP or supported plain text
 (up to 4 MiB). Close or Escape returns to the same draft, receipt and context.
 Missing or unsupported files show a clear error in the viewer.
+
+The workspace has three areas:
+- **Context** lists what is in the selected scope.
+- **Work** shows the selected record.
+- **Direction** holds the **Next move** and the Ask.
+
+Select a Project and **Next move** shows Go's own resolution for it:
+- **Ready to continue** with Go's current Action and its next step;
+- **Waiting** with Go's question and every blocker, each with its own remedy;
+- **Not an agent's to take** with Go's authorization text, when nothing blocks the Action but it is the operator's or an outside party's;
+- or **No current Action**.
+
+It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
+
+Each read runs `arcadia next` through the existing continuation route, which journals it, so the workspace never polls. Go is read:
+- the first time a page loads for a Project;
+- on the next workspace navigation more than five minutes after the last attempt, including a failed one;
+- on **Read again**.
+
+Only one read per Project runs at a time. A reload or new tab starts fresh and reads again.
+
+A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker is withheld until Go reads cleanly again. Nothing here starts work: **this Project's page** keeps the existing Get to work control and its checks.
+
+On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
+
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
 [opening Artifacts](docs/design/workspace-artifact-opening.md).
