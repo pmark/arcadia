@@ -5,25 +5,31 @@ import type { PlanRow } from "./plans-types";
  * finished Plans stay one tap away instead of crowding it. Grouping only orders the view; it changes no record.
  */
 export interface PlanGroups {
-  /** The Plan Go names, or the Project's recorded active Plan before Go has been read. */
   current: PlanRow | null;
-  /** Recorded as active but not the Plan Go is working on. */
+  /** Where `current` came from, so its label never claims Go named a Plan it did not. */
+  source: "go" | "recorded" | null;
+  /** Go named this Plan, but the Plan list does not include it (the list is older than Go's read). */
+  missingGoPlan: string | null;
+  /** Recorded as active but not the leading Plan. */
   otherActive: PlanRow[];
-  /** Drafts, proposals and dormant Plans: not yet governed work. */
+  /** Drafts, proposals and any status that is neither active nor finished, such as an ungoverned `unknown`. */
   upcoming: PlanRow[];
-  /** Complete, superseded and any other closed status. */
   finished: PlanRow[];
 }
 
-const UPCOMING = new Set(["draft", "proposed", "dormant"]);
+const FINISHED = new Set(["complete", "completed", "done", "superseded", "archived"]);
 export function groupPlans(plans: PlanRow[], goPlan: string | null): PlanGroups {
-  const current = (goPlan ? plans.find(p => p.slug === goPlan) : undefined) ?? plans.find(p => p.isActivePlan) ?? null;
+  const named = goPlan ? plans.find(p => p.slug === goPlan) ?? null : null;
+  const recorded = named ? null : plans.find(p => p.isActivePlan) ?? null;
+  const current = named ?? recorded;
   const rest = plans.filter(p => p !== current);
   return {
     current,
+    source: named ? "go" : recorded ? "recorded" : null,
+    missingGoPlan: goPlan && !named ? goPlan : null,
     otherActive: rest.filter(p => p.status === "active"),
-    upcoming: rest.filter(p => UPCOMING.has(p.status)),
-    finished: rest.filter(p => p.status !== "active" && !UPCOMING.has(p.status))
+    upcoming: rest.filter(p => p.status !== "active" && !FINISHED.has(p.status)),
+    finished: rest.filter(p => FINISHED.has(p.status))
   };
 }
 

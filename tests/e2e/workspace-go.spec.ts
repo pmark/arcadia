@@ -49,7 +49,7 @@ test("workspace renders Go's next move for the selected Project without choosing
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error" && /same key/i.test(message.text())) errors.push(message.text()); });
-  let goMode: "ready" | "gated" | "not-agent" | "none" | "failed" | "malformed" | "html" = "ready";
+  let goMode: "ready" | "gated" | "not-agent" | "none" | "failed" | "malformed" | "html" | "elsewhere" | "missing" = "ready";
   let goReads = 0;
   const mutations: string[] = [];
   await page.route("**/api/**", async route => {
@@ -70,7 +70,9 @@ test("workspace renders Go's next move for the selected Project without choosing
           { relativePath: "docs/decisions/0002-pond.md", field: "status", message: "Decision 0002 is open", remedy: "Answer Decision 0002 on the Review page" }
         ] })
         : goMode === "not-agent" ? continuation({ dispatchable: false }, "requires_review", "The operator must act, approve, or decide. A coding agent must not implement this.")
-          : goMode === "none" ? continuation({ context: null, dispatchable: false }) : continuation();
+          : goMode === "none" ? continuation({ context: null, dispatchable: false })
+            : goMode === "elsewhere" || goMode === "missing" ? (() => { const c = continuation(); return { ...c, context: { ...c.context!, activePlan: goMode === "elsewhere" ? "old-greenhouse" : "new-plan" } }; })()
+              : continuation();
       return route.fulfill({ json: { project: { id: "garden" }, continuation: body, reviewItems: [] } });
     }
     return route.abort();
@@ -110,7 +112,7 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(context.getByRole("link", { name: /old-greenhouse/ })).toBeVisible();
     await expect(context.getByRole("link", { name: /later-ideas/ })).toBeHidden();
     await expect(context.getByRole("link", { name: /fence/ })).toBeHidden();
-    await context.getByText("Drafts and proposals (2)").click();
+    await context.getByText("Not yet active (2)").click();
     await expect(context.getByRole("link", { name: /later-ideas/ })).toBeVisible();
     await expect(context.getByRole("link", { name: /night-lights/ })).toBeVisible();
     await context.getByText("Finished (1)").click();
@@ -198,6 +200,9 @@ test("workspace renders Go's next move for the selected Project without choosing
     goMode = "html";
     await readAgain(8);
     await expect(direction(page).getByRole("alert")).toContainText("Go could not be read: the continuation route answered 502.");
+    // The Plan list still leads with Go's last good Plan, labelled as such.
+    await page.getByRole("navigation", { name: "Selected context" }).getByRole("link", { name: "Moon garden" }).click();
+    await expect(page.getByRole("complementary", { name: "Context" }).getByRole("heading", { name: "Go's current Plan · last good read" })).toBeVisible();
 
     // No good read at all (a reload keeps nothing): nothing is shown in its place.
     goMode = "failed";
@@ -205,6 +210,8 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(direction(page).getByRole("alert")).toContainText("Nothing is shown in its place.");
     await expect(result(page).getByText(/^From Go/)).toHaveCount(0);
     await expect(page.locator(".workspace-work")).not.toContainText("Go is working toward");
+    await expect(page.getByRole("complementary", { name: "Context" }).getByRole("heading", { name: "Recorded active Plan" })).toBeVisible();
+    await expect(page.getByText("Their status says active, but Go is not working on them.")).toHaveCount(0);
 
     // No current Action: said plainly.
     goMode = "none";
@@ -212,6 +219,21 @@ test("workspace renders Go's next move for the selected Project without choosing
     await readAgain(before + 1);
     await expect(result(page).getByText("No current Action", { exact: true })).toBeVisible();
     await expect(result(page).getByText("Go found no current Action for this Project.")).toBeVisible();
+
+    // Go names a Plan other than the recorded one: Context follows Go, not the record.
+    const context2 = page.getByRole("complementary", { name: "Context" });
+    goMode = "elsewhere";
+    await readAgain(goReads + 1);
+    await expect(context2.getByRole("heading", { name: "Go's current Plan", exact: true })).toBeVisible();
+    await expect(context2.getByRole("link", { name: /^Plan ·/ }).first()).toContainText("old-greenhouse");
+    await expect(context2.getByRole("heading", { name: "Also marked active (1)" })).toBeVisible();
+    await expect(context2.getByText("Their status says active, but Go is not working on them.")).toBeVisible();
+    // Go names a Plan the list lacks: the recorded Plan leads under its own label, with a note.
+    goMode = "missing";
+    await readAgain(goReads + 1);
+    await expect(context2.getByRole("heading", { name: "Recorded active Plan" })).toBeVisible();
+    await expect(context2.getByRole("heading", { name: "Go's current Plan", exact: true })).toHaveCount(0);
+    await expect(context2.getByText("Go names Plan new-plan, which this list does not include yet. Refresh to read the list again.")).toBeVisible();
 
     // Phone: Work, then Direction, then Context, both on screen and in reading order, with no sideways scroll.
     goMode = "ready";
