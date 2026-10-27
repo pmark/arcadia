@@ -65,6 +65,57 @@ actions:
     depends_on: [resolve-go-caller-context, reuse-go-context-through-authorized-continuation]
     decisions: []
     references: ["agentask_e5f269308aded23266", "lesson_c9ebb19d9dbb00316d56", "docs/planning-process.md", "docs/agent-guidance/chat-titles.md", "agentask_1220d0d060493d6292", "docs/agent-guidance/continuation.md", "docs/agents-context.md", "src/sessions/actionBrief.ts", "tests/action-brief.test.ts", "START_HERE.md", "Agent Ask plan-go-truthful-orientation-20261016-01a143a6 rationale retains independent critique and deferred triggers"]
+  - id: project-go-orientation-for-the-operator
+    title: Serve Go's resolution to the operator workspace per Project, and as a portfolio summary, as a read-only and journal-free read from the existing resolver.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Serve Go's resolution to the operator workspace per Project, and as a portfolio summary, as a read-only and journal-free read from the existing resolver.
+    expected_artifact: Evidence satisfying Agent Ask project-go-orientation-for-the-operator
+    clarification: clarified
+    confidence: high
+    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    acceptance_criteria:
+      - A read-only route returns, per Project, Go's selected Plan and Action, its dispatchable verdict, the operator question or first blocker with its remedy, and ongoing claims and Sessions with source and observed time, using the existing dispatch and gate resolution rather than a second resolver.
+      - Read-only adapter spies and before/after snapshots prove zero dispatch-journal, Project, queue, claim, admission, Git and worktree writes and zero provider calls; identical pinned inputs give identical output, and an unreadable Project is listed with its exact error, never dropped.
+      - The workspace reads this route instead of the journaled continuation GET; the existing workspace end-to-end suite passes unchanged in intent.
+    depends_on: [resolve-go-caller-context]
+    decisions: []
+    references: []
+  - id: show-receipts-for-operator-directions
+    title: "Record and show an operator direction's receipts as distinct evidence-backed states: submitted, delivered, acknowledged, continued and verified, plus unknown and held."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Record and show an operator direction's receipts as distinct evidence-backed states: submitted, delivered, acknowledged, continued and verified, plus unknown and held."
+    expected_artifact: Evidence satisfying Agent Ask show-receipts-for-operator-directions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    acceptance_criteria:
+      - An operator direction addressed to an explicit Project, Plan or Action carries a stable request id; exact replay returns the same receipt and changed input under the same id refuses.
+      - "Each state is set only by its own evidence: delivered when a native checkpoint that the recipient reads records it, acknowledged from the recipient's compact acknowledgment, continued from a subsequently observed state change; storage alone never implies delivered or acknowledged."
+      - A stopped or paused recipient leaves the direction held, and an uncertain submission shows as unknown and is never resent automatically; the workspace renders every state with end-to-end coverage for held and unknown.
+    depends_on: [reuse-go-context-through-authorized-continuation, project-go-context-as-compact-state-signals]
+    decisions: []
+    references: []
+  - id: continue-from-go-in-the-workspace
+    title: Offer Go's next permitted move as a Continue control in the workspace through the existing protected continuation, and complete one bounded real operator-assisted delivery through it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Offer Go's next permitted move as a Continue control in the workspace through the existing protected continuation, and complete one bounded real operator-assisted delivery through it.
+    expected_artifact: Evidence satisfying Agent Ask continue-from-go-in-the-workspace
+    clarification: clarified
+    confidence: high
+    source: Agent Ask propose-go-workspace-ui-actions-20261027
+    acceptance_criteria:
+      - Continue appears only when Go's resolution for the shown Action is dispatchable, previews target, owner, provider and limits before commitment, and invokes the existing protected Go continuation with a stable request id so that repeated or concurrent presses produce at most one claim, candidate and Session.
+      - A resolution that changed after it was shown refuses with the changed facts and offers a fresh read; no approval, credential or production gate is bypassed, and Production stays Off unless separately started.
+      - One bounded real operator-assisted delivery through the workspace is recorded with its receipts and pull request, with source, installed adoption and live proof recorded as separate stages.
+    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: project-go-context-as-compact-state-signals
