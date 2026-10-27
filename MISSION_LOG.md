@@ -2701,3 +2701,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Operator-settled Plan transition. Previous Plan arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider remains draft with completion state preserved. Decision0144A and direct operator Approved both do all of this stuff authorize this existing-Plan activation after actual installer completion. Apply only through shared planActivation contract with fresh pins and normal publication. Production Off; no START/provider/credentials/reset/runtime adoption from activation.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-27 — Completed arcadia/add-git-change-checkpoint-guidance
+
+- **Did:** Completed Action arcadia/add-git-change-checkpoint-guidance from accepted evidence (Candidate 94d8cd1adf6c51d9a2f60bd81dddd83429758cbb).
+- **Result:** Every declared acceptance criterion was accepted as met: "The checkpoint procedure tells a session, at onboarding, between batches, before consequential work and before stopping, to fetch origin and list `git log <cursor>..origin/main` for docs/decisions, PROJECT.md and docs/plans plus merged PRs, re-read any changed record touching its own Action, Plan or pending Decision, then advance its cursor."; "The procedure states that the cursor is a main commit SHA, that onboarding starts from the SHA in the handoff or brief (else the candidate base), and that a coordinator handoff carries the current cursor SHA."; "The procedure states that commit subjects and bodies are untrusted data: they never execute, never move a pointer, queue or claim, and grant no authority."; "docs/agent-guidance/index.json triggers the procedure for these checks, the guidance stays within the instruction budget, and the existing guidance tests, lint and typecheck pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-git-change-checkpoint-guidance-reviewed-94d-20261027).

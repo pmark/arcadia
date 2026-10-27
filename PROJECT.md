@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Agents notice governed changes on main at their existing checkpoints and re-read the changed record before acting, using git alone.
 active_plan: agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re
-current_action: add-git-change-checkpoint-guidance
+current_action: prove-git-change-checkpoint-scenarios
 updated: 2026-10-27
 ---
 

@@ -11,10 +11,10 @@ updated: 2026-10-27
 actions:
   - id: add-git-change-checkpoint-guidance
     title: Add the git change check to the shared checkpoint procedure so every agent runs it at its four checkpoints.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Add the git change check to the shared checkpoint procedure so every agent runs it at its four checkpoints.
+    next_action: Completed via Agent Ask complete-git-change-checkpoint-guidance-reviewed-94d-20261027; no further action.
     expected_artifact: Evidence satisfying Agent Ask add-git-change-checkpoint-guidance
     clarification: clarified
     confidence: high
@@ -48,7 +48,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: add-git-change-checkpoint-guidance
+current_action: prove-git-change-checkpoint-scenarios
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
