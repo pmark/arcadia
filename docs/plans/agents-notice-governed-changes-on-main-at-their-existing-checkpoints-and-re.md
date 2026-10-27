@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re
 project: arcadia
-status: draft
+status: active
 milestone: Agents notice governed changes on main at their existing checkpoints and re-read the changed record before acting, using git alone.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-26
+updated: 2026-10-27
 actions:
   - id: add-git-change-checkpoint-guidance
     title: Add the git change check to the shared checkpoint procedure so every agent runs it at its four checkpoints.
@@ -48,6 +48,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: add-git-change-checkpoint-guidance
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Agents notice governed changes on main at their existing checkpoints and re-read the changed record before acting, using git alone.

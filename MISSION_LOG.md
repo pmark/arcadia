@@ -2694,3 +2694,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "A disposable-file regression supplies semantically correct managed permission/trust settings with different table ordering, comments and whitespace; configuration preserves the exact original bytes and creates no backup. A repeated invocation remains byte-identical and reports no change."; "Disposable-file regressions supply missing and genuinely different managed values; configuration applies the exact required managed change and verifies the requested profile/trust semantics, without weakening permission boundaries or treating an incorrect value as a no-op."; "Disposable-file regressions prove unrelated user tables, values and comments survive both no-op and necessary-change paths; relevant focused tests plus required lint/typecheck/checks pass. Tests never access or change live user configuration, credentials, services or production.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-installer-semantic-no-op-final-28e-20261027).
+
+## 2026-10-27 — Agent Ask activate-git-change-checkpoint-plan-assisted-20261027
+
+- **Did:** Activated agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re at add-git-change-checkpoint-guidance.
+- **Result:** Operator-settled Plan transition. Previous Plan arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider remains draft with completion state preserved. Decision0144A and direct operator Approved both do all of this stuff authorize this existing-Plan activation after actual installer completion. Apply only through shared planActivation contract with fresh pins and normal publication. Production Off; no START/provider/credentials/reset/runtime adoption from activation.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
