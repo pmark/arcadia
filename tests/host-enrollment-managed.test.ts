@@ -29,6 +29,7 @@ import {
 } from "../src/production/policy.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runGoBroker } from "../src/goBroker.js";
+import { setWorktreeLivenessProbeForTests } from "../src/sessions/worktreeLiveness.js";
 import { executeHostEnrollment, type HostEnrollmentInput } from "../src/sessions/hostEnrollment.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import type { TmuxAdapter } from "../src/sessions/index.js";
@@ -61,6 +62,7 @@ class FakeTmux implements TmuxAdapter {
 beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
 afterEach(() => {
   vi.unstubAllEnvs();
+  setWorktreeLivenessProbeForTests(null);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -478,6 +480,43 @@ describe("fixed enrollment entries use the supported host receipt boundary", () 
 });
 
 describe("ordinary initial Go selection fence", () => {
+  it.each(["unchanged", "pointer", "input"])("checks %s selection inside the resume dispatch transaction before any handout", change => {
+    const f = fixture();
+    setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [] }));
+    const candidate = runGoCommand({ repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace,
+      agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux, now: NOW }).data.nextWorktree!;
+    const draftPath = path.join(candidate.path, ".arcadia/asks/agent-ask-resume-fence.yaml");
+    mkdirSync(path.dirname(draftPath), { recursive: true });
+    const draft = JSON.stringify({ agent_ask: "v1", request_id: "resume-fence", project: "test-project", intent: "proposal" });
+    writeFileSync(draftPath, draft);
+    const snapshot = () => withReadOnlyDatabase(f.workspace, db => ({
+      claims: db.prepare("SELECT * FROM agent_worktree_reservations").all(),
+      recoveries: db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_draft_recoveries'").get()
+        ? db.prepare("SELECT * FROM candidate_draft_recoveries").all() : []
+    }));
+    const before = snapshot();
+    const run = () => runGoBroker({ source: f.repo, agent: "claude", operation: "go" }, options => runGoCommand({
+      ...options, workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "ordinary"), tmux: f.tmux,
+      now: new Date(NOW.getTime() + 3_600_000), testHooks: { beforeDispatchTransaction() {
+        if (change === "pointer") {
+          writeFileSync(path.join(f.repo, "PROJECT.md"), projectDocument.replace("current_action: define-contract", "current_action: write-proof"));
+          writeFileSync(path.join(f.repo, "docs/plans/copy-proof.md"), planDocument.replace("current_action: define-contract", "current_action: write-proof").replace("actions:\n", "actions:\n  - id: write-proof\n    title: Write proof\n    status: open\n    responsibility: agent\n    clarification: clarified\n    next_action: Write the proof.\n    expected_artifact: proof.md\n    acceptance_criteria: [Proof exists.]\n"));
+        } else if (change === "input") {
+          writeFileSync(path.join(f.repo, "docs/plans/copy-proof.md"), planDocument.replace("Define the bounded contract.", "Define a changed bounded contract."));
+        }
+      } }
+    }), undefined, undefined, () => f.workspace);
+    if (change === "unchanged") {
+      expect(run().data.nextWorktree?.path).toBe(candidate.path);
+      expect(snapshot().recoveries).toEqual([expect.objectContaining({ resumed_route: "go", resumed_at: expect.any(String) })]);
+    } else {
+      expect(refusal(run).details.code).toBe("go_selection_changed");
+      expect(snapshot()).toEqual(before);
+    }
+    expect(worktrees(f)).toBe(2);
+    expect(readFileSync(draftPath, "utf8")).toBe(draft);
+  });
+
   it("does not enable queue walking when its bound initial A is claimed", () => {
     const f = fixture();
     enroll(f, { mode: "prepare" });
