@@ -106,4 +106,6 @@ Use operator as the default user-facing role term; reviewer, approver, developer
 
 ## What is not done
 
+Update, 2026-10-27: the explicitly simulated prototype now lives in [prototype/](prototype/README.md), with its opening instructions, interaction validation and limits. It remains fictional and connects to no live control.
+
 No interactive mockup, map renderer or production integration is delivered here. Claude's next assignment is to build and evaluate the explicitly simulated prototype in its own authorized isolated candidate. Live implementation, Plan/Action changes, services, merges, deployment and publication retain their separate boundaries. Routine progress updates to Clara remain paused until the operator requests them.
