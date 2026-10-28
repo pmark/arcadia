@@ -4246,7 +4246,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask preserve-unchanged-baseline-skill-symlinks
     clarification: clarified
     confidence: high
-    source: Agent Ask retire-preserve-unchanged-recovery-criterion-20261027
+    source: Agent Ask drop-absolute-bundle-reference-acceptance-kept-20261028
     acceptance_criteria:
       - Protected candidate capture retains an unchanged tracked mode-120000 baseline entry from its immutable Git blob without dereferencing it; candidate-added or modified symlinks and path escapes still refuse, and normal regular-file capture retains its existing guards.
       - Focused regressions and a hermetic invocation of the literal no-argument Claude preservation launcher prove successful capture, unchanged replay, changed-tree receipt identity, and refusal of modified/new symlinks, ancestor-link escapes and unsafe or raced regular-file inputs; failed capture does not change the candidate index.
@@ -4254,7 +4254,7 @@ actions:
       - Typecheck, lint and focused preservation tests pass; run fast-rehearsal once on final changed source before any separately authorized installation.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1032", "src/sessions/candidateSnapshot.ts", "docs/working-copy-safety.md", "decision/0086", "decision/0091", "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/tidy-preserve-unchanged-retired-20261027/"]
+    references: ["https://github.com/pmark/arcadia/issues/1032", "src/sessions/candidateSnapshot.ts", "docs/working-copy-safety.md", "decision/0086", "decision/0091"]
   - id: generate-neutral-rehearsal-dry-preparation
     title: Implement one resumable deterministic preparation command that generates a fresh N-neutral fixture baseline, reviewed descriptor inputs and dry proof from one parameter file, initially N=3.
     status: open
