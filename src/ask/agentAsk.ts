@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAbsolute } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { PROJECT_STATUSES } from "../domain/constants.js";
@@ -185,7 +186,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, ...(planMetadata ? { planMetadata } : {}), requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null, ...(direction ? { direction } : {}) };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: referenceList(data.references, "references"),...omittedListsField(data), ...topLevelWhy, actions, targetRef, ...(planMetadata ? { planMetadata } : {}), requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null, ...(direction ? { direction } : {}) };
 }
 
 /**
@@ -327,6 +328,15 @@ export function requiresManagedDocumentTransition(intent: AgentAskIntent): boole
 function requiredText(value: unknown, message: string): string { if (typeof value !== "string" || !value.trim()) throw validationError(message); return value.trim(); }
 function optionalText(value: unknown): string | null { if (value === undefined || value === null) return null; if (typeof value !== "string") throw validationError("Agent Ask text fields must be strings."); return value.trim() || null; }
 function stringList(value: unknown, field: string): string[] { if (value === undefined || value === null) return []; if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) throw validationError(`Agent Ask ${field} must be a list of non-empty strings.`); return value.map((item) => (item as string).trim()); }
+// A reference is a URL, a repository-relative path or a governed id. Absolute
+// or home-relative filesystem paths name one machine and rot once the file moves
+// or the machine changes, so they are refused at intake rather than recorded.
+function referenceList(value: unknown, field: string): string[] {
+  const references = stringList(value, field);
+  const absolute = references.filter((reference) => isAbsolute(reference) || reference.startsWith("~/"));
+  if (absolute.length > 0) throw validationError(`Agent Ask ${field} must not contain absolute filesystem paths; cite a repository-relative path, a URL or a governed id instead.`, { references: absolute });
+  return references;
+}
 function planMetadataField(value: unknown): NormalizedPlanMetadata | null {
   if (value === undefined || value === null) return null;
   if (!isRecord(value)) throw validationError("Agent Ask plan_metadata must be an object.");
@@ -350,7 +360,7 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
       desiredResult: requiredText(item.desired_result, `Agent Ask actions[${index}].desired_result is required.`),
       acceptance: stringList(item.acceptance, `actions[${index}].acceptance`),
       dependencies: stringList(item.dependencies, `actions[${index}].dependencies`),
-      references: stringList(item.references, `actions[${index}].references`),
+      references: referenceList(item.references, `actions[${index}].references`),
       targetRef: optionalText(item.target_ref),
       ...actionWhyField(item.why, index),
       ...omittedListsField(item)
