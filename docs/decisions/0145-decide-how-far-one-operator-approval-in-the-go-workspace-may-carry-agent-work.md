@@ -4,7 +4,7 @@ type: decision
 id: "0145"
 slug: decide-how-far-one-operator-approval-in-the-go-workspace-may-carry-agent-work
 project: arcadia
-status: open
+status: approved
 question: Decide how far one operator approval in the Go workspace may carry agent work across consecutive Actions before Arcadia stops and asks again.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
 updated: 2026-10-28
+answer: Through the current Plan until the first gate
+decided: 2026-10-28
 ---
 
 # Decision 0145: Decide how far one operator approval in the Go workspace may carry agent work across consecutive Actions before Arcadia stops and asks again.
