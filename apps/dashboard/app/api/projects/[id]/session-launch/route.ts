@@ -6,13 +6,10 @@ import {
   previewGuardedSessionLaunch
 } from "../../../../../lib/arcadia-cli";
 import { isSameOriginRequest } from "../../../../../lib/originGuard";
+import { OPERATOR_LAUNCH_CONSEQUENCE } from "../../../../../lib/operator-launch-consequence";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-/** What a confirmed Launch authorizes (Decision 0096, option 1): shown before the operator confirms, never a merge. */
-const OPERATOR_LAUNCH_CONSEQUENCE =
-  "Confirming also authorizes Arcadia, once and for this one Action, to validate, commit and push the Session's branch when it exits and, only if the work is accepted as complete, open a DRAFT pull request. It never merges, integrates or turns production on. The authorization expires after 24 hours or at the Session's first exit.";
 
 /** Starts no process — returns the fingerprint an operator launch request must present. */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
