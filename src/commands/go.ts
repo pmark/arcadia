@@ -81,7 +81,7 @@ import {
   type DraftRecoveryReceipt
 } from "../sessions/draftOnlyCandidate.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
-import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { loadIdentityModelTierRegistry, renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { readProjectPartners } from "../sessions/partners.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { assertWorkerCapability, type EnvironmentWall } from "../production/sessionCapability.js";
@@ -655,11 +655,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           tier: null,
           source: "explicit" as const,
           note: null,
+          // Only the printed escalation hint reads the registry here, so an
+          // invalid override must not refuse an explicitly pinned handoff.
           escalation: resolveEscalationTarget({
             agent: options.agent,
             recommendedModel: planModel,
             currentModel: options.model,
-            registry: loadModelTierRegistry(workspacePath)
+            registry: loadIdentityModelTierRegistry(workspacePath)
           })
         }
       : resolveSessionStart({
@@ -1176,7 +1178,7 @@ function goIdentityBlock(candidate: PreparedAgentWorktree, projectSlug: string, 
     agent: candidate.agent,
     model: candidate.model,
     effort: candidate.effort,
-    registry: workspacePath ? loadModelTierRegistry(workspacePath) : undefined,
+    registry: loadIdentityModelTierRegistry(workspacePath),
     partners
   });
 }
