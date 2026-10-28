@@ -1,0 +1,44 @@
+{
+  "session_id": "01a180d7-3f9b-7581-be2d-93d5f8f8b7eb",
+  "role": "lead",
+  "model": "inherited-host-default-unmeasured",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": "unavailable",
+  "action_id": "continue-from-go-in-the-workspace",
+  "pr": 1851,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "post-exit-stable-request-replay",
+      "caught_by": "independent R1; original path fixed"
+    },
+    {
+      "class": "missing-table-foreign-lease-alias-replay",
+      "caught_by": "independent R2; unresolved"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "noun-cli-telemetry-preflight",
+      "cost_min": null,
+      "fix_ref": "lesson_f9527c5c751373016100"
+    },
+    {
+      "id": "dirty-candidate-rejection-refusal",
+      "cost_min": null,
+      "fix_ref": "commit released work before supported retry"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Operational approval expired at 2026-10-28T13:22:24Z; R2-F1 blocks source merge. Policy option 1 received at13:33:03Z but no browser delegation or window renewal. Preserve source; request bounded renewal.",
+  "notes": "Sole Rowan custody retained; all helpers/checks terminal. Source/install/live stages separate. See compact overnight handoff and PR1851 R2 report."
+}

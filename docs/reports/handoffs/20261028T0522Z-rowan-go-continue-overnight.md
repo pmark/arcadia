@@ -132,3 +132,46 @@ Discord message `1564870211348201583`, sent `05:15:33.143Z`. Main remains
 were empty after the morning fetch. Rowan retains coordinator custody. Next:
 preserve the released repair and handoff, obtain independent R2 and required CI,
 then offer one exact renewal/package instead of silently applying expired approval.
+
+## Preserved R2 stop
+
+Current committed source/records head before this handoff update:
+`08a3cffa8055c2d6bdbac4865aa73ffa31ecf6a4`; product source `39cb67b0393c3ccbfb2200d5caa591487a55ddcd`.
+Decision 0145 was opened canonically by `asksettle_b5727cc8f40146d384`;
+its actual status is open. Human option 1 is received, but the supported answer
+writer reads the configured primary. Do not hand-edit its answer or repoint
+Project metadata to make the candidate visible. Publish/refresh through the
+approved path before recording the answer. Runtime approval remains expired.
+
+Independent R2 is terminal and blocking: [report](https://github.com/pmark/arcadia/pull/1851#issuecomment-6470595044).
+R1-F1 is fixed for the original consumed-request path. R2-F1 (P1),
+`src/sessions/operatorLaunch.ts:254`, is a new lazy-table path: returning early
+when `operator_launch_authorizations` is absent skips the foreign-live-lease
+refusal. The real fixture returned a foreign Session, then another Session after
+resumable reconciliation under the same Continue identity/fingerprint. Treat a
+missing table as no matching authorization; preserve ordinary non-Continue reuse.
+The exact independent failing regression is now portable at
+`docs/reports/review-evidence/go-continue-r2-missing-table.patch`; it applies to
+the reviewed tests and is evidence, not an authorized automatic patch or test run.
+R2 ran 58 committed tests successfully (17 skipped), then reproduced the added
+failure. All helper/check handles are terminal; nobody has source-writer custody.
+
+Next source move, after a fresh named repair allowance: assign Ellis one bounded
+R2-F1 delta, test missing-table/foreign-lease/terminal replay and ordinary reuse,
+then independent R3 and every required CI job. Two overnight repair batches
+were unused at expiry; neither they nor the expiry reset on transfer. No Action
+completion or later-Action implementation is claimed. New source gates must be
+proved before the already selected bounded-continuation policy is built.
+
+At renewal/handoff, carry policy option 1 without asking it again. Separately
+obtain operational-window renewal and any real-browser delegation. One new Rowan
+may then take over through a verified host-supported transfer with this index,
+the published exact head and main cursor; retain the old candidate and do not
+bypass attachment protection. Until then this chat remains sole coordinator.
+
+Latest safe Production read: `2026-10-28T13:46:26.946Z`, Inactive/Idle,
+revision 83, epoch 46, zero admissions, through the pinned command's read-only
+API (no outer CLI telemetry). R2 lesson: `lesson_406dd0a457ea7dca64a1`.
+All 15 CI jobs passed on product-source head `39cb67b0393c3ccbfb2200d5caa591487a55ddcd`;
+this does not clear R2-F1, and later records pushes need their own current-head
+check evidence. No Action is settled complete.
