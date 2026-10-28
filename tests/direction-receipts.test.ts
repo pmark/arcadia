@@ -8,7 +8,7 @@ import { runAgentAskDraftCommand, runAgentAskSettleCommand } from "../src/comman
 import { agentAskFingerprint, normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { projectDirection, unknownDirection } from "../src/ask/directionState.js";
 import { withDatabase } from "../src/db/connection.js";
-import { acknowledgeMailMessage, consumeDirectionCheckpoint, listMailInbox, mailStatus, sendMailMessage, ensureNativeMailTables, directionForMail, recordDirectionRecipientState } from "../src/nativeMail/store.js";
+import { acknowledgeMailMessage, consumeDirectionCheckpoint, listMailInbox, mailStatus, sendMailMessage, ensureNativeMailTables, directionForMail, recordDirectionRecipientState, reportMailResult, disposeMailMessage } from "../src/nativeMail/store.js";
 import { runQaPrReviewCommand } from "../src/qa/prReview.js";
 import { allocateSessionRoleAttempt } from "../src/sessions/enrollment.js";
 import { createWorkItemRecord, createCodexInvocation } from "../src/db/repositories.js";
@@ -21,6 +21,25 @@ describe("canonical direction receipt producers", () => {
       desired_result: "Retain the observed fixture proof.", requested_authority: "propose", references: ["fixture:proof"] }) });
     expect(normalized).not.toHaveProperty("direction");
     expect(agentAskFingerprint(normalized)).toBe("ad269d0f6c69fe28a7b491a30c9e0203c5211b6830bed6a1480ef58a1459d2fb");
+  });
+  it("archives a legacy complete Ask without adding a direction field or changing its bytes", () => {
+    const f = fixture();
+    const candidate = path.join(f.root, "candidate");
+    f.git("worktree", "add", "-q", "-b", "codex/legacy-direction-fixture", candidate);
+    const request = JSON.stringify({ agent_ask: "v1", request_id: "legacy-complete-first", project: "demo", intent: "complete", target_ref: "action/first",
+      desired_result: "Complete first", candidate_revision: f.head, evidence: [{ criterion: "Proof exists.", status: "met", note: "Legacy fixture proof" }] });
+    const drafted = runAgentAskDraftCommand({ workspace: f.workspace, dir: candidate, request });
+    const originalBytes = readFileSync(drafted.data.path, "utf8");
+    expect(originalBytes).not.toMatch(/^direction:/m);
+    expect(drafted.data.preview!.proposal.normalized).not.toHaveProperty("direction");
+    const options = { workspace: f.workspace, proposal: drafted.data.preview!.proposal.id, requestId: "settle-legacy-first", disposition: "accepted" as const, cwd: candidate };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.recovery).toBeUndefined();
+    expect(applied.data.receipt.directionEffect).toBeUndefined();
+    expect(readFileSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-legacy-complete-first.yaml"), "utf8")).toBe(originalBytes);
+    expect(f.git("rev-parse", "HEAD")).toBe(f.head);
+    expect(f.git("-C", candidate, "rev-parse", "HEAD")).toBe(applied.data.receipt.documentsCommit);
   });
   it("retains accepted/refused target receipts and never changes an identity on replay", () => {
     const f = fixture();
@@ -56,7 +75,19 @@ describe("canonical direction receipt producers", () => {
       recipient: { sessionIncarnation: "old-recipient", generation: "1" }, assignmentEvidence: "legacy", receiverCheckpointCapability: "checkpoint",
       actor: "legacy", body: { arcadiaDirection: { requestId: "spoof", fingerprint: "0".repeat(64) } } };
     const offered = sendMailMessage(db, input);
+    const historical = sendMailMessage(db, { ...input, requestId: "legacy-history", recipient: { sessionIncarnation: "history-recipient", generation: "1" } });
+    const scope = { projectSlug: "demo", planSlug: "work", recipientSessionIncarnation: "history-recipient", recipientGeneration: "1", actor: "legacy" };
+    listMailInbox(db, scope);
+    acknowledgeMailMessage(db, { ...scope, messageId: historical.message.id });
+    reportMailResult(db, { ...scope, messageId: historical.message.id, requestId: "legacy-report", result: { note: "Historical self-report", text: "Exact bytes: é  " } });
+    // Historical schemas allowed this kind even though the generic verifier
+    // remains unavailable. Migration must retain it without promoting its JSON.
+    db.prepare("INSERT INTO native_mail_receipts VALUES (?,?,?,'effect_receipt',?,?,?,?)")
+      .run("legacy-effect", historical.message.id, "legacy-effect-request", "legacy", null, '{"historical":"unverified  é"}', "2026-01-02T03:04:05.000Z");
+    disposeMailMessage(db, { ...scope, messageId: historical.message.id, requestId: "legacy-dispose" });
     const before = db.prepare("SELECT * FROM native_mail_receipts").all();
+    expect(new Set((before as Array<{ kind: string }>).map(receipt => receipt.kind))).toEqual(new Set(["offer", "exposure", "acknowledgment", "self_report", "effect_receipt", "disposal"]));
+    const messagesBefore = db.prepare("SELECT * FROM native_mail_messages").all();
     db.exec(`DROP INDEX idx_native_mail_direction; ALTER TABLE native_mail_messages DROP COLUMN direction_json;
       ALTER TABLE native_mail_receipts RENAME TO native_mail_receipts_new_fixture;
       CREATE TABLE native_mail_receipts (
@@ -72,11 +103,19 @@ describe("canonical direction receipt producers", () => {
     expect(db.prepare("SELECT * FROM native_mail_receipts").all()).toEqual(before);
     ensureNativeMailTables(db);
     expect(db.prepare("SELECT * FROM native_mail_receipts").all()).toEqual(before);
+    // A second successful initialization is a no-op, including all six old kinds.
+    ensureNativeMailTables(db);
+    expect(db.prepare("SELECT * FROM native_mail_receipts").all()).toEqual(before);
+    expect(db.prepare("SELECT * FROM native_mail_messages").all()).toEqual(messagesBefore);
     expect(db.pragma("foreign_key_check")).toEqual([]);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_native_mail_receipts_message'").get()).toBeTruthy();
     expect(sendMailMessage(db, input)).toEqual(offered);
     expect(directionForMail(offered.message)).toBeNull();
+    expect(mailStatus(db, historical.message.id).independentlyCheckedEffect).toBeNull();
+    expect(() => db.prepare("INSERT INTO native_mail_receipts SELECT 'duplicate-id', message_id, request_id, kind, actor, self_reported_result_json, effect_evidence_json, created_at FROM native_mail_receipts LIMIT 1").run()).toThrow("UNIQUE");
+    expect(() => db.prepare("INSERT INTO native_mail_receipts VALUES ('orphan','missing','orphan-request','offer','legacy',NULL,NULL,'2026-01-01')").run()).toThrow("FOREIGN KEY");
     db.prepare("DELETE FROM native_mail_messages WHERE id=?").run(offered.message.id);
+    db.prepare("DELETE FROM native_mail_messages WHERE id=?").run(historical.message.id);
     expect(db.prepare("SELECT * FROM native_mail_receipts").all()).toEqual([]); db.close();
   });
 

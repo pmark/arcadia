@@ -143,6 +143,8 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     // Draft target and in-flight operation survive navigation; requests use database ID, not slug.
     await page.getByRole("textbox").fill("Improve the Arcadia dashboard despite selected garden.");
     await page.getByRole("textbox").press("Tab");
+    await expect(page.getByRole("checkbox", { name: "Send as a direction to this context", exact: true })).toBeFocused();
+    await page.getByRole("checkbox", { name: "Send as a direction to this context", exact: true }).press("Tab");
     await expect(page.getByRole("button", { name: "Send new Ask", exact: true })).toBeFocused();
     await page.getByRole("link", { name: "Portfolio", exact: true }).click();
     await expect(page.getByRole("textbox")).toHaveValue("Improve the Arcadia dashboard despite selected garden.");
@@ -259,7 +261,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
     await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
     await expect.poll(() => posts.length).toBe(6);
-    await expect(page.getByText("Submission acknowledged via receipt.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Submission recorded via receipt.", { exact: true })).toBeVisible();
     await expect(page.getByRole("alert").filter({ hasText: "Browser storage" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

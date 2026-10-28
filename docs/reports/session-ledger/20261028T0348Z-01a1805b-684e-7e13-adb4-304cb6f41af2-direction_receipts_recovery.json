@@ -1,0 +1,29 @@
+{
+  "session_id": "01a1805b-684e-7e13-adb4-304cb6f41af2-direction_receipts_recovery",
+  "role": "driver",
+  "model": "inherited-unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/show-receipts-for-operator-directions",
+  "pr": 1838,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    { "id": "replacement-candidate-sandbox-write", "cost_min": null, "fix_ref": "docs/reports/direction-receipts-source-recovery-2026-10-28.md" },
+    { "id": "managed-fixture-launch-outcome-field", "cost_min": null, "fix_ref": "tests/direction-managed.test.ts" },
+    { "id": "managed-proof-requires-named-test-evidence", "cost_min": null, "fix_ref": "tests/direction-managed.test.ts" },
+    { "id": "e2e-recorded-receipt-copy", "cost_min": null, "fix_ref": "tests/e2e/workspace-shell.spec.ts" }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Finite native implementer source recovery handed back to Rowan for final exact-head review, CI, preservation and governed completion.",
+  "notes": "Native depth-one implementer; legacy driver label. No managed admission. Two repair batches plus explicit Rowan-authorized mechanical batch3; metrics unavailable."
+}

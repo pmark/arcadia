@@ -8,7 +8,7 @@ import { supersessionsReplacing, supersessionThatCreated, type AskSupersession }
 import { listAskRunEvidence } from "./runEvidence.js";
 import { projectDirection } from "../ask/directionState.js";
 
-import type { AskTrailOptions, AskTrailCapture, AskTrailOutcome, AskTrailSupersession, AskTrailAsk, AskTrailData } from "../ask/trailTypes.js";
+import type { AskTrailOptions, AskTrailOutcome, AskTrailSupersession, AskTrailAsk, AskTrailData } from "../ask/trailTypes.js";
 export type { AskTrailOptions, AskTrailCapture, AskTrailOutcome, AskTrailSupersession, AskTrailAsk, AskTrailData } from "../ask/trailTypes.js";
 
 interface CaptureRow {
