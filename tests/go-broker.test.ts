@@ -1,3 +1,4 @@
+import { renderStateSignalInstructions, sessionTitlesByState } from "../src/sessions/sessionTitle.js";
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -337,6 +338,10 @@ describe("protected Arcadia go broker", () => {
         workMonitor: workMonitorResponse.data,
         next: nextResponse.data,
         dispatchBrief: [
+          ...broker.renderGoAcknowledgment(nextResponse.data as never, "claude"),
+          "",
+          ...renderStateSignalInstructions("claude", sessionTitlesByState({ kind: "repair", plan: null, action: null })),
+          "",
           "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work.",
           "",
           ...broker.renderBriefIdentity(nextResponse.data as never, "claude", "/tmp/arcadia-workspace", "/tmp/prepared")

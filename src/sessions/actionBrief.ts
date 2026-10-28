@@ -14,6 +14,7 @@ import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity,
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
 import { renderRepairBrief, type ReviewRepairRow } from "./reviewRepair.js";
+import { renderStateSignalInstructions, sessionTitlesByState } from "./sessionTitle.js";
 import { scopeIntersection } from "./scopeCriteria.js";
 
 /**
@@ -324,6 +325,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "",
     ...renderRoleBlock(getRole(loadRoleRegistry(), "lead")),
     ...renderNativeRoleDispatch(input),
+    "",
+    ...renderStateSignalInstructions(input.agent, sessionTitlesByState({ kind: input.repair ? "repair" : "build", plan: input.planSlug, action: input.actionId })),
     "",
     "Next action:",
     action.nextAction ?? "(none declared)",

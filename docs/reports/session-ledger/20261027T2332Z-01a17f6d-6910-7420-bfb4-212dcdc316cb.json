@@ -1,0 +1,54 @@
+{
+  "session_id": "01a17f6d-6910-7420-bfb4-212dcdc316cb",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/project-go-context-as-compact-state-signals",
+  "pr": 1834,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 2,
+  "review_rounds": 3,
+  "blocking_findings": [
+    {
+      "class": "legacy-full-brief-expectations-in-integration-tests",
+      "caught_by": "CI40602876380"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "incomplete-rendered-fixture-context",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261027T2326Z-01a17f6d-6910-7420-bfb4-212dcdc316cb.md"
+    },
+    {
+      "id": "duplicate-lint-build-validation",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261027T2326Z-01a17f6d-6910-7420-bfb4-212dcdc316cb.md"
+    },
+    {
+      "id": "handoff-evidence-filename-contract",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261027T2326Z-01a17f6d-6910-7420-bfb4-212dcdc316cb.md"
+    },
+    {
+      "id": "rehearsal-probe-wall-report-classification",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1322"
+    },
+    {
+      "id": "legacy-full-brief-integration-expectations",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261027T2326Z-01a17f6d-6910-7420-bfb4-212dcdc316cb.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Source complete; merge/install/live pending. Native implementation+CI test repair=2 passes, no managed attempt. Review count includes requested R3. Runtime model/effort unavailable."
+}

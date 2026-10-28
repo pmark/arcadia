@@ -32,6 +32,10 @@ describe("renderActionBrief", () => {
     });
 
     expect(brief).toContain("Role: lead");
+    expect(brief).toContain("Compact state signals — opencode:");
+    expect(brief).toContain("Immediately acknowledge the actual observed assignment");
+    expect(brief).toContain("working: 🔨🔵 CP define-contract");
+    expect(brief).toContain("Title tool unavailable; suggested title:");
     expect(brief).toContain("arcadia roles --json");
     expect(brief).toContain(".agents/skills/arcadia-role/SKILL.md");
     expect(brief).toContain("--requested-by lead --depth 0 --action 'copy-proof#define-contract'");

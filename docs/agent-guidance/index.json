@@ -6,7 +6,7 @@
       "trigger": "start, continue, go, pointer, title, handoff, stop",
       "path": "docs/agent-guidance/continuation.md",
       "read_before": "Before starting or handing off any Action.",
-      "sha256": "31c316cd01417215df28dc087ffc8db287d28e4b6a1164b229b2a87d0d2c91c4"
+      "sha256": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f"
     },
     {
       "id": "agent-asks",
@@ -139,7 +139,7 @@
       "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
       "path": "docs/agent-guidance/native-app-sessions.md",
       "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "626d725cce8c6d2df255f4b216a8d8d13da163e751195eb683386672cba57731"
+      "sha256": "502882ca6bb33b2cc602052d7c94722d57566d3d59ed42fc1fb3edea57c88748"
     },
     {
       "id": "hacker-recovery",
@@ -167,7 +167,7 @@
       "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
       "path": "docs/agent-guidance/chat-titles.md",
       "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
-      "sha256": "68b829893bdf226aec3ad687603c055c02af78b9f449aceb405ee41d0e82d82d"
+      "sha256": "33e606b2ca1e7b1786385119168f6ff052e0d1ae675f9abef700cd77c29db0c9"
     },
     {
       "id": "skills",

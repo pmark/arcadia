@@ -105,3 +105,17 @@ export function sessionTitlesByState(input: Omit<SessionTitleInput, "state">): R
     SESSION_TITLE_STATES.map((state) => [state, formatSessionTitle({ ...input, state })])
   ) as Record<SessionTitleState, string>;
 }
+
+/** Shared native instructions; title maps are projections, never observed state or admission. */
+export function renderStateSignalInstructions(agent: "codex" | "claude" | "opencode", titles: Record<SessionTitleState, string>): string[] {
+  return [
+    `Compact state signals — ${agent}:`,
+    "Immediately acknowledge the actual observed assignment, selected Action, canonical Session evidence and next permitted step in a few sentences; keep detailed evidence available on demand.",
+    "Report observed state changes promptly. Never claim an active team from a role brief, claims or native activity; native activity does not prove governed Session admission.",
+    "Use the matching sessionTitles base with the host title tool only after observing the transition: working = authorized work underway; pr = PR open/in review; ci = independent review cleared and required checks remain; waiting = concrete input needed; blocked = external blocker; done = completion proved; parked = deliberate hold/handoff.",
+    "Keep canonical kind/state and Plan/Action or workstream early. Add the helper arrow only for a verified named parent assignment; preserve it on retitling. Selected A never replaces caller-assigned B. Refresh the brief when the assignment changes.",
+    "Idle, silence and end-of-turn alone never imply pause, completion or custody release. A completed title alone does not settle an Action or transfer custody.",
+    "If no title tool is exposed, say: Title tool unavailable; suggested title: <matching title>. Never assert a title update without a successful tool result. Title-tool support in each native runtime must be verified locally; these instructions prove no live provider support.",
+    ...SESSION_TITLE_STATES.map(state => `  ${state}: ${titles[state]}`)
+  ];
+}

@@ -60,6 +60,25 @@ reusing the old map. Skip retitling only in a coding-agent runtime
 that exposes no session-naming capability at all — never skip it merely
 because the session is mid-task.
 
+### Compact acknowledgment and observed changes
+
+For Codex, Claude Code and OpenCode, immediately acknowledge the observed caller
+state in a few sentences: assigned Plan/Action, selected Plan/Action when different,
+canonical Session evidence and the next permitted step. Keep details available on
+demand. The protected brief opens with this projection before its detailed evidence.
+An assigned B stays the title scope when the Project selects A; an unassigned
+selected Action is labelled `selected; unassigned`. A gate does not turn assigned
+implementation into a repair task. The title map supplies alternatives, not a claim
+that any transition occurred.
+
+Report each actual state change promptly and apply the matching `sessionTitles`
+base through the exposed host title tool. If no tool exists, disclose `Title tool
+unavailable; suggested title: <matching title>`; never assert an update without a
+successful tool result. No workers recorded or verified means no active-team claim.
+A native chat or helper launch does not prove canonical Session admission. Runtime
+title-tool support and installed adoption require separate live evidence; checked-in
+rendered examples in `tests/fixtures/go-state-signals.json` prove source behavior only.
+
 ### Chat relationships and attention
 
 Read [chat titles and attention signals](chat-titles.md) before choosing or
