@@ -4,7 +4,7 @@
   "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "plan": "make-arcadia-go-orient-one-caller-truthfully-before-authorized-work",
   "source": "docs/plans/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work.md",
-  "source_fingerprint": "68c0b0d29647b1c4",
+  "source_fingerprint": "df442c98758fecc0",
   "written": "2026-10-28",
   "author": "Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
   "title": "Go tells the truth, then lets you direct and continue work",

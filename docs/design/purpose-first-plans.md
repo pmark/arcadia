@@ -10,7 +10,7 @@ Design proposal, 2026-10-28. Editorial owner: Clara, technical-writing specializ
 
 Measured on `main` at `7b9434b`:
 
-- **Too many Plans.** Arcadia has 58 parseable Plans: 3 active, 32 draft, 12 complete, 2 proposed and 1 superseded.
+- **Too many Plans.** Arcadia has 50 Plans: 3 active, 32 draft, 12 complete, 2 proposed and 1 superseded.
 - **Most Actions have no "why".** The Plans hold 538 Actions, and **455 of them (85%) have no recorded `why`**.
 - **The titles and criteria are written for agents.** Titles carry briefing text such as "Recommended role: implementer, standard tier. Size M; execute only after a named source assignment…". Acceptance criteria are precise contracts ("Requirement REQ-004…") written for agents and reviewers, not for deciding what matters.
 - **"Active" doesn't mean current.** Two of the three active Plans are not current work. `portfolio-docs-protocol` says in its own body that its milestone was reached and its last Action is deferred. `idea-to-managed-build` has three open Actions that appear to overlap the Go Plan.
@@ -29,7 +29,7 @@ The records are right for governance. They are the wrong reading surface for an 
 
    Nothing is hidden. It's ordered.
 5. **Summaries never govern.** They are derived reading aids in a generated namespace and are never parsed as intent (Decision 0004). The Plan document is the authority, and a summary that disagrees with it loses.
-6. **Honest freshness.** A summary written before its source changed says so. Live state (status, owner, gates, progress) always comes from Arcadia, never from prose.
+6. **Honest freshness.** A summary written before its source changed says so. Fingerprints cover each Action's title, why, acceptance criteria and dependencies, plus the Plan's milestone, Action list and body prose, so an edit to any of them marks the summary stale. Live state (status, owner, gates, progress) always comes from Arcadia, never from prose.
 7. **Plain words, no internal IDs.** Requirement numbers, role tiers and file paths belong in Audit.
 
 ## The experience
@@ -108,5 +108,5 @@ Clara wrote summaries for the three active Plans, covering 24 Actions:
 
 1. **Show them.** The workspace reads `docs/generated/plan-summaries/<slug>.json` through the Plans read and renders titles, whys and done-whens. It falls back to the record when a summary is missing, and labels stale ones.
 2. **Check freshness:** a deterministic missing-or-stale report.
-3. **Backfill:** summaries for the remaining 55 Plans, with local-AI drafts and Clara reviewing anything active, upcoming or proposed.
+3. **Backfill:** summaries for the remaining 47 Plans, with local-AI drafts and Clara reviewing anything active, upcoming or proposed.
 4. **Tidy what "active" means.** Use the reading notes to propose closing or re-scoping Plans that are active in name only, such as `portfolio-docs-protocol`, through the governed path.

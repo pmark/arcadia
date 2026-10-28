@@ -4,7 +4,7 @@
   "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "plan": "idea-to-managed-build",
   "source": "docs/plans/idea-to-managed-build.md",
-  "source_fingerprint": "ffa8cac6409b3575",
+  "source_fingerprint": "7c20ad0e4b83ddf9",
   "written": "2026-10-28",
   "author": "Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
   "title": "From an idea to a managed build, without hand-carrying it",

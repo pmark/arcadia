@@ -31,7 +31,7 @@ Live state is never written here, because it changes faster than prose: status, 
 
 Each summary records a `source_fingerprint`: the first 16 hex characters of SHA-256 over compact, key-sorted JSON.
 
-- **Plan:** `{slug, milestone, actions: [ids in order]}`.
+- **Plan:** `{slug, milestone, actions: [ids in order], body: <SHA-256 hex of the Markdown body after the frontmatter>}`. The body is included because purposes and reading notes draw on it.
 - **Action:** `{id, title, acceptance_criteria, why, depends_on}`, taken from the Plan frontmatter.
 
 If the current fingerprint differs from the recorded one, the summary is stale. The UI then shows it as "written before this changed", or falls back to the record, and the summary is queued for rewriting.
