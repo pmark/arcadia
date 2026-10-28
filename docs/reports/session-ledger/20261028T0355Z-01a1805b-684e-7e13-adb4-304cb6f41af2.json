@@ -1,0 +1,27 @@
+{
+  "session_id": "01a1805b-684e-7e13-adb4-304cb6f41af2",
+  "role": "lead",
+  "model": "runtime-unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/show-receipts-for-operator-directions",
+  "pr": 1838,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    { "id": "candidate-owned-by-another-task", "cost_min": null, "fix_ref": "https://github.com/pmark/arcadia/pull/1838#issuecomment-6459883895" },
+    { "id": "e2e-recorded-receipt-copy", "cost_min": null, "fix_ref": "tests/e2e/workspace-shell.spec.ts" }
+  ],
+  "outcome": "complete",
+  "notes": "Native coordinator source recovery complete; R2, CI and governed completion remain separate PR receipts. No runtime adoption. Model/effort/usage unavailable."
+}

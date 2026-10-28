@@ -194,3 +194,32 @@ Stable-primary `learn search 'direction receipts migration keyboard timeout'
 freeze and fetched-main checkpoint before assignment. Denied secrets/env paths
 were not read. No external messaging, commits, pushes or governance mutation
 was performed by this implementer.
+
+## Rowan integration checkpoint
+
+Ellis released writer custody with all owned check handles terminal. Rowan
+preserved the seven-file recovery in `0015a437e`, then merged pinned main
+`62b2b5c0b4008c98075d61c83eef58499387ba4f` automatically without conflicts.
+Integrated source head: `0375ce3f56af68256a4cbb1531c812feeb04b2c9`.
+The primary checkout and stable management CLI remain at `7b9434bb`; no
+installation, restart or live schema adoption occurred.
+
+The integrated focused suite passed 13/13 in 22.50 seconds, exit 0
+(`/private/tmp/direction-recovery-integrated-focused.log`, SHA-256
+`e46063c208d06a88217ef25675de90e0e6ecfa0866a906a829abe2c5f3ee462b`).
+Integrated TypeScript `--noEmit` and full repository `pnpm lint` passed,
+both exit 0; full lint receipt is
+`/private/tmp/direction-recovery-integrated-lint.log`. Ledger validation and
+`git diff --check` passed. Independent generic R2 is
+assigned to a fresh read-only native context, scoped to the recovery delta
+since `0742d314` and the QA identity-loader integration. It has no source
+custody or registered reviewer/QA admission. The final signed review, required
+remote checks and any canonical completion receipt belong on PR #1838; this
+checkpoint does not predict their outcomes.
+
+The replacement was created by the supported app tool only after the operator
+explicitly amended the earlier no-duplication constraint. Existing local and
+remote history and PR lineage were retained. The verified route is retained
+as `lesson_9ee2b106486dbc0ed2fa`; it grants no future takeover authority.
+The earlier ownership-blocker Discord ping `ping_f9572a73dc054418a5` was last
+observed pending; queued does not mean delivered.
