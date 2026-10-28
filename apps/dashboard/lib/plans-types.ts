@@ -77,3 +77,12 @@ export interface PlanDetailResponse {
   plan: PlanRow | null;
   progress: PlanProgressData;
 }
+
+/** One Plan's summary state, as `/api/plan-summaries/[project]` reports it. Summaries are reading aids; the Plan governs. */
+export interface PlanSummaryEntry {
+  state: "fresh" | "stale" | "missing" | "invalid";
+  summary: import("../../../src/docs/planSummaries").PlanSummary | null;
+  /** Each Action id's own freshness. */
+  actions: Record<string, "fresh" | "stale" | "missing">;
+}
+export interface PlanSummariesResponse { project: string; generatedAt: string; plans: Record<string, PlanSummaryEntry> }
