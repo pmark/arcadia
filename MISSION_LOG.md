@@ -2795,3 +2795,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** The operator replied1 to the explicit numbered permission question. Record that human approval through the supported writer in the next owned candidate; preview alone does not apply this Log or grant permission. Source PR1851 is merged0193492e406acbeaa6c054ca4d0540bddd735dba; current Action remains open.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-28 — Agent Ask record-explicit-go-probe-option1-20261028
+
+- **Did:** Operator explicitly approved option1 in this coordinator chat on 2026-10-28: bounded delivery probe and return to current Plan, including rejection of R463 and governed sequencing; fix approval handoff and continue; Production Off and all interaction in Arcadia. Existing operational window remains2026-10-28T21:58Z; no new credentials, paid fallback, attempt reset, automation, gate bypass or outside-Plan work.
+- **Result:** This direct human selection supersedes ambiguity in evidence-only dashboard Accept receipts asksettle_5883668a83ee419da3 and asksettle_174cbd6c7d1b4f5dbc. Proposal acceptance itself did not select scope. R463 had already been approved and completed read-only planning Run run_cfb83d27424a406e9c; approved receipt cannot be rewritten. Its still-open derivative R464 was rejected through Review under the approved withdrawal scope. Preserve both historical receipts; no planning retry. PR1855 records merged81a8e48d87b03f9b3d952753659139acc5767d78. Actual probe may run only through protected browser confirmation with gates intact.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

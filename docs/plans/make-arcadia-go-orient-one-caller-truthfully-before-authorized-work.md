@@ -107,17 +107,17 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Offer Go's next permitted move as a Continue control in the workspace through the existing protected continuation, and complete one bounded real operator-assisted delivery through it.
+    next_action: Implement the remaining acceptance evidence for the existing workspace Continue after the approved probe delivery, retaining its four declared criteria and recording actual separate source, adoption and live results.
     expected_artifact: Evidence satisfying Agent Ask continue-from-go-in-the-workspace
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
+    source: Agent Ask sequence-approved-go-probe-return-20261028
     acceptance_criteria:
       - Continue appears only when Go's resolution for the shown Action is dispatchable, previews target, owner, provider and limits before commitment, and invokes the existing protected Go continuation with a stable request id so that repeated or concurrent presses produce at most one claim, candidate and Session.
       - A resolution that changed after it was shown refuses with the changed facts and offers a fresh read; no approval, credential or production gate is bypassed, and Production stays Off unless separately started.
       - One bounded real operator-assisted delivery through the workspace is recorded with its receipts and pull request, with source, installed adoption and live proof recorded as separate stages.
       - The delivery record names separate evidence artifacts and verification results for source revision and required checks, installed adoption revision and receipt, and live attempt receipts and observed outcome. A failed, blocked or unknown stage is recorded explicitly and never inferred successful from another stage; real-delivery acceptance requires the declared live proof under separately valid authority.
-    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions]
+    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions, implement-go-live-delivery-checklist]
     decisions: []
     references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
   - id: continue-through-approved-scope-from-the-workspace
@@ -125,11 +125,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Let the operator approve one bounded scope of eligible Actions once in the workspace, and have Go continue through it one Action at a time, stopping at the first gate with the reason shown.
+    next_action: Implement the approved bounded continuation scope in the workspace, one eligible Action at a time, preserving every declared criterion and stopping at the first gate.
     expected_artifact: Evidence satisfying Agent Ask continue-through-approved-scope-from-the-workspace
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-go-workspace-ui-actions-20261027-r3
+    source: Agent Ask sequence-approved-go-probe-return-20261028
     acceptance_criteria:
       - Implementation starts only after the separate bounded-continuation scope Decision from Agent Ask propose-go-bounded-continuation-scope-decision-20261027 is opened and answered by the operator, the answered option permits bounded continuation, and a fresh named source assignment is recorded; fixtures implement that answered option. Until then the workspace offers only the separately authorized one-Action Continue. If the operator selects one Action per press, the fourth Action is not built.
       - The preview names the exact ordered Actions in scope from Go's own resolution, the owner, provider and limits for each, and every stop condition; an approval covers only that recorded scope and expires when Go's resolution for it changes, and the workspace never selects or reorders work.
@@ -140,9 +140,26 @@ actions:
     depends_on: [continue-from-go-in-the-workspace]
     decisions: []
     references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
+  - id: implement-go-live-delivery-checklist
+    title: Implement a concise Go live-delivery evidence checklist in START_HERE.md through one protected workspace Continue Session.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement a concise Go live-delivery evidence checklist in START_HERE.md through one protected workspace Continue Session.
+    expected_artifact: Evidence satisfying Agent Ask implement-go-live-delivery-checklist
+    clarification: clarified
+    confidence: high
+    source: Agent Ask sequence-approved-go-probe-return-20261028
+    acceptance_criteria:
+      - START_HERE.md contains a concise Go delivery checklist that separately names source revision and required checks, installed revision and adoption receipt, and actual workspace Session receipt, observed result and resulting delivery PR; it never describes planning-only output, storage, source tests or installation as real-delivery acceptance.
+      - The checklist tells the operator to inspect the protected Continue preview target, owner, configured provider and limits, retain stable request and Session receipts, reconcile an unknown outcome before another press, and stop on changed facts or an existing approval gate; Production remains Off unless separately started.
+      - The implementation changes only START_HERE.md apart from canonical Agent Ask completion records. The existing node scripts/preservation-self-check.mjs validation and git diff --check pass. Completion evidence describes this source checklist only and does not assert that its own future PR already exists.
+    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions]
+    decisions: []
+    references: ["agentask_33a2ae289adae37e03", "agentask_c2535307f9d97b4915", "https://github.com/pmark/arcadia/pull/1851"]
 questions: []
 decisions: []
-current_action: continue-from-go-in-the-workspace
+current_action: implement-go-live-delivery-checklist
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
