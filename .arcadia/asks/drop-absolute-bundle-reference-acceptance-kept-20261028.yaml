@@ -1,0 +1,21 @@
+agent_ask: v1
+request_id: drop-absolute-bundle-reference-acceptance-kept-20261028
+project: arcadia
+intent: plan
+target_ref: plan/bootstrap-managed-production-to-build-flight-deck
+desired_result: Remove the absolute workspace bundle path from the preserve-unchanged-baseline-skill-symlinks references so the Plan records only repository-relative paths, URLs and governed ids.
+rationale: "PR #1845 recorded an absolute path to one machine's workspace bundle in the Action references. Such a path does not resolve on other machines. The next_action, acceptance and title are unchanged; only the references list is replaced."
+actions:
+  - target_ref: action/preserve-unchanged-baseline-skill-symlinks
+    desired_result: "Implement protected preservation of unchanged baseline tracked symlink blobs without following candidate links, retaining the current escape and race guards."
+    acceptance:
+      - "Protected candidate capture retains an unchanged tracked mode-120000 baseline entry from its immutable Git blob without dereferencing it; candidate-added or modified symlinks and path escapes still refuse, and normal regular-file capture retains its existing guards."
+      - "Focused regressions and a hermetic invocation of the literal no-argument Claude preservation launcher prove successful capture, unchanged replay, changed-tree receipt identity, and refusal of modified/new symlinks, ancestor-link escapes and unsafe or raced regular-file inputs; failed capture does not change the candidate index."
+      - "The PR #1033 repair and both preservation packets remain intact; evidence distinguishes reviewed source from installed runtime and gives the exact remaining bootstrap boundary without raw commits, symlink deletion, repeated unchanged refusals, installation or completion resettlement."
+      - "Typecheck, lint and focused preservation tests pass; run fast-rehearsal once on final changed source before any separately authorized installation."
+    references:
+      - https://github.com/pmark/arcadia/issues/1032
+      - src/sessions/candidateSnapshot.ts
+      - docs/working-copy-safety.md
+      - decision/0086
+      - decision/0091
