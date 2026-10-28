@@ -20,10 +20,10 @@ its own goes to an Issue, a proposal or an Agent Ask as before.
 The instruction authorizes the named work and nothing more. Everything else
 is unchanged:
 
-- Read `CONSTITUTION.md`, `PROJECT.md` and the active Plan's current Action
-  (to rule out overlap, not to work on it), search the Project's
-  `docs/notes-to-self.md` with a targeted `rg`, and read every indexed
-  procedure your operations trigger.
+- Read `CONSTITUTION.md`, `PROJECT.md` frontmatter and the active Plan's current
+  Action (to rule out overlap, not to work on it; Current State only if needed),
+  search the Project's `docs/notes-to-self.md` with a targeted `rg`, and read
+  every indexed procedure your operations trigger.
 - Run `arcadia work monitor --no-pull-requests` before editing. Work in a fresh
   isolated worktree off the clean base, never on `main` or in another session's
   checkout. Resolve the agent identity for every commit and comment.

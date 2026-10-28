@@ -104,7 +104,7 @@
       "trigger": "operator-directed, operator asks directly, side track, parallel track, outside the plan, no Action",
       "path": "docs/agent-guidance/operator-directed-work.md",
       "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
-      "sha256": "80ed27ced7a3b37a8652ef8e4c7db92052727dbab175c4b5b2badf7696503014"
+      "sha256": "4e5e1be606bef778bb505d01d29956940560dc4152b404e7c4b33644d9555072"
     },
     {
       "id": "standard-harness",
