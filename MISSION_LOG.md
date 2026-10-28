@@ -2788,3 +2788,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Record factual source-stage and transfer preparation under the operator-authorized bounded current-Plan work and one fresh Rowan handoff. This creates no new authority, Action completion, custody transfer or queue change. Actual source merge and verified successor identity will be named by the final PR closeout and supported host prompt.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-28 — Agent Ask record-go-protected-preflight-approval-20261028
+
+- **Did:** Record direct operator selection1 in coordinator chat01a180d7-3f9b-7581-be2d-93d5f8f8b7eb user turn01a182ff-7beb-7791-8424-a407c2a4be4e at2026-10-28T14:52:23Z. The exact preceding option allowed the existing protected launch sign-in, capacity and capability checks for the current Plan live proofs until2026-10-28T21:58:00Z (2:58pm Pacific). This is a narrow addition to the13:58 renewal/browser delegation, not a new window or counter reset. Credential changes, standalone probes, paid fallback, attempt resets, automation, safeguard bypass and Production START remain excluded. Production stays Off; configured runtime/model defaults stay. Actual protected browser confirmations and reviewed adoption remain authorized under renewal asksettle_58aed82897b941fdbd. Source, installed adoption and real delivery evidence remain separate; no Action/Plan completion is claimed. One fresh Rowan handoff at the verified source boundary is already authorized.
+- **Result:** The operator replied1 to the explicit numbered permission question. Record that human approval through the supported writer in the next owned candidate; preview alone does not apply this Log or grant permission. Source PR1851 is merged0193492e406acbeaa6c054ca4d0540bddd735dba; current Action remains open.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
