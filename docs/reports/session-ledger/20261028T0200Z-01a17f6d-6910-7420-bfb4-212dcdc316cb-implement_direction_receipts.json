@@ -7,13 +7,13 @@
   "effective_effort": null,
   "effort_source": null,
   "action_id": "arcadia/show-receipts-for-operator-directions",
-  "pr": null,
+  "pr": 1838,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
+  "review_rounds": 1,
   "blocking_findings": [
     {
       "class": "unused-type-import-lint",
