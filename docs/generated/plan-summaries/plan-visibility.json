@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "plan-visibility",
+  "source": "docs/plans/plan-visibility.md",
+  "source_fingerprint": "47da788fd1d48c4d",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "See every plan a repository holds",
+  "purpose": "Lets the operator see every plan in a repository, including draft and proposed plans that were otherwise hard to find. Plans that are not yet governed show their stated trigger, or say plainly that they have none.",
+  "serves": "Serves the milestone of full visibility into a repository's plans, which supports the Project outcome of not needing to hold the whole portfolio in one's head.",
+  "done_when": "The plans command lists every plan in a repository with its status, and the Project page shows its active plan and links to the full list.",
+  "actions": [
+    {
+      "id": "add-plans-command",
+      "title": "Add a read-only command that lists a repository's plans",
+      "why": "Draft and proposed plans were hidden unless someone opened the plan folder by hand.",
+      "done_when": "Running the command lists every plan with its status and, for governed plans, its Action counts; ungoverned plans are labelled, and their trigger is quoted or its absence is stated.",
+      "source_fingerprint": "e66f5a6d0226bde2"
+    },
+    {
+      "id": "surface-plans-on-project-detail",
+      "title": "Show a Project's plans on its detail page",
+      "why": "Lets the operator reach the full plan list from the Project page, not only from the command line.",
+      "done_when": "The Project page shows its active plan and up to three others, with a link to the full list that matches the command's fields, and a Project with no repository path says so.",
+      "source_fingerprint": "9f88b48c9eb4168c"
+    }
+  ]
+}

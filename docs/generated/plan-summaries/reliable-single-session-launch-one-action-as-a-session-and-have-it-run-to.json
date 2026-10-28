@@ -1,0 +1,72 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to",
+  "source": "docs/plans/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to.md",
+  "source_fingerprint": "5321d78605543114",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Run one launched action to completion, observably",
+  "purpose": "Lets the operator launch one Action as a session from the dashboard and have it run to a recorded outcome. Sessions run without a terminal screen, leave a full record, and stop automatically if they get stuck.",
+  "serves": "The Project outcome of Arcadia driving a coding agent to a reported result.",
+  "done_when": "One Action launched from the session board runs to a draft pull request with its live log and exit recorded, proved end to end offline and then live three times in a row.",
+  "actions": [
+    {
+      "id": "headless-observable-session-launch",
+      "title": "Run launched sessions without a screen, with a full record",
+      "why": "A session left in an interactive window cannot be watched reliably or recorded in full.",
+      "done_when": "Sessions the operator launches run without the interactive screen, and their full output and exit are kept.",
+      "source_fingerprint": "a41b3dcabca88857"
+    },
+    {
+      "id": "bounded-session-lifetime",
+      "title": "Stop a stuck session automatically",
+      "why": "A stuck session should not hold the repository lock indefinitely.",
+      "done_when": "Each session has a time limit from policy, and a blocking condition ends it without deleting its worktree or branch, so the work so far is kept.",
+      "source_fingerprint": "3f27c44e37f938ca"
+    },
+    {
+      "id": "operator-launch-runs-to-completion",
+      "title": "Let one confirmed launch run to completion",
+      "why": "A confirmed launch should finish with its work kept and its outcome recorded, even with production switched off.",
+      "done_when": "A confirmed launch of one Action records a one-time permission for that Action and session, which expires after 24 hours or on first use, and the outcome is recorded.",
+      "source_fingerprint": "93a6c60333405ae5"
+    },
+    {
+      "id": "prove-single-session-offline",
+      "title": "Prove the single-session path offline",
+      "why": "A quick offline proof catches breakages on every change, without spending on live runs.",
+      "done_when": "A rehearsal runs one Action through the same production code in a real terminal session, and injected failures such as a crash, a stall or a refused permission are each handled.",
+      "source_fingerprint": "d270c33407fb9537"
+    },
+    {
+      "id": "session-board-page",
+      "title": "Build a session board to launch and watch actions",
+      "why": "Gives the operator one page for everything to do, with a launch control and live output.",
+      "done_when": "The board lists every operator item and ready Action with its project and plan, and a launched session shows its status, elapsed time and log tail, refreshed while it runs.",
+      "source_fingerprint": "2b79ecab3da84307"
+    },
+    {
+      "id": "prove-single-session-live",
+      "title": "Prove three live launches end to end",
+      "why": "Shows the path works on real providers repeatedly, not just once.",
+      "done_when": "Three consecutive launches of a small real Action each end merged to main, with no intervention between launch and merge, and the evidence recorded for each.",
+      "source_fingerprint": "b809327eb27da438"
+    },
+    {
+      "id": "launched-pr-review-repair-merge",
+      "title": "Carry a launched pull request through review and merge",
+      "why": "Lets routine pull requests reach main, while stopping at any gate that needs the operator.",
+      "done_when": "A draft pull request from a confirmed launch passes an independent review, is repaired as needed and merges on green, and any gate needing the operator raises one item naming the pull request and reason.",
+      "source_fingerprint": "0117abe5545dffb1"
+    },
+    {
+      "id": "chain-as-loop-of-single-runs",
+      "title": "Launch the next ready action after each merge",
+      "why": "Lets a chain of Actions proceed without a manual launch for each one.",
+      "done_when": "Two consecutive live chains of two real Actions each run from one confirmed launch to both Actions merged, within a stated maximum number of Actions.",
+      "source_fingerprint": "88e85f079f8c4710"
+    }
+  ]
+}

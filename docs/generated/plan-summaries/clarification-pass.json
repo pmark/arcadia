@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "clarification-pass",
+  "source": "docs/plans/clarification-pass.md",
+  "source_fingerprint": "2a0e4ad6df7b5c15",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Turn unclear Actions into clear next steps",
+  "purpose": "Arcadia checks each under-specified Action and either writes a concrete next step or asks the operator exactly one question about what is missing. The original input is kept either way.",
+  "serves": "The Project outcome of Arcadia asking for a decision only when one is genuinely needed.",
+  "done_when": "An unclear Action ends with either a concrete next step or one question for the operator, and the original input is still there.",
+  "reading_note": "Inference: the Plan is marked complete, but check its last Action, which requires clarified Actions before planning work and waits for a Decision.",
+  "actions": [
+    {
+      "id": "phase-1-plumbing",
+      "title": "Add basic commands for artifacts and expected outputs",
+      "why": "Gives the clarification work a place to record what each Action should produce.",
+      "done_when": "The help lists the artifact command and the expected-artifact option, and an artifact created for an Action keeps the value given.",
+      "source_fingerprint": "a6fe9c25053ba7d2"
+    },
+    {
+      "id": "phase-2-fields",
+      "title": "Add clarification fields to work items",
+      "why": "Stores whether an Action is clear, what is missing, and where that judgement came from.",
+      "done_when": "New and upgraded databases both have the clarification fields, with no duplicates after repeated upgrades.",
+      "source_fingerprint": "86377b1cec5d516e"
+    },
+    {
+      "id": "phase-3-decisions-subtasks",
+      "title": "Record clarification questions as decisions and subtasks",
+      "why": "Lets a missing piece of information become a question the operator answers, and lets a large Action be split.",
+      "done_when": "A clarification question opens as a decision, and a subtask shows its parent Action in the list.",
+      "source_fingerprint": "47d21ae1e5430400"
+    },
+    {
+      "id": "phase-4-orchestrator",
+      "title": "Clarify Actions with the Arcadia assistant",
+      "why": "Lets the system judge each Action automatically and ask one question when something is missing.",
+      "done_when": "A clear Action is marked clarified, and an unclear one is marked open with one question and its gap type, with the original input preserved.",
+      "source_fingerprint": "8efcb9b867c8b3de"
+    },
+    {
+      "id": "plan-gate",
+      "title": "Require clarified Actions before planning work",
+      "why": "Stops unclear Actions from being dispatched until the operator decides how the rule applies.",
+      "done_when": "A decision records whether planning requires clarified Actions, and until it is answered an unclear Action is not dispatched.",
+      "source_fingerprint": "f85e2ef7f9334526"
+    }
+  ]
+}

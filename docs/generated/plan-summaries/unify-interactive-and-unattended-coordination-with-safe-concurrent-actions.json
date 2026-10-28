@@ -1,0 +1,51 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+  "source": "docs/plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md",
+  "source_fingerprint": "bb3ca3d62043ce21",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Let interactive and unattended work share one coordination path",
+  "purpose": "Interactive continuation and unattended execution should share one ownership and enrollment contract, so the same Action cannot be owned twice. Several independent Actions should then be able to run safely at once, with the concurrency rules kept explicit.",
+  "serves": "The Project outcome of several coding agents making progress without stepping on each other's work.",
+  "done_when": "Two independent Actions can run side by side with one owner each, and their settlements land in order without lost updates.",
+  "actions": [
+    {
+      "id": "prove-shared-enrollment-at-concurrency-one",
+      "title": "Prove interactive and unattended work share one owner",
+      "why": "Two requests for the same Action must not both own it, whichever way they arrive.",
+      "done_when": "A race between interactive and unattended requests for one Action leaves exactly one owner, and an exact replay returns only that requester's receipt.",
+      "source_fingerprint": "3135b68e0707963c"
+    },
+    {
+      "id": "preview-safe-concurrent-action-selection",
+      "title": "Preview which extra actions can run safely together",
+      "why": "Lets Arcadia name independent Actions that can run side by side, with a clear reason for each conflict.",
+      "done_when": "A preview lists only ready, approved, non-conflicting extra Actions in priority order, and unknown conflicts stay exclusive.",
+      "source_fingerprint": "dcaab2be94ca8180"
+    },
+    {
+      "id": "prove-atomic-scoped-concurrent-admission",
+      "title": "Prove two independent actions can be admitted together",
+      "why": "Shows the admission rules hold when two separate Actions start at once.",
+      "done_when": "Two authorized, separate Actions are admitted in their own candidates, competing requests for one Action produce one owner, and conflicting scopes are refused.",
+      "source_fingerprint": "647126ad3bef13e1"
+    },
+    {
+      "id": "prove-safe-concurrent-settlement-and-integration",
+      "title": "Prove concurrent completions settle without lost updates",
+      "why": "Two Actions finishing together must not overwrite each other's records or accept stale work.",
+      "done_when": "Interleaved completions keep both Actions and their evidence, stale writes are refused, and integration into main happens one candidate at a time.",
+      "source_fingerprint": "a713bfa118d16c42"
+    },
+    {
+      "id": "prove-one-supported-native-supervision-adapter",
+      "title": "Prove one native runtime can be supervised",
+      "why": "Lets a native runtime be watched through the same contract as the managed fallback.",
+      "done_when": "One available native runtime shows a stable session identity, liveness and outcome, and an unsupported runtime is refused without faking a managed session.",
+      "source_fingerprint": "f382446b5d062de6"
+    }
+  ]
+}

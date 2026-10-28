@@ -1,0 +1,65 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and",
+  "source": "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md",
+  "source_fingerprint": "4f2cbc862466d81b",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Fix seven verified settlement and integrity bugs",
+  "purpose": "Seven bugs in settlement, queue and preservation handling were verified. Each can cause a duplicate session, a wrong queue, a stuck rejection, a garbled plan or a wrong record. This Plan fixes each one in its own pull request.",
+  "serves": "The Project outcome of Arcadia's governed work staying trustworthy when it runs unattended.",
+  "done_when": "Each of the seven fixes is merged to main in its own pull request, with its regression test and a passing rehearsal.",
+  "actions": [
+    {
+      "id": "keep-claim-when-passed-attempt-receipt-is-unparseable",
+      "title": "Keep a claim when a passed receipt cannot be read",
+      "why": "A garbled receipt currently releases the claim, which can start a duplicate session for a finished candidate.",
+      "done_when": "A passed attempt with a malformed receipt keeps its claim, and a well-formed superseded attempt still releases it, each with a regression test.",
+      "source_fingerprint": "4247a19c2ddb29c7"
+    },
+    {
+      "id": "settle-superseded-decision-ask-rejection",
+      "title": "Let a superseded decision request be rejected",
+      "why": "Six superseded decision rejections are stuck, and a similar identifier could match the wrong request.",
+      "done_when": "A superseded decision request can be rejected, and an identifier that is a prefix of another matches only its own request.",
+      "source_fingerprint": "8ef26dbf4b14310a"
+    },
+    {
+      "id": "amend-action-consumes-block-scalar-and-literal-ids",
+      "title": "Amend actions with exact text and identifiers",
+      "why": "An amendment can show old and new instructions joined together, and special characters can garble a plan.",
+      "done_when": "An amended instruction equals the requested text exactly, and text containing special characters is written literally by every writer.",
+      "source_fingerprint": "7c6f8fab8295dbd4"
+    },
+    {
+      "id": "keep-queue-positions-of-projects-not-visible-at-arrange",
+      "title": "Keep queue positions for projects that are temporarily hidden",
+      "why": "A temporary block on one project can erase another project's order and stop every ordering change.",
+      "done_when": "Arranging the queue while one project is temporarily blocked leaves that project's positions intact, and retired items are still removed.",
+      "source_fingerprint": "b29621d5a7ae3ff3"
+    },
+    {
+      "id": "refuse-hidden-renames-in-committed-completion-replay",
+      "title": "Refuse completion proofs that hide a deletion",
+      "why": "A rename can make a deleted governed record look as if it was never removed.",
+      "done_when": "A commit that renames a governed record into the asks folder is refused, and a forced timeout leaves no leftover scratch folder.",
+      "source_fingerprint": "b2d1dfd12e40ee36"
+    },
+    {
+      "id": "allocate-decision-numbers-from-origin-and-refuse-duplicates",
+      "title": "Stop two decisions taking the same number",
+      "why": "Parallel sessions can allocate the same Decision number, so a citation may point to the wrong record.",
+      "done_when": "New Decision numbers are allocated from the main branch as well as local files, and a new duplicate number fails the lint check.",
+      "source_fingerprint": "da1362a4e5d578c9"
+    },
+    {
+      "id": "write-yaml-scalars-that-round-trip-as-strings",
+      "title": "Keep text values as text in saved records",
+      "why": "A title such as true or a bracketed phrase can silently turn into a different type, which unattended agents would not notice.",
+      "done_when": "Values such as true, null, 123 and bracketed text are saved and read back unchanged as text, and ordinary text renders as before.",
+      "source_fingerprint": "e80d98758bdf3bbb"
+    }
+  ]
+}
