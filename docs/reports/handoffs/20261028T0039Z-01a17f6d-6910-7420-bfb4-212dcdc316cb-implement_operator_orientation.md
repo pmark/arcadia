@@ -180,3 +180,9 @@ from this self-report. Resume this same writer only for a named finite repair.
 ## Rowan preservation checkpoint
 
 Main fetched and both checkpoint listings rechecked before preservation: no change beyond `ec08741392ebe71dfd06391453440dccdba70d71`. The implementer released sole-writer custody; all owned checks are terminal. Parent replay passed 14/14. Issue1322 recurrence retained at https://github.com/pmark/arcadia/issues/1322#issuecomment-6457500309. The native helper ledger uses its explicit composite context ID to avoid duplicating the coordinator chat row; its legacy schema role `driver` denotes implementer, not a new registered role. Source revision and completion receipts follow in canonical Git/Agent Ask records.
+
+## Preserved source and canonical completion
+
+Source commit `85e423083e0236ce1805396d040c1ab4aa65540b`; deterministic-proof completion `asksettle_a951f20023f34f2e86` at `8bcb0aa9efa7b55f074f038c4e9f71e2c3a00dc0`, request `complete-go-operator-orientation-20261027-rowan`, proposal `agentask_b7edc3a1c09fccc188`, preview `292830391c9c000f1c03b4195a0321727005e0f6c3d388c681d2e385b561a4a4`. All four criteria retained verbatim/in order. Registered Ask bytes are preserved in the canonical archive; queue order unchanged. Candidate pointer now show-receipts-for-operator-directions; primary stays orientation until merge.
+
+PR https://github.com/pmark/arcadia/pull/1836, independent generic R1 requested at creation and required CI pending at this evidence capture. Reviewer context /root/review_operator_orientation_r1 is read-only; no registered reviewer/QA admission claimed. PR comments/registered evidence will hold final review and CI proof without claiming this pending snapshot already passed. Installation, live proof, scope and Production START remain separate.

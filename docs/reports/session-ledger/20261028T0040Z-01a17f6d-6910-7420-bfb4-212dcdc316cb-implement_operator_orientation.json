@@ -7,13 +7,13 @@
   "effective_effort": null,
   "effort_source": null,
   "action_id": "arcadia/project-go-orientation-for-the-operator",
-  "pr": null,
+  "pr": 1836,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
+  "review_rounds": 1,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -45,5 +45,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Native helper /root/implement_operator_orientation; legacy driver=implementer. Source proof complete, PR not allocated. No managed Session/admission; runtime model/usage unavailable."
+  "notes": "Native helper /root/implement_operator_orientation; legacy driver=implementer. Source complete; R1 requested, CI pending. No managed Session/admission; runtime model/usage unavailable."
 }
