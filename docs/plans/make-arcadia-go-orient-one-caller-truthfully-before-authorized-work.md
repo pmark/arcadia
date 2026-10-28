@@ -85,10 +85,10 @@ actions:
     references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
   - id: show-receipts-for-operator-directions
     title: "Record and show an operator direction's receipts as distinct evidence-backed states: submitted, delivered, acknowledged, continued and verified, plus unknown and held."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Record and show an operator direction's receipts as distinct evidence-backed states: submitted, delivered, acknowledged, continued and verified, plus unknown and held."
+    next_action: Completed via Agent Ask complete-operator-direction-receipts-source-20261028; no further action.
     expected_artifact: Evidence satisfying Agent Ask show-receipts-for-operator-directions
     clarification: clarified
     confidence: high
@@ -142,7 +142,7 @@ actions:
     references: ["agentask_ac0f04ed38fa1264ec", "asksettle_e005780d8bc44d1aba", "agentask_1b49d1d91f4662bfac", "agentask_0c62dc0a9245204aeb", "agentask_58b16fc9b8aec479e0"]
 questions: []
 decisions: []
-current_action: show-receipts-for-operator-directions
+current_action: continue-from-go-in-the-workspace
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
