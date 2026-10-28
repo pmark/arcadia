@@ -63,6 +63,12 @@ describe("Plan summary fingerprints", () => {
     expect(actionFingerprint(readPlanSource("p.md", plan(undefined, "Because"))!.actions[0])).not.toBe(actionFingerprint(base.actions[0]));
     expect(actionFingerprint(readPlanSource("p.md", plan(undefined, "Because"))!.actions[1])).toBe(actionFingerprint(base.actions[1]));
   });
+  it("match a fixed vector, cross-checked with Python's json.dumps(sort_keys=True, separators=(',', ':'), ensure_ascii=False)", () => {
+    const golden = "---\narcadia: v1\ntype: plan\nslug: jardín\nproject: demo\nstatus: active\nmilestone: Un jardín — 庭 🌱\nactions:\n  - id: plant\n    title: Plant the beds\n    status: open\n    why: \"So it shows — “quoted”\"\n    acceptance_criteria:\n      - Beds are planted.\n---\n\n# Jardín\n\nGrow food for the street. 🌻\n";
+    const source = readPlanSource("docs/plans/jardin.md", golden)!;
+    expect(planFingerprint(source)).toBe("36b1f4b5fe9fe53c");
+    expect(actionFingerprint(source.actions[0])).toBe("e1436f2efe84b04c");
+  });
   it("ignore files that are not type: plan", () => {
     expect(readPlanSource("x.md", "# Just notes\n")).toBeNull();
     expect(readPlanSource("x.md", "---\narcadia: v1\ntype: decision\nslug: d\n---\n")).toBeNull();
@@ -85,6 +91,18 @@ describe("Plan summary freshness", () => {
     expect(comparePlanSummary(source, { schema: "other" }).state).toBe("invalid");
     expect(comparePlanSummary(source, { ...stampPlanSummary(source, authored), plan: "another" }).state).toBe("invalid");
   });
+  it("re-stamps with current fingerprints even when the authored input carries old ones", () => {
+    const source = readPlanSource("docs/plans/garden.md", plan())!;
+    const resubmitted = { ...authored, schema: "x", source: "elsewhere.md", source_fingerprint: "deadbeefdeadbeef" } as typeof authored;
+    const summary = stampPlanSummary(source, resubmitted);
+    expect(summary).toMatchObject({ schema: "arcadia-plan-summary-v1", source: "docs/plans/garden.md", source_fingerprint: planFingerprint(source) });
+    expect(comparePlanSummary(source, summary).state).toBe("fresh");
+  });
+  it("keeps the Plan text fresh when only an Action changed", () => {
+    const summary = stampPlanSummary(readPlanSource("docs/plans/garden.md", plan())!, authored);
+    expect(comparePlanSummary(readPlanSource("docs/plans/garden.md", plan(undefined, "Because"))!, summary)).toMatchObject({ state: "stale", planFresh: true });
+    expect(comparePlanSummary(readPlanSource("docs/plans/garden.md", plan("Another milestone"))!, summary)).toMatchObject({ state: "stale", planFresh: false });
+  });
   it("refuses to stamp a summary whose Actions don't match the Plan", () => {
     const source = readPlanSource("docs/plans/garden.md", plan())!;
     expect(() => stampPlanSummary(source, { ...authored, actions: authored.actions.slice(0, 1) })).toThrow(/missing water/);
@@ -96,11 +114,13 @@ describe("Plan summary freshness", () => {
       "docs/plans/notes.md": "# Not a plan\n",
       "docs/plans/nested/orchard.md": plan().replace("slug: garden", "slug: orchard"),
       "docs/generated/plan-summaries/garden.json": JSON.stringify(stampPlanSummary(source, authored)),
-      "docs/generated/plan-summaries/orchard.json": "{not json"
+      "docs/generated/plan-summaries/orchard.json": "{not json",
+      "docs/plans/odd.md": plan().replace("slug: garden", "slug: ../escape"),
+      "docs/escape.json": JSON.stringify({ ...stampPlanSummary(source, authored), plan: "../escape" })
     });
     const report = checkPlanSummaries(root);
-    expect(report.plans.map(p => [p.plan, p.state])).toEqual([["garden", "fresh"], ["orchard", "invalid"]]);
-    expect(report.counts).toEqual({ fresh: 1, stale: 0, missing: 0, invalid: 1 });
-    expect(report.actions).toEqual({ total: 4, fresh: 2, stale: 0, missing: 2 });
+    expect(report.plans.map(p => [p.plan, p.state])).toEqual([["../escape", "invalid"], ["garden", "fresh"], ["orchard", "invalid"]]);
+    expect(report.counts).toEqual({ fresh: 1, stale: 0, missing: 0, invalid: 2 });
+    expect(report.actions).toEqual({ total: 6, fresh: 2, stale: 0, missing: 4 });
   });
 });

@@ -92,17 +92,17 @@ export async function loadPlanSummaries(projectSlug: string): Promise<PlanSummar
   if (!found) throw new PlanNotFound(`No Project "${projectSlug}" is in this workspace.`);
   if (!found.repoPath) throw new PlanNotFound(`Project "${projectSlug}" has no repository path, so its summaries cannot be read.`);
   const repoPath = found.repoPath;
-  return cachedStale(`plan-summaries:${found.slug}`, PLANS_TTL_MS, async () => {
-    const report = checkPlanSummaries(repoPath);
-    const plans: PlanSummariesResponse["plans"] = {};
-    for (const status of report.plans) {
-      const raw = status.state === "fresh" || status.state === "stale" ? readPlanSummary(repoPath, status.plan) : null;
-      plans[status.plan] = {
-        state: status.state,
-        summary: raw && isPlanSummary(raw) ? raw : null,
-        actions: Object.fromEntries(status.actions.map((a) => [a.id, a.state]))
-      };
-    }
-    return { project: found.slug, generatedAt: new Date().toISOString(), plans };
-  });
+  // Not cached: the check is a few synchronous file reads, and a cached report could hide a summary that just went stale.
+  const report = checkPlanSummaries(repoPath);
+  const plans: PlanSummariesResponse["plans"] = {};
+  for (const status of report.plans) {
+    const raw = status.state === "fresh" || status.state === "stale" ? readPlanSummary(repoPath, status.plan) : null;
+    plans[status.plan] = {
+      state: status.state,
+      planFresh: status.planFresh,
+      summary: raw && isPlanSummary(raw) ? raw : null,
+      actions: Object.fromEntries(status.actions.map((a) => [a.id, a.state]))
+    };
+  }
+  return { project: found.slug, generatedAt: new Date().toISOString(), plans };
 }

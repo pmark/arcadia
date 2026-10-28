@@ -11,7 +11,7 @@ export function planSummaryView(summaries: PlanSummariesResponse | null, plan: s
   const entry = plan ? summaries?.plans[plan] : undefined;
   const s = entry?.summary;
   if (!entry || !s) return null;
-  return { title: s.title, purpose: s.purpose, serves: s.serves || null, doneWhen: s.done_when, readingNote: s.reading_note ?? null, stale: entry.state === "stale" };
+  return { title: s.title, purpose: s.purpose, serves: s.serves || null, doneWhen: s.done_when, readingNote: s.reading_note ?? null, stale: !entry.planFresh };
 }
 
 export function actionSummaryView(summaries: PlanSummariesResponse | null, plan: string | undefined, action: string | undefined): ActionSummaryView | null {

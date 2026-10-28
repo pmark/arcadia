@@ -96,6 +96,8 @@ export interface PlanSummaryStatus {
   source: string;
   status: string | null;
   state: SummaryState;
+  /** Whether the Plan-level text (title, purpose, serves, done when) matches the Plan's own fingerprint. */
+  planFresh: boolean;
   actions: ActionSummaryStatus[];
   /** Summary entries for Action ids the Plan no longer has. */
   orphaned: string[];
@@ -104,8 +106,8 @@ export interface PlanSummaryStatus {
 /** Compare one Plan with its summary. A summary for another slug, or a malformed one, is invalid. */
 export function comparePlanSummary(plan: PlanSource, summary: unknown): PlanSummaryStatus {
   const base = { plan: plan.slug, source: plan.relativePath, status: plan.status };
-  if (summary === null) return { ...base, state: "missing", actions: plan.actions.map(a => ({ id: a.id, state: "missing" })), orphaned: [] };
-  if (!isPlanSummary(summary) || summary.plan !== plan.slug) return { ...base, state: "invalid", actions: plan.actions.map(a => ({ id: a.id, state: "missing" })), orphaned: [] };
+  if (summary === null) return { ...base, state: "missing", planFresh: false, actions: plan.actions.map(a => ({ id: a.id, state: "missing" })), orphaned: [] };
+  if (!isPlanSummary(summary) || summary.plan !== plan.slug) return { ...base, state: "invalid", planFresh: false, actions: plan.actions.map(a => ({ id: a.id, state: "missing" })), orphaned: [] };
   const entries = new Map(summary.actions.map(a => [a.id, a]));
   const actions = plan.actions.map((a): ActionSummaryStatus => {
     const entry = entries.get(a.id);
@@ -113,7 +115,7 @@ export function comparePlanSummary(plan: PlanSource, summary: unknown): PlanSumm
   });
   const ids = new Set(plan.actions.map(a => a.id));
   const planFresh = summary.source_fingerprint === planFingerprint(plan);
-  return { ...base, state: planFresh && actions.every(a => a.state === "fresh") ? "fresh" : "stale", actions, orphaned: summary.actions.map(a => a.id).filter(id => !ids.has(id)) };
+  return { ...base, state: planFresh && actions.every(a => a.state === "fresh") ? "fresh" : "stale", planFresh, actions, orphaned: summary.actions.map(a => a.id).filter(id => !ids.has(id)) };
 }
 
 export interface PlanSummaryReport {
@@ -135,18 +137,25 @@ function listPlanFiles(repoRoot: string): string[] {
   return out;
 }
 
+const SAFE_SLUG = /^[a-z0-9][a-z0-9-]*$/;
 export function readPlanSummary(repoRoot: string, slug: string): unknown {
+  if (!SAFE_SLUG.test(slug)) return { invalid: true };
   const file = path.join(repoRoot, PLAN_SUMMARY_DIR, `${slug}.json`);
   if (!existsSync(file)) return null;
   try { return JSON.parse(readFileSync(file, "utf8")) as unknown; } catch { return { invalid: true }; }
 }
 
-/** Read-only: compares every `type: plan` record with its summary. No writes, no model calls. */
-export function checkPlanSummaries(repoRoot: string): PlanSummaryReport {
-  const plans = listPlanFiles(repoRoot)
+/** Every parseable `type: plan` record under docs/plans, nested folders included, sorted by slug. */
+export function readPlanSources(repoRoot: string): PlanSource[] {
+  return listPlanFiles(repoRoot)
     .map(rel => readPlanSource(rel, readFileSync(path.join(repoRoot, rel), "utf8")))
     .filter((p): p is PlanSource => p !== null)
     .sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+/** Read-only: compares every `type: plan` record with its summary. No writes, no model calls. */
+export function checkPlanSummaries(repoRoot: string): PlanSummaryReport {
+  const plans = readPlanSources(repoRoot);
   const statuses = plans.map(p => comparePlanSummary(p, readPlanSummary(repoRoot, p.slug)));
   const counts: Record<SummaryState, number> = { fresh: 0, stale: 0, missing: 0, invalid: 0 };
   for (const s of statuses) counts[s.state] += 1;
@@ -164,7 +173,9 @@ export function stampPlanSummary(plan: PlanSource, authored: Omit<PlanSummary, "
   const missing = plan.actions.filter(a => !byId.has(a.id)).map(a => a.id);
   const extra = authored.actions.filter(a => !plan.actions.some(p => p.id === a.id)).map(a => a.id);
   if (missing.length || extra.length) throw new Error(`Summary for ${plan.slug} does not match its Actions: missing ${missing.join(", ") || "none"}; extra ${extra.join(", ") || "none"}.`);
-  const { actions: _authoredActions, ...rest } = authored;
+  // Authored input comes from JSON, so drop any computed field it carries (an old fingerprint would read as fresh).
+  const { actions: _authoredActions, schema: _schema, generated: _generated, plan: _plan, source: _source, source_fingerprint: _fingerprint, ...rest } =
+    authored as typeof authored & Partial<Pick<PlanSummary, "schema" | "generated" | "plan" | "source" | "source_fingerprint">>;
   return {
     schema: PLAN_SUMMARY_SCHEMA,
     generated: true,

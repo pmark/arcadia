@@ -102,8 +102,9 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
   // Summaries are optional reading aids: a failed or empty read leaves every view on the record.
   const summaryRead = useRead<PlanSummariesResponse>(scope?.project ? `/api/plan-summaries/${encodeURIComponent(scope.project)}` : null, revision);
   const summaries = summaryRead.kind === "ready" ? summaryRead.data : null;
-  const planView = planSummaryView(summaries, scope?.plan);
-  const actionView = actionSummaryView(summaries, scope?.plan, scope?.action);
+  // A summary only names what the record still has; an orphaned entry never relabels a missing Plan or Action.
+  const planView = plan ? planSummaryView(summaries, scope?.plan) : null;
+  const actionView = action ? actionSummaryView(summaries, scope?.plan, scope?.action) : null;
   const level = scope?.action ? "Action" : scope?.plan ? "Plan" : scope?.project ? "Project" : "Portfolio";
   const title = scope?.action ? actionView?.title ?? action?.title ?? scope.action : scope?.plan ? planView?.title ?? plan?.slug ?? scope.plan : scope?.project ? project?.name ?? scope.project : "Your work, in view";
   const failure = portfolio.kind === "error" ? portfolio.message : scope?.plan && detail.kind === "error" ? detail.message : project?.error;

@@ -15,13 +15,14 @@ const detail: PlanDetailResponse = { project: { id: "garden", slug: "moon-garden
 ], note: "Fixture records" } };
 function summaries(actionState: "fresh" | "stale"): PlanSummariesResponse {
   return { project: "moon-garden", generatedAt: "2030-01-01", plans: {
-    "first-website": { state: actionState === "fresh" ? "fresh" : "stale", actions: { "review-phone": actionState, "write-copy": "missing" }, summary: {
+    // write-copy has no summary entry, so the Plan reads "stale" overall even while its own text is fresh, as the server reports it.
+    "first-website": { state: "stale", planFresh: actionState === "fresh", actions: { "review-phone": actionState, "write-copy": "missing" }, summary: {
       schema: "arcadia-plan-summary-v1", generated: true, plan: "first-website", source: goPlan.relativePath, source_fingerprint: "0000000000000000", written: "2030-01-01", author: "Clara (fixture)",
       title: "A garden anyone can visit online", purpose: "Give the garden a small website so neighbours can find it.", serves: "The Project goal: share the garden.", done_when: "The site is live and readable on a phone.",
       reading_note: "Inference: the copy may wait for photos.",
       actions: [{ id: "review-phone", source_fingerprint: "1111111111111111", title: "Check the site on a phone", why: "Most visitors will arrive on a phone, so it has to read well there.", done_when: "Every page reads without sideways scrolling at 390 px." }]
     } },
-    "later-ideas": { state: "missing", summary: null, actions: {} }
+    "later-ideas": { state: "invalid", planFresh: false, summary: null, actions: {} }
   } };
 }
 
@@ -63,6 +64,7 @@ test("workspace shows plain-language summaries, labels stale ones and falls back
     const current = context().getByRole("link", { name: /A garden anyone can visit online/ });
     await expect(current).toContainText("Give the garden a small website so neighbours can find it.");
     await expect(current).toContainText("first-website");
+    await expect(current).not.toContainText("summary may be out of date");
     await context().getByText(/^Not yet active/).click();
     await expect(context().getByRole("link", { name: /later-ideas/ })).toContainText("Ideas for later");
 
@@ -96,6 +98,10 @@ test("workspace shows plain-language summaries, labels stale ones and falls back
     mode = "stale";
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website/actions/review-phone`);
     await expect(work().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
+    await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website`);
+    await expect(work().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
+    await page.goto(`${url}/workspace/projects/moon-garden`);
+    await expect(context().getByRole("link", { name: /A garden anyone can visit online/ })).toContainText("summary may be out of date");
 
     // Failed read: every view falls back to the record, without an error page.
     mode = "failed";

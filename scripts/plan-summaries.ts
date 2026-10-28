@@ -9,7 +9,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { PLAN_SUMMARY_DIR, checkPlanSummaries, readPlanSource, stampPlanSummary } from "../src/docs/planSummaries.js";
+import { PLAN_SUMMARY_DIR, checkPlanSummaries, readPlanSources, stampPlanSummary } from "../src/docs/planSummaries.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const [command, ...args] = process.argv.slice(2);
@@ -30,11 +30,11 @@ if (command === "check") {
   const unhealthy = report.counts.stale + report.counts.missing + report.counts.invalid;
   process.exitCode = args.includes("--enforce") && unhealthy > 0 ? 1 : 0;
 } else if (command === "stamp" && args.length) {
+  const sources = new Map(readPlanSources(repoRoot).map(p => [p.slug, p]));
   for (const file of args) {
     const authored = JSON.parse(readFileSync(file, "utf8")) as Parameters<typeof stampPlanSummary>[1] & { plan: string };
-    const relativePath = `docs/plans/${authored.plan}.md`;
-    const plan = readPlanSource(relativePath, readFileSync(path.join(repoRoot, relativePath), "utf8"));
-    if (!plan) throw new Error(`${relativePath} is not a parseable type: plan record.`);
+    const plan = sources.get(authored.plan);
+    if (!plan) throw new Error(`${file}: no type: plan record under docs/plans has slug "${authored.plan}".`);
     const { plan: _slug, ...text } = authored;
     const summary = stampPlanSummary(plan, text);
     writeFileSync(path.join(repoRoot, PLAN_SUMMARY_DIR, `${plan.slug}.json`), `${JSON.stringify(summary, null, 2)}\n`);
