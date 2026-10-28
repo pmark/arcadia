@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "agent-advance-queue",
+  "source": "docs/plans/agent-advance-queue.md",
+  "source_fingerprint": "d06275240112f26a",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Agent queue of ready, running and waiting work",
+  "purpose": "Shows in one read-only list which ready plan Actions can go to a coding agent, which are running, and which need the operator's attention, so the operator can see at a glance what needs a decision or a fix.",
+  "serves": "Its milestone: ready plan Actions feed coding agents, with visible stops for attention.",
+  "done_when": "The advance queue command and Mission Control show the same ready, running and attention counts, and each attention item says what to do next.",
+  "reading_note": "Finished for the queue and its views: two of three Actions are done. The third, provider-budget admission, is blocked until both providers report comparable daily and weekly capacity, so it is not counted as shipped.",
+  "actions": [
+    {
+      "id": "build-agent-queue-view",
+      "title": "Build the shared Agent Queue view",
+      "why": "One view of ready, running and attention items, built on the existing readiness rules, keeps every surface consistent.",
+      "done_when": "Ready, running and attention items are counted separately in a stable order, each attention item names its reason and next step, and each plan's token impact stays visible beside its work.",
+      "source_fingerprint": "83bfc708159ccebf"
+    },
+    {
+      "id": "surface-agent-advance-queue",
+      "title": "Show the queue in the command line and Mission Control",
+      "why": "Lets the operator see the same queue in both places and follow an attention item to its source.",
+      "done_when": "The advance queue command and Mission Control show the same counts, each attention item links to its review, run or Project page, and the view changes nothing.",
+      "source_fingerprint": "4a91fe560891252c"
+    },
+    {
+      "id": "budget-aware-admission",
+      "title": "Check provider limits before starting work",
+      "why": "Stops the feeder starting work that a provider's daily or weekly limit would refuse, once comparable capacity data exists.",
+      "done_when": "Before work starts, daily and weekly provider limits are checked, and any unknown or stale limit is shown as unknown rather than treated as unlimited.",
+      "source_fingerprint": "c56e664129dde93b"
+    }
+  ]
+}

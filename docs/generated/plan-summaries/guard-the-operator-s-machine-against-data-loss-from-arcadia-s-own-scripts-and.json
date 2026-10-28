@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and",
+  "source": "docs/plans/guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and.md",
+  "source_fingerprint": "afb0f24166d9c2f4",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Protect the operator's machine from Arcadia's scripts and tests",
+  "purpose": "Arcadia's own scripts and tests should not be able to damage the operator's machine. Shell scripts should fail safely, tests should stay away from the live workspace, and unsaved or local-only working copies should raise an alert.",
+  "serves": "The Project outcome of Arcadia running work on the operator's behalf without putting the operator's own data at risk.",
+  "done_when": "A checked-in script that could delete through an empty variable fails the lint check, the test suite refuses the live workspace, and unsaved working copies raise one alert a day until they are pushed or retired.",
+  "reading_note": "Draft: none of the 5 Actions has started.",
+  "actions": [
+    {
+      "id": "lint-shell-scripts-for-safe-deletes",
+      "title": "Stop shell scripts from deleting through an empty variable",
+      "why": "A script that removes a path built from an empty variable can wipe far more than was intended.",
+      "done_when": "A check fails any tracked script that lacks fail-fast settings or deletes through an unguarded variable, and the check passes on the base branch.",
+      "source_fingerprint": "3c42772a24631b7a"
+    },
+    {
+      "id": "keep-tests-off-the-live-workspace",
+      "title": "Keep the test suite away from the live workspace",
+      "why": "Tests that reach the operator's real workspace or configuration could change real data.",
+      "done_when": "Tests cannot resolve the live workspace or the operator's configuration, and a command without an inline workspace fails instead of using the live one.",
+      "source_fingerprint": "42f1d4aa7f68cf40"
+    },
+    {
+      "id": "alert-on-unsaved-and-local-only-work",
+      "title": "Alert the operator about unsaved work",
+      "why": "Work that exists only on one disk is easy to lose, and nobody sees it unless told.",
+      "done_when": "Working copies that stay unsaved or local-only past a set threshold produce one alert, at most once a day each, which clears when the copy is pushed or retired.",
+      "source_fingerprint": "365b47f228bacc12"
+    },
+    {
+      "id": "reconcile-vulnerable-working-copies",
+      "title": "Sort unsaved working copies by outcome",
+      "why": "Shows which copies have already shipped, which are superseded and which hold the only copy of some work.",
+      "done_when": "A read-only command gives every unsaved or local-only copy exactly one outcome, backed by evidence.",
+      "source_fingerprint": "7d5b3541c294e4f1"
+    },
+    {
+      "id": "recover-unique-work-to-draft-prs",
+      "title": "Preserve unique work as draft pull requests",
+      "why": "Moves work that exists only on this machine onto GitHub without cleaning or resetting anything.",
+      "done_when": "Unique work from one named copy is preserved as a draft pull request only when the command is run for that copy, and every apply refuses until the repository has a secret-scan and generated-file policy.",
+      "source_fingerprint": "9f67580c6cf41fee"
+    }
+  ]
+}

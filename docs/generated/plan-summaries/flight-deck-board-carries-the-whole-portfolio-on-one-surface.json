@@ -1,0 +1,45 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "flight-deck-board-carries-the-whole-portfolio-on-one-surface",
+  "source": "docs/plans/flight-deck-board-carries-the-whole-portfolio-on-one-surface.md",
+  "source_fingerprint": "e2d4d6b5aad278e6",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Show the whole portfolio on one board",
+  "purpose": "Lets the operator see every Project's Plans, Actions, Decisions and Artifacts on one board. Each card shows its place in the work and the command that moves it, and the board opens focused on what can move today.",
+  "serves": "The Project outcome of the operator understanding the whole portfolio without holding it in mind.",
+  "done_when": "The board shows every object once in its stage column, and selecting a card shows its chain back to its Project and Plan, with the command to move it.",
+  "reading_note": "Draft in its status field, although its text says it was activated on 2026-09-05. Inference: this is a status mismatch to check. No Action has been implemented yet.",
+  "actions": [
+    {
+      "id": "project-plan-lanes-and-pipeline-columns",
+      "title": "Lay out the board by Plan and stage",
+      "why": "Shows each Plan's work in one place, in the order it moves through the stages.",
+      "done_when": "Lanes group work by Project and then Plan, the stage columns read in order, and each object appears once, with unlinked Decisions shown in their own lane.",
+      "source_fingerprint": "ae2ca16f81410770"
+    },
+    {
+      "id": "open-the-object-detail-rail",
+      "title": "Open each card's full record and links",
+      "why": "A Decision is hard to judge without the work it belongs to, so each card links to that work.",
+      "done_when": "Selecting a card opens a panel showing the chain from Project to Artifact, with each link named and each blocker shown with its remedy.",
+      "source_fingerprint": "b6198b0fa8704b4d"
+    },
+    {
+      "id": "carry-the-dispatch-command",
+      "title": "Show the exact command for each card that can move",
+      "why": "Closes the gap between 'ready' and 'running' without a search through the command line.",
+      "done_when": "A ready Action shows its exact start command and a Decision shows its review command, each can be copied, and the board never starts a process itself.",
+      "source_fingerprint": "c425c1820986b8f8"
+    },
+    {
+      "id": "focus-the-board-on-active-work",
+      "title": "Open the board on work that can move now",
+      "why": "A long list of everything reads like a large backlog of demand, so the board should lead with what is active.",
+      "done_when": "Lanes for the active Plan are open and the others are collapsed to labelled rows with counts, and both the visible count and the total are shown.",
+      "source_fingerprint": "7aac2f4cc1b818de"
+    }
+  ]
+}

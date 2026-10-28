@@ -1,0 +1,101 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "way-delivery",
+  "source": "docs/plans/way-delivery.md",
+  "source_fingerprint": "8fd90ff6ea506854",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Deliver Way changes to every adopting project",
+  "purpose": "Way changes used to reach each adopting project by hand, and projects had no route to ask for a Way capability. This Plan sends changes out as pull requests, takes project proposals in, and includes related fixes to decisions, agent requests and the go command.",
+  "serves": "The Project outcome of every adopting project staying current without anyone writing Arcadia twice.",
+  "done_when": "Way changes reach each adopting repository as a pull request, and each project's proposals show in the portfolio until they are answered.",
+  "reading_note": "Complete: all 12 Actions are done.",
+  "actions": [
+    {
+      "id": "seed-the-work-pointer-when-a-repository-is-adopted",
+      "title": "Set up the work pointer when a repository is adopted",
+      "why": "A newly adopted repository needs its own project file and first plan before Arcadia can pick work from it.",
+      "done_when": "Adopting a repository writes a project file and a first plan, and never overwrites ones that already exist.",
+      "source_fingerprint": "b469aceb00bdb702"
+    },
+    {
+      "id": "open-way-sync-pull-requests",
+      "title": "Send Way changes to projects as pull requests",
+      "why": "Lets every project receive changes through a pull request, rather than by hand.",
+      "done_when": "Routine changes open one pull request per repository and merge without review, while governing changes open a pull request and never merge on their own.",
+      "source_fingerprint": "82ec8291dbddc708"
+    },
+    {
+      "id": "accept-upstream-proposals",
+      "title": "Accept capability requests from projects",
+      "why": "Lets a project ask for a Way capability instead of building its own copy.",
+      "done_when": "A proposal committed in an adopting repository appears as a pending request in the portfolio until it is answered.",
+      "source_fingerprint": "a636e08208bc79e4"
+    },
+    {
+      "id": "evaluate-document-triggers",
+      "title": "Evaluate the deferrals the documents declare",
+      "why": "Makes sure a deferred item whose condition has fired is noticed, not ignored.",
+      "done_when": "Each declared deferral is evaluated or named as not evaluable, and any fired condition is reported.",
+      "source_fingerprint": "c5e60b76341494d4"
+    },
+    {
+      "id": "adopt-operator-task-ledger",
+      "title": "Record work only the operator can do",
+      "why": "Keeps tasks that need the operator's own action separate from decisions awaiting review.",
+      "done_when": "An agent can raise an operator task with evidence but cannot close it, and each task cites the action or decision it relates to.",
+      "source_fingerprint": "47b82d48f7efe1ec"
+    },
+    {
+      "id": "propagate-agent-ask-contract",
+      "title": "Document the Agent Ask contract in the shared instructions",
+      "why": "Lets every adopting project know how to make a request, and be told when that guidance goes stale.",
+      "done_when": "The shared instructions describe Agent Ask, list each intent with what it changes, and state that a proposal never approves itself.",
+      "source_fingerprint": "0d0cfe0333727ad3"
+    },
+    {
+      "id": "report-agent-ask-contract",
+      "title": "Add a command that prints the live request contract",
+      "why": "Lets an agent check the current rules rather than trust a file that may be out of date.",
+      "done_when": "A read-only command prints every supported intent and its fields, derived from the parser itself, and writes nothing.",
+      "source_fingerprint": "cf0d8440507c5081"
+    },
+    {
+      "id": "carry-decision-options",
+      "title": "Let decisions list their choices and consequences",
+      "why": "The operator can answer a decision by picking an option instead of reading prose.",
+      "done_when": "A decision can list ordered options, each with its consequence and an optional recommendation, and shows them as a list to pick from.",
+      "source_fingerprint": "294a70beb0bebacb"
+    },
+    {
+      "id": "stop-dumping-rationale-into-recommendation",
+      "title": "Keep reasoning out of the recommendation field",
+      "why": "Keeps the recommendation short and clear, with the reasoning in its proper place.",
+      "done_when": "An Ask's rationale goes into the decision body, and the recommendation holds only the recommended course of action.",
+      "source_fingerprint": "b5c5be4a9408ed51"
+    },
+    {
+      "id": "rename-codex-responsibility-to-agent",
+      "title": "Rename the codex responsibility value to agent",
+      "why": "Responsibility should name the role rather than one vendor, so the value stays correct when providers change.",
+      "done_when": "The responsibility value reads agent everywhere it appears in the code, documentation and command output.",
+      "source_fingerprint": "ce362779d7c25a4d"
+    },
+    {
+      "id": "go-fetches-and-fast-forwards-base-from-remote",
+      "title": "Update the base branch before preparing new work",
+      "why": "Stops new work from starting on an out-of-date base branch.",
+      "done_when": "The go command fetches the remote base, fast-forwards a clean local base, and stops when the two have diverged.",
+      "source_fingerprint": "84ce848c4ab9a787"
+    },
+    {
+      "id": "relax-responsibility-refusal-per-decision-0045",
+      "title": "Allow an action amendment to set responsibility",
+      "why": "Lets an amendment change who is responsible, as the governing decision allowed.",
+      "done_when": "An Ask amendment that supplies an agent or autonomous responsibility updates that field in the plan, while placement changes are still refused.",
+      "source_fingerprint": "2f000a1c14d506d1"
+    }
+  ]
+}

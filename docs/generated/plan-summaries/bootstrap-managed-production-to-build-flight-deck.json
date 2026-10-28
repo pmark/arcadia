@@ -1,0 +1,1662 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "bootstrap-managed-production-to-build-flight-deck",
+  "source": "docs/plans/bootstrap-managed-production-to-build-flight-deck.md",
+  "source_fingerprint": "5b10faf3c6914263",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>; Plan-level text by Clara",
+  "title": "Let production run unattended from the GitHub board",
+  "purpose": "Build the managed-production machinery, from launch and capacity checks to preservation, settlement and review, so Arcadia can carry approved work from the board to a reviewed result without the operator driving each step.",
+  "serves": "The Project outcome: Arcadia drives coding agents and reports back, asking for a decision only when one is genuinely needed.",
+  "done_when": "With production switched on, approved board work launches, preserves its result, passes independent review and settles without hand-carried steps, and switching it off stops new launches.",
+  "reading_note": "Draft and very large: 177 of its 235 Actions are done and 58 are open. Most of its Actions record no why, so their summaries are inferred from titles and acceptance criteria.",
+  "actions": [
+    {
+      "id": "implement-evidence-bound-action-completion",
+      "title": "Build the evidence-bound completion step for managed Actions",
+      "why": "Lets accepted evidence mark a managed Action done through the existing writer, so bootstrap work can advance without hand-edited governance records.",
+      "done_when": "An operator-settled completion records the evidence, marks the Action done and moves to the next governed Action, and refuses when any criterion is unproven or review is still open.",
+      "source_fingerprint": "921af7e178b79656"
+    },
+    {
+      "id": "define-managed-production-policy",
+      "title": "Store the production on and off policy",
+      "why": "Gives production one saved on or off state, so a restart keeps an active policy and an off switch stops new launches.",
+      "done_when": "The policy shows Active or Inactive, starts Inactive on first setup, survives a restart, and turning it Off stops new launches while committed work finishes.",
+      "source_fingerprint": "156e69509d14f4f7"
+    },
+    {
+      "id": "prove-provider-capacity-admission",
+      "title": "Confirm provider capacity before unattended launches",
+      "why": "Stops unattended work from starting on a provider whose capacity is unknown, stale or paid, so costs and stalls are not a surprise.",
+      "done_when": "Launches give a clear reason when capacity is unknown or stale, and capacity refreshes after a reset with no paid fallback or credit purchase.",
+      "source_fingerprint": "6df9f75076fea5cb"
+    },
+    {
+      "id": "resolve-production-agent-and-launch-preview",
+      "title": "Preview which coding agent and settings will run",
+      "why": "Shows the chosen agent, model and binding before anything starts, so the operator sees the exact launch without picking a provider by hand.",
+      "done_when": "A launch preview names the agent, model, effort and reason, starts no process, and lists any missing prerequisite as a named item.",
+      "source_fingerprint": "4031d1f9c40ea268"
+    },
+    {
+      "id": "connect-action-to-launch-packet",
+      "title": "Connect each Action to its launch packet and approval",
+      "why": "Makes a ready Action wait for its existing planning and approval steps, so no launch happens on planning approval alone.",
+      "done_when": "Each Action shows one clear state, such as no packet, planning needed, approval pending, ready or stale, with one usable next step.",
+      "source_fingerprint": "8941bf5c6942e5c9"
+    },
+    {
+      "id": "support-selected-codex-and-claude-sessions",
+      "title": "Launch the chosen Codex or Claude session",
+      "why": "Lets production run on either configured provider through the same session system, so one provider's limits do not stop all work.",
+      "done_when": "A Codex or Claude session starts from the selected settings, can be resumed where supported, and never shares a repository with another live session.",
+      "source_fingerprint": "564a38f5e003f468"
+    },
+    {
+      "id": "expose-guarded-host-session-launch",
+      "title": "Add a guarded launch request for the previewed Action",
+      "why": "Gives the operator one safe way to start the previewed Action, so repeated clicks or retries never start it twice.",
+      "done_when": "One launch request starts at most one session, rejects stale or altered requests, and returns the same result after a lost response or restart.",
+      "source_fingerprint": "7df935e88256d91a"
+    },
+    {
+      "id": "observe-portfolio-agent-sessions",
+      "title": "Show all active sessions and runs",
+      "why": "Lets the operator see every running session and its repository lock, so nothing active is hidden behind recent history.",
+      "done_when": "The Work view lists every active session and run with its Action, agent, status and last-observed time, and states the limits of phone access.",
+      "source_fingerprint": "2d3c077ae5921446"
+    },
+    {
+      "id": "reconcile-session-exits-to-next-move",
+      "title": "Turn a session exit into a recorded outcome and next step",
+      "why": "A finished session becomes clear evidence and a next move, so the operator does not have to work out what happened.",
+      "done_when": "Each session exit is recorded as success, failure, missing evidence, needs input, resumable or accepted, and the screen shows the resulting next Action or blocker.",
+      "source_fingerprint": "faeb1eb0563b653e"
+    },
+    {
+      "id": "advance-approved-production-work",
+      "title": "Advance approved work from session outcome to next Action",
+      "why": "Closes the loop so accepted work moves forward within approved scope, without anyone re-entering the same records by hand.",
+      "done_when": "After an approved Action's evidence passes, its completion is recorded once, the next ready Action becomes current, and a repeated check creates no duplicate entries.",
+      "source_fingerprint": "ef2c292cc5caf9d8"
+    },
+    {
+      "id": "feed-and-supervise-managed-production",
+      "title": "Keep approved production work moving while Active",
+      "why": "Lets the worker start, watch and advance approved sessions continuously, so the operator does not click launch for each step.",
+      "done_when": "While production is Active, the next eligible Action starts after an accepted one, and a merged base-branch change is recorded in the events record.",
+      "source_fingerprint": "d0fb61a6e70568d5"
+    },
+    {
+      "id": "expose-bootstrap-production-controls",
+      "title": "Add the production switch and operator stops to Work Queue",
+      "why": "Puts the on and off control and each decision the operator must answer on one page the operator already uses.",
+      "done_when": "The Work Queue page shows the Active or Inactive switch, desired and actual state, capacity age and each stop with its options, and works on phone and desktop.",
+      "source_fingerprint": "6fd3408e6845d423"
+    },
+    {
+      "id": "prove-two-action-unattended-production",
+      "title": "Prove two dependent Actions run unattended",
+      "why": "Shows the full loop works end to end on a small case before it is trusted with real Projects.",
+      "done_when": "After one activation, the first Action completes and records its state, and the dependent second Action starts with no manual session setup or launch confirmation.",
+      "source_fingerprint": "c7c52ace01cafee9"
+    },
+    {
+      "id": "prove-multi-provider-production-recovery",
+      "title": "Prove production across both providers and recovery",
+      "why": "Checks that work continues on either configured provider and recovers when capacity returns, before production runs broadly.",
+      "done_when": "A launch on each configured provider is shown for at least one Action, and the remaining concurrency tests are named as deferred with their trigger.",
+      "source_fingerprint": "59bbe80fc53276df"
+    },
+    {
+      "id": "freeze-production-runtime-and-handoff-flight-deck",
+      "title": "Freeze the proven runtime and name the first real workload",
+      "why": "Makes the tested runtime a fixed point, so editing a workload in a separate worktree cannot silently replace the running controller.",
+      "done_when": "A handoff artifact lists the frozen runtime revision and rollback steps, the first real workload the operator agreed to, its first two Actions, and the merge and publish boundaries.",
+      "source_fingerprint": "c4b64c3fb767f49e"
+    },
+    {
+      "id": "repair-codex-worktree-configuration",
+      "title": "Repair Codex worktree access for production profiles",
+      "why": "Lets Codex sessions write to their standard worktrees without broad access, so production runs do not stall on file permissions.",
+      "done_when": "Status reports ready only when every Codex profile used for production includes the standard worktree folders, and names any profile that is missing them.",
+      "source_fingerprint": "ca9f6eafa5c86362"
+    },
+    {
+      "id": "make-worktree-runtime-self-contained",
+      "title": "Make the worktree build and test path self-contained",
+      "why": "Lets a prepared worktree install, build and test on its own, so sandboxed agents do not depend on the main checkout or ask for approval.",
+      "done_when": "Editing, installing dependencies, building, testing and cleaning up in a fresh worktree work with no approval prompt, and imports come from the worktree itself.",
+      "source_fingerprint": "5ae53d1c297566ad"
+    },
+    {
+      "id": "broker-candidate-preservation",
+      "title": "Preserve finished candidate work through the protected broker",
+      "why": "Lets a sandboxed agent save finished work without direct Git write access, reducing risky approval escalations.",
+      "done_when": "A finished candidate becomes one recoverable branch commit, and a repeated request returns the same result with no duplicate commit or pull request.",
+      "source_fingerprint": "9ca29f4c63eb76b4"
+    },
+    {
+      "id": "prove-zero-prompt-production-loop",
+      "title": "Prove the loop runs with no operator permission relay",
+      "why": "Tests whether the full handoff, build, test, preserve and advance cycle can run without someone relaying permissions by hand.",
+      "done_when": "A bounded rehearsal on the fixture Project completes two dependent Actions with the approved grants recorded and no manual permission step, while approval gates stay in place.",
+      "source_fingerprint": "69cb5015340970c7"
+    },
+    {
+      "id": "harden-zero-prompt-production-loop",
+      "title": "Harden the zero-prompt loop across profiles and shutdown",
+      "why": "Makes the loop reliable after clean runs, so it does not fail on a restart, a different profile or a reinstall.",
+      "done_when": "The loop runs under two profiles with no sandbox prompts or permission failures, Off during the second Action stops later admissions, and merge, deploy and spend steps still stop at their gates.",
+      "source_fingerprint": "9cd8e32bce001304"
+    },
+    {
+      "id": "let-agent-preserve-its-candidate",
+      "title": "Let a sandboxed agent save its candidate through the controller",
+      "why": "Lets the agent save finished work with the same checks, without shared Git write access or ad hoc escalation.",
+      "done_when": "From the agent's sandbox, the save request reaches the host and creates one candidate commit whose checks match the snapshot that was tested.",
+      "source_fingerprint": "b92d0c1385392b69"
+    },
+    {
+      "id": "refuse-to-orphan-an-uncommitted-candidate",
+      "title": "Stop uncommitted work from being left behind",
+      "why": "Prevents a second worktree being created for an Action that already has unsaved work, which would split or lose that work.",
+      "done_when": "The go command names the existing worktree and resumes it for the same Action after its prior session ends, refuses to duplicate it otherwise, and counts worktrees correctly.",
+      "source_fingerprint": "d0e97e6f59556550"
+    },
+    {
+      "id": "register-agent-workspace-trust",
+      "title": "Register trust for each Project repository",
+      "why": "Lets agents open each configured Project repository without a trust prompt, while keeping broader folders out of trust.",
+      "done_when": "Install trusts each configured Project repository, refuses parent and shared folders, and status names any repository still missing trust.",
+      "source_fingerprint": "a2bee95ac375f136"
+    },
+    {
+      "id": "approval-must-apply-or-refuse",
+      "title": "Make approvals apply fully or refuse with a reason",
+      "why": "Keeps the database and checked-in documents in agreement, so an approval never looks done when the document did not change.",
+      "done_when": "Approving a review item either updates the document and clears the item, or is refused with a named reason and the item stays in the queue.",
+      "source_fingerprint": "92750226aa099cb4"
+    },
+    {
+      "id": "isolate-agent-asks-from-production-handoff",
+      "title": "Keep agent asks on their own isolated branches",
+      "why": "Stops concurrent asks from colliding or dirtying the shared base, so production handoff is not blocked by ask drafts.",
+      "done_when": "Each ask is saved as its own uniquely named file on an isolated branch, and preview, settle and cleanup work by exact request id without touching the shared base.",
+      "source_fingerprint": "ca9e5c0a3346a1dd"
+    },
+    {
+      "id": "make-go-total-across-plans",
+      "title": "Move to the next Plan automatically when one finishes",
+      "why": "Lets work continue to the next queued Plan without the operator naming it, while ambiguous pointers still stop for a decision.",
+      "done_when": "When the active Plan is complete or missing, the earliest ready Action in the queue becomes current, and an ambiguous pointer is reported rather than guessed.",
+      "source_fingerprint": "a5e1514b33e9fe4a"
+    },
+    {
+      "id": "build-autonomous-defect-loop",
+      "title": "Add a one-line defect intake with automatic triage",
+      "why": "Lets the operator log a defect in one line, with likely duplicates detected, so problems are captured without interrupting work.",
+      "done_when": "The one-line defect command records one signal with its Project and source, a retry creates no duplicate, and likely duplicates are listed, with the test steps written down.",
+      "source_fingerprint": "6b2b262e6758fd32"
+    },
+    {
+      "id": "build-agent-agnostic-learning-loop",
+      "title": "Capture lessons and turn supported ones into capability",
+      "why": "Keeps useful observations from being lost, while making sure an agent's inference never becomes an operator preference.",
+      "done_when": "The one-line lesson command records one lesson with its scope and source, and inferences stay marked as inferences rather than becoming settled facts.",
+      "source_fingerprint": "4d5ac49d90e7a9af"
+    },
+    {
+      "id": "design-and-build-the-mechanism-that",
+      "title": "Pick up new ask files whenever a workspace is available",
+      "why": "Makes sure ask files that were saved but not yet recorded are noticed, whichever command the operator happens to run.",
+      "done_when": "A saved ask file is previewed automatically the next time any ask command resolves the workspace, and a broken file is reported clearly.",
+      "source_fingerprint": "46e609b629727419"
+    },
+    {
+      "id": "settle-onto-candidate-branch",
+      "title": "Commit ask settlements onto the candidate branch",
+      "why": "Keeps settlement commits in the candidate's pull request instead of loose on the main branch.",
+      "done_when": "Settling inside a candidate worktree commits to that branch, and a test shows main gets no new local-only commits.",
+      "source_fingerprint": "25eefc38374333df"
+    },
+    {
+      "id": "merge-completes-the-action",
+      "title": "Let the Action's pull request record its own completion",
+      "why": "Means merging the pull request is enough to mark the Action done, with no separate completion step.",
+      "done_when": "After the pull request merges, the project's current Action names the next governed Action, and a failing criterion still blocks completion.",
+      "source_fingerprint": "ae84a33c559080f2"
+    },
+    {
+      "id": "triage-decisions-before-opening",
+      "title": "Open a Decision only when the gate test requires one",
+      "why": "Stops small reversible choices from becoming operator questions, while approval boundaries still always ask.",
+      "done_when": "Reversible moves become assumptions reported in the pull request, and merge, deploy, publish, spend, credential, production and messaging moves always open a Decision.",
+      "source_fingerprint": "fcd67c9a12d6335e"
+    },
+    {
+      "id": "divide-instead-of-stall",
+      "title": "Split an unfinished Action into finished and remaining parts",
+      "why": "Keeps the pointer moving when a session cannot finish, by finishing what it can and queuing the rest.",
+      "done_when": "A split settlement marks the finished part done and places the remaining Actions right after it in the queue, in the same pull request.",
+      "source_fingerprint": "335379019322f258"
+    },
+    {
+      "id": "settle-complete-from-drafted-ask",
+      "title": "Settle a drafted complete ask without moving files",
+      "why": "Removes a manual step that blocked finished asks, so settling a completed draft just works.",
+      "done_when": "A complete ask drafted in a candidate worktree settles with apply, with no file moved or commit rewritten, and stale evidence is still refused.",
+      "source_fingerprint": "5d8890307391e682"
+    },
+    {
+      "id": "auto-settle-pending-completions-before-dispatch",
+      "title": "Auto-settle a ready completion before dispatching the next session",
+      "why": "Avoids spending a model session on completion paperwork that existing evidence already supports.",
+      "done_when": "A drafted, fully covered ask for the current Action settles and advances the pointer with no model session, while any conflict, Decision or gap falls through to normal dispatch.",
+      "source_fingerprint": "50196fc57043a2f7"
+    },
+    {
+      "id": "assess-pr-blast-radius-before-merge",
+      "title": "Assess a pull request's risk before merging",
+      "why": "Catches risky changes before merge, and escalates only when something needs a human judgment.",
+      "done_when": "Each candidate pull request gets a recorded proceed note, or exactly one Decision naming the concern, its touched paths and the review findings.",
+      "source_fingerprint": "3c29241ff645ec5f"
+    },
+    {
+      "id": "detect-hung-managed-production-sessions",
+      "title": "Flag sessions that are running but not progressing",
+      "why": "Surfaces a session that looks alive but has stopped working, so it does not silently hold its repository.",
+      "done_when": "A live session with no output or receipt activity past a deadline shows as needing attention and keeps its lock, while a session doing slow real work is not flagged.",
+      "source_fingerprint": "23ab6c69420e7e4e"
+    },
+    {
+      "id": "prove-managed-production-fault-matrix",
+      "title": "Prove production survives injected race faults",
+      "why": "Shows the key race and admission scenarios hold across many repeated interleavings, before unattended handoff.",
+      "done_when": "Four race scenarios each pass at least 100 seeded runs, injected faults are caught by name, and an evidence index marks each invariant as pass, fail or unproven.",
+      "source_fingerprint": "2411365459b6cbf4"
+    },
+    {
+      "id": "combine-advance-monitor-next-into-one-brief",
+      "title": "Combine three worktree checks into one call",
+      "why": "Cuts the agent's startup to one deterministic call, so fewer steps can fail or drift between checks.",
+      "done_when": "One broker call returns the advance result, monitor preflight and next brief together, reports failures in the same detail as the separate commands, and the separate commands still work.",
+      "source_fingerprint": "c9459a1c501ff766"
+    },
+    {
+      "id": "add-opencode-production-provider",
+      "title": "Add opencode as a production coding agent",
+      "why": "Gives production a working provider that is not out of credit, so unattended work can continue when other providers are limited.",
+      "done_when": "A production launch with the opencode provider starts a non-interactive session in a prepared worktree under a standing policy, with no per-launch click.",
+      "source_fingerprint": "f7c3912dbb5fb491"
+    },
+    {
+      "id": "refresh-preservation-heartbeat-off-tick",
+      "title": "Keep the preservation heartbeat fresh during long ticks",
+      "why": "Prevents a busy worker from looking unreachable, which would make preservation requests fail even while it is working.",
+      "done_when": "The heartbeat timestamp keeps updating during a long tick with its routes unchanged, and the existing transport tests still pass.",
+      "source_fingerprint": "7050ff9e0b51a350"
+    },
+    {
+      "id": "cut-managed-production-tick-cost",
+      "title": "Cut the repeated cost of each production tick",
+      "why": "Keeps supervision timely by not rereading unchanged projects on every short tick.",
+      "done_when": "Each tick no longer rereads unchanged project trees, a known base-branch failure is logged once rather than every tick, and the test suite and builds pass.",
+      "source_fingerprint": "981dba8c06113a25"
+    },
+    {
+      "id": "stop-writing-base-advances-to-mission-log",
+      "title": "Stop logging routine base-branch advances in the Mission Log",
+      "why": "Keeps the Mission Log for real milestones, while base-branch changes stay visible in a read-only status view.",
+      "done_when": "A base advance writes one events record and no Mission Log section or commit, and the status view shows the previous and new commit.",
+      "source_fingerprint": "079b300f8894835e"
+    },
+    {
+      "id": "preserve-projects-with-dependencies",
+      "title": "Let preservation check projects that need installed dependencies",
+      "why": "Lets Projects with dependency-based checks finish preservation, or report a clear fix, instead of stopping on a generic message.",
+      "done_when": "Preservation either passes or refuses with a named remedy for such projects, and a check that cannot run is never reported as ready.",
+      "source_fingerprint": "c4c39e10676da93c"
+    },
+    {
+      "id": "resolve-agent-handoff-model-per-provider",
+      "title": "Pick the right model for each agent handoff",
+      "why": "Stops one provider's model name being passed to another, so handoffs to opencode work without the operator supplying a model.",
+      "done_when": "The handoff chooses a suitable model for each agent from one tier table, uses a plausible named model as given, and resolves the effort setting on its own.",
+      "source_fingerprint": "01f0f28d8b37f178"
+    },
+    {
+      "id": "fix-agent-go-transport-readiness",
+      "title": "Report the agent go channel ready only when it can respond",
+      "why": "Prevents retries from hanging on a worker that looks alive but cannot answer, and clears stale requests on timeout.",
+      "done_when": "Status shows not ready while no worker can answer, a timed-out or refused request clears its pending marker, and an immediate retry succeeds without manual file removal.",
+      "source_fingerprint": "2e5826db02cc5643"
+    },
+    {
+      "id": "harden-agent-ask-settlement",
+      "title": "Make ask settlement complete fully or fail cleanly",
+      "why": "Stops a stalled notification from leaving a half-finished settlement, and keeps long question names valid.",
+      "done_when": "Settlement either finishes every step and commits, or stops with a clearly reported recoverable state, and long questions produce valid names.",
+      "source_fingerprint": "268a38893e292a23"
+    },
+    {
+      "id": "clean-up-preserve-transport-request",
+      "title": "Clean up the preservation request file on every exit",
+      "why": "Keeps a refused or timed-out preservation request from leaving the candidate worktree dirty, so later checks are not tripped.",
+      "done_when": "A refused or timed-out preservation request leaves the candidate worktree clean, and a successful one still returns its host response.",
+      "source_fingerprint": "3f36b5b7596304ac"
+    },
+    {
+      "id": "bind-candidate-revision-in-action-settle",
+      "title": "Let action settle complete from a candidate worktree",
+      "why": "Makes the documented completion path work from a candidate worktree, instead of refusing when its HEAD differs from the main checkout.",
+      "done_when": "Completing an Action from inside a candidate worktree succeeds, and a real revision mismatch is named clearly.",
+      "source_fingerprint": "af9897c73db2e52e"
+    },
+    {
+      "id": "translate-reasoning-effort-at-launch",
+      "title": "Translate reasoning effort for each provider at launch",
+      "why": "Stops a launch from giving codex or claude an effort value it does not accept, so an unattended Session does not fail on a bad setting.",
+      "done_when": "Launches for codex and claude pass each provider's own effort value, and a test covers the recomputed-effort path.",
+      "source_fingerprint": "f99d9f77c882e0a3"
+    },
+    {
+      "id": "detect-duplicate-ids-and-dangling-refs",
+      "title": "Catch duplicate Decision ids and broken references",
+      "why": "Stops new duplicate Decision numbers and broken review references from being written, while leaving historical ids for a recorded choice.",
+      "done_when": "Docs sync refuses a duplicate Decision id and reports a review item that points at a missing document, and a clean set still passes.",
+      "source_fingerprint": "28982edcdf54ac56"
+    },
+    {
+      "id": "deliver-session-brief",
+      "title": "Give managed Sessions an actionable Action brief",
+      "why": "Tells an unattended Session its task, its constraints and how to finish, instead of giving it only session metadata.",
+      "done_when": "A launched managed Session receives the Action's title, its acceptance criteria in order, the worktree path and the standing constraints, and a missing Action stops the launch.",
+      "source_fingerprint": "02f771644f163df7"
+    },
+    {
+      "id": "preserve-on-exit-and-integrate",
+      "title": "Preserve and integrate a finished Session's candidate",
+      "why": "Lets the next dependent Action start without an operator merge between them, but only under an explicit standing grant.",
+      "done_when": "A finished managed Session's candidate is preserved after its checks pass, is integrated only under a valid grant, and otherwise the exact merge command is reported.",
+      "source_fingerprint": "39427952aab88362"
+    },
+    {
+      "id": "apply-answered-decision-consequences",
+      "title": "Apply a Decision's answer to the Action it governs",
+      "why": "Makes an answered Decision take effect on its Action, so the operator does not have to edit the plan by hand.",
+      "done_when": "Answering a Decision that governs an Action updates that Action and moves the pointer in one step, and a retry returns the same receipt.",
+      "source_fingerprint": "1e50ea751b535554"
+    },
+    {
+      "id": "fix-tick-database-open-error-boundary",
+      "title": "Keep the worker alive when the database is busy",
+      "why": "A brief database lock should be logged and retried on the next tick, not end the worker process.",
+      "done_when": "A forced busy-database error is logged, the process keeps running, and the next tick still runs.",
+      "source_fingerprint": "9ebd6c7c92c0e777"
+    },
+    {
+      "id": "stop-keepalive-worker-crash-loop",
+      "title": "Stop the worker launch agent from crash looping",
+      "why": "Prevents a duplicate worker agent from restarting over and over and filling the log, and makes the duplicate visible.",
+      "done_when": "A second worker for the same workspace adds no repeated already-running lines to the log, and the audit reports the duplicate with the right remedy.",
+      "source_fingerprint": "b9f5a4e37568f6b3"
+    },
+    {
+      "id": "fix-decision-deferral-review-bugs",
+      "title": "Fix three Decision deferral review bugs",
+      "why": "Makes deferrals honour dry runs, approval status and re-approval, so a deferral does what the operator approved.",
+      "done_when": "A dry run never commits, a deferral applies only when approved, and a deferral re-approved after revival is written.",
+      "source_fingerprint": "f0ef843c92e39064"
+    },
+    {
+      "id": "fix-plan-mode-planning-artifact",
+      "title": "Make plan-mode planning runs produce a valid plan",
+      "why": "Lets a plan that Claude writes to its plan file pass planning validation, instead of failing because the summary lives elsewhere.",
+      "done_when": "A plan-mode planning run whose plan is in its plan file passes planning validation, and a test shows the earlier failure.",
+      "source_fingerprint": "4e5c53e8457d452b"
+    },
+    {
+      "id": "fix-accepted-plan-to-build-packet-path",
+      "title": "Prepare a build packet when a plan is accepted",
+      "why": "Closes a manual gap between an accepted plan and a launchable Action, so managed production can start it.",
+      "done_when": "An accepted planning result for a plan Action produces a build packet and approval, and the launch preview then shows the Action as ready.",
+      "source_fingerprint": "23f8c4f63dbba7ac"
+    },
+    {
+      "id": "fix-packet-lifecycle-latest-planning-decision",
+      "title": "Read the latest planning Decision for the lifecycle",
+      "why": "Makes the lifecycle remedy point at the newest planning Decision rather than an older one.",
+      "done_when": "When an old finished planning Decision and a newer accepted one both exist, the remedy names the newer one.",
+      "source_fingerprint": "a688ccf79a505cae"
+    },
+    {
+      "id": "restore-preservation-worker-heartbeat",
+      "title": "Restore the worker's preservation heartbeat after restart",
+      "why": "Lets the Go and preservation routes report ready after a restart, so a restarted worker can be trusted again.",
+      "done_when": "After a restart the Go broker status reports a ready preservation transport, and a stale heartbeat gives a diagnostic that names the worker route.",
+      "source_fingerprint": "c52db1c05c13dc25"
+    },
+    {
+      "id": "gate-prepared-dispatch-on-transport-readiness",
+      "title": "Refuse task preparation until transports are ready",
+      "why": "Stops a coding agent from starting when the database or transport heartbeats are not usable, which would waste a run.",
+      "done_when": "Preparation is refused with a clear remedy when the database cannot be opened or a fresh heartbeat is missing, before any agent starts.",
+      "source_fingerprint": "12a11db684e6b409"
+    },
+    {
+      "id": "verify-worker-recovery-before-success",
+      "title": "Report worker recovery only after it is verified",
+      "why": "Prevents a failed launch or stale state from being reported as a started worker.",
+      "done_when": "A launch failure returns a non-zero refusal, and a restart reports ready only after fresh heartbeats are seen.",
+      "source_fingerprint": "79950904b958710c"
+    },
+    {
+      "id": "surface-terminal-operator-approvals-in-runs",
+      "title": "Show operator-only approvals on the Runs page",
+      "why": "Puts each approval that blocks production in one place, with one recommended choice and its details.",
+      "done_when": "The Runs page lists each blocking operator approval with one recommended option and an expandable view, and choosing one records a receipt.",
+      "source_fingerprint": "49900146a16334f5"
+    },
+    {
+      "id": "reference-constitution-without-duplicating-it",
+      "title": "Reference the Constitution instead of repeating it",
+      "why": "Keeps handoff briefs short while still requiring agents to load the Constitution before any authority-sensitive step.",
+      "done_when": "Dispatch and session briefs point to the Constitution and its fingerprint, and a changed or unreadable Constitution stops the step with a clear remedy.",
+      "source_fingerprint": "12df59cd45b7e190"
+    },
+    {
+      "id": "recover-protected-go-base-divergence",
+      "title": "Recover the protected Go path when the base diverges",
+      "why": "Lets the protected Go path handle a local base that is ahead and behind its remote, instead of stalling or sending an agent to rebase by hand.",
+      "done_when": "A divergent base either completes a logged reconciliation or refuses with an operator script, and a live probe returns a valid worktree receipt.",
+      "source_fingerprint": "1c3bd9737b32f10f"
+    },
+    {
+      "id": "substitute-unavailable-provider-before-binding",
+      "title": "Substitute an unavailable provider before binding",
+      "why": "Lets work continue when the chosen provider cannot run, while keeping any swap out of work already in progress.",
+      "done_when": "When the intended provider is unavailable before binding, an equal or stronger permitted provider is used and the swap is recorded; no switch happens once execution has begun.",
+      "source_fingerprint": "524332c3a207bad4"
+    },
+    {
+      "id": "an-agent-ask-action-amendment-can",
+      "title": "Allow more responsibility values in action amendments",
+      "why": "Lets the operator move an existing Action to review or blocked through the same Ask path already used for agent and autonomous.",
+      "done_when": "Settling an action amendment to requires review or blocked succeeds on explicit direction, and an unknown value is refused with the accepted values named.",
+      "source_fingerprint": "9a9093d171f6d685"
+    },
+    {
+      "id": "formalize-two-phase-planning-process",
+      "title": "Document the two-phase planning process",
+      "why": "Lets any coding agent or chat surface run the same planning steps, without depending on one vendor's skill.",
+      "done_when": "A vendor-neutral planning document describes both phases with their full prompts, and the agents guide points to it.",
+      "source_fingerprint": "4c4f7fbd5879494c"
+    },
+    {
+      "id": "refresh-managed-production-readiness-2026-09-22",
+      "title": "Refresh the managed production readiness document",
+      "why": "Gives the operator an accurate picture of what still blocks unattended production.",
+      "done_when": "The readiness document matches current Action status, shows Gate 2 as closed, and names the remaining blockers, including the worker hang defect.",
+      "source_fingerprint": "6b606cbc0de49f81"
+    },
+    {
+      "id": "self-heal-hung-worker-heartbeat",
+      "title": "Recover a hung worker automatically",
+      "why": "Removes the need for a person to find and force-kill a worker process whose heartbeat has gone stale.",
+      "done_when": "Status reports a stale-heartbeat worker as unhealthy, and start recovers it without manual steps and without duplicate processes.",
+      "source_fingerprint": "cfd2ea3052dce8ed"
+    },
+    {
+      "id": "surface-batch-readiness-view",
+      "title": "Show the current batch on the Runs page",
+      "why": "Shows which Actions can run together before the next operator gate, so the operator sees the push at a glance.",
+      "done_when": "The Runs page shows the current batch as lanes with a token total and the next gate marked, and the same position appears on the board cards.",
+      "source_fingerprint": "278c7373dc77d1b4"
+    },
+    {
+      "id": "serialize-current-action-writes",
+      "title": "Serialize writes to the current Action pointer",
+      "why": "Stops two concurrent settlements from overwriting each other's pointer move.",
+      "done_when": "Concurrent settlement writes leave the project and plan documents pointing at the same current Action, and retries keep the same request id.",
+      "source_fingerprint": "0f469f85b413432d"
+    },
+    {
+      "id": "plan-scoped-agent-ask-complete",
+      "title": "Complete an Action in a named plan",
+      "why": "Lets an Ask complete work in a plan that is not the active one, without moving the active plan's pointer.",
+      "done_when": "Completing an Action through a plan reference in a non-active plan succeeds and leaves the active pointer and queue unchanged.",
+      "source_fingerprint": "7d77a2d2fccbbee7"
+    },
+    {
+      "id": "prove-fault-matrix-remaining-boundaries",
+      "title": "Test the remaining failure boundaries",
+      "why": "Gives evidence that the completion, process-health and runtime boundaries hold under injected crashes, not only in the happy path.",
+      "done_when": "Each named scenario runs at least 100 seeded interleavings with zero invariant violations, and a completion with a missing artifact is refused.",
+      "source_fingerprint": "4a1e04a05b43c68a"
+    },
+    {
+      "id": "run-managed-production-live-soak",
+      "title": "Run the live managed production soak test",
+      "why": "Shows that unattended production works over real runs, restarts and a recoverable failure, not only in tests.",
+      "done_when": "The two-Action live rehearsal and a bounded soak of at least ten Actions across two providers complete, with each stage recorded as pass, fail or unproven.",
+      "source_fingerprint": "d4199bc42b1cad2a"
+    },
+    {
+      "id": "add-segment-queue-arrange",
+      "title": "Move a group of queue items together",
+      "why": "Lets the operator place a batch of Actions at one spot without reshuffling the rest of the queue.",
+      "done_when": "One command places an ordered set of approved items, refuses any order that puts an Action ahead of its dependency, and new Actions insert without changing existing order.",
+      "source_fingerprint": "ddda93c5b51e6064"
+    },
+    {
+      "id": "settle-commit-survives-gitignored-asks",
+      "title": "Commit settlements even when Asks are ignored",
+      "why": "Keeps a settled Ask from failing to commit when the project ignores its Asks folder.",
+      "done_when": "Settling an Ask in a repository that ignores the Asks folder commits the managed documents with a clean tree, and a tracked Asks folder still commits the archived file.",
+      "source_fingerprint": "062940193b4c1d00"
+    },
+    {
+      "id": "serialize-decision-deferral-pointer-write",
+      "title": "Serialize the deferral pointer write",
+      "why": "Stops a deferral from overwriting a concurrent pointer move and leaving two documents on different Actions.",
+      "done_when": "A deferral racing a settlement leaves one current Action in both documents and loses no move.",
+      "source_fingerprint": "999363194af4aa16"
+    },
+    {
+      "id": "guard-go-fallback-against-claimed-actions",
+      "title": "Skip claimed Actions in the go fallback",
+      "why": "Stops two sessions from being handed the same Action when the fallback path is used.",
+      "done_when": "Two concurrent go runs land on different ready Actions or one refuses, and the fallback never picks an Action another live worktree holds.",
+      "source_fingerprint": "c91169c71d64f359"
+    },
+    {
+      "id": "refresh-pointer-action-against-current-base",
+      "title": "Check the pointer Action against the current base",
+      "why": "Stops go from preparing duplicate work for an Action that is already done on the base branch.",
+      "done_when": "From an older checkout whose pointer Action is already done on the base, go creates no new worktree or claim for it.",
+      "source_fingerprint": "fd50ef7b75fd9875"
+    },
+    {
+      "id": "bind-preservation-checks-to-host-owned-code",
+      "title": "Stop candidates from editing their own preservation check",
+      "why": "Keeps a candidate from passing protected preservation by rewriting the check that is meant to test it.",
+      "done_when": "A candidate that changes its declared check is refused and its files are kept, while an unchanged candidate is preserved.",
+      "source_fingerprint": "361e5718dbee7acf"
+    },
+    {
+      "id": "give-zero-prompt-fixture-actions-a-build-packet",
+      "title": "Give the rehearsal fixture a build packet",
+      "why": "Lets the guarded launch path start the rehearsal Action without a manual packet step.",
+      "done_when": "The guarded launch path resolves the fixture's Action to a launchable packet instead of reporting planning required.",
+      "source_fingerprint": "7325ff150cf2514a"
+    },
+    {
+      "id": "treat-blocked-status-as-undispatchable",
+      "title": "Keep blocked Actions out of dispatch",
+      "why": "Stops an Action marked blocked from being offered for coding agent work or given a worktree.",
+      "done_when": "A blocked Action is not dispatchable and arcadia next does not offer it, while an unblocked Action stays dispatchable.",
+      "source_fingerprint": "03df1f75473a1f08"
+    },
+    {
+      "id": "honor-policy-providers-at-launch",
+      "title": "Honour the policy's permitted providers at launch",
+      "why": "Makes a provider mismatch a named, visible prerequisite instead of a silent refusal on every tick.",
+      "done_when": "A packet bound to a provider outside the active policy shows a named prerequisite, and the tick logs the refusal once rather than on every pass.",
+      "source_fingerprint": "d2dc4657ddd9d908"
+    },
+    {
+      "id": "defect-bounded-triage-loop",
+      "title": "Run bounded automatic defect triage",
+      "why": "Gives each defect signal a recorded disposition within a fixed budget, without spending on every signal.",
+      "done_when": "Each defect signal ends with a durable disposition and evidence within the set token and attempt budget, and any gated action is reported rather than performed.",
+      "source_fingerprint": "ab0b6d4795d30cd6"
+    },
+    {
+      "id": "preflight-provider-signin-before-launch",
+      "title": "Check provider sign-in before launching",
+      "why": "Stops a launch that would fail for lack of sign-in from taking a lease or a slot first.",
+      "done_when": "A signed-out launch is refused with a named remedy, shown in production status, and takes no lease or slot.",
+      "source_fingerprint": "c6e0eb8b2d8c9797"
+    },
+    {
+      "id": "pass-managed-claude-token-into-sessions",
+      "title": "Pass the managed Claude token only to its Session",
+      "why": "Lets claude Sessions start signed in without exposing the token to other processes or logs.",
+      "done_when": "A valid token file is read at launch and reaches only the claude Session, and the token never appears in logs, receipts or errors.",
+      "source_fingerprint": "4981864b9abfd1b3"
+    },
+    {
+      "id": "escalate-nonrecoverable-launch-refusals",
+      "title": "Surface launch refusals that need a person",
+      "why": "Stops a refusal that will not resolve on its own from repeating silently forever.",
+      "done_when": "A planning-required refusal is shown once in an operator-visible place and not repeated each tick, while a capacity wait still retries silently.",
+      "source_fingerprint": "12acbd9ea956299d"
+    },
+    {
+      "id": "auto-resolve-planning-required",
+      "title": "Prepare packets for Actions that have none",
+      "why": "Stops an Action at the front of the queue from staying stuck because nobody ran planning by hand.",
+      "done_when": "An Action with no packet gets one prepared automatically, or a gated planning run is requested, and its escalation clears.",
+      "source_fingerprint": "091dcb2592a6ced8"
+    },
+    {
+      "id": "page-runs-this-push-list",
+      "title": "Load the This push list in pages",
+      "why": "Lets the Runs page show its first Actions quickly on a long queue, instead of waiting for the full list.",
+      "done_when": "The This push section shows its first page at once, scrolling loads the next page with no duplicates or gaps, and loading, empty and error states still appear.",
+      "source_fingerprint": "a7364dc2266e6d0f"
+    },
+    {
+      "id": "tab-runs-page-concerns",
+      "title": "Split the Runs page into tabs",
+      "why": "Lets the operator look at one concern at a time on a crowded Runs page.",
+      "done_when": "Each concern has its own tab that is reflected in the URL, with keyboard access and a usable layout at phone width.",
+      "source_fingerprint": "d0bdb27a3350a455"
+    },
+    {
+      "id": "go-refuses-stale-session-without-question-or-blocker",
+      "title": "Stop go ending a session with no progress",
+      "why": "Makes a session that leaves its Action unchanged explain why, through an operator question or a blocker.",
+      "done_when": "Ending a session with the current Action unchanged is refused unless an operator question or external blocker is recorded.",
+      "source_fingerprint": "ffa38637549fbd78"
+    },
+    {
+      "id": "renumber-duplicate-decision-files",
+      "title": "Renumber the later duplicate Decision files",
+      "why": "Gives each Decision file a unique id while keeping a traceable note of its old one.",
+      "done_when": "Each later duplicate has a new free id with matching frontmatter and a migration note, and no inbound reference still points at the old id.",
+      "source_fingerprint": "a562377eb1efc139"
+    },
+    {
+      "id": "repoint-r195-to-fresh-decision",
+      "title": "Point an open review item at a fresh Decision",
+      "why": "The review item currently points at a Decision file that was never committed, so the operator cannot follow it to the question.",
+      "done_when": "A new Decision document restates the open question, and the review item links to it instead of the missing file.",
+      "source_fingerprint": "9531bdb176b130dc"
+    },
+    {
+      "id": "release-committed-admissions-on-session-end",
+      "title": "Free the production slot when a Session ends",
+      "why": "Finished Sessions stop holding a concurrency slot, so the next ready Action is not refused for a limit that is already free.",
+      "done_when": "After a Session ends in any outcome, the next ready Action starts on the following tick instead of being refused for concurrency.",
+      "source_fingerprint": "a61d94a78eb82424"
+    },
+    {
+      "id": "name-failing-preservation-check-and-bound-retries",
+      "title": "Name the failed preservation check and cap retries",
+      "why": "Without a named cause and a retry limit, a Session can repeat the same refused preservation attempt indefinitely.",
+      "done_when": "A preservation refusal says which check failed or was skipped and why, and a Session that hits the same refusal repeatedly stops and is recorded as incomplete.",
+      "source_fingerprint": "a29c6f080f6d8486"
+    },
+    {
+      "id": "withhold-worker-lifecycle-from-sessions",
+      "title": "Stop coding-agent Sessions from restarting the shared worker",
+      "why": "A Session that restarts the shared worker can interrupt every other Session and the operator's own work.",
+      "done_when": "A Session trying to stop, start or restart the worker is refused with a stated reason, while the operator's terminal and the background service still work as before.",
+      "source_fingerprint": "41287f6eab88b7f3"
+    },
+    {
+      "id": "preserve-candidates-across-base-advance",
+      "title": "Preserve work after the base branch moves",
+      "why": "Work done during a Session is at risk of being stuck when the main branch moves on before the Session finishes.",
+      "done_when": "A candidate that still merges cleanly onto the moved base can be preserved, and a real conflict is refused with a message naming the old and new base.",
+      "source_fingerprint": "fed32a3db774085f"
+    },
+    {
+      "id": "refuse-packets-without-validation-commands",
+      "title": "Refuse work for Projects with no validation commands",
+      "why": "A Session in a Project with no validation commands can never be preserved or completed automatically, so launching it wastes a slot.",
+      "done_when": "Launch is refused with the command that fixes the Project's setup, and the operator is told once in production escalations rather than on every tick.",
+      "source_fingerprint": "603ffea8431426b0"
+    },
+    {
+      "id": "stop-killing-busy-workers",
+      "title": "Recover only workers that are truly hung",
+      "why": "A worker busy in a long step can be restarted by mistake, which interrupts real work.",
+      "done_when": "A busy worker is left alone and only a worker that has stopped making progress is recovered, with the earlier stall causes recorded.",
+      "source_fingerprint": "fde3b959bd215f32"
+    },
+    {
+      "id": "generate-operator-scripts-for-runs-approvals",
+      "title": "Generate reviewed scripts for run approvals",
+      "why": "Operators need a checked, repeatable script behind each approval step rather than a free-form command from the browser.",
+      "done_when": "Each scriptable approval shows its exact command and checksum on the runs page, and a failed script leaves a handoff a coding agent can use to diagnose it.",
+      "source_fingerprint": "d6c712ab8de89b42"
+    },
+    {
+      "id": "gate-dispatch-on-blocking-operator-items",
+      "title": "Hold dispatch when an operator item blocks it",
+      "why": "Dispatching agent work while a pending operator decision blocks the same Action wastes effort and can cause conflicting work.",
+      "done_when": "The go and advance commands stop with the blocking item and its settle command, and otherwise proceed with a short list of other pending items.",
+      "source_fingerprint": "84b1f4ea3157f124"
+    },
+    {
+      "id": "support-per-project-north-star",
+      "title": "Let each Project have its own north star",
+      "why": "A single portfolio target does not show what one Project is aiming for or which gates apply to it.",
+      "done_when": "The status views can show one Project's target and gates, and a malformed Project file is reported for that Project alone while the portfolio view still works.",
+      "source_fingerprint": "0f8c604c95dd1943"
+    },
+    {
+      "id": "notify-operator-on-agent-blockers",
+      "title": "Let agents send the operator a blocker notice",
+      "why": "Blockers that agents only record in a log can go unseen, so the operator learns about them late.",
+      "done_when": "An agent can record a notification that appears once in the default Discord channel with its full text and reference, and the runs page lists it.",
+      "source_fingerprint": "c116e19ac92a6cb6"
+    },
+    {
+      "id": "settle-squash-merged-completion-drafts",
+      "title": "Settle completions that were squash-merged",
+      "why": "Completions merged by squash were refused, so finished work stayed pending and blocked the next Action.",
+      "done_when": "A drafted completion whose change was squash-merged into main settles automatically, while one with unmerged changes is still refused with a reason.",
+      "source_fingerprint": "a7f44aee59d976f3"
+    },
+    {
+      "id": "sweep-merged-completions-before-dispatch",
+      "title": "Settle merged completions before choosing new work",
+      "why": "Choosing the next Action before merged completions settle can select work that is already finished or out of order.",
+      "done_when": "Before new work is chosen, every merged completion is settled in merge order, and an unmerged one stays pending and untouched.",
+      "source_fingerprint": "fd8d9c47f3648b38"
+    },
+    {
+      "id": "fix-decision-approve-missing-commit",
+      "title": "Commit Decision answers when approved",
+      "why": "A plain Decision answer left uncommitted can be lost or confuse the next run.",
+      "done_when": "Approving a plain Decision leaves the working tree clean, with the answer committed locally and not pushed.",
+      "source_fingerprint": "f348afb87acd74f0"
+    },
+    {
+      "id": "resolve-cross-plan-dependency-ids",
+      "title": "Stop treating unknown dependencies as met",
+      "why": "An unknown dependency that counts as met lets an Action start before the work it needs exists.",
+      "done_when": "An Action whose dependency cannot be found waits with a stated reason, and a dependency on another Plan is recognised once that Plan's Action is done.",
+      "source_fingerprint": "36a6f9094a032076"
+    },
+    {
+      "id": "admit-ready-set-across-repositories",
+      "title": "Start every ready Action across repositories",
+      "why": "Choosing one next Action at a time limits the work that can run in parallel across repositories.",
+      "done_when": "Each tick starts the ready Actions across all active repositories in priority order, and a status view explains why any ready Action did not start.",
+      "source_fingerprint": "9d1816cfed7783b7"
+    },
+    {
+      "id": "pipeline-independent-actions-while-pr-unmerged",
+      "title": "Start independent work while a PR is still open",
+      "why": "Waiting for every pull request to merge before starting anything leaves independent work idle.",
+      "done_when": "An independent Action starts in a repository with an open PR only when its declared file scope does not overlap that PR, and overlap found later is reported.",
+      "source_fingerprint": "792eb7f352efcd9c"
+    },
+    {
+      "id": "prove-concurrent-ready-set-admission",
+      "title": "Prove two Actions can run side by side",
+      "why": "Parallel runs have not been shown to work safely in practice, so the risk of interference is still untested.",
+      "done_when": "Two Actions in two repositories run to completion from one tick with separate resources and both completions settle correctly in either order.",
+      "source_fingerprint": "86a09c1682e314d6"
+    },
+    {
+      "id": "enforce-concurrency-gate-at-admission",
+      "title": "Cap production at one Session until proven",
+      "why": "Until parallel runs are proven, a higher limit would let untested concurrency run unattended.",
+      "done_when": "Production runs one Session at a time whatever limit is stored, and only an expiring rehearsal exception can raise it.",
+      "source_fingerprint": "338d1ca9341b9832"
+    },
+    {
+      "id": "rewire-dependents-on-split",
+      "title": "Keep dependents blocked when work is split",
+      "why": "A split that releases dependents early can let work start before the remaining part is finished.",
+      "done_when": "After a split, dependent Actions and the concurrency gate stay blocked until every remainder Action is done.",
+      "source_fingerprint": "933c9c029acca6ed"
+    },
+    {
+      "id": "fix-action-intent-target-ref-amendments",
+      "title": "Amend existing Actions instead of duplicating them",
+      "why": "Settling an intent that targets existing Actions as new ones creates duplicates and loses the link to the original.",
+      "done_when": "Settling an intent amends the Actions it names and creates only new ones, and a reference to a missing Action is refused before settlement.",
+      "source_fingerprint": "9ae243badfba0e53"
+    },
+    {
+      "id": "release-admission-on-every-launch-failure",
+      "title": "Free the slot when a launch fails",
+      "why": "A failed launch that keeps its slot blocks other work for up to the receipt expiry.",
+      "done_when": "Any failed launch frees its slot at once, and the live count returns to its earlier value.",
+      "source_fingerprint": "901bf7cc7da3802e"
+    },
+    {
+      "id": "add-fixture-coding-agent-provider",
+      "title": "Add a free test coding agent",
+      "why": "Concurrency limits need an end-to-end test that costs nothing and cannot be mistaken for real proof.",
+      "done_when": "A fixture agent can be set to finish, fail, stall or crash on demand, and its runs are marked simulated and used only when the policy names it.",
+      "source_fingerprint": "71e7cedbc6917f9e"
+    },
+    {
+      "id": "load-test-workspace-db-contention",
+      "title": "Measure database contention under parallel writers",
+      "why": "The concurrency limit rests on an assumption about database contention that has not been measured.",
+      "done_when": "A repeatable test with several concurrent writers reports zero lock errors and a recorded basis for the session limit.",
+      "source_fingerprint": "166c7712853818e0"
+    },
+    {
+      "id": "keep-action-claim-while-candidate-unmerged",
+      "title": "Keep an Action claimed while its work is open",
+      "why": "An Action claim that expires while its work is still unmerged can let the same Action be started twice.",
+      "done_when": "An Action with an open candidate stays claimed past 24 hours, is refused for a second start, and is released once the candidate merges or is abandoned.",
+      "source_fingerprint": "3d2f389f3c03249a"
+    },
+    {
+      "id": "limit-sessions-per-provider-account",
+      "title": "Limit Sessions per provider account",
+      "why": "Without a per-account cap, parallel Sessions can exceed what one provider account allows.",
+      "done_when": "Sessions on one provider account are capped at the configured limit, and an account that cannot be identified counts as one account.",
+      "source_fingerprint": "d143734096ff1dde"
+    },
+    {
+      "id": "recover-stalled-sessions-within-bound",
+      "title": "Recover stalled Sessions within a set time",
+      "why": "A stalled Session holds a repository lease and a slot until someone intervenes.",
+      "done_when": "A Session stalled past the recovery window is ended and its work preserved, freeing its slot, and a second stall for the same Action goes to the operator.",
+      "source_fingerprint": "2dd9c4da4dce2aec"
+    },
+    {
+      "id": "limit-unmerged-candidates-per-repository",
+      "title": "Limit open candidates per repository",
+      "why": "Unlimited unmerged candidates in one repository make review pile up and conflict with each other.",
+      "done_when": "Once a repository reaches its review limit, new work there waits with a stated reason and resumes when one candidate merges.",
+      "source_fingerprint": "5ac5eff1e26bd8a6"
+    },
+    {
+      "id": "soak-ready-set-admission-with-fixture-provider",
+      "title": "Run a simulated load test before live parallel runs",
+      "why": "Live parallel runs should not start until the admission rules have held under a sustained, simulated load.",
+      "done_when": "A single command runs at least twenty simulated Actions across three repositories and prints a pass or fail report that the readiness document links to.",
+      "source_fingerprint": "5db99b00d0a1db9d"
+    },
+    {
+      "id": "resolve-ambiguous-and-cross-project-dependency-ids",
+      "title": "Resolve dependencies across Projects safely",
+      "why": "Dependencies that match more than one Action or form a loop can silently stall or misroute work.",
+      "done_when": "Cross-Project dependencies resolve, ambiguous ones are refused, loops are reported when plans are read, and a long-unresolved dependency is escalated to the operator.",
+      "source_fingerprint": "2ab22cc8402288ce"
+    },
+    {
+      "id": "tidy-quarantine-instead-of-delete",
+      "title": "Quarantine old worktrees instead of deleting them",
+      "why": "Deleting old worktrees and branches can permanently lose work that was never merged.",
+      "done_when": "Retired worktrees and branches are moved to a quarantine, and a single undo command restores them exactly.",
+      "source_fingerprint": "75adc5fb81b54aae"
+    },
+    {
+      "id": "tidy-harden-merge-and-liveness-verdicts",
+      "title": "Stop tidy from retiring live or unmerged work",
+      "why": "Wrong merge proofs or live worktrees treated as stale can cause real work to be retired.",
+      "done_when": "Tidy protects live, recently active and unregistered worktrees, and skips any branch that became checked out after its preview.",
+      "source_fingerprint": "e1eba2fb25d94bfb"
+    },
+    {
+      "id": "tidy-journal-recovery-and-conservation-tests",
+      "title": "Make tidy safe to interrupt",
+      "why": "A tidy run stopped partway can leave the repository in an unclear state.",
+      "done_when": "An interrupted tidy run recovers to a clear state, and generated tests confirm no reachable commit or file is lost.",
+      "source_fingerprint": "a5b1eedbcf35a86f"
+    },
+    {
+      "id": "fix-rehearsal-fixture-validation-command",
+      "title": "Fix the rehearsal fixture's check command",
+      "why": "The rehearsal cannot pass for both Actions while its check command points at a file that does not exist yet.",
+      "done_when": "The rehearsal fixture runs a check command that exists and can pass for both of its Actions.",
+      "source_fingerprint": "6774472a596d41a0"
+    },
+    {
+      "id": "enable-unattended-claude-session-launch",
+      "title": "Let Claude Sessions run without a trust prompt",
+      "why": "A Claude Session that waits on an interactive prompt blocks unattended work.",
+      "done_when": "A Claude Session launched by the worker runs without a prompt and exits on its own, and a fresh worktree no longer shows the trust dialog.",
+      "source_fingerprint": "546acff291065c1e"
+    },
+    {
+      "id": "harden-agent-ask-settlement-races-and-state",
+      "title": "Fix settlement races and stale state",
+      "why": "Stale revisions and concurrent or replayed settlements can leave Agent Ask records disagreeing with each other.",
+      "done_when": "Settlement rejects only truly stale input, refuses an unapplicable completion, handles replayed deferrals correctly, and archives the revision the log records.",
+      "source_fingerprint": "fb5f2a9cf1dfb7fe"
+    },
+    {
+      "id": "improve-agent-ask-settle-usability",
+      "title": "Make the settle command easier to get right",
+      "why": "Agents repeat failed settle attempts when the right flags and next step are not obvious.",
+      "done_when": "The settle command shows a working example with its required flags, and split settlement picks its next step after the retry.",
+      "source_fingerprint": "635a68001fb77b33"
+    },
+    {
+      "id": "fix-docs-sync-paused-project-handling",
+      "title": "Make paused Projects stop being read and routed",
+      "why": "A paused Project that is still synced or routed to produces work the operator meant to hold.",
+      "done_when": "A paused Project is skipped by sync and routing, can be paused or resumed through Agent Ask, and unrecognised documents are reported rather than silently dropped.",
+      "source_fingerprint": "dd46238e4c3d4b14"
+    },
+    {
+      "id": "fix-auto-settle-eligibility-docs",
+      "title": "Correct the auto-settle rules in the agent guide",
+      "why": "The shared guide describes auto-settle rules that do not match what the code enforces.",
+      "done_when": "The shared guide states the auto-settle requirement and the exact no-workspace settle command as the code runs them.",
+      "source_fingerprint": "bbd1a85e33e18726"
+    },
+    {
+      "id": "harden-dispatch-and-claim-lifecycle",
+      "title": "Fix dispatch reporting and claim lifetimes",
+      "why": "Wrong dispatchability reports and claims that outlive their work can mislead the operator and block or repeat work.",
+      "done_when": "Dispatch reports match the scheduler, refusal messages list the right prefixes, and capacity refusals reach the right check.",
+      "source_fingerprint": "7aef6cdea4b3d8e4"
+    },
+    {
+      "id": "fix-worker-and-dashboard-operational-bugs",
+      "title": "Fix worker, restart and dashboard status bugs",
+      "why": "Known operational bugs in the worker, restart scripts and dashboard give false or incomplete status.",
+      "done_when": "The dashboard toggle reapplies its actions, restarts tear down every service, recovery reports failure accurately, and worker tests leave the real service file alone.",
+      "source_fingerprint": "ac4f9c804dd46c20"
+    },
+    {
+      "id": "stabilize-test-and-build-infra",
+      "title": "Remove flaky test and build failures",
+      "why": "False failures in tests and builds waste time and hide real problems.",
+      "done_when": "The test and build suite passes reliably on a clean checkout without spurious timeouts or false lint errors.",
+      "source_fingerprint": "8e4c7bed8591da4c"
+    },
+    {
+      "id": "close-ask-traceability-and-cli-portability-gaps",
+      "title": "Trace each Ask back to its capture",
+      "why": "Without a link from a capture to what it produced, the operator cannot follow an idea to its result.",
+      "done_when": "Every Ask records its originating capture, and a capture or request can be looked up to find the Ask, item or Action it produced.",
+      "source_fingerprint": "559272478531bf68"
+    },
+    {
+      "id": "prove-contract-20-completion-gate",
+      "title": "Prove the false-completion quality gate",
+      "why": "A quality gate that is not proven can let agents report work as complete when it is not.",
+      "done_when": "A test proves the false-completion gate holds, and the gate has a named owning Action.",
+      "source_fingerprint": "de8d6f3ae82a3bba"
+    },
+    {
+      "id": "harden-tidy-quarantine-safety-and-docs",
+      "title": "Close remaining gaps in tidy quarantine",
+      "why": "Remaining gaps in quarantine could still remove a live agent's uncommitted work, and the docs name the wrong recovery path.",
+      "done_when": "Live uncommitted worktrees are kept, branches are retired only on current verdicts, and the docs describe the real restore command.",
+      "source_fingerprint": "3a2481588f8b2f40"
+    },
+    {
+      "id": "soak-rehearsal-harness-until-clean",
+      "title": "Repeat the rehearsal until it runs clean",
+      "why": "A single rehearsal run can pass by chance, so repeated clean runs are needed before trusting the harness.",
+      "done_when": "One documented command repeats the rehearsal on fresh fixtures, stops with a stated reason, and files each failing run as an Issue.",
+      "source_fingerprint": "9019a4bcc53d78d9"
+    },
+    {
+      "id": "session-signal-catalog-and-classifier",
+      "title": "Classify live Sessions from their signals",
+      "why": "Without a clear state for each live Session, a limit or prompt can be mistaken for a stall.",
+      "done_when": "Each live Session is placed in one state from its signals without any model call, and provider limits, auth failures and permission prompts take precedence over stall.",
+      "source_fingerprint": "2891f1b5e6a8848c"
+    },
+    {
+      "id": "raise-red-alert-on-stop-the-line-failures",
+      "title": "Raise a red alert for stop-the-line failures",
+      "why": "Gives the operator one clear, evidence-backed signal when production must stop, instead of finding out late.",
+      "done_when": "A stalled session, a repeatedly refused admission or a failed reconcile shows as one open red alert with its evidence, posts once to the notification channel, and clears when the failure resolves.",
+      "source_fingerprint": "42449e388be0cb81"
+    },
+    {
+      "id": "diagnose-red-alerts-and-propose-the-fix",
+      "title": "Diagnose red alerts and propose a fix",
+      "why": "Turns each alert into one bounded investigation and a proposed fix, so the operator reviews a cause rather than starting from scratch.",
+      "done_when": "Each open red alert gets at most one budgeted diagnosis that files or updates a bug Issue and proposes a fix; fixes touching safety gates stop at an open pull request and are never merged automatically.",
+      "source_fingerprint": "5a7005eee2eb17b8"
+    },
+    {
+      "id": "prove-red-alert-with-injected-failures",
+      "title": "Prove the red alert path with injected failures",
+      "why": "Shows the alert and diagnosis path work end to end in the standard test run, without a live production grant.",
+      "done_when": "Injected stalled, refused and failed-reconcile cases each raise their alert with evidence, post one notification, start one diagnosis, and clear on resolution.",
+      "source_fingerprint": "36eb8f15ae5e2ec4"
+    },
+    {
+      "id": "define-grant-operator-action-pattern",
+      "title": "Define the Grant pattern for operator actions",
+      "why": "Gives every one-shot delegation of authority one checkable shape, so each Grant is scoped, expires and leaves a receipt.",
+      "done_when": "The semantics document defines a Grant, the existing production Grant descriptor is tagged as one and shows that tag on the runs page, and older descriptors still list as before.",
+      "source_fingerprint": "dafbfd001b743e09"
+    },
+    {
+      "id": "move-grants-to-their-own-page",
+      "title": "Show Grants on their own dashboard page",
+      "why": "Separates one-shot authority from routine operator scripts, so each Grant's scope, expiry and last receipt sit in one place.",
+      "done_when": "A dashboard page lists only Grants with their scope, expiry, pinned revision, availability and last receipt, the runs page no longer lists them, and START_HERE gives the page's address and start command.",
+      "source_fingerprint": "9fb3a0c9a7b48c86"
+    },
+    {
+      "id": "replay-real-pane-transcripts-through-classifier",
+      "title": "Test the session classifier on real pane transcripts",
+      "why": "Replaces made-up test cases with recorded real output, so the session signal classifier is checked against what agents actually print.",
+      "done_when": "Recorded real transcripts replay through the classifier in tests, covering each catalog class and the cases where stall indicators overlap with other signals.",
+      "source_fingerprint": "2dc4056ad2944f5d"
+    },
+    {
+      "id": "finish-two-action-unattended-production-proof",
+      "title": "Finish the proof of unattended two-Action production",
+      "why": "Establishes with evidence that two Actions can run unattended in production, separating simulated behavior from real proof.",
+      "done_when": "The pull request carries the deterministic integration evidence and an exact operator procedure, and it marks clearly which results are simulated and which are real.",
+      "source_fingerprint": "2c4b029da029a09f"
+    },
+    {
+      "id": "recover-terminal-integration-after-reconcile",
+      "title": "Recover integration of a finished candidate after a failed reconcile",
+      "why": "Lets a completed, validated change land exactly once after an integration failure, so finished work is neither lost nor duplicated.",
+      "done_when": "After an injected integration failure, a later worker tick integrates the unchanged finished candidate once with no replacement session, and each unsafe condition refuses while leaving a recoverable receipt.",
+      "source_fingerprint": "c8b74187cb104fe6"
+    },
+    {
+      "id": "recover-off-completed-candidate-preservation",
+      "title": "Preserve and integrate a candidate completed while Off",
+      "why": "Recovers finished work that was held back while production was Off, so it is not stranded and nobody has to redo it.",
+      "done_when": "Under fresh exact authority, a later worker tick preserves the unchanged completed candidate and integrates it once without another coding session, and each unsafe condition refuses while keeping the candidate recoverable.",
+      "source_fingerprint": "868f596c2e262c13"
+    },
+    {
+      "id": "prove-literal-split-browser-and-ledger",
+      "title": "Prove a split session and Off restart with a full ledger",
+      "why": "Shows the two-session continuation and the Off restart behave as designed, with every operator intervention recorded.",
+      "done_when": "A deliberately split Action finishes across two sessions in one worktree, Off stops later launches, closing the browser or restarting the worker causes no duplicate, and the ledger lists every operator intervention.",
+      "source_fingerprint": "3ed2746146e3fc66"
+    },
+    {
+      "id": "enroll-session-through-governed-host-request",
+      "title": "Enroll a helper session through a governed host request",
+      "why": "Lets a preliminary helper obtain governed preparation or a managed worker launch without gaining ownership or production authority.",
+      "done_when": "A fixed enrollment request prepares the exact Action's brief and worktree claim, repeats safely with the same receipt, and refuses changed input, stale policy or missing approval without leaving duplicates.",
+      "source_fingerprint": "ab53b3f640eed6d0"
+    },
+    {
+      "id": "persist-inactive-production-configuration",
+      "title": "Keep production configuration saved while Off",
+      "why": "Lets the operator preview a safe fresh activation after turning production Off, without re-deriving scope from a queue that has moved.",
+      "done_when": "Turning production Off revokes authority but keeps the saved configuration across restarts, and a later On previews the saved bounds, refuses stale revisions, and records fresh authority only when it is authorized.",
+      "source_fingerprint": "88e764ea3bad1e8b"
+    },
+    {
+      "id": "repair-manual-preservation-snapshot-identity",
+      "title": "Fix repeated manual preservation of revised candidates",
+      "why": "Lets a revised candidate be preserved again after governance and documentation changes, instead of being blocked by its earlier capture.",
+      "done_when": "A candidate captured, revised and captured again gets its own preservation receipt, and an unchanged retry returns the original outcome without a duplicate commit.",
+      "source_fingerprint": "750d970ff419e5aa"
+    },
+    {
+      "id": "fix-preserve-launcher-git-timeout-and-index-mutation",
+      "title": "Stop preservation from touching the index before commit",
+      "why": "Keeps a failed or timed-out preservation from changing the candidate's index or locks, so the operator can retry safely.",
+      "done_when": "A failure at any stage before the commit leaves the index, status and locks exactly as they were, and a git timeout reports a typed, retryable error that names the failing command.",
+      "source_fingerprint": "b0fa56ec255804b4"
+    },
+    {
+      "id": "resolve-agent-ask-draft-file-from-caller-worktree",
+      "title": "Read agent-ask draft files from the caller's worktree",
+      "why": "Stops a relative draft path from reading the wrong checkout, so Asks drafted in a linked worktree are previewed from the file the agent wrote.",
+      "done_when": "A relative file path given from a linked worktree is read and previewed from that worktree, the main checkout is left untouched, and paths that escape the repository are refused.",
+      "source_fingerprint": "fec5c9d6eae84458"
+    },
+    {
+      "id": "retire-legacy-operator-script-descriptors",
+      "title": "Retire five legacy operator script descriptors",
+      "why": "Clears the operator-script check on this host without weakening it, so the check still catches new or changed scripts.",
+      "done_when": "The operator-script check exits cleanly on the live library, the five named legacy descriptors are skipped only while their hashes match, and any new or changed script still gets full validation.",
+      "source_fingerprint": "137daf028a9f92c7"
+    },
+    {
+      "id": "bound-fixed-brief-broker-with-structured-receipt",
+      "title": "Make the brief broker return a bounded receipt",
+      "why": "Stops a stalled brief request from hanging silently, so the operator always gets a clear result or a named failure.",
+      "done_when": "Every brief request returns within its deadline with either the unchanged dispatch brief or a structured failure naming the stage and the safe recovery, and repeated calls create no duplicate records.",
+      "source_fingerprint": "04890f7003a98674"
+    },
+    {
+      "id": "recover-draft-only-never-launched-candidates",
+      "title": "Recover never-launched candidates that hold only drafts",
+      "why": "Keeps Agent Ask drafts from being lost when a candidate was never launched, so its work can resume safely in the same worktree.",
+      "done_when": "A draft-only candidate resumes in its same worktree and branch with every draft preserved and recorded, tracked changes or unexpected files fail closed, and a restart does not lose the receipt.",
+      "source_fingerprint": "f6aa395aa5261e78"
+    },
+    {
+      "id": "make-pr-review-verdict-truthful-for-current-head",
+      "title": "Report code review verdicts only for the current head",
+      "why": "Stops a skipped review or an old approval from showing as passed, so a done verdict means the current change was really reviewed.",
+      "done_when": "Paused or rate-limited reviews and approvals of an earlier head no longer produce a done verdict, a completed review without approval reads as not approved, and a new push clears earlier review evidence.",
+      "source_fingerprint": "b4a277c4ca33961b"
+    },
+    {
+      "id": "reset-managed-preservation-timeout-history-on-success",
+      "title": "Clear the preservation timeout count after success",
+      "why": "Stops an earlier timeout from counting toward a later halt, so one recovered timeout does not move a healthy candidate closer to a stop.",
+      "done_when": "After a timeout followed by a successful preservation, the next timeout counts as the first in its run, ten identical consecutive timeouts still stop retries, and a locked index is counted separately.",
+      "source_fingerprint": "ee5bcbd8fe49b75f"
+    },
+    {
+      "id": "clear-preservation-timeout-count-and-harden-index-lock-checks",
+      "title": "Align timeout counting and harden index lock checks",
+      "why": "Makes the production tick and the command-line path behave the same, and avoids removing a lock another process still holds.",
+      "done_when": "The production tick counts and clears preservation timeouts as the command line does, and a stale index lock is removed only when it is old and no process holds it, otherwise a clear error is shown.",
+      "source_fingerprint": "0bdc1bc37b0ba11b"
+    },
+    {
+      "id": "align-code-review-messages-with-advisory-coderabbit",
+      "title": "Align review messages with advisory CodeRabbit",
+      "why": "Keeps messages and documents consistent with the decision that CodeRabbit is advisory, so nobody is told a missing review blocks a merge.",
+      "done_when": "Command output and documents say a CodeRabbit rate limit or missing review never blocks a merge, the independent review gate governs, and the procedure names the seven required CI jobs on main.",
+      "source_fingerprint": "54bfdc119e46f671"
+    },
+    {
+      "id": "restore-readiness-evidence-and-report-spoofed-coderabbit-status",
+      "title": "Restore the readiness wording and spoof warning",
+      "why": "Undoes two wording regressions so the historical record stays accurate and a spoofed review status is still reported.",
+      "done_when": "The readiness document keeps its original sentence with a note that Decision 0080 replaced that reviewer, and an unverified CodeRabbit status tells the agent to report a possible spoof while stating it is advisory.",
+      "source_fingerprint": "4e2929f6a91d5d3e"
+    },
+    {
+      "id": "close-index-lock-probe-races-and-fd-matching-gaps",
+      "title": "Close race and matching gaps in index lock handling",
+      "why": "Prevents a lock from being removed after it changed, and avoids false no-holder answers that could disturb a live write.",
+      "done_when": "A lock swapped between the probe and its removal is refused, holder matching works across bind mounts, an lsof warning appears in the error details, and the docs state what the probe does and does not cover.",
+      "source_fingerprint": "dbf6bfe806064c5f"
+    },
+    {
+      "id": "wire-requirement-attempt-lineage-into-session-roles-and-tick",
+      "title": "Route one mutating owner through the production tick",
+      "why": "Keeps a single session responsible for changes and independent review separate, so the tick cannot act on a stale verdict.",
+      "done_when": "A three-Action plan always selects only its next ready Action, a restart resumes the current attempt without duplicating it, Off stops a launch between Actions, and the developer cannot supply the independent review.",
+      "source_fingerprint": "b552d1cdbf5db8dc"
+    },
+    {
+      "id": "record-code-review-verdicts-for-unattended-integration",
+      "title": "Record exact-head review verdicts for integration",
+      "why": "Lets the production tick integrate a managed change without an operator merge, counting only a review of the exact current head.",
+      "done_when": "A host command records a passed or failed review for the exact preserved head, refuses developer-supplied or stale verdicts, returns the same receipt on replay, and a retry after failure uses the next bounded attempt.",
+      "source_fingerprint": "a6ffe634cad24308"
+    },
+    {
+      "id": "let-production-grant-request-remote-preservation",
+      "title": "Let a production Grant request remote preservation",
+      "why": "Lets the operator opt in to pushing work and opening a draft pull request, while merging and marking ready stay outside the Grant.",
+      "done_when": "Preview and activate accept a remote-preservation option that appears in the preview and receipt, it is absent unless explicitly given, and the docs state it allows only push and draft pull request creation.",
+      "source_fingerprint": "be81156f1aa7d454"
+    },
+    {
+      "id": "ready-pr-and-run-independent-reviews-from-the-tick",
+      "title": "Ready the pull request and run reviews from the tick",
+      "why": "Removes the manual steps between preserving a change and integrating it, so an unattended Action moves forward without an operator.",
+      "done_when": "In a three-Action rehearsal with only external GitHub and reviewer calls stubbed, the tick readies the pull request, runs both independent reviews, integrates each Action locally, and resumes after a restart with no operator step.",
+      "source_fingerprint": "cf9fa428816936a2"
+    },
+    {
+      "id": "prepare-three-action-rehearsal-operator-runbooks",
+      "title": "Prepare the operator runbooks for the three-Action rehearsal",
+      "why": "Gives the operator bounded, paired steps for each stage of the disposable rehearsal, so each stage is checked before the next begins.",
+      "done_when": "Paired descriptor and script sets exist for the fixture, preflight, activation and shutdown stages, each making only its bounded observations or changes and refusing when its evidence is unknown, stale or unavailable.",
+      "source_fingerprint": "713cad1e09a25598"
+    },
+    {
+      "id": "normalize-check-contexts-in-review-readiness",
+      "title": "Read both kinds of pull request check consistently",
+      "why": "Stops a status entry from being misread as missing or failing, so readiness is judged the same way at every step.",
+      "done_when": "Check-run and status-context entries are read the same way at every readiness step, the advisory CodeRabbit status never blocks readiness, and every required check still gates exactly as before.",
+      "source_fingerprint": "f18f7d253ae6dc2e"
+    },
+    {
+      "id": "fix-rehearsal-g1-plan-and-operator-guidance",
+      "title": "Validate the rehearsal fixture before creating anything",
+      "why": "Catches an invalid rehearsal plan before any repository is created or pushed, so a bad fixture cannot leave half-made external state.",
+      "done_when": "The fixture plan passes the same discovery code before any external change, a bad plan refuses before creation, and the guidance tells the operator to run recovery with the workspace set inline.",
+      "source_fingerprint": "16aa3a39d680904f"
+    },
+    {
+      "id": "close-completed-board-mirrors",
+      "title": "Close board mirror issues for finished Actions",
+      "why": "Keeps the GitHub board from showing finished Actions as open, so the board matches the governed record.",
+      "done_when": "When an Action becomes done, its mirror issue is closed exactly once, a repeat projection makes no close call, and the mirror of an open Action is never closed.",
+      "source_fingerprint": "6e081b293514a6ec"
+    },
+    {
+      "id": "fix-decision-approve-resolution-body",
+      "title": "Write the approved answer into the Decision body",
+      "why": "Stops an approved Decision from reading as open in its own text, so the document says the same thing as its status.",
+      "done_when": "After approval, the Resolution section shows the recorded answer instead of the word Open, a dry run writes nothing, and approving again leaves the document consistent.",
+      "source_fingerprint": "0036a59bd498d342"
+    },
+    {
+      "id": "fix-tidy-torn-tail-byte-offset",
+      "title": "Repair torn journal tails by byte position",
+      "why": "Prevents repairing a damaged journal from cutting through a multi-byte character, which would leave the journal unreadable.",
+      "done_when": "A journal with a multi-byte character before a torn tail is repaired into valid text ending at a line break, and existing recovery behavior is unchanged.",
+      "source_fingerprint": "7c93f1fda538a2c6"
+    },
+    {
+      "id": "narrow-db-write-transactions-across-fs-calls",
+      "title": "Keep database write locks off slow file operations",
+      "why": "Stops a slow disk or network mount from blocking every other writer, which would stall the whole workspace.",
+      "done_when": "Write transactions no longer hold the database lock across file operations, a measurement shows lock hold time no longer grows with file latency, and concurrency tests pass with no lost update.",
+      "source_fingerprint": "d41ece4ea1e9683e"
+    },
+    {
+      "id": "allow-manual-preservation-first-binding-after-base-advance",
+      "title": "Allow first preservation after a clean base advance",
+      "why": "Lets a candidate reserved before the base moved still be preserved when it merges cleanly, instead of being stranded.",
+      "done_when": "A candidate whose base advanced before its first binding is preserved with a validation receipt when the merge is clean, and a diverged or conflicting candidate still refuses with a named reason.",
+      "source_fingerprint": "b3edac4f224fcba0"
+    },
+    {
+      "id": "report-missing-validation-commands-in-broker-readiness",
+      "title": "Report missing validation commands as not ready",
+      "why": "Prevents the broker from showing ready when a preservation is certain to refuse, so the gap is found before a run.",
+      "done_when": "Broker status reports not ready with a named remedy when manual preservation is on but no validation commands are configured.",
+      "source_fingerprint": "f289dbeb4cafae2d"
+    },
+    {
+      "id": "keep-inactive-plan-acceptance-fingerprint-stable",
+      "title": "Keep inactive Plan acceptance unaffected by queue movement",
+      "why": "Lets an inactive draft Plan be accepted without being blocked by unrelated queue changes, since acceptance changes no queue or pointer.",
+      "done_when": "Accepting an inactive Plan succeeds after unrelated queue movement, and a change to the Plan's own content still refuses the acceptance.",
+      "source_fingerprint": "710f0573e70761b0"
+    },
+    {
+      "id": "support-action-deferral-via-agent-ask",
+      "title": "Allow deferring an Action through an Agent Ask",
+      "why": "Makes deferring an Action a governed step the operator can take from a phone, instead of needing a separate command.",
+      "done_when": "A defer Ask naming an Action is accepted and applied as a deferred status with the pointer advanced, the preview matches the applied result, and a replayed settlement changes nothing.",
+      "source_fingerprint": "62ad28276ecc69da"
+    },
+    {
+      "id": "diagnose-manual-preservation-response-budget-timeout",
+      "title": "Record a durable reason when preservation times out",
+      "why": "Stops a silent timeout from leaving no trace, and stops identical requests from retrying forever without new input or a decision.",
+      "done_when": "A response-budget timeout leaves a durable refusal naming the budget and host-claim state, and an identical follow-up request does not repeat the silent timeout without a changed input or explicit operator action.",
+      "source_fingerprint": "bb395d381b0ab1ce"
+    },
+    {
+      "id": "withdraw-superseded-847-activation-asks",
+      "title": "Withdraw superseded activation Asks",
+      "why": "Keeps old Grant choices from reappearing in the ask list, so the operator sees only the one current activation input.",
+      "done_when": "A scan of the ask directory surfaces only the current activation input, the withdrawal is recorded so it can be audited, and the current scope is untouched.",
+      "source_fingerprint": "c492b1111d4768d8"
+    },
+    {
+      "id": "silence-sandbox-certificate-copy-errors",
+      "title": "Stop repeated certificate warnings in sandboxed runs",
+      "why": "Keeps command output clean inside the sandbox, so real errors are not buried under repeated trust-settings messages.",
+      "done_when": "Arcadia commands in the sandbox finish with no repeated trust-settings warnings on stderr, real errors still appear, and JSON output stays clean.",
+      "source_fingerprint": "565de47d6b052d7e"
+    },
+    {
+      "id": "preserve-global-agent-defaults-in-go-install",
+      "title": "Keep global agent defaults when installing the broker",
+      "why": "Stops installing the unattended profile from quietly changing the operator's everyday agent defaults.",
+      "done_when": "After the broker is installed, the operator's existing interactive defaults are unchanged, and the named unattended profile is still available.",
+      "source_fingerprint": "33a40dae977dde0e"
+    },
+    {
+      "id": "stabilize-flaky-test-suite",
+      "title": "Remove the remaining flaky tests",
+      "why": "Makes a passing test run mean something, so real problems are not hidden by reruns or raised timeouts.",
+      "done_when": "Each named flaky test is reproduced or fixed with its fix named per issue, and the full test run and end-to-end job pass repeatedly on a loaded host without reruns.",
+      "source_fingerprint": "838667882aa8304a"
+    },
+    {
+      "id": "resolve-merged-pr-review-followups",
+      "title": "Settle the follow-ups left by merged reviews",
+      "why": "Closes out review notes from merged pull requests, so no non-blocking finding is lost or left unresolved.",
+      "done_when": "Each of the five named follow-up issues is either fixed with a test or doc change or declined with a reason on the issue, and the concurrent review race no longer shows a pass while a later call returns a fail.",
+      "source_fingerprint": "f0f089907cf5e230"
+    },
+    {
+      "id": "code-review-not-applicable-criteria",
+      "title": "Allow honest not-applicable review criteria",
+      "why": "Lets the reviewer say a check cannot apply to a change, so harmless changes are not stuck while real review stays strict.",
+      "done_when": "A not-applicable criterion counts as non-blocking only with concrete evidence, correctness can never be not-applicable, and tests cover the captured rehearsal verdict and a pass and fail matrix.",
+      "source_fingerprint": "958ed473875be088"
+    },
+    {
+      "id": "code-review-not-applicable-naming",
+      "title": "Require named files in not-applicable review claims",
+      "why": "Makes a not-applicable claim point at the files it covers, so a vague claim cannot pass review.",
+      "done_when": "A review with not-applicable claims is accepted only when at least one claim names a touched file, the reviewer prompt asks for exact file paths, and tests cover the captured smoke verdicts.",
+      "source_fingerprint": "ba8e1170d3d6e53d"
+    },
+    {
+      "id": "code-review-tests-criterion-stability",
+      "title": "Clarify how the code reviewer judges the Tests criterion",
+      "why": "Stops the reviewer from misjudging the Tests criterion on patches that touch no code or test files.",
+      "done_when": "The reviewer marks Tests not-applicable on a no-code patch, still refuses that claim on a code patch, and passes at least four of five live runs.",
+      "source_fingerprint": "7177cd3667387b9a"
+    },
+    {
+      "id": "define-agent-peer-watch-contract",
+      "title": "Define how agents report their state to each other",
+      "why": "Gives every agent one checkable way to show it is working, stalled or out of capacity, so peers need not guess.",
+      "done_when": "A checked-in contract states the evidence each agent publishes and how each state is classified, with tests for malformed, forged and stale input.",
+      "source_fingerprint": "9131c70b70e8f743"
+    },
+    {
+      "id": "implement-agent-peer-watch-reader",
+      "title": "Build a read-only watcher for agent state",
+      "why": "Lets the production tick and the operator see a stalled or exhausted owner, with one escalation and no dispatch or takeover.",
+      "done_when": "A read-only watch command reports each active agent as healthy, idle, stalled, exhausted or unknown, and can wait for the next relevant event.",
+      "source_fingerprint": "89b1132138552c8e"
+    },
+    {
+      "id": "publish-agent-peer-heartbeats-and-offers",
+      "title": "Publish agent heartbeats and help offers under a Decision",
+      "why": "Lets agents signal liveness and offer help to peers, while posting to GitHub stays behind an explicit operator Decision.",
+      "done_when": "Agents add state markers to their commits and periodic heartbeats, and without a Decision each offer is kept as a local draft and never posted.",
+      "source_fingerprint": "5aa18d7d49c8bcae"
+    },
+    {
+      "id": "enroll-opencode-in-agent-peer-watch",
+      "title": "Bring OpenCode into peer watch",
+      "why": "Extends the same stall and exhaustion checks to OpenCode, so all three agent platforms can watch one another.",
+      "done_when": "In a test with three simulated agents, one that runs out of capacity mid-Action is classified exhausted by the others, and its owner releases the work.",
+      "source_fingerprint": "26c74f6d2ee0f6f9"
+    },
+    {
+      "id": "build-production-control-page-preview-first",
+      "title": "Build a Production page that shows the next safe step",
+      "why": "Makes production state and the single next control legible, so the operator can act without a misleading click.",
+      "done_when": "The dashboard shows one primary production control at a time, with its exact effect and expected receipt, and disables it with a named reason when a gate is unmet.",
+      "source_fingerprint": "c81fcf4a3411ca1e"
+    },
+    {
+      "id": "agents-know-names-and-teammates",
+      "title": "Give every agent a roster of names and teammates",
+      "why": "Helps each agent know who it is and who its peers are, so it signs its work correctly and can coordinate.",
+      "done_when": "Every prompt Arcadia generates for Claude Code, Codex and OpenCode includes an identity block naming the agent and its teammates, and a test fails if one is missing.",
+      "source_fingerprint": "b613a8b912d82330"
+    },
+    {
+      "id": "guard-experiment-workspaces",
+      "title": "Guard experiment workspaces from touching live state",
+      "why": "Keeps disposable test workspaces away from host-wide and production commands by accident.",
+      "done_when": "Creating an experiment workspace works, and host-wide and production commands refuse to run inside one with a named reason.",
+      "source_fingerprint": "f88726a92d799b2e"
+    },
+    {
+      "id": "run-multi-workspace-experiment-trial",
+      "title": "Run the first trial of experiment workspaces",
+      "why": "Shows whether separate experiment workspaces reduce contention between agents and whether anything leaked into the live workspace.",
+      "done_when": "A trial record states the results, the leak checks before and after and the stop event, and no further experiment commands run.",
+      "source_fingerprint": "74e72d683389d04d"
+    },
+    {
+      "id": "keep-exempt-commands-out-of-activity-log",
+      "title": "Keep harmless commands out of the activity log",
+      "why": "Stops read-only commands from writing to the live activity log, so the leak check reflects only real changes.",
+      "done_when": "Workspace-independent commands record no activity, and the leak check reports live activity-row and ref changes.",
+      "source_fingerprint": "dcd235b1da05f3b9"
+    },
+    {
+      "id": "define-agent-comms-role",
+      "title": "Define a Comms role for relaying between agents",
+      "why": "Gives agents one channel to relay and escalate across platforms, without a session dispatching or claiming work.",
+      "done_when": "A checked-in procedure defines one Comms session per platform, its signed coordination comments and a low-cost wait loop, and is indexed for retrieval.",
+      "source_fingerprint": "e3f1ed9e29d96392"
+    },
+    {
+      "id": "require-inline-workspace-mode",
+      "title": "Stop launched agents from silently using a default workspace",
+      "why": "Prevents an agent's commands from falling back to the wrong workspace without anyone noticing.",
+      "done_when": "With the requirement set, a command that would fall back to a default workspace refuses with a named error and a remedy.",
+      "source_fingerprint": "cdf51d1c1ed9ba81"
+    },
+    {
+      "id": "fix-reviewer-verdict-name-echo",
+      "title": "Accept reviewer verdicts that echo the criterion line",
+      "why": "Stops a harmless formatting echo from being recorded as an unavailable reviewer.",
+      "done_when": "A verdict whose name repeats the criterion line is matched to its criterion, and a malformed verdict still fails closed.",
+      "source_fingerprint": "f5c893a52f0f4a62"
+    },
+    {
+      "id": "harden-peer-watch-ownership-join",
+      "title": "Tighten ownership checks in peer watch",
+      "why": "Stops the ownership reading from misjudging who holds a claim, which could give a wrong handover signal.",
+      "done_when": "A claim created after its session is not read as released, and regression tests for that case and the ownership gate pass.",
+      "source_fingerprint": "a0e50f99c7ca32a3"
+    },
+    {
+      "id": "fix-identity-block-fail-soft",
+      "title": "Keep the identity block printed when a config file is invalid",
+      "why": "A cosmetic config error should not block independent review or hide the identity block that agents rely on.",
+      "done_when": "An invalid model config falls back to the default display name, and the identity block still prints in reviewer prompts, packets and advance output.",
+      "source_fingerprint": "7776e6f958fbcc8d"
+    },
+    {
+      "id": "harden-experiment-guard-leak-check-attribution",
+      "title": "Separate routine live activity from real leaks",
+      "why": "Stops routine production activity from being mistaken for a leak, and keeps an existing baseline from being overwritten by surprise.",
+      "done_when": "Leak-check output labels routine live operation apart from real leaks, and recording a baseline does not overwrite a prior one unless asked.",
+      "source_fingerprint": "1fc74546023992c1"
+    },
+    {
+      "id": "fix-experiment-workspace-friction",
+      "title": "Fix friction in experiment workspaces",
+      "why": "Removes the snags that slowed the experiment trial and let stray commands reach live activity.",
+      "done_when": "A command without an inline workspace cannot write live activity from an experiment, and a new fixture Action advances without manual queue steps.",
+      "source_fingerprint": "08963e4b9d4cf1c4"
+    },
+    {
+      "id": "harden-activity-leak-fix-followups",
+      "title": "Bound the leak-check snapshot and audit operator tasks",
+      "why": "Keeps leak-check output small and makes clear which operator-task writes sit intentionally outside the activity log.",
+      "done_when": "Leak-check JSON stays bounded in size, and operator-task writes are either recorded or documented as intentionally excluded, with tests.",
+      "source_fingerprint": "4aeb8f9179c386e2"
+    },
+    {
+      "id": "adopt-rehearsal-freeze-window",
+      "title": "Freeze host changes during a live rehearsal",
+      "why": "Stops restarts and reinstalls from disrupting a live production rehearsal while other agents keep working.",
+      "done_when": "While production is active, reinstall and restart commands refuse with a named reason and a supported alternative, and work again after production is off.",
+      "source_fingerprint": "10cc1b2c50a5d32a"
+    },
+    {
+      "id": "prepare-run-2-rehearsal-scripts",
+      "title": "Prepare the run-2 rehearsal scripts",
+      "why": "Lets the second rehearsal start from a clean fixture with reviewed steps, without running anything yet.",
+      "done_when": "Reviewed reset and grant scripts exist for run 2, refuse unsafe fixtures, pass their refusal and happy-path tests, and none has been run.",
+      "source_fingerprint": "4ccccd52e5dbce11"
+    },
+    {
+      "id": "accept-settled-descendant-in-g8-reconciliation",
+      "title": "Let G8 accept a settled candidate on top of its preservation commit",
+      "why": "Lets the first rehearsal reach a terminal result when its candidate carries a valid settlement commit.",
+      "done_when": "G8 treats a clean, settled candidate as reconciled, refuses dirty, forged or mismatched cases, and the operator-script checks pass.",
+      "source_fingerprint": "32bde3f9388edc85"
+    },
+    {
+      "id": "isolate-next-operator-action",
+      "title": "Make the next operator action unmistakable",
+      "why": "Shows the operator one next step clearly, so they are less likely to press the wrong action.",
+      "done_when": "The actions page shows at most one 'Do this next' panel at the top, and pressing any other action first asks for confirmation naming its effect.",
+      "source_fingerprint": "a97b1b04a38939cc"
+    },
+    {
+      "id": "add-operator-qa-plan-to-preserved-pr-body",
+      "title": "Give preserved pull requests a real operator QA plan",
+      "why": "Lets independent QA judge a preserved change against real steps instead of failing on a placeholder.",
+      "done_when": "Each preserved pull request body includes a runnable QA plan built from the Action's criteria, and an Action with no criteria is refused rather than given a placeholder.",
+      "source_fingerprint": "6bd7e8b735fdd869"
+    },
+    {
+      "id": "prepare-run-3-rehearsal-scripts",
+      "title": "Prepare the run-3 rehearsal scripts",
+      "why": "Lets the third rehearsal start from a clean fixture after run 2 completes, with the same safeguards and no run yet.",
+      "done_when": "Reviewed run-3 reset and grant scripts exist, require run 2's terminal receipt, refuse unsafe states, pass their tests, and none has been run.",
+      "source_fingerprint": "6f54fee0c0415ef7"
+    },
+    {
+      "id": "verify-operator-qa-plan-with-live-qa",
+      "title": "Confirm the QA plan works with the live reviewer",
+      "why": "Shows the new QA plan is accepted by the real independent reviewer, not only by tests.",
+      "done_when": "The configured QA reviewer judges a real preserved pull request and records the 'Operator QA plan' criterion as pass, naming the pull request and its head.",
+      "source_fingerprint": "729cf353f947b99e"
+    },
+    {
+      "id": "embed-validation-evidence-in-preserved-pr-body",
+      "title": "Show validation evidence in preserved pull requests",
+      "why": "Lets reviewers see which checks actually ran, with exit codes and output, rather than trusting a claim.",
+      "done_when": "Preserved pull request bodies list each validation command with its directory, exit code, duration and output tail, and a live QA smoke judges the rendered body.",
+      "source_fingerprint": "d43c4f3acf823107"
+    },
+    {
+      "id": "prepare-run-4-rehearsal-scripts",
+      "title": "Prepare the run-4 rehearsal scripts",
+      "why": "Lets the fourth rehearsal start from a clean fixture with the same safeguards, without running it.",
+      "done_when": "Reviewed run-4 reset and grant scripts exist, require run 3's terminal receipt, refuse unsafe states, pass their tests, and none has been run.",
+      "source_fingerprint": "7b8121468c2f3f9b"
+    },
+    {
+      "id": "archive-settled-ask-by-canonical-name",
+      "title": "Archive settled Ask files by their standard name",
+      "why": "Stops settled Ask files from being left behind, and stops a repeated integration refusal from looping silently.",
+      "done_when": "A settled Ask is archived even when its source path is missing, and a repeated identical integration refusal is logged once per candidate head.",
+      "source_fingerprint": "c27b9f4e241e12cd"
+    },
+    {
+      "id": "prepare-run-5-rehearsal-scripts",
+      "title": "Prepare the run-5 rehearsal scripts",
+      "why": "Carries the proven safeguards into the fifth rehearsal, cloned from the reviewed run-4 scripts, without running it.",
+      "done_when": "Reviewed run-5 scripts exist with refusal and happy-path tests, require run 4's receipt, and none has been run.",
+      "source_fingerprint": "602bee65bccaffa4"
+    },
+    {
+      "id": "document-rehearsal-runbook",
+      "title": "Write the rehearsal runbook",
+      "why": "Gives the next release manager and any coding agent one place to start before critical-path production work.",
+      "done_when": "A runbook exists with observable exit criteria and a failure catalog, and START_HERE.md and the production readiness document both point to it.",
+      "source_fingerprint": "7bf5578630e7dc32"
+    },
+    {
+      "id": "build-fast-rehearsal-harness",
+      "title": "Build a fast rehearsal test harness",
+      "why": "Finds lifecycle defects in minutes offline, before time is spent on a live production run.",
+      "done_when": "The pnpm fast-rehearsal command runs a two-Action scenario through the real lifecycle, with scripted executor and failure cases, in under five minutes, and passes.",
+      "source_fingerprint": "e47fb30be3ff695f"
+    },
+    {
+      "id": "build-checkpoint-replay-and-base-check",
+      "title": "Build a checkpoint replay for preserved candidates",
+      "why": "Lets a preserved rehearsal failure be reproduced offline in seconds, so its cause can be fixed without a live run.",
+      "done_when": "The replay tool reproduces the known pull request consistency failure from the preserved run-5 candidate, and the consistency check reports the mismatch.",
+      "source_fingerprint": "9b41e8aebaaf4a89"
+    },
+    {
+      "id": "operator-timeline-phase-1",
+      "title": "Design and prove a unified workspace timeline",
+      "why": "Helps the operator see, across several agent tools and projects, what work is happening, without holding it all in mind.",
+      "done_when": "A written design exists, and a read-only timeline command shows events from live data with filters and a follow mode, with tests on fixtures.",
+      "source_fingerprint": "209db69e7ee2c817"
+    },
+    {
+      "id": "fix-serial-pr-base-stacking",
+      "title": "Stack serial Action pull requests on their predecessors",
+      "why": "Keeps each later Action's pull request diff and its QA plan aligned with the work it builds on.",
+      "done_when": "Each serial Action's draft pull request is based on the previous candidate branch, and the three-Action fast harness chain integrates all three.",
+      "source_fingerprint": "563fdcabfc9647ce"
+    },
+    {
+      "id": "fix-pending-completion-gate",
+      "title": "Surface and recover stalled completions",
+      "why": "Stops an Action from stalling silently when a pending decision or leftover agent work blocks completion.",
+      "done_when": "A pending Ask gate appears once in production status, and the two stall cases are recovered or stop on one named visible entry, proven in the fast harness.",
+      "source_fingerprint": "a62ceceaa5f6a742"
+    },
+    {
+      "id": "build-chain-rehearsal-run-scripts",
+      "title": "Build one parameterised script set for an N-Action rehearsal chain",
+      "why": "Lets run 6 and a later overnight run of nine Actions use the same reviewed steps, rather than separate hand-written scripts.",
+      "done_when": "One script set takes a parameter file with N from 3 to 12, its dry run prints the planned fixture change without writing, and its offline unit tests pass.",
+      "source_fingerprint": "a695e99c62b5ba82"
+    },
+    {
+      "id": "fix-qa-plan-check-wording",
+      "title": "Reword check steps in the QA plan",
+      "why": "Stops QA plan steps from asking reviewers to judge things they cannot verify by inspection.",
+      "done_when": "Checks that depend on a validation command render as inspection steps pointing to that command, and the real QA reviewer finds no QA plan issue in two verdicts.",
+      "source_fingerprint": "5b837f0a791b8102"
+    },
+    {
+      "id": "add-long-chain-fast-rehearsal",
+      "title": "Add a nine-Action chain to the fast harness",
+      "why": "Tests the lifecycle over a longer chain and over a mid-chain blocker, where defects are more likely to appear.",
+      "done_when": "A nine-Action serial chain passes through the fast harness, and a mid-chain failure or expired grant stops the chain with one named, visible entry.",
+      "source_fingerprint": "b7c69613640021f5"
+    },
+    {
+      "id": "set-run6-nine-action-chain",
+      "title": "Set run 6 to a nine-Action chain",
+      "why": "Makes the sixth rehearsal test the longer chain and makes its shutdown rely on the receipt that actually activated.",
+      "done_when": "The run-6 parameter file declares nine Actions, generated scripts show no drift, and a later refused grant attempt does not change the shutdown's basis.",
+      "source_fingerprint": "4f8f59fa12ff9467"
+    },
+    {
+      "id": "fix-chain-scope-order-compare",
+      "title": "Compare chain Action sets regardless of order",
+      "why": "Stops a correct set of Actions from being refused only because it is listed in a different order.",
+      "done_when": "A grant preview with the same nine Actions in a different order passes, while missing, extra or duplicated Actions are still refused, pinned by tests.",
+      "source_fingerprint": "c955c73314c5dbad"
+    },
+    {
+      "id": "bound-variance-verdict-reruns",
+      "title": "Rerun harmless non-pass verdicts a bounded number of times",
+      "why": "Avoids stopping on reviewer noise, while keeping retries few and visible.",
+      "done_when": "A verdict with no real defect is rerun up to two times with each rerun shown, and an exhausted bound produces one clear independent-verdict failure entry.",
+      "source_fingerprint": "7e25b1eb25927cb4"
+    },
+    {
+      "id": "prepare-run7-chain",
+      "title": "Prepare the run-7 chain from run-6 receipts",
+      "why": "Lets run 7 start from the exact results of run 6 rather than from memory, reducing setup mistakes.",
+      "done_when": "The run-7 parameter file binds run 6's receipts, the reset positions new Actions in queue order, and a failed Codex capacity read is reported by name.",
+      "source_fingerprint": "ab89cb8014f59a9f"
+    },
+    {
+      "id": "prepare-run8-coherent-chain-fixture",
+      "title": "Keep the chain fixture wording consistent with its size",
+      "why": "Stops the fixture from describing a different number of Actions than the run actually has.",
+      "done_when": "The reset renders wording that matches N, a coherence guard refuses any mismatched count, and the run-8 parameter file binds run 7's receipts.",
+      "source_fingerprint": "fcf11352b3fc912a"
+    },
+    {
+      "id": "record-rehearsal-findings-ledger",
+      "title": "Record rehearsal findings and a handoff",
+      "why": "Lets a fresh session pick up the rehearsal from the runbook alone, and keeps lessons from repeating.",
+      "done_when": "The runbook has a findings ledger and a handoff section with current state and ranked next-run recommendations, and the reviewer smoke harness is preserved with a README.",
+      "source_fingerprint": "bce5cea898b36a2b"
+    },
+    {
+      "id": "make-done-action-settlement-unambiguous",
+      "title": "Make the done settlement name its completion request",
+      "why": "Stops a completed Action's next step from reading as an open instruction to a later reader.",
+      "done_when": "A completed Action's next step names its completion request id, pending Actions are unchanged, and the fast harness passes.",
+      "source_fingerprint": "67f8ae721b21ec8d"
+    },
+    {
+      "id": "preserve-unchanged-baseline-skill-symlinks",
+      "title": "Keep unchanged baseline symlinks during preservation",
+      "why": "Stops preservation from failing on symlinks that were never changed, while still refusing changed or escaping links.",
+      "done_when": "Unchanged tracked symlinks are preserved from Git without being followed, changed or escaping symlinks are still refused, and the focused tests and fast-rehearsal pass.",
+      "source_fingerprint": "64e3b60facfc8ea7"
+    },
+    {
+      "id": "generate-neutral-rehearsal-dry-preparation",
+      "title": "Generate a neutral rehearsal dry preparation from one parameter file",
+      "why": "Makes the next rehearsal's setup reproducible and checkable offline, before any fixture change or paid call.",
+      "done_when": "One resumable command renders a fresh N=3 baseline and a dry proof from one parameter file, and refuses on drift, with a receipt stating the next step and the authority it needs.",
+      "source_fingerprint": "1eed05bb33bb45ae"
+    }
+  ]
+}

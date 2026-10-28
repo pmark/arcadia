@@ -1,0 +1,94 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "demo-first-delivery",
+  "source": "docs/plans/demo-first-delivery.md",
+  "source_fingerprint": "41cacd09a812520e",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Make each project show a demo and a QA path",
+  "purpose": "Every software project should show a stable proof surface and a governed route from a candidate demo through QA to a verified release. The first slice is a QA queue that shows what can be tested now, where to open it, and whether the exact revision has been signed off.",
+  "serves": "The Project outcome of the operator checking and approving work without holding every project in mind.",
+  "done_when": "For each active candidate, the operator can open its demo, see the test steps and evidence, record a verdict against that exact revision, and see a release path that depends on that verdict.",
+  "reading_note": "Draft: 4 of the 11 Actions are done. The rest, including the release path, are still open.",
+  "actions": [
+    {
+      "id": "build-qa-queue-vertical-slice",
+      "title": "Give the operator one QA queue for active candidates",
+      "why": "One list of what can be tested now answers what to check first, without searching across projects.",
+      "done_when": "The dashboard's QA tab lists every active candidate in a clear order, marks candidate and stable apart, and shows each one's link, test steps and evidence age.",
+      "source_fingerprint": "a566b4e35bbea47d"
+    },
+    {
+      "id": "establish-minimal-pr-qa",
+      "title": "Give pull requests one independent review path",
+      "why": "A separate reviewer of the exact pull request revision gives the operator an independent check.",
+      "done_when": "The QA command reviews one pull request against its exact starting revision, using read-only evidence and the least costly suitable reviewer.",
+      "source_fingerprint": "2835ff135f9b1274"
+    },
+    {
+      "id": "streamline-minimal-pr-qa",
+      "title": "Refuse pull request reviews that are not ready",
+      "why": "Avoids wasted model calls and noisy checks on drafts or pull requests with pending or failed checks.",
+      "done_when": "A draft, missing, pending or conflicting pull request is refused before any reviewer is invoked, and the refusal names every blocker.",
+      "source_fingerprint": "0660df691932ee11"
+    },
+    {
+      "id": "build-demo-hero-vertical-slice",
+      "title": "Show one demo card at the top of the project page",
+      "why": "Gives the operator a single clear next step per project, rather than several competing actions.",
+      "done_when": "The project page shows one demo summary above its existing controls, with a single primary next action.",
+      "source_fingerprint": "705307b1e0530c92"
+    },
+    {
+      "id": "automate-proof-artifacts",
+      "title": "Collect proof screenshots and deployment records automatically",
+      "why": "Keeps proof of what was shown current, so an old screenshot is not taken as proof of today's work.",
+      "done_when": "Each proof capture records its target, revision, time and result, and a stale image is marked as not current proof.",
+      "source_fingerprint": "add63efb68d1d6b1"
+    },
+    {
+      "id": "make-test-action-state-aware",
+      "title": "Open a test target only after checking it is healthy",
+      "why": "Stops the operator being sent to a dead or unreachable target as if it were ready.",
+      "done_when": "Test checks health before opening the target, and an unreachable target is never shown as ready.",
+      "source_fingerprint": "a41329725b3205d7"
+    },
+    {
+      "id": "bind-qa-cards-to-verdicts",
+      "title": "Show each card's own recorded verdict",
+      "why": "A verdict should apply to the revision it was given for, so an older result is not mistaken for a current one.",
+      "done_when": "A recorded verdict updates its card without a reload and names its revision and time, and a verdict for an earlier revision reads as stale.",
+      "source_fingerprint": "ab5e732526dfebe0"
+    },
+    {
+      "id": "give-qa-verdicts-consequences",
+      "title": "Make fail and follow-up verdicts create different records",
+      "why": "A failed check should become a tracked Action, while an unresolved question should become an open question.",
+      "done_when": "A fail verdict creates one open Action on the project, a follow-up verdict creates one open question, and a pass creates neither.",
+      "source_fingerprint": "9b497abefb649413"
+    },
+    {
+      "id": "establish-arcadia-qa",
+      "title": "Set up Arcadia QA as an independent check",
+      "why": "Verification should come from a party separate from the one that built the work.",
+      "done_when": "QA runs against an unchanging candidate revision, and every result is pass, fail or not checked with a reason, never an unexplained pass.",
+      "source_fingerprint": "a112de8a499fb9af"
+    },
+    {
+      "id": "govern-release-and-delivery",
+      "title": "Add release steps from a QA-passed candidate to client delivery",
+      "why": "Ties a release to the exact revision QA approved, while merge and deployment still need the operator's decision.",
+      "done_when": "A release is ready only with QA evidence for the same revision, and a changed revision returns to candidate and needs QA again.",
+      "source_fingerprint": "199553d30e1ac2fc"
+    },
+    {
+      "id": "roll-out-proof-surfaces",
+      "title": "Extend the demo and QA contract across software projects",
+      "why": "Brings every software project onto the same proof path, while leaving each provider's differences to its own configuration.",
+      "done_when": "Each active software project either has a configured proof surface or a visible reason its current work cannot be demonstrated.",
+      "source_fingerprint": "fdfde3ac6395392a"
+    }
+  ]
+}

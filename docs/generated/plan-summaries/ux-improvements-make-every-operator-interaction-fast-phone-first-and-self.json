@@ -1,0 +1,80 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "ux-improvements-make-every-operator-interaction-fast-phone-first-and-self",
+  "source": "docs/plans/ux-improvements-make-every-operator-interaction-fast-phone-first-and-self.md",
+  "source_fingerprint": "c43b2f8c9715fc58",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Make every operator screen fast on a phone",
+  "purpose": "Every operator interaction should be quick on a phone and update itself, so the operator never waits on a page or searches for something. Decisions and runs should each have their own page, and Ask results should show what Arcadia heard and created.",
+  "serves": "The Project outcome of the operator giving input and seeing results quickly, without holding the portfolio in mind.",
+  "done_when": "Each decision and each run opens on its own page that updates without a reload, and an Ask shows what it heard and what it created on the same screen.",
+  "reading_note": "Draft: none of the 9 Actions has started.",
+  "actions": [
+    {
+      "id": "lazy-decisions-on-runs",
+      "title": "Load decisions on the runs page only when opened",
+      "why": "A runs page that loads every decision up front is slow on a phone.",
+      "done_when": "The runs page renders without loading any decisions, and opening the decisions area loads them on demand.",
+      "source_fingerprint": "9691fff6ef3e69df"
+    },
+    {
+      "id": "per-decision-view",
+      "title": "Give each decision its own quick-loading page",
+      "why": "A decision read on its own loads faster and is easier to answer on a phone.",
+      "done_when": "Each decision has a stable address showing only that decision, and its state updates after an answer without a reload.",
+      "source_fingerprint": "808555f5b9f96e6f"
+    },
+    {
+      "id": "per-run-view",
+      "title": "Give each run its own quick-loading page",
+      "why": "A run read on its own shows its progress without the rest of the list.",
+      "done_when": "Each run has a stable address showing only that run, and its state changes appear without a reload.",
+      "source_fingerprint": "29ead5d0bac24be0"
+    },
+    {
+      "id": "discord-channel-routing",
+      "title": "Send Discord notices to channels by purpose",
+      "why": "Separate channels let the operator tell at a glance which kind of notice arrived.",
+      "done_when": "Each notice type posts to its own configured channel, and a receipt reads as queued until it is sent.",
+      "source_fingerprint": "6661ea093c05ef0f"
+    },
+    {
+      "id": "operator-ux-audit",
+      "title": "Audit every operator screen for phone speed and clarity",
+      "why": "A single review of every screen shows which parts are slow or unclear.",
+      "done_when": "Every operator page, button and notice is timed or reviewed at phone width, and each finding is filed as a tracked Action or Issue.",
+      "source_fingerprint": "36e6ff4e57a7fd20"
+    },
+    {
+      "id": "local-model-session-advisory",
+      "title": "Label unclear session states with a one-line diagnosis",
+      "why": "A short label helps the operator understand a stalled session without reading its log.",
+      "done_when": "The local model labels only states the simple classifier could not label, with one label from a fixed set and a reason, and its output never changes Action state.",
+      "source_fingerprint": "d1ce8a06b55839e5"
+    },
+    {
+      "id": "dashboard-ask-heard-receipt-and-correction-menu",
+      "title": "Show what an Ask heard and let the operator correct it in one tap",
+      "why": "An unmatched request should be correctable at the moment it is captured, not found later.",
+      "done_when": "The Ask result shows what was heard before any other detail, and a menu offers the correction types, each re-routing the request.",
+      "source_fingerprint": "2486287dd42d5d72"
+    },
+    {
+      "id": "dashboard-ask-evidence-panel",
+      "title": "Show what an Ask created, or that nothing was created",
+      "why": "The operator needs evidence that an Ask became prioritized work, or a plain statement that it did not.",
+      "done_when": "The Ask screen lists each Action, decision or back-burner item the request produced with its project, plan and queue position, or says plainly that nothing was created.",
+      "source_fingerprint": "fb183e5a8beb3505"
+    },
+    {
+      "id": "dashboard-ask-relationship-map",
+      "title": "Draw a map of a just-submitted Ask and its connections",
+      "why": "A map shows the Ask in its context and helps the operator judge the routing, but it is secondary to the correction menu.",
+      "done_when": "A short comparison of two drawing approaches names the one chosen, the map appears right after submit from fixed data, and a slow or empty map does not block the correction menu.",
+      "source_fingerprint": "7e3cfbae3c7e1b83"
+    }
+  ]
+}

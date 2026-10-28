@@ -1,0 +1,45 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "operator-attention-routing",
+  "source": "docs/plans/operator-attention-routing.md",
+  "source_fingerprint": "1d0d532a268f3e30",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Route work that needs the operator to one Discord message",
+  "purpose": "A project running in the cloud should be able to leave a request for the operator through its existing GitHub access. Arcadia finds those requests, combines them with local decisions and blocked Actions, sends one useful Discord message for each, and keeps the work visible until it is resolved.",
+  "serves": "The Project outcome of Arcadia asking for a decision only when one is needed and reporting it once.",
+  "done_when": "A request raised on GitHub reaches the operator once in Discord, stays visible until its source is resolved, and drops off when it is resolved.",
+  "reading_note": "Draft: none of the 4 Actions has started.",
+  "actions": [
+    {
+      "id": "build-attention-source-projection",
+      "title": "Gather the work that needs the operator into one list",
+      "why": "Brings together pull requests, labelled issues, decisions and blocked Actions so none is missed.",
+      "done_when": "Each source item that needs the operator appears once with its project, reason and link, and draft pull requests appear only when labelled.",
+      "source_fingerprint": "ec0217b6b0fe8f76"
+    },
+    {
+      "id": "deliver-attention-through-discord",
+      "title": "Send each new attention item to Discord once",
+      "why": "One message per item keeps the channel useful and avoids repeated alerts.",
+      "done_when": "Each new item posts once to the configured Discord channel, and a restart does not repeat messages already delivered.",
+      "source_fingerprint": "bd0703c32a3b0fab"
+    },
+    {
+      "id": "include-attention-in-orientation",
+      "title": "Keep unresolved attention visible after it is announced",
+      "why": "A message alone is easy to miss, so open items should stay in the daily view until resolved.",
+      "done_when": "Open items stay in the daily orientation and portfolio status after their first message, and resolved items leave the list on the next scan.",
+      "source_fingerprint": "8244a276aadc4dcf"
+    },
+    {
+      "id": "dogfood-github-attention-object",
+      "title": "Prove one real request from a project reaches the operator",
+      "why": "Shows the path works on a live project before the operator relies on it.",
+      "done_when": "One authorized GitHub request produces one Discord notification with the right link, and closing the request removes it from the unresolved list.",
+      "source_fingerprint": "b688fb21f4644d00"
+    }
+  ]
+}

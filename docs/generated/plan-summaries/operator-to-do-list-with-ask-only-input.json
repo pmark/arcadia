@@ -1,0 +1,122 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "operator-to-do-list-with-ask-only-input",
+  "source": "docs/plans/operator-to-do-list-with-ask-only-input.md",
+  "source_fingerprint": "983e4923e9ab036b",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "One to-do list, with Ask as the only input",
+  "purpose": "Gives the operator one list, derived from existing records, of everything Arcadia needs from them. Operator input goes through Ask, so each request is captured, routed and traceable rather than lost.",
+  "serves": "The Project outcome of the operator stating what should happen and being asked for a decision only when one is genuinely needed.",
+  "done_when": "The operator can run one to-do command that lists each open item needing them, and a plain request becomes tracked work or a visible question rather than disappearing.",
+  "reading_note": "Draft: 11 of the 15 Actions are done. Four remain open: the end-to-end proof, the local-model interpretation, operator tasks through Ask and the golden set with its vanish report.",
+  "actions": [
+    {
+      "id": "build-operator-todo-list",
+      "title": "Build one to-do list for the operator",
+      "why": "Gives the operator one view of what Arcadia needs from them, instead of several places to check.",
+      "done_when": "The to-do command lists every open item needing the operator, marks the blocking ones, and changes nothing.",
+      "source_fingerprint": "fc77e4dfd4dd7171"
+    },
+    {
+      "id": "record-standard-harness-rule",
+      "title": "Record the standard-harness rule as agent guidance",
+      "why": "Keeps a new workflow to one instruction file plus existing commands, not new orchestration code.",
+      "done_when": "A short indexed guidance file states the rule and the session protocol, and is linked from the agent guidance.",
+      "source_fingerprint": "0cfbde8fed162105"
+    },
+    {
+      "id": "grade-next-actions-before-actionable",
+      "title": "Count a next action as actionable only when it can be checked",
+      "why": "Stops vague next steps being treated as ready, and sends the operator one question instead.",
+      "done_when": "A next action without a done-condition is not marked clarified, and a separate grader must pass it before it counts as actionable.",
+      "source_fingerprint": "a1f8c0b2c3f55383"
+    },
+    {
+      "id": "capture-operator-decision-replies-as-asks",
+      "title": "Route free-text decision replies through Ask",
+      "why": "Makes every typed answer a traceable request, so a reply cannot vanish after it is given.",
+      "done_when": "Free-text replies to decisions and reviews are captured as requests, and the Discord path enforces the allowed-user list when one is set.",
+      "source_fingerprint": "96c790732257aa10"
+    },
+    {
+      "id": "render-plan-progress-as-todo",
+      "title": "Show a plan's progress in the to-do view",
+      "why": "Lets the operator see how far a plan has gone without opening its document.",
+      "done_when": "The plans command prints counts, the current Action, the next five unfinished Actions and blocked Actions with their reasons, computed fresh each time.",
+      "source_fingerprint": "daaaeb2ca7b319d1"
+    },
+    {
+      "id": "point-operator-surfaces-at-todo",
+      "title": "Point existing screens at the one to-do list",
+      "why": "Stops each screen keeping its own list, which could show different answers.",
+      "done_when": "The approvals page and the Flight Deck page read the same to-do list, and their decision and Ask controls are unchanged.",
+      "source_fingerprint": "ece9fd506ec0aed6"
+    },
+    {
+      "id": "raise-stale-triage-decision",
+      "title": "Ask the operator to retire stale items",
+      "why": "Old items clutter the list, and only the operator should decide to retire them.",
+      "done_when": "A saved list of stale items with their evidence is raised as one decision, which asks whether to reject or resolve exactly those items.",
+      "source_fingerprint": "c0b9fb07b211dab7"
+    },
+    {
+      "id": "apply-approved-stale-triage",
+      "title": "Retire the stale items the operator approved",
+      "why": "Acts only on what the operator approved, through the existing governed writers.",
+      "done_when": "Only the approved items are settled, the counts before and after are recorded, and no Action status, pointer or queue changes.",
+      "source_fingerprint": "b5e002a2f951c64e"
+    },
+    {
+      "id": "prove-operator-request-to-started-work",
+      "title": "Prove a real request reaches a started session",
+      "why": "Shows the whole path works on a real request, with the operator touching only Ask, the to-do list and the start command.",
+      "done_when": "One genuine work request from the operator is graded, a fresh session starts it, and a receipt links the request to the resulting work.",
+      "source_fingerprint": "561cf73a2d6c6f7a"
+    },
+    {
+      "id": "stop-asks-vanishing",
+      "title": "Stop operator requests disappearing into the back burner",
+      "why": "A request that matched no pattern used to be parked where the operator could not see it.",
+      "done_when": "An operator request that is not clearly an idea appears in the to-do list as a question to clarify, not in the back burner.",
+      "source_fingerprint": "acb97b8fcd983c64"
+    },
+    {
+      "id": "ask-receipt-and-one-reply-correction",
+      "title": "State what Ask understood and allow a one-line correction",
+      "why": "Lets the operator see at once how a request was read, and fix a wrong reading with one reply.",
+      "done_when": "Each Ask result opens with one line saying what was heard and where it went, and a single correction reply re-routes it.",
+      "source_fingerprint": "191201b3435a9a97"
+    },
+    {
+      "id": "ask-corrections-stick",
+      "title": "Remember corrections so repeat requests route correctly",
+      "why": "Stops the same mistake recurring each time the operator sends a similar request.",
+      "done_when": "A request that matches a stored correction routes to the corrected type immediately, with no model call.",
+      "source_fingerprint": "d4ea58f5e41ad0f6"
+    },
+    {
+      "id": "ask-local-model-tiebreaker",
+      "title": "Use a local model to interpret unmatched requests",
+      "why": "Gives an unmatched request a reading within seconds, and asks only one question if that does not work.",
+      "done_when": "An unmatched request gets a typed reading from the local model that re-routes it as a recorded change, and a failed reading falls back to one question.",
+      "source_fingerprint": "89c748ee00539aac"
+    },
+    {
+      "id": "ask-do-for-me-operator-tasks",
+      "title": "File requests only the operator can do as operator tasks",
+      "why": "Puts tasks that need the operator's own action in the list where they will be seen.",
+      "done_when": "A request only the operator can do appears in the Yours section of the to-do list as an operator task.",
+      "source_fingerprint": "e5354946d2de3255"
+    },
+    {
+      "id": "ask-golden-set-and-vanish-report",
+      "title": "Guard Ask routing with a golden set and a weekly report",
+      "why": "Catches routing regressions and shows how often operator requests still disappear.",
+      "done_when": "A checked-in set of paraphrased cases fails the build on any regression, and a weekly report shows the rate of requests that vanish.",
+      "source_fingerprint": "0d92eba1413748ff"
+    }
+  ]
+}

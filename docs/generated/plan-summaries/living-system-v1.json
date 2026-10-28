@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "living-system-v1",
+  "source": "docs/plans/living-system-v1.md",
+  "source_fingerprint": "c3289977d8d00830",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Show what a project is and how it got here",
+  "purpose": "Gives each Arcadia-managed project a readable map of its living system and a timeline of how it changed. Each entry links back to its source and proof, and no long documentation is needed first.",
+  "serves": "The Project outcome of the operator understanding the portfolio without holding it all in mind.",
+  "done_when": "A project's map and timeline can be generated at no cost, and each entry links back to the record it came from.",
+  "reading_note": "Finished: all 5 Actions are done.",
+  "actions": [
+    {
+      "id": "define-living-system-v1-contract",
+      "title": "Define how a project describes its living system",
+      "why": "Gives every project one shared format for its purpose, topics and relationships.",
+      "done_when": "A project can declare its topics, relationships and views in one standard file, with each topic tied to repository sources.",
+      "source_fingerprint": "f6fb4567a8b4fc01"
+    },
+    {
+      "id": "derive-living-system-state",
+      "title": "Derive the project's story from Arcadia records",
+      "why": "Builds the timeline and status from records Arcadia already holds, not from new writing.",
+      "done_when": "The timeline groups related Actions, keeps unlinked log entries visible, and each status item names its source.",
+      "source_fingerprint": "026d236deaef5fd5"
+    },
+    {
+      "id": "build-living-system-map-and-timeline",
+      "title": "Write the map and timeline into the Obsidian vault",
+      "why": "Gives the operator readable notes for each project in the vault they already use.",
+      "done_when": "The projector writes map, timeline and topic notes only under the project's own folder, and leaves other vault areas untouched.",
+      "source_fingerprint": "1336a9ae6f202a98"
+    },
+    {
+      "id": "integrate-living-system-sync",
+      "title": "Refresh living-system notes as a normal command",
+      "why": "Keeps the notes current without a model or a paid service.",
+      "done_when": "A preview shows every create, update and skip without writing, and applying writes exactly what was previewed.",
+      "source_fingerprint": "a3258db90e7491fb"
+    },
+    {
+      "id": "dogfood-living-system-v1",
+      "title": "Prove the approach on Arcadia and a second project",
+      "why": "Shows the approach works on real projects, not only on a test fixture.",
+      "done_when": "Both projects' descriptions explain their own workflow, and their timelines show pauses and resumptions without rewriting history.",
+      "source_fingerprint": "458adaf8d8d5ce6c"
+    }
+  ]
+}

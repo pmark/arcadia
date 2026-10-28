@@ -1,0 +1,45 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "coding-agent-selection",
+  "source": "docs/plans/coding-agent-selection.md",
+  "source_fingerprint": "a189bb9547d98e30",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Choosing a coding agent by what the work needs",
+  "purpose": "Lets Arcadia describe coding work by the capability, effort, tools and authority it needs, rather than by a vendor's model name. The runner then picks the least costly setup that meets those needs.",
+  "serves": "Its milestone: vendor-neutral coding-agent selection.",
+  "done_when": "Each run records the profile it used, and a plan that names a capability runs on the cheapest compliant provider or is refused, never quietly downgraded.",
+  "reading_note": "Finished: all four Actions are done.",
+  "actions": [
+    {
+      "id": "execution-profile-contract",
+      "title": "Add the vendor-neutral execution profile",
+      "why": "Plans can state the capability a task needs without naming a model, so the provider can change without rewriting plans.",
+      "done_when": "A plan can name the capability and effort it needs, and an invalid or weakened profile is rejected with a clear message.",
+      "source_fingerprint": "544696064cee709c"
+    },
+    {
+      "id": "compliant-provider-selection",
+      "title": "Pick the least costly setup that meets the need",
+      "why": "Work goes to the cheapest setup that fits, and a weaker substitute is refused rather than used silently.",
+      "done_when": "Selection chooses the cheapest provider that meets the task's tool, context, sandbox and availability needs, and refuses any weaker one.",
+      "source_fingerprint": "64132172c0173b64"
+    },
+    {
+      "id": "execution-profile-provenance",
+      "title": "Record the profile each run used",
+      "why": "Review can see which profile and provider setting produced each piece of work, and a needed upgrade is logged without changing who is responsible.",
+      "done_when": "Each managed run shows its profile and provider setting, and a higher tier needed mid-run stops at a safe point with a recorded escalation.",
+      "source_fingerprint": "4a7c34d4c1c9ea29"
+    },
+    {
+      "id": "continuation-policy-migration",
+      "title": "Use execution profiles in the continuation workflow",
+      "why": "Puts the same tier-based choice into everyday work, so the operator can see why a setup was picked or refused.",
+      "done_when": "The continuation guide describes tiers and effort rather than model names, and the start guide explains what the operator sees when a setup is chosen or refused.",
+      "source_fingerprint": "75a0426063cc41e9"
+    }
+  ]
+}

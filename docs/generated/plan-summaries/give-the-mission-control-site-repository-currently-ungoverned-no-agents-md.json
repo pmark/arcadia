@@ -1,0 +1,31 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "give-the-mission-control-site-repository-currently-ungoverned-no-agents-md",
+  "source": "docs/plans/give-the-mission-control-site-repository-currently-ungoverned-no-agents-md.md",
+  "source_fingerprint": "ebf58a0a34daf55e",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Bring the mission-control site repository under Arcadia governance",
+  "purpose": "Puts the mission-control site repository under the same Arcadia governance and agent tooling as the other repositories, so coding agents working there get the same briefs. It also adds a session-naming screenshot to the page that describes that feature.",
+  "serves": "Serves the milestone of giving the mission-control site the same governed agent tooling as every other repository, which supports routing stated outcomes to the right Project.",
+  "done_when": "A coding-agent session opened in the mission-control site repository can receive a dispatch brief, and the session-naming screenshot appears with a caption on its answer page on the staging site.",
+  "reading_note": "Finished: both of its Actions are done.",
+  "actions": [
+    {
+      "id": "onboard-mission-control-site-tooling",
+      "title": "Onboard the mission-control site repository as a Project",
+      "why": "The repository had no shared agent instructions or workspace, so agents working there could not get a dispatch brief.",
+      "done_when": "The repository is registered as a Project in the shared workspace, has paired agent instruction files, and a session there can run the next-action command and receive a brief.",
+      "source_fingerprint": "72c71b911d4d8348"
+    },
+    {
+      "id": "place-session-naming-screenshot",
+      "title": "Add the session-naming screenshot to its answer page",
+      "why": "Shows the session-naming feature on the page that already explains it, so readers see what the text describes.",
+      "done_when": "The screenshot is committed to the repository and appears with descriptive alt text and a caption on its answer page on the staging site.",
+      "source_fingerprint": "8c03cace5b10365e"
+    }
+  ]
+}

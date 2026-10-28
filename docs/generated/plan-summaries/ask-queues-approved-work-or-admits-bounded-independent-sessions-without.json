@@ -1,0 +1,66 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "ask-queues-approved-work-or-admits-bounded-independent-sessions-without",
+  "source": "docs/plans/ask-queues-approved-work-or-admits-bounded-independent-sessions-without.md",
+  "source_fingerprint": "24c1c3fa63b6ec76",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Queue approved work or run it in an independent session",
+  "purpose": "Approved work should either wait in an order or start as a separate session when capacity is free, without disturbing work already in progress. The first step is to prove that one scout request can reach a reviewed, passing pull request while production stays off.",
+  "serves": "The Project outcome of Arcadia driving coding agents and reporting back, with the operator deciding only where needed.",
+  "done_when": "An approved request is queued or started as an independent session, and a scout run for Hello World reaches a reviewed, passing pull request with production turned off.",
+  "reading_note": "Draft: all 7 Actions are still open. The first Action is an isolation check that comes before any new model call.",
+  "actions": [
+    {
+      "id": "scout-isolation-preflight",
+      "title": "Check the scout's isolation before any new model call",
+      "why": "The last trial stopped on an unexplained config change, so isolation must be checked before another live run.",
+      "done_when": "A replay of the retained failed trial runs with no model call, and a preflight record pins the source, runtime, model and before-state.",
+      "source_fingerprint": "85cc86415e162f2f"
+    },
+    {
+      "id": "repair-scout-approved-handoff",
+      "title": "Carry an approved request into an executable packet",
+      "why": "The builder declined an approved packet, and extra tests were added to a request limited to one file.",
+      "done_when": "A request for one exact file stays limited to that file, and the approval packet carries its approval receipt without repeating the approval gate.",
+      "source_fingerprint": "b9cd58afc1aaf941"
+    },
+    {
+      "id": "expose-scout-run-evidence",
+      "title": "Show the scout run and its result in Ask and To-do",
+      "why": "Approval reported no run and said the request was resuming, so the operator could not see what happened.",
+      "done_when": "Ask and To-do show the same run state, waiting reason and evidence, and a queued approval never counts as a completed Hello World.",
+      "source_fingerprint": "0c8122da7d012e1a"
+    },
+    {
+      "id": "prove-luna-scout-green-pr",
+      "title": "Prove one bounded scout run ends in a green pull request",
+      "why": "Shows the smallest complete path works while managed production stays off, before building automatic side sessions.",
+      "done_when": "One explicitly authorized scout run delivers Hello World as a pull request that an independent review passes and whose required checks pass.",
+      "source_fingerprint": "2964e027b2d84444"
+    },
+    {
+      "id": "implement-bounded-independent-admission",
+      "title": "Admit independent sessions within free capacity",
+      "why": "Lets urgent work start beside current work without disrupting the Plan in progress.",
+      "done_when": "Approved work queues by default, and an independent session starts only with verified approval, one concrete assignment and free capacity.",
+      "source_fingerprint": "f12fbcfc973aedfb"
+    },
+    {
+      "id": "project-disposition-through-cli-api-ui",
+      "title": "Show the same disposition in the command line, API and screens",
+      "why": "Keeps all three surfaces on one data contract, so none carries its own execution logic.",
+      "done_when": "The command line, API and Ask screen show the same queue position, waiting reason and session evidence, and the supported flow is documented.",
+      "source_fingerprint": "c529fc643b9b8a84"
+    },
+    {
+      "id": "bounded-luna-hello-world-loop",
+      "title": "Run the bounded scout loop with at most two repair cycles",
+      "why": "Lets the scout retry a failure a limited number of times, so it does not loop without end.",
+      "done_when": "The scout runs the Hello World loop, collects evidence and deduplicated bugs, runs at most two verified repair cycles, and then stops.",
+      "source_fingerprint": "7b3762c763629b79"
+    }
+  ]
+}

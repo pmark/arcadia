@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "every-situation-class-an-unattended-production-run-can-hit-has-a-registered",
+  "source": "docs/plans/every-situation-class-an-unattended-production-run-can-hit-has-a-registered.md",
+  "source_fingerprint": "12344a9398125947",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Give every unattended stop a set response",
+  "purpose": "Every situation an unattended production run can reach should have a registered, automatic response, a retry limit and one escalation card. A lost orchestrator or a red main should be handled before the operator notices it.",
+  "serves": "The Project outcome of the operator being asked only when a decision is genuinely needed, with routine failures handled automatically.",
+  "done_when": "Each stop reason has a registered response and retry limit, a lost orchestrator is replaced from its saved brief, and a red main is contained with a revert proposal.",
+  "reading_note": "Draft: none of the 5 Actions has started.",
+  "actions": [
+    {
+      "id": "define-situation-registry",
+      "title": "Register a response for every stop reason",
+      "why": "With one registry, the platform answers each stop by lookup instead of needing judgement every time.",
+      "done_when": "Every stop reason has a response, retry limit and escalation trigger, and the build fails when a stop reason is not registered.",
+      "source_fingerprint": "b60af5fdaa922cf7"
+    },
+    {
+      "id": "main-health-watch",
+      "title": "Contain a red main branch",
+      "why": "A red main stalls every later Action, so the platform should contain it without waiting for the operator.",
+      "done_when": "A red check after a merge pauses new work, an attributable red opens one revert pull request without merging it, and a green main clears the pause.",
+      "source_fingerprint": "35e841da7b3896ca"
+    },
+    {
+      "id": "plan-level-repair-budget",
+      "title": "Pause a Plan after repeated failures",
+      "why": "A Plan that keeps failing should cost two attempts, not a night of relaunches.",
+      "done_when": "Two consecutive stopped or over-budget Actions pause that Plan and raise one card, and resuming resets only that Plan's count.",
+      "source_fingerprint": "34458d777a7a200f"
+    },
+    {
+      "id": "resume-from-state-brief",
+      "title": "Replace a lost orchestrator from a saved brief",
+      "why": "The loop stops when the orchestrator dies, so recovery must not depend on the operator.",
+      "done_when": "A missed heartbeat launches one replacement orchestrator from a deterministic brief and records it, and a second miss raises a card.",
+      "source_fingerprint": "4801932c7ba54711"
+    },
+    {
+      "id": "settle-from-candidate-and-publish",
+      "title": "Settle work from its own candidate and pull request",
+      "why": "Each activation, split and reorder cost an extra pull request and left the local main checkout diverged.",
+      "done_when": "A queue settlement runs from the candidate worktree, opens its own pull request, and leaves the main checkout unchanged.",
+      "source_fingerprint": "708c4772feb01c81"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "arcadia-way-propagation",
+  "source": "docs/plans/arcadia-way-propagation.md",
+  "source_fingerprint": "1f1b1f1c373d9743",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Keeping projects current on the Arcadia Way",
+  "purpose": "Lets the operator see which projects are out of date on the shared Arcadia Way before anything is changed. It also records what can be updated automatically and what needs review first.",
+  "serves": "Its milestone: no Arcadia project is silently stale on the Way, and no project's governance changes without review.",
+  "done_when": "A read-only report names each stale project and the shared section that differs, and Arcadia's own repository follows the same rules it gives other projects.",
+  "reading_note": "Finished: all three listed Actions are done. The Plan says the questions about automatic updates (tiers, command changes and credentials) are not settled and were moved to a separate follow-up item.",
+  "actions": [
+    {
+      "id": "give-arcadia-its-own-context-files",
+      "title": "Give Arcadia the context files it asks other projects for",
+      "why": "Arcadia follows its own rules, so the standard is tested first on the repository that wrote it.",
+      "done_when": "Every context file the shared instructions tell an agent to read exists in the Arcadia repository.",
+      "source_fingerprint": "46a1b86e1b9beec5"
+    },
+    {
+      "id": "stop-duplicating-a-canonical-protocol-on-adopter-zero",
+      "title": "Stop Arcadia's continuation protocol being added twice",
+      "why": "Repeated setup runs should not keep growing the same instructions in the repository that wrote them.",
+      "done_when": "Running project setup twice in Arcadia leaves its continuation protocol unchanged after the first run, and a genuinely different local section is kept and flagged for review.",
+      "source_fingerprint": "7293c54b1d295c68"
+    },
+    {
+      "id": "report-way-drift",
+      "title": "Report which projects are out of date, without changing them",
+      "why": "Shows staleness before anything is written, and never treats a project that cannot be reached as up to date.",
+      "done_when": "A read-only report lists each stale project, the section that differs and its update policy, and marks any unreachable project as unknown.",
+      "source_fingerprint": "e5b00eac3a849c36"
+    }
+  ]
+}

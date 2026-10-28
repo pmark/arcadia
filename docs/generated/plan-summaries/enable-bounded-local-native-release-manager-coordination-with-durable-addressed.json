@@ -1,0 +1,59 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+  "source": "docs/plans/enable-bounded-local-native-release-manager-coordination-with-durable-addressed.md",
+  "source_fingerprint": "42bee695576f55bd",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Let release managers coordinate through addressed messages",
+  "purpose": "Lets native release-manager sessions send addressed, durable messages and confirm them with an explicit acknowledgment. It also sets out a controlled handover of the Plan-manager role between sessions, plus optional mail checks for the coding tools that are off by default.",
+  "serves": "The Project outcome of reliable coordination between managers, so the operator is not the only link between them.",
+  "done_when": "Two isolated test managers exchange a request and a correlated reply through the coordination board, and a Plan-manager handover moves the role to one successor without leaving two current managers.",
+  "reading_note": "Draft: 1 of the 6 Actions is done. The live checkpoint proof and the handover are still open.",
+  "actions": [
+    {
+      "id": "native-rm-coordination-board",
+      "title": "Build the local addressed message board",
+      "why": "Gives managers one durable place to send and correlate addressed messages, with no duplicates on replay.",
+      "done_when": "Repeating the same message request yields one message and the same receipt, and a changed message with the same request id is refused.",
+      "source_fingerprint": "c55e5332bcf4165e"
+    },
+    {
+      "id": "native-rm-checkpoint-roundtrip",
+      "title": "Prove a checkpoint roundtrip between isolated managers",
+      "why": "Shows two real native managers can send, acknowledge and answer through the board before anything relies on it.",
+      "done_when": "Two isolated test managers complete a nonce, acknowledgment, transform and correlated reply, with their identity, version and permissions recorded.",
+      "source_fingerprint": "799474abd9d47445"
+    },
+    {
+      "id": "native-rm-explicit-successor-handoff",
+      "title": "Hand the Plan manager role over explicitly",
+      "why": "Stops two managers acting as current at once, which would leave unclear ownership of the Plan.",
+      "done_when": "Tests show a handover validates both sides, moves outstanding work to the successor and blocks the old session from further addressed reads, without performing a real transfer.",
+      "source_fingerprint": "cd13c1b362024449"
+    },
+    {
+      "id": "build-claude-code-native-mail-hook",
+      "title": "Add an optional mail check for Claude Code",
+      "why": "Lets a Claude Code session see new mail during its work, if the operator turns the check on.",
+      "done_when": "An opt-in, off-by-default hook surfaces new mail for the session, and checks cheaply when there is none.",
+      "source_fingerprint": "f0179fc022f253bb"
+    },
+    {
+      "id": "build-codex-native-mail-hook",
+      "title": "Add an optional mail check for Codex",
+      "why": "Gives Codex sessions the same mail check, but only if it adds no material token cost.",
+      "done_when": "Codex's hook surfaces new mail the same way and ships only if its measurement shows an empty inbox costs no material tokens, otherwise the blocker is reported.",
+      "source_fingerprint": "5560e64b6347c829"
+    },
+    {
+      "id": "build-opencode-native-mail-hook",
+      "title": "Add an optional mail check for OpenCode",
+      "why": "Gives OpenCode sessions the same mail check, under the same cost condition.",
+      "done_when": "OpenCode's plugin surfaces new mail the same way and ships only if its measurement shows no material token cost, otherwise the blocker is reported.",
+      "source_fingerprint": "f0fdeb17dcec473a"
+    }
+  ]
+}

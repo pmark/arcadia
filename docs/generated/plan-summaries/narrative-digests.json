@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "narrative-digests",
+  "source": "docs/plans/narrative-digests.md",
+  "source_fingerprint": "db4c2196b36db62c",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Write a digest of each project's recent history",
+  "purpose": "Arcadia writes a readable summary of recent activity for itself and each project it manages, on a schedule and without being asked. Each summary is built from the project's own records and must not invent outcomes.",
+  "serves": "The Project outcome of the operator following progress without reading every record.",
+  "done_when": "Each active project and the portfolio get daily, weekly and monthly digests in the vault, and an unchanged digest is not rewritten.",
+  "reading_note": "Finished: all 3 Actions are done.",
+  "actions": [
+    {
+      "id": "compose-project-digest",
+      "title": "Compose a project's digest for a time window",
+      "why": "Turns a project's logs, dispatch events and decisions into a readable summary for a day, week or month.",
+      "done_when": "A digest covers only its window, every claim traces to a recorded fact, and no outcome is stated that the records do not support.",
+      "source_fingerprint": "d5e0b8e3b2f09ea5"
+    },
+    {
+      "id": "export-digest-to-obsidian",
+      "title": "Save each digest to the Obsidian vault",
+      "why": "Puts the summary where the operator reads project notes, labelled as AI-written.",
+      "done_when": "A digest is saved to the vault labelled as AI-narrated, and saving an unchanged digest writes nothing.",
+      "source_fingerprint": "b6c9b96b71fc7c5c"
+    },
+    {
+      "id": "schedule-portfolio-digests",
+      "title": "Send digests on daily, weekly and monthly schedules",
+      "why": "Makes the summaries arrive on time, and a failure for one project does not block the others.",
+      "done_when": "Each project and the portfolio roll-up get one digest per due period, and a failure for one project is logged without stopping the rest.",
+      "source_fingerprint": "0c7b5750dc82e546"
+    }
+  ]
+}

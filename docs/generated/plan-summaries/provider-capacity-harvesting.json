@@ -1,0 +1,80 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "provider-capacity-harvesting",
+  "source": "docs/plans/provider-capacity-harvesting.md",
+  "source_fingerprint": "8328286ad6f431cb",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Use spare included coding-agent capacity for small work",
+  "purpose": "Included coding-agent allowance that would otherwise expire unused could carry the smallest safe piece of low-priority work. Arcadia would show why it fits and run it through the existing governed route. It never turns spare allowance into spending or extra authority.",
+  "serves": "The Project outcome of coding agents being used well, within the operator's authority limits.",
+  "done_when": "When included allowance is about to expire unused, Arcadia can offer a small fitting piece of work, and nothing is bought, reset or started without the operator's explicit decision.",
+  "reading_note": "Proposed, not active, so it waits for the operator to select it. None of the 9 Actions has started.",
+  "actions": [
+    {
+      "id": "define-provider-usage-snapshot",
+      "title": "Define a standard record of provider usage and resets",
+      "why": "Keeps included allowance, credits and API spend apart, so one number cannot hide the differences.",
+      "done_when": "Each usage record names its provider, window, observed value, reset time and freshness, and partial or unknown readings stay explicit.",
+      "source_fingerprint": "12e425d22b9aaa3f"
+    },
+    {
+      "id": "observe-codex-capacity",
+      "title": "Read Codex allowance and reset details",
+      "why": "Gives Arcadia real Codex figures to plan with, taken only from supported surfaces.",
+      "done_when": "Available allowance, reset and credit fields are recorded from a supported surface, absent fields stay unsupported, and nothing is guessed or redeemed.",
+      "source_fingerprint": "a990661165fa150c"
+    },
+    {
+      "id": "observe-claude-capacity",
+      "title": "Read Claude Code allowance and reset details",
+      "why": "Gives Arcadia real Claude figures, while keeping paid credit use separate.",
+      "done_when": "Shared plan limits and reset information are recorded where a supported surface exposes them, paid use is never enabled, and a manual reading is accepted when no machine interface exists.",
+      "source_fingerprint": "f0cc2778f20ee291"
+    },
+    {
+      "id": "report-critical-provider-usage",
+      "title": "Report allowance that is about to expire or run out",
+      "why": "Brings unused allowance and spending risks to the operator in time to act on them.",
+      "done_when": "Each alert names the provider, the resource, the value, the reset or expiry time, its freshness and one next safe action.",
+      "source_fingerprint": "0bb1076ecee0a64f"
+    },
+    {
+      "id": "fire-expiring-capacity-predicate",
+      "title": "Flag expiring included capacity as a trigger",
+      "why": "Defines exactly when spare allowance counts as a reason to offer work, so paid or stale figures cannot set it off.",
+      "done_when": "The trigger is true only with fresh included capacity, a known reset and no higher-priority ready work, and each evaluation states its reason.",
+      "source_fingerprint": "85c8f1f1a8b0565c"
+    },
+    {
+      "id": "shape-smallest-back-burner-slice",
+      "title": "Cut eligible work into the smallest useful slice",
+      "why": "A slice that fits the spare window is far more likely to finish than a large idea.",
+      "done_when": "Candidate work comes from the existing readiness and budget rules, and a slice is offered only when it has a clear finish and is expected to fit the window.",
+      "source_fingerprint": "16fb9a4f31806671"
+    },
+    {
+      "id": "admit-bounded-spare-capacity-run",
+      "title": "Start one bounded run with spare capacity",
+      "why": "Limits spare-capacity work to a single run that still passes the existing authority checks.",
+      "done_when": "A run starts only for a ready Action with a matching provider, sufficient fresh capacity, a validation reserve and no conflicting run, and an insufficient case stays visible with its reason.",
+      "source_fingerprint": "cb69353fdfaeb075"
+    },
+    {
+      "id": "reconcile-and-graph-capacity-use",
+      "title": "Compare forecast with actual use and show the flow",
+      "why": "Improves later estimates by showing how close each forecast was, without claiming precision the provider does not give.",
+      "done_when": "Forecast and observed use are compared, and each step in the flow links to its own record.",
+      "source_fingerprint": "279e8b4940652440"
+    },
+    {
+      "id": "guard-reset-and-credit-effects",
+      "title": "Keep resets and credit purchases behind explicit decisions",
+      "why": "Resets and purchases cost money or change terms, so each needs the operator's current approval.",
+      "done_when": "No reset, credit purchase, plan change or spend happens without a current decision, and each preview states its cost, expiry and rollback limits.",
+      "source_fingerprint": "4abd989db3b43cff"
+    }
+  ]
+}

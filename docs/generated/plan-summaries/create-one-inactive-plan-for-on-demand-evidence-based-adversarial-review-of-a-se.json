@@ -1,0 +1,59 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "create-one-inactive-plan-for-on-demand-evidence-based-adversarial-review-of-a-se",
+  "source": "docs/plans/create-one-inactive-plan-for-on-demand-evidence-based-adversarial-review-of-a-se.md",
+  "source_fingerprint": "db80291efa2f4a7f",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Add an independent review before each pull request",
+  "purpose": "Each coding-agent handoff should get an independent, read-only review of its commits before a pull request opens. The review is pinned to the exact commit reviewed and repeats only a limited number of times. CodeRabbit remains the merge gate.",
+  "serves": "The Project outcome of the operator trusting reported work, with a review done before the work reaches the merge gate.",
+  "done_when": "Each handoff gets a review receipt tied to the reviewed commit, and its pull request opens with a passing review or with the remaining findings listed.",
+  "reading_note": "Draft: this inactive plan is not active, and all 6 Actions are still open.",
+  "actions": [
+    {
+      "id": "define-independent-review-contract",
+      "title": "Define the review request and verdict format",
+      "why": "A fixed format for requests and verdicts lets any reviewer's result be checked the same way.",
+      "done_when": "A review request and verdict follow one validated format that names the target, the evidence, the verdict and the commit reviewed, and each refusal is tested.",
+      "source_fingerprint": "0bb31bcadfcd961f"
+    },
+    {
+      "id": "review-packet-for-local-commits",
+      "title": "Package a worktree's commits as review evidence",
+      "why": "A reviewer needs a fixed, repeatable record of exactly what changed, pinned to one commit.",
+      "done_when": "The packet command gives the same output each time for a clean worktree, its commit IDs match git, and it refuses a dirty worktree or detached head.",
+      "source_fingerprint": "abd29dc99019017e"
+    },
+    {
+      "id": "run-opencode-as-read-only-reviewer",
+      "title": "Run OpenCode as a read-only reviewer",
+      "why": "Lets a second coding agent check the work without any ability to change the repository.",
+      "done_when": "OpenCode runs in a new session only after a preflight proves it cannot write to the repository, and output that fails validation counts as a reviewer failure, never a pass.",
+      "source_fingerprint": "5d36d2d067e49d6d"
+    },
+    {
+      "id": "select-review-provider-with-fallback",
+      "title": "Choose a reviewer with a fallback",
+      "why": "Keeps review running when the default reviewer is unavailable, without silently skipping it.",
+      "done_when": "OpenCode is chosen when available, the next read-only provider is used otherwise, and if none is available the review fails with a named reason.",
+      "source_fingerprint": "62d18ae6630de4f4"
+    },
+    {
+      "id": "request-pre-pr-code-review",
+      "title": "Add a pre-pull-request review command",
+      "why": "Gives agents one command that reviews their commits and records the result against that commit.",
+      "done_when": "The command returns done, fix or cap, stops at cap after three fix rounds, and reuses a stored receipt only when the commit and rubric still match.",
+      "source_fingerprint": "e22479b7efff701e"
+    },
+    {
+      "id": "run-pre-pr-review-at-handoff",
+      "title": "Make the review a required step before each handoff",
+      "why": "Makes the review part of normal handoffs, so it does not depend on anyone remembering it.",
+      "done_when": "The shared instructions and pull request template require the review loop before push, and one real pull request shows its receipt.",
+      "source_fingerprint": "3a12e8c0b5b9de96"
+    }
+  ]
+}

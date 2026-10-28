@@ -1,0 +1,80 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "agent-ask-execution-queue",
+  "source": "docs/plans/agent-ask-execution-queue.md",
+  "source_fingerprint": "d06f50ccab8a670a",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Let coding agents request work and keep one execution order",
+  "purpose": "Coding agents can describe a desired result in a standard request, and Arcadia turns accepted requests into governed work. Every accepted Action goes into one operator-owned order, so the next Action is always the first eligible one in that order.",
+  "serves": "The Project outcome of the operator stating what should happen while Arcadia routes and orders the work.",
+  "done_when": "The operator sees one complete queue with the next eligible Action first, and an accepted agent request appears in that queue with a traceable receipt.",
+  "reading_note": "Draft: 7 of the 9 Actions are done. The live proof is blocked, and the question reconciler is still open.",
+  "actions": [
+    {
+      "id": "define-agent-ask-management-contract",
+      "title": "Define a standard request format for coding agents",
+      "why": "Lets a coding agent describe a desired result in one predictable form that Arcadia can check without guessing.",
+      "done_when": "A strict request is checked against the standard form with no model call, and a request with duplicate or unknown authority fields is rejected.",
+      "source_fingerprint": "9dc8b0549ca9f2ea"
+    },
+    {
+      "id": "establish-approved-action-queue",
+      "title": "Put every approved Action in one execution order",
+      "why": "Gives the operator one explicit order, so the question of what is next has one deterministic answer.",
+      "done_when": "Each approved, unfinished Action has exactly one queue position, and blocked or waiting Actions stay visible in order with the reason they are not eligible.",
+      "source_fingerprint": "26739f95cfabc709"
+    },
+    {
+      "id": "connect-agent-ask-to-queue",
+      "title": "Turn accepted requests into queued work",
+      "why": "Lets a request from a coding agent end as traceable, queued work without manual file or record editing.",
+      "done_when": "An accepted request yields one traceable proposal, and acceptance applies the exact previewed change in one step, including queue placement.",
+      "source_fingerprint": "fa01f3dde3b71bce"
+    },
+    {
+      "id": "build-operator-work-queue-dashboard",
+      "title": "Let the operator reorder the work queue",
+      "why": "Lets the operator change the order by moving items, instead of editing numeric priorities.",
+      "done_when": "The dashboard shows the selected next Action first and the full queue beneath it with eligibility reasons, and each move is previewed before it applies.",
+      "source_fingerprint": "63c0260fc5cb1a7a"
+    },
+    {
+      "id": "dogfood-agent-managed-queue",
+      "title": "Prove agents can manage and reprioritize real delivery",
+      "why": "Shows the whole flow on one real request before the operator relies on it for actual delivery.",
+      "done_when": "One real request from an agent and the operator becomes the correct proposed records, and the operator corrects at least one interpretation before accepting.",
+      "source_fingerprint": "beefbf455ecf2fa1"
+    },
+    {
+      "id": "verify-the-live-work-queue-and-discord-settlement-summary-end-to-end",
+      "title": "Check the live queue and its summary message end to end",
+      "why": "Confirms the queue, dashboard, command line and chat summary all show the same result.",
+      "done_when": "The live queue shows one complete order, and an accepted request produces one receipt and one Discord message naming the next eligible Action.",
+      "source_fingerprint": "d854d49555efd879"
+    },
+    {
+      "id": "enable-coding-agents-to-naturally-create-amend-and-reprioritize-plan-shaped-work",
+      "title": "Let agents create and amend plans through requests",
+      "why": "Lets an agent add or change a plan's Actions without choosing file paths or Git steps.",
+      "done_when": "A strict request can create a complete draft Plan, and a request on an existing Plan can add or amend its Actions and reorder unfinished ones in one previewed change.",
+      "source_fingerprint": "958d0d3446cf44e9"
+    },
+    {
+      "id": "make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the",
+      "title": "Propose a specific change when a request names an existing item",
+      "why": "Avoids a vague generic decision when the request already names a Plan, Action or Decision.",
+      "done_when": "When a request names an existing Plan, Action or Decision, the preview proposes a specific change to it, with no guessed priority, date or ownership.",
+      "source_fingerprint": "cd6dc89333d98c69"
+    },
+    {
+      "id": "reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea",
+      "title": "Stop re-asking questions that are already answered",
+      "why": "Reduces repeat questions to the operator by matching them to answers already recorded in the documents.",
+      "done_when": "Each open question with a recorded answer is reported with its exact source, and nothing is closed unless the operator confirms it.",
+      "source_fingerprint": "e436bdfbffacdf54"
+    }
+  ]
+}

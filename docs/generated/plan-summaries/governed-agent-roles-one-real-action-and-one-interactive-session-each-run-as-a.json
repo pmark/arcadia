@@ -1,0 +1,143 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a",
+  "source": "docs/plans/governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a.md",
+  "source_fingerprint": "651f51aa768b8c7e",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Give agents governed roles with delegation and supervision",
+  "purpose": "Lets one real Action and one interactive session each run as a light-tier role. The role asks Arcadia for help, gets a recorded model and effort, reports through its supervisor, and stays inside the spend budget and the operator's reserve. The roles appear on the agents page.",
+  "serves": "The Project outcome of coding agents working under clear, governed authority and reporting back.",
+  "done_when": "A light-tier role session can request help, which is admitted, queued or declined with a recorded reason, and its team appears on the agents page without using the operator's reserve.",
+  "reading_note": "Draft: none of the 18 Actions has started. Several wait on operator Decisions that are not yet answered.",
+  "actions": [
+    {
+      "id": "define-governed-role-registry",
+      "title": "Define the registry of governed roles",
+      "why": "One checked-in list of roles gives every session the same authority and reporting rules.",
+      "done_when": "A checked-in registry defines every role with its purpose, mutation and delegation rights, supervisor and default tier, and a read-only command lists them.",
+      "source_fingerprint": "ebe3099d6e94d91f"
+    },
+    {
+      "id": "render-role-brief",
+      "title": "Print a role's brief for any session",
+      "why": "Lets any session read its role's limits and escalation path before it acts.",
+      "done_when": "A command prints a role's charter, what it may and may not do, its supervisor and its delegation rights for a chosen agent and tier.",
+      "source_fingerprint": "fbce8bdf7eca2d7f"
+    },
+    {
+      "id": "record-interactive-role-sessions",
+      "title": "Record role start and end for interactive sessions",
+      "why": "Interactive sessions should be reported the same way as launched ones.",
+      "done_when": "An interactive session can record its role start and end, and a list shows open and recent role sessions with their role, agent and Action.",
+      "source_fingerprint": "bec4a1af2bd944bd"
+    },
+    {
+      "id": "add-action-role-field",
+      "title": "Record each action's recommended role",
+      "why": "Lets a plan say which role should do each Action, checked against the registry.",
+      "done_when": "A plan can give an Action a role, an unknown role is refused with the plan, Action and field named, and an Action without a role stays valid.",
+      "source_fingerprint": "eeb4a8cf33992558"
+    },
+    {
+      "id": "teach-planners-divide-and-conquer-roles",
+      "title": "Have planners name a role for each action",
+      "why": "Planners that split work by role make each Action fit one session's authority.",
+      "done_when": "The planning instructions require each Action to name its role and fit one session, and a test checks that the requirement is present.",
+      "source_fingerprint": "73645ba764b6f929"
+    },
+    {
+      "id": "select-model-for-delegated-task",
+      "title": "Choose a model and effort for each delegated task",
+      "why": "A deterministic choice keeps delegated work on the least costly suitable model, with a stated reason.",
+      "done_when": "A selector gives a model and effort for a role and task from fixed rules, with a dry-run command and a fixed table of expected choices.",
+      "source_fingerprint": "9b62b7190d0e1386"
+    },
+    {
+      "id": "enforce-start-tier-interactive-sessions",
+      "title": "Check interactive sessions start on the right tier",
+      "why": "A session should not start on a heavier model than its role needs without a stated reason.",
+      "done_when": "A role start above the selector's start tier is refused unless a reason is given, and a missing tier is shown as unknown, never as light.",
+      "source_fingerprint": "54921e80808fb537"
+    },
+    {
+      "id": "enforce-start-tier-dispatch-launches",
+      "title": "Start launched sessions on the smallest suitable model",
+      "why": "Launched sessions should not start heavier than needed, and any heavier start should be explained.",
+      "done_when": "Each launch path chooses its start model through the selector, records the tier, model, effort and reason, and refuses a heavier start without a reason.",
+      "source_fingerprint": "e99da0325bc75c47"
+    },
+    {
+      "id": "enforce-start-tier-managed-production",
+      "title": "Apply the start-tier rule to managed production",
+      "why": "Production is an approval boundary, so any change to its start rule waits for the operator's decision.",
+      "done_when": "Production launches record their start tier, model, effort and reason, and any change to which model starts waits for the answered operator decision.",
+      "source_fingerprint": "762b3a33f776327a"
+    },
+    {
+      "id": "broker-delegation-requests",
+      "title": "Build a broker for sub-agent requests",
+      "why": "Requests for help should be admitted, queued or declined in one place, with a record kept.",
+      "done_when": "Each request is admitted, queued or declined with a recorded receipt and lease, and expired leases are cleared before any new request is handled.",
+      "source_fingerprint": "8d39a90295c0af77"
+    },
+    {
+      "id": "route-subagent-spawns-through-broker",
+      "title": "Route sub-agent spawns through the broker",
+      "why": "Replaces a prose instruction with a path that sub-agents actually follow.",
+      "done_when": "Each session's brief tells it to request through the broker first and spawn only an admitted delegate, and a test against the installed Claude tool shows whether the hook fires.",
+      "source_fingerprint": "4b613128db6baa81"
+    },
+    {
+      "id": "build-operator-presence-proof",
+      "title": "Build proof of operator presence for reserve changes",
+      "why": "Lets a reserve change be accepted only on proof that no agent on this machine could produce.",
+      "done_when": "A one-time challenge is accepted only through the answered proof, is stored with its scope, and is verified again each time it is used.",
+      "source_fingerprint": "0080a165e889c878"
+    },
+    {
+      "id": "reserve-operator-emergency-capacity",
+      "title": "Keep an emergency reserve that no agent can spend",
+      "why": "Stops agents using up the capacity the operator needs in an emergency.",
+      "done_when": "The reserve is set at the answered size, can only be raised by a workspace setting, and a lower value is ignored and reported.",
+      "source_fingerprint": "a7ddeac18f4d2115"
+    },
+    {
+      "id": "project-token-burn-rate",
+      "title": "Track spending rate and throttle before the reserve is reached",
+      "why": "Gives early warning when current use would reach the reserve before the limit resets.",
+      "done_when": "Each provider's spending rate is derived from recorded history, and new delegations and then new sessions are queued when the reserve would be crossed before reset.",
+      "source_fingerprint": "30e04704eec64a4c"
+    },
+    {
+      "id": "assign-supervisors-and-relay",
+      "title": "Give every agent a supervisor and a route to report",
+      "why": "Every agent should report up a clear chain that ends with the operator.",
+      "done_when": "Each delegate, session or role start resolves to a supervisor ending at the operator, every delegation records it, and a team view shows the chain.",
+      "source_fingerprint": "bb6c51abfc0ea857"
+    },
+    {
+      "id": "build-agents-overview-read-model",
+      "title": "Build a read-only overview of agents and their state",
+      "why": "A single read of teams, roles, tiers and spending gives one trustworthy picture.",
+      "done_when": "The overview returns each team tree with roles, supervisors, verdicts, model, tier and state, and reports unreadable state as unknown, never as healthy.",
+      "source_fingerprint": "8de6d3f21b144111"
+    },
+    {
+      "id": "build-agents-page",
+      "title": "Show the agents overview on a dashboard page",
+      "why": "Puts the team picture where the operator can see it on a phone.",
+      "done_when": "The agents page shows each team tree and the spending and reserve state, with unknown and stale states labelled, and no control can release the reserve without the presence proof.",
+      "source_fingerprint": "202929f0274676dc"
+    },
+    {
+      "id": "prove-governed-role-team-end-to-end",
+      "title": "Prove the role team works on one action and one interactive session",
+      "why": "Shows the whole scheme works together, including delegation, reporting and the reserve, before it is relied on.",
+      "done_when": "An offline test runs one Action through a light-tier role with one admitted, one queued and one declined delegate, and the operator completes the interactive leg and the reserve check.",
+      "source_fingerprint": "43c1445ef76cf87c"
+    }
+  ]
+}

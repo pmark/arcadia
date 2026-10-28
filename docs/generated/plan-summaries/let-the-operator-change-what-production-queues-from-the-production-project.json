@@ -1,0 +1,45 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "let-the-operator-change-what-production-queues-from-the-production-project",
+  "source": "docs/plans/let-the-operator-change-what-production-queues-from-the-production-project.md",
+  "source_fingerprint": "446974df584d7b13",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Let the operator change what production works on",
+  "purpose": "The operator should be able to change what production works on from the production page: which Projects are included, their order and which Plan each runs. These are light preferences that can change until a session starts, and are then locked in with a receipt.",
+  "serves": "The Project outcome of the operator steering the work without editing records by hand.",
+  "done_when": "The operator changes a Project's order or Plan on the production cards, each change previews first, and each started Action shows when it was locked in.",
+  "reading_note": "Draft: none of the 4 Actions has started. They wait for operator Decisions 0115 and 0116 and a related amendment before they start.",
+  "actions": [
+    {
+      "id": "record-production-project-preferences",
+      "title": "Record which projects production works on and in what order",
+      "why": "A saved preference lets the operator change production's queue without editing the system directly.",
+      "done_when": "A preview-then-apply command changes the included Projects, their order and their Plan, and every change carries a revision check and a receipt.",
+      "source_fingerprint": "d64162354b89d85b"
+    },
+    {
+      "id": "admit-from-project-preferences",
+      "title": "Pick production's next action from the saved preferences",
+      "why": "Makes the saved preferences drive what starts, and records why each choice was made.",
+      "done_when": "Each admission takes the next ready Action from the preferred Plan, moves to the same Project's next Plan if that one waits on the operator, and writes a receipt saying why.",
+      "source_fingerprint": "778fb567ca2d1545"
+    },
+    {
+      "id": "production-card-queue-controls",
+      "title": "Add queue controls to the production cards",
+      "why": "Lets the operator include, stop, move or switch a Project's Plan from the screen where it is shown.",
+      "done_when": "Each card offers include or stop, move to top with undo, and run a different Plan, and each states its consequence before it applies.",
+      "source_fingerprint": "77ae1aa9e7bcc353"
+    },
+    {
+      "id": "show-skip-reasons-and-lock-in-on-cards",
+      "title": "Show why a project is not running and when its action was locked in",
+      "why": "Explains a Project's status at a glance, without asking the operator to read logs.",
+      "done_when": "A card that is not running shows its latest skip reason, a running card shows when its Action was locked in, and predictions are dimmed when older than two minutes.",
+      "source_fingerprint": "eb478bd581c55b6d"
+    }
+  ]
+}

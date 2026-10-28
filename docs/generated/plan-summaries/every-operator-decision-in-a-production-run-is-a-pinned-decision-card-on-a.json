@@ -1,0 +1,129 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a",
+  "source": "docs/plans/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a.md",
+  "source_fingerprint": "005e8c9894b46093",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Turn each operator decision into one pinned card",
+  "purpose": "Every operator decision in a production run should be one pinned card on a remote page, with its consequence and evidence shown. A handoff from one Plan to the next should run through a recorded close-out and a deterministic selector, so it is safe and auditable.",
+  "serves": "The Project outcome of the operator deciding quickly, and only when needed, during production runs.",
+  "done_when": "The operator can act on each decision from one card with one button, a stale card is refused with its reason, and a finished Plan hands off to a selected next Plan from a saved close-out record.",
+  "reading_note": "Draft: 8 of the 16 Actions are done. Several open Actions are held behind three production-path Actions, by operator direction of 2026-10-14.",
+  "actions": [
+    {
+      "id": "decision-card-contract",
+      "title": "Define one card format for every operator touch",
+      "why": "One format for merges, buttons and decisions lets a deterministic engine handle each kind in turn.",
+      "done_when": "A card with a missing consequence, missing pin or unknown verb is rejected, and a stale pin is refused when the card is used.",
+      "source_fingerprint": "341e900aeb5ee1c7"
+    },
+    {
+      "id": "cards-from-existing-sources",
+      "title": "Create cards from decisions, scripts and pull requests",
+      "why": "The operator already decides through these three surfaces, so cards should use them rather than replace them.",
+      "done_when": "Each of the three sources yields a valid card, the card's pinned fingerprint changes when its source changes, and the source itself is not altered.",
+      "source_fingerprint": "82fe22e3810dcce4"
+    },
+    {
+      "id": "todo-actions-render-cards",
+      "title": "Show cards with their consequence and one button",
+      "why": "The operator acts from the pages already in use, and sees the consequence before pressing.",
+      "done_when": "Each card shows its consequence, evidence links and one verb button, and a stale card shows a refusal with the reason.",
+      "source_fingerprint": "9a83ee0d8361773d"
+    },
+    {
+      "id": "delegation-policy-records",
+      "title": "Record standing approvals for classes of work",
+      "why": "Approving a policy instead of each instance reduces clicks without widening authority.",
+      "done_when": "A policy has a class, scope, expiry and evidence requirement, and sensitive classes such as credentials and spend can never match.",
+      "source_fingerprint": "7439f0ae82e5b308"
+    },
+    {
+      "id": "plan-close-out-record",
+      "title": "Write a close-out record at the end of each plan",
+      "why": "A saved record is what makes handing off to the next Plan safe and auditable.",
+      "done_when": "The same inputs always give the same record, which lists outcomes, open items, blockers and a recommended successor, and a malformed record fails the check.",
+      "source_fingerprint": "52aed6b36cc1f11b"
+    },
+    {
+      "id": "next-plan-selector",
+      "title": "Select the next plan and check it before starting",
+      "why": "A handoff between plans needs a deterministic first step that changes nothing.",
+      "done_when": "The selector names the chosen plan with reasons, refuses a plan authored in the same run or not yet approved, and a failed check names its remedy.",
+      "source_fingerprint": "54c9ff7745a37ddf"
+    },
+    {
+      "id": "blocker-reset-script",
+      "title": "Clear a blocked run from its card",
+      "why": "Clearing these blockers currently needs the command line, and an open alert stands in front of every production run.",
+      "done_when": "A card clears an environment or budget blocker through a script that pins the blocker and leaves a receipt, and never resets a budget it was not pinned to.",
+      "source_fingerprint": "d9a5baebea05cdff"
+    },
+    {
+      "id": "friction-to-test-guard",
+      "title": "Require a test for each fixed friction",
+      "why": "A friction marked fixed with no test can quietly come back.",
+      "done_when": "The check fails when a fixed friction cites no test or rule, and a template turns a recorded friction into a failing rehearsal.",
+      "source_fingerprint": "5df00b51477241e6"
+    },
+    {
+      "id": "batch-merge-decision-card",
+      "title": "Show every pull request awaiting the operator on one card",
+      "why": "Merges are the largest remaining operator touch, so one card and one button per round reduces effort.",
+      "done_when": "The card lists each pull request with why it needs the operator, its authority boundary, review verdict, checks and consequence, and stacked pull requests are ordered base first.",
+      "source_fingerprint": "5f665f3007619d01"
+    },
+    {
+      "id": "card-veto-verb",
+      "title": "Let a card's default run at expiry unless vetoed",
+      "why": "A default that runs at expiry spares the operator routine cards, while a veto keeps control with them.",
+      "done_when": "A card's default runs at expiry only when no veto was recorded, a veto before expiry cancels it, and sensitive classes can never declare a default.",
+      "source_fingerprint": "fc3d46dd313b7479"
+    },
+    {
+      "id": "record-operator-touch-receipts",
+      "title": "Count each operator touch and its latency",
+      "why": "Shows how much operator attention each run actually needs, so the target can be measured.",
+      "done_when": "Each card verb writes a touch record, and the production page shows touches per Action, median decision time and the share answered from the card alone.",
+      "source_fingerprint": "ac5631902801acc1"
+    },
+    {
+      "id": "wire-the-batch-merge-card-route",
+      "title": "Connect the batch merge card to the to-do page",
+      "why": "The batch button must refuse an unsafe batch rather than merge stale work.",
+      "done_when": "The button posts only the card and head revision of each pull request, and refuses the whole batch with a reason if any head moved, a check is not green or a review is missing.",
+      "source_fingerprint": "118e1e677d017561"
+    },
+    {
+      "id": "publish-the-batch-merge-descriptor-and",
+      "title": "Publish the batch merge script and its Discord ping",
+      "why": "A published script keeps merges reviewable and out of the agents' hands.",
+      "done_when": "The batch merge runs as a published operator script, writes one receipt per pull request, is safe to re-run, and a pending batch posts one Discord message linking the card.",
+      "source_fingerprint": "68ced01a587f72b9"
+    },
+    {
+      "id": "todo-next-steps-route-to-forward",
+      "title": "Order the next steps by what unblocks work",
+      "why": "The operator should first see the step that moves work forward.",
+      "done_when": "The to-do page lists each waiting pull request as a step in stack order, names its one click, and shows exactly one step to do now.",
+      "source_fingerprint": "89cd822279759028"
+    },
+    {
+      "id": "ledger-rows-without-merge-conflicts",
+      "title": "Write each log entry to its own file",
+      "why": "Parallel branches that add to one shared log cause merge conflicts.",
+      "done_when": "Two branches that each add a session row, a friction entry and a hand-off update merge in either order without conflict.",
+      "source_fingerprint": "76810deccc0c21cb"
+    },
+    {
+      "id": "pair-loop-protocol",
+      "title": "Write a short protocol for the lead and implementer pair",
+      "why": "A new lead session should run the pair loop correctly from its first turn.",
+      "done_when": "A protocol of at most one page states how findings, implementer continuity and fresh reviewers work, and a new lead session can run it unaided.",
+      "source_fingerprint": "2fbc7bf23ebfced3"
+    }
+  ]
+}

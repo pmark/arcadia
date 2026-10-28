@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "portfolio-continuity-view",
+  "source": "docs/plans/portfolio-continuity-view.md",
+  "source_fingerprint": "e75e24f65bace6c5",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Show the portfolio's past, now, next and later in one view",
+  "purpose": "The operator should open one view and understand the portfolio's story without rebuilding it from plans, queues, decisions and runs. Ideas raised in ordinary conversation should be kept, and shown where they landed.",
+  "serves": "The Project outcome of the operator understanding the portfolio without holding it in mind.",
+  "done_when": "One phone-friendly view shows past, now, next and later work for the whole portfolio or one Project, and a side idea from conversation gets a visible receipt.",
+  "reading_note": "Draft: none of the 5 Actions has started.",
+  "actions": [
+    {
+      "id": "build-arcadia-now-vertical-slice",
+      "title": "Show the one next move, clearly and tappably",
+      "why": "Gives the operator the next governed step at a glance on a phone, without searching the records.",
+      "done_when": "The view names what changed, what needs the operator now and why, the current Milestone and the recommended next Action, and that next move can be tapped.",
+      "source_fingerprint": "a32aa963b70e490f"
+    },
+    {
+      "id": "define-portfolio-continuity-projection",
+      "title": "Define the four time horizons of the portfolio",
+      "why": "Separates past, now, next and later, so ready work is not mistaken for current work.",
+      "done_when": "The projection gives past, now, next and later as distinct horizons for the whole portfolio or one Project, and shows unknown dates as unknown.",
+      "source_fingerprint": "5291fa0fda28aa54"
+    },
+    {
+      "id": "build-portfolio-continuity-view",
+      "title": "Build the single navigable portfolio view",
+      "why": "Lets the operator move between the whole portfolio and one Project without losing the story.",
+      "done_when": "The operator can switch between the portfolio and one Project, each row names its Project and source, and deferred work shows what will reactivate it.",
+      "source_fingerprint": "c20ed91954395c3c"
+    },
+    {
+      "id": "make-conversation-capture-explicit",
+      "title": "Give every side idea a visible capture receipt",
+      "why": "A useful idea raised mid-conversation should not vanish into the chat history.",
+      "done_when": "A separate idea raised during active work gets a receipt naming its Project, type, status and record ID, and never stays only in the conversation.",
+      "source_fingerprint": "48c94d987c7acc24"
+    },
+    {
+      "id": "dogfood-portfolio-continuity",
+      "title": "Use the view for a real portfolio review",
+      "why": "Confirms the view tells the truth across all four Projects on real data.",
+      "done_when": "The operator can explain past, current, next and later across all four Projects from the view, and a side idea appears in the right horizon after a refresh.",
+      "source_fingerprint": "cdf647cd61ba50e3"
+    }
+  ]
+}
