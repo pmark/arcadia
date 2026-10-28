@@ -1,0 +1,44 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "intelligence-decisions",
+  "source": "docs/plans/intelligence-decisions.md",
+  "source_fingerprint": "e90210ce913a77cb",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Label open Decisions, review findings and pull requests",
+  "purpose": "Adds local, advisory labels to open Decisions, review findings and pull requests, so the operator can see which ones agents can handle and which need a person. The labels never answer, approve or resolve anything.",
+  "serves": "The Project outcome of asking the operator for a decision only when one is genuinely needed.",
+  "done_when": "Each open Decision and review finding shows a label and a short reason, and each pull request shows whether it can merge on green or needs the operator.",
+  "actions": [
+    {
+      "id": "decision-pre-triage",
+      "title": "Label each open Decision as agent-answerable or operator-only",
+      "why": "Lets the operator skip Decisions an agent can handle, without any answer being given automatically.",
+      "done_when": "Each open Decision shows one label, a recommended option and a one-line reason, produced locally and never answering the Decision.",
+      "source_fingerprint": "535ff8ccb0ff2b7a"
+    },
+    {
+      "id": "finding-triage",
+      "title": "Label each review finding as valid, declined or needing a person",
+      "why": "Sorts automated review comments so the operator looks only at those that need judgement.",
+      "done_when": "Each review finding gets one label and a reason, and the label never resolves a thread or changes code by itself.",
+      "source_fingerprint": "e861fbae4704914e"
+    },
+    {
+      "id": "pr-ready-gate",
+      "title": "Decide whether a pull request can merge on green",
+      "why": "Makes the merge rule explicit, so pull requests that need the operator are flagged rather than merged silently.",
+      "done_when": "Given a pull request's facts, the rule returns merge-on-green or operator-required with a reason, and each exclusion has a test.",
+      "source_fingerprint": "c0b29a7eb0d54975"
+    },
+    {
+      "id": "model-tier-selection",
+      "title": "Suggest a model tier for each Action",
+      "why": "Gives a starting tier from the Action's scope, without overriding a tier the plan sets.",
+      "done_when": "Each Action gets a light, standard or heavy tier suggestion with a reason, and an explicit pin is never overridden.",
+      "source_fingerprint": "6ad13379f84184d4"
+    }
+  ]
+}

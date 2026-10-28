@@ -11,7 +11,7 @@
   "purpose": "Let a new software idea become governed coding-agent work, and then a reviewed build, without the operator hand-carrying it from planning to building.",
   "serves": "The Project outcome: a stated outcome is clarified, routed and driven through coding agents.",
   "done_when": "An idea typed once becomes an approved plan, then a build Action, then a running agent Session whose result is checked independently, while consequential steps still wait for you.",
-  "reading_note": "The first half is done: idea intake, plan approval and the Needs you board. The three open Actions (launch, finish and manage a coding-agent Session) appear to cover the same ground as the Go Plan's continuation work. Inference from the two Plans' text, not a recorded Decision: read them together before choosing which to continue.",
+  "reading_note": "Its Actions to launch, finish and manage a coding-agent Session appear to cover the same ground as the Go Plan's continuation work. Inference from the two Plans' text, not a recorded Decision: read them together before choosing which to continue.",
   "actions": [
     {
       "id": "prepare-project-idea",

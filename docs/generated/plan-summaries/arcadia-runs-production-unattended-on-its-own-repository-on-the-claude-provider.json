@@ -1,0 +1,156 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+  "source": "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md",
+  "source_fingerprint": "f33d64b0cc7fcd3b",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Run production unattended on Arcadia's own repository",
+  "purpose": "Arcadia should carry an Action from launch to a merged pull request on its own repository, with little operator attention. The worker launches a Claude session, keeps a reviewed pull request, merges it when it is not authority-adjacent, and moves to the next Action within a spend limit.",
+  "serves": "The Project outcome of Arcadia driving coding agents and reporting back, asking the operator only when a decision is genuinely needed.",
+  "done_when": "A multi-Action run on Arcadia's own repository reaches merged pull requests, and the only operator touches are activation and merges of authority-adjacent changes.",
+  "actions": [
+    {
+      "id": "launch-failure-keeps-cause",
+      "title": "Keep the real cause when a session fails to launch",
+      "why": "A launch failure logged without its cause cannot be fixed, as an earlier run that failed 155 times showed.",
+      "done_when": "Launch failures show the underlying error text in the red-alert evidence and in production status, bounded in length.",
+      "source_fingerprint": "86424a2c49c4c759"
+    },
+    {
+      "id": "claude-worker-launch-replay",
+      "title": "Prove the worker can launch a Claude session",
+      "why": "The first supervised run needs evidence that the worker reaches a running session on the Claude provider.",
+      "done_when": "A replay of one launch on the Claude provider reaches a running session and a draft pull request, and each defect it finds has a regression test.",
+      "source_fingerprint": "24a6cfdf226a74d7"
+    },
+    {
+      "id": "claude-capacity-evidence",
+      "title": "Refresh Claude usage before admitting unattended runs",
+      "why": "Without a fresh usage reading, the capacity gate refuses Claude runs as stale, which stops unattended work.",
+      "done_when": "The worker refreshes the Claude usage reading before admission, or production status states the gate-off path and what it means for Claude runs.",
+      "source_fingerprint": "7441e0fe3e9c3ebe"
+    },
+    {
+      "id": "first-supervised-claude-run",
+      "title": "Run one supervised Action on the Arcadia repository",
+      "why": "No production run had yet completed an Action on a real repository, so this is the first proof on it.",
+      "done_when": "One Action runs with the operator activating once, reaches a draft pull request, gets an independent review and merges.",
+      "source_fingerprint": "d66877436fd1d9fc"
+    },
+    {
+      "id": "worker-review-and-merge",
+      "title": "Let the worker merge reviewed pull requests",
+      "why": "The worker could not merge, so every Action needed a supervisor. This removes that step.",
+      "done_when": "The worker merges only through the pull request, after an independent review of the exact head finds no blocking issue and required checks pass, and never merges authority-adjacent changes.",
+      "source_fingerprint": "2a84c982837fa1a1"
+    },
+    {
+      "id": "production-spend-budget",
+      "title": "Enforce the approved spend budget at admission",
+      "why": "Without a window budget, an unattended run could use up the operator's own allowance on shared accounts.",
+      "done_when": "A launch that would exceed the budget or reserve is refused and shown in production status, and an unreadable usage reading counts as unknown, not admitted.",
+      "source_fingerprint": "e460b03163427c9b"
+    },
+    {
+      "id": "credential-preflight",
+      "title": "Check the provider login before launching",
+      "why": "An expired login would otherwise be found only after launch, stalling the run with no alert.",
+      "done_when": "A launch with an expired or unrefreshable provider login is refused, the remedy is named, and the operator is alerted once.",
+      "source_fingerprint": "d2590ab4bb233203"
+    },
+    {
+      "id": "first-unattended-run",
+      "title": "Evidence a multi-Action unattended run",
+      "why": "This is the milestone's proof that Arcadia keeps momentum on its own repository without supervision.",
+      "done_when": "At least three ready Actions reach merged pull requests, and the only operator touches are activation and merges of authority-adjacent changes.",
+      "source_fingerprint": "4de44b4b28ce4c60"
+    },
+    {
+      "id": "implement-a-hermetic-test-that-an",
+      "title": "Test that an over-budget admission names the budget and window",
+      "why": "Makes a refusal say which limit was hit, so the operator knows what to change.",
+      "done_when": "An admission over budget on the 5-hour or 7-day window is refused, and the refusal names the 80% unattended budget and that window.",
+      "source_fingerprint": "7a7f182292da427e"
+    },
+    {
+      "id": "implement-a-hermetic-test-that-a",
+      "title": "Test that a refused tmux launch leaves no launcher file",
+      "why": "A failed launch should not leave stray launch files behind to confuse later runs.",
+      "done_when": "When the tmux launch fails, the test finds no launcher file left behind.",
+      "source_fingerprint": "c09d73db778ed4eb"
+    },
+    {
+      "id": "implement-a-hermetic-test-that-an-2",
+      "title": "Test that a long brief reaches a session unchanged",
+      "why": "Confirms a 64 KiB brief is not altered on its way to an interactive session.",
+      "done_when": "A 64 KiB brief arrives at a stub provider byte for byte identical, and its temporary folder is removed afterwards.",
+      "source_fingerprint": "f6413a6ed26073cc"
+    },
+    {
+      "id": "implement-docs-reports-first-supervised-claude",
+      "title": "Write a report of the first supervised Claude run",
+      "why": "Records each stage, failure and fix, so the evidence for the run can be checked later.",
+      "done_when": "A report records every stage, each failure with its fixing item and the operator touches, and each cited number resolves on GitHub.",
+      "source_fingerprint": "0d6f81555ffd6dd5"
+    },
+    {
+      "id": "test-transient-review-retry-after-exhaustion",
+      "title": "Test that transient review errors still retry",
+      "why": "A reviewer's temporary error should not wrongly stop the review of a candidate.",
+      "done_when": "A transient reviewer error is retried on a later tick, and resetting the repair budget keeps the exhausted-attempts escalation in place.",
+      "source_fingerprint": "b023a29e8ca21769"
+    },
+    {
+      "id": "refresh-decision-0130-status-and-1559-fake",
+      "title": "Correct two stale notes in the readiness record and a test fake",
+      "why": "Stale text makes the readiness record show a decision as still open after it was approved.",
+      "done_when": "The readiness record states that decision 0130 is approved, and the test fake no longer returns a refresh token it does not use.",
+      "source_fingerprint": "d25344908dc671cd"
+    },
+    {
+      "id": "guard-repair-gate-upsert-role",
+      "title": "Stop a repair write from overwriting unrelated rows",
+      "why": "A shared request id could let the gate overwrite the summary of an unrelated repair row.",
+      "done_when": "The gate's write changes only rows of its own role, and a test with a different-role row shows that row is left as it was.",
+      "source_fingerprint": "f3357fea477463a8"
+    },
+    {
+      "id": "cover-mail-ack-receipt-kind-collision",
+      "title": "Test that reused acknowledgment receipt ids are refused",
+      "why": "An existing test never reached the receipt-kind check, so that branch had no direct test.",
+      "done_when": "Reporting or disposing a message with an already-used acknowledgment receipt id is refused with the kind-mismatch error, and the message stays acknowledged.",
+      "source_fingerprint": "27e1742cc95bc11c"
+    },
+    {
+      "id": "isolate-launch-preview-tmux-name",
+      "title": "Stop a launch test from using the host's tmux server",
+      "why": "A leftover session on the host could make the test fail for a reason unrelated to its code.",
+      "done_when": "The test checks the session name through a stub and passes even when a host tmux session with that name exists.",
+      "source_fingerprint": "9e3991b62c380ce7"
+    },
+    {
+      "id": "bound-guidance-test-teardown-retries",
+      "title": "Retry a transient cleanup error in the guidance test",
+      "why": "A temporary busy-folder error was failing the whole test shard in continuous integration.",
+      "done_when": "The test's cleanup retries a temporary not-empty error, and no existing assertion is changed or skipped.",
+      "source_fingerprint": "41f6daab5f4e5c9b"
+    },
+    {
+      "id": "rebuild-cover-mail-ack-receipt-kind-collision",
+      "title": "Rebuild the mail receipt test from the current base",
+      "why": "A fresh rebuild lets the test be checked against current code without reusing evidence from a held change.",
+      "done_when": "The receipt-kind test exists on the current base and passes with fresh evidence, and every other test in the file is unchanged.",
+      "source_fingerprint": "326d6c7894b59b79"
+    },
+    {
+      "id": "preserve-codex-config-on-semantic-no-op",
+      "title": "Leave Codex config untouched when it is already correct",
+      "why": "Stops a needless rewrite of the config that could block a later adoption attempt.",
+      "done_when": "When the managed settings are already correct, the config file keeps its exact bytes and no backup is made, and genuinely different values are still corrected.",
+      "source_fingerprint": "006d9bca48c01a26"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "arcadia-ask-active-sessions",
+  "source": "docs/plans/arcadia-ask-active-sessions.md",
+  "source_fingerprint": "b4ca3e9ef33eff50",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Visible working sessions for Ask",
+  "purpose": "Makes each request to Arcadia Ask a visible working session that keeps the original text, links and files, shows how it was routed, and lets the operator correct it before anything is committed.",
+  "serves": "Its milestone: every Ask becomes a visible, correctable session that commits only operator-approved changes.",
+  "done_when": "Submitting a request opens a session where the reading can be corrected, Ask rules can be managed, and a Living Songbook request is handled from start to finish.",
+  "reading_note": "Superseded under Decision 0039: unstarted work moved behind the Agent Ask execution queue Plan. Its open Actions are preserved, not rejected.",
+  "actions": [
+    {
+      "id": "make-special-routing-visible",
+      "title": "Make special routing visible and checkable",
+      "why": "When a message is sent to a special destination through a prefix, the operator can see exactly why it went there.",
+      "done_when": "A message starting with an exact rule prefix shows which rule matched and where it went, while ordinary words or links containing that prefix do not trigger it.",
+      "source_fingerprint": "3812eae4726bed9c"
+    },
+    {
+      "id": "unify-ask-capture-envelope",
+      "title": "Keep text, links and attachments together as one capture",
+      "why": "Nothing a person sends is lost or split up, and each derived result traces back to the original input.",
+      "done_when": "Text, links and attachments sent together form one capture that keeps the original text, each link as written, and a receipt for each file.",
+      "source_fingerprint": "38a888aa0dd1a41f"
+    },
+    {
+      "id": "build-guided-understanding-session",
+      "title": "Turn the capture receipt into a guided session",
+      "why": "The operator can see and correct Arcadia's reading of a request before anything is created.",
+      "done_when": "After submitting, the operator sees the reading with missing information marked unknown, a rule card with Continue, Use normal Ask and Edit rule, and no consequential write before an approved preview.",
+      "source_fingerprint": "5ceb1a34e0fc77f6"
+    },
+    {
+      "id": "make-ask-rules-easy-to-manage",
+      "title": "Manage Ask rules from the same screen",
+      "why": "Changing a routing rule is safer when it can be previewed and tested against examples before it goes live.",
+      "done_when": "The rule view shows a rule's prefix, destination, status and recent matches, and changes are previewed and tested before they apply, with earlier versions kept.",
+      "source_fingerprint": "533a59f8aad41933"
+    },
+    {
+      "id": "dogfood-songbook-ask-session",
+      "title": "Prove the whole Ask experience with Living Songbook",
+      "why": "A real music-practice request, from a shared link to a practice log, shows the flow works on real records and not only on examples.",
+      "done_when": "Songbook commands resolve to the right read or proposed write, and a shared song link or a practice note with audio each produce a proposed record that keeps the original.",
+      "source_fingerprint": "a27761e67a4d423a"
+    }
+  ]
+}

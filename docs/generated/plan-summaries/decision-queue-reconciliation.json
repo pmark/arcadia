@@ -1,0 +1,44 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "decision-queue-reconciliation",
+  "source": "docs/plans/decision-queue-reconciliation.md",
+  "source_fingerprint": "9c8ada84f2a34102",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Stop asking the operator questions that are already answered",
+  "purpose": "Closes review items whose answers are already written in plan documents, and lets the operator answer the top item from the Now page. This keeps the decision queue short and accurate.",
+  "serves": "Serves the milestone of asking the operator one question a day, never one already answered, which supports the Project outcome of asking for a decision only when one is genuinely needed.",
+  "done_when": "The reconcile command lists only unanswered items, and the Now page lets the operator answer the top item without leaving that page.",
+  "actions": [
+    {
+      "id": "build-resolution-reconciler",
+      "title": "Match written answers in plan documents to open items",
+      "why": "Several open review items already had written answers in their plan documents, so the operator was asked again.",
+      "done_when": "Items with a written answer appear in a close list with that answer, and items without one, or whose plan is missing, are never closed silently.",
+      "source_fingerprint": "928d73e835c9f79d"
+    },
+    {
+      "id": "add-review-reconcile-command",
+      "title": "Close already-answered items from the command line",
+      "why": "Lets the operator clear answered items in one step, after first previewing exactly what will close.",
+      "done_when": "Running the command with no flags only previews the list, and with the apply option it closes each item through the existing approval path and notes the source plan and question.",
+      "source_fingerprint": "dc9e2d17e8487054"
+    },
+    {
+      "id": "carry-answer-affordance-into-now",
+      "title": "Give the Now page the recommendation and a direct answer link",
+      "why": "The Now page shows questions it cannot act on, because items often arrive without a recommendation or a link to answer them.",
+      "done_when": "A decision item on the Now page shows its recommendation when one exists, a direct link to answer it, and a count of the items the last reconcile closed.",
+      "source_fingerprint": "f9702ac5217e0297"
+    },
+    {
+      "id": "make-the-now-card-answerable",
+      "title": "Let the operator answer the top item on the Now page",
+      "why": "Lets the operator answer the top question directly, instead of opening another screen to do it.",
+      "done_when": "On the Now page the operator can accept a recommendation in one step, answer differently through the existing resolve page, and see the card move to the next item.",
+      "source_fingerprint": "9ef837ed557047b0"
+    }
+  ]
+}

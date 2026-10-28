@@ -1,0 +1,72 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route",
+  "source": "docs/plans/every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route.md",
+  "source_fingerprint": "5cd6a53269c8d820",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Sort open GitHub Issues into clear routes",
+  "purpose": "Every open Issue in the Arcadia repository should be sorted once into one of five routes, checked against governed Actions, and summarised in one local report. The report proposes changes, but nothing is changed on GitHub.",
+  "serves": "The Project outcome of the operator seeing the real backlog without holding it in mind, with work routed to the right place.",
+  "done_when": "One local report shows every open Issue with one route, the top batches of work and a list of proposed label and closure changes, with nothing applied on GitHub.",
+  "actions": [
+    {
+      "id": "snapshot-open-issues-and-build-packets",
+      "title": "Save one snapshot of all open Issues",
+      "why": "Fetching the backlog once means later steps read a saved copy rather than the live list again.",
+      "done_when": "A saved snapshot holds every open Issue, its count is checked against the live total, and any gap is named.",
+      "source_fingerprint": "66c89afbf4138fa4"
+    },
+    {
+      "id": "classify-calibration-packet",
+      "title": "Sort a first batch of 20 Issues to test the scheme",
+      "why": "A small first batch exposes any problem with the route names or evidence format before scaling up.",
+      "done_when": "Each Issue in the first batch has one row with one route, and its validity stays unknown unless direct evidence is cited.",
+      "source_fingerprint": "88a076ed3e0225e4"
+    },
+    {
+      "id": "classify-packets-two-and-three",
+      "title": "Sort the second and third batches",
+      "why": "Applies the calibrated routes to the next batches, in steps small enough to finish.",
+      "done_when": "Every Issue in those batches has its own row with a route, area, reason, next step and revival trigger, and no validity is set without evidence.",
+      "source_fingerprint": "774c1e7ba659ba85"
+    },
+    {
+      "id": "classify-packets-four-and-five",
+      "title": "Sort the remaining batches",
+      "why": "Completes the rule that every Issue has exactly one row, which later steps depend on.",
+      "done_when": "Every snapshot Issue has one row, the validation step reports full coverage, and duplicate groups are listed with their member numbers.",
+      "source_fingerprint": "20cea5547649857c"
+    },
+    {
+      "id": "reconcile-issues-with-governed-actions",
+      "title": "Match Issues with governed Actions in both directions",
+      "why": "Shows Issues already covered by finished Actions, and bug Actions that lack a linked Issue.",
+      "done_when": "Each open Issue lists its linked Actions or is marked unmapped, and each mismatch is recorded with its source.",
+      "source_fingerprint": "1b75b03f1cf8e630"
+    },
+    {
+      "id": "verify-the-vital-few-issues",
+      "title": "Verify the most important Issues",
+      "why": "Verification is costly, so it is spent on blockers and likely duplicates, where one check settles the most.",
+      "done_when": "At most 20 chosen Issues are verified, each with a validity backed by a cited file line, test or command result, and the rest keep unknown with a revival trigger.",
+      "source_fingerprint": "a7531b0ea15006af"
+    },
+    {
+      "id": "deliver-triage-report-and-proposed-changes",
+      "title": "Write the triage report and proposed changes",
+      "why": "One local report with checked proposals is the whole product, and applying any of it is a separate step.",
+      "done_when": "The report states the total, the observed main revision, verified and unknown counts and the top batches, and a changes list gives exact proposed label and closure changes.",
+      "source_fingerprint": "c5aea3cc5fe23376"
+    },
+    {
+      "id": "submit-promotion-ask-and-github-change-decision",
+      "title": "Ask the operator to approve promotions and GitHub changes",
+      "why": "Triage is analysis, not permission, so repairs and GitHub changes wait for the operator.",
+      "done_when": "One request proposes the top batches as inactive Plan Actions, and one decision offers apply all, labels only or nothing, with each option's consequence stated.",
+      "source_fingerprint": "28ed60a0833ddfc8"
+    }
+  ]
+}
