@@ -87,10 +87,10 @@ The contract is in [`docs/generated/plan-summaries/README.md`](../generated/plan
 
 ## Authorship and upkeep
 
-The repository's order of preference applies: deterministic first, then local AI, then frontier models.
+Deterministic checks come first. For drafting, the operator chose on 2026-10-28 to use a lightweight hosted model instead of local AI, for better writing quality at low cost. The options are a light-tier Claude model, a light OpenAI model through Codex, or the OpenCode model. It is chosen through the existing provider profiles and the `light` tier, never a hard-coded model id.
 
 1. **Deterministic:** a check compares fingerprints and lists missing or stale summaries. It costs nothing and runs in `docs sync`, CI or the dashboard.
-2. **Local AI** drafts missing summaries for draft, finished and superseded Plans, where volume is high and the stakes are low.
+2. **A lightweight model** drafts missing summaries for draft, finished and superseded Plans, where volume is high and the stakes are low. It runs on whichever of those three providers is available and cheapest, under the existing usage limits, and gets the same writing rules and Plan text Clara works from.
 3. **Clara** writes or edits summaries for active and current Plans, and whenever a Plan is created or amended through an Agent Ask. Their purpose matters most there.
 4. **Planners** write the `why` into new Actions as they plan, so the record itself improves. Summaries stay shorter and plainer than the record.
 
@@ -108,5 +108,5 @@ Clara wrote summaries for the three active Plans, covering 24 Actions:
 
 1. **Show them.** The workspace reads `docs/generated/plan-summaries/<slug>.json` through the Plans read and renders titles, whys and done-whens. It falls back to the record when a summary is missing, and labels stale ones.
 2. **Check freshness:** a deterministic missing-or-stale report.
-3. **Backfill:** summaries for the remaining 47 Plans, with local-AI drafts and Clara reviewing anything active, upcoming or proposed.
+3. **Backfill:** summaries for the remaining 47 Plans, with lightweight-model drafts and Clara reviewing anything active, upcoming or proposed.
 4. **Tidy what "active" means.** Use the reading notes to propose closing or re-scoping Plans that are active in name only, such as `portfolio-docs-protocol`, through the governed path.
