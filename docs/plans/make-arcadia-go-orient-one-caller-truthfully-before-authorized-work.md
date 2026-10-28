@@ -159,7 +159,7 @@ actions:
     references: ["agentask_33a2ae289adae37e03", "agentask_c2535307f9d97b4915", "https://github.com/pmark/arcadia/pull/1851"]
 questions: []
 decisions: []
-current_action: continue-from-go-in-the-workspace
+current_action: implement-go-live-delivery-checklist
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
