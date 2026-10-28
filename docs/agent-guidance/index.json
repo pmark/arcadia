@@ -1,194 +1,32 @@
 {
   "schema": "arcadia-agent-guidance-v1",
   "entries": [
-    {
-      "id": "continuation",
-      "trigger": "start, continue, go, pointer, title, handoff, stop",
-      "path": "docs/agent-guidance/continuation.md",
-      "read_before": "Before starting or handing off any Action.",
-      "sha256": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f"
-    },
-    {
-      "id": "agent-asks",
-      "trigger": "ask, request help, concern, idea, proposal capture, governance, complete, split, draft, preview, settle, workspace, database denied",
-      "path": "docs/agent-guidance/agent-asks.md",
-      "read_before": "Before submitting a request or changing Project state; direct proposal capture needs no implementation Action; use ordinary host permission recovery or preserve a blocked validated Ask.",
-      "sha256": "3c32131b6d2e3db602700ccad692a84eb08ae05e436e7e3baef9e35765c16334"
-    },
-    {
-      "id": "operator-actions",
-      "trigger": "operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this",
-      "path": "docs/agent-guidance/operator-actions.md",
-      "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
-      "sha256": "9a302ae9ac308f06c048d0b52cedf46249b92833ca0e01a0005719558c5f5732"
-    },
-    {
-      "id": "proposals",
-      "trigger": "missing capability, unsupported command, Way gap",
-      "path": "docs/agent-guidance/proposals.md",
-      "read_before": "Before building a local substitute for Arcadia machinery.",
-      "sha256": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62"
-    },
-    {
-      "id": "principles",
-      "trigger": "scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue",
-      "path": "docs/agent-guidance/principles.md",
-      "read_before": "Before choosing scope, deferring work, or capturing a new defect.",
-      "sha256": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894"
-    },
-    {
-      "id": "pull-requests",
-      "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
-      "path": "docs/agent-guidance/pull-requests.md",
-      "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "6fe6b0a6bb0e1e535bd4c390bb87aab97202062efe6cbd6ba3e2de4b50403ac4"
-    },
-    {
-      "id": "learning",
-      "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
-      "path": "docs/agent-guidance/learning.md",
-      "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
-      "sha256": "314b3725a64260d17e1b59763647f4fcbb70be82b4cb8c54be3d4ac2d7cf4da1"
-    },
-    {
-      "id": "git-identity",
-      "trigger": "commit, comment, signature, author, critic, builder",
-      "path": "docs/agent-guidance/git-identity.md",
-      "read_before": "Before every agent commit or posted comment; resolve identity for the current model.",
-      "sha256": "b74a4c2e3b2ed579f1781ad627167aab3782d990e2e9bf8c625c9ed80e6461c1"
-    },
-    {
-      "id": "managed-documents",
-      "trigger": "Project, Plan, Action, Decision, status, acceptance",
-      "path": "docs/managed-documents.md",
-      "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "09a26196fa657894956c84e6f9dd1f7377ae50110b3803ee92b07b61d0d2cb04"
-    },
-    {
-      "id": "planning",
-      "trigger": "new planning cycle, raw outcome, interview, architect",
-      "path": "docs/planning-process.md",
-      "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
-      "sha256": "4adb5e415decc021a2ce9b0b919e2e55abdb6ba2fedacdbd1edfd001b08ebc50"
-    },
-    {
-      "id": "working-copy",
-      "trigger": "worktree, branch, preserve, detached, conflict, local only",
-      "path": "docs/working-copy-safety.md",
-      "read_before": "Before editing code or reconciling Git, and before stopping.",
-      "sha256": "ce22e012f54a9b293f4c0fec384254d244bb18362d3a11da892b7155ce28af3b"
-    },
-    {
-      "id": "agent-peer-watch",
-      "trigger": "peer watch, heartbeat, stalled, exhausted, out of tokens, takeover, released ownership",
-      "path": "docs/agent-guidance/agent-peer-watch.md",
-      "read_before": "Before judging, offering help to or continuing another agent's work; silence never proves release.",
-      "sha256": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed"
-    },
-    {
-      "id": "agent-comms",
-      "trigger": "comms, coordination issue, sub-issue, relay, peer sessions",
-      "path": "docs/agent-guidance/agent-comms.md",
-      "read_before": "Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority.",
-      "sha256": "4ff1955bb6af94d31c860b6f793bacbb996d26d95984736716096f283165f87d"
-    },
-    {
-      "id": "rehearsal-freeze-window",
-      "trigger": "rehearsal, freeze, production active, reinstall, restart, install, services, go-broker",
-      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
-      "read_before": "Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open.",
-      "sha256": "614fd20a4649bcc812a3233bbb021bee573c31f398624c2c5d3874acc81c6845"
-    },
-    {
-      "id": "operator-directed-work",
-      "trigger": "operator-directed, operator asks directly, side track, parallel track, outside the plan, no Action",
-      "path": "docs/agent-guidance/operator-directed-work.md",
-      "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
-      "sha256": "4e5e1be606bef778bb505d01d29956940560dc4152b404e7c4b33644d9555072"
-    },
-    {
-      "id": "standard-harness",
-      "trigger": "harness, orchestration, new workflow, instruction file, session protocol, inactive work, inactivity ping, file handoff",
-      "path": "docs/agent-guidance/standard-harness.md",
-      "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
-      "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
-    },
-    {
-      "id": "ask-todo-scout",
-      "trigger": "Ask/To-do scout, Hello World scout, zero-model scout",
-      "path": "docs/agent-guidance/ask-todo-scout.md",
-      "read_before": "Before running or changing the bounded Ask/To-do scout scenario.",
-      "sha256": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8"
-    },
-    {
-      "id": "consultation",
-      "trigger": "get advice, get a second opinion, get help, consultation, adviser selection, minimum viable spend",
-      "path": "docs/agent-guidance/consultation.md",
-      "read_before": "Before resolving or launching a consultation; use existing Roles, independent judgment and authorized routes with minimum viable total inference. Grants no execution authority.",
-      "sha256": "ed457130919d871e33fae4a8bf44a833b2a7df15004d83c734bba38ee46c509f"
-    },
-    {
-      "id": "session-roles-and-briefs",
-      "trigger": "launch subagent, driver brief, session ledger row, model per role, role taxonomy, composable specializations, optional names, Mira, release investigation, named identity profiles, Rowan, Ellis, Nadia, Sage, Quinn, Vida, system health assessment, Clara, technical writer, article, explainer, editorial ownership, AMC, social copy, publication verification",
-      "path": "docs/agent-guidance/session-roles-and-briefs.md",
-      "read_before": "Before launching or briefing a Session or subagent, composing specializations, invoking release investigation or writing a hand-back; grants no authority.",
-      "sha256": "8b10b3a3048e36e7349a2ec0f6ec695a55d197fcec531bee8dc4e6787907b446"
-    },
-    {
-      "id": "native-app-sessions",
-      "trigger": "native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app",
-      "path": "docs/agent-guidance/native-app-sessions.md",
-      "read_before": "Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority.",
-      "sha256": "502882ca6bb33b2cc602052d7c94722d57566d3d59ed42fc1fb3edea57c88748"
-    },
-    {
-      "id": "hacker-recovery",
-      "trigger": "hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery",
-      "path": "docs/agent-guidance/hacker-recovery.md",
-      "read_before": "Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority.",
-      "sha256": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e"
-    },
-    {
-      "id": "code-simplification",
-      "trigger": "code simplification, simplify code, refactoring, maintainability, complexity finding",
-      "path": "docs/agent-guidance/code-simplification.md",
-      "read_before": "Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage.",
-      "sha256": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4"
-    },
-    {
-      "id": "scout-continuation",
-      "trigger": "continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff",
-      "path": "docs/scout/CONTINUE.md",
-      "read_before": "Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution.",
-      "sha256": "2710e96a9b5d83baf90259d4a192f59bbeb18f04209ff2131adfed5f9a01fa30"
-    },
-    {
-      "id": "chat-titles",
-      "trigger": "chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle",
-      "path": "docs/agent-guidance/chat-titles.md",
-      "read_before": "Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries.",
-      "sha256": "33e606b2ca1e7b1786385119168f6ff052e0d1ae675f9abef700cd77c29db0c9"
-    },
-    {
-      "id": "skills",
-      "trigger": "skill, skills, skill creation, skill modification, skill installation, provider portability",
-      "path": "docs/agent-guidance/skills.md",
-      "read_before": "Before creating, modifying or installing any Arcadia skill; support Codex, Claude Code and OpenCode together.",
-      "sha256": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01"
-    },
-    {
-      "id": "native-mail-checkpoints",
-      "trigger": "git change check, governed changes on main, main cursor, onboarding, between batches, before consequential work, before stopping, native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge, push, settle, settlement, stop, handoff, merge, Agent Ask, operator gate",
-      "path": "docs/agent-guidance/native-mail-checkpoints.md",
-      "read_before": "At onboarding, between batches, before consequential work and before stopping: check main from the recorded cursor; before native-mail operations or briefing a manager. Explicit checkpoints only, no polling or hooks; grants no authority.",
-      "sha256": "d7ec26cdb43e93ba17fb253646bf2f33b14e4b3031b3a3bae1c67bd5d4bd97ae"
-    },
-    {
-      "id": "process-critic",
-      "trigger": "live run stopped, before production press, defect class recurs, authority Decision pending, process critic, pre-mortem, post-mortem",
-      "path": "docs/agent-guidance/process-critic-brief.md",
-      "read_before": "Before a post-mortem of a stopped live run, a pre-press or merge-batch pre-mortem, or an authority Decision reaching the operator; read-only plan-critic specialization, grants no authority.",
-      "sha256": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8"
-    }
+    {"id":"continuation","trigger":"start, continue, go, pointer, title, handoff, stop","path":"docs/agent-guidance/continuation.md","read_before":"Before starting or handing off any Action."},
+    {"id":"agent-asks","trigger":"ask, request help, concern, idea, proposal capture, governance, complete, split, draft, preview, settle, workspace, database denied","path":"docs/agent-guidance/agent-asks.md","read_before":"Before submitting a request or changing Project state; direct proposal capture needs no implementation Action; use ordinary host permission recovery or preserve a blocked validated Ask."},
+    {"id":"operator-actions","trigger":"operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this","path":"docs/agent-guidance/operator-actions.md","read_before":"Before preparing any operator step; generating a button never grants execution authority."},
+    {"id":"proposals","trigger":"missing capability, unsupported command, Way gap","path":"docs/agent-guidance/proposals.md","read_before":"Before building a local substitute for Arcadia machinery."},
+    {"id":"principles","trigger":"scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue","path":"docs/agent-guidance/principles.md","read_before":"Before choosing scope, deferring work, or capturing a new defect."},
+    {"id":"pull-requests","trigger":"commit, push, pull request, CodeRabbit, CI, merge, notification","path":"docs/agent-guidance/pull-requests.md","read_before":"Before any PR operation; retain exact-head review and approval gates."},
+    {"id":"learning","trigger":"first tool, command, subsystem, failure, retry, friction, notes","path":"docs/agent-guidance/learning.md","read_before":"Before implementation, repair, validation or handoff and again on a new failure; search Project notes first."},
+    {"id":"git-identity","trigger":"commit, comment, signature, author, critic, builder","path":"docs/agent-guidance/git-identity.md","read_before":"Before every agent commit or posted comment; resolve identity for the current model."},
+    {"id":"managed-documents","trigger":"Project, Plan, Action, Decision, status, acceptance","path":"docs/managed-documents.md","read_before":"Before preparing a managed-document change; state changes require an Agent Ask."},
+    {"id":"planning","trigger":"new planning cycle, raw outcome, interview, architect","path":"docs/planning-process.md","read_before":"Before starting a new planning cycle, rather than continuing an Action."},
+    {"id":"working-copy","trigger":"worktree, branch, preserve, detached, conflict, local only","path":"docs/working-copy-safety.md","read_before":"Before editing code or reconciling Git, and before stopping."},
+    {"id":"agent-peer-watch","trigger":"peer watch, heartbeat, stalled, exhausted, out of tokens, takeover, released ownership","path":"docs/agent-guidance/agent-peer-watch.md","read_before":"Before judging, offering help to or continuing another agent's work; silence never proves release."},
+    {"id":"agent-comms","trigger":"comms, coordination issue, sub-issue, relay, peer sessions","path":"docs/agent-guidance/agent-comms.md","read_before":"Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority."},
+    {"id":"rehearsal-freeze-window","trigger":"rehearsal, freeze, production active, reinstall, restart, install, services, go-broker","path":"docs/agent-guidance/rehearsal-freeze-window.md","read_before":"Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open."},
+    {"id":"operator-directed-work","trigger":"operator-directed, operator asks directly, side track, parallel track, outside the plan, no Action","path":"docs/agent-guidance/operator-directed-work.md","read_before":"Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue."},
+    {"id":"standard-harness","trigger":"harness, orchestration, new workflow, instruction file, session protocol, inactive work, inactivity ping, file handoff","path":"docs/agent-guidance/standard-harness.md","read_before":"Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority."},
+    {"id":"ask-todo-scout","trigger":"Ask/To-do scout, Hello World scout, zero-model scout","path":"docs/agent-guidance/ask-todo-scout.md","read_before":"Before running or changing the bounded Ask/To-do scout scenario."},
+    {"id":"consultation","trigger":"get advice, get a second opinion, get help, consultation, adviser selection, minimum viable spend","path":"docs/agent-guidance/consultation.md","read_before":"Before resolving or launching a consultation; use existing Roles, independent judgment and authorized routes with minimum viable total inference. Grants no execution authority."},
+    {"id":"session-roles-and-briefs","trigger":"launch subagent, driver brief, session ledger row, model per role, role taxonomy, composable specializations, optional names, Mira, release investigation, named identity profiles, Rowan, Ellis, Nadia, Sage, Quinn, Vida, system health assessment, Clara, technical writer, article, explainer, editorial ownership, AMC, social copy, publication verification","path":"docs/agent-guidance/session-roles-and-briefs.md","read_before":"Before launching or briefing a Session or subagent, composing specializations, invoking release investigation or writing a hand-back; grants no authority."},
+    {"id":"native-app-sessions","trigger":"native app session, direct session, simulate unattended, supervisor, ios app, codex app, opencode app","path":"docs/agent-guidance/native-app-sessions.md","read_before":"Before running a session the operator opened directly in a native coding-agent app; it simulates the unattended Lead and grants no authority."},
+    {"id":"hacker-recovery","trigger":"hacker mode, repeated refusal, procedural fixation, red alert, stop-the-line, blocked route, supervisor recovery","path":"docs/agent-guidance/hacker-recovery.md","read_before":"Before another unchanged workflow retry; supervisors require bounded diagnosis after two refusals without evidence gain, or immediately on an explicit red alert. Grants no authority."},
+    {"id":"code-simplification","trigger":"code simplification, simplify code, refactoring, maintainability, complexity finding","path":"docs/agent-guidance/code-simplification.md","read_before":"Before an assigned simplification or responding to a concrete complexity finding; existing roles and authority only, no automatic cleanup stage."},
+    {"id":"scout-continuation","trigger":"continue Scout project, Arcadia Studio Scout, Scout continuation, Scout handoff","path":"docs/scout/CONTINUE.md","read_before":"Before resuming the Scout project for Arcadia Studio; verify current records and authority before execution."},
+    {"id":"chat-titles","trigger":"chat title, sidebar, helper arrow, direct contact, question, blocked, parked, retitle","path":"docs/agent-guidance/chat-titles.md","read_before":"Before choosing or updating chat titles; display conventions preserve actual parent assignments, custody and approval boundaries."},
+    {"id":"skills","trigger":"skill, skills, skill creation, skill modification, skill installation, provider portability","path":"docs/agent-guidance/skills.md","read_before":"Before creating, modifying or installing any Arcadia skill; support Codex, Claude Code and OpenCode together."},
+    {"id":"native-mail-checkpoints","trigger":"git change check, governed changes on main, main cursor, onboarding, between batches, before consequential work, before stopping, native-mail, native mail, inbox, checkpoint, addressed message, manager mail, reply, acknowledge, push, settle, settlement, stop, handoff, merge, Agent Ask, operator gate","path":"docs/agent-guidance/native-mail-checkpoints.md","read_before":"At onboarding, between batches, before consequential work and before stopping: check main from the recorded cursor; before native-mail operations or briefing a manager. Explicit checkpoints only, no polling or hooks; grants no authority."},
+    {"id":"process-critic","trigger":"live run stopped, before production press, defect class recurs, authority Decision pending, process critic, pre-mortem, post-mortem","path":"docs/agent-guidance/process-critic-brief.md","read_before":"Before a post-mortem of a stopped live run, a pre-press or merge-batch pre-mortem, or an authority Decision reaching the operator; read-only plan-critic specialization, grants no authority."}
   ]
 }

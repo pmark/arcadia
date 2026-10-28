@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOOTSTRAP_MARKER, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, guidanceFingerprint, inspectGuidanceDelivery, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
+import { BOOTSTRAP_MARKER, GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, guidanceFingerprint, guidanceResources, inspectGuidanceDelivery, loadGuidanceEntries, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
 import { readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan } from "../src/projects/wayPropagation.js";
 import { renderDispatchResolution } from "../src/commands/next.js";
@@ -17,6 +17,7 @@ function scratch(): string { const root = mkdtempSync(path.join(tmpdir(), "arcad
 function put(root: string, file: string, content: string): void { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), content); }
 function adopted(): string { const root = scratch(); setupArcadiaProjectContext({ repoPath: root }); return root; }
 function file(root: string, relative: string): string { return readFileSync(path.join(root, relative), "utf8"); }
+function entriesOf(root: string): ReturnType<typeof loadGuidanceEntries> { return loadGuidanceEntries((relative) => existsSync(path.join(root, relative)) ? file(root, relative) : null); }
 function audit(root: string, cwd = root, globalInstructions = ""): ReturnType<typeof inspectGuidanceDelivery> { return inspectGuidanceDelivery(root, { cwd, globalInstructions }); }
 function control(root: string): void {
   put(root, "PROJECT.md", `---
@@ -79,7 +80,7 @@ describe("compact Way instruction delivery", () => {
     const adoptedRoot = adopted();
     expect(file(adoptedRoot, "AGENTS.md")).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
     expect(file(adoptedRoot, "docs/agent-guidance/learning.md")).toContain("arcadia learn");
-    const entries = guidanceEntries(file(canonicalRoot, GUIDANCE_INDEX));
+    const entries = entriesOf(canonicalRoot);
     for (const entry of entries) { expect(existsSync(path.join(canonicalRoot, entry.path))).toBe(true); expect(entry.trigger).toBeTruthy(); expect(entry.read_before).toBeTruthy(); }
   });
 
@@ -172,7 +173,7 @@ describe("compact Way instruction delivery", () => {
       lookup = execFileSync("grep", ["-nE", "settle|workspace", "docs/notes-to-self.md"], { cwd: root, encoding: "utf8" });
     }
     expect(lookup).toContain("Use settle --proposal, not --file");
-    const entries = guidanceEntries(file(root, GUIDANCE_INDEX));
+    const entries = entriesOf(root);
     const identity = entries.find((entry) => entry.id === "git-identity")!;
     const asks = entries.find((entry) => entry.id === "agent-asks")!;
     expect(file(root, identity.path)).toContain("never use `git -c user.*`");
@@ -261,7 +262,7 @@ describe("compact Way instruction delivery", () => {
   it("delivers the shared Git checkpoint procedure through adoption and each checkpoint trigger", () => {
     const root = adopted();
     const checkpointPath = "docs/agent-guidance/native-mail-checkpoints.md";
-    const entries = guidanceEntries(file(root, GUIDANCE_INDEX));
+    const entries = entriesOf(root);
     expect(entries.filter((entry) => entry.path === checkpointPath)).toHaveLength(1);
     expect(guidanceFingerprint(file(root, checkpointPath))).toBe(guidanceFingerprint(file(canonicalRoot, checkpointPath)));
     for (const operation of ["onboarding", "between batches", "before consequential work", "before stopping", "git change check", "governed changes on main"]) {
@@ -275,6 +276,68 @@ describe("compact Way instruction delivery", () => {
 
   it.each(["push", "settle", "stop"])("retrieves shared checkpoints for ordinary operation %s", (operation) => {
     expect(renderGuidanceRetrieval(adopted(), undefined, operation).join("\n")).toContain("Read docs/agent-guidance/native-mail-checkpoints.md:");
+  });
+
+  it("keeps full fingerprints beside a compact index and validates both", () => {
+    const index = file(canonicalRoot, GUIDANCE_INDEX);
+    const fingerprints = JSON.parse(file(canonicalRoot, GUIDANCE_FINGERPRINTS)) as { schema: string; fingerprints: Record<string, string> };
+    expect(index).not.toMatch(/[a-f0-9]{64}/);
+    expect(fingerprints.schema).toBe("arcadia-agent-guidance-v1");
+    const entries = entriesOf(canonicalRoot);
+    expect(Object.keys(fingerprints.fingerprints).sort()).toEqual(entries.map((entry) => entry.id).sort());
+    for (const entry of entries) {
+      expect(entry.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(guidanceFingerprint(file(canonicalRoot, entry.path))).toBe(entry.sha256);
+    }
+    expect(guidanceResources((relative) => existsSync(path.join(canonicalRoot, relative)) ? file(canonicalRoot, relative) : null).map((resource) => resource.path))
+      .toEqual(expect.arrayContaining([GUIDANCE_INDEX, GUIDANCE_FINGERPRINTS]));
+    expect(file(adopted(), GUIDANCE_FINGERPRINTS)).toBe(file(canonicalRoot, GUIDANCE_FINGERPRINTS));
+  });
+
+  it("refuses a stale, missing, orphaned or ambiguous fingerprint", () => {
+    const index = file(canonicalRoot, GUIDANCE_INDEX);
+    const valid = JSON.parse(file(canonicalRoot, GUIDANCE_FINGERPRINTS)) as { schema: string; fingerprints: Record<string, string> };
+    const render = (fingerprints: Record<string, string>): string => JSON.stringify({ schema: valid.schema, fingerprints });
+    const read = (overrides: Record<string, string | null>) => (relative: string): string | null =>
+      relative in overrides ? overrides[relative] : existsSync(path.join(canonicalRoot, relative)) ? file(canonicalRoot, relative) : null;
+    const stale = render({ ...valid.fingerprints, "pull-requests": "0".repeat(64) });
+    expect(() => guidanceResources(read({ [GUIDANCE_FINGERPRINTS]: stale }))).toThrow(/Canonical guidance fingerprint is stale: docs\/agent-guidance\/pull-requests\.md/);
+    const short = render({ ...valid.fingerprints, "pull-requests": valid.fingerprints["pull-requests"].slice(0, 12) });
+    expect(() => guidanceEntries(index, short)).toThrow(/Unsafe reference/);
+    const { learning: _learning, ...withoutLearning } = valid.fingerprints;
+    expect(() => guidanceEntries(index, render(withoutLearning))).toThrow(/sha256 for learning/);
+    expect(() => guidanceEntries(index, render({ ...valid.fingerprints, retired: "0".repeat(64) }))).toThrow(/without an index entry: retired/);
+    expect(() => guidanceEntries(index, null)).toThrow(/Missing mandatory guidance: docs\/agent-guidance\/fingerprints\.json/);
+    expect(() => guidanceEntries(index, "{}")).toThrow(/Invalid docs\/agent-guidance\/fingerprints\.json/);
+    const legacyEntries = entriesOf(canonicalRoot);
+    const legacy = JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: legacyEntries });
+    expect(guidanceEntries(legacy)).toEqual(legacyEntries);
+    expect(() => guidanceEntries(legacy, file(canonicalRoot, GUIDANCE_FINGERPRINTS))).toThrow(/Ambiguous guidance fingerprints/);
+    const mixed = JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: legacyEntries.map((entry, i) => i === 0 ? entry : { ...entry, sha256: undefined }) });
+    expect(() => guidanceEntries(mixed)).toThrow(/every entry or none/);
+
+    const root = adopted();
+    put(root, GUIDANCE_FINGERPRINTS, stale);
+    expect(audit(root).problems).toContain("Stale mandatory guidance: docs/agent-guidance/pull-requests.md. Refresh adoption before its operation.");
+    expect(() => renderGuidanceRetrieval(root)).toThrow(/Stale mandatory guidance/);
+    rmSync(path.join(root, GUIDANCE_FINGERPRINTS));
+    expect(audit(root).problems).toContainEqual(expect.stringContaining(`Missing mandatory guidance: ${GUIDANCE_FINGERPRINTS}`));
+    // A legacy adopter keeps working with its inline fingerprints, and a stale inline one still fails.
+    put(root, GUIDANCE_INDEX, legacy);
+    expect(audit(root).problems).toEqual([]);
+    put(root, GUIDANCE_INDEX, JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: legacyEntries.map((entry) => entry.id === "learning" ? { ...entry, sha256: "0".repeat(64) } : entry) }));
+    expect(audit(root).problems).toContain("Stale mandatory guidance: docs/agent-guidance/learning.md. Refresh adoption before its operation.");
+  });
+
+  it("resolves every indexed trigger to its procedure", () => {
+    const root = adopted();
+    const entries = entriesOf(root);
+    expect(entries).toHaveLength(entriesOf(canonicalRoot).length);
+    for (const entry of entries) {
+      const triggers = entry.trigger.split(",").map((trigger) => trigger.trim()).filter(Boolean);
+      expect(triggers.length, entry.id).toBeGreaterThan(0);
+      for (const trigger of triggers) expect(renderGuidanceRetrieval(root, undefined, trigger).join("\n"), `${entry.id}: ${trigger}`).toContain(`Read ${entry.path}:`);
+    }
   });
 
   it("keeps a new bootstrap and its resource installation together in the governing propagation tier", () => {

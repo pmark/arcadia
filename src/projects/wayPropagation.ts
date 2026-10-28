@@ -1,4 +1,4 @@
-import { assertGuidanceTarget, guidanceEntries, guidanceFingerprint, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, assertGuidanceTarget, guidanceEntries, guidanceFingerprint, guidanceResources, inspectGuidanceDelivery, loadGuidanceEntries, renderGuidanceFingerprints, renderGuidanceIndex } from "./agentGuidance.js";
 import { validationError } from "../cli/errors.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -208,8 +208,9 @@ function computeLearningOnlyPlan(repoPath: string): WayPropagationPlan {
     }
   }
 
-  const indexPath = path.join(repoPath, "docs/agent-guidance/index.json");
+  const indexPath = path.join(repoPath, GUIDANCE_INDEX);
   const existingIndex = readIfExists(indexPath);
+  const existingFingerprints = readIfExists(path.join(repoPath, GUIDANCE_FINGERPRINTS));
   const learningSource = readAdoptedFile("docs/agent-guidance/learning.md");
   if (!existingIndex?.trim() || !learningSource?.trim()) {
     changes.push({
@@ -221,8 +222,9 @@ function computeLearningOnlyPlan(repoPath: string): WayPropagationPlan {
       const learningPath = "docs/agent-guidance/learning.md";
       const existingLearning = readIfExists(path.join(repoPath, learningPath));
       const selectedLearning = selectLearningProcedure(learningSource, existingLearning);
-      const desiredIndex = updateLearningIndex(existingIndex, learningSource, selectedLearning);
-      if (desiredIndex !== existingIndex) changes.push({ path: "docs/agent-guidance/index.json", tier: "governing", action: "write", content: desiredIndex });
+      const desired = updateLearningIndex(existingIndex, existingFingerprints, learningSource, selectedLearning);
+      if (desired.index !== existingIndex) changes.push({ path: GUIDANCE_INDEX, tier: "governing", action: "write", content: desired.index });
+      if (desired.fingerprints !== null && desired.fingerprints !== existingFingerprints) changes.push({ path: GUIDANCE_FINGERPRINTS, tier: "governing", action: "write", content: desired.fingerprints });
       const desiredLearning = adoptGuidanceResource({ path: learningPath, content: selectedLearning }, existingLearning);
       if (desiredLearning !== existingLearning) {
         changes.push({ path: learningPath, tier: "governing", action: "write", content: desiredLearning });
@@ -283,23 +285,32 @@ function selectLearningProcedure(canonical: string, existing: string | null): st
   return canonical.replace(/\nTwo unchanged workflow refusals without new evidence require\n\[Hacker recovery\]\(hacker-recovery\.md\) before another attempt\. Explicit\nstop-the-line requests activate it immediately\. This changes diagnostic strategy,\nnot authority, admission or budget\. Supervisors must recognize the pattern\.\n/, "\n");
 }
 
-function updateLearningIndex(existing: string, canonicalLearningSource: string, selectedLearning: string): string {
+function updateLearningIndex(existing: string, existingFingerprints: string | null, canonicalLearningSource: string, selectedLearning: string): { index: string; fingerprints: string | null } {
   const parsed = JSON.parse(existing) as { schema?: unknown; entries?: unknown };
   if (parsed.schema !== "arcadia-agent-guidance-v1" || !Array.isArray(parsed.entries)) {
     throw validationError("Cannot update a project-owned guidance index; migrate it through a reviewed adoption change.");
   }
-  // Validate the existing canonical shape before replacing only its learning record.
-  guidanceEntries(existing);
-  const canonicalIndex = readAdoptedFile("docs/agent-guidance/index.json");
-  if (!canonicalIndex) throw validationError("Arcadia's canonical guidance index is missing.");
-  const canonicalLearning = guidanceEntries(canonicalIndex).find((entry) => entry.id === "learning");
+  // Validate the existing canonical shape (compact or legacy inline) before replacing only its learning record.
+  guidanceEntries(existing, existingFingerprints);
+  const canonicalLearning = loadGuidanceEntries(readAdoptedFile).find((entry) => entry.id === "learning");
   if (!canonicalLearning) throw validationError("Arcadia's canonical guidance index is missing its learning entry.");
   if (guidanceFingerprint(canonicalLearningSource) !== canonicalLearning.sha256) throw validationError("Arcadia's canonical learning procedure does not match its index fingerprint.");
   const entries = parsed.entries as Array<Record<string, unknown>>;
   const index = entries.findIndex((entry) => entry.id === "learning");
   if (index < 0) throw validationError("The adopter guidance index has no learning entry; migrate it through a reviewed adoption change.");
-  entries[index] = { ...canonicalLearning, sha256: guidanceFingerprint(selectedLearning) };
-  return `${JSON.stringify(parsed, null, 2)}\n`;
+  const { sha256: _canonicalSha256, ...learningRecord } = canonicalLearning;
+  const selectedSha256 = guidanceFingerprint(selectedLearning);
+  if (existingFingerprints === null) {
+    // Legacy adopter: fingerprints stay inline in its own layout.
+    entries[index] = { ...learningRecord, sha256: selectedSha256 };
+    return { index: `${JSON.stringify(parsed, null, 2)}\n`, fingerprints: null };
+  }
+  entries[index] = learningRecord;
+  const fingerprints = (JSON.parse(existingFingerprints) as { fingerprints: Record<string, string> }).fingerprints;
+  return {
+    index: renderGuidanceIndex(parsed as { entries: unknown[] } & Record<string, unknown>),
+    fingerprints: renderGuidanceFingerprints({ ...fingerprints, learning: selectedSha256 })
+  };
 }
 
 function readIfExists(filePath: string): string | null {
