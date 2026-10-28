@@ -11,6 +11,58 @@ const plan = { slug: "first-website", status: "active", governed: true, mileston
 const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
 const detail: PlanDetailResponse = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }], note: "Fixture records" } };
 
+test("direction receipts show supported evidence and held/unknown recovery never resends", async ({ page }) => {
+  test.setTimeout(120_000);
+  const repo = path.resolve(import.meta.dirname, "../..");
+  const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-direction-ui-"));
+  const port = await freePort(); const url = `http://127.0.0.1:${port}`;
+  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, ARCADIA_CONFIG_PATH: path.join(temp, "user.json"), ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
+  let state = "submitted"; let lost = false;
+  const posts: Array<{ request: string; requestId: string; directionTarget: unknown }> = [];
+  const direction = () => ({ requestId: posts[0].requestId, content: posts[0].request, target: posts[0].directionTarget,
+    fingerprint: "a".repeat(64), disposition: "accepted", state, lastSupportedState: state === "held" || state === "unknown" ? "acknowledged" : state,
+    reason: state === "held" ? "Recipient explicitly stopped; original address retained." : state === "unknown" ? "Observation unavailable; no resend." : null,
+    evidence: [{ state, artifact: `fixture:${state}`, source: "fixture.canonical-projection", observedAt: "2030-01-01T00:00:00.000Z", provenance: state === "verified" ? "canonical-independent-qa" : "recipient-attestation", current: true,
+      ...(state === "verified" ? { result: "passed", revision: "b".repeat(40) } : {}) }] });
+  await page.route("**/api/**", async route => {
+    const endpoint = new URL(route.request().url()).pathname;
+    if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
+    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: detail });
+    if (endpoint === "/api/ask") {
+      posts.push(route.request().postDataJSON());
+      return route.fulfill({ json: { message: "Direction submitted.", direction: direction() } });
+    }
+    if (endpoint === "/api/ask/show") return lost ? route.abort() : route.fulfill({ json: { capture: null, asks: [], direction: direction() } });
+    return route.abort();
+  });
+  try {
+    await waitForHttp(`${url}/workspace`, server);
+    await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website/actions/review-phone`);
+    await page.getByRole("textbox").fill("Record this exact Action direction");
+    await page.getByRole("checkbox", { name: "Send as a direction to this context" }).check();
+    await page.getByRole("button", { name: "Send direction", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Direction · submitted", exact: true })).toBeVisible();
+    expect(posts[0].directionTarget).toEqual({ projectId: "garden", plan: "first-website", action: "review-phone" });
+    for (state of ["delivered", "acknowledged", "continued", "verified", "held", "unknown"]) {
+      await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
+      await expect(page.getByRole("heading", { name: `Direction · ${state}`, exact: true })).toBeVisible();
+      await page.getByText("Direction evidence", { exact: true }).click();
+      await expect(page.getByRole("region", { name: "Direction receipt", exact: true })).toContainText(`fixture:${state}`);
+      await page.getByText("Direction evidence", { exact: true }).click();
+      if (state === "held" || state === "unknown") {
+        await page.reload();
+        await expect(page.getByRole("heading", { name: `Direction · ${state}`, exact: true })).toBeVisible();
+        await page.getByRole("link", { name: "Portfolio", exact: true }).click();
+        await expect(page.getByRole("heading", { name: `Direction · ${state}`, exact: true })).toBeVisible();
+        expect(posts).toHaveLength(1);
+      }
+    }
+    lost = true; await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Receipt read failed" })).toBeVisible();
+    expect(posts).toHaveLength(1);
+  } finally { await server.stop(); await rm(temp, { recursive: true, force: true }); }
+});
+
 test("workspace navigation preserves its sky, scope, and Ask receipt recovery", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
@@ -136,7 +188,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await expect(page.getByText(/No Runs are linked/)).toBeVisible();
     readMode = "failed";
     await page.getByRole("button", { name: "Refresh receipt", exact: true }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Receipt read failed" })).toContainText("acknowledgment is retained");
+    await expect(page.getByRole("alert").filter({ hasText: "Receipt read failed" })).toContainText("submission receipt is retained");
     await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();
     const beforeReload = readCount;
     await page.reload();

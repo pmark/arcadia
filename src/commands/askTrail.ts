@@ -5,68 +5,11 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { supersessionsReplacing, supersessionThatCreated, type AskSupersession } from "../ask/supersession.js";
-import { listAskRunEvidence, type RunEvidence } from "./runEvidence.js";
+import { listAskRunEvidence } from "./runEvidence.js";
+import { projectDirection } from "../ask/directionState.js";
 
-export interface AskTrailOptions {
-  workspace: string;
-  id: string;
-}
-
-export interface AskTrailCapture {
-  id: string;
-  requestId: string;
-  originalText: string;
-  ingressSource: string;
-  capturedAt: string;
-  status: string;
-  relatedReviewId: string | null;
-  outcomes: AskTrailOutcome[];
-}
-
-export interface AskTrailOutcome {
-  kind: "action" | "plan" | "decision" | "back_burner_item" | "run" | "approval_claim";
-  id: string;
-  status: string | null;
-  summary: string | null;
-  projectName: string | null;
-  /** Set when an `ask correct` replaced this record: the Ask that replaced it and the record it created. */
-  supersededBy?: { askId: string; recordId: string | null } | null;
-}
-
-/** One `arcadia ask correct` link, as the trail shows it. */
-export interface AskTrailSupersession {
-  /** The Ask that was replaced (for `supersededBy`) or the Ask that replaced this one (for `supersedes`). */
-  askId: string;
-  targetType: string;
-  record: { kind: string; id: string | null };
-  oldRecord: { kind: string; id: string | null; disposition: string };
-  source: string;
-  actor: string | null;
-  at: string;
-}
-
-export interface AskTrailAsk {
-  id: string;
-  resolvedIntent: string;
-  outputKind: string;
-  status: string;
-  createdAt: string;
-  executionPath: string | null;
-  reason: string | null;
-  projectName: string | null;
-  outcomes: AskTrailOutcome[];
-  /** Every Run correlated through this Ask's captured Action or Review, including terminal evidence. */
-  runs: RunEvidence[];
-  /** Corrections that replaced this Ask, oldest first. Empty for an Ask nobody corrected. */
-  supersededBy: AskTrailSupersession[];
-  /** The correction that created this Ask, when it is itself a replacement. */
-  supersedes: AskTrailSupersession | null;
-}
-
-export interface AskTrailData {
-  capture: AskTrailCapture | null;
-  asks: AskTrailAsk[];
-}
+import type { AskTrailOptions, AskTrailCapture, AskTrailOutcome, AskTrailSupersession, AskTrailAsk, AskTrailData } from "../ask/trailTypes.js";
+export type { AskTrailOptions, AskTrailCapture, AskTrailOutcome, AskTrailSupersession, AskTrailAsk, AskTrailData } from "../ask/trailTypes.js";
 
 interface CaptureRow {
   id: string;
@@ -96,18 +39,18 @@ interface AskRow {
  */
 export function runAskTrailCommand(options: AskTrailOptions): CommandSuccess<AskTrailData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
+  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim(), workspacePath));
   return createSuccess({ command: "ask-trail", workspace: workspacePath, data });
 }
 
 /** The canonical `ask show` name; `ask-trail` remains a read-only compatibility alias. */
 export function runAskShowCommand(options: AskTrailOptions): CommandSuccess<AskTrailData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
+  const data = withReadOnlyDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim(), workspacePath));
   return createSuccess({ command: "ask.show", workspace: workspacePath, data });
 }
 
-function buildAskTrail(db: Database.Database, id: string): AskTrailData {
+function buildAskTrail(db: Database.Database, id: string, workspace: string): AskTrailData {
   const captureById = db.prepare("SELECT * FROM ask_capture_envelopes WHERE id = ? OR request_id = ?");
   let capture = captureById.get(id, id) as CaptureRow | undefined;
   let asks: AskRow[];
@@ -125,7 +68,9 @@ function buildAskTrail(db: Database.Database, id: string): AskTrailData {
     asks = [ask];
   }
 
+  const direction = capture ? projectDirection(db, workspace, capture.request_id) : null;
   return {
+    ...(direction ? { direction } : {}),
     capture: capture
       ? {
           id: capture.id,

@@ -5,9 +5,11 @@ import type { AskTrailResponse } from "../../lib/arcadia-cli";
 import type { AskResponse } from "../../lib/types";
 import { WorkspaceArtifactViewer } from "./workspace-artifact-viewer";
 import { newRequestId } from "../../lib/launch-flow";
+import { isDirectionView } from "../../lib/workspace-directions";
+import type { DirectionView } from "../../../../src/ask/directionTypes.js";
 
-type Target = { projectId?: string; label: string; context: string };
-type Exchange = { id: string; text: string; target: Target; phase: "sending" | "acknowledged" | "uncertain"; summary?: string; status?: string; lookupOnly?: boolean };
+type Target = { projectId?: string; plan?: string; action?: string; label: string; context: string };
+type Exchange = { id: string; text: string; target: Target; mode?: "direction"; phase: "sending" | "acknowledged" | "uncertain"; summary?: string; status?: string; lookupOnly?: boolean };
 type Saved = { draft: string; target: Target | null; exchange: Exchange | null; history: Exchange[] };
 const empty: Saved = { draft: "", target: null, exchange: null, history: [] };
 const storageKey = "arcadia.workspace.ask.v1";
@@ -21,12 +23,13 @@ const AskContext = createContext<AskState | null>(null);
 function isTarget(value: unknown): value is Target {
   if (!value || typeof value !== "object") return false;
   const t = value as Target;
-  return typeof t.label === "string" && typeof t.context === "string" && (t.projectId === undefined || (typeof t.projectId === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(t.projectId)));
+  return typeof t.label === "string" && typeof t.context === "string" && (t.projectId === undefined || (typeof t.projectId === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(t.projectId))) &&
+    [t.plan, t.action].every(v => v === undefined || (typeof v === "string" && /^[a-z0-9][a-z0-9-]*$/.test(v))) && (t.action === undefined || t.plan !== undefined);
 }
 function isExchange(value: unknown): value is Exchange {
   if (!value || typeof value !== "object") return false;
   const e = value as Exchange;
-  return typeof e.id === "string" && typeof e.text === "string" && isTarget(e.target) && (e.summary === undefined || typeof e.summary === "string") && (e.status === undefined || typeof e.status === "string") && (e.lookupOnly === undefined || typeof e.lookupOnly === "boolean") && ["sending", "acknowledged", "uncertain"].includes(e.phase);
+  return typeof e.id === "string" && typeof e.text === "string" && isTarget(e.target) && (e.mode === undefined || e.mode === "direction") && (e.summary === undefined || typeof e.summary === "string") && (e.status === undefined || typeof e.status === "string") && (e.lookupOnly === undefined || typeof e.lookupOnly === "boolean") && ["sending", "acknowledged", "uncertain"].includes(e.phase);
 }
 
 function selectExchange(saved: Saved, exchange: Exchange): Saved {
@@ -39,6 +42,12 @@ function selectExchange(saved: Saved, exchange: Exchange): Saved {
 
 function recoverExchange(exchange: Exchange): Exchange {
   return exchange.phase === "sending" ? { ...exchange, phase: "uncertain" } : exchange;
+}
+
+function matchesDirection(view: DirectionView, exchange: Exchange): boolean {
+  const target = view.target as { projectId?: string; plan?: string; action?: string } | null;
+  return view.requestId === exchange.id && view.content === exchange.text && target?.projectId === exchange.target.projectId &&
+    target?.plan === exchange.target.plan && target?.action === exchange.target.action;
 }
 
 /** Mounted once in the workspace layout: navigation cannot replace an operation's identity. */
@@ -80,6 +89,11 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
         }
         return false;
       }
+      if (body.direction && !isDirectionView(body.direction)) throw new Error("The direction receipt shape was invalid.");
+      const original = current.current.exchange;
+      if (original?.id === id && original.mode === "direction" && !original.lookupOnly) {
+        if (!body.direction || !matchesDirection(body.direction, original)) throw new Error("The direction receipt did not match the original request and target.");
+      }
       if (sequence === reading.current) {
         setTrail(body);
         const e = current.current.exchange;
@@ -103,10 +117,12 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     update({ ...selectExchange(before, { ...exchange, phase: "sending" }), ...(fresh ? { draft: "", target: null } : {}) });
     const url = new URL(window.location.href); url.searchParams.set("receipt", exchange.id); window.history.replaceState(null, "", url);
     try {
-      const response = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: exchange.text, requestId: exchange.id, projectId: exchange.target.projectId }) });
-      const body = await response.json() as { message?: string; result?: AskResponse; error?: string };
-      if (!response.ok || !body.result || typeof body.message !== "string") throw new Error(body.error ?? "The submission response was not confirmed.");
-      update({ ...current.current, exchange: { ...exchange, phase: "acknowledged", summary: body.message, status: body.result.result.status } });
+      const response = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: exchange.text, requestId: exchange.id,
+        ...(exchange.mode === "direction" ? { directionTarget: { projectId: exchange.target.projectId, ...(exchange.target.plan ? { plan: exchange.target.plan } : {}), ...(exchange.target.action ? { action: exchange.target.action } : {}) } } : { projectId: exchange.target.projectId }) }) });
+      const body = await response.json() as { message?: string; result?: AskResponse; direction?: DirectionView; error?: string };
+      if (!response.ok || typeof body.message !== "string" || (exchange.mode === "direction" ? !isDirectionView(body.direction) : !body.result)) throw new Error(body.error ?? "The submission response was not confirmed.");
+      if (exchange.mode === "direction" && !matchesDirection(body.direction!, exchange)) throw new Error("The direction response did not match the original request and target.");
+      update({ ...current.current, exchange: { ...exchange, phase: "acknowledged", summary: body.message, status: exchange.mode === "direction" ? body.direction!.state : body.result!.result.status } });
       await inspect(exchange.id);
     } catch (error) {
       update({ ...current.current, exchange: { ...exchange, phase: "uncertain", summary: error instanceof Error ? error.message : "The submission response was not confirmed." } });
@@ -141,6 +157,7 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
 }
 
 export function WorkspaceAsk({ target, available }: { target: Target; available: boolean }) {
+  const [directionMode, setDirectionMode] = useState(false);
   const state = useContext(AskContext);
   if (!state) return null;
   const { saved, update, busy, warning, trail, readError, missing, inspect, send } = state;
@@ -151,7 +168,8 @@ export function WorkspaceAsk({ target, available }: { target: Target; available:
   const receiptHref = e ? `/workspace?receipt=${encodeURIComponent(e.id)}` : null;
   function submit() {
     if (!available || busy || !saved.draft.trim() || e?.phase === "uncertain") return;
-    const exchange: Exchange = { id: newRequestId("workspace"), text: saved.draft.trim(), target: draftTarget, phase: "sending" };
+    if (directionMode && !draftTarget.projectId) return;
+    const exchange: Exchange = { id: newRequestId("workspace"), text: saved.draft.trim(), target: draftTarget, phase: "sending", ...(directionMode ? { mode: "direction" as const } : {}) };
     void send(exchange, true);
   }
   return <div className="workspace-ask">
@@ -162,16 +180,19 @@ export function WorkspaceAsk({ target, available }: { target: Target; available:
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
       <label htmlFor="workspace-ask-text">What would you like to do?</label>
       <textarea id="workspace-ask-text" rows={4} value={saved.draft} disabled={!available} onChange={event => update({ ...saved, draft: event.target.value, target: saved.target ?? target })} />
-      <button type="submit" disabled={!available || busy || !saved.draft.trim() || e?.phase === "uncertain"}>{busy ? "Sending…" : "Send new Ask"}</button>
+      <label><input type="checkbox" checked={directionMode} disabled={!draftTarget.projectId || busy} onChange={event => setDirectionMode(event.target.checked)} />Send as a direction to this context</label>
+      {directionMode && <p>Records a direction for this Project, Plan or Action. Delivery appears after the recipient records its checkpoint.</p>}
+      <button type="submit" disabled={!available || busy || !saved.draft.trim() || e?.phase === "uncertain"}>{busy ? "Sending…" : directionMode ? "Send direction" : "Send new Ask"}</button>
     </form>
     {warning && <p role="alert">{warning}</p>}
     {e && <section aria-label="Latest Ask" className="workspace-ask-receipt" aria-live="polite">
       <h2>Your Ask</h2><p>{trail?.capture?.originalText ?? e.text}</p>
       <p>Sent context: {e.target.context} · {e.target.label}</p>
-      <p>{e.phase === "sending" ? "Sending — durable capture is not confirmed yet." : e.phase === "uncertain" ? "Submission outcome unknown. Inspect the receipt before retrying." : `Submission acknowledged${e.status ? ` · ${e.status}` : " via receipt"}.`}</p>
+      <p>{e.phase === "sending" ? "Sending — durable capture is not confirmed yet." : e.phase === "uncertain" ? "Submission outcome unknown. Inspect the receipt before retrying." : `Submission recorded${e.status ? ` · ${e.status}` : " via receipt"}.`}</p>
+      {trail?.direction ? <DirectionCard view={trail.direction} /> : e.mode === "direction" && e.phase === "uncertain" ? <section aria-label="Direction receipt"><h3>Direction · unknown</h3><p>The submission outcome is unknown. Refresh reads the original receipt; nothing is resent automatically.</p><p>Evidence: {e.id} · workspace.submission · browser transport observation</p></section> : null}
       {e.summary && <><h3>{e.phase === "acknowledged" ? "Arcadia" : "Transport response"}</h3><p>{e.summary}</p></>}
       <details><summary>Receipt details</summary><p>Request: <code>{e.id}</code></p><a href={receiptHref!}>Receipt link (read only)</a></details><button type="button" disabled={busy} onClick={() => void inspect(e.id)}>Refresh receipt</button>
-      {readError && <p role="alert">Receipt read failed: {readError} Any evidence below is from the last successful read. {e.phase === "acknowledged" ? "Your submission acknowledgment is retained." : "No automatic resubmission was made."}</p>}
+      {readError && <p role="alert">Receipt read failed: {readError} Any evidence below is from the last successful read. {e.phase === "acknowledged" ? "Your submission receipt is retained." : "No automatic resubmission was made."}</p>}
       {retryable && <button type="button" disabled={busy || !available} onClick={() => void send(e)}>Retry original unchanged Ask</button>}
       {e.phase === "uncertain" && !busy && <button type="button" onClick={() => {
         update({ ...saved, exchange: null, history: [e, ...saved.history].slice(0, 5) });
@@ -181,6 +202,15 @@ export function WorkspaceAsk({ target, available }: { target: Target; available:
     </section>}
     <details className="workspace-history"><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update(selectExchange(saved, recoverExchange(old))); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
   </div>;
+}
+
+function DirectionCard({ view }: { view: DirectionView }) {
+  return <section aria-label="Direction receipt"><h3>Direction · {view.state}</h3>
+    {view.reason && <p>{view.reason}</p>}<p>Last supported state: {view.lastSupportedState ?? "none"}.</p>
+    <details><summary>Direction evidence</summary><p>Request: {view.requestId}</p><ul>{view.evidence.map((evidence, index) => <li key={`${evidence.artifact}-${index}`}>
+      {evidence.state} · {evidence.provenance} · <time dateTime={evidence.observedAt}>{evidence.observedAt}</time>
+      <p>{evidence.source} · {evidence.artifact}{evidence.revision ? ` · revision ${evidence.revision}` : ""}{evidence.result ? ` · ${evidence.result}` : ""}{evidence.current === false ? " · historical observation" : ""}</p>
+    </li>)}</ul></details></section>;
 }
 
 function TrailCards({ trail, receipt }: { trail: AskTrailResponse; receipt: string }) {

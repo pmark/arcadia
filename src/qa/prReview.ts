@@ -2125,6 +2125,14 @@ export function verifyPersistedQaContextEvidence(
   }
 }
 
+/** Positive acceptance is separate from receipt integrity and schema validity. */
+export function persistedQaAcceptancePassed(context: PersistedQaContext): boolean {
+  return context.verdict === "pass" && !context.reviewerUnavailable && context.reviewer.exitStatus === 0 &&
+    context.findings.every(finding => finding.severity === "low") &&
+    context.checks.length > 0 && context.checks.every(check => check.status === "pass") &&
+    QA_PR_REVIEW_CRITERIA.every(criterion => context.checks.some(check => check.name === criterion.name && check.status === "pass"));
+}
+
 function sha256File(filePath: string): string {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }

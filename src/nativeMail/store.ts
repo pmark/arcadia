@@ -4,6 +4,7 @@ import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
+import { requireAcceptedDirection, type DirectionCorrelation } from "../ask/directions.js";
 
 /**
  * Local, addressed coordination messages between native coding-agent sessions
@@ -19,6 +20,8 @@ export type MailMessageStatus = "offered" | "exposed" | "acknowledged" | "dispos
 export type MailReceiptKind =
   | "offer"
   | "exposure"
+  | "consumption"
+  | "recipient_state"
   | "acknowledgment"
   | "self_report"
   | "effect_receipt"
@@ -54,6 +57,8 @@ export interface SendMailMessageInput {
   /** ISO instant after which the message is inert. */
   expiresAt?: string | null;
   actor: string;
+  /** Explicit accepted operator-direction correlation, never a browser incarnation. */
+  direction?: { requestId: string; fingerprint: string };
 }
 
 export interface MailMessageRow {
@@ -74,6 +79,8 @@ export interface MailMessageRow {
   replyToId: string | null;
   resourceRefs: string[];
   body: Record<string, unknown>;
+  /** Typed canonical offer metadata; legacy arbitrary body fields are never promoted. */
+  direction?: { requestId: string; fingerprint: string };
   expiresAt: string | null;
   status: MailMessageStatus;
   exposedAt: string | null;
@@ -96,6 +103,7 @@ export interface MailReceiptRow {
 }
 
 export function ensureNativeMailTables(db: Database.Database): void {
+  writeTransaction(db, () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS native_mail_messages (
       id TEXT PRIMARY KEY,
@@ -115,6 +123,7 @@ export function ensureNativeMailTables(db: Database.Database): void {
       reply_to_id TEXT REFERENCES native_mail_messages(id) ON DELETE SET NULL,
       resource_refs_json TEXT NOT NULL DEFAULT '[]',
       body_json TEXT NOT NULL,
+      direction_json TEXT,
       expires_at TEXT,
       status TEXT NOT NULL CHECK (status IN ('offered', 'exposed', 'acknowledged', 'disposed')) DEFAULT 'offered',
       exposed_at TEXT,
@@ -131,7 +140,7 @@ export function ensureNativeMailTables(db: Database.Database): void {
       id TEXT PRIMARY KEY,
       message_id TEXT NOT NULL REFERENCES native_mail_messages(id) ON DELETE CASCADE,
       request_id TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL CHECK (kind IN ('offer', 'exposure', 'acknowledgment', 'self_report', 'effect_receipt', 'disposal')),
+      kind TEXT NOT NULL CHECK (kind IN ('offer', 'exposure', 'consumption', 'recipient_state', 'acknowledgment', 'self_report', 'effect_receipt', 'disposal')),
       actor TEXT NOT NULL,
       self_reported_result_json TEXT,
       effect_evidence_json TEXT,
@@ -140,6 +149,27 @@ export function ensureNativeMailTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_native_mail_receipts_message
       ON native_mail_receipts(message_id, created_at);
   `);
+  const columns = db.prepare("PRAGMA table_info(native_mail_messages)").all() as Array<{ name: string }>;
+  if (!columns.some(column => column.name === "direction_json")) db.exec("ALTER TABLE native_mail_messages ADD COLUMN direction_json TEXT");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_native_mail_direction ON native_mail_messages(json_extract(direction_json, '$.requestId')) WHERE direction_json IS NOT NULL");
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'native_mail_receipts'").get() as { sql: string };
+  if (!schema.sql.includes("'recipient_state'")) {
+    // This leaf table has no incoming foreign keys. Rebuild transactionally;
+    // preserve every old receipt, its message FK, uniqueness and index.
+    writeTransaction(db, () => db.exec(`
+      CREATE TABLE native_mail_receipts_direction (
+        id TEXT PRIMARY KEY, message_id TEXT NOT NULL REFERENCES native_mail_messages(id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK (kind IN ('offer','exposure','consumption','recipient_state','acknowledgment','self_report','effect_receipt','disposal')),
+        actor TEXT NOT NULL, self_reported_result_json TEXT, effect_evidence_json TEXT, created_at TEXT NOT NULL
+      );
+      INSERT INTO native_mail_receipts_direction SELECT * FROM native_mail_receipts;
+      DROP TABLE native_mail_receipts;
+      ALTER TABLE native_mail_receipts_direction RENAME TO native_mail_receipts;
+      CREATE INDEX idx_native_mail_receipts_message ON native_mail_receipts(message_id, created_at);
+    `));
+  }
+  });
 }
 
 function fingerprintOf(input: SendMailMessageInput): string {
@@ -152,6 +182,7 @@ function fingerprintOf(input: SendMailMessageInput): string {
         assignmentEvidence: input.assignmentEvidence,
         canonicalSessionRef: input.canonicalSessionRef ?? null,
         receiverCheckpointCapability: input.receiverCheckpointCapability,
+        ...(input.direction ? { direction: input.direction } : {}),
         body: input.body,
         replyToId: input.replyToId ?? null,
         resourceRefs: input.resourceRefs ?? [],
@@ -180,6 +211,7 @@ function toMessageRow(row: RawMessageRow): MailMessageRow {
     replyToId: row.reply_to_id,
     resourceRefs: JSON.parse(row.resource_refs_json) as string[],
     body: JSON.parse(row.body_json) as Record<string, unknown>,
+    ...(row.direction_json ? { direction: JSON.parse(row.direction_json) as { requestId: string; fingerprint: string } } : {}),
     expiresAt: row.expires_at,
     status: row.status as MailMessageStatus,
     exposedAt: row.exposed_at,
@@ -209,6 +241,7 @@ interface RawMessageRow {
   reply_to_id: string | null;
   resource_refs_json: string;
   body_json: string;
+  direction_json?: string | null;
   expires_at: string | null;
   status: string;
   exposed_at: string | null;
@@ -269,6 +302,20 @@ export function sendMailMessage(
 ): { message: MailMessageRow; receipt: MailReceiptRow } {
   const fingerprint = fingerprintOf(input);
   return writeTransaction(db, () => {
+    if (input.direction) {
+      const direction = requireAcceptedDirection(db, input.direction.requestId, input.direction.fingerprint);
+      if (direction.target.projectSlug !== input.sender.projectSlug ||
+        (direction.target.plan && direction.target.plan !== input.sender.planSlug) || direction.target.repository !== input.sender.repository) {
+        throw validationError("Direction offer does not match its accepted Project/Plan/repository target.");
+      }
+      const offered = db.prepare("SELECT * FROM native_mail_messages WHERE direction_json IS NOT NULL AND json_extract(direction_json, '$.requestId') = ?")
+        .get(input.direction.requestId) as RawMessageRow | undefined;
+      if (offered && offered.request_id !== input.requestId) {
+        if (offered.content_fingerprint !== fingerprint || offered.status === "disposed") throw validationError("Direction is already pinned to a different addressed offer; it is never automatically readdressed.");
+        const message = toMessageRow(offered);
+        return { message, receipt: listMailReceipts(db, message.id).find(receipt => receipt.kind === "offer")! };
+      }
+    }
     const existing = getMessageByRequestId(db, input.requestId);
     if (existing) {
       if (existing.contentFingerprint !== fingerprint) {
@@ -310,11 +357,11 @@ export function sendMailMessage(
         (id, request_id, content_fingerprint, kind, repository, project_slug, plan_slug,
          sender_session_incarnation, sender_generation, assignment_evidence, canonical_session_ref,
          recipient_session_incarnation, recipient_generation, receiver_checkpoint_capability,
-         reply_to_id, resource_refs_json, body_json, expires_at, status, created_at, updated_at)
+         reply_to_id, resource_refs_json, body_json, direction_json, expires_at, status, created_at, updated_at)
        VALUES (@id, @request_id, @content_fingerprint, @kind, @repository, @project_slug, @plan_slug,
          @sender_session_incarnation, @sender_generation, @assignment_evidence, @canonical_session_ref,
          @recipient_session_incarnation, @recipient_generation, @receiver_checkpoint_capability,
-         @reply_to_id, @resource_refs_json, @body_json, @expires_at, 'offered', @created_at, @updated_at)`
+         @reply_to_id, @resource_refs_json, @body_json, @direction_json, @expires_at, 'offered', @created_at, @updated_at)`
     ).run({
       id: resolvedId,
       request_id: input.requestId,
@@ -333,6 +380,7 @@ export function sendMailMessage(
       reply_to_id: input.replyToId ?? null,
       resource_refs_json: JSON.stringify(input.resourceRefs ?? []),
       body_json: JSON.stringify(input.body ?? {}),
+      direction_json: input.direction ? JSON.stringify(input.direction) : null,
       expires_at: input.expiresAt ?? null,
       created_at: now,
       updated_at: now
@@ -420,7 +468,7 @@ export interface RecipientScope {
  * must still be disposable, or it and its requestId become permanently
  * unremovable once past `expiresAt`.
  */
-function assertRecipientScope(
+export function assertRecipientScope(
   message: MailMessageRow,
   scope: RecipientScope,
   options: { allowDisposed?: boolean; allowExpired?: boolean } = {}
@@ -453,6 +501,104 @@ function assertRecipientScope(
 export interface AcknowledgeMailMessageInput extends RecipientScope {
   messageId: string;
   actor: string;
+  compactAcknowledgment?: string;
+}
+
+export function directionForMail(message: MailMessageRow): { requestId: string; fingerprint: string } | null {
+  const value = message.direction;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const ref = value as Record<string, unknown>;
+  return typeof ref.requestId === "string" && typeof ref.fingerprint === "string"
+    ? { requestId: ref.requestId, fingerprint: ref.fingerprint } : null;
+}
+
+/** Explicit receiver assertion after reading this exact exposed message. Not host authentication. */
+export function consumeDirectionCheckpoint(db: Database.Database, input: RecipientScope & {
+  messageId: string; requestId: string; fingerprint: string; actor: string;
+}): MailReceiptRow {
+  return writeTransaction(db, () => {
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError("Direction message does not exist.");
+    assertRecipientScope(message, input);
+    const ref = directionForMail(message);
+    if (!ref || ref.fingerprint !== input.fingerprint) throw validationError("Consumed checkpoint does not match the direction content.");
+    const accepted = requireAcceptedDirection(db, ref.requestId, ref.fingerprint);
+    assertDirectionMailTarget(message, accepted.target);
+    if (!message.exposedAt) throw validationError("Consume requires this recipient's preceding native inbox checkpoint exposure.");
+    const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id = ?").get(input.requestId) as RawReceiptRow | undefined;
+    if (existing) {
+      if (existing.message_id !== message.id || existing.kind !== "consumption") throw validationError("Checkpoint request ID already names a different operation.");
+      return toReceiptRow(existing);
+    }
+    const now = nowIso();
+    const evidence = { schema: "arcadia-direction-consumption-v1", ...ref, messageId: message.id,
+      recipient: input.recipientSessionIncarnation, generation: input.recipientGeneration,
+      provenance: "recipient-attestation", source: "native-mail.consume", observedAt: now };
+    const id = createId("nativeMailReceipt");
+    db.prepare("INSERT INTO native_mail_receipts (id,message_id,request_id,kind,actor,effect_evidence_json,created_at) VALUES (?,?,?,'consumption',?,?,?)")
+      .run(id, message.id, input.requestId, input.actor, JSON.stringify(evidence), now);
+    return toReceiptRow(db.prepare("SELECT * FROM native_mail_receipts WHERE id = ?").get(id) as RawReceiptRow);
+  });
+}
+
+export function assertDirectionReceiverEvidence(db: Database.Database, correlation: DirectionCorrelation,
+  target: { projectSlug: string; planSlug: string; actionId: string }): void {
+  const direction = requireAcceptedDirection(db, correlation.requestId, correlation.fingerprint);
+  const message = getMailMessage(db, correlation.messageId);
+  if (!message || directionForMail(message)?.requestId !== direction.requestId ||
+    directionForMail(message)?.fingerprint !== direction.fingerprint || message.projectSlug !== target.projectSlug ||
+    message.planSlug !== target.planSlug || direction.target.projectSlug !== target.projectSlug ||
+    (direction.target.plan && direction.target.plan !== target.planSlug) || (direction.target.action && direction.target.action !== target.actionId)) {
+    throw validationError("Applied effect does not match the exact accepted direction and addressed message target.");
+  }
+  assertDirectionMailTarget(message, direction.target);
+  if (message.status === "disposed" || (message.expiresAt && message.expiresAt <= nowIso())) throw validationError("Direction was disposed or expired before the applied effect.");
+  const receipts = listMailReceipts(db, message.id);
+  const consumed = receipts.find(r => r.id === correlation.consumptionReceiptId && r.kind === "consumption");
+  const ack = receipts.find(r => r.id === correlation.acknowledgmentReceiptId && r.kind === "acknowledgment");
+  if (!consumed || !ack || consumed.createdAt < direction.observedAt || ack.createdAt < consumed.createdAt ||
+    consumed.effectEvidence?.schema !== "arcadia-direction-consumption-v1" || consumed.effectEvidence.fingerprint !== direction.fingerprint ||
+    consumed.effectEvidence.recipient !== message.recipientSessionIncarnation || consumed.effectEvidence.generation !== message.recipientGeneration ||
+    ack.effectEvidence?.schema !== "arcadia-direction-ack-v1" || ack.effectEvidence.fingerprint !== direction.fingerprint) {
+    throw validationError("Direction effect requires its preceding consumed-checkpoint and compact acknowledgment receipts.");
+  }
+}
+
+export function assertDirectionMailTarget(message: MailMessageRow, target: { projectSlug: string; repository: string; plan?: string }): void {
+  if (message.projectSlug !== target.projectSlug || message.repository !== target.repository || (target.plan && message.planSlug !== target.plan)) {
+    throw validationError("Direction message does not match its canonical Project/Plan/repository target.");
+  }
+}
+
+/** A bounded observer attestation, not a host probe or a process-control command. */
+export function recordDirectionRecipientState(db: Database.Database, input: RecipientScope & {
+  messageId: string; requestId: string; state: "paused" | "stopped" | "running"; evidenceReference: string; actor: string;
+}): MailReceiptRow {
+  if (!["paused", "stopped", "running"].includes(input.state) || !input.evidenceReference.trim()) throw validationError("Recipient observation requires a state and its evidence reference.");
+  return writeTransaction(db, () => {
+    const message = getMailMessage(db, input.messageId);
+    if (!message) throw validationError("Direction message does not exist.");
+    assertRecipientScope(message, input, { allowExpired: true });
+    const ref = directionForMail(message);
+    if (!ref) throw validationError("Recipient state observation requires a typed direction offer.");
+    assertDirectionMailTarget(message, requireAcceptedDirection(db, ref.requestId, ref.fingerprint).target);
+    const prior = db.prepare("SELECT * FROM native_mail_receipts WHERE request_id=?").get(input.requestId) as RawReceiptRow | undefined;
+    if (prior) {
+      const receipt = toReceiptRow(prior);
+      if (receipt.messageId !== message.id || receipt.kind !== "recipient_state" || receipt.selfReportedResult?.schema !== "arcadia-direction-recipient-state-v1" ||
+        receipt.selfReportedResult.state !== input.state || receipt.selfReportedResult.evidenceReference !== input.evidenceReference) {
+        throw validationError("Recipient-state request replay changed its evidence.");
+      }
+      return receipt;
+    }
+    const now = nowIso(); const id = createId("nativeMailReceipt");
+    const observation = { schema: "arcadia-direction-recipient-state-v1", ...ref, messageId: message.id,
+      recipient: message.recipientSessionIncarnation, generation: message.recipientGeneration, state: input.state,
+      evidenceReference: input.evidenceReference, source: "native-mail.record-recipient-state", provenance: "observer-attestation", selfReported: true, observedAt: now };
+    db.prepare("INSERT INTO native_mail_receipts (id,message_id,request_id,kind,actor,self_reported_result_json,created_at) VALUES (?,?,?,'recipient_state',?,?,?)")
+      .run(id, message.id, input.requestId, input.actor, JSON.stringify(observation), now);
+    return listMailReceipts(db, message.id).find(receipt => receipt.id === id)!;
+  });
 }
 
 /**
@@ -467,17 +613,30 @@ export function acknowledgeMailMessage(db: Database.Database, input: Acknowledge
     if (!message) throw validationError(`Mail message ${input.messageId} does not exist.`, { messageId: input.messageId });
     assertRecipientScope(message, input);
 
+    const direction = directionForMail(message);
+    if (direction) assertDirectionMailTarget(message, requireAcceptedDirection(db, direction.requestId, direction.fingerprint).target);
+    if (direction && (!input.compactAcknowledgment?.trim() || !listMailReceipts(db, message.id).some(r => r.kind === "consumption"))) {
+      throw validationError("Direction acknowledgment requires explicit consumption and a compact recipient response.");
+    }
+
     const existing = db.prepare("SELECT * FROM native_mail_receipts WHERE message_id = ? AND kind = 'acknowledgment'").get(message.id) as
       | RawReceiptRow
       | undefined;
-    if (existing) return toReceiptRow(existing);
+    if (existing) {
+      const prior = toReceiptRow(existing);
+      if (direction && prior.effectEvidence?.text !== input.compactAcknowledgment?.trim()) throw validationError("Acknowledgment replay changed its compact response.");
+      return prior;
+    }
 
     const now = nowIso();
     db.prepare("UPDATE native_mail_messages SET status = 'acknowledged', acknowledged_at = ?, acknowledged_by = ?, updated_at = ? WHERE id = ?")
       .run(now, input.actor, now, message.id);
     const resolvedReceiptId = createId("nativeMailReceipt");
-    db.prepare("INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, created_at) VALUES (?, ?, ?, 'acknowledgment', ?, ?)")
-      .run(resolvedReceiptId, message.id, `${message.id}:acknowledgment`, input.actor, now);
+    const evidence = direction ? { schema: "arcadia-direction-ack-v1", ...direction, messageId: message.id,
+      recipient: input.recipientSessionIncarnation, generation: input.recipientGeneration,
+      text: input.compactAcknowledgment!.trim(), provenance: "recipient-attestation", source: "native-mail.ack", observedAt: now } : null;
+    db.prepare("INSERT INTO native_mail_receipts (id, message_id, request_id, kind, actor, effect_evidence_json, created_at) VALUES (?, ?, ?, 'acknowledgment', ?, ?, ?)")
+      .run(resolvedReceiptId, message.id, `${message.id}:acknowledgment`, input.actor, evidence ? JSON.stringify(evidence) : null, now);
     return toReceiptRow(db.prepare("SELECT * FROM native_mail_receipts WHERE id = ?").get(resolvedReceiptId) as RawReceiptRow);
   });
 }

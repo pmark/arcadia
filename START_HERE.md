@@ -36,6 +36,23 @@ on a linked output card to view SVG, PNG, JPEG, WebP or supported plain text
 (up to 4 MiB). Close or Escape returns to the same draft, receipt and context.
 Missing or unsupported files show a clear error in the viewer.
 
+To record an operator direction, select its Project, Plan or Action, check
+**Send as a direction to this context**, and send. The receipt pins the exact
+request and target. An unassigned or explicitly stopped recipient is **held**;
+an uncertain observation is **unknown**. Refresh and reload read the same receipt
+without resending it. Delivery requires the addressed recipient's explicit
+consumed-checkpoint attestation; acknowledgment includes their compact response.
+Continued work requires an applied correlated completion receipt. **Verified**
+requires separate positive canonical independent QA for that exact resulting
+revision and Artifact. These labels grant no execution or production authority.
+
+For QA, send a direction in a disposable configured fixture, refresh its receipt,
+then navigate and reload: its request ID and Project/Plan/Action must stay fixed.
+Check held and unknown receipts never cause another submission. Source fixtures
+exercise recipient consume/ack, correlated completion and independent QA; a
+self-report, altered report, negative check, wrong managed Action or mismatched
+revision must never produce verified. Existing ordinary Asks remain ordinary.
+
 The workspace has three areas:
 - **Context** lists what is in the selected scope.
 - **Work** shows the selected record.

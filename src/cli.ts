@@ -24,6 +24,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { runDirectionCaptureCommand } from "./commands/directions.js";
 import { renderAskCorrectSuccess, runAskCorrectCommand } from "./commands/askCorrect.js";
 import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askCoverage.js";
 import { renderAskReportSuccess, runAskReportCommand } from "./commands/askReport.js";
@@ -37,6 +38,10 @@ import {
   runNativeMailInboxCommand,
   runNativeMailReportCommand,
   runNativeMailStatusCommand,
+  runNativeMailConsumeCommand,
+  runNativeMailRecipientStateCommand,
+  type NativeMailConsumeOptions,
+  type NativeMailRecipientStateOptions,
   type NativeMailAckOptions,
   type NativeMailDisposeOptions,
   type NativeMailVerifyOptions,
@@ -904,6 +909,7 @@ export function buildProgram(): Command {
       .option("--agent-profile <name>", "Coding agent profile for planning or build packets")
       .option("--source-ingress <source>", "Ingress source for audit trails")
       .option("--request-id <id>", "Idempotency key for this submitted capture")
+      .option("--direction-target <json>", "Opt-in direction capture only: immutable explicit Project/Plan/Action target; no intent routing or execution")
       .option("--back-burner", "Shelve this request through the existing Back Burner intake path")
       .option("--source-ref <reference>", "Path, document id, or URL containing the full idea")
       .option("--surface-date <YYYY-MM-DD>", "Resurface on or after this date")
@@ -921,6 +927,7 @@ export function buildProgram(): Command {
     agentProfile?: string;
     sourceIngress?: string;
     requestId?: string;
+    directionTarget?: string;
     backBurner?: boolean;
     sourceRef?: string;
     surfaceDate?: string;
@@ -932,7 +939,15 @@ export function buildProgram(): Command {
     runSafe?: boolean;
     verbose?: boolean;
     json?: boolean;
-  }) => runCliAction(
+  }) => {
+    if (options.directionTarget !== undefined) return runCliAction("ask", options, () => {
+      if (options.runSafe || options.backBurner || options.project || options.milestone || options.replyReviewId || options.agentProfile || options.sourceIngress ||
+        options.sourceRef || options.surfaceDate || options.surfaceDependency || options.surfacePredicate || options.tag?.length || options.dependencyStatus !== "done") {
+        throw validationError("Direction capture cannot be combined with execution or ordinary routing options; its target is explicit and immutable.");
+      }
+      return runDirectionCaptureCommand({ workspace: options.workspace, request, requestId: options.requestId, directionTarget: options.directionTarget! });
+    }, response => [`Direction ${response.data.direction.state}: ${response.data.direction.requestId}`]);
+    return runCliAction(
     "ask",
     options,
     () => runAskCommand({
@@ -944,7 +959,7 @@ export function buildProgram(): Command {
       adapterMetadata: options.replyReviewId ? { reviewId: options.replyReviewId } : undefined
     }),
     (response) => renderAskSuccess(response, { verbose: options.verbose })
-  ));
+  ); });
 
   addJsonOption(
     ask
@@ -1176,6 +1191,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--resource-ref <ref>", "Resource reference (repeatable)", (value: string, previous: string[]) => [...previous, value], [] as string[])
     .option("--expires-at <iso>", "ISO instant after which this message is inert")
     .option("--body-json <json>", "Untrusted body as a JSON object; never executed or interpreted as a command")
+    .option("--direction-request-id <id>", "Existing accepted direction to bind; never creates or approves one")
+    .option("--direction-fingerprint <sha256>", "Exact accepted direction content/target fingerprint")
     .requiredOption("--actor <identity>", "Resolved agent identity sending this message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: NativeMailSendOptions & { json?: boolean; resourceRef: string[] }) =>
@@ -1200,10 +1217,36 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--recipient-incarnation <id>", "This native session's incarnation id")
     .requiredOption("--recipient-generation <id>", "This native session's generation")
     .requiredOption("--actor <identity>", "Resolved agent identity acknowledging")
+    .option("--compact-acknowledgment <text>", "Explicit compact recipient response; required for a direction")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: NativeMailAckOptions & { json?: boolean }) =>
     runCliAction("native-mail.ack", options, () => runNativeMailAckCommand(options), () => [])
   );
+  addJsonOption(nativeMail.command("consume")
+    .description("Record this receiver's explicit consumed-checkpoint attestation; not host authentication or work authority")
+    .requiredOption("--message-id <id>", "Exact addressed message")
+    .requiredOption("--request-id <id>", "Stable checkpoint receipt request")
+    .requiredOption("--fingerprint <sha256>", "Exact direction content/target fingerprint read")
+    .requiredOption("--project-slug <slug>", "Project scope")
+    .requiredOption("--plan-slug <slug>", "Plan scope")
+    .requiredOption("--recipient-incarnation <id>", "Recipient native lifetime")
+    .requiredOption("--recipient-generation <id>", "Recipient generation")
+    .requiredOption("--actor <identity>", "Recipient recording the assertion")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: NativeMailConsumeOptions & { json?: boolean }) => runCliAction("native-mail.consume", options, () => runNativeMailConsumeCommand(options), () => []));
+  addJsonOption(nativeMail.command("record-recipient-state")
+    .description("Retain an explicit observer attestation and evidence reference; never probes, pauses or restarts a recipient")
+    .requiredOption("--message-id <id>", "Exact addressed message")
+    .requiredOption("--request-id <id>", "Stable observation request")
+    .requiredOption("--state <state>", "paused | stopped | running")
+    .requiredOption("--evidence-reference <ref>", "Actual observation artifact/reference")
+    .requiredOption("--project-slug <slug>", "Project scope")
+    .requiredOption("--plan-slug <slug>", "Plan scope")
+    .requiredOption("--recipient-incarnation <id>", "Observed native lifetime")
+    .requiredOption("--recipient-generation <id>", "Observed generation")
+    .requiredOption("--actor <identity>", "Observer recording the assertion")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: NativeMailRecipientStateOptions & { json?: boolean }) => runCliAction("native-mail.record-recipient-state", options, () => runNativeMailRecipientStateCommand(options), () => []));
   addJsonOption(nativeMail.command("report")
     .description("Self-report a result on an already-acknowledged message. Visibly self-reported; never a substitute for an independently checked verification receipt. Fences the same Plan/recipient/generation scope as ack")
     .requiredOption("--message-id <id>", "Mail message id")
@@ -1219,9 +1262,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("native-mail.report", options, () => runNativeMailReportCommand(options), () => [])
   );
   addJsonOption(nativeMail.command("verify")
-    .description("Record an independently checked correlated effect-verification receipt. NOT YET SUPPORTED: always refuses, because no genuine canonical writer receipt exists yet to correlate against; observing a row's current state is not proof an effect was applied by this mail, so this never fakes a verified label. Fences the same Plan/recipient/generation scope as ack")
+    .description("Observe exact direction-correlated committed completion and canonical independent QA acceptance with --qa-decision-id; unsupported legacy effects still refuse. Never invokes QA or grants work authority")
     .requiredOption("--message-id <id>", "Mail message id")
     .requiredOption("--request-id <id>", "Idempotency key for this verification attempt")
+    .option("--qa-decision-id <id>", "Canonical independent QA acceptance for the committed direction result")
     .requiredOption("--actor <identity>", "Resolved agent identity recording the check")
     .requiredOption("--project-slug <slug>", "Project slug")
     .requiredOption("--plan-slug <slug>", "Plan slug")
