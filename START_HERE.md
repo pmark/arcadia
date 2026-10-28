@@ -2686,6 +2686,14 @@ rows can be read — the partners live on the same Project. `arcadia identity
 roster` prints the whole roster; the signature rule itself lives once, in
 `docs/agent-guidance/git-identity.md`.
 
+`arcadia advance` also prints the Identity block. A managed Session uses its
+recorded provider and model; a manual reservation without those fields prints
+the resolve instruction instead of guessing a name from the branch. An invalid
+`config/coding-agent-models.json` does not block reviewer, Go or packet prompt
+rendering, or a `go --model` handoff whose escalation hint is the only reader;
+those fall back to the bundled names. Automatic model selection and launch
+still refuse it.
+
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;
 the launch request itself must be same-origin, and the server resolves the

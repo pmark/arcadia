@@ -11,6 +11,7 @@ import { ArcadiaError } from "../src/cli/errors.js";
 import {
   classifyPullRequestChecks,
   QA_PR_REVIEW_CRITERIA,
+  CODE_REVIEW_PR_CRITERIA,
   runQaPrReviewCommand,
   type PullRequestCheckRun,
   type QaPrModelVerdict,
@@ -98,6 +99,38 @@ describe("minimal independent pull-request QA", () => {
     expect(withDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts").get())).toEqual({n: 0});
   });
 
+  it.each(["qa", "code-review"] as const)("keeps %s independent review available when the display registry is malformed", (role) => {
+    const fixture = createFixture();
+    writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), "{broken");
+    let reviewerPrompt = "";
+    let invocations = 0;
+    const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54", role }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args, stdin }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view" && args.includes("--jq")) return success(`${HEAD_SHA}\n`);
+        if (command === "gh" && args[1] === "view") return success(JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")])));
+        if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
+        if (command === "codex") {
+          invocations += 1;
+          reviewerPrompt = stdin ?? "";
+          const criteria = role === "qa" ? QA_PR_REVIEW_CRITERIA : CODE_REVIEW_PR_CRITERIA;
+          writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify({
+            verdict: "pass", summary: "The supplied evidence passes.", findings: [], residualRisks: [],
+            checks: criteria.map(criterion => ({ criterion: criterion.id, name: criterion.name, status: "pass", evidence: "Supported by the supplied evidence." }))
+          }));
+          return success();
+        }
+        return failure(`Unexpected command: ${command}`);
+      }
+    });
+    expect(result.data.verdict).toBe("pass");
+    expect(invocations).toBe(1);
+    expectIdentityBlock(reviewerPrompt, "codex", "standard", "critic");
+    expect(reviewerPrompt).not.toContain("run `arcadia");
+  });
   it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
     const fixture = createFixture();
     let reviewerInvocations = 0;
