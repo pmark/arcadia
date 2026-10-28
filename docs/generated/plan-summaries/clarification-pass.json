@@ -11,7 +11,7 @@
   "purpose": "Arcadia checks each under-specified Action and either writes a concrete next step or asks the operator exactly one question about what is missing. The original input is kept either way.",
   "serves": "The Project outcome of Arcadia asking for a decision only when one is genuinely needed.",
   "done_when": "An unclear Action ends with either a concrete next step or one question for the operator, and the original input is still there.",
-  "reading_note": "Marked complete, but the last Action, requiring clarified Actions before planning work, is still open and waits for a Decision.",
+  "reading_note": "Inference: the Plan is marked complete, but check its last Action, which requires clarified Actions before planning work and waits for a Decision.",
   "actions": [
     {
       "id": "phase-1-plumbing",

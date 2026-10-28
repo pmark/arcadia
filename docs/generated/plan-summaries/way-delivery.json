@@ -11,7 +11,6 @@
   "purpose": "Way changes used to reach each adopting project by hand, and projects had no route to ask for a Way capability. This Plan sends changes out as pull requests, takes project proposals in, and includes related fixes to decisions, agent requests and the go command.",
   "serves": "The Project outcome of every adopting project staying current without anyone writing Arcadia twice.",
   "done_when": "Way changes reach each adopting repository as a pull request, and each project's proposals show in the portfolio until they are answered.",
-  "reading_note": "Complete: all 12 Actions are done.",
   "actions": [
     {
       "id": "seed-the-work-pointer-when-a-repository-is-adopted",

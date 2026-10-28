@@ -11,7 +11,6 @@
   "purpose": "Ask should be the single entry point for planning, data retrieval and reporting. Anything the operator asks is captured, routed to the right Project, turned into governed work or an answer, and stays traceable afterwards, so no Action is lost after an Ask.",
   "serves": "The Project outcome of the operator stating what should happen while Arcadia routes and tracks the work.",
   "done_when": "Each request can be followed from its capture to every record it produced, and simple text-change requests become settled actions without hand-written requests.",
-  "reading_note": "Draft: none of the 4 Actions has started.",
   "actions": [
     {
       "id": "align-ask-superpower-outcome",

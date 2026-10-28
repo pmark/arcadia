@@ -11,7 +11,7 @@
   "purpose": "Lets the operator see every Project's Plans, Actions, Decisions and Artifacts on one board. Each card shows its place in the work and the command that moves it, and the board opens focused on what can move today.",
   "serves": "The Project outcome of the operator understanding the whole portfolio without holding it in mind.",
   "done_when": "The board shows every object once in its stage column, and selecting a card shows its chain back to its Project and Plan, with the command to move it.",
-  "reading_note": "Draft in its status field, although its text says it was activated on 2026-09-05. Inference: this is a status mismatch to check. No Action has been implemented yet.",
+  "reading_note": "Inference: its status field says draft, but its text says it was activated on 2026-09-05. Check which is current.",
   "actions": [
     {
       "id": "project-plan-lanes-and-pipeline-columns",

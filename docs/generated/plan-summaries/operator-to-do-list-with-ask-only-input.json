@@ -11,7 +11,6 @@
   "purpose": "Gives the operator one list, derived from existing records, of everything Arcadia needs from them. Operator input goes through Ask, so each request is captured, routed and traceable rather than lost.",
   "serves": "The Project outcome of the operator stating what should happen and being asked for a decision only when one is genuinely needed.",
   "done_when": "The operator can run one to-do command that lists each open item needing them, and a plain request becomes tracked work or a visible question rather than disappearing.",
-  "reading_note": "Draft: 11 of the 15 Actions are done. Four remain open: the end-to-end proof, the local-model interpretation, operator tasks through Ask and the golden set with its vanish report.",
   "actions": [
     {
       "id": "build-operator-todo-list",

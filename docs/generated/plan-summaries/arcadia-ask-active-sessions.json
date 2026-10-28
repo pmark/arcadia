@@ -11,7 +11,7 @@
   "purpose": "Makes each request to Arcadia Ask a visible working session that keeps the original text, links and files, shows how it was routed, and lets the operator correct it before anything is committed.",
   "serves": "Its milestone: every Ask becomes a visible, correctable session that commits only operator-approved changes.",
   "done_when": "Submitting a request opens a session where the reading can be corrected, Ask rules can be managed, and a Living Songbook request is handled from start to finish.",
-  "reading_note": "Superseded: its unstarted work was moved behind the Agent Ask execution queue Plan under Decision 0039. The two completed Actions stay done, and the three open ones are preserved, not rejected.",
+  "reading_note": "Superseded under Decision 0039: unstarted work moved behind the Agent Ask execution queue Plan. Its open Actions are preserved, not rejected.",
   "actions": [
     {
       "id": "make-special-routing-visible",

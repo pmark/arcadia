@@ -11,7 +11,6 @@
   "purpose": "Lets Arcadia describe coding work by the capability, effort, tools and authority it needs, rather than by a vendor's model name. The runner then picks the least costly setup that meets those needs.",
   "serves": "Its milestone: vendor-neutral coding-agent selection.",
   "done_when": "Each run records the profile it used, and a plan that names a capability runs on the cheapest compliant provider or is refused, never quietly downgraded.",
-  "reading_note": "Finished: all four Actions are done.",
   "actions": [
     {
       "id": "execution-profile-contract",

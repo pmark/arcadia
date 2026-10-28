@@ -11,7 +11,6 @@
   "purpose": "Arcadia writes a readable summary of recent activity for itself and each project it manages, on a schedule and without being asked. Each summary is built from the project's own records and must not invent outcomes.",
   "serves": "The Project outcome of the operator following progress without reading every record.",
   "done_when": "Each active project and the portfolio get daily, weekly and monthly digests in the vault, and an unchanged digest is not rewritten.",
-  "reading_note": "Finished: all 3 Actions are done.",
   "actions": [
     {
       "id": "compose-project-digest",

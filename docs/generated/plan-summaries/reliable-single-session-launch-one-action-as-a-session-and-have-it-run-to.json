@@ -11,7 +11,6 @@
   "purpose": "Lets the operator launch one Action as a session from the dashboard and have it run to a recorded outcome. Sessions run without a terminal screen, leave a full record, and stop automatically if they get stuck.",
   "serves": "The Project outcome of Arcadia driving a coding agent to a reported result.",
   "done_when": "One Action launched from the session board runs to a draft pull request with its live log and exit recorded, proved end to end offline and then live three times in a row.",
-  "reading_note": "Draft: none of the 8 Actions has started.",
   "actions": [
     {
       "id": "headless-observable-session-launch",

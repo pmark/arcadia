@@ -11,7 +11,7 @@
   "purpose": "Lets the operator see which projects are out of date on the shared Arcadia Way before anything is changed. It also records what can be updated automatically and what needs review first.",
   "serves": "Its milestone: no Arcadia project is silently stale on the Way, and no project's governance changes without review.",
   "done_when": "A read-only report names each stale project and the shared section that differs, and Arcadia's own repository follows the same rules it gives other projects.",
-  "reading_note": "Finished: all three listed Actions are done. The Plan says the questions about automatic updates (tiers, command changes and credentials) are not settled and were moved to a separate follow-up item.",
+  "reading_note": "The questions about automatic updates (tiers, command changes and credentials) are not settled here; the Plan moved them to a separate follow-up.",
   "actions": [
     {
       "id": "give-arcadia-its-own-context-files",

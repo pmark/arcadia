@@ -11,7 +11,6 @@
   "purpose": "The operator should open one view and understand the portfolio's story without rebuilding it from plans, queues, decisions and runs. Ideas raised in ordinary conversation should be kept, and shown where they landed.",
   "serves": "The Project outcome of the operator understanding the portfolio without holding it in mind.",
   "done_when": "One phone-friendly view shows past, now, next and later work for the whole portfolio or one Project, and a side idea from conversation gets a visible receipt.",
-  "reading_note": "Draft: none of the 5 Actions has started.",
   "actions": [
     {
       "id": "build-arcadia-now-vertical-slice",

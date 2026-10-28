@@ -11,7 +11,6 @@
   "purpose": "Arcadia's own scripts and tests should not be able to damage the operator's machine. Shell scripts should fail safely, tests should stay away from the live workspace, and unsaved or local-only working copies should raise an alert.",
   "serves": "The Project outcome of Arcadia running work on the operator's behalf without putting the operator's own data at risk.",
   "done_when": "A checked-in script that could delete through an empty variable fails the lint check, the test suite refuses the live workspace, and unsaved working copies raise one alert a day until they are pushed or retired.",
-  "reading_note": "Draft: none of the 5 Actions has started.",
   "actions": [
     {
       "id": "lint-shell-scripts-for-safe-deletes",

@@ -11,7 +11,6 @@
   "purpose": "Two reviews of the planning agent route found a defect in how the model binding is passed, a model-selection document that contradicts the code, and a proposal that cannot yet be answered. This Plan fixes those in a governed draft. The planning route itself stays unplanned until the operator answers the revised proposal.",
   "serves": "The Project outcome of accurate model choice and of proposals the operator can decide on.",
   "done_when": "The spawn step passes the recorded model and effort to the coding agent process, the model-selection document matches the code, and the proposal is revised so the operator can answer it.",
-  "reading_note": "Draft: none of the 3 Actions has started.",
   "actions": [
     {
       "id": "thread-binding-args-into-codex-spawn",

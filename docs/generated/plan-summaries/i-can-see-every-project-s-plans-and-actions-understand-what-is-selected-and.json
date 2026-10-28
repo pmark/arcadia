@@ -11,7 +11,6 @@
   "purpose": "The operator should see every Project's Plans and Actions in one tree, with what is selected, what is actually running and what needs the operator. All of it comes from existing records.",
   "serves": "The Project outcome of the operator understanding the portfolio without holding it in mind.",
   "done_when": "The tree shows each Project, Plan and Action with selected, running and needs-operator states labelled, and the operator can tell what is next without opening a session.",
-  "reading_note": "Draft: none of the 3 Actions has started.",
   "actions": [
     {
       "id": "define-flight-deck-tree-data-contract",

@@ -11,7 +11,7 @@
   "purpose": "Managed Plans now check that dispatched work matches what the Plan declared, and that finished work is judged against the Plan's own criteria. Before this, an agent could meet every structural rule and still miss what the operator asked for.",
   "serves": "Its milestone: managed Plans govern work from dispatch through acceptance.",
   "done_when": "Accepting a finished run reports each declared criterion as met or unmet, and the operator can see which Actions are ready to start.",
-  "reading_note": "Finished: all 4 Actions are done. The Plan-level criteria-judgment question is still open, but no Action waited on it.",
+  "reading_note": "The Plan-level question of how criteria are judged was left open; no Action waited on it.",
   "actions": [
     {
       "id": "verify-acceptance-criteria",

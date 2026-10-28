@@ -11,7 +11,7 @@
   "purpose": "Tests whether a set of documents reduces repeated friction for lead coding sessions. The series is capped at ten small trials, and each launch waits for an explicit allowance and scope from the operator. The first two trials are compared before any more are considered.",
   "serves": "The Project outcome of the operator relying on agent-led work with less repeated friction.",
   "done_when": "The first two trials are compared against a recorded baseline, the operator gets a recommendation to continue, narrow or stop, and verified lessons are kept in their proper homes.",
-  "reading_note": "Draft: none of the 5 Actions has started. Each launch waits for an explicit allowance and scope from the operator.",
+  "reading_note": "Each launch waits for an explicit allowance and scope from the operator.",
   "actions": [
     {
       "id": "prepare-lead-trial-baseline",

@@ -11,7 +11,6 @@
   "purpose": "Lets the operator see every plan in a repository, including draft and proposed plans that were otherwise hard to find. Plans that are not yet governed show their stated trigger, or say plainly that they have none.",
   "serves": "Serves the milestone of full visibility into a repository's plans, which supports the Project outcome of not needing to hold the whole portfolio in one's head.",
   "done_when": "The plans command lists every plan in a repository with its status, and the Project page shows its active plan and links to the full list.",
-  "reading_note": "Finished: both of its Actions are done.",
   "actions": [
     {
       "id": "add-plans-command",

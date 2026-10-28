@@ -11,7 +11,6 @@
   "purpose": "Adds local, advisory labels to open Decisions, review findings and pull requests, so the operator can see which ones agents can handle and which need a person. The labels never answer, approve or resolve anything.",
   "serves": "The Project outcome of asking the operator for a decision only when one is genuinely needed.",
   "done_when": "Each open Decision and review finding shows a label and a short reason, and each pull request shows whether it can merge on green or needs the operator.",
-  "reading_note": "Draft: none of the 4 Actions has started.",
   "actions": [
     {
       "id": "decision-pre-triage",

@@ -11,7 +11,6 @@
   "purpose": "Every situation an unattended production run can reach should have a registered, automatic response, a retry limit and one escalation card. A lost orchestrator or a red main should be handled before the operator notices it.",
   "serves": "The Project outcome of the operator being asked only when a decision is genuinely needed, with routine failures handled automatically.",
   "done_when": "Each stop reason has a registered response and retry limit, a lost orchestrator is replaced from its saved brief, and a red main is contained with a revert proposal.",
-  "reading_note": "Draft: none of the 5 Actions has started.",
   "actions": [
     {
       "id": "define-situation-registry",

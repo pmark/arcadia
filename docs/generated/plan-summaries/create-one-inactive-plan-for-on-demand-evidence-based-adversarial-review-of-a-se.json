@@ -11,7 +11,6 @@
   "purpose": "Each coding-agent handoff should get an independent, read-only review of its commits before a pull request opens. The review is pinned to the exact commit reviewed and repeats only a limited number of times. CodeRabbit remains the merge gate.",
   "serves": "The Project outcome of the operator trusting reported work, with a review done before the work reaches the merge gate.",
   "done_when": "Each handoff gets a review receipt tied to the reviewed commit, and its pull request opens with a passing review or with the remaining findings listed.",
-  "reading_note": "Draft: this inactive plan is not active, and all 6 Actions are still open.",
   "actions": [
     {
       "id": "define-independent-review-contract",

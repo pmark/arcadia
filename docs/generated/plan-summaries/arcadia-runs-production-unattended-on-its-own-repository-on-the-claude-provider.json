@@ -11,7 +11,6 @@
   "purpose": "Arcadia should carry an Action from launch to a merged pull request on its own repository, with little operator attention. The worker launches a Claude session, keeps a reviewed pull request, merges it when it is not authority-adjacent, and moves to the next Action within a spend limit.",
   "serves": "The Project outcome of Arcadia driving coding agents and reporting back, asking the operator only when a decision is genuinely needed.",
   "done_when": "A multi-Action run on Arcadia's own repository reaches merged pull requests, and the only operator touches are activation and merges of authority-adjacent changes.",
-  "reading_note": "Draft: 17 of the 20 Actions are done. The first unattended multi-Action run and two test Actions are still open.",
   "actions": [
     {
       "id": "launch-failure-keeps-cause",

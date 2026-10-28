@@ -11,7 +11,7 @@
   "purpose": "The operator should be able to change what production works on from the production page: which Projects are included, their order and which Plan each runs. These are light preferences that can change until a session starts, and are then locked in with a receipt.",
   "serves": "The Project outcome of the operator steering the work without editing records by hand.",
   "done_when": "The operator changes a Project's order or Plan on the production cards, each change previews first, and each started Action shows when it was locked in.",
-  "reading_note": "Draft: none of the 4 Actions has started. They wait for operator Decisions 0115 and 0116 and a related amendment before they start.",
+  "reading_note": "Its Actions wait for operator Decisions 0115 and 0116 and a related amendment.",
   "actions": [
     {
       "id": "record-production-project-preferences",

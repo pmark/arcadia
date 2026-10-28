@@ -11,7 +11,6 @@
   "purpose": "Gives each Arcadia-managed project a readable map of its living system and a timeline of how it changed. Each entry links back to its source and proof, and no long documentation is needed first.",
   "serves": "The Project outcome of the operator understanding the portfolio without holding it all in mind.",
   "done_when": "A project's map and timeline can be generated at no cost, and each entry links back to the record it came from.",
-  "reading_note": "Finished: all 5 Actions are done.",
   "actions": [
     {
       "id": "define-living-system-v1-contract",

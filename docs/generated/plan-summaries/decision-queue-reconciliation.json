@@ -11,7 +11,6 @@
   "purpose": "Closes review items whose answers are already written in plan documents, and lets the operator answer the top item from the Now page. This keeps the decision queue short and accurate.",
   "serves": "Serves the milestone of asking the operator one question a day, never one already answered, which supports the Project outcome of asking for a decision only when one is genuinely needed.",
   "done_when": "The reconcile command lists only unanswered items, and the Now page lets the operator answer the top item without leaving that page.",
-  "reading_note": "Proposed: nothing has started, and all four Actions are still open.",
   "actions": [
     {
       "id": "build-resolution-reconciler",

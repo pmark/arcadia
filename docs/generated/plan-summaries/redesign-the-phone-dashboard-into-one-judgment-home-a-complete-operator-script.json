@@ -11,7 +11,6 @@
   "purpose": "Gives the phone dashboard one place for decisions, a complete flow for operator scripts, and a Runs page for work in progress and queued Actions.",
   "serves": "The Project outcome of fast, phone-first operator interaction, with decisions asked only when they are needed.",
   "done_when": "A decision opens on its own page with its options and consequences, and the Runs page leads with active work and keeps production control visible.",
-  "reading_note": "Draft: none of the 3 Actions has started.",
   "actions": [
     {
       "id": "add-single-decision-dashboard-page",

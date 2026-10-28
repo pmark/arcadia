@@ -11,7 +11,7 @@
   "purpose": "Included coding-agent allowance that would otherwise expire unused could carry the smallest safe piece of low-priority work. Arcadia would show why it fits and run it through the existing governed route. It never turns spare allowance into spending or extra authority.",
   "serves": "The Project outcome of coding agents being used well, within the operator's authority limits.",
   "done_when": "When included allowance is about to expire unused, Arcadia can offer a small fitting piece of work, and nothing is bought, reset or started without the operator's explicit decision.",
-  "reading_note": "Proposed, not active, so it waits for the operator to select it. None of the 9 Actions has started.",
+  "reading_note": "Proposed, not active: it waits for the operator to select it.",
   "actions": [
     {
       "id": "define-provider-usage-snapshot",
@@ -51,7 +51,7 @@
     {
       "id": "shape-smallest-back-burner-slice",
       "title": "Cut eligible work into the smallest useful slice",
-      "why": "A slice that fits the spare window is far more likely to finish than a large idea.",
+      "why": "Spare allowance can only carry work that fits the window, so a large idea is cut until one slice can finish with observable completion.",
       "done_when": "Candidate work comes from the existing readiness and budget rules, and a slice is offered only when it has a clear finish and is expected to fit the window.",
       "source_fingerprint": "16fb9a4f31806671"
     },
@@ -72,7 +72,7 @@
     {
       "id": "guard-reset-and-credit-effects",
       "title": "Keep resets and credit purchases behind explicit decisions",
-      "why": "Resets and purchases cost money or change terms, so each needs the operator's current approval.",
+      "why": "Some resets and all purchases cost money or change terms, so none happens without the operator's explicit current approval.",
       "done_when": "No reset, credit purchase, plan change or spend happens without a current decision, and each preview states its cost, expiry and rollback limits.",
       "source_fingerprint": "4abd989db3b43cff"
     }

@@ -11,7 +11,6 @@
   "purpose": "Every software project should show a stable proof surface and a governed route from a candidate demo through QA to a verified release. The first slice is a QA queue that shows what can be tested now, where to open it, and whether the exact revision has been signed off.",
   "serves": "The Project outcome of the operator checking and approving work without holding every project in mind.",
   "done_when": "For each active candidate, the operator can open its demo, see the test steps and evidence, record a verdict against that exact revision, and see a release path that depends on that verdict.",
-  "reading_note": "Draft: 4 of the 11 Actions are done. The rest, including the release path, are still open.",
   "actions": [
     {
       "id": "build-qa-queue-vertical-slice",

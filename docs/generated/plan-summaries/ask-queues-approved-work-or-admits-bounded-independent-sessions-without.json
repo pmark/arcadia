@@ -11,7 +11,7 @@
   "purpose": "Approved work should either wait in an order or start as a separate session when capacity is free, without disturbing work already in progress. The first step is to prove that one scout request can reach a reviewed, passing pull request while production stays off.",
   "serves": "The Project outcome of Arcadia driving coding agents and reporting back, with the operator deciding only where needed.",
   "done_when": "An approved request is queued or started as an independent session, and a scout run for Hello World reaches a reviewed, passing pull request with production turned off.",
-  "reading_note": "Draft: all 7 Actions are still open. The first Action is an isolation check that comes before any new model call.",
+  "reading_note": "The first Action is an isolation check that comes before any new model call.",
   "actions": [
     {
       "id": "scout-isolation-preflight",
@@ -44,7 +44,7 @@
     {
       "id": "implement-bounded-independent-admission",
       "title": "Admit independent sessions within free capacity",
-      "why": "Lets urgent work start beside current work without disrupting the Plan in progress.",
+      "why": "Decision 0124 chose parallel independent work, so approved work can start beside the Plan in progress without disrupting it.",
       "done_when": "Approved work queues by default, and an independent session starts only with verified approval, one concrete assignment and free capacity.",
       "source_fingerprint": "f12fbcfc973aedfb"
     },
@@ -58,7 +58,7 @@
     {
       "id": "bounded-luna-hello-world-loop",
       "title": "Run the bounded scout loop with at most two repair cycles",
-      "why": "Lets the scout retry a failure a limited number of times, so it does not loop without end.",
+      "why": "The operator asked to close the attempt, findings, repair and retry loop, rather than drive rehearsals by hand again and again.",
       "done_when": "The scout runs the Hello World loop, collects evidence and deduplicated bugs, runs at most two verified repair cycles, and then stops.",
       "source_fingerprint": "7b3762c763629b79"
     }

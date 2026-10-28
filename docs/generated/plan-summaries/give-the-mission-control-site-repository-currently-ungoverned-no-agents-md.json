@@ -11,7 +11,6 @@
   "purpose": "Puts the mission-control site repository under the same Arcadia governance and agent tooling as the other repositories, so coding agents working there get the same briefs. It also adds a session-naming screenshot to the page that describes that feature.",
   "serves": "Serves the milestone of giving the mission-control site the same governed agent tooling as every other repository, which supports routing stated outcomes to the right Project.",
   "done_when": "A coding-agent session opened in the mission-control site repository can receive a dispatch brief, and the session-naming screenshot appears with a caption on its answer page on the staging site.",
-  "reading_note": "Finished: both of its Actions are done.",
   "actions": [
     {
       "id": "onboard-mission-control-site-tooling",

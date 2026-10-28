@@ -11,7 +11,6 @@
   "purpose": "The dashboard has pages for individual Plans, but the address for a Project's list of Plans returns not found. This Plan adds that page, so the operator can open a Project and see its Plans.",
   "serves": "Its milestone, a working Plan list for each Project on the dashboard, which supports the aim that the operator can see the portfolio without holding it in mind.",
   "done_when": "Opening a Project's Plans page lists its Plans, an unknown name shows the existing error message instead of crashing, and the Plans index links each Project to its page.",
-  "reading_note": "Draft: an inactive draft. Its one Action is open.",
   "actions": [
     {
       "id": "add-plans-project-route",

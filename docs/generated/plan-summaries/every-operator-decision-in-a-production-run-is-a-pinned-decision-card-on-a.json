@@ -11,7 +11,7 @@
   "purpose": "Every operator decision in a production run should be one pinned card on a remote page, with its consequence and evidence shown. A handoff from one Plan to the next should run through a recorded close-out and a deterministic selector, so it is safe and auditable.",
   "serves": "The Project outcome of the operator deciding quickly, and only when needed, during production runs.",
   "done_when": "The operator can act on each decision from one card with one button, a stale card is refused with its reason, and a finished Plan hands off to a selected next Plan from a saved close-out record.",
-  "reading_note": "Draft: 8 of the 16 Actions are done. Several open Actions are held behind three production-path Actions, by operator direction of 2026-10-14.",
+  "reading_note": "By operator direction of 2026-10-14, several Actions are held behind three production-path Actions.",
   "actions": [
     {
       "id": "decision-card-contract",
@@ -23,7 +23,7 @@
     {
       "id": "cards-from-existing-sources",
       "title": "Create cards from decisions, scripts and pull requests",
-      "why": "The operator already decides through these three surfaces, so cards should use them rather than replace them.",
+      "why": "The operator already decides through these three surfaces; cards give them one evidence format readable in under a minute.",
       "done_when": "Each of the three sources yields a valid card, the card's pinned fingerprint changes when its source changes, and the source itself is not altered.",
       "source_fingerprint": "82fe22e3810dcce4"
     },

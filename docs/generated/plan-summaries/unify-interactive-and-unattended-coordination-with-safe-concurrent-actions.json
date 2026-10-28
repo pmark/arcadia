@@ -11,7 +11,6 @@
   "purpose": "Interactive continuation and unattended execution should share one ownership and enrollment contract, so the same Action cannot be owned twice. Several independent Actions should then be able to run safely at once, with the concurrency rules kept explicit.",
   "serves": "The Project outcome of several coding agents making progress without stepping on each other's work.",
   "done_when": "Two independent Actions can run side by side with one owner each, and their settlements land in order without lost updates.",
-  "reading_note": "Draft: 1 of the 5 Actions is done. The four remaining proofs of concurrent work are open.",
   "actions": [
     {
       "id": "prove-shared-enrollment-at-concurrency-one",

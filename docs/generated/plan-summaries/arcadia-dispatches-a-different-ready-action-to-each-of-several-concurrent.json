@@ -11,7 +11,6 @@
   "purpose": "Lets several coding-agent sessions run at the same time, each on a different ready Action, so no two sessions take the same work. It was prompted by a live collision in which two worktrees were sent to the same Action within minutes.",
   "serves": "Serves the milestone of automatic, collision-free dispatch to concurrent sessions, which supports the Project outcome of Arcadia driving coding agents on its own.",
   "done_when": "Two sessions started at the same time are given different ready Actions, and a session asking for an Action already held by another live session is given the next free one.",
-  "reading_note": "Finished: both of its Actions are done.",
   "actions": [
     {
       "id": "add-action-scoped-worktree-claim",

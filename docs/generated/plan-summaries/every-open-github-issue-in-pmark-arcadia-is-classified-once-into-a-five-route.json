@@ -11,7 +11,6 @@
   "purpose": "Every open Issue in the Arcadia repository should be sorted once into one of five routes, checked against governed Actions, and summarised in one local report. The report proposes changes, but nothing is changed on GitHub.",
   "serves": "The Project outcome of the operator seeing the real backlog without holding it in mind, with work routed to the right place.",
   "done_when": "One local report shows every open Issue with one route, the top batches of work and a list of proposed label and closure changes, with nothing applied on GitHub.",
-  "reading_note": "Draft: none of the 8 Actions has started.",
   "actions": [
     {
       "id": "snapshot-open-issues-and-build-packets",

@@ -11,7 +11,7 @@
   "purpose": "Lets one real Action and one interactive session each run as a light-tier role. The role asks Arcadia for help, gets a recorded model and effort, reports through its supervisor, and stays inside the spend budget and the operator's reserve. The roles appear on the agents page.",
   "serves": "The Project outcome of coding agents working under clear, governed authority and reporting back.",
   "done_when": "A light-tier role session can request help, which is admitted, queued or declined with a recorded reason, and its team appears on the agents page without using the operator's reserve.",
-  "reading_note": "Draft: none of the 18 Actions has started. Several wait on operator Decisions that are not yet answered.",
+  "reading_note": "Several Actions wait on operator Decisions.",
   "actions": [
     {
       "id": "define-governed-role-registry",

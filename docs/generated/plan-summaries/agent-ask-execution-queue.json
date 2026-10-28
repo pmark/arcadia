@@ -11,7 +11,6 @@
   "purpose": "Coding agents can describe a desired result in a standard request, and Arcadia turns accepted requests into governed work. Every accepted Action goes into one operator-owned order, so the next Action is always the first eligible one in that order.",
   "serves": "The Project outcome of the operator stating what should happen while Arcadia routes and orders the work.",
   "done_when": "The operator sees one complete queue with the next eligible Action first, and an accepted agent request appears in that queue with a traceable receipt.",
-  "reading_note": "Draft: 7 of the 9 Actions are done. The live proof is blocked, and the question reconciler is still open.",
   "actions": [
     {
       "id": "define-agent-ask-management-contract",

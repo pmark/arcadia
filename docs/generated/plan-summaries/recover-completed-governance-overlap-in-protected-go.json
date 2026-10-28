@@ -11,7 +11,7 @@
   "purpose": "Local governance records were superseded by merged amendments and completions, so the protected Go route cannot dispatch the next Action until the overlap is accounted for. This Plan adds a host-owned recovery that keeps both histories and refuses any unsupported judgement.",
   "serves": "The Project outcome of governed work continuing safely across repositories.",
   "done_when": "The protected Go route can account for the overlap with both histories kept, and its launcher loads its role registry from the installed release.",
-  "reading_note": "Draft: 1 of the 2 Actions is done. The overlap recovery is still open, and it blocks the next Action in the Private Practice Now project.",
+  "reading_note": "The overlap recovery blocks the next Action in the Private Practice Now project.",
   "actions": [
     {
       "id": "reconcile-completed-governance-overlap",

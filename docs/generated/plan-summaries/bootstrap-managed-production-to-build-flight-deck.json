@@ -11,7 +11,7 @@
   "purpose": "Build the managed-production machinery, from launch and capacity checks to preservation, settlement and review, so Arcadia can carry approved work from the board to a reviewed result without the operator driving each step.",
   "serves": "The Project outcome: Arcadia drives coding agents and reports back, asking for a decision only when one is genuinely needed.",
   "done_when": "With production switched on, approved board work launches, preserves its result, passes independent review and settles without hand-carried steps, and switching it off stops new launches.",
-  "reading_note": "Draft and very large: 177 of its 235 Actions are done and 58 are open. Most of its Actions record no why, so their summaries are inferred from titles and acceptance criteria.",
+  "reading_note": "A very large Plan. Its Actions record no why, so the whys here are inferred from titles and acceptance criteria.",
   "actions": [
     {
       "id": "implement-evidence-bound-action-completion",
@@ -51,7 +51,7 @@
     {
       "id": "support-selected-codex-and-claude-sessions",
       "title": "Launch the chosen Codex or Claude session",
-      "why": "Lets production run on either configured provider through the same session system, so one provider's limits do not stop all work.",
+      "why": "Lets production launch whichever of Codex or Claude was selected through the one session system, with honest messages where an operation is unsupported.",
       "done_when": "A Codex or Claude session starts from the selected settings, can be resumed where supported, and never shares a repository with another live session.",
       "source_fingerprint": "564a38f5e003f468"
     },
@@ -359,7 +359,7 @@
     {
       "id": "translate-reasoning-effort-at-launch",
       "title": "Translate reasoning effort for each provider at launch",
-      "why": "Stops a launch from giving codex or claude an effort value it does not accept, so an unattended Session does not fail on a bad setting.",
+      "why": "Stops a launch from handing Codex or Claude an effort value it does not accept, so an unattended Session does not fail.",
       "done_when": "Launches for codex and claude pass each provider's own effort value, and a test covers the recomputed-effort path.",
       "source_fingerprint": "f99d9f77c882e0a3"
     },
@@ -471,7 +471,7 @@
     {
       "id": "recover-protected-go-base-divergence",
       "title": "Recover the protected Go path when the base diverges",
-      "why": "Lets the protected Go path handle a local base that is ahead and behind its remote, instead of stalling or sending an agent to rebase by hand.",
+      "why": "Lets the protected Go path handle a local base that is both ahead of and behind its remote, instead of stalling.",
       "done_when": "A divergent base either completes a logged reconciliation or refuses with an operator script, and a live probe returns a valid worktree receipt.",
       "source_fingerprint": "1c3bd9737b32f10f"
     },

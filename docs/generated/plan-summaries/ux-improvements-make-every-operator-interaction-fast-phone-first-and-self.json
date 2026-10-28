@@ -11,7 +11,6 @@
   "purpose": "Every operator interaction should be quick on a phone and update itself, so the operator never waits on a page or searches for something. Decisions and runs should each have their own page, and Ask results should show what Arcadia heard and created.",
   "serves": "The Project outcome of the operator giving input and seeing results quickly, without holding the portfolio in mind.",
   "done_when": "Each decision and each run opens on its own page that updates without a reload, and an Ask shows what it heard and what it created on the same screen.",
-  "reading_note": "Draft: none of the 9 Actions has started.",
   "actions": [
     {
       "id": "lazy-decisions-on-runs",

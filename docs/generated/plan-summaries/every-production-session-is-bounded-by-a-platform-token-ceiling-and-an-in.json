@@ -11,7 +11,6 @@
   "purpose": "Each production session should be limited by a platform token ceiling and by a probe that checks it can do its work. A session that cannot write should not waste the budget, and every stop should clear from the to-do page in two clicks at most.",
   "serves": "The Project outcome of unattended production staying within its spend, with the operator asked only when needed.",
   "done_when": "A session that reaches its ceiling or cannot write the workspace stops with one named blocker, and that blocker clears from the to-do page in two clicks at most.",
-  "reading_note": "Draft: 6 of the 9 Actions are done. Open items are the one-click clear for every blocker kind, the probe result on the reconcile receipt, and keeping the pointer in step with queue reorders.",
   "actions": [
     {
       "id": "replay-environment-wall-session",

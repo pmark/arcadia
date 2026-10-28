@@ -11,7 +11,6 @@
   "purpose": "Lets the operator approve one named run that executes once while production stays off. Admission is recorded durably, so a restart or a restored ledger cannot reset the allowance.",
   "serves": "The Project outcome of approved work running safely and reporting back, with the operator's approval honoured.",
   "done_when": "One approved, named run completes and produces the expected file, and each refusal case is rejected by the public path.",
-  "reading_note": "Draft: 2 of the 3 Actions are done. The completion proof through the public path is still open.",
   "actions": [
     {
       "id": "consume-one-approved-named-run",

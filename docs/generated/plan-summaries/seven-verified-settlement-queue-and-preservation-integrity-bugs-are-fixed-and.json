@@ -11,7 +11,6 @@
   "purpose": "Seven bugs in settlement, queue and preservation handling were verified. Each can cause a duplicate session, a wrong queue, a stuck rejection, a garbled plan or a wrong record. This Plan fixes each one in its own pull request.",
   "serves": "The Project outcome of Arcadia's governed work staying trustworthy when it runs unattended.",
   "done_when": "Each of the seven fixes is merged to main in its own pull request, with its regression test and a passing rehearsal.",
-  "reading_note": "Draft: none of the 7 Actions is done yet.",
   "actions": [
     {
       "id": "keep-claim-when-passed-attempt-receipt-is-unparseable",

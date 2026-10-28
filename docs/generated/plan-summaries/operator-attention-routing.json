@@ -11,7 +11,6 @@
   "purpose": "A project running in the cloud should be able to leave a request for the operator through its existing GitHub access. Arcadia finds those requests, combines them with local decisions and blocked Actions, sends one useful Discord message for each, and keeps the work visible until it is resolved.",
   "serves": "The Project outcome of Arcadia asking for a decision only when one is needed and reporting it once.",
   "done_when": "A request raised on GitHub reaches the operator once in Discord, stays visible until its source is resolved, and drops off when it is resolved.",
-  "reading_note": "Draft: none of the 4 Actions has started.",
   "actions": [
     {
       "id": "build-attention-source-projection",
