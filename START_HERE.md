@@ -66,14 +66,18 @@ Select a Project and **Next move** shows Go's own resolution for it:
 
 It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
 
-Each read runs `arcadia next` through the existing continuation route, which journals it, so the workspace never polls. Go is read:
+Each read uses the journal-free `go-context` observer over Go's existing resolver. The workspace never polls. Go is read:
 - the first time a page loads for a Project;
 - on the next workspace navigation more than five minutes after the last attempt, including a failed one;
 - on **Read again**.
 
 Only one read per Project runs at a time. A reload or new tab starts fresh and reads again.
 
-A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker is withheld until Go reads cleanly again. Nothing here starts work: **this Project's page** keeps the existing Get to work control and its checks.
+A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker and **Continue** are withheld until Go reads cleanly again.
+
+For a dispatchable Action, **Continue** opens a protected preview of its target, owner, configured provider/model/effort and limits. It does not start work. The preview keeps the existing planning, packet approval, credential and launch gates; a gated preview cannot be confirmed. **Confirm Continue for this Action** uses the same protected Session launch as the Project page and the same explicit browser confirmation under Decision 0096. It covers one Action and at most one Session, never an automatic next Action, merge or Production start. The preview states the existing exit-time validation, commit, push and draft-PR authorization and its 24-hour/first-exit expiry. There is no per-launch time-limit override; the existing Session/provider limits and recorded Plan budget apply.
+
+Repeated presses and tabs use the same request identity for the same governed resolution. Changed Go facts or a changed launch preview refuse with the current facts; choose **Read Go again** and inspect a fresh preview. An uncertain network outcome stays unknown and must be reconciled through the existing Session receipts. Source tests, installed adoption and a real operator-assisted delivery are separate evidence stages; a source change alone proves no live delivery.
 
 On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
 

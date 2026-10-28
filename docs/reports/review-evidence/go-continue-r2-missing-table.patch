@@ -1,0 +1,48 @@
+--- a/tests/session-launch.test.ts
++++ b/tests/session-launch.test.ts
+@@ -69,6 +69,45 @@
+ }
+ 
+ describe("launchGuardedHostSession", () => {
++  it("R2 refuses unbound Continue when authorization table does not exist", () => {
++    const fixture = preparedFixture();
++    const tmux = new FakeTmux();
++    const preflightEnv = stubProviders({ claude: {} });
++    const observed = runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0];
++    const continueId = `workspace-continue:${goResolutionIdentity(observed.project.id, observed.resolution!)}`;
++    const shown = preview1(fixture, continueId, tmux);
++    let invocation = 0;
++    const launch = (requestId: string, fingerprint: string) => withDatabase(fixture.workspace, db => launchGuardedHostSession({
++      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
++      previewFingerprint: fingerprint, profiles, adapters, tmux,
++      now: new Date(fixture.now.getTime() + invocation++ * 1000), agentWorktreeRoot: path.join(fixture.root, "candidate"),
++      preflightEnv, ...(requestId === "project-page-confirmation" ? {} : { operatorLaunch: { source: "dashboard" as const, env: {} } })
++    }));
++    const otherId = "project-page-confirmation";
++    const other = launch(otherId, preview1(fixture, otherId, tmux).previewFingerprint);
++    expect(withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT name FROM sqlite_master WHERE name = 'operator_launch_authorizations'").get())).toBeUndefined();
++    const aliased = launch(continueId, shown.previewFingerprint);
++    expect(aliased.reused).toBe(true);
++    expect(aliased.session.id).toBe(other.session.id);
++    expect(tmux.launches).toHaveLength(1);
++    writeFileSync(path.join(other.session.worktree_path, "wip.txt"), "partial work");
++    git(other.session.worktree_path, ["add", "wip.txt"]);
++    git(other.session.worktree_path, ["commit", "-m", "partial progress"]);
++    tmux.live.delete(other.session.tmux_session_name);
++    withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: other.session.id,
++      requestId: "foreign-request-reconcile", repoRoot: fixture.repo }));
++    expect(preview1(fixture, continueId, tmux).previewFingerprint).toBe(shown.previewFingerprint);
++    expect(runGoContextCommand({workspace:fixture.workspace,project:"test-project",now:fixture.now}).data.projects[0].resolution).toEqual(observed.resolution);
++    const own = launch(continueId, shown.previewFingerprint);
++    console.log("R2_MISSING_TABLE_REPLAY",JSON.stringify({continueId,firstReturned:aliased.session.id,secondReturned:own.session.id,launches:tmux.launches.length}));
++    expect(own.session.id).toBe(aliased.session.id);
++    const replay = launch(continueId, shown.previewFingerprint);
++    expect(replay.reused).toBe(true);
++    expect(replay.session.id).toBe(own.session.id);
++    expect(tmux.launches).toHaveLength(2);
++    expect(own.session.worktree_path).toBe(other.session.worktree_path);
++  });
++
+   it("refuses to alias a Continue request onto another request's live Session", () => {
+     const fixture = preparedFixture();
+     const tmux = new FakeTmux();

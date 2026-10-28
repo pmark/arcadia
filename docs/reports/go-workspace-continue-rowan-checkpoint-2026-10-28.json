@@ -1,0 +1,115 @@
+{
+  "coordinatorChat": "01a180d7-3f9b-7581-be2d-93d5f8f8b7eb",
+  "role": "Rowan Lead depth0",
+  "sourceWriter": "/root/continue_implementer",
+  "canonicalSession": "not admitted",
+  "originalCursor": "bf9ca82bd2267d6cb14225f51672287e320a2a84",
+  "failedCursor": "7d690f6ac575c21d7d944823fb218434000deb46: ancestor but off first-parent after operator merge",
+  "checkpointCursor": "308a4d17e10c5a2305c878ee323dda90a93ac983",
+  "checkpointRecovery": "both canonical listings replayed conservatively from original cursor, exact Project/Action reread unchanged",
+  "primary": "clean308a4d17e after operator preserved Ask/pulled",
+  "candidate": "/Users/pmark/.codex/worktrees/go-workspace-continue/arcadia",
+  "branch": "codex/go-workspace-continue",
+  "intake": "https://github.com/pmark/arcadia/issues/1850",
+  "managementRevision": "fad7493e2d55b98a632cd2a6b55397d6623e1a5c",
+  "production": {
+    "observedAt": "2026-10-28T04:50:23.013Z",
+    "state": "Inactive/Idle",
+    "revision": 83,
+    "epoch": 46,
+    "liveAdmissions": 0
+  },
+  "liveGo": {
+    "observedAt": "2026-10-28T04:54:15.109Z",
+    "dispatchable": false,
+    "gate": "agentask_1b49d1d91f4662bfac",
+    "claims": [],
+    "sessions": []
+  },
+  "loaded": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 12236
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 3320
+    },
+    {
+      "path": "PROJECT.md",
+      "bytes": 31426
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "bytes": 539
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "bytes": 703
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "bytes": 870
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "bytes": 12038
+    },
+    {
+      "path": "docs/agent-guidance/continuation.md",
+      "bytes": 8704
+    },
+    {
+      "path": "docs/agent-guidance/native-mail-checkpoints.md",
+      "bytes": 11015
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "bytes": 2458
+    },
+    {
+      "path": "docs/working-copy-safety.md",
+      "bytes": 16202
+    },
+    {
+      "path": "docs/agent-guidance/session-roles-and-briefs.md",
+      "bytes": 15378
+    },
+    {
+      "path": "docs/agent-guidance/native-app-sessions.md",
+      "bytes": 9829
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "bytes": 21758
+    },
+    {
+      "path": "docs/agent-guidance/git-identity.md",
+      "bytes": 5248
+    },
+    {
+      "path": "docs/agent-guidance/operator-actions.md",
+      "bytes": 17246
+    },
+    {
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "bytes": 4690
+    }
+  ],
+  "targeted": [
+    "active Plan exact Action105-123",
+    "arcadia-repository orientation/semantics/models/operator guide/PR QA/working-copy42-204 and experiment204-331",
+    "Notes60-102,173-249",
+    "AGENT_ORIENTATION1-100",
+    "arcadia-semantics1-75",
+    "direction-receipts recovery report125-230"
+  ],
+  "friction": [
+    "Dependency bridge EPERM; same documented command succeeded with ordinary host permission",
+    "Primary noun CLI command-body read-only check missed telemetry schema initialization; bounded pinned read-only audit found no activity rows, not proof of no attempted writes; corrected to pinned package",
+    "Checkpoint first-parent changed after operator merge; failed cursor preserved and original-cursor full replay recovered coverage"
+  ],
+  "authorization": "source preparation only; no install/restart/provider probe/spending/START/multi-Action continuation",
+  "automation": "none; prohibited",
+  "predecessor": "parked; not messaged; retained candidate untouched"
+}

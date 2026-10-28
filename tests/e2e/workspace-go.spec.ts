@@ -39,6 +39,62 @@ const direction = (page: Page) => page.getByRole("region", { name: "Direction" }
 /** Go's rendered result, apart from the visually hidden announcement that repeats it for screen readers. */
 const result = (page: Page) => direction(page).locator(".workspace-go-result");
 
+test("workspace Continue previews one Action, requires confirmation and shows changed facts on a phone", async ({ page }) => {
+  test.setTimeout(120_000);
+  const repo = path.resolve(import.meta.dirname, "../..");
+  const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-continue-"));
+  const port = await freePort(), url = `http://127.0.0.1:${port}`;
+  // Share the immutable production build with the other workspace fixtures.
+  // A dev server would overwrite .next while their `next start` servers use it.
+  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
+  let writes = 0, gated = false, drift = true;
+  const preview = { requestId: "workspace-continue:stable-fixture", resolutionId: "fixture-resolution", previewFingerprint: "fixture-preview", actionDocRef: "plan/first-website#review-phone", ready: true, prerequisites: [],
+    selection: { provider: "codex", model: "configured-model", effort: "configured-effort" }, target: { projectId: "garden", plan: "first-website", action: "review-phone" }, owner: "agent",
+    limits: { actions: 1, sessions: 1, automaticNextAction: false, authorizationHours: 24, timeLimit: "Existing Session limits apply.", tokenBudget: "one bounded pass" } };
+  await page.route("**/api/**", async route => {
+    const request = route.request(), endpoint = new URL(request.url()).pathname;
+    if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
+    if (endpoint === "/api/projects/garden/go-context") return route.fulfill({ json: { resolution: gated ? continuation({ dispatchable: false, blockers: [{ relativePath: "Decision", field: "status", message: "Approval required", remedy: "Answer the Decision" }] }) : continuation(), resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } });
+    if (endpoint === "/api/projects/garden/go-continue") {
+      if (request.method() === "GET") return route.fulfill({ json: preview });
+      ++writes;
+      expect(request.postDataJSON()).toMatchObject({ requestId: preview.requestId, previewFingerprint: preview.previewFingerprint, resolutionId: preview.resolutionId, confirmOperatorLaunch: true });
+      if (drift) return route.fulfill({ status: 409, json: { error: "Go's resolution changed.", details: { changedFacts: { provider: "changed-provider" }, freshRead: true } } });
+      return route.fulfill({ json: { message: "Session fixture-session launched.", result: { session: { id: "fixture-session" } } } });
+    }
+    return route.abort();
+  });
+  try {
+    await waitForHttp(`${url}/workspace`, server);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${url}/workspace/projects/moon-garden`);
+    const control = direction(page).getByRole("button", { name: "Continue", exact: true });
+    await expect(control).toBeVisible();
+    await control.focus(); await page.keyboard.press("Enter");
+    const panel = page.getByRole("region", { name: "Continue preview" });
+    await expect(panel).toContainText("first-website · review-phone");
+    await expect(panel.getByText("agent", { exact: true })).toBeVisible();
+    await expect(panel).toContainText("codex · configured-model · configured-effort");
+    await expect(panel).toContainText("One Action and at most one Session");
+    await expect(panel).toContainText("It never merges, integrates or turns production on");
+    expect(writes).toBe(0);
+    await panel.getByRole("button", { name: "Confirm Continue for this Action" }).click();
+    await expect(direction(page).getByRole("status").filter({ hasText: "changed-provider" })).toBeVisible();
+    expect(writes).toBe(1);
+    await direction(page).getByRole("button", { name: "Read Go again" }).click();
+    await expect(direction(page).getByText("Changed facts:", { exact: false })).toHaveCount(0);
+    drift = false;
+    await control.click();
+    await panel.getByRole("button", { name: "Confirm Continue for this Action" }).click();
+    await expect(direction(page).getByRole("status").filter({ hasText: "fixture-session" })).toBeVisible();
+    expect(writes).toBe(2);
+    gated = true;
+    await direction(page).getByRole("button", { name: "Read again", exact: true }).click();
+    await expect(control).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  } finally { await server.stop(); await rm(temp, { recursive: true, force: true }); }
+});
+
 test("workspace renders Go's next move for the selected Project without choosing work itself", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
@@ -73,7 +129,7 @@ test("workspace renders Go's next move for the selected Project without choosing
           : goMode === "none" ? continuation({ context: null, dispatchable: false })
             : goMode === "elsewhere" || goMode === "missing" ? (() => { const c = continuation(); return { ...c, context: { ...c.context!, activePlan: goMode === "elsewhere" ? "old-greenhouse" : "new-plan" } }; })()
               : continuation();
-      return route.fulfill({ json: { project: { id: "garden" }, resolution: body, observedAt: "2030-01-01T09:30:00.000Z", error: null } });
+      return route.fulfill({ json: { project: { id: "garden" }, resolution: body, resolutionId: "fixture-resolution", observedAt: "2030-01-01T09:30:00.000Z", error: null } });
     }
     return route.abort();
   });

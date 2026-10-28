@@ -246,6 +246,35 @@ export function findOperatorLaunchAuthorization(db: Database.Database, sessionId
   return (db.prepare("SELECT * FROM operator_launch_authorizations WHERE session_id = ?").get(sessionId) as OperatorLaunchAuthorization | undefined) ?? null;
 }
 
+/** A confirmed request remains bound to its first Session after exit. A new
+ * intentional resume needs a fresh request; an HTTP replay is not that grant. */
+export function assertOperatorLaunchRequestAvailable(
+  db: Database.Database, canonicalRepositoryPath: string, requestId: string, ownSessionId?: string
+): void {
+  // Lazy schema absence means no matching binding, so it must follow the
+  // same unbound-Continue checks as an existing table with no matching row.
+  const prior = hasTable(db) ? db.prepare(`SELECT session_id, outcome FROM operator_launch_authorizations
+    WHERE repository_path = ? AND request_id = ? ORDER BY minted_at, id LIMIT 1`)
+    .get(canonicalRepositoryPath, requestId) as { session_id: string; outcome: string | null } | undefined : undefined;
+  if (!prior) {
+    // Continue must not report another request's live Session as its own
+    // result: there would be no durable request binding after that lease exits.
+    // Other launch surfaces retain their ordinary authorized reuse semantics.
+    if (ownSessionId && requestId.startsWith("workspace-continue:")) {
+      throw validationError("This Continue request has no durable binding to the existing Session; another request owns it.", {
+        code: "operator_launch_request_unbound", conflict: true, requestId, sessionId: ownSessionId,
+        remedy: "Read the existing Session's receipts; this Continue request created no Session."
+      });
+    }
+    return;
+  }
+  if (prior.session_id === ownSessionId) return;
+  throw validationError("This confirmed launch request already belongs to a Session; it cannot launch another after exit.", {
+    code: "operator_launch_request_consumed", conflict: true, requestId, sessionId: prior.session_id, outcome: prior.outcome,
+    remedy: "Read that Session's receipts. An intentional resume needs a new protected preview and separate confirmation."
+  });
+}
+
 /**
  * Whether `session` may be preserved under an operator launch authorization at
  * `now`: the row exists, names this exact Session and Action, has not expired,

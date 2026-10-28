@@ -4,12 +4,13 @@ import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { createGoReadGate, goMove, isContinuation, type GoBlocker, type GoMove, type GoRelation } from "../../lib/workspace-go";
 import { workspaceHref } from "../../lib/workspace-scope";
+import { WorkspaceContinue } from "./workspace-continue";
 
 export interface GoRead {
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   /** The last good read for this Project, kept through a later failure so it is labelled, never silently lost. */
-  last: { move: GoMove; at: Date } | null;
+  last: { move: GoMove; at: Date; resolutionId: string | null } | null;
   again: () => void;
 }
 type Entry = Omit<GoRead, "again">;
@@ -34,13 +35,13 @@ export function WorkspaceGoProvider({ children }: { children: ReactNode }) {
       try { body = await response.json(); } catch { /* A non-JSON reply is reported by its status below. */ }
       const message = body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string" ? (body as { error: string }).error : null;
       if (!response.ok) throw new Error(message ?? `the Go context route answered ${response.status}.`);
-      const observation = body as { resolution?: unknown; error?: { message?: string }; observedAt?: string } | null;
+      const observation = body as { resolution?: unknown; resolutionId?: unknown; error?: { message?: string }; observedAt?: string } | null;
       if (observation?.error) throw new Error(observation.error.message ?? "Go's repository evidence could not be read.");
       const continuation = observation?.resolution;
       if (!isContinuation(continuation)) throw new Error("the reply was not a Go resolution.");
       const at = new Date(observation?.observedAt ?? "");
       if (!Number.isFinite(at.getTime())) throw new Error("the Go observation time was missing or invalid.");
-      finish({ status: "ready", error: null, last: { move: goMove(continuation), at } });
+      finish({ status: "ready", error: null, last: { move: goMove(continuation), at, resolutionId: typeof observation?.resolutionId === "string" ? observation.resolutionId : null } });
     }).catch((error: unknown) => finish({ status: "error", error: error instanceof Error ? error.message : String(error) }));
   }, [gate]);
   return <GoContext.Provider value={{ entries, start }}>{children}</GoContext.Provider>;
@@ -107,7 +108,8 @@ export function WorkspaceNextMove({ go, project, relation }: { go: GoRead; proje
         {last.move.kind === "none" && !last.move.question && !last.move.blockers.length && <p>Go found no current Action for this Project.</p>}
         {last.move.kind === "not-agent" && <p>{last.move.authorization}</p>}
         {where(last.move, relation, project.slug)}
-        <p className="workspace-muted">Starting or continuing work stays on <Link href={`/projects/${encodeURIComponent(project.id)}`}>this Project&apos;s page</Link>, with its existing checks. Nothing here starts work.</p>
+        {go.status === "ready" && last.move.kind === "ready" && last.resolutionId && <WorkspaceContinue key={`${project.id}/${last.at.toISOString()}`} projectId={project.id} plan={last.move.plan} action={last.move.action.id} resolutionId={last.resolutionId} readAgain={go.again} />}
+        <p className="workspace-muted">Continue previews this one Action and keeps the existing protected launch checks. You can also open <Link href={`/projects/${encodeURIComponent(project.id)}`}>this Project&apos;s page</Link>.</p>
       </div>}
     </>}
   </section>;

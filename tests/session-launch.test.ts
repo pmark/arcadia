@@ -38,6 +38,8 @@ import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } f
 import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
+import { runGoContextCommand } from "../src/commands/goContext.js";
+import { goResolutionIdentity } from "../apps/dashboard/lib/go-continue.js";
 
 const roots: string[] = [];
 
@@ -67,6 +69,117 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("launchGuardedHostSession", () => {
+  it.each([false, true])("refuses to alias a Continue request onto another request's live Session (foreign authorization: %s)", foreignAuthorization => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preflightEnv = stubProviders({ claude: {} });
+    const observed = runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0];
+    const continueId = `workspace-continue:${goResolutionIdentity(observed.project.id, observed.resolution!)}`;
+    const shown = preview1(fixture, continueId, tmux);
+    let invocation = 0;
+    const launch = (requestId: string, fingerprint: string) => withDatabase(fixture.workspace, db => launchGuardedHostSession({
+      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
+      previewFingerprint: fingerprint, profiles, adapters, tmux,
+      now: new Date(fixture.now.getTime() + invocation++ * 1000), agentWorktreeRoot: path.join(fixture.root, "candidate"),
+      preflightEnv, ...(requestId === "project-page-confirmation" && !foreignAuthorization
+        ? {} : { operatorLaunch: { source: "dashboard" as const, env: {} } })
+    }));
+    const otherId = "project-page-confirmation";
+    const other = launch(otherId, preview1(fixture, otherId, tmux).previewFingerprint);
+    const authorizationTableExists = () => withReadOnlyDatabase(fixture.workspace, db => Boolean(db.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'operator_launch_authorizations'").get()));
+    expect(authorizationTableExists()).toBe(foreignAuthorization);
+    expect(() => launch(continueId, shown.previewFingerprint)).toThrow(/no durable binding to the existing Session/);
+    const ordinaryId = "ordinary-lease-reuse";
+    const ordinary = launch(ordinaryId, preview1(fixture, ordinaryId, tmux).previewFingerprint);
+    expect(ordinary.reused).toBe(true);
+    expect(ordinary.session.id).toBe(other.session.id);
+    expect(authorizationTableExists()).toBe(foreignAuthorization);
+    expect(tmux.launches).toHaveLength(1);
+    writeFileSync(path.join(other.session.worktree_path, "wip.txt"), "partial work");
+    git(other.session.worktree_path, ["add", "wip.txt"]);
+    git(other.session.worktree_path, ["commit", "-m", "partial progress"]);
+    tmux.live.delete(other.session.tmux_session_name);
+    withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: other.session.id,
+      requestId: "foreign-request-reconcile", repoRoot: fixture.repo }));
+    expect(preview1(fixture, continueId, tmux).previewFingerprint).toBe(shown.previewFingerprint);
+    expect(runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0].resolution)
+      .toEqual(observed.resolution);
+    const own = launch(continueId, preview1(fixture, continueId, tmux).previewFingerprint);
+    const replay = launch(continueId, shown.previewFingerprint);
+    expect(replay.reused).toBe(true);
+    expect(replay.session.id).toBe(own.session.id);
+    expect(tmux.launches).toHaveLength(2);
+    expect(own.session.worktree_path).toBe(other.session.worktree_path);
+    writeFileSync(path.join(own.session.worktree_path, "continued.txt"), "more partial progress");
+    git(own.session.worktree_path, ["add", "continued.txt"]);
+    git(own.session.worktree_path, ["commit", "-m", "continued partial progress"]);
+    tmux.live.delete(own.session.tmux_session_name);
+    withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: own.session.id,
+      requestId: "own-request-reconcile", repoRoot: fixture.repo }));
+    expect(() => launch(continueId, shown.previewFingerprint)).toThrow(/confirmed launch request already belongs to a Session/);
+    expect(tmux.launches).toHaveLength(2);
+    expect(withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()))
+      .toEqual({ n: 2 });
+    expect(git(fixture.repo, ["worktree", "list", "--porcelain"]).match(/^worktree /gm)).toHaveLength(2);
+  });
+
+  it.each([false, true])("refuses a consumed Continue request after resumable exit (interleaved: %s)", interleaved => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preflightEnv = stubProviders({ claude: {} });
+    const readGo = () => runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0];
+    const original = readGo();
+    const requestId = `workspace-continue:${goResolutionIdentity(original.project.id, original.resolution!)}`;
+    const shown = preview1(fixture, requestId, tmux);
+    let invocation = 0;
+    const launch = (id = requestId, fingerprint = shown.previewFingerprint, providerSignIn?: () => null) =>
+      withDatabase(fixture.workspace, db => launchGuardedHostSession({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: id,
+        previewFingerprint: fingerprint, profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + invocation++ * 1000), agentWorktreeRoot: path.join(fixture.root, "candidate"),
+        preflightEnv, providerSignIn, operatorLaunch: { source: "dashboard", env: {} }
+      }));
+    let first: GuardedLaunchResult | undefined;
+    const readClaims = () => withReadOnlyDatabase(fixture.workspace, db => db.prepare(
+      "SELECT id, claim_generation, worktree_path FROM agent_worktree_reservations ORDER BY id").all());
+    let originalClaims: ReturnType<typeof readClaims>;
+    const completeFirstExit = () => {
+      first = launch();
+      writeFileSync(path.join(first.session.worktree_path, "wip.txt"), "partial work");
+      git(first.session.worktree_path, ["add", "wip.txt"]);
+      git(first.session.worktree_path, ["commit", "-m", "partial progress"]);
+      tmux.live.delete(first.session.tmux_session_name);
+      const exit = withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: first!.session.id,
+        requestId: "continue-post-exit-reconcile", repoRoot: fixture.repo }));
+      expect(exit.receipt.outcome).toBe("incomplete_resumable");
+      expect(preview1(fixture, requestId, tmux)).toMatchObject({ ready: true, previewFingerprint: shown.previewFingerprint });
+      expect(readGo().resolution).toEqual(original.resolution);
+      originalClaims = readClaims();
+      return null;
+    };
+    // The interleaved case consumes the request after the loser's initial
+    // observation but before its candidate/claim transaction, exercising the
+    // actual protected boundary rather than a wrapper-only check.
+    if (!interleaved) completeFirstExit();
+    expect(() => launch(requestId, shown.previewFingerprint, interleaved ? completeFirstExit : undefined))
+      .toThrow(/confirmed launch request already belongs to a Session/);
+    expect(tmux.launches).toHaveLength(1);
+    expect(readClaims()).toEqual(originalClaims!);
+    expect(withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()))
+      .toEqual({ n: 1 });
+    expect(git(first!.session.worktree_path, ["log", "-1", "--format=%s"]).trim()).toBe("partial progress");
+    expect(git(fixture.repo, ["worktree", "list", "--porcelain"]).match(/^worktree /gm)).toHaveLength(2);
+
+    // Ordinary separately confirmed continuation still resumes the preserved
+    // candidate with a new request, rather than reusing the consumed press.
+    const newRequest = "separately-confirmed-resume";
+    const resumed = launch(newRequest, preview1(fixture, newRequest, tmux).previewFingerprint);
+    expect(resumed.session.id).not.toBe(first!.session.id);
+    expect(resumed.session.worktree_path).toBe(first!.session.worktree_path);
+    expect(tmux.launches).toHaveLength(2);
+  });
+
   it("resolves the repository, executable and arguments on the server and starts exactly one process", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
