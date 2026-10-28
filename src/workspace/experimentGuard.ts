@@ -376,6 +376,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "operator-task close": exempt("Writes the named repository's operator-task records only; reads no workspace."),
   "operator-task decline": exempt("Writes the named repository's operator-task records only; reads no workspace."),
   next: ALLOWED,
+  "go-context": exempt("Observes configured Projects through read-only SQLite and existing Go resolution; no activity, journal, provider or Git writes."),
   "next history": ALLOWED,
   go: ALLOWED,
   "go-broker install": guarded(

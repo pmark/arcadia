@@ -36,6 +36,16 @@ export interface DiscoveryResult {
   errors: DocValidationError[];
   /** Files that declared `arcadia: v1` but could not be parsed at all. */
   rejected: string[];
+  /** Unreadable evidence is distinct from a malformed supporting document. */
+  ioErrors?: DiscoveryIoError[];
+}
+
+export interface DiscoveryIoError {
+  relativePath: string;
+  source: string;
+  operation: "readdir" | "stat" | "read";
+  code: string | null;
+  message: string;
 }
 
 /** Active only inside `withDocsSnapshot`: repository root -> what one walk found. */
@@ -76,13 +86,19 @@ export function discoverDocs(repoRoot: string): DiscoveryResult {
     snapshot.set(key, found);
   }
   // Fresh arrays, so a caller that sorts or appends cannot change what the next caller sees.
-  return { docs: [...found.docs], errors: [...found.errors], rejected: [...found.rejected] };
+  return { docs: [...found.docs], errors: [...found.errors], rejected: [...found.rejected], ioErrors: [...(found.ioErrors ?? [])] };
 }
 
 function walkDocs(repoRoot: string): DiscoveryResult {
   const docs: ArcadiaDoc[] = [];
   const errors: DocValidationError[] = [];
   const rejected: string[] = [];
+  const ioErrors: DiscoveryIoError[] = [];
+  const unreadable = (source: string, operation: DiscoveryIoError["operation"], error: unknown) => {
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : null;
+    ioErrors.push({ relativePath: path.relative(repoRoot, source) || ".", source, operation, code,
+      message: error instanceof Error ? error.message : String(error) });
+  };
 
   const walk = (directory: string, depth: number): void => {
     if (depth > MAX_DEPTH) {
@@ -92,27 +108,28 @@ function walkDocs(repoRoot: string): DiscoveryResult {
     let entries: string[];
     try {
       entries = readdirSync(directory);
-    } catch {
-      return; // unreadable directory is not worth failing a portfolio-wide sync
+    } catch (error) {
+      unreadable(directory, "readdir", error);
+      return;
     }
 
     for (const entry of entries) {
       if (entry.startsWith(".") && entry !== ".arcadia") {
         continue;
       }
+      if (SKIP_DIRECTORIES.has(entry)) continue;
       const absolute = path.join(directory, entry);
 
       let stats;
       try {
         stats = statSync(absolute);
-      } catch {
+      } catch (error) {
+        unreadable(absolute, "stat", error);
         continue;
       }
 
       if (stats.isDirectory()) {
-        if (!SKIP_DIRECTORIES.has(entry)) {
-          walk(absolute, depth + 1);
-        }
+        walk(absolute, depth + 1);
         continue;
       }
 
@@ -123,7 +140,8 @@ function walkDocs(repoRoot: string): DiscoveryResult {
       let content: string;
       try {
         content = readFileSync(absolute, "utf8");
-      } catch {
+      } catch (error) {
+        unreadable(absolute, "read", error);
         continue;
       }
 
@@ -168,7 +186,8 @@ function walkDocs(repoRoot: string): DiscoveryResult {
   errors.sort((a, b) => a.relativePath.localeCompare(b.relativePath) || a.field.localeCompare(b.field));
   rejected.sort((a, b) => a.localeCompare(b));
 
-  return { docs: acceptedDocs, errors, rejected };
+  ioErrors.sort((a, b) => a.relativePath.localeCompare(b.relativePath) || a.operation.localeCompare(b.operation));
+  return { docs: acceptedDocs, errors, rejected, ioErrors };
 }
 
 function validateLogActionReferences(docs: ArcadiaDoc[], errors: DocValidationError[]): Set<string> {

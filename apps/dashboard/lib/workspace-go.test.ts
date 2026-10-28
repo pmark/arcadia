@@ -76,7 +76,7 @@ describe("Go's move for the workspace", () => {
 });
 
 describe("Go read gate", () => {
-  it("starts one read per Project however often it is asked, so a doubled mount journals once", () => {
+  it("starts one observer read per Project however often it is asked, including a doubled mount", () => {
     const gate = createGoReadGate(1000);
     expect(gate.begin("p", 0)).toBe(true);
     expect(gate.begin("p", 0)).toBe(false);

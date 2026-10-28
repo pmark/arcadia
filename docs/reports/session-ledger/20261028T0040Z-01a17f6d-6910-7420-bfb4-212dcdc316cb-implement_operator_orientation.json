@@ -1,0 +1,49 @@
+{
+  "session_id": "01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation",
+  "role": "driver",
+  "model": "inherited-unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/project-go-orientation-for-the-operator",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "native-candidate-mise-trust-permission",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0039Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation.md"
+    },
+    {
+      "id": "vite-cache-write-permission",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0039Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation.md"
+    },
+    {
+      "id": "incomplete-managed-fixtures",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0039Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation.md"
+    },
+    {
+      "id": "early-dashboard-standalone-typecheck",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0039Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation.md"
+    },
+    {
+      "id": "shell-edit-permission",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0039Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Native helper /root/implement_operator_orientation; legacy driver=implementer. Source proof complete, PR not allocated. No managed Session/admission; runtime model/usage unavailable."
+}

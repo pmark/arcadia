@@ -537,6 +537,28 @@ export async function loadProjectContinuation(projectId: string): Promise<Arcadi
   return runArcadiaCliJson<ProjectContinuationResponse>(["next", "--project", projectId]);
 }
 
+/** DTO at the CLI shellout boundary; keep server execution modules out of the dashboard bundle. */
+export interface GoProjectContextResponse {
+  project: { id: string; slug: string; name: string; status: string };
+  repoRoot: string | null;
+  source: "managed-documents+canonical-workspace";
+  observedAt: string;
+  resolution: ProjectContinuationResponse | null;
+  error: { message: string; code: string | null; source: string; remedy: string } | null;
+  discoveryErrors: Array<{ relativePath: string; source: string; operation: string; code: string | null; message: string }>;
+  ownership: { source: "canonical-workspace"; observedAt: string; claimsKnown: boolean; sessionsKnown: boolean;
+    claims: Array<{ id: string; action: string | null; status: string; expiresAt: string }>;
+    sessions: Array<{ id: string; plan: string; action: string; status: string }> };
+}
+export interface GoContextResponse {
+  observedAt: string;
+  projects: GoProjectContextResponse[];
+  summary: { total: number; dispatchable: number; unreadable: number; gated: number };
+}
+export async function loadGoContext(projectId?: string): Promise<ArcadiaJsonSuccess<GoContextResponse>> {
+  return runArcadiaCliJson<GoContextResponse>(["go-context", ...(projectId ? ["--project", projectId] : [])]);
+}
+
 export interface SessionLaunchPreviewResponse {
   requestId: string;
   previewFingerprint: string;

@@ -17,8 +17,8 @@ const idle: Entry = { status: "idle", error: null, last: null };
 const GoContext = createContext<{ entries: Record<string, Entry>; start: (projectId: string, force: boolean) => void } | null>(null);
 
 /**
- * Mounted once in the workspace layout. Go's resolution comes from the existing continuation route, which runs
- * `arcadia next` and journals each read. The gate allows one read per Project at a time, repeats it only when the
+ * Mounted once in the workspace layout. Go's resolution comes from its journal-free observer route.
+ * The gate allows one read per Project at a time, repeats it only when the
  * last attempt is older than five minutes, and Read again skips only that age check. Nothing reads on a timer.
  */
 export function WorkspaceGoProvider({ children }: { children: ReactNode }) {
@@ -29,14 +29,18 @@ export function WorkspaceGoProvider({ children }: { children: ReactNode }) {
     const patch = (next: Partial<Entry>) => setEntries(all => ({ ...all, [projectId]: { ...(all[projectId] ?? idle), ...next } }));
     const finish = (next: Partial<Entry>) => { gate.end(projectId, Date.now()); patch(next); };
     patch({ status: "loading", error: null });
-    fetch(`/api/projects/${encodeURIComponent(projectId)}/continuation`, { cache: "no-store" }).then(async response => {
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/go-context`, { cache: "no-store" }).then(async response => {
       let body: unknown = null;
       try { body = await response.json(); } catch { /* A non-JSON reply is reported by its status below. */ }
       const message = body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string" ? (body as { error: string }).error : null;
-      if (!response.ok) throw new Error(message ?? `the continuation route answered ${response.status}.`);
-      const continuation = body && typeof body === "object" ? (body as { continuation?: unknown }).continuation : undefined;
+      if (!response.ok) throw new Error(message ?? `the Go context route answered ${response.status}.`);
+      const observation = body as { resolution?: unknown; error?: { message?: string }; observedAt?: string } | null;
+      if (observation?.error) throw new Error(observation.error.message ?? "Go's repository evidence could not be read.");
+      const continuation = observation?.resolution;
       if (!isContinuation(continuation)) throw new Error("the reply was not a Go resolution.");
-      finish({ status: "ready", error: null, last: { move: goMove(continuation), at: new Date() } });
+      const at = new Date(observation?.observedAt ?? "");
+      if (!Number.isFinite(at.getTime())) throw new Error("the Go observation time was missing or invalid.");
+      finish({ status: "ready", error: null, last: { move: goMove(continuation), at } });
     }).catch((error: unknown) => finish({ status: "error", error: error instanceof Error ? error.message : String(error) }));
   }, [gate]);
   return <GoContext.Provider value={{ entries, start }}>{children}</GoContext.Provider>;

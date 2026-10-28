@@ -2,7 +2,7 @@ import type { ProjectContinuationResponse } from "./arcadia-cli";
 import type { WorkspaceScope } from "./workspace-scope";
 
 /**
- * What Go says about one Project, read through the existing continuation route. The workspace renders this
+ * What Go says about one Project, read through the journal-free Go context route. The workspace renders this
  * resolution; it never selects work, reorders it or keeps its own copy of execution state.
  */
 export interface GoAction {
@@ -22,9 +22,6 @@ export type GoMove =
   /** Nothing blocks it, but the Action is not an agent's to take: Go's authorization says whose it is. */
   | ({ kind: "not-agent"; responsibility: string; authorization: string } & Placed)
   | { kind: "none"; question: string | null; blockers: GoBlocker[] };
-
-/** The body of GET /api/projects/{id}/continuation. */
-export interface ContinuationBody { continuation: ProjectContinuationResponse }
 
 const isText = (value: unknown): value is string => typeof value === "string";
 const isTextOrNull = (value: unknown) => value === null || isText(value);
@@ -73,7 +70,7 @@ export function goRelation(move: GoMove, scope: WorkspaceScope): GoRelation {
 export const GO_REREAD_AFTER_MS = 5 * 60_000;
 /**
  * Decides synchronously whether to read Go, so a repeated mount (React StrictMode runs effects twice in
- * development) cannot start a second journaled `arcadia next`. One read per Project is in flight at a time.
+ * development) cannot start a duplicate observer read. One read per Project is in flight at a time.
  */
 export function createGoReadGate(freshMs = GO_REREAD_AFTER_MS) {
   const inFlight = new Set<string>();

@@ -2093,6 +2093,36 @@ Source-only QA (operator and end-user procedure are the same):
    each provider only within its authorization; source tests alone prove no runtime
    support. This change installs, launches and activates nothing.
 
+The workspace's **Next move** now reads `/api/projects/{id}/go-context`, a
+journal-free observer over the same Go resolver. `/api/go-context` returns every
+configured Project and a summary of those same rows. Missing repositories and
+unreadable directory, stat or document evidence stay visible with their exact
+error and source; they cannot produce a ready verdict. Claims and Sessions are
+canonical observations with source/time, not proof of a running provider.
+Reading either route starts no work and changes no Project, queue or ownership.
+
+Source-only QA for this operator view:
+
+1. Run `pnpm exec vitest run tests/go-context.test.ts tests/go-context-route.test.ts tests/activity-no-record-commands.test.ts tests/dispatch.test.ts apps/dashboard/lib/workspace-go.test.ts`.
+   The real GET-to-CLI fixture checks every database table, workspace file
+   (including WAL/new files), repository/Git state and worktree inventory before
+   and after success and refusal. Separate adapter spies check read-only SQLite,
+   no writable adapter/FS effects, and no provider/process calls inside the
+   observer; the dashboard uses its existing CLI subprocess transport. Fixtures retain
+   exact discovery failures and configured Projects rather than omitting them.
+2. Build the CLI and dashboard, then run
+   `pnpm exec playwright test tests/e2e/workspace-go.spec.ts`. It serves an isolated
+   local dashboard with fixture responses. Select a Project, select another Plan
+   or Action, and use **Read again**. The selected record never changes Go's work;
+   an error labels the last good read, and malformed replies are refused. Keyboard
+   and phone-width behavior remain covered. This is local fixture proof.
+3. After a separately authorized adoption/live-proof assignment, open the deployed
+   workspace, select a Project and inspect its Go-context GET response. Compare the
+   selected Plan/Action, blocker/remedy and source/time with canonical evidence.
+   Inspect the portfolio route for configured Projects that cannot be read. Record
+   the adopted revision and actual reachability separately; this source change
+   installs, restarts, dispatches and activates nothing.
+
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
 launcher or an `arcadia go` prefix. Install the protected broker from a clean,
 reviewed Arcadia commit as an explicit operator action:
