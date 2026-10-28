@@ -44,7 +44,7 @@ describe("plans server", () => {
     docs.readProjectPlans.mockResolvedValue({ repoRoot: "/repos/ppn", project: null, plans: [row("pilot"), row("other")] });
     docs.readPlanProgress.mockResolvedValue({ schema: "s", actions: [{ key: "ppn/a", status: "open", dependsOn: [], title: "A" }] });
     const detail = await loadPlanDetail("ppn", "pilot");
-    expect(docs.readPlanProgress).toHaveBeenCalledWith("/repos/ppn", "ppn", "pilot");
+    expect(docs.readPlanProgress).toHaveBeenCalledWith("/repos/ppn", "ppn", "pilot", undefined);
     expect(detail.project).toEqual({ id: "p1", slug: "ppn", name: "Private Practice Now" });
     expect(detail.plan?.slug).toBe("pilot");
     expect(detail.progress.actions).toHaveLength(1);

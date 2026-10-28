@@ -45,6 +45,26 @@ describe("fingerprint cache", () => {
     expect(t.load).toHaveBeenCalledTimes(1);
   });
 
+  it("a fresh read checks before answering, even within checkAfterMs", async () => {
+    const t = setup();
+    await t.cache.get("k");
+    t.change("b");
+    expect(await t.cache.get("k", { fresh: true })).toBe("k@b");
+  });
+
+  it("a read after invalidate never joins a rebuild begun before it", async () => {
+    const t = setup();
+    let release!: () => void;
+    t.load.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve("old"); }));
+    const early = t.cache.get("k");
+    await vi.waitFor(() => expect(t.load).toHaveBeenCalledTimes(1));
+    t.cache.invalidate("k");
+    const late = t.cache.get("k");
+    release();
+    expect(await early).toBe("old");
+    expect(await late).toBe("k@a");
+  });
+
   it("waits for the check once a copy is older than maxStaleMs", async () => {
     const t = setup();
     await t.cache.get("k");

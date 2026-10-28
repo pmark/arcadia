@@ -23,8 +23,14 @@ export function createReadCache({ fetcher = fetchJson, ttlMs = 5_000, maxEntries
     while (entries.size > maxEntries) entries.delete(entries.keys().next().value as string);
   }
 
-  function start(url: string): Promise<unknown> {
-    const pending: Promise<unknown> = fetcher(url).then(data => { store(url, data); return data; }).finally(() => {
+  function start(url: string, force = false): Promise<unknown> {
+    // A forced read asks the server to check its sources too (`fresh=1`); it is stored under the plain URL.
+    const target = force ? `${url}${url.includes("?") ? "&" : "?"}fresh=1` : url;
+    const pending: Promise<unknown> = fetcher(target).then(data => {
+      // Only the latest fetch for a URL may store: an older one finishing late must not overwrite a Refresh.
+      if (inflight.get(url) === pending) store(url, data);
+      return data;
+    }).finally(() => {
       if (inflight.get(url) === pending) inflight.delete(url);
     });
     inflight.set(url, pending);
@@ -34,7 +40,8 @@ export function createReadCache({ fetcher = fetchJson, ttlMs = 5_000, maxEntries
   function load<T>(url: string, { force = false }: { force?: boolean } = {}): Promise<T> {
     const entry = entries.get(url);
     if (!force && entry && now() - entry.at < ttlMs) return Promise.resolve(entry.data as T);
-    return (inflight.get(url) ?? start(url)) as Promise<T>;
+    // A forced read never joins a fetch that may have started before the change it is looking for.
+    return (force ? start(url, true) : inflight.get(url) ?? start(url)) as Promise<T>;
   }
 
   return {

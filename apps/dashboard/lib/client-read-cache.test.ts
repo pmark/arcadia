@@ -57,6 +57,19 @@ describe("createReadCache", () => {
     expect(cache.peek("/a")).toBe("two");
   });
 
+  it("force asks the server for a fresh read and never joins an earlier fetch", async () => {
+    const early = deferred<string>();
+    const fetcher = vi.fn<(u: string) => Promise<string>>().mockReturnValueOnce(early.promise).mockResolvedValueOnce("new");
+    const cache = createReadCache({ fetcher });
+    const first = cache.load("/a?x=1");
+    expect(await cache.load("/a?x=1", { force: true })).toBe("new");
+    expect(fetcher).toHaveBeenLastCalledWith("/a?x=1&fresh=1");
+    early.resolve("old");
+    await first;
+    expect(cache.peek("/a?x=1")).toBe("new");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("evicts the oldest entry past the bound", async () => {
     const cache = createReadCache({ fetcher: async (u) => u, maxEntries: 2 });
     await cache.load("/a");

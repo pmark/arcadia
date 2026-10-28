@@ -35,14 +35,14 @@ function memo<T>(discovered: DiscoveryResult, key: string, build: () => T): T {
 }
 
 /** What `arcadia plans --repo <repo> --project <slug> --json` returns as `data`. */
-export async function readProjectPlans(repoPath: string, projectSlug: string): Promise<ProjectPlansResponse> {
-  const discovered = await discoveries.get(repoPath);
+export async function readProjectPlans(repoPath: string, projectSlug: string, fresh = false): Promise<ProjectPlansResponse> {
+  const discovered = await discoveries.get(repoPath, { fresh });
   return memo(discovered, `plans:${projectSlug}`, () => runPlansCommand({ repo: repoPath, project: projectSlug, discovered }).data);
 }
 
 /** What `arcadia plans --repo <repo> --project <slug> --plan <plan> --all --json` returns as `data`. */
-export async function readPlanProgress(repoPath: string, projectSlug: string, planSlug: string): Promise<PlanProgressData> {
-  const discovered = await discoveries.get(repoPath);
+export async function readPlanProgress(repoPath: string, projectSlug: string, planSlug: string, fresh = false): Promise<PlanProgressData> {
+  const discovered = await discoveries.get(repoPath, { fresh });
   return memo(discovered, `plan:${projectSlug}:${planSlug}`, () =>
     runPlanProgressCommand({ repo: repoPath, project: projectSlug, plan: planSlug, discovered }).data);
 }

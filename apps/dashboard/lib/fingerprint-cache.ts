@@ -10,6 +10,7 @@
  *   so an idle page never reopens on an old record.
  * - Concurrent callers for one key share one rebuild; failures are never cached, and a failed rebuild leaves the
  *   previous copy for the next call to retry.
+ * - `get(key, { fresh: true })` (the operator's Refresh) always checks before answering.
  * - `invalidate(key?)` drops one key or all of them, e.g. after the dashboard itself writes.
  * - Entries beyond `maxEntries` are evicted least recently used first.
  *
@@ -17,7 +18,7 @@
  * instead of each starting cold.
  */
 export interface FingerprintCache<K, T> {
-  get(key: K): Promise<T>;
+  get(key: K, options?: { fresh?: boolean }): Promise<T>;
   invalidate(key?: K): void;
 }
 
@@ -105,8 +106,9 @@ export function createFingerprintCache<K, T>(options: FingerprintCacheOptions<K,
   };
 
   return {
-    async get(key) {
+    async get(key, { fresh = false } = {}) {
       const id = options.keyOf(key);
+      if (fresh) return check(key, id);
       const entry = store.entries.get(id) as Entry<T> | undefined;
       const age = entry ? now() - entry.checkedAt : Infinity;
       if (entry && age < options.checkAfterMs) {
@@ -127,8 +129,14 @@ export function createFingerprintCache<K, T>(options: FingerprintCacheOptions<K,
     },
     invalidate(key) {
       store.generation += 1;
-      if (key === undefined) store.entries.clear();
-      else store.entries.delete(options.keyOf(key));
+      // A rebuild begun before this must not be joined by a later read either.
+      if (key === undefined) {
+        store.entries.clear();
+        store.pending.clear();
+      } else {
+        store.entries.delete(options.keyOf(key));
+        store.pending.delete(options.keyOf(key));
+      }
     }
   };
 }

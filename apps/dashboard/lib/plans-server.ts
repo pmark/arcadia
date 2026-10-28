@@ -1,7 +1,7 @@
 import { resolveReadyWorkspace } from "../../../src/cli/workspace";
 import { withDatabase } from "../../../src/db/connection";
 import { getProjectBySlug, getProjectMetadata, listProjects } from "../../../src/db/repositories";
-import { ArcadiaError } from "../../../src/cli/errors";
+import type { ArcadiaError } from "../../../src/cli/errors";
 import { ArcadiaCliError } from "./arcadia-cli";
 import type { AllPlansResponse, PlanDetailResponse, PlanSummariesResponse } from "./plans-types";
 import { checkPlanSummaries, isPlanSummary, readPlanSummary } from "../../../src/docs/planSummaries";
@@ -21,7 +21,7 @@ export function cliMessage(error: unknown): string {
  * (repo-docs), and a Project that fails says why on its own row instead of
  * blanking the page.
  */
-export async function loadAllPlans(): Promise<AllPlansResponse> {
+export async function loadAllPlans(options: { fresh?: boolean } = {}): Promise<AllPlansResponse> {
   const { workspacePath } = resolveReadyWorkspace();
   const projects = withDatabase(workspacePath, (db) =>
     listProjects(db).map((project) => ({ project, repoPath: getProjectMetadata(db, project.id)?.repo_path ?? null }))
@@ -30,7 +30,7 @@ export async function loadAllPlans(): Promise<AllPlansResponse> {
       const base = { id: project.id, slug: project.slug, name: project.name, status: project.status };
       if (!repoPath) return { ...base, activePlan: null, plans: null, error: "No repository path is configured, so its plans cannot be read." };
       try {
-        const result = await readProjectPlans(repoPath, project.slug);
+        const result = await readProjectPlans(repoPath, project.slug, options.fresh);
         return { ...base, activePlan: result.project?.activePlan ?? null, plans: result.plans, error: null };
       } catch (error) {
         return { ...base, activePlan: null, plans: null, error: cliMessage(error) };
@@ -43,7 +43,7 @@ export async function loadAllPlans(): Promise<AllPlansResponse> {
 export class PlanNotFound extends Error {}
 
 /** One Plan and every Action in it. Throws PlanNotFound for an unknown Project. */
-export async function loadPlanDetail(projectSlug: string, planSlug: string): Promise<PlanDetailResponse> {
+export async function loadPlanDetail(projectSlug: string, planSlug: string, options: { fresh?: boolean } = {}): Promise<PlanDetailResponse> {
   const { workspacePath } = resolveReadyWorkspace();
   const found = withDatabase(workspacePath, (db) => {
     const project = getProjectBySlug(db, projectSlug);
@@ -54,10 +54,11 @@ export async function loadPlanDetail(projectSlug: string, planSlug: string): Pro
   const { project, repoPath } = found;
   let progress;
   try {
-    progress = await readPlanProgress(repoPath, project.slug, planSlug);
+    progress = await readPlanProgress(repoPath, project.slug, planSlug, options.fresh);
   } catch (error) {
     // `arcadia plans --plan` refuses an unknown or ungoverned Plan slug with a validation error.
-    if (error instanceof ArcadiaError && error.code === "VALIDATION_ERROR") throw new PlanNotFound(error.message);
+    // Checked by shape, not `instanceof`, in case a route bundle carries its own copy of the error class.
+    if (error instanceof Error && (error as Partial<ArcadiaError>).code === "VALIDATION_ERROR") throw new PlanNotFound(error.message);
     throw error;
   }
   const list = await readProjectPlans(repoPath, project.slug).catch(() => null);
@@ -72,7 +73,7 @@ export async function loadPlanDetail(projectSlug: string, planSlug: string): Pro
  * One Project's Plan summaries with their freshness, read from its repository's generated namespace. Read-only and
  * model-free; summaries are derived reading aids that never govern (Decision 0004).
  */
-export async function loadPlanSummaries(projectSlug: string): Promise<PlanSummariesResponse> {
+export async function loadPlanSummaries(projectSlug: string, options: { fresh?: boolean } = {}): Promise<PlanSummariesResponse> {
   const { workspacePath } = resolveReadyWorkspace();
   const found = withDatabase(workspacePath, (db) => {
     const project = getProjectBySlug(db, projectSlug);
@@ -80,7 +81,7 @@ export async function loadPlanSummaries(projectSlug: string): Promise<PlanSummar
   });
   if (!found) throw new PlanNotFound(`No Project "${projectSlug}" is in this workspace.`);
   if (!found.repoPath) throw new PlanNotFound(`Project "${projectSlug}" has no repository path, so its summaries cannot be read.`);
-  const plans = await summaries.get(found.repoPath);
+  const plans = await summaries.get(found.repoPath, options);
   return { project: found.slug, generatedAt: new Date().toISOString(), plans };
 }
 
