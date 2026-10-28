@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { isAbsolute, win32 } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { PROJECT_STATUSES } from "../domain/constants.js";
@@ -333,7 +333,7 @@ function stringList(value: unknown, field: string): string[] { if (value === und
 // or the machine changes, so they are refused at intake rather than recorded.
 function referenceList(value: unknown, field: string): string[] {
   const references = stringList(value, field);
-  const absolute = references.filter((reference) => isAbsolute(reference) || reference.startsWith("~/"));
+  const absolute = references.filter((reference) => isAbsolute(reference) || win32.isAbsolute(reference) || /^~([^/\\]*)([/\\]|$)/.test(reference));
   if (absolute.length > 0) throw validationError(`Agent Ask ${field} must not contain absolute filesystem paths; cite a repository-relative path, a URL or a governed id instead.`, { references: absolute });
   return references;
 }
