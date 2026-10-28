@@ -37,7 +37,8 @@ function memo<T>(discovered: DiscoveryResult, key: string, build: () => T): T {
 /** What `arcadia plans --repo <repo> --project <slug> --json` returns as `data`. */
 export async function readProjectPlans(repoPath: string, projectSlug: string, fresh = false): Promise<ProjectPlansResponse> {
   const discovered = await discoveries.get(repoPath, { fresh });
-  return memo(discovered, `plans:${projectSlug}`, () => runPlansCommand({ repo: repoPath, project: projectSlug, discovered }).data);
+  // Not memoised: it re-reads each ungoverned Plan and drops one it cannot read, so a transient failure must not stick.
+  return runPlansCommand({ repo: repoPath, project: projectSlug, discovered }).data;
 }
 
 /** What `arcadia plans --repo <repo> --project <slug> --plan <plan> --all --json` returns as `data`. */
@@ -62,7 +63,7 @@ export function summariesFingerprint(repoPath: string): string {
   const stamps = files.map((name) => {
     try {
       const stats = statSync(path.join(dir, name));
-      return `${name}:${stats.size}:${stats.mtimeMs}`;
+      return `${name}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
     } catch {
       return `${name}:!`;
     }

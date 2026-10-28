@@ -96,7 +96,7 @@ export function discoverDocs(repoRoot: string): DiscoveryResult {
 }
 
 /**
- * A cheap fingerprint of every Markdown file `discoverDocs` would read: each path, size and modification time,
+ * A cheap fingerprint of every Markdown file `discoverDocs` would read: each path, size, modification and change time,
  * found by the same walk without reading or parsing any file (about a tenth of a full discovery). An unchanged
  * fingerprint means a cached discovery of this root is still what a new walk would find, barring a same-size
  * rewrite within the filesystem's timestamp resolution.
@@ -123,7 +123,8 @@ export function docsFingerprint(repoRoot: string): string {
         continue;
       }
       if (stats.isDirectory()) walk(absolute, depth + 1);
-      else if (entry.toLowerCase().endsWith(".md")) hash.update(`${absolute}\0${stats.size}\0${stats.mtimeMs}\n`);
+      // ctime also moves on a permission change or an mtime-preserving rewrite, which mtime alone would miss.
+      else if (entry.toLowerCase().endsWith(".md")) hash.update(`${absolute}\0${stats.size}\0${stats.mtimeMs}\0${stats.ctimeMs}\n`);
     }
   };
   walk(path.resolve(repoRoot), 0);

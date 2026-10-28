@@ -16,8 +16,8 @@ export function useRead<T>(url: string | null, revision: number): ReadState<T> {
     clientReadCache.load<T>(url, { force }).then(data => {
       if (active) setResult({ url, revision, state: { kind: "ready", data } });
     }).catch((error: unknown) => {
-      // A failed background revalidation keeps the cached view; only a first load shows the error.
-      if (active && clientReadCache.peek(url) === undefined) setResult({ url, revision, state: { kind: "error", message: error instanceof Error ? error.message : String(error) } });
+      // A failed background revalidation keeps the cached view; a first load or an explicit Refresh shows the error.
+      if (active && (force || clientReadCache.peek(url) === undefined)) setResult({ url, revision, state: { kind: "error", message: error instanceof Error ? error.message : String(error) } });
     });
     return () => { active = false; };
   }, [url, revision]);

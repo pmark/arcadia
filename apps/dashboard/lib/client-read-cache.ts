@@ -6,8 +6,11 @@ export type ReadCacheOptions = {
   now?: () => number;
 };
 
+const READ_TIMEOUT_MS = 60_000;
+
 async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url, { cache: "no-store" });
+  // Bounded, so a stalled read cannot hold the shared in-flight slot that later loads join.
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
   const body = await response.json() as { error?: string };
   if (!response.ok) throw new Error(body.error ?? "Arcadia could not read this context.");
   return body;

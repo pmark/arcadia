@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -199,5 +199,9 @@ describe("arcadia plans", () => {
     expect(touched).not.toBe(before);
     writeFileSync(path.join(root, "docs/notes.md"), "a new Markdown file may become managed");
     expect(docsFingerprint(root)).not.toBe(touched);
+    // A permission change keeps size and mtime but moves ctime, so a file that becomes readable again is re-read.
+    const added = docsFingerprint(root);
+    chmodSync(plan, 0o600);
+    expect(docsFingerprint(root)).not.toBe(added);
   });
 });
