@@ -270,3 +270,77 @@ move is preserve the candidate, independently review its exact head, integrate
 main only through the authorized serialized path, and prepare the two concrete
 operator packages above. Stop before any installation/schema adoption or live
 browser launch lacking separately valid authority.
+
+## Overnight repair batch 1 — PR #1851
+
+**Batch 1 of three newly approved overnight batches**, not a reset of the two
+original consumed batches. Ellis remains sole implementer, 45-minute source
+budget, configured defaults. Operator turn `01a180f5-a542-7051-8d83-ef822f2593b1`
+began `2026-10-28T05:22:24Z`; overnight authority expires
+`2026-10-28T13:22:24Z` (06:22:24 PDT). Canonical approval:
+`agentask_9009a2359ba33b1c9a`, settlement `asksettle_a1064f6586734244bb`,
+governed-only commit `519c2fb46855d7301c20f395375bb77f67b7af5b`.
+Starting source head: `305da6253ab95550c84b9293fc117c9371091759`.
+Parent's separate approval/handoff/Log files are outside this writer's custody.
+
+- **R1-F1 P1:** [independent R1](https://github.com/pmark/arcadia/pull/1851#issuecomment-6461406470)
+  reproduced a second Session when an identical Continue request/fingerprint
+  was replayed after `incomplete_resumable` reconciliation. The protected
+  launcher now retains the existing canonical operator-authorization
+  request-to-Session binding after exit. It recovers an own live lease but
+  refuses a consumed terminal request with the original Session ID. Guards
+  repeat inside candidate/claim write transactions and the locked Session
+  insert; no schema, request ledger or dispatcher was added. A separately
+  previewed and confirmed fresh request can still resume the preserved candidate.
+  Real sequential and interleaved regressions prove unchanged Go/fingerprint,
+  one Session, unchanged claim/generation, one candidate and its partial commit.
+  Self-review also closed the related alias race: Continue cannot report a
+  different request's live lease as its own result without a durable binding.
+  That refusal is repeated at every reused-lease entry, including race recovery.
+  Non-Continue surfaces retain ordinary authorized reuse. A real foreign-lease
+  regression proves refusal, later fresh ownership and recovery of its own lease.
+- **CI defect:** `next dev` overwrote the default `.next` used by other
+  production fixtures. The new browser scenario now uses existing `next start`.
+  Its earlier workspace isolation did **not** isolate build output; this
+  supersedes that earlier isolation claim. CI evidence: run `40636867350`,
+  job `122645741945`, five failures / 32 passes. No type/build guard is weakened.
+
+Retrieval: targeted Notes replay/reconciliation/browser/dist and canonical-path
+searches; parent's pinned lesson receipt
+`/private/tmp/go-continue-repair-lessons.json` returned zero project matches for
+“Continue replay reconciled Next dev”. First real proof failed because the
+guard compared lexical `/var/...` with stored canonical `/private/var/...`;
+`/private/tmp/go-continue-overnight-b1-launch.log` is retained. Using the existing
+`canonicalPath` identity fixed the guard; the regression was not weakened.
+
+| Check | Result / raw receipt |
+| --- | --- |
+| Focused real replay/races | 5/5, exit 0; `/private/tmp/go-continue-overnight-b1-launch2.log` |
+| Final full guarded-launch describe | 45/45, 17 unrelated skipped, exit 0; `/private/tmp/go-continue-overnight-b1-launch-final.log` |
+| Exact unchanged claim/generation proof | 2/2, 59 unrelated skipped, exit 0; `/private/tmp/go-continue-overnight-b1-claim-proof.log` |
+| Wrapper consumed-request refusal, no retry | 13/13, exit 0; `/private/tmp/go-continue-overnight-b1-route.log` |
+| Final touched eslint / core types | exit 0; `/private/tmp/go-continue-overnight-b1-final-lint2.log`, `/private/tmp/go-continue-overnight-b1-types.log` |
+| Final package/Discord artifacts (includes core tsc) | exit 0; `/private/tmp/go-continue-overnight-b1-artifacts-final.log` |
+| Final production Next build | exit 0; `/private/tmp/go-continue-overnight-b1-next-build-final.log` |
+| Final sequential production workspace browsers | 6/6, exit 0, 28.8s; `/private/tmp/go-continue-overnight-b1-workspace-e2e-final.log` |
+
+Final browser command: `pnpm exec playwright test tests/e2e/workspace-go.spec.ts tests/e2e/workspace-feed.spec.ts tests/e2e/workspace-shell.spec.ts tests/e2e/workspace-summaries.spec.ts --workers=1`.
+All four files ran sequentially against the same completed production build;
+no dev process mutated `.next`. These are fixture receipts, not live delivery.
+
+Parent attempted the already-approved obsolete `r2` rejection before the source
+candidate was clean. Canonical settlement refused, nothing applied, and source
+was preserved. Commit/release source, fresh-preview, then retry on the clean
+candidate is the supported remedy. The preview retained the 7,496-byte original
+Ask and proposed no Project/queue change. Ordinary approved candidate settlement
+is supported; generated Plan-target operator actions still require the shared
+runner. No bypass or additional source allowance follows this refusal.
+
+No live DB operation, installation, schema adoption, restart, provider/credential
+operation, Production START, external message, commit or push was performed by
+Ellis. Rowan owns later permitted adoption and independent exact-delta R2 review.
+All owned batch-1 handles are terminal. Ellis releases source-writer custody to
+Rowan for preservation, independent exact-head R2 and required remote checks.
+Overnight batch 1 is consumed; two newly approved batches remain, without
+resetting the original two. Action completion and live delivery remain unproved.
+The original release above remains historical evidence.

@@ -49,7 +49,7 @@ import { getResumableLeaseHandoff, getSessionContinuation, restoreLeaseHandoffIf
 import { getSessionRepair, releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
-import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
+import { assertOperatorLaunchRequestAvailable, mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
 export interface GuardedLaunchInput {
   db: Database.Database;
@@ -234,6 +234,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   const repoRoot = path.resolve(input.repoRoot);
+  // The canonical authorization survives terminal reconciliation. Only this
+  // request's still-leased Session may be returned; no post-exit replay mints
+  // a second principal, even if Go and its preview are unchanged.
+  const requestRepository = canonicalPath(repoRoot);
+  assertOperatorLaunchRequestAvailable(input.db, requestRepository, input.requestId, getRepositoryLease(input.db, repoRoot)?.id);
+  const assertFreshRequest = () => assertOperatorLaunchRequestAvailable(input.db, requestRepository, input.requestId);
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
   const registry = loadModelTierRegistry(input.workspace);
@@ -517,6 +523,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
     try {
       const decision = writeTransaction(input.db, () => {
+        assertFreshRequest();
         const evaluated = evaluateDraftOnlyCandidate(input.db, lookup);
         if (evaluated.kind === "refuse" && evaluated.receipt) recordDraftRecoveryReceipt(input.db, evaluated.receipt, now);
         // Refreshed at the same path, never a second claim. The claim is not
@@ -590,17 +597,21 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       effort,
       command: buildAgentLaunchCommand(agent, resumableStaleClaim.session.worktree_path, model, effort)
     };
-    claim.generation = writeTransaction(input.db, () => reserveAgentWorktree(input.db, {
-      repositoryPath: repoRoot,
-      worktreePath: nextWorktree.path,
-      branch: nextWorktree.branch,
-      now,
-      project: preview.projectSlug,
-      actionId: preview.actionId!
-    }).claim_generation);
+    claim.generation = writeTransaction(input.db, () => {
+      assertFreshRequest();
+      return reserveAgentWorktree(input.db, {
+        repositoryPath: repoRoot,
+        worktreePath: nextWorktree.path,
+        branch: nextWorktree.branch,
+        now,
+        project: preview.projectSlug,
+        actionId: preview.actionId!
+      }).claim_generation;
+    });
   } else {
     try {
       nextWorktree = writeTransaction(input.db, () => {
+        assertFreshRequest();
         const created = prepareAgentWorktree({
           agent,
           actionId: preview.actionId!,
@@ -709,7 +720,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       now,
       tmux,
       ...(input.repair ? { repair: { requestId: input.repair.requestId } } : {}),
-      testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
+      testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert },
+      assertLaunchRequest: assertFreshRequest
     });
     if (input.reuseOwnLeaseOnly && admission) {
       // Enrollment only: bind the lease to this request's admission at once,
@@ -962,6 +974,9 @@ function reusedLease(
   now: Date,
   beforeStart?: () => void
 ): GuardedLaunchResult {
+  // Also fences a lease that won the race after the initial read. A Continue
+  // response may return only a principal its durable request actually owns.
+  assertOperatorLaunchRequestAvailable(input.db, canonicalPath(input.repoRoot), input.requestId, lease.id);
   // A lease prepared before a crash may have no development attempt yet (the
   // launcher allocates it only after the admission cutoff). After any own
   // admission commit, and before the process may start, bind the requirement's

@@ -38,6 +38,17 @@ async function preview() {
 }
 
 describe("workspace Continue reuses the protected one-Action launch", () => {
+  it("preserves a consumed-request refusal and original Session receipt without retrying", async () => {
+    const shown = await preview();
+    adapters.launch.mockRejectedValueOnce(new ArcadiaCliError("This request already belongs to a Session", 409,
+      { conflict: true, code: "operator_launch_request_consumed", sessionId: "original-terminal-session" }));
+    const reply = await post({ ...shown, plan: "one-plan", action: "one-action", confirmOperatorLaunch: true });
+    expect(reply.status).toBe(409);
+    expect(await reply.json()).toMatchObject({ details: { freshRead: true,
+      launch: { code: "operator_launch_request_consumed", sessionId: "original-terminal-session" } } });
+    expect(adapters.launch).toHaveBeenCalledTimes(1);
+    expect(adapters.launch.mock.calls[0][1]).toBe(shown.requestId);
+  });
   it("previews owner/provider/limits with a stable identity across tabs and timestamps, without launching", async () => {
     const [a, b] = await Promise.all([preview(), preview()]);
     expect(a.requestId).toBe(b.requestId);

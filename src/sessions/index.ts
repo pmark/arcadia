@@ -549,6 +549,9 @@ export function prepareSession(input: {
    * in the same transaction as the Session insert.
    */
   repair?: { requestId: string };
+  /** Guarded launcher rechecks durable request consumption under the Session
+   * insert's write lock, after every earlier observation and claim check. */
+  assertLaunchRequest?: () => void;
   testHooks?: {
     /** Deterministic fault injection between the lease/handoff/competing-run checks and the insert, inside the same transaction. */
     afterChecksBeforeInsert?: () => void;
@@ -648,6 +651,7 @@ export function prepareSession(input: {
       });
     }
     input.testHooks?.afterChecksBeforeInsert?.();
+    input.assertLaunchRequest?.();
     const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
     const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
     const tmuxName = `${MANAGED_SESSION_TMUX_PREFIX}${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);

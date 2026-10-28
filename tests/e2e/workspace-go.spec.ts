@@ -44,8 +44,9 @@ test("workspace Continue previews one Action, requires confirmation and shows ch
   const repo = path.resolve(import.meta.dirname, "../..");
   const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-continue-"));
   const port = await freePort(), url = `http://127.0.0.1:${port}`;
-  // Isolated source UI proof; type/build checks remain separate and are never skipped.
-  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "dev", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
+  // Share the immutable production build with the other workspace fixtures.
+  // A dev server would overwrite .next while their `next start` servers use it.
+  const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
   let writes = 0, gated = false, drift = true;
   const preview = { requestId: "workspace-continue:stable-fixture", resolutionId: "fixture-resolution", previewFingerprint: "fixture-preview", actionDocRef: "plan/first-website#review-phone", ready: true, prerequisites: [],
     selection: { provider: "codex", model: "configured-model", effort: "configured-effort" }, target: { projectId: "garden", plan: "first-website", action: "review-phone" }, owner: "agent",
