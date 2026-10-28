@@ -21,8 +21,8 @@ Continue authorized work unless the request exposes a genuine blocker.
 
 ### Mandatory retrieval — before the operation
 
-At start read `CONSTITUTION.md`, `PROJECT.md` and the active Plan's exact current Action.
-Before broad discovery read `.arcadia/AGENT_CONTEXT_POLICY.md`,
+At start read `CONSTITUTION.md`, `PROJECT.md` frontmatter and active Plan's exact current Action; Current State on demand.
+Before discovery read `.arcadia/AGENT_CONTEXT_POLICY.md`,
 `.arcadia/repo-context.md` and `.arcadia/context-policy.json`; honor denied paths
 and bounded searches. For continuation resolve `active_plan` and `current_action`;
 never choose an unordered backlog or infer authority from an Issue. An Action exists
