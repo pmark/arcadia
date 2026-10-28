@@ -336,7 +336,12 @@ describe("compact Way instruction delivery", () => {
     for (const entry of entries) {
       const triggers = entry.trigger.split(",").map((trigger) => trigger.trim()).filter(Boolean);
       expect(triggers.length, entry.id).toBeGreaterThan(0);
-      for (const trigger of triggers) expect(renderGuidanceRetrieval(root, undefined, trigger).join("\n"), `${entry.id}: ${trigger}`).toContain(`Read ${entry.path}:`);
+      for (const trigger of triggers) {
+        const rendered = renderGuidanceRetrieval(root, undefined, trigger).join("\n");
+        expect(rendered, `${entry.id}: ${trigger}`).toContain(`Read ${entry.path}:`);
+        for (const other of entries.filter((item) => !["continuation", "learning", "working-copy"].includes(item.id) && !item.trigger.split(",").some((t) => new RegExp(`(?:^|\\W)${t.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\W)`, "i").test(trigger))))
+          expect(rendered, `${entry.id}: ${trigger} must not render ${other.id}`).not.toContain(`Read ${other.path}:`);
+      }
     }
   });
 
