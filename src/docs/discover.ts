@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { isManagedDoc, parseDoc, reportCrossPlanDependencyCycles } from "./parse.js";
@@ -20,6 +21,11 @@ const SKIP_DIRECTORIES = new Set([
 ]);
 
 const MAX_DEPTH = 6;
+
+/** Hidden entries other than `.arcadia`, and heavy build directories, are never walked or read. */
+function skipsEntry(entry: string): boolean {
+  return (entry.startsWith(".") && entry !== ".arcadia") || SKIP_DIRECTORIES.has(entry);
+}
 
 /**
  * Only these records can govern which Action Arcadia dispatches. Supporting
@@ -89,6 +95,41 @@ export function discoverDocs(repoRoot: string): DiscoveryResult {
   return { docs: [...found.docs], errors: [...found.errors], rejected: [...found.rejected], ioErrors: [...(found.ioErrors ?? [])] };
 }
 
+/**
+ * A cheap fingerprint of every Markdown file `discoverDocs` would read: each path, size and modification time,
+ * found by the same walk without reading or parsing any file (about a tenth of a full discovery). An unchanged
+ * fingerprint means a cached discovery of this root is still what a new walk would find, barring a same-size
+ * rewrite within the filesystem's timestamp resolution.
+ */
+export function docsFingerprint(repoRoot: string): string {
+  const hash = createHash("sha1");
+  const walk = (directory: string, depth: number): void => {
+    if (depth > MAX_DEPTH) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(directory).sort();
+    } catch {
+      hash.update(`!${directory}\n`);
+      return;
+    }
+    for (const entry of entries) {
+      if (skipsEntry(entry)) continue;
+      const absolute = path.join(directory, entry);
+      let stats;
+      try {
+        stats = statSync(absolute);
+      } catch {
+        hash.update(`!${absolute}\n`);
+        continue;
+      }
+      if (stats.isDirectory()) walk(absolute, depth + 1);
+      else if (entry.toLowerCase().endsWith(".md")) hash.update(`${absolute}\0${stats.size}\0${stats.mtimeMs}\n`);
+    }
+  };
+  walk(path.resolve(repoRoot), 0);
+  return hash.digest("hex");
+}
+
 function walkDocs(repoRoot: string): DiscoveryResult {
   const docs: ArcadiaDoc[] = [];
   const errors: DocValidationError[] = [];
@@ -114,10 +155,7 @@ function walkDocs(repoRoot: string): DiscoveryResult {
     }
 
     for (const entry of entries) {
-      if (entry.startsWith(".") && entry !== ".arcadia") {
-        continue;
-      }
-      if (SKIP_DIRECTORIES.has(entry)) continue;
+      if (skipsEntry(entry)) continue;
       const absolute = path.join(directory, entry);
 
       let stats;
