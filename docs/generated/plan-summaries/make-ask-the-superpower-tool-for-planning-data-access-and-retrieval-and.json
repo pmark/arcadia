@@ -1,0 +1,44 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and",
+  "source": "docs/plans/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and.md",
+  "source_fingerprint": "c8f92e53df7f1276",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Make Ask the single entry point for requests",
+  "purpose": "Ask should be the single entry point for planning, data retrieval and reporting. Anything the operator asks is captured, routed to the right Project, turned into governed work or an answer, and stays traceable afterwards, so no Action is lost after an Ask.",
+  "serves": "The Project outcome of the operator stating what should happen while Arcadia routes and tracks the work.",
+  "done_when": "Each request can be followed from its capture to every record it produced, and simple text-change requests become settled actions without hand-written requests.",
+  "actions": [
+    {
+      "id": "align-ask-superpower-outcome",
+      "title": "Agree the outcome for Ask with the operator",
+      "why": "Sets clear limits on what Ask does, so its planning, retrieval and reporting roles are not guessed.",
+      "done_when": "A recorded outcome for Ask covers planning, data retrieval and reporting, is ratified by the operator, and lists which requests become work and which return answers.",
+      "source_fingerprint": "91d81f33bd6a41a0"
+    },
+    {
+      "id": "trace-every-ask-to-its-outcome",
+      "title": "Trace each request to what it produced",
+      "why": "Ensures no Action or other record is lost after an Ask, because each result points back to its request.",
+      "done_when": "Every record created from an Ask carries its capture ID, and one command prints the full trail from request to results.",
+      "source_fingerprint": "50640fe97787f98d"
+    },
+    {
+      "id": "route-execution-shaped-asks-to-planning",
+      "title": "Treat action requests as work, not ideas",
+      "why": "A stray hedge word can wrongly shelve a clear request as an idea.",
+      "done_when": "A regression test classifies a known execution request as work for its Project, and hedge words change the outcome only when they govern the request itself.",
+      "source_fingerprint": "53059d0615388ec0"
+    },
+    {
+      "id": "copy-edit-ask-fast-path",
+      "title": "Turn plain text-change requests into settled actions",
+      "why": "Lets the operator ask for a simple website text change in plain words, without writing a structured request.",
+      "done_when": "A plain request to change a page's text produces a settled, queued Action, and an ambiguous request is not settled automatically.",
+      "source_fingerprint": "cbfabef76cc2e6e3"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "i-can-see-every-project-s-plans-and-actions-understand-what-is-selected-and",
+  "source": "docs/plans/i-can-see-every-project-s-plans-and-actions-understand-what-is-selected-and.md",
+  "source_fingerprint": "0b41f5b238633738",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "See every project's plans and actions in one tree",
+  "purpose": "The operator should see every Project's Plans and Actions in one tree, with what is selected, what is actually running and what needs the operator. All of it comes from existing records.",
+  "serves": "The Project outcome of the operator understanding the portfolio without holding it in mind.",
+  "done_when": "The tree shows each Project, Plan and Action with selected, running and needs-operator states labelled, and the operator can tell what is next without opening a session.",
+  "actions": [
+    {
+      "id": "define-flight-deck-tree-data-contract",
+      "title": "Define a read-only tree of projects, plans and actions",
+      "why": "One read-only shape lets the tree show status without creating a new way to change work.",
+      "done_when": "A builder derives the tree only from existing records and marks the selected Action separately from whether it is running.",
+      "source_fingerprint": "8dd27144f7fa5715"
+    },
+    {
+      "id": "build-flight-deck-execution-tree",
+      "title": "Show the expandable tree on the flight deck",
+      "why": "Puts each Action's status where the operator already looks for the portfolio.",
+      "done_when": "The flight deck page shows an expandable tree with labelled selected, running and needs-operator states, links to each Action's record and the last refresh time.",
+      "source_fingerprint": "20e017505ae5466c"
+    },
+    {
+      "id": "validate-flight-deck-tree-on-real-state",
+      "title": "Check the tree against real projects",
+      "why": "A tree that looks right on test data may still mislead on live work.",
+      "done_when": "Screenshots of the live tree show simultaneous running sessions, a selected but blocked Action and finished work awaiting integration, each labelled correctly, and every mismatch found is fixed.",
+      "source_fingerprint": "8f3056b1a7e55a1e"
+    }
+  ]
+}

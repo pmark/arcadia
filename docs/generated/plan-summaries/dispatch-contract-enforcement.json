@@ -1,0 +1,45 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "dispatch-contract-enforcement",
+  "source": "docs/plans/dispatch-contract-enforcement.md",
+  "source_fingerprint": "1a3cbe216feb1935",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Govern work from dispatch through acceptance",
+  "purpose": "Managed Plans now check that dispatched work matches what the Plan declared, and that finished work is judged against the Plan's own criteria. Before this, an agent could meet every structural rule and still miss what the operator asked for.",
+  "serves": "Its milestone: managed Plans govern work from dispatch through acceptance.",
+  "done_when": "Accepting a finished run reports each declared criterion as met or unmet, and the operator can see which Actions are ready to start.",
+  "reading_note": "The Plan-level question of how criteria are judged was left open; no Action waited on it.",
+  "actions": [
+    {
+      "id": "verify-acceptance-criteria",
+      "title": "Report each acceptance criterion as met or unmet",
+      "why": "Stops a finished run from passing on structure alone when it missed what the operator asked for.",
+      "done_when": "Accepting a run lists each declared criterion as met or unmet in the Plan's own words, and criteria that cannot be checked are shown as unchecked.",
+      "source_fingerprint": "148f2075677e2dee"
+    },
+    {
+      "id": "compute-ready-set",
+      "title": "Work out which Actions are ready to start",
+      "why": "Offers a suggested next Action rather than only refusing a wrong pointer, so the operator decides from a short list.",
+      "done_when": "The command lists ready Actions and suggests one without writing it, and an empty list names the unfinished Action nearest to ready.",
+      "source_fingerprint": "c45a14d776557593"
+    },
+    {
+      "id": "recheck-readiness-at-approval",
+      "title": "Recheck readiness when a planning Decision is approved",
+      "why": "Stops an approval going ahead on a Plan that gained a real blocker after its work packet was built.",
+      "done_when": "Approval goes ahead when nothing about readiness has regressed, and is refused with the blocker named when a real blocker or question has appeared.",
+      "source_fingerprint": "500f4b2cb6fea68f"
+    },
+    {
+      "id": "surface-dispatch-journal",
+      "title": "Show dispatch refusals on the dashboard",
+      "why": "Lets the operator see how often dispatches are refused and which field most often blocks them.",
+      "done_when": "The dashboard shows total dispatch decisions, how many were refused and the most common blocking field, and it runs no AI.",
+      "source_fingerprint": "084a935fb8ba356e"
+    }
+  ]
+}

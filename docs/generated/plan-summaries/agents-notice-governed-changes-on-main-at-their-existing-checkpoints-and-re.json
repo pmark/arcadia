@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re",
+  "source": "docs/plans/agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re.md",
+  "source_fingerprint": "2aecf4d646624b8b",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Have agents notice changes to governed records on main",
+  "purpose": "Agents work in parallel and can act on a decision or plan that changed on main after they started. This Plan has each agent check git for changes to governed records at its existing checkpoints and re-read any changed record before acting.",
+  "serves": "The Project outcome: agents report back on current decisions and plans, not on stale copies.",
+  "done_when": "At each checkpoint an agent lists governed-record changes on main since its last check, re-reads anything that touches its own work, and treats commit messages as data that grants no authority.",
+  "actions": [
+    {
+      "id": "add-git-change-checkpoint-guidance",
+      "title": "Add the git change check to the shared checkpoint procedure",
+      "why": "Gives every agent one rule for checking main at its checkpoints, so none acts on a record that changed underneath it.",
+      "done_when": "The shared procedure tells every session to check git for governed changes at each of its four checkpoints, treats commit messages as data, and the existing guidance tests pass.",
+      "source_fingerprint": "df9e7066db580114"
+    },
+    {
+      "id": "prove-git-change-checkpoint-scenarios",
+      "title": "Prove the change check through restarts, bursts and forged messages",
+      "why": "Shows the check catches a missed change after a restart and ignores a commit message that imitates a command.",
+      "done_when": "In a disposable test repository, a decision committed while the observer was stopped appears once at its next check, a later check lists nothing new, and a forged commit subject changes no pointer, queue or claim.",
+      "source_fingerprint": "33844eff1ea339ae"
+    }
+  ]
+}

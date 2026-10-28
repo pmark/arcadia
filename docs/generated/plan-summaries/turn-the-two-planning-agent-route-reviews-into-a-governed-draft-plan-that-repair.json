@@ -1,0 +1,37 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "turn-the-two-planning-agent-route-reviews-into-a-governed-draft-plan-that-repair",
+  "source": "docs/plans/turn-the-two-planning-agent-route-reviews-into-a-governed-draft-plan-that-repair.md",
+  "source_fingerprint": "81ce95bad8345a8c",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Repair the planning route's review findings",
+  "purpose": "Two reviews of the planning agent route found a defect in how the model binding is passed, a model-selection document that contradicts the code, and a proposal that cannot yet be answered. This Plan fixes those in a governed draft. The planning route itself stays unplanned until the operator answers the revised proposal.",
+  "serves": "The Project outcome of accurate model choice and of proposals the operator can decide on.",
+  "done_when": "The spawn step passes the recorded model and effort to the coding agent process, the model-selection document matches the code, and the proposal is revised so the operator can answer it.",
+  "actions": [
+    {
+      "id": "thread-binding-args-into-codex-spawn",
+      "title": "Pass the chosen model settings to the spawned coding agent",
+      "why": "The record claims a model the spawned process never receives, which makes runs misleading.",
+      "done_when": "A test shows the spawned command includes the binding's model and effort flags, and the displayed, saved and spawned commands all agree.",
+      "source_fingerprint": "01e08c163ef51e43"
+    },
+    {
+      "id": "reconcile-model-selection-doc-with-provider-bindings",
+      "title": "Make the model-selection document match the code",
+      "why": "A document that names only two places to choose a model misleads anyone who chooses another way.",
+      "done_when": "The document names the binding registry as a place to choose a model and states which setting wins when a plan and a binding disagree.",
+      "source_fingerprint": "bf16e94d93627b62"
+    },
+    {
+      "id": "revise-planning-agent-route-proposal",
+      "title": "Revise the planning route proposal so it can be answered",
+      "why": "The operator cannot make a sound decision from a proposal that names the wrong input channel.",
+      "done_when": "The proposal names the channel the launched session actually reads, and its validation changes keep older planning artifacts passing.",
+      "source_fingerprint": "47b59b8f5b5de794"
+    }
+  ]
+}

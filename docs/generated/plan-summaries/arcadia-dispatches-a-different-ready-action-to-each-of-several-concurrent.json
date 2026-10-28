@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "arcadia-dispatches-a-different-ready-action-to-each-of-several-concurrent",
+  "source": "docs/plans/arcadia-dispatches-a-different-ready-action-to-each-of-several-concurrent.md",
+  "source_fingerprint": "84054add83403b08",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Give each concurrent session a different ready Action",
+  "purpose": "Lets several coding-agent sessions run at the same time, each on a different ready Action, so no two sessions take the same work. It was prompted by a live collision in which two worktrees were sent to the same Action within minutes.",
+  "serves": "Serves the milestone of automatic, collision-free dispatch to concurrent sessions, which supports the Project outcome of Arcadia driving coding agents on its own.",
+  "done_when": "Two sessions started at the same time are given different ready Actions, and a session asking for an Action already held by another live session is given the next free one.",
+  "actions": [
+    {
+      "id": "add-action-scoped-worktree-claim",
+      "title": "Record a claim on each Action so only one session holds it",
+      "why": "Without a claim per Action, two sessions can each be sent to the same Action before either notices.",
+      "done_when": "A claim on an Action is recorded with an expiry and a generation, and a settlement from an outdated claim fails and writes nothing.",
+      "source_fingerprint": "0d3d5373a366f028"
+    },
+    {
+      "id": "dispatch-different-ready-action-per-session",
+      "title": "Give a new worktree the next free ready Action",
+      "why": "When the current Action is held by a live session, a new session should take the next ready one instead of being refused.",
+      "done_when": "A new worktree whose current Action is held by a live session gets the next unclaimed, ready Action, and a session already in its worktree keeps its own Action.",
+      "source_fingerprint": "8b1c289d99ca8726"
+    }
+  ]
+}

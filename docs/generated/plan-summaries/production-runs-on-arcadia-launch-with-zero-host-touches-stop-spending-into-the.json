@@ -1,0 +1,51 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the",
+  "source": "docs/plans/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the.md",
+  "source_fingerprint": "281d9e791c563f71",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Keep production running without host touches",
+  "purpose": "Production should launch without the operator touching the host, stop spending tokens into a sandbox that cannot work, name every stall with a one-click fix, and avoid being stranded by a plan change. The plan's goal is four fixes from the first supervised run, each merged to main in its own pull request.",
+  "serves": "The Project outcome of the operator being asked only when a decision is needed, with production stalls named rather than silent.",
+  "done_when": "Four fixes from the first supervised run are merged to main, one per pull request, each with a regression test, and a stalled production run names its gate with a one-click fix.",
+  "actions": [
+    {
+      "id": "stop-spending-into-an-environment-wall",
+      "title": "Stop a session that cannot write from spending tokens again",
+      "why": "A first session used about 11 million input tokens and produced no code, and nothing stopped a retry into the same wall.",
+      "done_when": "An attempt that ends with no diff and a named environment blocker is counted on the first occurrence, raises one named blocker, and is not relaunched automatically.",
+      "source_fingerprint": "4c38102fda72fb09"
+    },
+    {
+      "id": "name-every-production-stall-with-a-one-click-fix",
+      "title": "Name each production stall with a one-click fix",
+      "why": "The first stall showed only a generic alert, with the real cause buried in a worker log.",
+      "done_when": "A replayed stall produces one named escalation with a one-click resolution and exactly one Discord ping, using the existing escalation mechanism.",
+      "source_fingerprint": "00d6fa382eeaa37f"
+    },
+    {
+      "id": "declare-action-route-and-fix-the-approval-check",
+      "title": "Declare each action's route and fix the approval check",
+      "why": "Keyword matches in the text sent a bug Plan's Actions to extra decisions, and a correct artifact was refused, costing four operator touches.",
+      "done_when": "An action's declared route decides its path regardless of wording, the preview shows the expected operator touches, and the artifact check judges each sentence on its own.",
+      "source_fingerprint": "0dfcca1e1b00213b"
+    },
+    {
+      "id": "refuse-plan-changes-inside-an-active-production-scope",
+      "title": "Refuse plan changes that would strand an active run",
+      "why": "Another session once switched a Plan under an active run, stranding it, and the problem was found only in a log.",
+      "done_when": "Changing the current Plan of a Project under an active production scope is refused before anything is written, and the refusal names the STOP remedy.",
+      "source_fingerprint": "c1e3c768cad4c923"
+    },
+    {
+      "id": "refuse-a-session-before-launch-when-its-sandbox-cannot-write",
+      "title": "Refuse a session before launch if its sandbox cannot write",
+      "why": "A session that cannot write or validate would spend tokens for nothing, so it should be refused first.",
+      "done_when": "A session whose sandbox cannot write the workspace, run validation or produce a receipt is refused before launch, with a named remedy and no tokens spent.",
+      "source_fingerprint": "32a536f3aa0c2dd4"
+    }
+  ]
+}

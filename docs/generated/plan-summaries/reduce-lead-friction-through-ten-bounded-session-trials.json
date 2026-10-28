@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "reduce-lead-friction-through-ten-bounded-session-trials",
+  "source": "docs/plans/reduce-lead-friction-through-ten-bounded-session-trials.md",
+  "source_fingerprint": "7bd3227377f5d98d",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Trial lead sessions in a small, bounded series",
+  "purpose": "Tests whether a set of documents reduces repeated friction for lead coding sessions. The series is capped at ten small trials, and each launch waits for an explicit allowance and scope from the operator. The first two trials are compared before any more are considered.",
+  "serves": "The Project outcome of the operator relying on agent-led work with less repeated friction.",
+  "done_when": "The first two trials are compared against a recorded baseline, the operator gets a recommendation to continue, narrow or stop, and verified lessons are kept in their proper homes.",
+  "reading_note": "Each launch waits for an explicit allowance and scope from the operator.",
+  "actions": [
+    {
+      "id": "prepare-lead-trial-baseline",
+      "title": "Prepare the trial guide and baseline evidence",
+      "why": "A recorded baseline lets the trials be compared with what happened before, without launching anything.",
+      "done_when": "A single entry-point guide links existing procedures and a baseline that marks which evidence is verified and which is unavailable, with no new work pointer or permission policy.",
+      "source_fingerprint": "d9d36f6e35692f93"
+    },
+    {
+      "id": "run-lead-trial-01",
+      "title": "Run the first lead trial on a small documentation task",
+      "why": "One real, bounded task shows whether the documentation reduces friction and what to change for the next trial.",
+      "done_when": "Before launch the brief records one authorized deliverable, its acceptance and the remaining allowance, and afterwards the reviewed delivery and a lesson are saved.",
+      "source_fingerprint": "efdf310a97425318"
+    },
+    {
+      "id": "run-lead-trial-02",
+      "title": "Run the second lead trial on a comparable task",
+      "why": "A second comparable trial shows whether the first result repeats.",
+      "done_when": "Before launch the brief records a comparable authorized deliverable and the remaining allowance, and afterwards the reviewed delivery and a lesson are saved.",
+      "source_fingerprint": "ef71ae9ba545fdf5"
+    },
+    {
+      "id": "assess-first-two-lead-trials",
+      "title": "Compare the first two trials with the baseline",
+      "why": "Shows whether the documentation reduces repeated friction before committing to the remaining trials.",
+      "done_when": "A read-only review names which problems disappeared, persisted or grew, and records a proposal to continue, narrow or stop, with missing data named.",
+      "source_fingerprint": "d7bd22c22c02a189"
+    },
+    {
+      "id": "consolidate-lead-trial-findings",
+      "title": "Publish the trial findings and keep only verified lessons",
+      "why": "Keeps useful learning in its proper place and removes duplicated advice.",
+      "done_when": "The assessment covers every trial attempted, with evidence links, and only verified lessons are moved into their canonical documents.",
+      "source_fingerprint": "98cf181dc246d33c"
+    }
+  ]
+}

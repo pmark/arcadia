@@ -1,0 +1,37 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "execute-one-approved-named-run-safely-with-production-off",
+  "source": "docs/plans/execute-one-approved-named-run-safely-with-production-off.md",
+  "source_fingerprint": "0719e2126c8159f1",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Run one approved task with production turned off",
+  "purpose": "Lets the operator approve one named run that executes once while production stays off. Admission is recorded durably, so a restart or a restored ledger cannot reset the allowance.",
+  "serves": "The Project outcome of approved work running safely and reporting back, with the operator's approval honoured.",
+  "done_when": "One approved, named run completes and produces the expected file, and each refusal case is rejected by the public path.",
+  "actions": [
+    {
+      "id": "consume-one-approved-named-run",
+      "title": "Run exactly one approved named task",
+      "why": "Stops an approved request from waiting indefinitely in pending execution while production stays off.",
+      "done_when": "Exactly one explicitly named, approved run is executed and recorded as complete, and an omitted, invalid, unrelated or already claimed selection is rejected.",
+      "source_fingerprint": "ece2273161dadb99"
+    },
+    {
+      "id": "enforce-durable-run-admission",
+      "title": "Keep run limits when the source or ledger changes",
+      "why": "A new source revision or restored ledger must not reset an allowance or allow an unrecorded attempt.",
+      "done_when": "Restarts and recreated fixtures keep the same goal identity and attempt counts, and reservations are recorded before any provider call, within the stated limits.",
+      "source_fingerprint": "c7884f73a98799fe"
+    },
+    {
+      "id": "prove-approved-run-completion",
+      "title": "Prove completion and refusals through the public path",
+      "why": "Reusable infrastructure must show completed work before a customer trial resumes.",
+      "done_when": "A test drives the public request path end to end and checks the result independently, rejecting a missing, wrong, stale or unrelated output.",
+      "source_fingerprint": "6ce3d425292027a1"
+    }
+  ]
+}

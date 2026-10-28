@@ -1,0 +1,79 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in",
+  "source": "docs/plans/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in.md",
+  "source_fingerprint": "c3a9db098b6e045e",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Cap every production session's token spend",
+  "purpose": "Each production session should be limited by a platform token ceiling and by a probe that checks it can do its work. A session that cannot write should not waste the budget, and every stop should clear from the to-do page in two clicks at most.",
+  "serves": "The Project outcome of unattended production staying within its spend, with the operator asked only when needed.",
+  "done_when": "A session that reaches its ceiling or cannot write the workspace stops with one named blocker, and that blocker clears from the to-do page in two clicks at most.",
+  "actions": [
+    {
+      "id": "replay-environment-wall-session",
+      "title": "Replay a recorded no-write session as a test",
+      "why": "A recorded failure replayed as a test catches the same waste without spending tokens again.",
+      "done_when": "A fast replay of a recorded session that could not write ends stopped before its token bound, with exactly one named blocker and no second launch.",
+      "source_fingerprint": "cc11ed9264d64920"
+    },
+    {
+      "id": "record-session-ledger",
+      "title": "Record one validated row per session",
+      "why": "Replaces estimated prose with exact per-session cost and defect data for the next decision.",
+      "done_when": "Each session has one row with its cost, review findings, touches and outcome, and a malformed row fails the check.",
+      "source_fingerprint": "7b8db6aa81d63de8"
+    },
+    {
+      "id": "enforce-session-token-ceiling",
+      "title": "Stop a session when it reaches its token ceiling",
+      "why": "Platform limits, not prompt discipline, must bound spend, because a heavy task once ran unmetered.",
+      "done_when": "A session that reaches its ceiling stops with a budget record showing cached and uncached tokens, is not relaunched, and the ceiling cannot be raised from a prompt or brief.",
+      "source_fingerprint": "fc976d56de2ef555"
+    },
+    {
+      "id": "probe-environment-inside-session",
+      "title": "Probe the session's own sandbox before real work",
+      "why": "Only a probe run inside the session shows whether it can actually write and validate.",
+      "done_when": "A failing probe ends the attempt with one named environment blocker, and a passing probe records its token use within budget.",
+      "source_fingerprint": "f8bf01a7380e7f51"
+    },
+    {
+      "id": "one-click-clear-every-blocker-kind",
+      "title": "Clear each blocker kind from the to-do page in two clicks",
+      "why": "Each new blocker kind arrived without a remote clear, so the operator had to use the command line.",
+      "done_when": "A check fails when a blocker kind has no registered clear, and each registered clear is a button that resolves in at most two interactions.",
+      "source_fingerprint": "6cebd02a95c8e63e"
+    },
+    {
+      "id": "fix-docs-sync-lock-and-activation-order",
+      "title": "Position new actions during activation without disturbing the queue",
+      "why": "Activation left Actions unpositioned and the pointer stale, which needed manual repair.",
+      "done_when": "Activating a plan leaves other Projects' queue order unchanged, and the sync step retries a temporary database lock.",
+      "source_fingerprint": "8b21e84ea7a5c755"
+    },
+    {
+      "id": "revise-agent-roles-and-session-briefs",
+      "title": "Record revised roles and a compact session brief",
+      "why": "Lead sessions had grown large, so each session should start from a short generated brief.",
+      "done_when": "The guidance records the revised roles and a brief template, and every role leaves one ledger row.",
+      "source_fingerprint": "4e4fbf55fbd7e530"
+    },
+    {
+      "id": "attach-the-session-probe-result-to-the-reconcile-receipt",
+      "title": "Attach the probe result to the reconcile receipt",
+      "why": "The receipt should carry the probe evidence, so a stop can be checked afterwards.",
+      "done_when": "A refused session's receipt includes the probe result and its budget, verified against a real provider sandbox.",
+      "source_fingerprint": "73a4f2c4fbed3df5"
+    },
+    {
+      "id": "stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+      "title": "Keep the pointer in step with queue reorders",
+      "why": "A moved queue item should not leave the current pointer on the wrong Action.",
+      "done_when": "A reordered queue and its pointer change settle together, and a test reproduces the post-activation lock and shows the queue is valid afterwards.",
+      "source_fingerprint": "3df8bddedb74b7dd"
+    }
+  ]
+}

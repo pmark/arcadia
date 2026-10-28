@@ -1,0 +1,37 @@
+{
+  "schema": "arcadia-plan-summary-v1",
+  "generated": true,
+  "plan": "redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script",
+  "source": "docs/plans/redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script.md",
+  "source_fingerprint": "7ab5dddd42664140",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
+  "written": "2026-10-28",
+  "author": "Lightweight model draft for Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
+  "title": "Rebuild the phone dashboard around decisions and runs",
+  "purpose": "Gives the phone dashboard one place for decisions, a complete flow for operator scripts, and a Runs page for work in progress and queued Actions.",
+  "serves": "The Project outcome of fast, phone-first operator interaction, with decisions asked only when they are needed.",
+  "done_when": "A decision opens on its own page with its options and consequences, and the Runs page leads with active work and keeps production control visible.",
+  "actions": [
+    {
+      "id": "add-single-decision-dashboard-page",
+      "title": "Give each decision its own page",
+      "why": "Lets the operator read one decision with its options and consequences, and answer it there.",
+      "done_when": "A decision's page shows its question, each option with its consequence, the recommendation and the same answer controls, and answering there records the same result as the review list.",
+      "source_fingerprint": "fe079aeb8a845c38"
+    },
+    {
+      "id": "build-operator-script-library-and-launch-evidence",
+      "title": "Build a searchable library of operator scripts",
+      "why": "Makes each script easy to find, with its authority and next step visible before it runs.",
+      "done_when": "The scripts page can be searched and filtered by state, and each script page shows its full description, authority limits and current state, with a run or retry control.",
+      "source_fingerprint": "38538b5b78634528"
+    },
+    {
+      "id": "focus-runs-on-active-work-and-next-push",
+      "title": "Put active work first on the Runs page",
+      "why": "Puts work in progress and production control where the operator looks first, with the next push one tap away.",
+      "done_when": "The Runs page leads with active sessions and runs, keeps production on or off visible, and loads the next push only when it is opened.",
+      "source_fingerprint": "333df95c8d10e712"
+    }
+  ]
+}

@@ -52,6 +52,7 @@
     "check:frozen-records": "node --import tsx scripts/check-frozen-records.ts",
     "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
+    "check:plan-summaries": "node --import tsx scripts/plan-summaries.ts check",
     "fast-rehearsal": "node scripts/fast-rehearsal.mjs",
     "production-replay": "node --import tsx scripts/production-replay.ts"
   },
