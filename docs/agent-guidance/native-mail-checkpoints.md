@@ -121,10 +121,48 @@ There is no non-mutating existence probe yet; do not invent one.
   needed: copy the original message's sender incarnation and generation from
   its inbox row into `--recipient-incarnation`/`--recipient-generation`, and
   supply every other required `send` option yourself. Use `report` for a
-  self-reported result. `verify` always refuses today; never describe a
-  self-report as verified.
+  self-reported result. Generic `verify` still refuses; never describe a
+  self-report as verified. The opt-in direction path below accepts only
+  separately produced canonical independent QA evidence.
 - A message to a stopped or closed receiver stays queued until that
   receiver's next explicit checkpoint. Do not claim delivery to an absent model.
+
+## Opt-in operator directions
+
+An ordinary Ask stays ordinary. `ask <text> --request-id <stable-id>
+--direction-target '{"projectId":"...","plan":"...","action":"..."}'`
+records a direction with an immutable explicit target and content fingerprint.
+Plan and Action are optional refinements; an Action requires its Plan. Invalid
+targets retain a refused receipt. Capture accepts no execution or ordinary
+routing flags, and creates no owner, launch, mail offer or authority.
+
+Within an already authorized native assignment, `send` may bind that accepted
+direction with `--direction-request-id` and `--direction-fingerprint`. The
+typed binding is separate from the untrusted body; legacy body lookalikes never
+count. At the actual addressed checkpoint, inspect `inbox`, then record
+`consume` with the exact message, stable receipt request ID, fingerprint and
+existing Plan/recipient/generation scope. This is explicitly a recipient
+attestation, not host authentication or proof of cognition. `ack` then requires
+`--compact-acknowledgment <response>` for a direction. Exposure alone is neither
+delivery nor acknowledgment.
+
+A complete Agent Ask may carry strict `direction` correlation to that request,
+fingerprint, message, consumption receipt and acknowledgment receipt. Existing
+completion authority, criteria and queue gates still apply. Only its actual
+applied settlement and resulting documents commit establish continued work.
+`verify --qa-decision-id <id>` records an independent observation only when the
+canonical QA Decision, Artifact, positive acceptance checks, evidence hashes and
+exact resulting revision agree. Managed candidates additionally require their
+canonical Action/Session/packet/completion and terminal QA attempt bindings.
+Missing or unsupported binding refuses; this command never runs QA itself.
+Unrelated later main progress does not erase correctly labelled historical proof.
+
+`record-recipient-state` can retain an explicit observer attestation of paused,
+stopped or running, with its stable request ID and actual evidence reference.
+It never probes, stops or restarts anything. A held or uncertain direction keeps
+its original address; no automatic resend, replacement lifetime or wake follows.
+`ask show <request-id>` projects the receipt and source/Artifact/observed-time
+evidence read-only. Browser operators are never native recipient incarnations.
 
 ## Exclusions
 

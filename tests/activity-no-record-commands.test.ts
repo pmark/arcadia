@@ -83,6 +83,8 @@ afterEach(() => {
  */
 function invocations(): Record<string, string[][]> {
   return {
+    "ask show": [["ask", "show", "missing-receipt"], ["ask", "show", "missing-receipt", "--workspace", path.join(root, "missing-workspace")]],
+    "ask-trail": [["ask-trail", "missing-receipt"]],
     "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"], ["provider-usage", "--opencode-session", "ses_explicit", "--opencode-export", "unused.json", "--json"]],
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
     init: [
@@ -221,7 +223,7 @@ describe("commands that read no workspace state record no activity", () => {
       for (const args of runs) {
         const { liveOpens, recorded } = await observe(args);
         expect(recorded, args.join(" ")).toEqual([]);
-        if (key === "workspace leak-check" || (key === "timeline" && !args.includes("nobody")) || key === "todo" || key === "journey" || (key === "go-context" && !args.includes("--workspace")) || key === "work reservations" || (key === "ask report" && !args.includes("not-a-time"))) {
+        if ((["ask show", "ask-trail"].includes(key) && !args.includes("--workspace")) || key === "workspace leak-check" || (key === "timeline" && !args.includes("nobody")) || key === "todo" || key === "journey" || (key === "go-context" && !args.includes("--workspace")) || key === "work reservations" || (key === "ask report" && !args.includes("not-a-time"))) {
           // The leak check's, the timeline's, the journey's, the Ask report's and the to-do view's purpose is to
           // observe the live database, which they do only read-only; none opens
           // it to record itself.

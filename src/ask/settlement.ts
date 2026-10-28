@@ -1,4 +1,6 @@
 import { validateAcceptanceCriteria } from "../docs/acceptanceCriteria.js";
+import { assertDirectionReceiverEvidence } from "../nativeMail/store.js";
+import type { DirectionCorrelation } from "./directions.js";
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -117,6 +119,8 @@ export interface AgentAskSettlementReceipt {
    */
   queueRevision?: number;
   applied: boolean;
+  /** Emitted by this canonical writer, never inferred from a current done row. */
+  directionEffect?: { correlation: DirectionCorrelation; project: string; plan: string; action: string; revision: string };
   authority: {
     kind: "operator_acceptance" | "deterministic_proof";
     requestedAuthority: string;
@@ -367,6 +371,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // evidence to -- the full sha the Mission Log records. The archived Ask
   // carries the same value (Issue #321).
   let boundCandidateRevision: string | null = null;
+  let directionEffect: AgentAskSettlementReceipt["directionEffect"];
   // The pointer a completion wrote, read back from the PROJECT.md content
   // actually written, so the receipt's next Action names what landed rather
   // than a queue snapshot that can lag it (Issue #507).
@@ -947,6 +952,10 @@ export function settleAgentAsk(db: Database.Database, input: {
           );
         }
         boundCandidateRevision = head;
+        if (proposal.normalized.direction) {
+          assertDirectionReceiverEvidence(db, proposal.normalized.direction, { projectSlug: project.slug, planSlug: targetPlan.slug, actionId });
+          directionEffect = { correlation: proposal.normalized.direction, project: project.slug, plan: targetPlan.slug, action: actionId, revision: head };
+        }
         // `expected_artifact` is free text in most Plans ("First proof",
         // "Evidence satisfying Agent Ask X") but a real repo-relative path in
         // others (session-reconciliation's `docs/contract.md`). Only the path
@@ -1561,6 +1570,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     previewFingerprint,
     queueRevision: queue.revision,
     applied: input.apply === true,
+    ...(directionEffect ? { directionEffect } : {}),
     authority: {
       kind: proposal.normalized.intent === "complete" && !input.operator
         ? "deterministic_proof"
@@ -1623,6 +1633,8 @@ export function settleAgentAsk(db: Database.Database, input: {
   // wrote, before the interlock is released, so it can never restore stale
   // content over a concurrent writer.
   if (fileMutations.length > 0) writeTransaction(db, () => {
+    if (directionEffect) assertDirectionReceiverEvidence(db, directionEffect.correlation,
+      { projectSlug: directionEffect.project, planSlug: directionEffect.plan, actionId: directionEffect.action });
     const applied: FileMutation[] = [];
     try {
       // First inside the transaction, before anything is written: a settlement

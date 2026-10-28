@@ -1,12 +1,20 @@
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { renderPacketIdentity } from "../src/codex/packets.js";
+import { createCodexPacket, renderPacketIdentity } from "../src/codex/packets.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { withDatabase } from "../src/db/connection.js";
+import { createProjectWithInitialWork, getWorkItem } from "../src/db/repositories.js";
+import { resolveIntent } from "../src/intent/resolver.js";
+import { loadPhase3Registries, type CodingAgentProfile } from "../src/intent/registries.js";
+import { preservationFixture } from "../scripts/preservation-fixture.js";
+import { renderAdvanceSuccess, runAdvanceCommand } from "../src/commands/advance.js";
 import { describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import {
   AGENT_GIT_EMAIL_DOMAIN,
+  loadIdentityModelTierRegistry,
   agentRoster,
   agentTeammates,
   renderIdentityBlock,
@@ -16,7 +24,7 @@ import {
   WORKSPACE_MODE_RULE,
   type AgentPartner
 } from "../src/codingAgents/agentIdentity.js";
-import { BUNDLED_MODEL_TIERS, MODEL_TIERS, TIER_AGENTS, mergeModelTiers } from "../src/codingAgents/modelTiers.js";
+import { BUNDLED_MODEL_TIERS, MODEL_TIERS, TIER_AGENTS, loadModelTierRegistry, mergeModelTiers } from "../src/codingAgents/modelTiers.js";
 import { readProjectPartners, renderDispatchIdentityBlock } from "../src/sessions/partners.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -248,6 +256,36 @@ describe("renderReviewerIdentityBlock", () => {
 });
 
 describe("renderPacketIdentity", () => {
+  it.each(["{broken", '{"tiers":{"invalid":{}}}'])("creates a complete packet with an Identity block despite invalid display configuration: %s", (override) => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-packet-identity-"));
+    try {
+      const input = packetInput(workspace);
+      writeFileSync(path.join(workspace, "config", "coding-agent-models.json"), override);
+      // Strict selection/launch validation must still refuse this configuration.
+      expect(() => loadModelTierRegistry(workspace)).toThrow();
+      expect(loadIdentityModelTierRegistry(workspace)).toBeUndefined();
+      const packetRoot = path.join(workspace, "prompts", "codex");
+      mkdirSync(packetRoot, { recursive: true });
+      const packet = createCodexPacket(input);
+      const prompt = readFileSync(packet.promptPath, "utf8");
+      expectIdentityBlock(prompt, "codex", "standard");
+      expect(readFileSync(packet.metadataPath, "utf8")).toContain(packet.invocationId);
+      expect(readdirSync(packetRoot)).toEqual([packet.invocationId]);
+    } finally { rmSync(workspace, { recursive: true, force: true }); }
+  });
+
+  it("leaves no empty packet directory when prompt rendering fails for another reason", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-packet-render-failure-"));
+    try {
+      const input = packetInput(workspace);
+      const packetRoot = path.join(workspace, "prompts", "codex");
+      mkdirSync(packetRoot, { recursive: true });
+      rmSync(path.join(workspace, "OPERATOR_CONTEXT.md"));
+      mkdirSync(path.join(workspace, "OPERATOR_CONTEXT.md"));
+      expect(() => createCodexPacket(input)).toThrow();
+      expect(readdirSync(packetRoot)).toEqual([]);
+    } finally { rmSync(workspace, { recursive: true, force: true }); }
+  });
   it("names the packet's agent through the workspace's tier override, as its launch would commit", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-packet-identity-"));
     try {
@@ -263,6 +301,48 @@ describe("renderPacketIdentity", () => {
       expectIdentityBlock(packet, "claude", "heavy");
     } finally {
       rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+function packetInput(workspace: string): Parameters<typeof createCodexPacket>[0] {
+  initWorkspace(workspace);
+  const workItem = withDatabase(workspace, db => {
+    const created = createProjectWithInitialWork(db, {
+      name: "Identity Fixture", mission: "Prove packet identity.", status: "active", currentMilestone: "Identity proof",
+      nextAction: "Plan the fixture.", workClassification: "agent"
+    });
+    return getWorkItem(db, created.workItem.id)!;
+  });
+  const agentProfile: CodingAgentProfile = {
+    name: "fixture_planning", provider: "codex-cli", package: "fixture", command: "codex",
+    purpose: "planning", sandbox: "read-only", args: []
+  };
+  return {
+    workspace, request: "Plan identity fixture", resolved: resolveIntent("Plan identity fixture", loadPhase3Registries(workspace)),
+    workItem, planId: "identity-fixture", projectContext: null, agentProfile,
+    agentConfiguration: {
+      mappingId: "fixture", bindingId: "fixture", profile: agentProfile, provider: "codex-cli",
+      model: "gpt-5.6-terra", capability: "c2_integrated", effort: "e2_standard", args: [], costRank: 1
+    }
+  };
+}
+
+describe("Advance managed Session identity", () => {
+  it("prints the recorded Session's provider/model through its workspace override", () => {
+    const fixture = preservationFixture();
+    try {
+      writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"),
+        JSON.stringify({ tiers: { heavy: { codex: fixture.lease.model } } }));
+      const response = runAdvanceCommand({ workspace: fixture.workspace, repo: fixture.candidate, session: fixture.lease.id });
+      expectIdentityBlock(renderAdvanceSuccess(response).join("\n"), "codex", "heavy");
+      expect(response.data.session?.id).toBe(fixture.lease.id);
+      writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), "{broken");
+      expect(renderAdvanceSuccess(runAdvanceCommand({ workspace: fixture.workspace, repo: fixture.candidate, session: fixture.lease.id })).join("\n"))
+        .toMatch(/^Identity:$/m);
+    } finally {
+      rmSync(fixture.candidate, { recursive: true, force: true });
+      rmSync(fixture.root, { recursive: true, force: true });
     }
   });
 });

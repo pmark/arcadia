@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { renderGoSuccess, runGoCommand } from "../src/commands/go.js";
+import { renderAdvanceSuccess, runAdvanceCommand } from "../src/commands/advance.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
@@ -24,6 +25,36 @@ afterEach(() => {
 });
 
 describe("arcadia go", () => {
+  it("keeps an explicit-model handoff and its Identity block when the display registry is malformed", () => {
+    const fixture = createFixture("codex/identity-fail-soft");
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), "{broken");
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, workspace: fixture.workspace,
+      apply: true, agent: "codex", model: "gpt-5.6-terra", agentWorktreeRoot: path.join(fixture.root, "handoffs") });
+    expect(result.data.applied).toBe(true);
+    expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
+    expectIdentityBlock(renderGoSuccess(result).join("\n"), "codex", "standard");
+    // A manual claim records no model/provider: Advance must print the resolve
+    // instruction, rather than infer Cody's name from this candidate's branch.
+    const advance = runAdvanceCommand({ workspace: fixture.workspace, repo: result.data.nextWorktree!.path });
+    const output = renderAdvanceSuccess(advance).join("\n");
+    expect(output).toMatch(/^Identity:$/m);
+    expect(output).not.toMatch(/^You are /m);
+    expect(output).toContain("arcadia identity resolve");
+    expect(advance.data.claimedAction).toBe("define-contract");
+  });
+  it.each([
+    ["an automatic model selection", {}],
+    ["an explicit-model launch", { model: "gpt-5.6-terra", launch: true }]
+  ])("still refuses a malformed registry for %s before preparing a worktree", (_case, extra) => {
+    const fixture = createFixture("codex/identity-strict-selection");
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), "{broken");
+    const handoffs = path.join(fixture.root, "handoffs");
+    expect(() => runGoCommand({ repo: fixture.main, source: fixture.feature, workspace: fixture.workspace,
+      apply: true, agent: "codex", agentWorktreeRoot: handoffs, ...extra })).toThrow("not valid JSON");
+    expect(existsSync(handoffs)).toBe(false);
+  });
   it("previews without changing Git state", () => {
     const fixture = createFixture("codex/copy-contract");
     commitFeature(fixture.feature, "proof.txt", "proof\n");

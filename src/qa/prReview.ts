@@ -13,8 +13,7 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
-import { renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
-import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { loadIdentityModelTierRegistry, renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
 import { completionSupplementArtifacts, resolveCompletionSupplement, completionEvidenceForReview, settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
 import {
@@ -518,7 +517,7 @@ export function runQaPrReviewCommand(
     agent: sessionAgentForProvider(reviewer.provider) ?? reviewer.provider,
     model: reviewer.model,
     effort: reviewer.effort,
-    registry: loadModelTierRegistry(workspacePath)
+    registry: loadIdentityModelTierRegistry(workspacePath)
   }), lineage?.settlementRecords ?? [], lineage?.settled);
   writeFileSync(promptPath, prompt, "utf8");
   const preReviewPullRequest = sandboxProof.passed
@@ -2123,6 +2122,14 @@ export function verifyPersistedQaContextEvidence(
   } catch {
     return false;
   }
+}
+
+/** Positive acceptance is separate from receipt integrity and schema validity. */
+export function persistedQaAcceptancePassed(context: PersistedQaContext): boolean {
+  return context.verdict === "pass" && !context.reviewerUnavailable && context.reviewer.exitStatus === 0 &&
+    context.findings.every(finding => finding.severity === "low") &&
+    context.checks.length > 0 && context.checks.every(check => check.status === "pass") &&
+    QA_PR_REVIEW_CRITERIA.every(criterion => context.checks.some(check => check.name === criterion.name && check.status === "pass"));
 }
 
 function sha256File(filePath: string): string {

@@ -36,6 +36,23 @@ on a linked output card to view SVG, PNG, JPEG, WebP or supported plain text
 (up to 4 MiB). Close or Escape returns to the same draft, receipt and context.
 Missing or unsupported files show a clear error in the viewer.
 
+To record an operator direction, select its Project, Plan or Action, check
+**Send as a direction to this context**, and send. The receipt pins the exact
+request and target. An unassigned or explicitly stopped recipient is **held**;
+an uncertain observation is **unknown**. Refresh and reload read the same receipt
+without resending it. Delivery requires the addressed recipient's explicit
+consumed-checkpoint attestation; acknowledgment includes their compact response.
+Continued work requires an applied correlated completion receipt. **Verified**
+requires separate positive canonical independent QA for that exact resulting
+revision and Artifact. These labels grant no execution or production authority.
+
+For QA, send a direction in a disposable configured fixture, refresh its receipt,
+then navigate and reload: its request ID and Project/Plan/Action must stay fixed.
+Check held and unknown receipts never cause another submission. Source fixtures
+exercise recipient consume/ack, correlated completion and independent QA; a
+self-report, altered report, negative check, wrong managed Action or mismatched
+revision must never produce verified. Existing ordinary Asks remain ordinary.
+
 The workspace has three areas:
 - **Context** lists what is in the selected scope.
 - **Work** shows the selected record.
@@ -2675,6 +2692,14 @@ signature, its teammates on the other platforms, and — when Session and claim
 rows can be read — the partners live on the same Project. `arcadia identity
 roster` prints the whole roster; the signature rule itself lives once, in
 `docs/agent-guidance/git-identity.md`.
+
+`arcadia advance` also prints the Identity block. A managed Session uses its
+recorded provider and model; a manual reservation without those fields prints
+the resolve instruction instead of guessing a name from the branch. An invalid
+`config/coding-agent-models.json` does not block reviewer, Go or packet prompt
+rendering, or a `go --model` handoff whose escalation hint is the only reader;
+those fall back to the bundled names. Automatic model selection and launch
+still refuse it.
 
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;

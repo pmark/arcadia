@@ -3,6 +3,7 @@ import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { PROJECT_STATUSES } from "../domain/constants.js";
 import { TOKEN_IMPACTS, type TokenImpact } from "../docs/types.js";
+import { parseDirectionCorrelation, type DirectionCorrelation } from "./directions.js";
 
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete", "split"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
@@ -60,7 +61,9 @@ export interface NormalizedPlanMetadata { tokenImpact: TokenImpact; tokenBudget:
 export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[];
   /** The single Action's `why` for an `action` Ask with no `actions` list; absent otherwise (bundles carry `actions[].why`). */
   why?: string;
-  actions: NormalizedAgentAskAction[]; targetRef: string | null; planMetadata?: NormalizedPlanMetadata; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+  actions: NormalizedAgentAskAction[]; targetRef: string | null; planMetadata?: NormalizedPlanMetadata; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null;
+  direction?: DirectionCorrelation;
+}
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -73,7 +76,7 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
   sourcePath: string | null;
 }
 
-export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "plan_metadata", "requested_authority", "candidate_revision", "evidence", "gate_question", "why"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "plan_metadata", "requested_authority", "candidate_revision", "evidence", "gate_question", "why", "direction"]);
 export const STRICT_PLAN_METADATA_FIELDS = new Set(["token_impact", "token_budget"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
 export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
@@ -174,13 +177,15 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
     throw validationError("Agent Ask top-level why is only supported for an action Ask without an actions list; put the reason on each actions[].why.");
   }
   const gateQuestion = optionalText(data.gate_question);
+  const direction = data.direction === undefined ? undefined : parseDirectionCorrelation(data.direction);
+  if (direction && intent !== "complete") throw validationError("Direction correlation is initially supported only for complete intent; it grants no settlement authority.");
   if (gateQuestion !== null && intent !== "decision") {
     throw validationError("Agent Ask gate_question is only supported for decision intent.");
   }
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, ...(planMetadata ? { planMetadata } : {}), requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, ...(planMetadata ? { planMetadata } : {}), requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null, ...(direction ? { direction } : {}) };
 }
 
 /**

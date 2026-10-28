@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ArcadiaCliError, runAsk } from "../../../lib/arcadia-cli";
+import { ArcadiaCliError, runAsk, captureOperatorDirection } from "../../../lib/arcadia-cli";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,6 +8,7 @@ interface AskRequest {
   request?: unknown;
   requestId?: unknown;
   projectId?: unknown;
+  directionTarget?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -26,6 +27,11 @@ export async function POST(request: Request) {
 
     if (!text) {
       return NextResponse.json({ error: "Ask request is required.", details: null }, { status: 400 });
+    }
+    if (body.directionTarget !== undefined) {
+      if (typeof body.requestId !== "string" || !body.requestId.trim()) return NextResponse.json({ error: "A direction requires its original request ID.", details: null }, { status: 400 });
+      const response = await captureOperatorDirection({ request: body.request as string, requestId: body.requestId, directionTarget: body.directionTarget });
+      return NextResponse.json({ message: `Direction ${response.data.direction.state}.`, direction: response.data.direction });
     }
 
     if (body.projectId !== undefined && (typeof body.projectId !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/.test(body.projectId))) {
