@@ -1,6 +1,6 @@
 # Rowan handoff: workspace Continue
 
-Current state: **R2-F1 blocks source merge; operational approval expired.**
+Current state: **Renewed authority active; batch 2 source repair preserved next for R3/CI.**
 This compact Supervisor index links evidence; checked-in governance and applied
 receipts remain authoritative. No successor has received custody yet.
 
@@ -25,39 +25,45 @@ receipts remain authoritative. No successor has received custody yet.
 
 ## Authority and operator answers
 
-The operator approved option 1 at `2026-10-28T05:22:24Z` until
-`2026-10-28T13:22:24Z` (6:22:24 a.m. Pacific). Log proposal
-`agentask_9009a2359ba33b1c9a`, applied receipt `asksettle_a1064f6586734244bb`,
-commit `519c2fb46855d7301c20f395375bb77f67b7af5b` retain its exact scope.
-That window is expired: no installation, migration, restart or live launch was
-performed. Original two repair batches were consumed; overnight batch 1 was
-consumed and two were unused at expiry. A transfer renews neither time nor budget.
+Current renewal: human user turn `01a182cd-b0d3-7c32-9eec-af90bc4a025f`
+selected option 1 at `2026-10-28T13:58:00Z`; expiry
+`2026-10-28T21:58:00Z` (2:58 p.m. Pacific). Canonical Log receipt
+`asksettle_58aed82897b941fdbd`, commit `262316bf803375be32ba145a67f276a7c0adeb03`.
+This authorizes current-Plan governed work, reviewed adoption/migrations/broker
+install/necessary local restart, actual protected browser confirmations for its
+live proofs, and one fresh Rowan chat at the next verified stage boundary.
+Inspect exact target, owner, provider and limits before browser confirmation;
+never synthesize browser headers or bypass a guard. Inherit configured model
+defaults. One coordinator and one source writer. Carry the same expiry on transfer.
 
-At `13:33:03Z`, user turn `01a182b6-d679-7362-8988-e44fc897a12b` answered `1`:
-**Through the current Plan until the first gate.** Carry this answer forward;
-do not ask the policy again. It authorizes recording/merging that exact Decision,
-not renewal of runtime authority or browser delegation. Canonical receipt
-`asksettle_b5727cc8f40146d384` opened Decision 0145 in commit `08a3cffa...`.
-Its actual status remains **open**. The supported answer writer reads the
-configured primary; publish/refresh through the approved path before recording
-the answer. Never hand-edit an answer or repoint metadata to expose the candidate.
+Original two source repair batches and renewed batch 1 remain consumed; batch 2
+has now completed its author checks. **Batch 3 remains**, without a counter reset.
+The earlier 05:22:24–13:22:24Z approval is historical and was not retroactively
+extended; its receipt is `asksettle_a1064f6586734244bb` / commit `519c2fb...`.
 
-The obsolete r2 rejection (`agentask_1b49d1d91f4662bfac`) was previewed but its
-apply refused the then-dirty candidate. Nothing was rejected. After a renewed
-allowance, clean/fresh-preview the same request `reject-obsolete-go-ui-r2-overnight-20261028`
-and apply canonically. Ordinary explicitly approved candidate settlement is
-supported; generated Plan-amendment operator actions require the shared runner.
+At `13:33:03Z` user turn `01a182b6-d679-7362-8988-e44fc897a12b` selected
+**Through the current Plan until the first gate**. Do not ask this policy again.
+Receipt `asksettle_b5727cc8f40146d384` opened Decision 0145 in `08a3cffa...`.
+It remains open until the supported answer writer sees the published record in
+configured primary. The operator authorized recording/merging that exact Decision.
+Never hand-edit an answer or repoint metadata to expose a candidate.
+
+Obsolete r2 proposal `agentask_1b49d1d91f4662bfac` is now rejected and its exact
+Ask archived by `asksettle_ba9b0f6b4c4a4b7d96`, commit `5d558c656...`;
+no Project/Plan/queue changes. Its earlier dirty-candidate refusal remains evidence.
+Generated Plan-amendment operator actions need the shared runner; ordinary
+explicitly approved candidate settlement retains its supported route.
 
 Production stays Off. No credential/provider probe, paid fallback, attempt reset,
-automation, safeguard bypass, synthetic browser authorization or unapproved
-later work. The final Action needs an answered Decision and fresh named source
-assignment. Real proofs still need separately valid launch authority.
+automation, safeguard bypass or work outside this Plan. The final Action needs
+its answered scope Decision, completed dependency and fresh named source assignment.
+Source/install/live proof stay separate; no completion from fixtures.
 
 ## Evidence and next move
 
 | Stage | Verified result / remaining gate |
 | --- | --- |
-| Source | Original R1-F1 terminal replay fixed. R2-F1 remains blocking. |
+| Source | Original R1-F1 terminal replay fixed. Batch 2 author proof repairs R2-F1; independent R3 must agree before merge. |
 | CI | All 15 jobs passed on product head `39cb67b...`; later heads need their own checks. CI never clears R2-F1. |
 | Adoption | Not performed; pin reviewed target, script effects and receipts after source gates pass and authority is renewed. |
 | Live delivery | Not attempted; no browser delegation. Source PR/fixtures cannot complete the Action or Plan. |
@@ -72,9 +78,13 @@ preserving ordinary non-Continue reuse. Portable failing evidence:
 reviewed tests). R2 ran 58 committed tests successfully, 17 skipped, then the
 new regression failed as expected. Lesson: `lesson_406dd0a457ea7dca64a1`.
 
-Next after fresh allowance: one bounded Ellis R2-F1 repair, actual missing-table,
-foreign-lease and terminal replay proof plus ordinary reuse, independent R3,
-and all required CI. Max-round rules remain; no reset. Full commands/results,
+Batch 2 author proof: focused7/7, guarded46/46 (17 skipped), authorization27/27,
+touched lint/core types/diff-check all passed. No UI/schema change; unchanged
+browser/build evidence reused. Three-file manifest: `/private/tmp/go-continue-b2-manifest.json`,
+SHA256 `38dc5c3251770692aabc11bf22fa9914b76b6902084624a434548c1e9d817ada`.
+Next: preserve exact delta, independent R3, and all required CI. Max-round rules
+remain; no reset. At actual transfer, pin the new head and final PR closeout in
+the successor prompt; this index records proof sources, never predicts a verdict. Full commands/results,
 failed receipts and adoption effects are in
 `docs/reports/go-workspace-continue-source-2026-10-28.md`; do not copy their logs.
 
@@ -103,3 +113,9 @@ this chat and transfer sole custody. Preserve old candidates; never bypass
 attachment protection. No automation or predecessor message. Until verified,
 this Rowan remains responsible. The Supervisor reads this table and linked
 proofs; notify material changes, not unchanged waiting.
+
+Renewal-record friction: preview/apply originally used different proposal spellings
+(request name versus proposal ID), so the canonical fingerprint refused. Before/
+after document hashes and queue were identical; a fresh preview with the same
+proposal-ID flags applied. Preserve exact flags, not interchangeable aliases.
+This consumed no source repair allowance and changed no scope.

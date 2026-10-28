@@ -344,3 +344,47 @@ Rowan for preservation, independent exact-head R2 and required remote checks.
 Overnight batch 1 is consumed; two newly approved batches remain, without
 resetting the original two. Action completion and live delivery remain unproved.
 The original release above remains historical evidence.
+
+## Renewed repair batch 2 — R2-F1
+
+Batch 2 of three, one focused 25-minute pass; original two and overnight batch 1
+remain consumed. Renewed operator option 1 at `2026-10-28T13:58:00Z` expires
+`2026-10-28T21:58:00Z` (14:58 PDT); approval receipt
+`asksettle_58aed82897b941fdbd`, commit `262316bf8`. Source candidate started clean
+at `5d558c656b8766f96a00140f1fbeb9849930965c` (product source `39cb67b`).
+Scope remains only `continue-from-go-in-the-workspace`, inherited defaults,
+Production Off, one coordinator and one source writer. Parent owns governance,
+handoff and later independent R3; Decision 0145 remains open and untouched.
+
+[Independent R2-F1, P1](https://github.com/pmark/arcadia/pull/1851#issuecomment-6470595044)
+and `docs/reports/review-evidence/go-continue-r2-missing-table.patch` exposed the
+early `!hasTable` return bypassing foreign-lease refusal. Missing lazy schema now
+means no matching authorization and reaches the same existing unbound checks as
+an empty table. No table, schema, dispatcher or write/reuse boundary was added.
+The portable patch was read as evidence, not applied blindly.
+
+The real foreign-lease regression is parameterized for absent/present tables.
+It proves refusal before aliasing, ordinary non-Continue reuse without eagerly
+creating the table, unchanged Go/fingerprint after the foreign Session exits,
+own-request recovery, and refusal after its own terminal reconciliation. It
+checks Session/process counts and the one preserved candidate. The missing-table
+case failed before the fix; present-table coverage already passed. Targeted Notes
+were retrieved; retained lesson `lesson_406dd0a457ea7dca64a1` was read, and
+`/private/tmp/go-continue-b2-lessons.json` recorded zero fresh search matches.
+
+| Check | Raw receipt / result |
+| --- | --- |
+| Failing-first reproduction | `/private/tmp/go-continue-b2-red.log`, exit 1: missing-table case failed, present-table case passed |
+| Focused replay/reuse/races | `/private/tmp/go-continue-b2-green-focused.log`, exit 0: 7 passed, 56 unrelated skipped |
+| Full guarded-launch describe | `/private/tmp/go-continue-b2-guarded.log`, exit 0: 46 passed, 17 unrelated skipped |
+| Touched eslint / core types | `/private/tmp/go-continue-b2-lint.log`, `/private/tmp/go-continue-b2-types.log`, both exit 0 |
+| Operator authorization / terminal suite | `/private/tmp/go-continue-b2-operator.log`, exit 0: 27 passed |
+
+Unchanged production Next/browser proof from batch 1 is reused; no full build,
+browser or rehearsal rerun is justified by this guard-only change. Required CI
+and R3 still judge the final preserved head. No commits, pushes, live DB/provider/
+credential operations, installation, restart or governance writes were performed
+by Ellis. All owned batch-2 check handles are terminal; Ellis releases source
+custody to Rowan for preservation, required CI and independent exact-head R3.
+Batch 2 is consumed; batch 3 remains, without resetting any previous allowance.
+Action completion, installed adoption and live proof remain separate and unclaimed.

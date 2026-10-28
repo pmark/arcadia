@@ -69,7 +69,7 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("launchGuardedHostSession", () => {
-  it("refuses to alias a Continue request onto another request's live Session", () => {
+  it.each([false, true])("refuses to alias a Continue request onto another request's live Session (foreign authorization: %s)", foreignAuthorization => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     const preflightEnv = stubProviders({ claude: {} });
@@ -81,11 +81,20 @@ describe("launchGuardedHostSession", () => {
       db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
       previewFingerprint: fingerprint, profiles, adapters, tmux,
       now: new Date(fixture.now.getTime() + invocation++ * 1000), agentWorktreeRoot: path.join(fixture.root, "candidate"),
-      preflightEnv, operatorLaunch: { source: "dashboard", env: {} }
+      preflightEnv, ...(requestId === "project-page-confirmation" && !foreignAuthorization
+        ? {} : { operatorLaunch: { source: "dashboard" as const, env: {} } })
     }));
     const otherId = "project-page-confirmation";
     const other = launch(otherId, preview1(fixture, otherId, tmux).previewFingerprint);
+    const authorizationTableExists = () => withReadOnlyDatabase(fixture.workspace, db => Boolean(db.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'operator_launch_authorizations'").get()));
+    expect(authorizationTableExists()).toBe(foreignAuthorization);
     expect(() => launch(continueId, shown.previewFingerprint)).toThrow(/no durable binding to the existing Session/);
+    const ordinaryId = "ordinary-lease-reuse";
+    const ordinary = launch(ordinaryId, preview1(fixture, ordinaryId, tmux).previewFingerprint);
+    expect(ordinary.reused).toBe(true);
+    expect(ordinary.session.id).toBe(other.session.id);
+    expect(authorizationTableExists()).toBe(foreignAuthorization);
     expect(tmux.launches).toHaveLength(1);
     writeFileSync(path.join(other.session.worktree_path, "wip.txt"), "partial work");
     git(other.session.worktree_path, ["add", "wip.txt"]);
@@ -93,12 +102,26 @@ describe("launchGuardedHostSession", () => {
     tmux.live.delete(other.session.tmux_session_name);
     withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: other.session.id,
       requestId: "foreign-request-reconcile", repoRoot: fixture.repo }));
+    expect(preview1(fixture, continueId, tmux).previewFingerprint).toBe(shown.previewFingerprint);
+    expect(runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0].resolution)
+      .toEqual(observed.resolution);
     const own = launch(continueId, preview1(fixture, continueId, tmux).previewFingerprint);
     const replay = launch(continueId, shown.previewFingerprint);
     expect(replay.reused).toBe(true);
     expect(replay.session.id).toBe(own.session.id);
     expect(tmux.launches).toHaveLength(2);
     expect(own.session.worktree_path).toBe(other.session.worktree_path);
+    writeFileSync(path.join(own.session.worktree_path, "continued.txt"), "more partial progress");
+    git(own.session.worktree_path, ["add", "continued.txt"]);
+    git(own.session.worktree_path, ["commit", "-m", "continued partial progress"]);
+    tmux.live.delete(own.session.tmux_session_name);
+    withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: own.session.id,
+      requestId: "own-request-reconcile", repoRoot: fixture.repo }));
+    expect(() => launch(continueId, shown.previewFingerprint)).toThrow(/confirmed launch request already belongs to a Session/);
+    expect(tmux.launches).toHaveLength(2);
+    expect(withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()))
+      .toEqual({ n: 2 });
+    expect(git(fixture.repo, ["worktree", "list", "--porcelain"]).match(/^worktree /gm)).toHaveLength(2);
   });
 
   it.each([false, true])("refuses a consumed Continue request after resumable exit (interleaved: %s)", interleaved => {

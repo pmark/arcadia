@@ -251,10 +251,11 @@ export function findOperatorLaunchAuthorization(db: Database.Database, sessionId
 export function assertOperatorLaunchRequestAvailable(
   db: Database.Database, canonicalRepositoryPath: string, requestId: string, ownSessionId?: string
 ): void {
-  if (!hasTable(db)) return;
-  const prior = db.prepare(`SELECT session_id, outcome FROM operator_launch_authorizations
+  // Lazy schema absence means no matching binding, so it must follow the
+  // same unbound-Continue checks as an existing table with no matching row.
+  const prior = hasTable(db) ? db.prepare(`SELECT session_id, outcome FROM operator_launch_authorizations
     WHERE repository_path = ? AND request_id = ? ORDER BY minted_at, id LIMIT 1`)
-    .get(canonicalRepositoryPath, requestId) as { session_id: string; outcome: string | null } | undefined;
+    .get(canonicalRepositoryPath, requestId) as { session_id: string; outcome: string | null } | undefined : undefined;
   if (!prior) {
     // Continue must not report another request's live Session as its own
     // result: there would be no durable request binding after that lease exits.
