@@ -10,7 +10,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runWayPropagation, type CommandResult, type CommandRunner } from "../src/projects/wayPropagate.js";
-import { guidanceFingerprint } from "../src/projects/agentGuidance.js";
+import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint, renderGuidanceIndex } from "../src/projects/agentGuidance.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalConstitution = readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8");
@@ -117,13 +117,42 @@ describe("computeWayPropagationPlan", () => {
     const legacyContext = readAgentsContextBlock()
       .replace(/\*\*Before implementation, repair, validation or handoff\*\*[\s\S]*?Retrieve lessons on demand; Notes is the bounded verified hot cache\./, old);
     writeFileSync(agentsPath, ["# AGENTS", "", AGENTS_SECTION_START, legacyContext, AGENTS_SECTION_END, ""].join("\n"), "utf8");
-    writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace(/("id": "learning",[\s\S]*?"sha256": )"[a-f0-9]{64}"/, '$1"0000000000000000000000000000000000000000000000000000000000000000"'), "utf8");
+    const fingerprintsPath = path.join(repo, GUIDANCE_FINGERPRINTS);
+    const fingerprints = JSON.parse(readFileSync(fingerprintsPath, "utf8")) as { fingerprints: Record<string, string> };
+    fingerprints.fingerprints.learning = "0".repeat(64);
+    writeFileSync(fingerprintsPath, `${JSON.stringify(fingerprints, null, 2)}\n`, "utf8");
     rmSync(path.join(repo, "docs/agent-guidance/learning.md"));
 
     const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
 
-    expect(plan.changes.map((change) => change.path).sort()).toEqual(["AGENTS.md", "docs/agent-guidance/index.json", "docs/agent-guidance/learning.md"]);
+    expect(plan.changes.map((change) => change.path).sort()).toEqual(["AGENTS.md", GUIDANCE_FINGERPRINTS, "docs/agent-guidance/learning.md"]);
     expect(plan.unmanageable).toEqual([]);
+    const learning = plan.changes.find((change) => change.path === "docs/agent-guidance/learning.md");
+    const planned = plan.changes.find((change) => change.path === GUIDANCE_FINGERPRINTS);
+    const entries = guidanceEntries(readFileSync(indexPath, "utf8"), planned?.content ?? null);
+    expect(entries.find((entry) => entry.id === "learning")?.sha256).toBe(guidanceFingerprint(learning?.content ?? ""));
+  });
+
+  it("keeps a legacy inline-fingerprint adopter index in its own layout during learning-only adoption", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const indexPath = path.join(repo, GUIDANCE_INDEX);
+    const fingerprintsPath = path.join(repo, GUIDANCE_FINGERPRINTS);
+    const legacy = JSON.parse(readFileSync(indexPath, "utf8")) as { schema: string; entries: Array<Record<string, string>> };
+    legacy.entries = guidanceEntries(readFileSync(indexPath, "utf8"), readFileSync(fingerprintsPath, "utf8"))
+      .map((entry) => ({ ...entry, sha256: entry.id === "learning" ? "0".repeat(64) : entry.sha256 }));
+    writeFileSync(indexPath, `${JSON.stringify(legacy, null, 2)}\n`, "utf8");
+    rmSync(fingerprintsPath);
+    rmSync(path.join(repo, "docs/agent-guidance/learning.md"));
+
+    const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
+
+    expect(plan.unmanageable).toEqual([]);
+    expect(plan.changes.map((change) => change.path).sort()).toEqual([GUIDANCE_INDEX, "docs/agent-guidance/learning.md"]);
+    const learning = plan.changes.find((change) => change.path === "docs/agent-guidance/learning.md");
+    const planned = plan.changes.find((change) => change.path === GUIDANCE_INDEX)?.content ?? "";
+    expect(planned).toContain('"sha256"');
+    expect(guidanceEntries(planned).find((entry) => entry.id === "learning")?.sha256).toBe(guidanceFingerprint(learning?.content ?? ""));
   });
 
   it("keeps a fresh current adoption unchanged and remains current on repeat", () => {
@@ -186,23 +215,29 @@ describe("computeWayPropagationPlan", () => {
       .replace("<!-- ARCADIA_CONTEXT_END -->", "<!-- ARCADIA_CONTEXT_END -->\n\nLocal retained learning note.\n");
     writeFileSync(learningPath, oldRebusterLearning, "utf8");
     rmSync(path.join(repo, "docs/agent-guidance/hacker-recovery.md"));
-    const indexPath = path.join(repo, "docs/agent-guidance/index.json");
+    const indexPath = path.join(repo, GUIDANCE_INDEX);
     const index = JSON.parse(readFileSync(indexPath, "utf8")) as { entries: Array<{ id: string }> };
     index.entries = index.entries.filter((entry) => entry.id !== "hacker-recovery");
-    writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+    writeFileSync(indexPath, renderGuidanceIndex(index), "utf8");
+    const fingerprintsPath = path.join(repo, GUIDANCE_FINGERPRINTS);
+    const fingerprints = JSON.parse(readFileSync(fingerprintsPath, "utf8")) as { fingerprints: Record<string, string> };
+    delete fingerprints.fingerprints["hacker-recovery"];
+    writeFileSync(fingerprintsPath, `${JSON.stringify(fingerprints, null, 2)}\n`, "utf8");
 
     const plan = computeWayPropagationPlan(repo, null, { learningOnly: true });
     const learning = plan.changes.find((change) => change.path === "docs/agent-guidance/learning.md");
-    const plannedIndex = plan.changes.find((change) => change.path === "docs/agent-guidance/index.json");
+    const plannedIndex = plan.changes.find((change) => change.path === GUIDANCE_INDEX);
+    const plannedFingerprints = plan.changes.find((change) => change.path === GUIDANCE_FINGERPRINTS);
 
     expect(plan.unmanageable).toEqual([]);
     expect(learning).toMatchObject({ action: "write" });
     expect(learning?.content).toContain("Local retained learning note.");
     expect(learning?.content).not.toContain("hacker-recovery.md");
-    expect(plannedIndex?.content).not.toContain("hacker-recovery");
-    const selectedEntry = JSON.parse(plannedIndex?.content ?? "{}")
-      .entries.find((entry: { id: string }) => entry.id === "learning");
-    expect(selectedEntry.sha256).toBe(guidanceFingerprint(learning?.content ?? ""));
+    expect(plannedIndex).toBeUndefined();
+    expect(plannedFingerprints?.content).not.toContain("hacker-recovery");
+    const selectedEntry = guidanceEntries(readFileSync(indexPath, "utf8"), plannedFingerprints?.content ?? null)
+      .find((entry) => entry.id === "learning");
+    expect(selectedEntry?.sha256).toBe(guidanceFingerprint(learning?.content ?? ""));
   });
 });
 

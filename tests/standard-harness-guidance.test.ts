@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PEER_WATCH_TRAILERS, PEER_WATCH_WINDOWS } from "../src/agentWatch/contract.js";
-import { guidanceEntries } from "../src/projects/agentGuidance.js";
+import { loadGuidanceEntries } from "../src/projects/agentGuidance.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const guidancePath = "docs/agent-guidance/standard-harness.md";
@@ -19,7 +19,7 @@ function sessionProtocol(): string {
 
 describe("standard harness guidance", () => {
   it("is indexed exactly once", () => {
-    const entries = guidanceEntries(readFileSync(path.join(root, "docs/agent-guidance/index.json"), "utf8"));
+    const entries = loadGuidanceEntries((file) => readFileSync(path.join(root, file), "utf8"));
     expect(entries.filter((entry) => entry.path === guidancePath)).toHaveLength(1);
   });
 

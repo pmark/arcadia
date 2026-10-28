@@ -35,7 +35,7 @@ import {
 import { buildProviderCapacityReceipt, type ProviderCapacityReceipt } from "../src/codingAgents/capacity.js";
 import { agentIdentityEmail, agentIdentityName } from "../src/codingAgents/agentIdentity.js";
 import { sessionAgentForProvider } from "../src/sessions/index.js";
-import { GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint } from "../src/projects/agentGuidance.js";
+import { guidanceFingerprint, loadGuidanceEntries } from "../src/projects/agentGuidance.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NOW = new Date("2026-10-04T21:00:00.000Z");
@@ -678,7 +678,7 @@ describe("procedure and code agree", () => {
   });
 
   it("is registered in the guidance index with a current fingerprint and states the release rule in prose and code", () => {
-    const entry = guidanceEntries(readFileSync(path.join(root, GUIDANCE_INDEX), "utf8")).find((candidate) => candidate.id === "agent-peer-watch");
+    const entry = loadGuidanceEntries((file) => readFileSync(path.join(root, file), "utf8")).find((candidate) => candidate.id === "agent-peer-watch");
     expect(entry?.path).toBe("docs/agent-guidance/agent-peer-watch.md");
     expect(entry?.sha256).toBe(guidanceFingerprint(doc));
     expect(doc).toContain("**None of these proves that ownership was released:**");

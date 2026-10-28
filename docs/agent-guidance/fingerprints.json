@@ -1,0 +1,32 @@
+{
+  "schema": "arcadia-agent-guidance-v1",
+  "fingerprints": {
+    "continuation": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f",
+    "agent-asks": "3c32131b6d2e3db602700ccad692a84eb08ae05e436e7e3baef9e35765c16334",
+    "operator-actions": "9a302ae9ac308f06c048d0b52cedf46249b92833ca0e01a0005719558c5f5732",
+    "proposals": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62",
+    "principles": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894",
+    "pull-requests": "6fe6b0a6bb0e1e535bd4c390bb87aab97202062efe6cbd6ba3e2de4b50403ac4",
+    "learning": "314b3725a64260d17e1b59763647f4fcbb70be82b4cb8c54be3d4ac2d7cf4da1",
+    "git-identity": "b74a4c2e3b2ed579f1781ad627167aab3782d990e2e9bf8c625c9ed80e6461c1",
+    "managed-documents": "09a26196fa657894956c84e6f9dd1f7377ae50110b3803ee92b07b61d0d2cb04",
+    "planning": "4adb5e415decc021a2ce9b0b919e2e55abdb6ba2fedacdbd1edfd001b08ebc50",
+    "working-copy": "ce22e012f54a9b293f4c0fec384254d244bb18362d3a11da892b7155ce28af3b",
+    "agent-peer-watch": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed",
+    "agent-comms": "4ff1955bb6af94d31c860b6f793bacbb996d26d95984736716096f283165f87d",
+    "rehearsal-freeze-window": "614fd20a4649bcc812a3233bbb021bee573c31f398624c2c5d3874acc81c6845",
+    "operator-directed-work": "4e5e1be606bef778bb505d01d29956940560dc4152b404e7c4b33644d9555072",
+    "standard-harness": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f",
+    "ask-todo-scout": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8",
+    "consultation": "ed457130919d871e33fae4a8bf44a833b2a7df15004d83c734bba38ee46c509f",
+    "session-roles-and-briefs": "8b10b3a3048e36e7349a2ec0f6ec695a55d197fcec531bee8dc4e6787907b446",
+    "native-app-sessions": "502882ca6bb33b2cc602052d7c94722d57566d3d59ed42fc1fb3edea57c88748",
+    "hacker-recovery": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e",
+    "code-simplification": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4",
+    "scout-continuation": "2710e96a9b5d83baf90259d4a192f59bbeb18f04209ff2131adfed5f9a01fa30",
+    "chat-titles": "33e606b2ca1e7b1786385119168f6ff052e0d1ae675f9abef700cd77c29db0c9",
+    "skills": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01",
+    "native-mail-checkpoints": "d7ec26cdb43e93ba17fb253646bf2f33b14e4b3031b3a3bae1c67bd5d4bd97ae",
+    "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8"
+  }
+}

@@ -5,6 +5,9 @@ import { createHash } from "node:crypto";
 import { validationError } from "../cli/errors.js";
 
 export const GUIDANCE_INDEX = "docs/agent-guidance/index.json";
+/** Full sha256 fingerprints for the index entries, kept beside it so agents read only triggers and paths. */
+export const GUIDANCE_FINGERPRINTS = "docs/agent-guidance/fingerprints.json";
+const GUIDANCE_SCHEMA = "arcadia-agent-guidance-v1";
 export const BOOTSTRAP_MARKER = "<!-- arcadia-bootstrap-v1 -->";
 export const INSTRUCTION_BUDGET = { bootstrap: 8 * 1024, root: 12 * 1024, project: 24 * 1024, combined: 32 * 1024 };
 const ESSENTIAL_RULES = ["Authority", "Governance", "Preservation", "Identity", "Handoff", "Operator steps", "Review", "Economy and truth", "Vocabulary"];
@@ -19,32 +22,79 @@ export interface GuidanceDelivery {
   problems: string[];
 }
 
-export function guidanceEntries(text: string): GuidanceEntry[] {
+/**
+ * Parse and validate the guidance index. The compact layout keeps each entry's
+ * 64-hex fingerprint in GUIDANCE_FINGERPRINTS (exactly one per id, none extra);
+ * a legacy adopter index carries them inline and must not also have the
+ * sibling file. Either way every returned entry has its full fingerprint.
+ */
+export function guidanceEntries(text: string, fingerprintsText: string | null = null): GuidanceEntry[] {
   let parsed: unknown;
   try { parsed = JSON.parse(text); }
   catch { throw validationError(`Invalid ${GUIDANCE_INDEX}: expected valid JSON.`); }
-  if (!parsed || typeof parsed !== "object" || !("schema" in parsed) || parsed.schema !== "arcadia-agent-guidance-v1" ||
+  if (!parsed || typeof parsed !== "object" || !("schema" in parsed) || parsed.schema !== GUIDANCE_SCHEMA ||
       !("entries" in parsed) || !Array.isArray(parsed.entries) || parsed.entries.length === 0) {
-    throw validationError(`Invalid ${GUIDANCE_INDEX}: expected arcadia-agent-guidance-v1 entries.`);
+    throw validationError(`Invalid ${GUIDANCE_INDEX}: expected ${GUIDANCE_SCHEMA} entries.`);
+  }
+  const records = parsed.entries.map((value: unknown) => {
+    if (!value || typeof value !== "object") throw validationError(`Invalid entry in ${GUIDANCE_INDEX}.`);
+    return value as Record<string, unknown>;
+  });
+  const inline = records.filter((entry) => "sha256" in entry).length;
+  if (inline !== 0 && inline !== records.length) throw validationError(`Invalid ${GUIDANCE_INDEX}: every entry or none may carry an inline sha256.`);
+  if (inline && fingerprintsText !== null) throw validationError(`Ambiguous guidance fingerprints: ${GUIDANCE_INDEX} carries inline sha256 and ${GUIDANCE_FINGERPRINTS} exists. Keep one source.`);
+  let fingerprints: Record<string, unknown> | null = null;
+  if (!inline) {
+    if (fingerprintsText === null) throw validationError(`Missing mandatory guidance: ${GUIDANCE_FINGERPRINTS}. Its fingerprints verify every ${GUIDANCE_INDEX} entry.`);
+    let value: unknown;
+    try { value = JSON.parse(fingerprintsText); }
+    catch { throw validationError(`Invalid ${GUIDANCE_FINGERPRINTS}: expected valid JSON.`); }
+    if (!value || typeof value !== "object" || !("schema" in value) || value.schema !== GUIDANCE_SCHEMA ||
+        !("fingerprints" in value) || !value.fingerprints || typeof value.fingerprints !== "object" || Array.isArray(value.fingerprints)) {
+      throw validationError(`Invalid ${GUIDANCE_FINGERPRINTS}: expected ${GUIDANCE_SCHEMA} fingerprints.`);
+    }
+    fingerprints = value.fingerprints as Record<string, unknown>;
   }
   const ids = new Set<string>();
-  const entries = parsed.entries.map((value: unknown) => {
-    if (!value || typeof value !== "object") throw validationError(`Invalid entry in ${GUIDANCE_INDEX}.`);
-    const entry = value as Record<string, unknown>;
-    for (const key of ["id", "trigger", "path", "read_before", "sha256"]) {
+  const entries = records.map((entry) => {
+    for (const key of ["id", "trigger", "path", "read_before"]) {
       if (typeof entry[key] !== "string" || !entry[key].trim()) throw validationError(`Invalid guidance entry ${key}.`);
     }
-    const item = entry as unknown as GuidanceEntry;
+    const id = entry.id as string;
+    const sha256 = fingerprints ? (Object.hasOwn(fingerprints, id) ? fingerprints[id] : undefined) : entry.sha256;
+    if (typeof sha256 !== "string" || !sha256.trim()) throw validationError(`Invalid guidance entry sha256${fingerprints ? ` for ${id} in ${GUIDANCE_FINGERPRINTS}` : ""}.`);
+    const item = { ...entry, sha256 } as unknown as GuidanceEntry;
     if (!/^docs\/[a-zA-Z0-9/_-]+\.md$/.test(item.path) || ids.has(item.id) || !/^[a-f0-9]{64}$/.test(item.sha256)) {
       throw validationError(`Unsafe reference or duplicate id in ${GUIDANCE_INDEX}: ${item.id}.`);
     }
     ids.add(item.id);
     return item;
   });
+  const orphaned = fingerprints ? Object.keys(fingerprints).filter((id) => !ids.has(id)) : [];
+  if (orphaned.length) throw validationError(`Invalid ${GUIDANCE_FINGERPRINTS}: fingerprints without an index entry: ${orphaned.join(", ")}.`);
   for (const id of ["continuation", "agent-asks", "operator-actions", "proposals", "principles", "pull-requests", "learning", "git-identity", "managed-documents", "planning", "working-copy"]) {
     if (!ids.has(id)) throw validationError(`Missing mandatory guidance trigger: ${id}.`);
   }
   return entries;
+}
+
+/** The single loader: read the index and, when present, its sibling fingerprints through one reader. */
+export function loadGuidanceEntries(readSource: (file: string) => string | null): GuidanceEntry[] {
+  const index = readSource(GUIDANCE_INDEX);
+  if (!index?.trim()) throw validationError(`Missing mandatory guidance: ${GUIDANCE_INDEX}.`);
+  return guidanceEntries(index, readSource(GUIDANCE_FINGERPRINTS));
+}
+
+/** Compact index layout: one entry per line, no fingerprints. */
+export function renderGuidanceIndex(index: { entries: unknown[] } & Record<string, unknown>): string {
+  const { entries, ...rest } = index;
+  const fields = Object.entries(rest).map(([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value, null, 2).replace(/\n/g, "\n  ")}`);
+  fields.push(`  "entries": [\n${entries.map((entry) => `    ${JSON.stringify(entry)}`).join(",\n")}\n  ]`);
+  return `{\n${fields.join(",\n")}\n}\n`;
+}
+
+export function renderGuidanceFingerprints(fingerprints: Record<string, string>): string {
+  return `${JSON.stringify({ schema: GUIDANCE_SCHEMA, fingerprints }, null, 2)}\n`;
 }
 
 /** Canonical resources are read before setup writes, never invented as a fallback. */
@@ -57,11 +107,14 @@ export function guidanceResources(readSource: (file: string) => string | null): 
   requireSource("CONSTITUTION.md");
   requireSource("docs/agent-continuation-protocol.md");
   const index = requireSource(GUIDANCE_INDEX);
-  for (const entry of guidanceEntries(index)) {
-    if (guidanceFingerprint(requireSource(entry.path)) !== entry.sha256) throw validationError(`Canonical guidance fingerprint is stale: ${entry.path}. Refresh ${GUIDANCE_INDEX} with the reviewed procedure bytes.`);
+  const fingerprints = readSource(GUIDANCE_FINGERPRINTS);
+  const entries = guidanceEntries(index, fingerprints);
+  for (const entry of entries) {
+    if (guidanceFingerprint(requireSource(entry.path)) !== entry.sha256) throw validationError(`Canonical guidance fingerprint is stale: ${entry.path}. Refresh ${fingerprints === null ? GUIDANCE_INDEX : GUIDANCE_FINGERPRINTS} with the reviewed procedure bytes.`);
   }
-  return [...new Set([GUIDANCE_INDEX, ...guidanceEntries(index).map((entry) => entry.path)])]
-    .map((file) => ({ path: file, content: file === GUIDANCE_INDEX ? index : requireSource(file) }));
+  const fixed = new Map<string, string>([[GUIDANCE_INDEX, index], ...(fingerprints === null ? [] : [[GUIDANCE_FINGERPRINTS, fingerprints] as [string, string]])]);
+  return [...new Set([...fixed.keys(), ...entries.map((entry) => entry.path)])]
+    .map((file) => ({ path: file, content: fixed.get(file) ?? requireSource(file) }));
 }
 
 export function guidanceFingerprint(text: string): string {
@@ -184,7 +237,7 @@ export function inspectGuidanceDelivery(repoRoot: string, options: {
     const indexPath = path.join(root, GUIDANCE_INDEX);
     const index = read(indexPath);
     if (!index) problems.push(`Missing mandatory guidance: ${GUIDANCE_INDEX}. Run setup-context through the authorized adoption path.`);
-    else for (const entry of guidanceEntries(index)) {
+    else for (const entry of guidanceEntries(index, read(path.join(root, GUIDANCE_FINGERPRINTS)))) {
       const target = path.join(root, entry.path);
       const content = read(target);
       if (!content?.trim()) problems.push(`Missing mandatory guidance: ${entry.path}.`);
@@ -211,7 +264,7 @@ export function renderGuidanceRetrieval(repoRoot: string, agent: "codex" | "clau
   if (!hasWayGuidance(repoRoot)) return [];
   const delivery = inspectGuidanceDelivery(repoRoot, { agent: agent ?? "codex", ...(agent ? {} : { globalInstructions: "" }) });
   if (delivery.problems.length) throw validationError(`Agent guidance delivery refused: ${delivery.problems.join(" ")}`, { delivery });
-  const entries = guidanceEntries(readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8"));
+  const entries = loadGuidanceEntries((file) => existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null);
   const relevant = entries.filter((entry) => ["continuation", "learning", "working-copy"].includes(entry.id) ||
     entry.trigger.split(",").some((trigger) => {
       const phrase = trigger.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
