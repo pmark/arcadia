@@ -655,13 +655,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           tier: null,
           source: "explicit" as const,
           note: null,
-          // Only the printed escalation hint reads the registry here, so an
-          // invalid override must not refuse an explicitly pinned handoff.
+          // Without --launch only the printed escalation hint reads the
+          // registry here, so an invalid override must not refuse an
+          // explicitly pinned handoff. A launch validates it strictly now,
+          // before any worktree or claim exists.
           escalation: resolveEscalationTarget({
             agent: options.agent,
             recommendedModel: planModel,
             currentModel: options.model,
-            registry: loadIdentityModelTierRegistry(workspacePath)
+            registry: options.launch ? loadModelTierRegistry(workspacePath) : loadIdentityModelTierRegistry(workspacePath)
           })
         }
       : resolveSessionStart({

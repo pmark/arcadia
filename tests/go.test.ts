@@ -43,6 +43,18 @@ describe("arcadia go", () => {
     expect(output).toContain("arcadia identity resolve");
     expect(advance.data.claimedAction).toBe("define-contract");
   });
+  it.each([
+    ["an automatic model selection", {}],
+    ["an explicit-model launch", { model: "gpt-5.6-terra", launch: true }]
+  ])("still refuses a malformed registry for %s before preparing a worktree", (_case, extra) => {
+    const fixture = createFixture("codex/identity-strict-selection");
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), "{broken");
+    const handoffs = path.join(fixture.root, "handoffs");
+    expect(() => runGoCommand({ repo: fixture.main, source: fixture.feature, workspace: fixture.workspace,
+      apply: true, agent: "codex", agentWorktreeRoot: handoffs, ...extra })).toThrow("not valid JSON");
+    expect(existsSync(handoffs)).toBe(false);
+  });
   it("previews without changing Git state", () => {
     const fixture = createFixture("codex/copy-contract");
     commitFeature(fixture.feature, "proof.txt", "proof\n");
