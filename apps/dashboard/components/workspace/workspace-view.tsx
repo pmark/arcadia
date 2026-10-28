@@ -106,7 +106,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
       </section>
       <section className="workspace-direction workspace-panel" aria-label="Direction">
         <WorkspaceNextMove go={go} project={goProject} relation={relation} />
-        <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
+        <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
       </section>
       <aside className="workspace-context-panel workspace-panel" aria-label="Context">
         <div className="workspace-section-heading"><h2>In this {listed.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>

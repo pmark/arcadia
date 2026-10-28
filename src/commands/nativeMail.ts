@@ -12,11 +12,14 @@ import {
   listMailInbox,
   verifyMailEffect,
   reportMailResult,
+  consumeDirectionCheckpoint,
+  recordDirectionRecipientState,
   type MailMessageKind,
   type MailMessageRow,
   type MailReceiptRow,
   type MailStatusView
 } from "../nativeMail/store.js";
+import { observeDirectionQa } from "../ask/directionVerification.js";
 
 function parseJsonOption(label: string, raw: string | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -50,6 +53,8 @@ export interface NativeMailSendOptions {
   expiresAt?: string;
   bodyJson?: string;
   actor: string;
+  directionRequestId?: string;
+  directionFingerprint?: string;
 }
 
 const MESSAGE_KINDS: MailMessageKind[] = ["status", "report", "request", "reply"];
@@ -86,6 +91,9 @@ export function runNativeMailSendCommand(options: NativeMailSendOptions): Comman
       resourceRefs: options.resourceRefs ?? [],
       expiresAt: options.expiresAt ?? null,
       actor: options.actor
+      , ...(options.directionRequestId || options.directionFingerprint ? { direction: {
+        requestId: options.directionRequestId ?? "", fingerprint: options.directionFingerprint ?? ""
+      } } : {})
     })
   );
   return createSuccess({ command: "native-mail.send", workspace: workspacePath, data });
@@ -122,6 +130,7 @@ export interface NativeMailAckOptions {
   recipientIncarnation: string;
   recipientGeneration: string;
   actor: string;
+  compactAcknowledgment?: string;
 }
 
 export function runNativeMailAckCommand(options: NativeMailAckOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
@@ -134,6 +143,7 @@ export function runNativeMailAckCommand(options: NativeMailAckOptions): CommandS
       recipientSessionIncarnation: options.recipientIncarnation,
       recipientGeneration: options.recipientGeneration,
       actor: options.actor
+      , compactAcknowledgment: options.compactAcknowledgment
     })
   );
   return createSuccess({ command: "native-mail.ack", workspace: workspacePath, data: { receipt } });
@@ -177,6 +187,7 @@ export interface NativeMailVerifyOptions {
   planSlug: string;
   recipientIncarnation: string;
   recipientGeneration: string;
+  qaDecisionId?: string;
 }
 
 /**
@@ -187,7 +198,11 @@ export interface NativeMailVerifyOptions {
 export function runNativeMailVerifyCommand(options: NativeMailVerifyOptions): CommandSuccess<{ receipt: MailReceiptRow }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const receipt = withDatabase(workspacePath, (db: Database.Database) =>
-    verifyMailEffect(db, {
+    options.qaDecisionId ? observeDirectionQa(db, workspacePath, {
+      messageId: options.messageId, requestId: options.requestId, decisionId: options.qaDecisionId, actor: options.actor,
+      projectSlug: options.projectSlug, planSlug: options.planSlug,
+      recipientSessionIncarnation: options.recipientIncarnation, recipientGeneration: options.recipientGeneration
+    }) : verifyMailEffect(db, {
       messageId: options.messageId,
       requestId: options.requestId,
       actor: options.actor,
@@ -198,6 +213,24 @@ export function runNativeMailVerifyCommand(options: NativeMailVerifyOptions): Co
     })
   );
   return createSuccess({ command: "native-mail.verify", workspace: workspacePath, data: { receipt } });
+}
+
+export interface NativeMailConsumeOptions extends NativeMailInboxOptions { messageId: string; requestId: string; fingerprint: string }
+export function runNativeMailConsumeCommand(options: NativeMailConsumeOptions) {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const receipt = withDatabase(workspacePath, db => consumeDirectionCheckpoint(db, { ...options,
+    recipientSessionIncarnation: options.recipientIncarnation, recipientGeneration: options.recipientGeneration }));
+  return createSuccess({ command: "native-mail.consume", workspace: workspacePath, data: { receipt } });
+}
+
+export interface NativeMailRecipientStateOptions extends NativeMailInboxOptions {
+  messageId: string; requestId: string; state: "paused" | "stopped" | "running"; evidenceReference: string;
+}
+export function runNativeMailRecipientStateCommand(options: NativeMailRecipientStateOptions) {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const receipt = withDatabase(workspacePath, db => recordDirectionRecipientState(db, { ...options,
+    recipientSessionIncarnation: options.recipientIncarnation, recipientGeneration: options.recipientGeneration }));
+  return createSuccess({ command: "native-mail.record-recipient-state", workspace: workspacePath, data: { receipt } });
 }
 
 export interface NativeMailDisposeOptions {

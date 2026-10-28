@@ -1,4 +1,4 @@
-import type { AskTrailData as AskTrailResponse } from "../../../src/commands/askTrail.js";
+import type { AskTrailData as AskTrailResponse } from "../../../src/ask/trailTypes.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -1148,6 +1148,12 @@ export async function runAsk(input: {
   if (input.requestId?.trim()) args.push("--request-id", input.requestId.trim());
   if (input.projectId !== undefined) args.push("--project", input.projectId);
   return runArcadiaCliJson<AskResponse>(args);
+}
+
+export async function captureOperatorDirection(input: { request: string; requestId: string; directionTarget: unknown }) {
+  return runArcadiaCliJson<{ direction: import("../../../src/ask/directionTypes.js").DirectionView }>([
+    "ask", input.request, "--request-id", input.requestId, "--direction-target", JSON.stringify(input.directionTarget)
+  ]);
 }
 
 export async function showAsk(input: { id: string }): Promise<ArcadiaJsonSuccess<AskTrailResponse>> {
