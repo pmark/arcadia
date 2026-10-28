@@ -4,10 +4,21 @@ import {
   MODEL_TIERS,
   TIER_AGENTS,
   isModelTier,
+  loadModelTierRegistry,
   type ModelTier,
   type ModelTierRegistry,
   type TierAgent
 } from "./modelTiers.js";
+
+/** Display names must not block work already bound by execution registries.
+ * Selection and launch still use the strict registry loader. */
+export function loadIdentityModelTierRegistry(workspace: string | null | undefined): ModelTierRegistry | undefined {
+  try {
+    return loadModelTierRegistry(workspace);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The Git identity an Arcadia-dispatched coding agent commits under.

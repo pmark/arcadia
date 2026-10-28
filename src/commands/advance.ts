@@ -19,6 +19,8 @@ import {
   getSession,
   resolveProjectTransition,
   sessionView,
+  sessionAgentForProvider,
+  type AgentSession,
   type ProjectTransition
 } from "../sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
@@ -26,6 +28,8 @@ import { findOperatorLaunchAuthorization, type OperatorLaunchSource } from "../s
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
 import { recordCompletionHoldEscalation } from "../production/tick.js";
 import { reconcileSessionExit, type ReconcileSessionExitResult } from "../sessions/reconciliation.js";
+import { loadIdentityModelTierRegistry, renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { readProjectPartners } from "../sessions/partners.js";
 
 export interface AdvanceQueueCommandData extends AgentQueue {}
 export interface AdvanceQueueReorderData { receipt: ActionOrderReceipt; nextActionKey: string | null; }
@@ -43,6 +47,7 @@ export interface AdvanceCommandData {
    * worktree with no live claim, where the pointer is the answer.
    */
   claimedAction?: string | null;
+  identity?: string[];
 }
 
 export function runAdvanceCommand(options: { workspace: string; repo: string; session?: string }): CommandSuccess<AdvanceCommandData> {
@@ -51,7 +56,10 @@ export function runAdvanceCommand(options: { workspace: string; repo: string; se
     const sessionId = options.session;
     const session = withReadOnlyDatabase(workspacePath, (db) => getSession(db, sessionId));
     if (!session) throw new Error(`Session was not found: ${options.session}`);
-    return createSuccess({ command: "advance", workspace: workspacePath, data: { session: sessionView(session), transition: null } });
+    return createSuccess({ command: "advance", workspace: workspacePath, data: {
+      session: sessionView(session), transition: null,
+      identity: advanceIdentityBlock(workspacePath, session.project_slug, session.worktree_path, session)
+    } });
   }
   const repoRoot = existingDirectory(options.repo, "repository");
   const project = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project");
@@ -73,10 +81,31 @@ export function runAdvanceCommand(options: { workspace: string; repo: string; se
   const preservation = repository ? withReadOnlyDatabase(workspacePath, db => readPreservationReadiness(db, {
     workspace: workspacePath, repository, worktree: repoRoot, projectSlug: project.slug
   })) : undefined;
+  const transitionSessionId = transition.sessionId;
+  const session = transitionSessionId
+    ? withReadOnlyDatabase(workspacePath, db => getSession(db, transitionSessionId))
+    : null;
   return createSuccess({
     command: "advance",
     workspace: workspacePath,
-    data: { session: null, transition, claimedAction, ...(preservation ? { preservation } : {}) }
+    data: { session: null, transition, claimedAction, ...(preservation ? { preservation } : {}),
+      identity: advanceIdentityBlock(workspacePath, project.slug, repoRoot, session) }
+  });
+}
+
+function advanceIdentityBlock(workspace: string, projectSlug: string, worktree: string, session: AgentSession | null): string[] {
+  const registry = loadIdentityModelTierRegistry(workspace);
+  let partners = null;
+  try {
+    partners = withReadOnlyDatabase(workspace, db => readProjectPartners(db, {
+      projectSlug, excludeWorktree: worktree, excludeSessionId: session?.id, registry
+    }));
+  } catch { /* Identity display remains available when partner rows cannot be read. */ }
+  // Manual reservations record no provider/model. Never infer an identity from
+  // the branch or the Plan's recommendation; tell that caller how to resolve it.
+  return renderSessionIdentityBlock({
+    agent: session ? sessionAgentForProvider(session.provider) ?? session.provider : "unknown",
+    model: session?.model, effort: session?.effort, registry, partners
   });
 }
 
@@ -92,7 +121,8 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
       `Reattach: ${data.session.reattachCommand}`,
       data.session.resumeCommand
         ? `Resume after exit: ${data.session.resumeCommand}`
-        : `Resume after exit: ${data.session.resumeNotice}`
+        : `Resume after exit: ${data.session.resumeNotice}`,
+      ...(data.identity?.length ? ["", ...data.identity] : [])
     ];
   }
   return [
@@ -107,7 +137,8 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
     ...(data.preservation ? [
       `Preservation: ${data.preservation.ready ? "ready" : "needs configuration or repair"}`,
       ...data.preservation.blockers.map((b: { code: string; reason: string }) => `${b.code}: ${b.reason}`)
-    ] : [])
+    ] : []),
+    ...(data.identity?.length ? ["", ...data.identity] : [])
   ];
 }
 

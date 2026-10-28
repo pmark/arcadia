@@ -2,8 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
-import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
-import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { loadIdentityModelTierRegistry, renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
 import { validationError } from "../cli/errors.js";
 import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codingAgents/availability.js";
@@ -94,7 +93,6 @@ export function createCodexPacket(input: {
 
   const invocationId = createId("codexInvocation");
   const packetDir = path.join(input.workspace, "prompts", "codex", invocationId);
-  mkdirSync(packetDir, { recursive: true });
 
   const promptPath = path.join(packetDir, "prompt.md");
   const jsonlOutputPath = path.join(packetDir, "output.jsonl");
@@ -145,6 +143,7 @@ export function createCodexPacket(input: {
     purpose: input.agentProfile.purpose
   });
 
+  mkdirSync(packetDir, { recursive: true });
   writeFileSync(promptPath, promptText, "utf8");
   writeFileSync(jsonlOutputPath, "", "utf8");
   writeFileSync(finalMessagePath, `${codingAgentLabel(input.agentProfile)} has not been invoked yet.\n`, "utf8");
@@ -576,7 +575,7 @@ export function renderPacketIdentity(input: {
     effort: input.agentConfiguration?.effort ?? null,
     // The workspace's own tier registry, as a launched Session resolves it,
     // so a rebound model is named here exactly as it will commit.
-    registry: loadModelTierRegistry(input.workspace)
+    registry: loadIdentityModelTierRegistry(input.workspace)
   }).join("\n");
 }
 
