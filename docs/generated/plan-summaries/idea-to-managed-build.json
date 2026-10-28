@@ -1,10 +1,10 @@
 {
   "schema": "arcadia-plan-summary-v1",
   "generated": true,
-  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "plan": "idea-to-managed-build",
   "source": "docs/plans/idea-to-managed-build.md",
-  "source_fingerprint": "7c20ad0e4b83ddf9",
+  "source_fingerprint": "b01def68447c02fe",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "written": "2026-10-28",
   "author": "Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
   "title": "From an idea to a managed build, without hand-carrying it",
@@ -15,59 +15,59 @@
   "actions": [
     {
       "id": "prepare-project-idea",
-      "source_fingerprint": "0c2c82ed0d94266d",
       "title": "Turn an idea into a planning task",
       "why": "So a project idea typed once becomes real planning work, instead of a note that waits for someone to act on it.",
-      "done_when": "One command records the idea word for word and creates a ready planning Action with one approval."
+      "done_when": "One command records the idea word for word and creates a ready planning Action with one approval.",
+      "source_fingerprint": "0c2c82ed0d94266d"
     },
     {
       "id": "promote-accepted-plan",
-      "source_fingerprint": "a45f2275ac6e1b3b",
       "title": "Turn an approved plan into the first build task",
       "why": "Closes the gap where an approved plan still needed a person to write the first build Action.",
-      "done_when": "Accepting a plan creates exactly one build Action with full provenance, and starts nothing by itself."
+      "done_when": "Accepting a plan creates exactly one build Action with full provenance, and starts nothing by itself.",
+      "source_fingerprint": "a45f2275ac6e1b3b"
     },
     {
       "id": "demo-astro-staging-loop",
-      "source_fingerprint": "151fc2472df6102e",
       "title": "Prove idea-to-staging once, end to end",
       "why": "A demo that the whole loop works on a real example: a blog idea becomes a site on staging.",
-      "done_when": "The MartianRover Field Notes idea became a Project, was approved once, and was deployed to staging only."
+      "done_when": "The MartianRover Field Notes idea became a Project, was approved once, and was deployed to staging only.",
+      "source_fingerprint": "151fc2472df6102e"
     },
     {
       "id": "build-operator-attention-board",
-      "source_fingerprint": "b34e5d6fd9318610",
       "title": "Make what needs you obvious",
       "why": "Your attention is the scarcest resource, so the queue leads with one item and says why, instead of showing every record at equal weight.",
-      "done_when": "Needs you shows one leading item, explains its ranking, and keeps work Arcadia can handle off the board."
+      "done_when": "Needs you shows one leading item, explains its ranking, and keeps work Arcadia can handle off the board.",
+      "source_fingerprint": "b34e5d6fd9318610"
     },
     {
       "id": "build-plan-approval-surface",
-      "source_fingerprint": "ad47c12a88b65c4b",
       "title": "Approve a plan without reading raw files",
       "why": "So you can judge a prepared plan as a readable page and approve, defer or send it back in one place.",
-      "done_when": "Review shows the plan readably, every outcome is recorded as a Decision, and nothing starts by itself."
+      "done_when": "Review shows the plan readably, every outcome is recorded as a Decision, and nothing starts by itself.",
+      "source_fingerprint": "ad47c12a88b65c4b"
     },
     {
       "id": "launch-tmux-backed-session",
-      "source_fingerprint": "f1f7c4c76b1378a8",
       "title": "Start a governed coding-agent session",
       "why": "The build loop needs Arcadia itself to start the agent, with every safety check, instead of you opening a terminal.",
-      "done_when": "An explicit launch option starts one tmux-backed Session, only after every check passes and a receipt is written first."
+      "done_when": "An explicit launch option starts one tmux-backed Session, only after every check passes and a receipt is written first.",
+      "source_fingerprint": "f1f7c4c76b1378a8"
     },
     {
       "id": "reconcile-session-exit",
-      "source_fingerprint": "539aa9ebb5dc3860",
       "title": "Turn a finished session into the next step",
       "why": "When an agent stops, Arcadia must record what really happened and what comes next, without treating 'it exited' as 'it's done'.",
-      "done_when": "Each exit is recorded once, the next state comes from the repository's records, and one real session proves the path."
+      "done_when": "Each exit is recorded once, the next state comes from the repository's records, and one real session proves the path.",
+      "source_fingerprint": "539aa9ebb5dc3860"
     },
     {
       "id": "manage-coding-agent-build",
-      "source_fingerprint": "8348d221bf4a1fa9",
       "title": "Run the build through to a reviewed candidate",
       "why": "The last step of the loop: Arcadia runs the build, has it checked independently, and turns a failure into one clear fix, while merge and deploy still wait for you.",
-      "done_when": "A build runs in its own branch, passes deterministic checks and independent QA, and merge, deploy and similar steps still need their own Decisions."
+      "done_when": "A build runs in its own branch, passes deterministic checks and independent QA, and merge, deploy and similar steps still need their own Decisions.",
+      "source_fingerprint": "8348d221bf4a1fa9"
     }
   ]
 }

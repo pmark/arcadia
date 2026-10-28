@@ -77,6 +77,13 @@ A failed read keeps the last good one, labelled with its time in Direction and W
 
 On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
 
+Where a Plan has a plain-language summary in `docs/generated/plan-summaries/`, the workspace uses it:
+- Plans and Actions show their plain title and a one-line why.
+- The Plan and Action views show why each exists, what it serves and what "done" looks like.
+- The recorded milestone and title stay alongside.
+
+Every summary is labelled as a reading aid, because the record governs. One written before its record changed is labelled as such, and a Plan without a summary shows its record as before. `pnpm -s check:plan-summaries` reports which summaries are missing or stale, without changing anything.
+
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
 [opening Artifacts](docs/design/workspace-artifact-opening.md).

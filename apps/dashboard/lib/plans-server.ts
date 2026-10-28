@@ -2,7 +2,8 @@ import { resolveReadyWorkspace } from "../../../src/cli/workspace";
 import { withDatabase } from "../../../src/db/connection";
 import { getProjectBySlug, getProjectMetadata, listProjects } from "../../../src/db/repositories";
 import { ArcadiaCliError, loadPlanProgress, loadProjectPlans } from "./arcadia-cli";
-import type { AllPlansResponse, PlanDetailResponse } from "./plans-types";
+import type { AllPlansResponse, PlanDetailResponse, PlanSummariesResponse } from "./plans-types";
+import { checkPlanSummaries, isPlanSummary, readPlanSummary } from "../../../src/docs/planSummaries";
 import { cachedStale } from "./swr-cache";
 
 /** Plan documents change only through settlement; serve the last read and refresh behind it. */
@@ -76,4 +77,32 @@ export async function loadPlanDetail(projectSlug: string, planSlug: string): Pro
     plan: list?.data.plans.find((plan) => plan.slug === planSlug) ?? null,
     progress: progress.data
   };
+}
+
+/**
+ * One Project's Plan summaries with their freshness, read from its repository's generated namespace. Read-only and
+ * model-free; summaries are derived reading aids that never govern (Decision 0004).
+ */
+export async function loadPlanSummaries(projectSlug: string): Promise<PlanSummariesResponse> {
+  const { workspacePath } = resolveReadyWorkspace();
+  const found = withDatabase(workspacePath, (db) => {
+    const project = getProjectBySlug(db, projectSlug);
+    return project ? { slug: project.slug, repoPath: getProjectMetadata(db, project.id)?.repo_path ?? null } : null;
+  });
+  if (!found) throw new PlanNotFound(`No Project "${projectSlug}" is in this workspace.`);
+  if (!found.repoPath) throw new PlanNotFound(`Project "${projectSlug}" has no repository path, so its summaries cannot be read.`);
+  const repoPath = found.repoPath;
+  // Not cached: the check is a few synchronous file reads, and a cached report could hide a summary that just went stale.
+  const report = checkPlanSummaries(repoPath);
+  const plans: PlanSummariesResponse["plans"] = {};
+  for (const status of report.plans) {
+    const raw = status.state === "fresh" || status.state === "stale" ? readPlanSummary(repoPath, status.plan) : null;
+    plans[status.plan] = {
+      state: status.state,
+      planFresh: status.planFresh,
+      summary: raw && isPlanSummary(raw) ? raw : null,
+      actions: Object.fromEntries(status.actions.map((a) => [a.id, a.state]))
+    };
+  }
+  return { project: found.slug, generatedAt: new Date().toISOString(), plans };
 }

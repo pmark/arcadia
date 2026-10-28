@@ -1,10 +1,10 @@
 {
   "schema": "arcadia-plan-summary-v1",
   "generated": true,
-  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "plan": "make-arcadia-go-orient-one-caller-truthfully-before-authorized-work",
   "source": "docs/plans/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work.md",
-  "source_fingerprint": "df442c98758fecc0",
+  "source_fingerprint": "40f155d14a395002",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "written": "2026-10-28",
   "author": "Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
   "title": "Go tells the truth, then lets you direct and continue work",
@@ -14,53 +14,53 @@
   "actions": [
     {
       "id": "resolve-go-caller-context",
-      "source_fingerprint": "893bc40fbbfa95ac",
       "title": "Tell each agent what it is actually assigned",
       "why": "Nothing can be continued safely until Go reports the caller's real assignment, not just the Project's pointer, so no agent works on the wrong thing.",
-      "done_when": "Go reports a caller's assignment and the Project's selected Action separately, and never invents or takes over ownership."
+      "done_when": "Go reports a caller's assignment and the Project's selected Action separately, and never invents or takes over ownership.",
+      "source_fingerprint": "893bc40fbbfa95ac"
     },
     {
       "id": "reuse-go-context-through-authorized-continuation",
-      "source_fingerprint": "da95c43d0e8a2358",
       "title": "Continue exactly the work Go described",
       "why": "Starting work must act on what Go just showed, and pressing Go twice must never start a second agent on the same work.",
-      "done_when": "Repeating a Go request returns the same Session instead of a new one, and every existing safety check still applies."
+      "done_when": "Repeating a Go request returns the same Session instead of a new one, and every existing safety check still applies.",
+      "source_fingerprint": "da95c43d0e8a2358"
     },
     {
       "id": "project-go-context-as-compact-state-signals",
-      "source_fingerprint": "5825a0b6331bf487",
       "title": "Show who is working and what needs you, at a glance",
       "why": "So you can tell whose work is active and what needs attention from session titles and short updates, without reading a wall of context.",
-      "done_when": "Codex, Claude Code and OpenCode sessions show their real state in their titles and short acknowledgments."
+      "done_when": "Codex, Claude Code and OpenCode sessions show their real state in their titles and short acknowledgments.",
+      "source_fingerprint": "5825a0b6331bf487"
     },
     {
       "id": "project-go-orientation-for-the-operator",
-      "source_fingerprint": "d808cfae6d604e58",
       "title": "Give the workspace Go's view, with no side effects",
       "why": "The workspace needs Go's answer for every Project without each look writing a journal entry or changing anything.",
-      "done_when": "The workspace reads Go's per-Project answer from a read-only route that changes nothing."
+      "done_when": "The workspace reads Go's per-Project answer from a read-only route that changes nothing.",
+      "source_fingerprint": "d808cfae6d604e58"
     },
     {
       "id": "show-receipts-for-operator-directions",
-      "source_fingerprint": "3fed07b865af923f",
       "title": "Show what happened to your direction",
       "why": "When you tell an agent something, you need to know whether it arrived, was read and was acted on, not just that it was saved.",
-      "done_when": "Each direction shows submitted, delivered, acknowledged, continued and verified only with evidence for each, plus held and unknown."
+      "done_when": "Each direction shows submitted, delivered, acknowledged, continued and verified only with evidence for each, plus held and unknown.",
+      "source_fingerprint": "3fed07b865af923f"
     },
     {
       "id": "continue-from-go-in-the-workspace",
-      "source_fingerprint": "7d4542bc60a77731",
       "title": "Continue one Action from the workspace",
       "why": "This is the first time you can start real work from Arcadia itself, so it has to be one safe press, previewed before it runs.",
-      "done_when": "A Continue button runs Go's ready Action once after a preview, and one real assisted delivery is completed through it."
+      "done_when": "A Continue button runs Go's ready Action once after a preview, and one real assisted delivery is completed through it.",
+      "source_fingerprint": "7d4542bc60a77731"
     },
     {
       "id": "continue-through-approved-scope-from-the-workspace",
-      "source_fingerprint": "bda8d3047d2abf11",
       "title": "Let Arcadia keep going through a scope you approved",
       "why": "So Arcadia keeps working Action after Action while you're away, and stops at the first thing only you can decide.",
       "done_when": "After you approve a scope, Go continues one Action at a time and stops at the first gate with the reason shown.",
-      "note": "Waits for your answer to the bounded-continuation scope Decision."
+      "note": "Waits for your answer to the bounded-continuation scope Decision.",
+      "source_fingerprint": "bda8d3047d2abf11"
     }
   ]
 }

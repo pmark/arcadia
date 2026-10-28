@@ -1,10 +1,10 @@
 {
   "schema": "arcadia-plan-summary-v1",
   "generated": true,
-  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "plan": "portfolio-docs-protocol",
   "source": "docs/plans/portfolio-docs-protocol.md",
-  "source_fingerprint": "b555fa213681151a",
+  "source_fingerprint": "d76967a07244011a",
+  "note": "Derived reading aid. Never authoritative; never read as intent (Decision 0004). The Plan document governs.",
   "written": "2026-10-28",
   "author": "Clara (technical writing) via Claudia Atlas <claudia.atlas@agents.arcadia.local>",
   "title": "Project files are the source of intent",
@@ -15,67 +15,67 @@
   "actions": [
     {
       "id": "build-parser",
-      "source_fingerprint": "5fe112f2effc0040",
       "title": "Read plan and decision files",
       "why": "Everything else depends on reading these files correctly and pointing at exactly where one is wrong.",
-      "done_when": "Managed files parse, and an invalid value names its file and field."
+      "done_when": "Managed files parse, and an invalid value names its file and field.",
+      "source_fingerprint": "5fe112f2effc0040"
     },
     {
       "id": "build-upsert",
-      "source_fingerprint": "70928c802d0b8ab0",
       "title": "Store what the files say, once",
       "why": "So reading the same files twice never creates duplicate records.",
-      "done_when": "Syncing twice leaves one record per document."
+      "done_when": "Syncing twice leaves one record per document.",
+      "source_fingerprint": "70928c802d0b8ab0"
     },
     {
       "id": "wire-docs-sync-command",
-      "source_fingerprint": "94a196564154bd3a",
       "title": "Add the docs sync command",
       "why": "Gives you and agents one command that previews, then applies, what the files say.",
-      "done_when": "`docs sync` previews by default and writes only with `--apply`."
+      "done_when": "`docs sync` previews by default and writes only with `--apply`.",
+      "source_fingerprint": "94a196564154bd3a"
     },
     {
       "id": "contract-work-pointer",
-      "source_fingerprint": "bac457a3e5962c85",
       "title": "Name the one current Action",
       "why": "So 'get to work' has a single, checkable answer instead of a guess from recent commits or the backlog.",
-      "done_when": "`arcadia next` resolves exactly one Action, or lists blockers with their fixes."
+      "done_when": "`arcadia next` resolves exactly one Action, or lists blockers with their fixes.",
+      "source_fingerprint": "bac457a3e5962c85"
     },
     {
       "id": "second-project-validation",
-      "source_fingerprint": "33a2e8f97a01239e",
       "title": "Try it on a second repository",
       "why": "Proves the approach isn't Arcadia-specific, using Private Practice Now without changing its code.",
-      "done_when": "Private Practice Now was previewed and resolved, and the findings were recorded."
+      "done_when": "Private Practice Now was previewed and resolved, and the findings were recorded.",
+      "source_fingerprint": "33a2e8f97a01239e"
     },
     {
       "id": "repair-clarification-response-ux",
-      "source_fingerprint": "a8fe074487999085",
       "title": "Answer clarifying questions directly",
       "why": "Clarifying questions were awkward to answer, so this lets you reply in Mission Control or Discord and get the next step back.",
-      "done_when": "A free-text reply answers the exact Decision and returns the next Action or one follow-up question."
+      "done_when": "A free-text reply answers the exact Decision and returns the next Action or one follow-up question.",
+      "source_fingerprint": "a8fe074487999085"
     },
     {
       "id": "ingest-mission-logs",
-      "source_fingerprint": "917e3e1eec65bee8",
       "title": "Read the mission log",
       "why": "So each project's running narrative is part of what Arcadia knows.",
-      "done_when": "Each dated log entry becomes one record, with no duplicates on re-run."
+      "done_when": "Each dated log entry becomes one record, with no duplicates on re-run.",
+      "source_fingerprint": "917e3e1eec65bee8"
     },
     {
       "id": "persist-dependencies",
-      "source_fingerprint": "d644d8722f4c70c3",
       "title": "Remember which Actions wait on others",
       "why": "So Arcadia never starts an Action before the Actions it depends on are finished.",
-      "done_when": "Dependencies survive a sync, and an Action can't be dispatched until they're met."
+      "done_when": "Dependencies survive a sync, and an Action can't be dispatched until they're met.",
+      "source_fingerprint": "d644d8722f4c70c3"
     },
     {
       "id": "narrative-summarization",
-      "source_fingerprint": "564017b42d5ae110",
       "title": "Summarize long narrative documents",
       "why": "Long narrative files need a short summary that is kept separate, so it is never mistaken for the source.",
       "done_when": "A narrative document gets a summary Artifact that is never written back into it.",
-      "note": "Deferred until 'a second foreign repository, or a summary someone actually wants'. The operator's 2026-10-28 request for Plan and Action summaries is that want; see docs/design/purpose-first-plans.md."
+      "note": "Deferred until 'a second foreign repository, or a summary someone actually wants'. The operator's 2026-10-28 request for Plan and Action summaries is that want; see docs/design/purpose-first-plans.md.",
+      "source_fingerprint": "564017b42d5ae110"
     }
   ]
 }
