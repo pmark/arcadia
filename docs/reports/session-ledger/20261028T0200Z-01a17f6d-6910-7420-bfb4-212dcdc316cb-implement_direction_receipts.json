@@ -1,0 +1,78 @@
+{
+  "session_id": "01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts",
+  "role": "driver",
+  "model": "inherited-unavailable",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": null,
+  "action_id": "arcadia/show-receipts-for-operator-directions",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [
+    {
+      "class": "unused-type-import-lint",
+      "caught_by": "local full/touched lint"
+    },
+    {
+      "class": "keyboard-order-test-expectation",
+      "caught_by": "workspace-shell E2E"
+    },
+    {
+      "class": "CLI-API-test-time-bound",
+      "caught_by": "direction-cli integration"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "hoisted-mock-fixture-placement",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "primary-fixture-draft-isolation",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "managed-fixture-FK-dependencies",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "canonical-error-JSON-stderr",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "cwd-relative-Next-path",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "concurrent-CLI-test-timeout",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "premature-empty-log-lint-pass",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    },
+    {
+      "id": "untracked-EOF-whitespace",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261028T0158Z-01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_direction_receipts.md"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Operator requested wrap-up and handoff; source preserved, Action open, validation failures/gaps remain.",
+  "notes": "Native implementer context; legacy driver=implementer. No managed Session/admission. Two local repair batches plus one named harness recovery; runtime usage unavailable."
+}
