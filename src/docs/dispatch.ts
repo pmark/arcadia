@@ -127,6 +127,14 @@ export function resolveActivePlan(
   const blockers: DispatchBlocker[] = [];
   const discovered = alreadyRead ?? discoverDocs(repoRoot);
 
+  // An unreadable directory/stat can hide a control record, and unreadable
+  // Markdown cannot be classified by frontmatter. Fail closed in the shared
+  // resolver; supporting-document parse errors retain their existing policy.
+  for (const error of discovered.ioErrors ?? []) {
+    blockers.push({ relativePath: error.relativePath, field: `discovery.${error.operation}`,
+      message: error.message, remedy: `Restore readable repository evidence at ${error.source}, then read Go again.` });
+  }
+
   for (const error of discovered.errors.filter((candidate) => isAuthoritativeControlPath(candidate.relativePath))) {
     blockers.push({
       relativePath: error.relativePath,

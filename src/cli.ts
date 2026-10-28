@@ -592,6 +592,7 @@ import {
 } from "./cli/response.js";
 import { loadUserConfig, readExperimentWorkspace, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
 import { commandKey, guardCommandInvocation, recordsActivity } from "./workspace/experimentGuard.js";
+import { runGoContextCommand } from "./commands/goContext.js";
 import { FREEZE_OPERATIONS } from "./production/freezeWindow.js";
 import { activityErrorCode } from "./activity/errorCodes.js";
 import {
@@ -4347,6 +4348,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       () => runOperatorTaskDeclineCommand({ ...options, id }),
       renderOperatorTaskDeclineSuccess
     )
+  );
+
+  addJsonOption(program.command("go-context")
+    .description("Observe each Project's existing Go resolution and ownership without journal or activity writes")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--project <project>", "Only this Project (id or slug)")
+  ).action((options: { workspace: string; project?: string; json?: boolean }) =>
+    runCliAction("go-context", options, () => runGoContextCommand(options), response => [JSON.stringify(response.data, null, 2)])
   );
 
   const next = program

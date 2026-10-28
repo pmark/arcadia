@@ -1,0 +1,114 @@
+{
+  "nativeContextId": "01a17f6d-6910-7420-bfb4-212dcdc316cb-implement_operator_orientation",
+  "nativeTask": "/root/implement_operator_orientation",
+  "parent": "/root",
+  "role": "implementer",
+  "depth": 1,
+  "actualModel": null,
+  "actualEffort": null,
+  "canonicalSession": null,
+  "baseRevision": "ec08741392ebe71dfd06391453440dccdba70d71",
+  "note": "sourceBytes describe source file sizes, not effective context use or a claim every unrelated section was loaded.",
+  "instructions": [
+    {
+      "path": "AGENTS.md",
+      "sourceBytes": 12236,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "sourceBytes": 3320,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "PROJECT.md",
+      "sourceBytes": 31432,
+      "retrieved": "frontmatter pointer"
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "sourceBytes": 539,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "sourceBytes": 703,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "sourceBytes": 870,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "sourceBytes": 12038,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": ".agents/skills/arcadia-role/SKILL.md",
+      "sourceBytes": 11841,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "docs/plans/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work.md",
+      "sourceBytes": 20885,
+      "retrieved": "exact project-go-orientation-for-the-operator Action"
+    },
+    {
+      "path": "docs/agent-guidance/continuation.md",
+      "sourceBytes": 8704,
+      "retrieved": "startup, compact signals, executable Action"
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "sourceBytes": 2458,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "docs/agent-guidance/standard-harness.md",
+      "sourceBytes": 5569,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "sourceBytes": 21758,
+      "retrieved": "independent review, exact-head feedback, CI repair, merge boundaries"
+    },
+    {
+      "path": "docs/working-copy-safety.md",
+      "sourceBytes": 16202,
+      "retrieved": "safety states, daily preflight, candidate preservation"
+    },
+    {
+      "path": "docs/agent-guidance/arcadia-repository.md",
+      "sourceBytes": 30312,
+      "retrieved": "Orientation, Semantics, Operator Guide, PR QA Plan, Working-Copy Safety"
+    },
+    {
+      "path": "docs/agent-guidance/principles.md",
+      "sourceBytes": 14124,
+      "retrieved": "complete relevant instruction source"
+    },
+    {
+      "path": "docs/AGENT_ORIENTATION.md",
+      "sourceBytes": 13594,
+      "retrieved": "stores, database schema, dashboard CLI shellout, activity surfaces, CLI contracts"
+    },
+    {
+      "path": "docs/arcadia-semantics.md",
+      "sourceBytes": 22613,
+      "retrieved": "core rule and canonical concepts"
+    },
+    {
+      "path": "docs/notes-to-self.md",
+      "sourceBytes": 44338,
+      "retrieved": "targeted matches; protected brief read-only next; deadline; SQLite permission recovery; dependency bridge"
+    },
+    {
+      "path": "docs/agent-guidance/native-mail-checkpoints.md",
+      "sourceBytes": 8529,
+      "retrieved": "main Git checkpoint; parent performs checkpoint fetch"
+    }
+  ]
+}

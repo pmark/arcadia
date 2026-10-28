@@ -59,7 +59,7 @@ test("workspace renders Go's next move for the selected Project without choosing
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
     const plan = endpoint.match(/^\/api\/plans\/moon-garden\/([^/]+)$/)?.[1];
     if (plan && details[plan]) return route.fulfill({ json: details[plan] });
-    if (endpoint === "/api/projects/garden/continuation") {
+    if (endpoint === "/api/projects/garden/go-context") {
       ++goReads;
       if (goMode === "failed") return route.fulfill({ status: 503, json: { error: "Fixture Go read refused" } });
       if (goMode === "html") return route.fulfill({ status: 502, contentType: "text/html", body: "<html>Bad gateway</html>" });
@@ -73,7 +73,7 @@ test("workspace renders Go's next move for the selected Project without choosing
           : goMode === "none" ? continuation({ context: null, dispatchable: false })
             : goMode === "elsewhere" || goMode === "missing" ? (() => { const c = continuation(); return { ...c, context: { ...c.context!, activePlan: goMode === "elsewhere" ? "old-greenhouse" : "new-plan" } }; })()
               : continuation();
-      return route.fulfill({ json: { project: { id: "garden" }, continuation: body, reviewItems: [] } });
+      return route.fulfill({ json: { project: { id: "garden" }, resolution: body, observedAt: "2030-01-01T09:30:00.000Z", error: null } });
     }
     return route.abort();
   });
@@ -199,7 +199,7 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(result(page).getByText("Not an agent's to take")).toBeVisible();
     goMode = "html";
     await readAgain(8);
-    await expect(direction(page).getByRole("alert")).toContainText("Go could not be read: the continuation route answered 502.");
+    await expect(direction(page).getByRole("alert")).toContainText("Go could not be read: the Go context route answered 502.");
     // The Plan list still leads with Go's last good Plan, labelled as such.
     await page.getByRole("navigation", { name: "Selected context" }).getByRole("link", { name: "Moon garden" }).click();
     await expect(page.getByRole("complementary", { name: "Context" }).getByRole("heading", { name: "Go's current Plan · last good read" })).toBeVisible();

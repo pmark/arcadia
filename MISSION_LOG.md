@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-27
+updated: 2026-10-28
 ---
 
 # Mission Log: Arcadia
@@ -2750,3 +2750,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "Requirement REQ-006. Existing sessionTitles generation and shared native instructions preserve canonical kind/state, distinguishing Plan/Action or workstream identifiers early, and a helper marker only for a verified parent. Observed state transitions update supported host titles; idle/end-of-turn alone cannot imply pause, done or custody release. Expected proof: deterministic title fixtures for selected A/assigned B, no Session, working, PR/review, checks, needs-input, external-blocked, completed and deliberate hold states; no new role or independent title truth store."; "Requirement REQ-007. Existing brief/instructions specify an immediate compact acknowledgment of the actual observed state and subsequent state-change updates, with detail available on demand. The no-worker example must not claim an active team; native activity must not claim governed Session admission; a missing title tool must be disclosed rather than asserted as updated. Expected proof: checked-in rendered examples/fixtures for Codex, Claude Code and OpenCode; identify any unverified runtime support explicitly."; "Shared guidance remains one authoritative source delivered by existing generators; regenerate affected managed regions and run canonical guidance/budget checks plus focused title/brief tests, TypeScript, lint, build and fast-rehearsal. Update START_HERE.md for any changed user-visible Go behavior with executable QA steps that keep local fixtures and live-provider acceptance distinct.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-go-state-signals-20261027-rowan).
+
+## 2026-10-28 — Completed arcadia/project-go-orientation-for-the-operator
+
+- **Did:** Completed Action arcadia/project-go-orientation-for-the-operator from accepted evidence (Candidate 85e423083e0236ce1805396d040c1ab4aa65540b).
+- **Result:** Every declared acceptance criterion was accepted as met: "A read-only route returns, per Project, Go's selected Plan and Action, its dispatchable verdict, the operator question or first blocker with its remedy, and ongoing claims and Sessions with source and observed time, using the existing dispatch and gate resolution rather than a second resolver."; "Read-only adapter spies and before/after snapshots prove zero dispatch-journal, Project, queue, claim, admission, Git and worktree writes and zero provider calls; identical pinned inputs give identical output, and an unreadable Project is listed with its exact error, never dropped."; "The workspace reads this route instead of the journaled continuation GET; the existing workspace end-to-end suite passes unchanged in intent."; "Registry and discovery fixtures retain every configured Project, including unreadable directory, stat and document-read failures, with the exact per-Project error and source; no discovery exception silently drops a Project or produces a dispatchable verdict from missing evidence.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-go-operator-orientation-20261027-rowan).
