@@ -63,12 +63,12 @@ a reviewer.
 
 ## Independent review
 
-- Reviewer identity and independent lineage: pending; not yet run.
-- Reviewed article and receipt revision: not yet run.
+- Reviewer identity and independent lineage: Claudia Mason, Critic (claude, standard tier), a read-only reviewer session separate from the author's drafting session.
+- Reviewed article and receipt revision: initial review of the uncommitted draft returned HOLD; delta check of 2b9077288 returned PASS.
 - Source revision: pmark/arcadia@5f06107a5
-- Report: not yet run; the author provides no independent approval.
-- Verdict: not yet run. Publication remains HOLD.
-- Findings and resolution: none; no review has occurred.
+- Report: summarized in this branch's pull request description; the full reports are not checked in.
+- Verdict: PASS for editorial accuracy at 2b9077288. Field Notes publication remains HOLD (see Eligibility).
+- Findings and resolution: one blocking overstatement (C23, rejected-state wording) and eight non-blocking findings were fixed in 2b9077288. Remaining non-blocking notes: C24 cites line 177 where the roles span lines 177-178; the C15 chronology is not shown in the evidence file itself. This section was updated after 2b9077288 and records that review; it was not itself reviewed.
 
 ## Delivery handoff
 
