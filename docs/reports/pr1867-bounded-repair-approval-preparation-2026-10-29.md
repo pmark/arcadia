@@ -4,7 +4,7 @@
 
 ## Outcome and scope
 
-Decision 0147 is an open, unanswered question produced by the canonical Agent Ask settlement. Its A option conditionally offers one repair pass for R6-01/R6-02 and one extra independent R7; B holds. Merging this question does not select A, approve repair/review, transfer custody or start a writer. Authority-adjacent merge remains operator-owned.
+Decision 0147 is an open, unanswered question produced by the canonical Agent Ask settlement. Its A option conditionally offers one repair pass for R6-01/R6-02 and one extra independent R7; B holds. The package also preserves the existing canonical two-pointer correction described below. Merging this question and historical pointer publication does not select A, approve repair/review, transfer custody or start a writer. Authority-adjacent merge remains operator-owned.
 
 Source candidate stays pinned at `63aaf6ffacd9ceb70720d3a021b92824f2e71874`, draft [PR 1867](https://github.com/pmark/arcadia/pull/1867). Retain [R6-01](https://github.com/pmark/arcadia/pull/1867#issuecomment-6489750617), [R6-02](https://github.com/pmark/arcadia/pull/1867#issuecomment-6489755843), Issues 1874/1875 and R1–R6 consumed allowances. Those are synthetic malformed/mismatched evidence reproductions, not proof of an observed live denial or agent modification of protected logs.
 
@@ -35,6 +35,24 @@ Native read-only researcher `/root/approval_route_audit`, depth 1, one bounded p
 
 Therefore this is a reviewable policy-question package, not a new automatic grant runner. Governed agent/coordinator checks must refuse if the A conditions cannot be established. No machine-enforced expiry/custody admission is claimed. Missing automatic support is retained as a capability gap; do not improvise another runner.
 
+## Preserved pointer publication and CI correction
+
+Initial PR head `d73c20ace7096b8fbfd886b8e0073652746c3811` passed its independent governance R1 but CI unit-shard-6 failed `tests/managed-documents-contract.test.ts:31`: fetched main selected the checklist although it depends on the unfinished repair. The two affected control files were identical to origin/main; a focused local run reproduced exactly that blocker. This was an existing publication inconsistency, not a new source defect or a flake. No CI rerun, test relaxation, dependency removal or fabricated completion was used.
+
+Canonical commit `1502c0bdfc565f9aed4e1e1e378cec749fe70b6a` already records both `current_action` replacements to the repair, with receipt `qpointer_077a5ca9a4bb404e94`. Its actual parent is `a444846cf26f2c99e90ad988279c502fc23e2d5a`, already an ancestor of origin/main. Its historical operator identity is retained without rewriting; new merge/report commits use the current agent identity. Independent critic approved publishing this existing correction in the governance candidate, with fresh delta review/checks and operator-owned merge.
+
+The candidate merged exactly `1502` conflict-free, retaining its history. Git's precomputed automatic tree and actual merged tree both equal `a15cee417aa31a8cc05a1cef9638d5b453f3727f`; the delta from d73 is exactly two pointer lines in `PROJECT.md` and the active Plan. No primary `f319` merge or PR1867 source commit was carried. A focused rerun of the unchanged managed-document contract passed **1/1**. The final PR therefore has six changed files: the four question-package files plus the two preserved pointer records. Its final-head review/CI are separate from the initial failed run.
+
+Pointer publication preserves an already-governed selection; it does not settle the new R7 exception, complete the repair, release/resume the writer or grant a live attempt. No hand editing or rerunning the pointer command occurred.
+
+## Publication/recovery fixture proof
+
+Independent researcher `/root/approval_route_audit` ran `node --import tsx /private/tmp/arcadia-pr1867-publication-fixture.mts`, exit **0**, `07:34:26.199Z–07:34:29.001Z`, using disposable linked fixture repositories/workspace and a local bare remote only. Exact Ask bytes from d73 were 4471 bytes, SHA-256 `ff7f9804289fcacb46b22339160874dc47e8b9d353f8918d5f5ad8d0611d6baf`; six selected production-source blobs matched before execution.
+
+The untracked draft was canonically previewed/applied/committed with an exact archive and open unanswered Decision. A nonexistent-local-remote push failed 128 while retaining head `4ebe9d55880721b84209d66fd8d62cc8210413b1`. Same-request settlement replay retained one Decision, one settlement and unchanged HEAD. Correcting only the fixture remote published that exact head. The menu was unanswerable before fixture base merge and answerable afterward. A synthetic B/Hold answer then created separate local commit `51f4f590c344b9009223a0c89d7540ad8eeb4c23`; the bare remote still contained the unanswered question. This proves why answer publication remains separate; it is not an operator answer or GitHub/live-surface proof.
+
+Host-local report `/private/tmp/arcadia-pr1867-publication-WT49lH/report.json` and fixture script retain raw evidence. Earlier fixture reports retain a correctly refused primary-checkout draft and a harness assertion corrected from recovery:null to absent recovery after successful settlement. No live data/source/candidate was changed by this proof. It proves neither shared-card execution nor automatic expiry/custody admission.
+
 ## Proposed repair proof, not executed here
 
 First reproduce R6-01/R6-02 via public reconciliation with genuine earlier fixture settlement, both primary/candidate repo roots and drafted/already-settled paths. Required-write contract with optional failed-write result must refuse; direct_required Session with unavailable contract and genuine probe must refuse. Validate check types/names/cardinality; host_validation/preservation cannot become optional. Retain source_only local preview_blocked Ask -> real host validation/settlement, compatible direct_required positive, true denial, missing/corrupt/duplicate/swapped evidence and explicit legacy coverage. Preserve the existing four Action criteria.
@@ -56,7 +74,7 @@ Friction retained: overlong specialization label was refused; the documented sho
 ## Remote QA and remaining gates
 
 1. In the PR, inspect Decision 0147 and archived Ask. Expect status open, exact A/B consequences, no answer/decided fields and no changes to Project/Plan/source/queue.
-2. Inspect the clock: latest start 13:01:53 Pacific on 2026-10-29; absolute expiry 16:01:53 Pacific, with the final 15 minutes reserved. An expired question may remain visible but conveys no renewed authority.
+2. Verify the two pointer changes exactly preserve canonical commit1502; all Action criteria/statuses and the queue remain unchanged. Inspect the clock: latest start 13:01:53 Pacific on 2026-10-29; absolute expiry 16:01:53 Pacific, with the final 15 minutes reserved. An expired question may remain visible but conveys no renewed authority.
 3. Inspect this report's enforcement limitations. Do not mistake merging this open question for approving A or making the source candidate safe.
 4. Only after the operator-owned merge and supported base update, verify exact document/options on the existing Decision surface. Do not promise it is answerable before that observation. Operator A answer and its canonical/publication receipts remain separate from coordinator transfer and writer start receipt.
 
