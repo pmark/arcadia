@@ -35,9 +35,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask standardize-agent-naming-vocabulary
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-unify-agent-naming-and-design-help-r2-2026-10-29
+    source: Agent Ask gate-naming-design-actions-on-decisions-2026-10-29
     why: "Agents need one term per concept: signature, persona, identity capacity, instance reference, recorded peers, roster, Behavior named as an activity."
     acceptance_criteria:
+      - Work starts only after the operator has answered the naming migration and Lead scope Decisions on main; otherwise the Action stops and reports which Decision is unanswered.
       - docs/arcadia-semantics.md, docs/agent-guidance/git-identity.md and docs/agent-guidance/session-roles-and-briefs.md use the briefing's canonical terms, keep the old phrase identity profile as a discovery synonym, and state that a signature is attribution, not proof.
       - Guidance states that Role briefs supply their configured identity capacity, other permitted critique resolves the critic capacity explicitly, and the critic capacity never admits independence.
       - The native-app Lead sole-writer restriction is stated wherever the Lead's operating contract is described.
@@ -73,9 +74,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask render-bound-persona-and-instance-locators
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-unify-agent-naming-and-design-help-r2-2026-10-29
+    source: Agent Ask gate-naming-design-actions-on-decisions-2026-10-29
     why: "A name selects a profile, never an actor; exact identification needs a typed, scoped instance reference."
     acceptance_criteria:
+      - Work starts only after the operator has answered the persona automation Decisions on main; otherwise the Action stops and reports which Decision is unanswered.
       - Assignment identity text shows the persona only when the brief bound one, and the generic identity resolve output shows no persona.
       - Instance references are typed and scoped (Session, host chat, host child with its parent, claim) and print unavailable rather than a bare interactive or subagent label.
       - The read-only reviewer identity variant is unchanged.
@@ -92,9 +94,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask add-design-route-to-consultation
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-unify-agent-naming-and-design-help-r2-2026-10-29
+    source: Agent Ask gate-naming-design-actions-on-decisions-2026-10-29
     why: "Design help should be requested by function, with Iris optional, using the Consultation Behavior that already exists."
     acceptance_criteria:
+      - Work starts only after the operator has answered the design help depth and assurance wording Decisions on main; otherwise the Action stops and reports which Decision is unanswered.
       - "docs/agent-guidance/consultation.md describes quick design consultation, how the field is selected, when to offer a sustained design brief, and what each answer must show: guide and revision, applicability, provenance, confidence and gaps."
       - docs/agent-guidance/index.json has design-help triggers that route to it.
       - A request with no field guide gets disclosed exploratory advice, and is not refused solely because no guide exists.
@@ -127,9 +130,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask create-portable-design-facilitation-skill
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-unify-agent-naming-and-design-help-r2-2026-10-29
+    source: Agent Ask gate-naming-design-actions-on-decisions-2026-10-29
     why: "Sustained design work needs the revision 7 record method as a bounded Behavior that works the same in every harness."
     acceptance_criteria:
+      - Work starts only after the operator has answered the Iris, design help depth and assurance wording Decisions on main; otherwise the Action stops and reports which Decision is unanswered.
       - One SKILL.md source exists under .agents/skills and .claude/skills, and a discovery check is recorded separately for Codex, Claude Code and OpenCode.
       - The skill states its trigger, finite allowance and deadline, and stop conditions, and keeps the field specialization separate from the record method.
       - Ready designs leave only as Agent Ask previews; the skill grants no authority and approves nothing.
@@ -146,9 +150,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask establish-design-brief-home
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-unify-agent-naming-and-design-help-r2-2026-10-29
+    source: Agent Ask gate-naming-design-actions-on-decisions-2026-10-29
     why: "Resuming a design across sessions, harnesses and co-owners needs one durable brief with a stable locator."
     acceptance_criteria:
+      - Work starts only after the operator has answered the design brief home and scope Decisions on main; otherwise the Action stops and reports which Decision is unanswered.
       - Sustained design briefs have one documented home and stable locator consistent with the operator's answer, or the pilot is documented as limited to existing Projects.
       - An original capture links to the brief, and no harness keeps a separate copy.
     depends_on: [create-portable-design-facilitation-skill]
