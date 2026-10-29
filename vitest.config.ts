@@ -58,6 +58,10 @@ export default defineConfig({
       "**/dist/**",
       "**/coverage/**",
       "**/tests/e2e/**",
+      // `arcadia tidy` quarantines old worktrees under `.git/arcadia-tidy`.
+      // Those copies carry whole test trees whose stale source can fail against
+      // the live checkout, so a filtered run silently executed 368 of them.
+      "**/.git/**",
       "**/.claude/worktrees/**",
       "**/.codex/worktrees/**"
     ]
