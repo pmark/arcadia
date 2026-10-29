@@ -19,6 +19,7 @@ import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { loadPhase3Registries } from "../../src/intent/registries.js";
 import { runManagedProductionTick, type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
 import { getRepositoryLease, type AgentSession, type TmuxAdapter } from "../../src/sessions/index.js";
+import { recordClearProbeEvidence } from "./sessionProbeEvidence.js";
 import { launchGuardedHostSession } from "../../src/sessions/launch.js";
 import { materializeCandidateTree, snapshotCandidate } from "../../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions } from "../../src/sessions/preservationCheckBinding.js";
@@ -634,6 +635,7 @@ Disposable fixture plan.
    * `candidate_revision` is the worktree's HEAD, from inside the worktree.
    */
   agentFinish(session: AgentSession, criteria: string[]): void {
+    this.recordClearProbe(session);
     git(session.worktree_path, ["add", "-A"]);
     if (git(session.worktree_path, ["status", "--porcelain"]).trim()) commit(session.worktree_path, `Implement ${session.action_id}`);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
@@ -670,6 +672,7 @@ Disposable fixture plan.
    * reports `preview_blocked`. Everything after that is the host's job.
    */
   agentFinishSandboxed(session: AgentSession, criteria: string[]): string {
+    this.recordClearProbe(session);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
     const requestId = `complete-${session.action_id}-${session.id.replaceAll("_", "-")}`;
     const ask = JSON.stringify({
@@ -689,6 +692,9 @@ Disposable fixture plan.
     if (drafted.data.workspaceStatus !== "not_available") throw new Error("The sandboxed draft unexpectedly reached a workspace.");
     return drafted.data.path;
   }
+
+  /** Fixture provider evidence uses the exact host-issued command and real probe output. */
+  private recordClearProbe(session: AgentSession): void { recordClearProbeEvidence(this.workspace, session); }
 
   /**
    * Simulated agent step 2 of the completion protocol: `arcadia-preserve-broker-<agent>`
@@ -712,6 +718,8 @@ Disposable fixture plan.
     return /^current_action: (\S+)$/m.exec(git(root, ["show", "HEAD:PROJECT.md"]))?.[1] ?? "missing";
   }
 }
+
+export { recordClearProbeEvidence } from "./sessionProbeEvidence.js";
 
 export function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

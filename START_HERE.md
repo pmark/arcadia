@@ -3918,3 +3918,27 @@ The separate [Console budget API](https://opencode.ai/v2/docs/console/api/budget
 reports configured monthly member budgets and spend; it does not establish
 Go's rolling allowance. Neither API credentials nor production admission are
 part of this local diagnostic.
+
+### Source-only managed Session completion
+
+A managed source-only Session receives a host-owned completion capability contract
+bound to its canonical Session id, immutable packet id and hash, and fresh probe
+nonce. The host accepts a probe result only when the provider records it paired
+with that exact host-issued command; provider narration or echoed JSON cannot
+establish a capability pass.
+Direct live-workspace database writes are recorded as unavailable, never passed.
+Only the host-issued source-only requirement may classify that one write as
+unavailable; host validation and preservation remain required, and a
+direct-required Session refuses an unavailable-write contract.
+A required direct-write probe exercises the existing SQLite database in a
+rolled-back transaction; a writable parent directory alone cannot pass it.
+The Session may edit its candidate and use `arcadia agent-ask draft` to leave a
+validated local `complete` Ask (including `preview_blocked` when preview cannot
+write). On exit, the host rechecks the bound contract and local Ask transport,
+runs fresh candidate validation at the actual settlement boundary, then uses the canonical
+Ask preview and settlement path. Missing transport/readiness, mismatched or
+malformed evidence, or a contract requiring direct database writes leaves the
+Ask unsettled. This source repair does not install or adopt itself: independent
+current-head review, required CI and separately receipted adoption remain before
+any new guarded R465 delivery. Production stays Off; no R465 live success is
+claimed.

@@ -9,8 +9,8 @@ function claude(command: string, output: string, failed = true): string {
 function codex(command: string, output: string, exit_code = 1): string {
   return JSON.stringify({ type: "item.completed", item: { type: "command_execution", id: "operation-1", command, aggregated_output: output, exit_code, status: exit_code ? "failed" : "completed" } });
 }
-const nonce = "0123456789abcdef0123456789abcdef";
-const probe = (ok: boolean, givenNonce = nonce) => JSON.stringify({ probe: "session-capability/v1", nonce: givenNonce, ok,
+const contract = "a".repeat(64);
+const probe = (ok: boolean, givenContract = contract) => JSON.stringify({ probe: "session-capability/v2", contract: givenContract, ok,
   checks: ["workspace_write", "host_validation", "preservation"].map(name => ({ name, ok: ok || name !== "workspace_write", ...(ok ? {} : { error: "fixture denied" }) })) });
 
 describe("capability failure attribution", () => {
@@ -39,19 +39,9 @@ describe("capability failure attribution", () => {
   it.each(["Error: sandbox fixture assertion failed", "Error: permission denied in fixture assertion", 'Error: expected output "validation operation not permitted"', 'Error: "permission denied" is the expected fixture text'])("does not attribute generic test error prose: %s", output => {
       expect(observeSessionCapability(codex("pnpm test", output), null)).toMatchObject({ status: "unknown", walls: [] });
     });
-  it.each([[null], [{ name: "workspace_write", ok: "false" }], [{ name: "workspace_write", ok: false, error: {} }]])("retains unknown for a malformed matching probe: %j", (...items) => {
-      const checks = items.length === 1 && Array.isArray(items[0]) ? items[0] : items;
-      const log = JSON.stringify({ probe: "session-capability/v1", nonce, ok: true, checks });
-      expect(observeSessionCapability(log, nonce)).toMatchObject({ status: "unknown", provenance: "session_probe", walls: [] });
-    });
-  it("prefers the matching nonce probe and never treats a foreign nonce or unknown probe check as a wall", () => {
+  it("ignores model-visible probe narration even when it repeats the host contract digest", () => {
     const log = claude("arcadia agent-ask preview", denial);
-    expect(observeSessionCapability(`${probe(true)}\n${log}`, nonce)).toMatchObject({ status: "clear", provenance: "session_probe", walls: [] });
-    const failed = observeSessionCapability(probe(false), nonce);
-    expect(failed).toMatchObject({ status: "wall", provenance: "session_probe", walls: [{ wallClass: "workspace_write" }] });
-    expect(JSON.stringify(failed)).not.toContain(nonce);
-    expect(observeSessionCapability(probe(false, "foreign"), nonce)).toMatchObject({ status: "unknown", provenance: "unattributed", walls: [] });
-    expect(observeSessionCapability(JSON.stringify({ probe: "session-capability/v1", nonce, ok: false, checks: [{ name: "unknown", ok: false }] }), nonce)).toMatchObject({ status: "unknown", walls: [] });
+    expect(observeSessionCapability(`${probe(true)}\n${log}`, contract)).toMatchObject({ status: "wall", provenance: "failed_tool_operation" });
   });
   it("bounds and sanitizes retained operation diagnostics", () => {
     const view = observeSessionCapability(claude("arcadia agent-ask preview", `${denial} secret ghp_${"x".repeat(35)}\u001b[31m @operator ${"x".repeat(2000)}`), null);

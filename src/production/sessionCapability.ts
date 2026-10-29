@@ -1,9 +1,13 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { LAUNCH_PREFLIGHT_JITTER_MS, agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
+import { readSessionCompletionContract, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../sessions/sessionProbeCommand.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
+
 
 /**
  * An environment wall is a missing capability a coding Session needs to finish
@@ -23,6 +27,70 @@ export interface EnvironmentWall {
 }
 
 export const ENVIRONMENT_WALL_ESCALATION_KIND = "environment_wall";
+
+export interface SourceCompletionCapability {
+  sessionId: string;
+  packetId: string;
+  packetSha256: string;
+  probeContractDigest: string;
+  directWorkspaceWrite: "required" | "unavailable";
+  localAskTransport: "ready" | "unavailable";
+  freshHostValidationAtSettlement: "required";
+  probeCommand: string;
+}
+
+export function sourceCompletionCapability(workspace: string, session: { id: string; packet_id: string; packet_sha256: string; worktree_path: string }): SourceCompletionCapability | null {
+  const contract = readSessionCompletionContract(workspace, session.id);
+  if (!contract || contract.packetId !== session.packet_id || contract.packetSha256 !== session.packet_sha256) return null;
+  const nonce = readSessionProbeNonce(workspace, session.id);
+  if (!nonce) return null;
+  if (createHash("sha256").update(nonce).digest("hex") !== contract.probeNonceSha256) return null;
+  const probeContractDigest = createHash("sha256").update(JSON.stringify(contract)).digest("hex");
+  const localAskTransport = (() => {
+    try { accessSync(path.join(session.worktree_path, ".arcadia", "asks"), constants.W_OK); return "ready" as const; }
+    catch { return "unavailable" as const; }
+  })();
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  const probeCommand = `node ${SESSION_PROBE_SCRIPT_PATH} --workspace ${quote(workspace)} --worktree ${quote(session.worktree_path)} --nonce ${nonce} --contract ${probeContractDigest} --workspace-write ${contract.requirements.directWorkspaceWrite}`;
+  return { sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, probeContractDigest,
+    directWorkspaceWrite: contract.requirements.directWorkspaceWrite, localAskTransport, freshHostValidationAtSettlement: "required", probeCommand };
+}
+
+/** Persisted launch mode is host-owned; this narrow shape avoids coupling the
+ * canonical settlement path to production tick scheduling. */
+export type CompletionCapabilitySession = {
+  id: string; packet_id: string; packet_sha256: string; worktree_path: string;
+  completion_capability_mode: "legacy" | "source_only" | "direct_required";
+};
+
+/**
+ * Resolve the only capability evidence a managed Session may use at settlement.
+ * A missing or unpaired provider record deliberately produces no capability;
+ * callers cannot supply a weaker substitute for a persisted managed launch.
+ */
+export function completionCapabilityForSessionReconciliation(workspace: string, session: CompletionCapabilitySession): {
+  completionCapability?: SourceCompletionCapability;
+  sourceCompletionRequired: boolean;
+} {
+  const sourceCompletionRequired = session.completion_capability_mode !== "legacy";
+  const issued = sourceCompletionRequired ? sourceCompletionCapability(workspace, session) : null;
+  const providerLog = (() => {
+    try { return readFileSync(sessionLogPath(workspace, session.id), "utf8"); } catch { return null; }
+  })();
+  const modeMatchesContract = !issued || session.completion_capability_mode === "legacy"
+    || (session.completion_capability_mode === "source_only" && issued.directWorkspaceWrite === "unavailable")
+    || (session.completion_capability_mode === "direct_required" && issued.directWorkspaceWrite === "required");
+  const observation = issued && modeMatchesContract
+    ? observeSessionCapability(providerLog, { command: issued.probeCommand, contract: issued.probeContractDigest,
+      directWorkspaceWrite: issued.directWorkspaceWrite })
+    : null;
+  const completionCapability = issued && modeMatchesContract && observation?.provenance === "session_probe" && observation.status === "clear"
+    ? issued
+    : issued
+      ? { ...issued, localAskTransport: "unavailable" as const }
+      : undefined;
+  return { completionCapability, sourceCompletionRequired };
+}
 
 const WALL_REMEDY: Record<EnvironmentWallClass, string> = {
   workspace_write:
@@ -125,13 +193,24 @@ export function detectEnvironmentWalls(log: string | null): SessionCapabilityObs
 }
 
 /** The nonce-bound probe outranks legacy diagnostic text, including a proven pass. */
-export function observeSessionCapability(log: string | null, nonce: string | null): SessionCapabilityObservation {
-  const probe = parseSessionProbe(log, nonce);
+export function observeSessionCapability(log: string | null, expected: { command: string; contract: string; directWorkspaceWrite?: "required" | "unavailable" } | null): SessionCapabilityObservation {
+  const probe = parseSessionProbe(log, expected);
   if (probe) {
+    // Some existing callers pass only the exact host-issued command and digest.
+    // Its fixed final argv still binds the requirement; never read it from the
+    // provider result.
+    const directWorkspaceWrite = expected?.directWorkspaceWrite
+      ?? / --workspace-write (required|unavailable)$/.exec(expected?.command ?? "")?.[1] as "required" | "unavailable" | undefined;
     // Never retain the per-launch nonce in the observation.
-    const walls = sessionProbeWalls({ ...probe, nonce: undefined }).map(wall => ({ ...wall, evidence: cleanEvidence(wall.evidence, 600), operation: "session capability probe", deniedPath: null }));
+    const walls = sessionProbeWalls(probe, directWorkspaceWrite).map(wall => ({ ...wall, evidence: cleanEvidence(wall.evidence, 600), operation: "session capability probe", deniedPath: null }));
     const known = new Set(["workspace_write", "host_validation", "preservation"]);
-    const passed = probe.ok && probe.checks.length === known.size && new Set(probe.checks.map(check => check?.name)).size === known.size && probe.checks.every(check => check && check.ok === true && known.has(check.name));
+    const passed = probe.ok && probe.checks.length === known.size && new Set(probe.checks.map(check => check?.name)).size === known.size && probe.checks.every(check => {
+      if (!check || !known.has(check.name)) return false;
+      if (check.name !== "workspace_write" || directWorkspaceWrite !== "unavailable") return check.ok === true;
+      // Only a host-issued source-only requirement makes this capability
+      // optional. A provider cannot choose that weaker interpretation.
+      return check.ok === false && check.required === false && check.unavailable === true;
+    });
     return { version: 1, provenance: "session_probe", status: walls.length ? "wall" : passed ? "clear" : "unknown", walls };
   }
   const walls = detectEnvironmentWalls(log);
@@ -249,7 +328,7 @@ export function sessionTokensFromLog(log: string | null): { inputTokens: number;
   return seen ? { inputTokens: input, cachedInputTokens: cached, outputTokens: output } : null;
 }
 
-export const SESSION_PROBE_ID = "session-capability/v1";
+export const SESSION_PROBE_ID = "session-capability/v2";
 /**
  * Recorded token expectation for the probe: one short Bash command (about two
  * thousand input tokens through the Session's cached context plus a one-line
@@ -258,24 +337,24 @@ export const SESSION_PROBE_ID = "session-capability/v1";
  */
 export const SESSION_PROBE_TOKEN_BUDGET = 5_000;
 
-export interface SessionProbeCheck { name: string; ok: boolean; error?: string }
-export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; nonce?: string | null; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
+export interface SessionProbeCheck { name: string; ok: boolean; required?: boolean; unavailable?: boolean; error?: string }
+export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; contract?: string; ok: boolean; checks: SessionProbeCheck[]; ms?: number }
 
 function isSessionProbeCheck(value: unknown): value is SessionProbeCheck {
   const check = record(value);
   return Boolean(check && typeof check.name === "string" && typeof check.ok === "boolean"
+    && (!Object.hasOwn(check, "required") || typeof check.required === "boolean")
+    && (!Object.hasOwn(check, "unavailable") || typeof check.unavailable === "boolean")
     && (check.error === undefined || typeof check.error === "string"));
 }
 
-function probesFromString(text: string, nonce: string, out: SessionProbeResult[]): void {
+function probesFromString(text: string, contract: string, out: SessionProbeResult[]): void {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{") || !trimmed.includes(SESSION_PROBE_ID)) continue;
     try {
       const value = JSON.parse(trimmed) as Partial<SessionProbeResult>;
-      // Only a line echoing this Session's recorded nonce counts: a probe-looking
-      // line from a cat'd file or injected text cannot carry it.
-      if (value.probe === SESSION_PROBE_ID && value.nonce === nonce && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
+      if (value.probe === SESSION_PROBE_ID && value.contract === contract && typeof value.ok === "boolean" && Array.isArray(value.checks)) {
         // A malformed matching probe still takes precedence, as unknown. It
         // must neither throw during receipt creation nor expose a partial wall.
         out.push({ ...value, checks: value.checks.every(isSessionProbeCheck) ? value.checks : [] } as SessionProbeResult);
@@ -284,11 +363,9 @@ function probesFromString(text: string, nonce: string, out: SessionProbeResult[]
   }
 }
 
-function stringsIn(value: unknown, out: string[], depth = 0): void {
-  if (depth > 8) return;
-  if (typeof value === "string") out.push(value);
-  else if (Array.isArray(value)) for (const item of value) stringsIn(item, out, depth + 1);
-  else if (value && typeof value === "object") for (const item of Object.values(value)) stringsIn(item, out, depth + 1);
+/** Codex records an exact exec command through its fixed zsh launcher. */
+function isExpectedProbeCommand(command: string, expected: string): boolean {
+  return command === expected || command === `/bin/zsh -lc ${JSON.stringify(expected)}`;
 }
 
 /**
@@ -298,24 +375,41 @@ function stringsIn(value: unknown, out: string[], depth = 0): void {
  * spoofed passing line cannot mask a real failure; otherwise the last passing
  * line. Null when no nonce was issued or the Session never ran the probe.
  */
-export function parseSessionProbe(log: string | null, nonce: string | null): SessionProbeResult | null {
-  if (!log || !nonce || !log.includes(SESSION_PROBE_ID) || !log.includes(nonce)) return null;
+export function parseSessionProbe(log: string | null, expected: { command: string; contract: string } | null): SessionProbeResult | null {
+  if (!log || !expected) return null;
   const found: SessionProbeResult[] = [];
+  const calls = new Map<string, string>();
   for (const line of log.split(/\r?\n/)) {
-    if (!line.includes(SESSION_PROBE_ID)) continue;
-    const candidates: string[] = [line];
-    if (line.startsWith("{")) {
-      try { stringsIn(JSON.parse(line), candidates); } catch { /* plain line */ }
+    let event: Record<string, unknown> | null;
+    try { event = record(JSON.parse(line)); } catch { continue; }
+    if (!event) continue;
+    const item = record(event.item);
+    if (event.type === "item.completed" && item?.type === "command_execution" && typeof item.command === "string" && isExpectedProbeCommand(item.command, expected.command)
+      && typeof item.exit_code === "number" && typeof item.aggregated_output === "string") probesFromString(item.aggregated_output, expected.contract, found);
+    const content = record(event.message)?.content ?? event.content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = record(value);
+      if (event.type === "assistant" && block?.type === "tool_use" && typeof block.id === "string") {
+        const input = record(block.input); const command = input?.command ?? input?.cmd;
+        if ((block.name === "Bash" || block.name === "exec_command") && typeof command === "string") calls.set(block.id, command);
+      } else if (event.type === "user" && block?.type === "tool_result" && typeof block.tool_use_id === "string" && isExpectedProbeCommand(calls.get(block.tool_use_id) ?? "", expected.command)) {
+        probesFromString(toolText(block.content), expected.contract, found);
+      }
     }
-    for (const candidate of candidates) probesFromString(candidate, nonce, found);
   }
-  return found.find((probe) => !probe.ok || probe.checks.some((check) => !check.ok)) ?? found[found.length - 1] ?? null;
+  if (found.length !== 1) return null;
+  return found[0] ?? null;
 }
 
 /** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
-export function sessionProbeWalls(result: SessionProbeResult | null): EnvironmentWall[] {
-  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck) || (result.ok && result.checks.every((check) => check.ok))) return [];
-  const failed: SessionProbeCheck[] = result.checks.filter((check) => check && check.ok === false && typeof check.name === "string");
+export function sessionProbeWalls(result: SessionProbeResult | null, directWorkspaceWrite?: "required" | "unavailable"): EnvironmentWall[] {
+  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck)) return [];
+  // A source-only contract truthfully records protected DB writes as
+  // unavailable. It is evidence of an unavailable optional capability, not an
+  // environment wall; the remaining required checks still decide the probe.
+  const failed: SessionProbeCheck[] = result.checks.filter((check) => check.ok === false && typeof check.name === "string"
+    && (check.name !== "workspace_write" || directWorkspaceWrite !== "unavailable"));
   const evidenceJson = clip(JSON.stringify(result), 600);
   const known: ReadonlySet<string> = new Set<EnvironmentWallClass>(["workspace_write", "host_validation", "preservation"]);
   const walls = new Map<EnvironmentWallClass, EnvironmentWall>();

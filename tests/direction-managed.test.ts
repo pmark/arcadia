@@ -11,6 +11,7 @@ import { runQaPrReviewCommand } from "../src/qa/prReview.js";
 import { completionEvidenceForReview } from "../src/sessions/reconciliation.js";
 import { completionExecutionPassed } from "../src/sessions/completionValidationEvidence.js";
 import { git, hostReviewHost, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 
 const fixtures: Rehearsal[] = [];
 afterEach(() => { for (const fixture of fixtures.splice(0)) fixture.dispose(); });
@@ -61,6 +62,9 @@ test("marker A matches the accepted direction", () => { assert.equal(readFileSyn
     f.agentEdit(session, "MARKER.md", `${LINE_A}\n`);
     git(session.worktree_path, ["add", "-A"]); git(session.worktree_path, ["commit", "-qm", "Write marker A"]);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    // This test settles its Ask manually, so it must explicitly emit the same
+    // host-issued probe evidence that Rehearsal.agentFinish records.
+    recordClearProbeEvidence(f.workspace, session);
     const request = JSON.stringify({ agent_ask: "v1", request_id: "managed-complete", project: f.projectSlug, intent: "complete", target_ref: `action/${session.action_id}`,
       desired_result: "Record marker A complete", candidate_revision: head, evidence: criteria.map(criterion => ({ criterion, status: "met", note: "Actual fixture MARKER.md and bound check" })), direction: chain.correlation });
     const draft = runAgentAskDraftCommand({ workspace: f.workspace, request, dir: session.worktree_path });

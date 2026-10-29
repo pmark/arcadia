@@ -37,6 +37,7 @@ import {
 } from "../src/sessions/preservationRefusalBudget.js";
 import { preservationIndexLocked, preservationIndexLockMalformed } from "../src/sessions/preservationStages.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -124,7 +125,8 @@ function launchFirstSession(fixture: Fixture, tmux: FakeTmux) {
   return withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
 }
 
-function finishCandidate(fixture: Fixture, tmux: FakeTmux, session: { worktree_path: string; work_item_id: string; tmux_session_name: string }) {
+function finishCandidate(fixture: Fixture, tmux: FakeTmux, session: { id: string; worktree_path: string; work_item_id: string; tmux_session_name: string }) {
+  recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, session.id)!));
   writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nBounded and real.\n");
   mkdirSync(path.join(session.worktree_path, ".arcadia", "asks"), { recursive: true });
   writeFileSync(path.join(session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), JSON.stringify({

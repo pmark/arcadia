@@ -217,6 +217,8 @@ Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
 2026-10-24 recovery: a prepared candidate in `arcadia-unattended` succeeded with the same fixed brief launcher after prepending the already-installed Homebrew Git (`PATH="/opt/homebrew/bin:$PATH" /Users/pmark/.local/bin/arcadia-brief-broker-codex`) and removing diagnostic tracing. Apple Git timed out at `work-monitor`; Homebrew Git with tracing reached `next`, then the permitted unchanged retry without tracing completed. This is a measured route on this host, not a guaranteed latency fix or authority to change the 25s deadline. Preserve the receipt and verify caller-owned claim/generation before editing. Evidence: `docs/reports/unified-session-entry-2026-10-24.md`, lesson `lesson_4cc0d6e816bcf7427028`.
 
+2026-10-29 prevention (#1863): an installed runtime predating the compact index cannot parse it. Use reviewed source plus a guarded requested restart/broker verification; never hand-edit fingerprints. Evidence: `/private/tmp/r465-repair-host-focused-tests.log`, `docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md`. Revive before the current repair window expires.
+
 ## Arcadia CLI workspace writes fail with `SQLITE_WORKSPACE_WRITE_DENIED`
 
 keys: SQLITE_WORKSPACE_WRITE_DENIED, readonly database, workspace write denied, SQLite, sandbox, approved host execution, host permission, agent-ask preview, arcadia next, arcadia ping send, tidy, tidy --apply, work monitor, Claude Code, trust settings, TMPDIR

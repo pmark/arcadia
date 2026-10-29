@@ -44,6 +44,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { appendJourneyLog, ensureActionJourneyLogTable } from "./journeyLog.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
 import {
   BUDGET_EXHAUSTED_ESCALATION_KIND,
   decideTokenCeilingBreach,
@@ -51,8 +52,6 @@ import {
   resolveSessionTokenCeiling,
   sessionTokenCeilingBreach
 } from "./sessionTokenCeiling.js";
-import { sessionLogPath } from "../sessions/sessionRecording.js";
-import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
   observeSessionCapability,
@@ -60,7 +59,10 @@ import {
   ENVIRONMENT_WALL_ESCALATION_KIND,
   SESSION_PROBE_TOKEN_BUDGET,
   sessionTokensFromLog,
-  type EnvironmentWall
+  type EnvironmentWall,
+  sourceCompletionCapability,
+  completionCapabilityForSessionReconciliation,
+  type SourceCompletionCapability
 } from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
@@ -1830,6 +1832,22 @@ function projectInActiveScope(db: Database.Database, projectSlug: string): boole
 }
 
 /**
+ * Carries only a host-issued source capability with fresh, exact provider
+ * evidence into reconciliation. Every recorded host-managed completion mode
+ * fails closed when its contract or evidence is absent; only legacy rows and
+ * operator-attended interactive Sessions retain the historic path.
+ */
+export function completionCapabilityForReconciliation(workspace: string, session: {
+  id: string; packet_id: string; packet_sha256: string; worktree_path: string;
+  completion_capability_mode: AgentSession["completion_capability_mode"];
+}): {
+  completionCapability?: SourceCompletionCapability;
+  sourceCompletionRequired: boolean;
+} {
+  return completionCapabilityForSessionReconciliation(workspace, session);
+}
+
+/**
  * Run one managed-production tick across every active Project. Never throws
  * for an individual repository's failure -- a broken or refused repository is
  * reported in its own result entry so one Project's trouble never stops the
@@ -2051,8 +2069,10 @@ export function runManagedProductionTick(
         }
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
+        const sourceCompletion = completionCapabilityForReconciliation(workspace, lease);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
+          ...sourceCompletion,
           ...(options.handoff?.completionValidation ? { completionValidation: options.handoff.completionValidation } : {}),
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
@@ -2948,7 +2968,7 @@ export function recordSessionExitAccounting(
   input: {
     workspace: string;
     projectSlug: string;
-    session: { id: string; action_id: string | null; worktree_path: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
+    session: { id: string; action_id: string | null; worktree_path: string; packet_id: string; packet_sha256: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
     outcome: string;
     candidateRevision: string | null;
     now: Date;
@@ -2971,7 +2991,10 @@ export function recordSessionExitAccounting(
   // Prefer the nonce-bound probe; otherwise only an attributable failed tool
   // operation can establish a wall. The creation callback retains this bounded
   // observation in the same new-receipt transaction.
-  const capability = observeSessionCapability(text, readSessionProbeNonce(input.workspace, input.session.id));
+  const completionCapability = sourceCompletionCapability(input.workspace, input.session);
+  const capability = observeSessionCapability(text, completionCapability
+    ? { command: completionCapability.probeCommand, contract: completionCapability.probeContractDigest }
+    : null);
   if (capability.provenance === "session_probe" && capability.status === "clear") {
     input.log(`Session probe passed for ${actionKey} (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
   }

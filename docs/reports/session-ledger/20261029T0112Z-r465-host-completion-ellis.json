@@ -1,0 +1,72 @@
+{
+  "session_id": "r465-host-completion-ellis",
+  "role": "driver",
+  "model": "gpt-5.6-terra",
+  "effort": "medium",
+  "configured_effort": "medium",
+  "effective_effort": "medium",
+  "effort_source": "runtime",
+  "action_id": "repair-host-owned-source-completion-capabilities",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 5,
+  "blocking_findings": [
+    {
+      "class": "host-only-fixture",
+      "caught_by": "CODEX_SANDBOX guard"
+    },
+    {
+      "class": "R2-01 durable launch requirement",
+      "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R3-01 canonical reconciliation omitted-input bypass",
+      "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R4-01 settled-candidate canonical capability bypass",
+      "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R5-01 Plan-done public reconciliation capability bypass",
+      "caught_by": "independent current-head review"
+    }
+  ],
+  "operator_touches": 0,
+  "host_touches": 0,
+  "frictions": [
+    {
+      "id": "host-only-session-reconciliation",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "canonical-source-capability-bypass",
+      "cost_min": null,
+      "fix_ref": "/tmp/arcadia-pr1867-r3-direct-reconcile-repro.log"
+    },
+    {
+      "id": "managed-reconciliation-fixtures-omitted-workspace",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "settled-candidate-capability-gate",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1867#issuecomment-6488710678"
+    },
+    {
+      "id": "plan-done-before-managed-capability",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1874"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Decision0147 R6 binding correction prepared; host checks, CI, rehearsal, and one final independent R7 remain for Rowan.",
+  "notes": "R6 binds optional DB write to source-only contract and direct mode to contract. Host validation and preservation cannot be optional. Sandbox-only."
+}
