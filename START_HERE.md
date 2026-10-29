@@ -3927,6 +3927,9 @@ nonce. The host accepts a probe result only when the provider records it paired
 with that exact host-issued command; provider narration or echoed JSON cannot
 establish a capability pass.
 Direct live-workspace database writes are recorded as unavailable, never passed.
+Only the host-issued source-only requirement may classify that one write as
+unavailable; host validation and preservation remain required, and a
+direct-required Session refuses an unavailable-write contract.
 The Session may edit its candidate and use `arcadia agent-ask draft` to leave a
 validated local `complete` Ask (including `preview_blocked` when preview cannot
 write). On exit, the host rechecks the bound contract and local Ask transport,

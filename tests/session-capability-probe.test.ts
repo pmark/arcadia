@@ -71,7 +71,7 @@ describe("the in-Session capability probe script", () => {
       expect(run.status).toBe(0);
       const probe = JSON.parse(run.stdout.trim());
       expect(probe).toMatchObject({ ok: true, checks: expect.arrayContaining([{ name: "workspace_write", ok: false, required: false, unavailable: true }]) });
-      expect(sessionProbeWalls(probe)).toEqual([]);
+      expect(sessionProbeWalls(probe, "unavailable")).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
@@ -114,9 +114,33 @@ describe("parsing the probe from a Session log", () => {
         { name: "host_validation", ok: true }, { name: "preservation", ok: true }
       ] });
       writeFileSync(sessionLogPath(workspace, session.id), JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output } }) + "\n");
+      expect(observeSessionCapability(readFileSync(sessionLogPath(workspace, session.id), "utf8"), { command: issued.command, contract: issued.contractDigest, directWorkspaceWrite: "unavailable" }))
+        .toMatchObject({ provenance: "session_probe", status: "clear", walls: [] });
+      // Tick callers retain only the exact host-issued command and digest;
+      // the command itself binds its unavailable requirement.
       expect(observeSessionCapability(readFileSync(sessionLogPath(workspace, session.id), "utf8"), { command: issued.command, contract: issued.contractDigest }))
         .toMatchObject({ provenance: "session_probe", status: "clear", walls: [] });
       expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true, completionCapability: { directWorkspaceWrite: "unavailable", localAskTransport: "ready" } });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("does not let probe output mark host validation or preservation optional", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-required-host-checks-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const issued = issueSessionProbe({ workspace, sessionId: "s-host", packetId: "packet", packetSha256: "b".repeat(64), worktreePath: worktree, directWorkspaceWrite: "unavailable" });
+      for (const name of ["host_validation", "preservation"] as const) {
+        const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+          { name: "workspace_write", ok: false, required: false, unavailable: true },
+          { name, ok: false, required: false, unavailable: true },
+          { name: name === "host_validation" ? "preservation" : "host_validation", ok: true }
+        ] });
+        const log = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output } });
+        expect(observeSessionCapability(log, { command: issued.command, contract: issued.contractDigest, directWorkspaceWrite: "unavailable" }))
+          .toMatchObject({ status: "wall", walls: [{ wallClass: name }] });
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
@@ -150,6 +174,41 @@ describe("parsing the probe from a Session log", () => {
       expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "direct_required" })).toMatchObject({
         sourceCompletionRequired: true, completionCapability: { directWorkspaceWrite: "required", localAskTransport: "unavailable" }
       });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses a genuine unavailable-write probe when durable direct-required mode disagrees", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-direct-mode-mismatch-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const session = { id: "s-mismatch", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, completion_capability_mode: "direct_required" as const };
+      const issued = issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "unavailable" });
+      const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+        { name: "workspace_write", ok: false, required: false, unavailable: true },
+        { name: "host_validation", ok: true }, { name: "preservation", ok: true }
+      ] });
+      writeFileSync(sessionLogPath(workspace, session.id), JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output } }) + "\n");
+      expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true,
+        completionCapability: { directWorkspaceWrite: "unavailable", localAskTransport: "unavailable" } });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses a genuine required-write probe when durable source-only mode disagrees", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-source-mode-mismatch-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const session = { id: "s-source-mismatch", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, completion_capability_mode: "source_only" as const };
+      const issued = issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "required" });
+      const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+        { name: "workspace_write", ok: true }, { name: "host_validation", ok: true }, { name: "preservation", ok: true }
+      ] });
+      writeFileSync(sessionLogPath(workspace, session.id), JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output } }) + "\n");
+      expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true,
+        completionCapability: { directWorkspaceWrite: "required", localAskTransport: "unavailable" } });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

@@ -67,6 +67,6 @@
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "R6 direction-fixture correction prepared; host targeted checks, CI, rehearsal, and the one final independent review remain for Rowan.",
-  "notes": "R1 optional wall; R2 host mode; R4/R5 canonical gates; R6 gates Plan-done reconciliation. Direction emits the issued probe; direct providers need a clear write probe. Sandbox-only."
+  "stop_reason": "Decision0147 R6 binding correction prepared; host checks, CI, rehearsal, and one final independent R7 remain for Rowan.",
+  "notes": "R6 binds optional DB write to source-only contract and direct mode to contract. Host validation and preservation cannot be optional. Sandbox-only."
 }

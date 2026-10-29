@@ -46,6 +46,22 @@ pnpm check:session-ledger
 pnpm fast-rehearsal
 ```
 
+## Decision 0147A R6 binding correction — host proof pending
+
+R6-01 binds probe result meaning to the trusted issued requirement: only a source-only contract may record `workspace_write` as `{ ok:false, required:false, unavailable:true }`. A provider cannot label failed `host_validation` or `preservation` optional. Existing successful mandatory checks may continue omitting `required`.
+
+R6-02 binds the durable `agent_sessions.completion_capability_mode` to the host contract: `source_only` requires `unavailable`; `direct_required` requires `required`; legacy remains compatible. A mismatch retains `sourceCompletionRequired` and makes local Ask transport unavailable, so canonical reconciliation refuses rather than downgrading. The tick-only caller that has the host-issued exact command and digest derives the same requirement from its fixed issued argv, never the provider result.
+
+Sandbox evidence: capability/attribution: `25 passed`; R6-02 genuine real-probe public reconciliation: `1 passed, 58 skipped`; both source-only/direct-required contract-mode mismatches: `2 passed, 13 skipped`; touched ESLint passed. The earlier complete TypeScript pass predates these test-only additions, so Rowan must rerun it. Host checks and final review remain required; no CI, adoption, Production, or R465 success is claimed.
+
+```sh
+pnpm exec vitest run tests/session-capability-probe.test.ts tests/session-capability-attribution.test.ts tests/session-reconciliation.test.ts --no-file-parallelism
+pnpm exec vitest run tests/direction-managed.test.ts tests/rehearsal-two-action.test.ts --no-file-parallelism
+pnpm build
+pnpm check:session-ledger
+pnpm fast-rehearsal
+```
+
 ### R6 focused follow-up — direction manual completion producer
 
 The host run of `tests/direction-managed.test.ts` on `3d819e2a333c44a00bc1a2a3f84c49565acffc09` reached reconciliation and returned `incomplete_resumable` at its accepted-completion assertion. The fixture manually drafts and settles its complete Ask, so it bypassed `Rehearsal.agentFinish`, the existing producer that records the genuine host-issued paired probe. It now calls `recordClearProbeEvidence` once at that explicit simulated completion point, after the candidate commit and before the manual Ask. The helper uses the issued Session contract and real probe script and appends idempotently; it does not seed every launch or alter production gates.

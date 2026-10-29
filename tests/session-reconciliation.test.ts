@@ -594,6 +594,62 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
   });
 
+  it("refuses an already-settled direct-required completion when its paired probe falsely marks the required write optional", () => {
+    for (const target of ["primary", "candidate"] as const) {
+      const fixture = preparedFixture({ responsibility: "agent" });
+      const tmux = new FakeTmux();
+      const session = launchCompletionFixture(fixture, tmux).data.session;
+      tmux.live = false;
+      writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+      git(session.worktree_path, ["add", "contract.md"]);
+      git(session.worktree_path, ["commit", "-m", "define the contract"]);
+      settleCompleteFromWorktree(fixture, session.worktree_path, `self-settle-direct-optional-write-${target}`);
+      withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET completion_capability_mode = 'direct_required' WHERE id = ?").run(session.id));
+      const issued = issueSessionProbe({ workspace: fixture.workspace, sessionId: session.id, packetId: session.packet_id,
+        packetSha256: session.packet_sha256, worktreePath: session.worktree_path, directWorkspaceWrite: "required" });
+      const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+        { name: "workspace_write", ok: false, required: false, unavailable: true },
+        { name: "host_validation", ok: true }, { name: "preservation", ok: true }
+      ] });
+      writeFileSync(sessionLogPath(fixture.workspace, session.id), JSON.stringify({ type: "item.completed", item: {
+        type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output
+      } }) + "\n");
+      const result = runSessionReconcileCommand({ workspace: fixture.workspace,
+        repo: target === "primary" ? fixture.repo : session.worktree_path, session: session.id,
+        requestId: `reconcile-settled-direct-optional-${target}` }).data;
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.reason).toContain("already settled");
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
+    }
+  });
+
+  it("refuses a genuine unavailable-write probe when a settled Session is durably direct-required", () => {
+    for (const target of ["primary", "candidate"] as const) {
+      const fixture = preparedFixture({ responsibility: "agent" });
+      const tmux = new FakeTmux();
+      const session = launchCompletionFixture(fixture, tmux).data.session;
+      tmux.live = false;
+      writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+      git(session.worktree_path, ["add", "contract.md"]);
+      git(session.worktree_path, ["commit", "-m", "define the contract"]);
+      settleCompleteFromWorktree(fixture, session.worktree_path, `self-settle-direct-unavailable-${target}`);
+      withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET completion_capability_mode = 'direct_required' WHERE id = ?").run(session.id));
+      issueSessionProbe({ workspace: fixture.workspace, sessionId: session.id, packetId: session.packet_id,
+        packetSha256: session.packet_sha256, worktreePath: session.worktree_path, directWorkspaceWrite: "unavailable" });
+      // Executes the exact issued probe script and appends its paired provider
+      // command/result record; no hand-built success JSON is used here.
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, db => getSession(db, session.id)!));
+      const result = runSessionReconcileCommand({ workspace: fixture.workspace,
+        repo: target === "primary" ? fixture.repo : session.worktree_path, session: session.id,
+        requestId: `reconcile-settled-direct-unavailable-${target}` }).data;
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.reason).toContain("already settled");
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
+    }
+  });
+
   it("keeps a legacy already-settled completion compatible without managed probe evidence", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
