@@ -140,3 +140,137 @@ pnpm build
 pnpm check:session-ledger
 pnpm fast-rehearsal
 ```
+
+## Decision 0148: admitted heavy Ellis repair, before independent R8
+
+The preceding sections are historical evidence from the outgoing writer. R7
+subsequently found two static P1 blockers at `d3ff8091c029eb4a21dba439d153fcfcc28a23b5`:
+#1881's directory-only SQLite probe and #1882's accepted non-Boolean optional
+flags. Neither that static review nor its passing CI proved dynamic reproduction.
+All R1-R7 findings, receipts and consumed allowances remain retained; none is reset.
+
+Rowan published Decision 0148 A on fetched main
+`5974cf827e62946c059c282ba724b61f4594e519` (PR #1883,
+`decisionanswer_73c489cbb90940849f`). The later human-directed heavy-writer
+override is `agentask_b5c86c85c0bdc3b76d`; outgoing release is
+`agentask_3f8a0113afe25ba352` and successor custody acknowledgement is
+`agentask_d347988c4d39983926`. New native chat
+`01a188c9-777d-7a70-a7f5-e02dbf60687c` is Ellis, sole implementer under Rowan.
+Parent `create_thread` evidence pins `gpt-6.1-sol/high`; available self-metadata
+does not independently expose that runtime binding. No prior managed Session,
+lease, generation or identity is reused. The schema's `driver` ledger label
+represents this implementer assignment; the outgoing writer's ledger is unchanged.
+
+Immutable admission `agentask_a1ccb3160b9dc36e40` starts at
+2026-10-29T17:56:06.118460Z. The existing candidate reservation
+`wtres_4a3b0f2d5c114fde9e` sets the shorter hard deadline
+2026-10-30T00:36:46.462Z; preservation-only begins at 00:06:46.462Z.
+This turn stops before 2026-10-29T18:26:06Z. Charge its entire wall clock and
+the earlier 72.485-second acknowledgement to the cumulative eight-hour writer
+allowance. Admission adds no allowance beyond Decision 0148 and renews no
+reservation; no new production admission is claimed.
+
+Only the existing candidate and branch are used. Its base head was clean at
+`d3ff8091c029eb4a21dba439d153fcfcc28a23b5`; the following repair is uncommitted
+at this handback and has no new revision/CI/review proof yet.
+
+- Required direct DB writes now lazily load Arcadia's existing `better-sqlite3`,
+  open the existing database with `fileMustExist`, and force a main-database
+  header write inside `BEGIN IMMEDIATE` followed by `ROLLBACK`. No application
+  table is assumed, no schema initialization/journal-mode change is performed,
+  and no database changes are committed. Source-only probes never load SQLite.
+  SQLite error codes remain in the structured failure text, including lock errors.
+- Present `required`/`unavailable` properties must be Boolean (own-property
+  presence, including explicit undefined in direct objects); missing legacy
+  fields remain compatible. Malformed paired evidence stays unknown and
+  suppresses legacy-diagnostic fallback.
+- Real isolated SQLite regressions prove that a sibling marker can be written
+  while an attempted DB transaction fails on a read-only DELETE database,
+  DELETE journal or WAL database. The issued required probe then refuses;
+  restored writable controls pass. Database bytes and sentinel contents remain
+  unchanged. Root/non-enforcing environments explicitly skip rather than claiming denial.
+- Public reconciliation tests cover recorded required-write denial and malformed
+  passing host checks at both primary/candidate roots, drafted/already-settled
+  malformed cases, and existing legitimate direct-required/legacy controls.
+  Parser tests cover Codex and Claude pairing, all three check names, both flags,
+  string/number/null/array/object values, explicit undefined and fallback precedence.
+  The preview-blocked draft test now records the genuine issued probe instead of
+  constructing successful probe JSON. Its existing coding-sandbox early return
+  still means a sandbox execution alone does not prove final host settlement.
+
+Reproduction and friction: the initial targeted run (native tool session 31163)
+showed the old database producer returning exit 0 after a genuine failed SQLite
+write, and malformed host flags observing clear. The journal fixture initially
+masked its assertion during cleanup and needed SQLite's `disk I/O` failure code
+recognized and its removed empty journal recreated. A later launch was denied
+writing Vite's temporary config; the normal approved host-execution route was
+used, with no workspace substitution. The file named
+`/private/tmp/rowan-successor-20261029/ellis-r8-regression-before.log` contains
+that startup denial, not a completed regression run. The WAL writable-control
+initially failed because opening a readonly fixture can leave readonly WAL/SHM
+sidecars; restoring all fixture sidecar modes repaired the control. Failed logs
+remain in the same temporary evidence directory. SQLite permission regressions
+used only fixture databases. The sidecar observation was captured through the
+supported CLI as `lesson_96dd18c258b4b132d923` / receipt
+`lessonReceipt_c0d6f3a8-7890-40b5-877c-ebef49bc11d7`.
+
+Instruction evidence is retained in the native turn: candidate `AGENTS.md`,
+Constitution, PROJECT frontmatter/exact Action, context policies/index,
+role/guardrail skills, targeted Notes, continuation/learning/working-copy,
+native-mail checkpoints, roles guidance, repository orientation and DB orientation.
+Retained-lesson search returned zero matches; work monitor completed before edits.
+The main history from the inherited cursor through `5974cf8` and the exact
+published Decision were read. Rowan supplied the fetched-main/Production-Off/
+reservation admission verification. No messaging, delegation, commit, push,
+preservation broker, settlement, merge, install/adopt/restart, provider/credential
+probe or live R465/START operation was performed by this writer.
+
+Validation (exit 0 unless explicitly stated; logs under
+`/private/tmp/rowan-successor-20261029/`):
+
+- `pnpm exec vitest run tests/session-capability-probe.test.ts tests/session-capability-attribution.test.ts tests/session-capability-tokens.test.ts tests/session-reconciliation.test.ts --no-file-parallelism`:
+  98 passed, one skipped, 207.56s (`ellis-r8-full-focused.log`). After this run,
+  the public denied-write fixture precondition was strengthened from a same-value
+  PRAGMA to guaranteed transactional fixture table creation. Its targeted
+  verbose rerun passed at both repository roots: one passed, 61 filtered skips,
+  11.07s (`ellis-r8-required-write-control.log`). No runtime code changed for
+  this test-only correction. Do not collapse these into a claim of a final
+  99-test no-skip run.
+- Final producer/parser file: 23 passed, 3.49s
+  (`ellis-r8-probe-final-diagnostics.log`), including SQLite error-code retention
+  and malformed-probe precedence over legacy diagnostics. Targeted public
+  reconciliation cases earlier passed nine tests with 53 filtered skips
+  (`ellis-r8-reconciliation-cases.log`).
+- `pnpm exec tsc --noEmit` (`ellis-r8-tsc.log`), `pnpm lint`
+  (`ellis-r8-full-lint.log`), and final touched-file ESLint
+  (`ellis-r8-final-touched-lint.log`) passed. The last fixture SQL replacement
+  is test-only; final touched lint is rerun at handback.
+- `pnpm build:artifacts` passed (`ellis-r8-build-final.log`); packaged probe
+  and source match SHA-256
+  `d3c3b50e3f735b8cbc95ea38a8609afec6a244fb00a5feeb1eea3fc6c9c71c90`.
+  An earlier build's copy became stale after the diagnostic-text correction;
+  the mismatch was measured and the canonical build repeated.
+- `node scripts/preservation-self-check.mjs`: 3295 files inspected, passed
+  (`ellis-r8-preservation-self-check.log`). Session-ledger validation and
+  `git diff --check` passed after correcting this new row's overlong notes field.
+- Writer `pnpm fast-rehearsal` began just before Rowan's no-duplicate steering;
+  it was interrupted with exit 130, with no result claimed
+  (`ellis-r8-fast-rehearsal.log`). Rowan owns the canonical run and its result.
+- Rowan separately reported the genuine preview-blocked host-settlement test
+  passed (one pass, 61 filtered skips, 7.63s), log
+  `host0148/source-only-real-host.log`. This is fixture-only host proof. It
+  establishes no Go parity/live acceptance; its inherited diagnostic marker
+  handling must not be applied to Go-parity tests.
+
+Author inspection verified lazy SQLite loading, existing-file-only access,
+rollback/close paths, preserved host-issued command/contract bindings and
+fail-closed malformed evidence. This is not independent R8. Runtime files
+were frozen before Rowan's canonical rehearsal checkpoint; only the guaranteed
+write precondition in the public regression and handback/ledger documentation
+changed afterwards. Final fetch/checkpoint retained main cursor
+`5974cf827e62946c059c282ba724b61f4594e519`; both history ranges were empty.
+Pending: canonical rehearsal result, protected preservation, new-head required
+CI, independent R8 and then any separately allowed completion. No independent
+R8 verdict, new CI, completion settlement, adoption or live acceptance is claimed.
+Sole source custody remains with this paused writer unless Rowan explicitly
+reassigns it; no second writer or automatic resume.

@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import Database from "better-sqlite3";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -594,6 +595,60 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
   });
 
+  it.skipIf(process.getuid?.() === 0)("refuses genuine required database-write denial through public already-settled reconciliation at both roots", context => {
+    for (const target of ["primary", "candidate"] as const) {
+      const fixture = preparedFixture({ responsibility: "agent" });
+      const tmux = new FakeTmux();
+      const session = launchCompletionFixture(fixture, tmux).data.session;
+      tmux.live = false;
+      writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+      git(session.worktree_path, ["add", "contract.md"]);
+      git(session.worktree_path, ["commit", "-m", "define the contract"]);
+      settleCompleteFromWorktree(fixture, session.worktree_path, `self-settle-denied-${target}`);
+      withDatabase(fixture.workspace, db => db.prepare("UPDATE agent_sessions SET completion_capability_mode = 'direct_required' WHERE id = ?").run(session.id));
+      const issued = issueSessionProbe({ workspace: fixture.workspace, sessionId: session.id, packetId: session.packet_id,
+        packetSha256: session.packet_sha256, worktreePath: session.worktree_path, directWorkspaceWrite: "required" });
+      const database = path.join(fixture.workspace, "database", "arcadia.sqlite3");
+      const marker = path.join(path.dirname(database), "directory-is-writable");
+      writeFileSync(marker, "yes");
+      rmSync(marker);
+      chmodSync(database, 0o444);
+      let run: ReturnType<typeof spawnSync>;
+      try {
+        const attempted = new Database(database, { fileMustExist: true });
+        let writeFailure: unknown;
+        try { attempted.exec("BEGIN IMMEDIATE; CREATE TABLE capability_denial_fixture (value TEXT)"); }
+        catch (error) { writeFailure = error; }
+        finally {
+          if (attempted.inTransaction) attempted.exec("ROLLBACK");
+          attempted.close();
+        }
+        if (!writeFailure) context.skip("This host did not enforce the fixture's SQLite write denial.");
+        expect(writeFailure).toMatchObject({ code: expect.stringMatching(/^SQLITE_(?:READONLY|CANTOPEN|IOERR)/) });
+        run = spawnSync("/bin/zsh", ["-lc", issued.command], { encoding: "utf8", timeout: 10_000 });
+        expect(run.status).toBe(1);
+        expect(JSON.parse(String(run.stdout))).toMatchObject({ ok: false, checks: expect.arrayContaining([
+          { name: "workspace_write", ok: false, error: expect.any(String) }
+        ]) });
+      } finally {
+        for (const file of [database, `${database}-wal`, `${database}-shm`]) {
+          if (existsSync(file)) chmodSync(file, 0o644);
+        }
+      }
+      // The host can write again, but must reject the Session's recorded denial.
+      writeFileSync(sessionLogPath(fixture.workspace, session.id), JSON.stringify({ type: "item.completed", item: {
+        type: "command_execution", command: issued.command, exit_code: run.status, aggregated_output: String(run.stdout)
+      } }) + "\n");
+      const result = runSessionReconcileCommand({ workspace: fixture.workspace,
+        repo: target === "primary" ? fixture.repo : session.worktree_path, session: session.id,
+        requestId: `reconcile-required-denied-${target}` }).data;
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
+      expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
+    }
+  });
+
   it("refuses an already-settled direct-required completion when its paired probe falsely marks the required write optional", () => {
     for (const target of ["primary", "candidate"] as const) {
       const fixture = preparedFixture({ responsibility: "agent" });
@@ -667,6 +722,53 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).toBe("accepted_completion");
   });
 
+  it.each(["required", "unavailable"] as const)("refuses malformed present %s through public drafted and already-settled reconciliation at both repository roots", field => {
+    for (const state of ["drafted", "settled"] as const) {
+      for (const target of ["primary", "candidate"] as const) {
+        const fixture = preparedFixture({ responsibility: "agent" });
+        const tmux = new FakeTmux();
+        const session = launchCompletionFixture(fixture, tmux).data.session;
+        tmux.live = false;
+        writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+        git(session.worktree_path, ["add", "contract.md"]);
+        git(session.worktree_path, ["commit", "-m", "define the contract"]);
+        const request = `malformed-${field}-${state}-${target}`;
+        if (state === "settled") settleCompleteFromWorktree(fixture, session.worktree_path, request);
+        else {
+          draftCompleteInWorktree(session.worktree_path, "The contract exists.");
+          git(session.worktree_path, ["add", "."]);
+          git(session.worktree_path, ["commit", "-m", "preserve draft"]);
+          withDatabase(fixture.workspace, db => {
+            const scope = productionScope();
+            activateProduction(db, { requestId: `grant-${request}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+          });
+        }
+        const issued = issueSessionProbe({ workspace: fixture.workspace, sessionId: session.id, packetId: session.packet_id,
+          packetSha256: session.packet_sha256, worktreePath: session.worktree_path, directWorkspaceWrite: "unavailable" });
+        const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+          { name: "workspace_write", ok: false, required: false, unavailable: true },
+          { name: "host_validation", ok: true, [field]: field === "required" ? "false" : [] },
+          { name: "preservation", ok: true }
+        ] });
+        writeFileSync(sessionLogPath(fixture.workspace, session.id), JSON.stringify({ type: "item.completed", item: {
+          type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output
+        } }) + "\n");
+        const result = runSessionReconcileCommand({ workspace: fixture.workspace,
+          repo: target === "primary" ? fixture.repo : session.worktree_path, session: session.id,
+          requestId: `reconcile-${request}` }).data;
+        expect(result.receipt.outcome).toBe("incomplete_resumable");
+        expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
+        if (state === "settled") {
+          expect(result.receipt.lease_handoff).toBe(0);
+          expect(result.receipt.evidence_json).toContain("self_settled_refused");
+        } else {
+          expect(withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements").get()))
+            .toEqual({ count: 0 });
+        }
+      }
+    }
+  });
+
   it("settles a genuine preview_blocked source draft through host validation and canonical settlement", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
@@ -676,16 +778,9 @@ describe("reconcileSessionExit automatic production completion", () => {
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     const launchedSession = withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, sessionId)!);
-    const issued = issueSessionProbe({ workspace: fixture.workspace, sessionId, packetId: launchedSession.packet_id,
+    issueSessionProbe({ workspace: fixture.workspace, sessionId, packetId: launchedSession.packet_id,
       packetSha256: launchedSession.packet_sha256, worktreePath, directWorkspaceWrite: "unavailable" });
-    const probeOutput = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
-      { name: "workspace_write", ok: false, required: false, unavailable: true },
-      { name: "host_validation", ok: true },
-      { name: "preservation", ok: true }
-    ] });
-    writeFileSync(sessionLogPath(fixture.workspace, sessionId), JSON.stringify({ type: "item.completed", item: {
-      type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: probeOutput
-    } }) + "\n");
+    recordClearProbeEvidence(fixture.workspace, launchedSession);
     const databaseFile = path.join(fixture.workspace, "database", "arcadia.sqlite3");
     const request = JSON.stringify({
       agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",

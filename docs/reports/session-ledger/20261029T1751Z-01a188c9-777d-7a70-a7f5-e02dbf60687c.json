@@ -1,0 +1,38 @@
+{
+  "session_id": "01a188c9-777d-7a70-a7f5-e02dbf60687c",
+  "role": "driver",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "configured_effort": "high",
+  "effective_effort": null,
+  "effort_source": "Parent create_thread model/thinking evidence; runtime metadata does not expose model/effort independently.",
+  "action_id": "repair-host-owned-source-completion-capabilities",
+  "pr": 1867,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "vite-temporary-config-write-denied",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "readonly-fixture-wal-sidecar-restoration",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Bounded writer handback to Rowan for remaining host proof, protected preservation/publication and independent R8; no Action settlement or completion claimed.",
+  "candidate_head": "d3ff8091c029eb4a21dba439d153fcfcc28a23b5",
+  "evidence_source": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md",
+  "notes": "Base head; uncommitted repair. Same candidate/custody under Decision0148 and heavy override. R1-R7 retained; no new review. Timing is in Rowan's immutable admission/accounting."
+}

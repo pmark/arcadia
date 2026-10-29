@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { observeSessionCapability, parseSessionProbe, sessionProbeWalls, SESSION_PROBE_TOKEN_BUDGET } from "../src/production/sessionCapability.js";
 import { completionCapabilityForReconciliation } from "../src/production/tick.js";
@@ -16,11 +17,78 @@ function runProbe(workspace: string, worktree: string, workspaceWrite = "require
 }
 
 describe("the in-Session capability probe script", () => {
+  it.skipIf(process.getuid?.() === 0).each(["database", "journal", "WAL database"] as const)("refuses a genuine SQLite write denial on the %s even when its directory is writable", (denied, context) => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-sqlite-denied-"));
+    const workspace = path.join(root, "ws");
+    const directory = path.join(workspace, "database");
+    mkdirSync(directory, { recursive: true });
+    const database = path.join(directory, "arcadia.sqlite3");
+    const setup = new Database(database);
+    setup.pragma(`journal_mode = ${denied === "WAL database" ? "WAL" : "DELETE"}`);
+    setup.exec("CREATE TABLE retained (value TEXT); INSERT INTO retained VALUES ('unchanged')");
+    setup.close();
+    const journal = `${database}-journal`;
+    const protectedFile = denied === "journal" ? journal : database;
+    if (denied === "journal") writeFileSync(journal, "");
+    chmodSync(protectedFile, 0o444);
+    try {
+      // Establish the real failure independently of the capability producer:
+      // a nearby marker succeeds while SQLite cannot update the real DB.
+      const marker = path.join(directory, "directory-is-writable");
+      writeFileSync(marker, "yes");
+      rmSync(marker);
+      const before = readFileSync(database);
+      const attempted = new Database(database, { fileMustExist: true });
+      let writeFailure: unknown;
+      try {
+        attempted.exec("BEGIN IMMEDIATE; UPDATE retained SET value = 'rolled-back'");
+      } catch (error) {
+        writeFailure = error;
+      } finally {
+        if (attempted.inTransaction) attempted.exec("ROLLBACK");
+        attempted.close();
+      }
+      if (!writeFailure) context.skip("This host did not enforce the fixture's SQLite write denial.");
+      expect(writeFailure).toMatchObject({ code: expect.stringMatching(/^SQLITE_(?:READONLY|CANTOPEN|IOERR)/) });
+      // SQLite can remove an empty journal while closing the failed attempt.
+      if (denied === "journal") {
+        if (!existsSync(journal)) writeFileSync(journal, "");
+        chmodSync(journal, 0o444);
+      }
+      const run = runProbe(workspace, root);
+      expect(run.status).toBe(1);
+      const probe = JSON.parse(run.stdout.trim());
+      expect(probe).toMatchObject({ ok: false, checks: expect.arrayContaining([{ name: "workspace_write", ok: false, error: expect.stringMatching(/^SQLITE_(?:READONLY|CANTOPEN|IOERR)/) }]) });
+      expect(readFileSync(database)).toEqual(before);
+      const command = "node /host/session-capability-probe.mjs --workspace-write required";
+      const log = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command, exit_code: run.status, aggregated_output: run.stdout } });
+      expect(observeSessionCapability(log, { command, contract: "a".repeat(64), directWorkspaceWrite: "required" }))
+        .toMatchObject({ status: "wall", walls: [{ wallClass: "workspace_write" }] });
+      for (const file of [database, journal, `${database}-wal`, `${database}-shm`]) {
+        if (existsSync(file)) chmodSync(file, 0o644);
+      }
+      const control = runProbe(workspace, root);
+      expect(control.status).toBe(0);
+      expect(JSON.parse(control.stdout)).toMatchObject({ ok: true });
+      expect(readFileSync(database)).toEqual(before);
+    } finally {
+      for (const file of [database, journal, `${database}-wal`, `${database}-shm`]) {
+        if (existsSync(file)) chmodSync(file, 0o644);
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("passes on a writable workspace and worktree, prints one JSON line and leaves nothing behind", () => {
     const root = mkdtempSync(path.join(tmpdir(), "probe-ok-"));
     try {
       const workspace = path.join(root, "ws");
       mkdirSync(path.join(workspace, "database"), { recursive: true });
+      const database = path.join(workspace, "database", "arcadia.sqlite3");
+      const db = new Database(database);
+      db.exec("CREATE TABLE retained (value TEXT); INSERT INTO retained VALUES ('unchanged'); PRAGMA user_version = 7");
+      db.close();
+      const before = readFileSync(database);
       const run = runProbe(workspace, root);
       expect(run.status).toBe(0);
       const lines = run.stdout.trim().split("\n");
@@ -28,7 +96,8 @@ describe("the in-Session capability probe script", () => {
       const probe = JSON.parse(lines[0]);
       expect(probe).toMatchObject({ probe: "session-capability/v2", contract: "a".repeat(64), ok: true });
       expect(probe.checks.map((c: { name: string }) => c.name)).toEqual(["workspace_write", "host_validation", "preservation"]);
-      expect(readdirSync(path.join(workspace, "database"))).toEqual([]);
+      expect(readdirSync(path.join(workspace, "database"))).toEqual(["arcadia.sqlite3"]);
+      expect(readFileSync(database)).toEqual(before);
       expect(run.ms).toBeLessThan(10_000);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -74,6 +143,26 @@ describe("the in-Session capability probe script", () => {
       expect(sessionProbeWalls(probe, "unavailable")).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+
+  it("does not load SQLite for source-only completion and fails closed when a required probe cannot load it", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-no-sqlite-dependency-"));
+    try {
+      const script = path.join(root, "probe.mjs");
+      writeFileSync(script, readFileSync(SESSION_PROBE_SCRIPT_PATH));
+      const args = [script, "--workspace", path.join(root, "ws"), "--worktree", root, "--contract", "a".repeat(64), "--workspace-write"];
+      const sourceOnly = spawnSync(process.execPath, [...args, "unavailable"], { encoding: "utf8", timeout: 10_000 });
+      expect(sourceOnly.status).toBe(0);
+      expect(JSON.parse(sourceOnly.stdout)).toMatchObject({ ok: true, checks: expect.arrayContaining([
+        { name: "workspace_write", ok: false, required: false, unavailable: true }
+      ]) });
+      const required = spawnSync(process.execPath, [...args, "required"], { encoding: "utf8", timeout: 10_000 });
+      expect(required.status).toBe(1);
+      expect(JSON.parse(required.stdout)).toMatchObject({ ok: false, checks: expect.arrayContaining([
+        { name: "workspace_write", ok: false, error: expect.stringContaining("Cannot find module 'better-sqlite3'") }
+      ]) });
+      expect(existsSync(path.join(root, "ws"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });
 
 describe("parsing the probe from a Session log", () => {
@@ -83,6 +172,42 @@ describe("parsing the probe from a Session log", () => {
     { name: "workspace_write", ok: false, required: false, unavailable: true },
     { name: "host_validation", ok: true }, { name: "preservation", ok: true }
   ] });
+  it.each(["required", "unavailable"] as const)("rejects explicitly present undefined %s while accepting its absence in direct check objects", field => {
+    const malformed = { probe: "session-capability/v2" as const, ok: false, checks: [{ name: "host_validation", ok: false, [field]: undefined }] };
+    expect(sessionProbeWalls(malformed)).toEqual([]);
+    expect(sessionProbeWalls({ ...malformed, checks: [{ name: "host_validation", ok: false }] }))
+      .toMatchObject([{ wallClass: "host_validation" }]);
+  });
+  it.each(["required", "unavailable"] as const)("refuses present non-Boolean %s on every check through observation and reconciliation transport", field => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-malformed-flags-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const session = { id: "s-flags", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, completion_capability_mode: "source_only" as const };
+      const issued = issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "unavailable" });
+      for (const name of ["workspace_write", "host_validation", "preservation"]) {
+        for (const invalid of ["false", 0, null, [], {}]) {
+          const output = JSON.parse(result) as { contract: string; checks: Array<Record<string, unknown>> };
+          output.contract = issued.contractDigest;
+          output.checks.find(check => check.name === name)![field] = invalid;
+          const codex = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: JSON.stringify(output) } });
+          const claude = [
+            JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "probe", name: "Bash", input: { command: issued.command } }] } }),
+            JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "probe", content: JSON.stringify(output) }] } })
+          ].join("\n");
+          const legacyDenial = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "arcadia agent-ask preview", exit_code: 1,
+            aggregated_output: "Error [SQLITE_WORKSPACE_WRITE_DENIED]: attempt to write a readonly database" } });
+          for (const providerLog of [codex, claude]) {
+            const log = `${providerLog}\n${legacyDenial}`;
+            writeFileSync(sessionLogPath(workspace, session.id), log + "\n");
+            expect(observeSessionCapability(log, { command: issued.command, contract: issued.contractDigest })).toMatchObject({ status: "unknown" });
+            expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true, completionCapability: { localAskTransport: "unavailable" } });
+          }
+        }
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("accepts only a result paired to the exact host-issued invocation", () => {
     const log = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command, exit_code: 0, aggregated_output: result } });
     expect(parseSessionProbe(log, { command, contract })).toMatchObject({ ok: true });

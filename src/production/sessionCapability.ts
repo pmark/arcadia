@@ -343,6 +343,8 @@ export interface SessionProbeResult { probe: typeof SESSION_PROBE_ID; contract?:
 function isSessionProbeCheck(value: unknown): value is SessionProbeCheck {
   const check = record(value);
   return Boolean(check && typeof check.name === "string" && typeof check.ok === "boolean"
+    && (!Object.hasOwn(check, "required") || typeof check.required === "boolean")
+    && (!Object.hasOwn(check, "unavailable") || typeof check.unavailable === "boolean")
     && (check.error === undefined || typeof check.error === "string"));
 }
 

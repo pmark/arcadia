@@ -3930,6 +3930,8 @@ Direct live-workspace database writes are recorded as unavailable, never passed.
 Only the host-issued source-only requirement may classify that one write as
 unavailable; host validation and preservation remain required, and a
 direct-required Session refuses an unavailable-write contract.
+A required direct-write probe exercises the existing SQLite database in a
+rolled-back transaction; a writable parent directory alone cannot pass it.
 The Session may edit its candidate and use `arcadia agent-ask draft` to leave a
 validated local `complete` Ask (including `preview_blocked` when preview cannot
 write). On exit, the host rechecks the bound contract and local Ask transport,
