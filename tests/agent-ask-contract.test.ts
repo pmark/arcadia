@@ -4,7 +4,8 @@ import {
   AGENT_ASK_INTENTS,
   STRICT_ACTION_FIELDS,
   STRICT_FIELDS,
-  STRICT_OPTION_FIELDS
+  STRICT_OPTION_FIELDS,
+  normalizeAgentAsk
 } from "../src/ask/agentAsk.js";
 import { renderAgentAskContractSuccess, runAgentAskContractCommand } from "../src/commands/agentAsk.js";
 
@@ -46,5 +47,29 @@ describe("agent-ask contract", () => {
     const rendered = renderAgentAskContractSuccess(runAgentAskContractCommand()).join("\n");
     expect(rendered).toContain('"candidate_revision"');
     expect(rendered).toContain('"evidence"');
+  });
+});
+
+describe("agent-ask reference intake", () => {
+  // A reference naming one machine's filesystem rots when the file moves, so
+  // intake refuses it instead of writing it into a Plan Action.
+  const askWith = (references: string) => `agent_ask: v1\nrequest_id: reference-intake\nproject: arcadia\nintent: proposal\ndesired_result: Record references.\nreferences:\n${references}\n`;
+
+  it("accepts URLs, repository-relative paths and governed ids", () => {
+    const normalized = normalizeAgentAsk({ request: askWith("  - https://github.com/pmark/arcadia/issues/1032\n  - docs/working-copy-safety.md\n  - decision/0091") });
+    expect(normalized.references).toEqual(["https://github.com/pmark/arcadia/issues/1032", "docs/working-copy-safety.md", "decision/0091"]);
+  });
+
+  it("refuses absolute and home-relative filesystem paths at the Ask level", () => {
+    expect(() => normalizeAgentAsk({ request: askWith("  - /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/bundle/") })).toThrow(/must not contain absolute filesystem paths/);
+    expect(() => normalizeAgentAsk({ request: askWith("  - ~/Dev/notes.md") })).toThrow(/must not contain absolute filesystem paths/);
+    expect(() => normalizeAgentAsk({ request: askWith("  - ~alice/notes.md") })).toThrow(/must not contain absolute filesystem paths/);
+    expect(() => normalizeAgentAsk({ request: askWith("  - C:\\\\Users\\\\pmark\\\\notes.md") })).toThrow(/must not contain absolute filesystem paths/);
+  });
+
+  it("refuses absolute filesystem paths on an Action", () => {
+    const request = "agent_ask: v1\nrequest_id: reference-intake-action\nproject: arcadia\nintent: plan\ndesired_result: Record references.\nactions:\n  - id: record-evidence\n    desired_result: Record the evidence.\n    acceptance:\n      - Evidence is recorded.\n    references:\n      - /private/tmp/run8-ci-preservation-handoff/manifest.json\n";
+    expect(() => normalizeAgentAsk({ request })).toThrow(/actions\[0\]\.references must not contain absolute filesystem paths/);
+    expect(() => normalizeAgentAsk({ request: request.replace("/private/tmp/run8-ci-preservation-handoff/manifest.json", "~/Dev/notes.md") })).toThrow(/actions\[0\]\.references must not contain absolute filesystem paths/);
   });
 });
