@@ -138,10 +138,10 @@ stop the affected operation, preserve work and report the exact remedy.
 
 ### Instruction budget
 
-The generated bootstrap is limited to **8 KiB UTF-8**; a root AGENTS.md to
-**12 KiB**. Default-loading project guidance across root and relevant nested
-paths is limited to **24 KiB**, reserving **8 KiB** for global guidance inside a
-conservative **32 KiB combined** envelope. Root overrides must retain this bootstrap.
+Caps: generated bootstrap **8 KiB UTF-8**; root AGENTS.md **12 KiB**;
+default-loading project guidance across root and relevant nested paths
+**24 KiB**, reserving **8 KiB** for global guidance inside a conservative
+**32 KiB combined** envelope. Root overrides must retain this bootstrap.
 Do not raise provider limits or automatically import the procedural library.
 Setup, Way drift and dispatch check delivery; overflow or missing guidance is
 an explicit failure requiring a smaller file or repaired adoption, not silence.
@@ -167,24 +167,3 @@ Before critical-path production work, read and refresh
 The detailed original procedures remain authoritative in their indexed homes.
 Change shared bootstrap wording in docs/agents-context.md and regenerate this
 managed region; preserve all adopter-owned material outside its markers.
-
-## Scout project continuation
-
-For “continue the Scout project for Arcadia Studio” or a Scout continuation/handoff request, read `docs/scout/CONTINUE.md` before choosing work. It records the preserved candidate, current gates and evidence; revalidate current authority and expiry before any live attempt. This is separate from an unrelated active Project Action.
-
-## Arcadia skill compatibility
-
-Every new or modified Arcadia skill must support Codex, Claude Code and
-OpenCode. Before creating, editing or installing one, read
-`docs/agent-guidance/skills.md`; preserve one source and verify discovery for
-all three systems. Provider-specific tools must have an explicit capability
-boundary and supported fallback.
-
-## Editorial sources
-
-Clara owns user-facing writing within assigned authority. Follow
-[article sources](docs/articles/README.md) and
-[Clara's method](docs/agent-guidance/session-roles-and-briefs.md#clara-technical-writing):
-`docs/articles/` captures agent-oriented topics/evidence; polished public pieces
-belong in AMC. This Project-specific direction replaces the older personal
-Arcadia Articles folder default; publishing retains its existing gates.

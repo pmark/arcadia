@@ -1,6 +1,6 @@
 ---
 name: arcadia-rover-journey
-description: Produce and publish the live rover-journey view of an Arcadia Plan or Action (past, now, obstacles, the operator's move, the way ahead) so the operator sees exactly what is happening. Use when reporting status, handing off, checking in on a Plan, or whenever the operator asks what is going on. Read-only; grants no authority.
+description: Produce and publish the live rover-journey view of an Arcadia Plan or Action (past, now, obstacles, the operator's move, the way ahead). Use when reporting status, handing off, checking in on a Plan, or whenever the operator asks what is going on. Read-only; grants no authority.
 ---
 
 # Rover journey

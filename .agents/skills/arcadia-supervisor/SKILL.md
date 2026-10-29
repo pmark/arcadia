@@ -1,6 +1,6 @@
 ---
 name: arcadia-supervisor
-description: Carry out assigned Arcadia supervision on a friction or exception signal or session completion, using bounded diagnosis, bug triage and insight harvesting. Load the optional milestone workflow for explicit release acceptance coordination; invoking this skill does not start a watch or grant messaging or dispatch authority.
+description: Carry out assigned Arcadia supervision on a friction or exception signal or session completion, using bounded diagnosis, bug triage and insight harvesting. Load the optional milestone workflow only for explicit release acceptance. Starts no watch; grants no messaging or dispatch authority.
 ---
 
 # Arcadia supervisor
