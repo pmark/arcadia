@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-28
+updated: 2026-10-29
 ---
 
 # Mission Log: Arcadia
@@ -2802,3 +2802,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** This direct human selection supersedes ambiguity in evidence-only dashboard Accept receipts asksettle_5883668a83ee419da3 and asksettle_174cbd6c7d1b4f5dbc. Proposal acceptance itself did not select scope. R463 had already been approved and completed read-only planning Run run_cfb83d27424a406e9c; approved receipt cannot be rewritten. Its still-open derivative R464 was rejected through Review under the approved withdrawal scope. Preserve both historical receipts; no planning retry. PR1855 records merged81a8e48d87b03f9b3d952753659139acc5767d78. Actual probe may run only through protected browser confirmation with gates intact.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-29 — Completed arcadia/repair-host-owned-source-completion-capabilities
+
+- **Did:** Completed Action arcadia/repair-host-owned-source-completion-capabilities from accepted evidence (Candidate dec1ce8eac4c1d81a241fdcb47375bc9349c8972).
+- **Result:** Every declared acceptance criterion was accepted as met: "Host-derived completion capability requirements are bound to the Session, immutable packet and probe nonce. The model cannot choose weaker requirements. Source-only host-owned completion truthfully records unavailable direct workspace writes without treating them as passed, while genuinely required direct-write denial still refuses."; "A restricted-environment regression carries permitted source edits and a validated local complete Ask (including preview_blocked) through real host validation and settlement while the model cannot write the live database. Missing local Ask transport or fresh host readiness, malformed/mismatched/spoofed evidence, and incompatible requirements all refuse before completion."; "Existing sandbox protections, packet/custody/validation/preservation gates, default models, consumed attempts and failed R465 outcome remain intact. START_HERE.md documents the changed source-only completion flow and its separate review, adoption and fresh-live gates; Production remains Off."; "Focused behavioral regressions, TypeScript, lint, build, preservation-self-check and isolated fast-rehearsal pass. Source completion evidence records exact revisions and results without claiming a future PR, installed adoption or R465 live success; independent current-head review and required CI plus separately receipted adoption remain prerequisites to any fresh guarded R465 delivery.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-host-completion-source-20261029-0148).

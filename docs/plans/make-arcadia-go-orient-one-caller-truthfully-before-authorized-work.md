@@ -159,10 +159,10 @@ actions:
     references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "agentask_33a2ae289adae37e03", "agentask_c2535307f9d97b4915", "https://github.com/pmark/arcadia/pull/1851"]
   - id: repair-host-owned-source-completion-capabilities
     title: Implement host-owned source completion capability requirements so a source-only managed Session can produce its local completion Ask without direct live-workspace writes.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement host-owned source completion capability requirements so a source-only managed Session can produce its local completion Ask without direct live-workspace writes.
+    next_action: Completed via Agent Ask complete-host-completion-source-20261029-0148; no further action.
     expected_artifact: Evidence satisfying Agent Ask repair-host-owned-source-completion-capabilities
     clarification: clarified
     confidence: high
@@ -178,7 +178,7 @@ actions:
     references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "session_f5bd5319d14440c485", "exit_9b9babb972b444e59d"]
 questions: []
 decisions: []
-current_action: repair-host-owned-source-completion-capabilities
+current_action: implement-go-live-delivery-checklist
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
