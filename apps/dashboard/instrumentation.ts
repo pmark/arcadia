@@ -9,5 +9,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs" && process.env.NEXT_PHASE !== "phase-production-build") {
     const { warmApprovals } = await import("./lib/approvals-warm");
     warmApprovals();
+    // The workspace's Plan list reads every Project's documents; warm it so a phone after a restart does not wait.
+    const { loadAllPlans } = await import("./lib/plans-server");
+    void loadAllPlans().catch(() => undefined);
   }
 }

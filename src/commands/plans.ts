@@ -3,7 +3,7 @@ import { parse as parseYaml } from "yaml";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
-import { discoverDocs } from "../docs/discover.js";
+import { discoverDocs, type DiscoveryResult } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc, ScopedOutDoc } from "../docs/types.js";
 import { actionKeyOf } from "../scheduling/store.js";
 
@@ -48,9 +48,10 @@ export interface PlansCommandData {
  * documents only, matching `docket`: this needs no workspace and says nothing
  * the checked-in repository does not already say.
  */
-export function runPlansCommand(options: { repo: string; project?: string }): CommandSuccess<PlansCommandData> {
+export function runPlansCommand(options: { repo: string; project?: string; discovered?: DiscoveryResult }): CommandSuccess<PlansCommandData> {
   const repoRoot = options.repo;
-  const discovered = discoverDocs(repoRoot);
+  // A caller that already holds this repository's discovery (the dashboard's cache) passes it to skip the walk.
+  const discovered = options.discovered ?? discoverDocs(repoRoot);
 
   const projects = discovered.docs.filter((doc): doc is ProjectDoc => doc.type === "project");
   const project = options.project
@@ -252,8 +253,9 @@ export function runPlanProgressCommand(options: {
   repo: string;
   project?: string;
   plan: string;
+  discovered?: DiscoveryResult;
 }): CommandSuccess<PlanProgressData> {
-  const discovered = discoverDocs(options.repo);
+  const discovered = options.discovered ?? discoverDocs(options.repo);
   const projects = discovered.docs.filter((doc): doc is ProjectDoc => doc.type === "project");
   const project = options.project
     ? projects.find((doc) => doc.slug.toLowerCase() === options.project!.toLowerCase())
