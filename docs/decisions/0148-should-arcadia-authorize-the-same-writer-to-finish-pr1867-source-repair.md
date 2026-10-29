@@ -4,7 +4,7 @@ type: decision
 id: "0148"
 slug: should-arcadia-authorize-the-same-writer-to-finish-pr1867-source-repair
 project: arcadia
-status: open
+status: approved
 question: "Should Arcadia authorize the same writer to finish PR1867 source repair, including #1881/#1882 and related review/CI corrections, within one generous bounded envelope and unchanged review/merge gates?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
 updated: 2026-10-29
+answer: Authorize finishing the source repair
+decided: 2026-10-29
 ---
 
 # Decision 0148: Should Arcadia authorize the same writer to finish PR1867 source repair, including #1881/#1882 and related review/CI corrections, within one generous bounded envelope and unchanged review/merge gates?
