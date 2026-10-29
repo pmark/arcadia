@@ -625,8 +625,13 @@ describe("reconcileSessionExit automatic production completion", () => {
         }
         if (!writeFailure) context.skip("This host did not enforce the fixture's SQLite write denial.");
         expect(writeFailure).toMatchObject({ code: expect.stringMatching(/^SQLITE_(?:READONLY|CANTOPEN|IOERR)/) });
-        run = spawnSync("/bin/zsh", ["-lc", issued.command], { encoding: "utf8", timeout: 10_000 });
-        expect(run.status).toBe(1);
+        run = spawnSync("/bin/sh", ["-c", issued.command], { encoding: "utf8", timeout: 10_000 });
+        const diagnostic = JSON.stringify({
+          error: run.error ? { message: run.error.message, code: "code" in run.error ? run.error.code : null } : null,
+          status: run.status, signal: run.signal, stdout: String(run.stdout), stderr: String(run.stderr)
+        });
+        expect(run.error, diagnostic).toBeUndefined();
+        expect(run.status, diagnostic).toBe(1);
         expect(JSON.parse(String(run.stdout))).toMatchObject({ ok: false, checks: expect.arrayContaining([
           { name: "workspace_write", ok: false, error: expect.any(String) }
         ]) });

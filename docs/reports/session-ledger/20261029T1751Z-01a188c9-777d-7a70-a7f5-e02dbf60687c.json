@@ -13,9 +13,14 @@
   "tokens_out": null,
   "subagent_tokens_total": null,
   "wall_min": null,
-  "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "attempts": 2,
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "CI public-regression child launch produced null status",
+      "caught_by": "CI40931022374 unit-shard-1"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [
@@ -28,11 +33,16 @@
       "id": "readonly-fixture-wal-sidecar-restoration",
       "cost_min": null,
       "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "ci-probe-test-shell-portability-and-launch-diagnostics",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "Bounded writer handback to Rowan for remaining host proof, protected preservation/publication and independent R8; no Action settlement or completion claimed.",
-  "candidate_head": "d3ff8091c029eb4a21dba439d153fcfcc28a23b5",
+  "stop_reason": "Bounded CI test-only repair returned to Rowan for preservation, new-head CI and independent R9 delta review; R8 code GO on the prior head is not final-head clearance.",
+  "candidate_head": "e611c4e18bdc9c59f02bfd08aa77f35a13de91af",
   "evidence_source": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md",
-  "notes": "Base head; uncommitted repair. Same candidate/custody under Decision0148 and heavy override. R1-R7 retained; no new review. Timing is in Rowan's immutable admission/accounting."
+  "notes": "CI test-only correction from reviewed e611c4e; runtime frozen. R8 code GO is historical; R9 delta and new-head CI remain required. Parent retains cumulative timing; no reset."
 }

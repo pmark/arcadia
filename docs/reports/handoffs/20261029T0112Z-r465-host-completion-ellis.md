@@ -274,3 +274,51 @@ CI, independent R8 and then any separately allowed completion. No independent
 R8 verdict, new CI, completion settlement, adoption or live acceptance is claimed.
 Sole source custody remains with this paused writer unless Rowan explicitly
 reassigns it; no second writer or automatic resume.
+
+## Same-writer CI test portability correction after R8
+
+Rowan readmitted this same writer under Decision 0148 A from clean, pushed
+`e611c4e18bdc9c59f02bfd08aa77f35a13de91af`, preservation
+`presv_a1be8accc96d445195`. Parent-reported independent R8 (separate CLI
+`01a188f1`, 249.64 seconds) returned CODE GO with no blocking code findings on
+that exact head. This is historical review evidence, not final-head clearance.
+CI run 40931022374 subsequently failed unit-shard-1 at the genuine required-write
+test's `expect(run.status).toBe(1)`: actual status was null. The saved CI output
+does not include `run.error`/signal and cannot distinguish a missing executable,
+timeout, signal or other launch cause. No stronger diagnosis is claimed.
+
+The only executable change in this follow-up is in
+`tests/session-reconciliation.test.ts`: execute the actual issued command using
+portable `/bin/sh -c` and its inherited PATH, and explicitly assert absence of
+`run.error` with error message/code, status, signal, stdout and stderr in assertion
+diagnostics. The 10-second timeout, actual producer execution, SQLite-denial
+precondition, primary/candidate paths and all refusal/control assertions remain.
+No Linux skip, fabricated probe JSON, runtime/default/gate change or duplicate
+rehearsal is introduced. Runtime hashes remain frozen for Rowan's canonical
+serial rehearsal; the earlier multiworker failures and unchanged serial scenario
+passes are parent evidence, not a passing whole-harness claim from this writer.
+
+Admission retains hard deadline 00:36:46Z, preservation-only cutoff 00:06:46Z and
+all prior budgets/rounds; this invocation has a ten-minute cap and stops before
+18:52Z on 2026-10-29. Parent accounting retains the 72.485-second acknowledgement,
+1126.375-second first implementation turn and conservative 30-minute helper
+charge; this turn adds its full invocation clock, never resets it. Parent main
+cursor is `a499d223ec1e1a15e43d18468ea4b4e47ca2e6e0`; exact Project/Plan/Decision
+0148 diff from `5974cf8` was empty. Parent verified Production Off and reservation
+continuity. The work monitor verified this candidate clean/pushed before edits.
+Only this Session's existing ledger row and this existing handoff are updated.
+Required next gates remain protected preservation/publication, new-head CI,
+independent R9 delta review, completed canonical rehearsal and verified criteria
+before completion. No commit/push/broker/settlement/merge or runtime operation
+was performed here. Results follow below; no new Linux CI pass is claimed.
+
+- `pnpm exec vitest run tests/session-reconciliation.test.ts -t 'genuine required database-write denial'`:
+  exit 0, one test passed at both repository roots, 61 filtered skips, 10.85s.
+  Log: `/private/tmp/rowan-successor-20261029/host0148/ellis-ci-portability-test.log`.
+- `pnpm exec eslint tests/session-reconciliation.test.ts`: exit 0.
+  Log: `/private/tmp/rowan-successor-20261029/host0148/ellis-ci-portability-lint.log`.
+- Both checks ran via ordinary approved host execution against temporary
+  fixtures. No full-suite, rehearsal, provider or live-runtime work was launched.
+  Ledger validation, diff check and final current-head/status are retained in
+  the closing native tool output. The null-status CI failure remains preserved
+  at `/private/tmp/rowan-successor-20261029/host0148/ci-failed.log`.
