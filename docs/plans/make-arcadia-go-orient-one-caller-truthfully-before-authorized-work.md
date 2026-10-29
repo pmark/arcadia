@@ -178,7 +178,7 @@ actions:
     references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "session_f5bd5319d14440c485", "exit_9b9babb972b444e59d"]
 questions: []
 decisions: []
-current_action: implement-go-live-delivery-checklist
+current_action: repair-host-owned-source-completion-capabilities
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
