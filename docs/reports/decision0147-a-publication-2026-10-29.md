@@ -35,3 +35,6 @@ Before product repair require published canonical A, this acknowledged custody, 
 After this PR's operator-owned merge, revalidate actual answer publication and all start gates before any product work. Protected primary reconciliation remains a separate held boundary; do not claim it resolved. No start receipt has been created.
 
 Verified route lesson: lesson_f9c3ddd67cfee966d9e1. Earlier proposal agentask_68727d88b1c4427420 remains historical; this report supersedes its primary-only routing assumption and pending-custody status.
+
+## Initial CI failure and bounded documentation correction
+Initial exact298508c CI run40910716740 unit-shard4 failed the Notes path-existence contract: the new entry backticked `arcadia-repository.md` as though it were root-relative. Local `pnpm exec vitest run tests/notes-to-self.test.ts --no-file-parallelism` reproduced1failed/2passed, exit1. The correction uses the actual `docs/agent-guidance/arcadia-repository.md` path; unchanged focused Notes tests then passed3/3. No test, CI configuration, source code or product repair allowance was changed. Preserve the failed job123577618405 and original review as historical; require delta review and fresh CI on the corrected head.
