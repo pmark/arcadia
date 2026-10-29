@@ -95,3 +95,18 @@ pnpm build
 pnpm check:session-ledger
 pnpm fast-rehearsal
 ```
+
+## R6-pending delta — Plan-done public reconciliation and direct providers
+
+R5-01 found that `classifyExitOutcome` returned `accepted_completion` from a done Plan before canonical managed capability evaluation. For persisted managed modes reconciliation now reclassifies that preliminary state as pending, then validates the same host-owned contract/log/probe path used by draft and settled candidates. A verified settled candidate is accepted; missing, corrupt, swapped, spoofed, unavailable, or direct-required-without-proof evidence is refused through the established non-resumable settled-candidate path. Existing settlement records remain untouched. `legacy` preserves the historic Plan-done outcome.
+
+A direct-required provider with a paired successful required-write probe may accept its own already-settled completion; only the source-only draft settlement path refuses direct-required mode. This restores OpenCode’s genuine direct provider path without allowing an unavailable direct-write contract to pass. Public CLI tests cover both primary and candidate repository inputs.
+
+Sandbox checks: public settled-candidate selection `5 passed, 52 skipped`; capability/attribution `23 passed`; touched ESLint, TypeScript, ledger validation and scoped diff check passed. `direction-managed` and `rehearsal-two-action` stopped at the expected `The preservation consumer must run on the host` guard before their intended assertions, so Rowan must run them on the host. One independent R6 is the final available review after host checks; no CI, R6 verdict, rehearsal, adoption, Production, or R465 success is claimed.
+
+```sh
+pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capability-attribution.test.ts tests/session-capability-probe.test.ts tests/direction-managed.test.ts tests/rehearsal-two-action.test.ts --no-file-parallelism
+pnpm build
+pnpm check:session-ledger
+pnpm fast-rehearsal
+```

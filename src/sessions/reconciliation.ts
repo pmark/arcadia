@@ -575,7 +575,7 @@ const isSettlementRecordPath = isGovernedRecordPath;
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function completionCapabilityRefusal(session: AgentSession, workspace: string | undefined, capability: ReconcileSessionExitInput["completionCapability"] | undefined, sourceCompletionRequired: boolean): string | null {
+function completionCapabilityRefusal(session: AgentSession, workspace: string | undefined, capability: ReconcileSessionExitInput["completionCapability"] | undefined, sourceCompletionRequired: boolean, allowDirectWorkspaceWrite = false): string | null {
   // Legacy callers have no source-only contract. A caller that does present
   // one must satisfy every host-derived binding; missing evidence is never a
   // downgrade for a persisted managed launch.
@@ -584,7 +584,7 @@ function completionCapabilityRefusal(session: AgentSession, workspace: string | 
     || capability.localAskTransport !== "ready"))) {
     return "Host-owned source completion capability is missing, mismatched, or not freshly ready; the local complete Ask remains preserved and unsettled.";
   }
-  if (capability?.directWorkspaceWrite === "required") {
+  if (capability?.directWorkspaceWrite === "required" && !allowDirectWorkspaceWrite) {
     return "The host completion contract requires direct workspace writes, but the source-only path records that capability unavailable.";
   }
   return null;
@@ -856,6 +856,13 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   const evidence = probeExitEvidence(db, session, repoRoot);
   const signInFailure = detectProviderSignInFailure(session, input.workspace);
   let { outcome, reason } = classifyExitOutcome(session, evidence, signInFailure);
+  // A Plan already marked done is historic evidence for legacy Sessions only.
+  // Persisted managed modes must still prove the fresh host contract before a
+  // public reconciliation can turn that state into an accepted exit.
+  if (outcome === "accepted_completion" && session.completion_capability_mode !== "legacy") {
+    outcome = "incomplete_resumable";
+    reason = "The Action is recorded done in the checked-in Plan, pending fresh host-owned completion capability verification.";
+  }
   // Proven completion settles onto the Session's own candidate worktree,
   // so once it succeeds the fresh Plan and
   // Project documents live there -- not necessarily at whatever `--repo` this
@@ -895,7 +902,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       ? (suppliedConflicts ? undefined : canonicalCapability)
       : suppliedCapability;
     const settledRefusal = settled
-      ? completionCapabilityRefusal(session, input.workspace, completionCapability, sourceCompletionRequired)
+      ? completionCapabilityRefusal(session, input.workspace, completionCapability, sourceCompletionRequired, true)
         ?? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions)
       : null;
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions, completionCapability, sourceCompletionRequired);

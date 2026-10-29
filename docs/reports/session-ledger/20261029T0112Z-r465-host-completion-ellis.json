@@ -31,6 +31,10 @@
     {
       "class": "R4-01 settled-candidate canonical capability bypass",
       "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R5-01 Plan-done public reconciliation capability bypass",
+      "caught_by": "independent current-head review"
     }
   ],
   "operator_touches": 0,
@@ -55,9 +59,14 @@
       "id": "settled-candidate-capability-gate",
       "cost_min": null,
       "fix_ref": "https://github.com/pmark/arcadia/pull/1867#issuecomment-6488710678"
+    },
+    {
+      "id": "plan-done-before-managed-capability",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/1874"
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "R5 final delta prepared; protected-host reconciliation, CI, rehearsal, and independent final review remain for Rowan.",
-  "notes": "R1 optional wall; R2 host mode; R4 canonical gate; R5 applies it to settled candidates. Missing/corrupt/swapped/direct-required evidence is non-resumable. Sandbox-only."
+  "stop_reason": "R6-pending delta prepared; host reconciliation, CI, rehearsal, and the one final independent review remain for Rowan.",
+  "notes": "R1 optional wall; R2 host mode; R4/R5 canonical gates; R6-pending gates Plan-done public reconciliation. Direct providers require a clear required-write probe. Sandbox-only."
 }
