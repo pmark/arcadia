@@ -89,7 +89,7 @@ a reviewer.
 - Report: summarized in this branch's pull request description; the full reports are not checked in.
 - Verdict: PASS for editorial accuracy at 2b9077288. Field Notes publication remains HOLD (see Eligibility).
 - Findings and resolution: one blocking overstatement (C23, rejected-state wording) and eight non-blocking findings were fixed in 2b9077288. Remaining non-blocking notes: C24 cites line 177 where the roles span lines 177-178; the C15 chronology is not shown in the evidence file itself. This section was updated after 2b9077288 and records that review; it was not itself reviewed.
-- Revision 5 update (2026-10-28): a new independent review is pending for this revision. The verdict above covers the earlier text only; the rewritten essay and rows C35 to C52 have not been independently reviewed.
+- Revision 5 update (2026-10-28): independent read-only review of the rewritten essay, rows C35 to C53 and the appended evidence. Round 1 HOLD (lesson sentence without a row; "faults not in the core's shape" overstated); round 2 HOLD (Rosa row without a matching receipt row); round 3 PASS at 5dff66d16 with no remaining findings. Evidence copies were verified byte-identical to their sources.
 
 ## Delivery handoff
 
