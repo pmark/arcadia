@@ -93,6 +93,14 @@ describe("parsing the probe from a Session log", () => {
     expect(sessionProbeWalls(null)).toEqual([]);
   });
 
+  it("accepts Codex's exact zsh wrapper but no changed wrapped command", () => {
+    const wrapped = `/bin/zsh -lc ${JSON.stringify(command)}`;
+    const log = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: wrapped, exit_code: 0, aggregated_output: result } });
+    expect(parseSessionProbe(log, { command, contract })).toMatchObject({ ok: true });
+    const changed = `/bin/zsh -lc ${JSON.stringify(`${command} --extra`)}`;
+    expect(parseSessionProbe(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: changed, exit_code: 0, aggregated_output: result } }), { command, contract })).toBeNull();
+  });
+
   it("keeps an optional unavailable DB write clear through observation and managed-tick transport", () => {
     const root = mkdtempSync(path.join(tmpdir(), "probe-managed-source-"));
     try {
@@ -139,8 +147,8 @@ describe("parsing the probe from a Session log", () => {
       expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "legacy" })).toEqual({
         sourceCompletionRequired: false, completionCapability: undefined
       });
-      expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "direct_required" })).toEqual({
-        sourceCompletionRequired: true, completionCapability: undefined
+      expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "direct_required" })).toMatchObject({
+        sourceCompletionRequired: true, completionCapability: { directWorkspaceWrite: "required", localAskTransport: "unavailable" }
       });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

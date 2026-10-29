@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runAgentAskDraftCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../../../src/commands/agentAsk.js";
+import { readSessionCompletionContract } from "../../../src/sessions/sessionProbeCommand.js";
+import { recordClearProbeEvidence } from "../../helpers/sessionProbeEvidence.js";
 import type { PhaseRecorder } from "./report.js";
 
 /**
@@ -180,6 +182,12 @@ export class ScriptedExecutor {
         }
       });
       this.recorder.measure("validation", () => this.sh(cwd, work.validation));
+      const marker = launch.args.find((arg) => arg.startsWith("ARCADIA_SESSION_ID="));
+      const sessionId = marker?.slice("ARCADIA_SESSION_ID=".length);
+      const contract = sessionId ? readSessionCompletionContract(this.workspace, sessionId) : null;
+      if (!sessionId || !contract || contract.packetId === "" || contract.packetSha256 === "") throw new Error("scripted executor lacks its host-issued completion contract");
+      recordClearProbeEvidence(this.workspace, { id: sessionId, packet_id: contract.packetId, packet_sha256: contract.packetSha256,
+        worktree_path: brief.worktree, completion_capability_mode: "source_only" } as never);
       if (behaviour === "draft-at-base-uncommitted") {
         workCommit = this.git(cwd, ["rev-parse", "HEAD"]).trim();
         const ask = JSON.stringify({

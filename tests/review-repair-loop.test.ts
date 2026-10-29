@@ -18,6 +18,7 @@ import { beginDevelopmentAttempt, beginIndependentVerdict, finishIndependentVerd
 import { MAX_VARIANCE_REVIEW_ATTEMPTS } from "../src/production/independentReview.js";
 import { MAX_REVIEW_REPAIR_ROUNDS } from "../src/sessions/reviewRepair.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 import { candidateCompletionAskIds, resumedSessionSupersededAskIds } from "../src/sessions/launch.js";
 import { runAgentAskDraftCommand, runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 
@@ -169,6 +170,7 @@ describe("a resumed Session's own pending completion draft", () => {
   // its evidence did not verbatim-cover the criteria, so the exit was
   // incomplete_resumable, and the resume was then held by that same draft.
   const draftUncovered = (rehearsal: Rehearsal, session: AgentSession, requestId: string, target = `action/${session.action_id}`): void => {
+    recordClearProbeEvidence(rehearsal.workspace, session);
     rehearsal.agentEdit(session, "MARKER.md", `${LINE_A}\n`);
     rehearsal.agentEdit(session, "WORK.md", `${session.id} ${requestId}\n`);
     git(session.worktree_path, ["add", "-A"]);

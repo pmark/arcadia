@@ -58,6 +58,7 @@ import {
 } from "../src/production/redAlerts.js";
 import BetterSqlite3 from "better-sqlite3";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
+import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
 import { getRepositoryLease, systemTmux, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
@@ -1830,6 +1831,7 @@ describe("runManagedProductionTick", () => {
     // an audit Run, and the tmux Session exits (dies)
     // without ever calling `session reconcile` itself -- the exact situation
     // this Action's continuation loop must notice on its own.
+    recordClearProbeEvidence(fixture.workspace, session);
     completeActionInWorktree(session.worktree_path, "define-contract");
     mkdirSync(path.join(session.worktree_path, ".arcadia", "asks"), { recursive: true });
     writeFileSync(path.join(session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), JSON.stringify({

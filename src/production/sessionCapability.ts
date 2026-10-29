@@ -313,6 +313,11 @@ function probesFromString(text: string, contract: string, out: SessionProbeResul
   }
 }
 
+/** Codex records an exact exec command through its fixed zsh launcher. */
+function isExpectedProbeCommand(command: string, expected: string): boolean {
+  return command === expected || command === `/bin/zsh -lc ${JSON.stringify(expected)}`;
+}
+
 /**
  * The probe result a Session log carries for this Session's `nonce`: a bare
  * line (plain log) or one nested inside a provider event's tool-result text
@@ -329,7 +334,7 @@ export function parseSessionProbe(log: string | null, expected: { command: strin
     try { event = record(JSON.parse(line)); } catch { continue; }
     if (!event) continue;
     const item = record(event.item);
-    if (event.type === "item.completed" && item?.type === "command_execution" && item.command === expected.command
+    if (event.type === "item.completed" && item?.type === "command_execution" && typeof item.command === "string" && isExpectedProbeCommand(item.command, expected.command)
       && typeof item.exit_code === "number" && typeof item.aggregated_output === "string") probesFromString(item.aggregated_output, expected.contract, found);
     const content = record(event.message)?.content ?? event.content;
     if (!Array.isArray(content)) continue;
@@ -338,7 +343,7 @@ export function parseSessionProbe(log: string | null, expected: { command: strin
       if (event.type === "assistant" && block?.type === "tool_use" && typeof block.id === "string") {
         const input = record(block.input); const command = input?.command ?? input?.cmd;
         if ((block.name === "Bash" || block.name === "exec_command") && typeof command === "string") calls.set(block.id, command);
-      } else if (event.type === "user" && block?.type === "tool_result" && typeof block.tool_use_id === "string" && calls.get(block.tool_use_id) === expected.command) {
+      } else if (event.type === "user" && block?.type === "tool_result" && typeof block.tool_use_id === "string" && isExpectedProbeCommand(calls.get(block.tool_use_id) ?? "", expected.command)) {
         probesFromString(toolText(block.content), expected.contract, found);
       }
     }
