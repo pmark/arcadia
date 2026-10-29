@@ -190,11 +190,21 @@ describe("compact Way instruction delivery", () => {
     expect(brief).toContain("sha256");
     rmSync(path.join(root, identity.path));
     const refused = resolveDispatch(root);
-    expect(refused.blockers).toContainEqual(expect.objectContaining({ field: "guidance_delivery", message: expect.stringContaining(identity.path) }));
+    expect(refused.blockers).toContainEqual(expect.objectContaining({ field: "guidance_delivery", relativePath: identity.path, message: expect.stringContaining(identity.path) }));
     const humanRefusal = renderDispatchResolution(refused).join("\n");
     expect(humanRefusal).toContain(identity.path);
     expect(humanRefusal).toContain("Not dispatchable: repair the blockers above first.");
     expect(() => renderActionBrief({ repoRoot: root, projectSlug: "sample", planSlug: "fix", actionId: "repair", worktreePath: root, branch: "codex/proof", agent: "codex", baseRevision })).toThrow(/guidance delivery refused/);
+  });
+
+  it("names the guidance index, not AGENTS.md, when an index entry is malformed", () => {
+    const root = adopted(); control(root);
+    const index = JSON.parse(file(root, GUIDANCE_INDEX)) as { entries: Array<Record<string, unknown>> };
+    delete index.entries[0].trigger;
+    put(root, GUIDANCE_INDEX, JSON.stringify(index, null, 2));
+    const blocker = resolveDispatch(root).blockers.find((candidate) => candidate.field === "guidance_delivery");
+    expect(blocker?.relativePath).toBe(GUIDANCE_INDEX);
+    expect(blocker?.message).toContain("Invalid guidance entry trigger");
   });
 
   it("refuses unknown automatic imports and still checks an adoption whose root markers were removed", () => {

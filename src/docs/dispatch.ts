@@ -1,4 +1,4 @@
-import { hasWayGuidance, inspectGuidanceDelivery } from "../projects/agentGuidance.js";
+import { GUIDANCE_INDEX, hasWayGuidance, inspectGuidanceDelivery } from "../projects/agentGuidance.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -235,6 +235,32 @@ export function resolveActivePlan(
 }
 
 /**
+ * Name the file a guidance-delivery problem actually asks someone to repair.
+ *
+ * Every one of these blockers used to say `AGENTS.md`, which sent an agent to
+ * rewrite a healthy bootstrap when the real defect was a stale or malformed
+ * `docs/agent-guidance/index.json` entry. Root-instruction problems stay on
+ * `AGENTS.md`; anything the message can name is reported as itself.
+ */
+function guidanceDeliverySource(message: string): string {
+  if (message.startsWith("CLAUDE.md does not import")) return "CLAUDE.md";
+  if (
+    message.startsWith("Selected root instructions") ||
+    message.startsWith("Missing mandatory bootstrap rule") ||
+    message.startsWith("Missing mandatory retrieval reference") ||
+    /instructions exceed|Combined guidance exceeds/.test(message)
+  ) return "AGENTS.md";
+  const named = message.match(/\b((?:docs\/[A-Za-z0-9/_-]+|CONSTITUTION|CLAUDE|AGENTS(?:\.override)?)\.(?:md|json))\b/);
+  if (named) return named[1];
+  // Index-contract errors ("Invalid guidance entry ...", missing triggers,
+  // orphaned fingerprints) name no path but always belong to the index.
+  if (/guidance (?:entry|trigger|index|fingerprints)|Invalid docs\/agent-guidance/.test(message)) {
+    return GUIDANCE_INDEX;
+  }
+  return "AGENTS.md";
+}
+
+/**
  * Resolve the authoritative work pointer from the repository.
  *
  * Reads documents, never the database: the contract makes checked-in
@@ -366,7 +392,7 @@ export function resolveDispatch(
   if (hasWayGuidance(repoRoot)) {
     const delivery = inspectGuidanceDelivery(repoRoot, { globalInstructions: "" });
     blockers.push(...delivery.problems.map((message) => ({
-      relativePath: "AGENTS.md", field: "guidance_delivery", message,
+      relativePath: guidanceDeliverySource(message), field: "guidance_delivery", message,
       remedy: "Repair the instruction budget or refresh the indexed guidance through authorized setup-context; do not bypass the gate."
     })));
   }
