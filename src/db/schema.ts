@@ -100,6 +100,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentSessionLaunchRevisionColumn(db);
   ensureAgentSessionLifetimeColumns(db);
   ensureAgentSessionSimulatedColumn(db);
+  ensureAgentSessionCompletionCapabilityMode(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
@@ -477,7 +478,8 @@ function ensureAgentSessionsTable(db: Database.Database): void {
       ended_at TEXT,
       exit_status INTEGER,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      completion_capability_mode TEXT NOT NULL DEFAULT 'legacy' CHECK (completion_capability_mode IN ('legacy', 'source_only', 'direct_required'))
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_sessions_provider_session
       ON agent_sessions(provider, provider_session_id);
@@ -573,6 +575,20 @@ function ensureAgentSessionLifetimeColumns(db: Database.Database): void {
   );
   if (!columns.has("time_limit_ms")) db.prepare(`ALTER TABLE agent_sessions ADD COLUMN time_limit_ms INTEGER`).run();
   if (!columns.has("stop_reason")) db.prepare(`ALTER TABLE agent_sessions ADD COLUMN stop_reason TEXT`).run();
+}
+
+/**
+ * New launches bind their completion posture before provider startup. Legacy
+ * rows remain explicitly legacy: do not reinterpret already-live Sessions
+ * from mutable files or provider names.
+ */
+function ensureAgentSessionCompletionCapabilityMode(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("completion_capability_mode")) {
+    db.prepare("ALTER TABLE agent_sessions ADD COLUMN completion_capability_mode TEXT NOT NULL DEFAULT 'legacy' CHECK (completion_capability_mode IN ('legacy', 'source_only', 'direct_required'))").run();
+  }
 }
 
 /**

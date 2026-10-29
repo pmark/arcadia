@@ -1832,18 +1832,22 @@ function projectInActiveScope(db: Database.Database, projectSlug: string): boole
 
 /**
  * Carries only a host-issued source capability with fresh, exact provider
- * evidence into reconciliation. A recorded headless Codex/Claude Session
- * fails closed when that contract or evidence is absent.
+ * evidence into reconciliation. Every recorded host-managed completion mode
+ * fails closed when its contract or evidence is absent; only legacy rows and
+ * operator-attended interactive Sessions retain the historic path.
  */
 export function completionCapabilityForReconciliation(workspace: string, session: {
-  id: string; packet_id: string; packet_sha256: string; worktree_path: string; provider?: string | null;
+  id: string; packet_id: string; packet_sha256: string; worktree_path: string;
+  completion_capability_mode: AgentSession["completion_capability_mode"];
 }): {
   completionCapability?: SourceCompletionCapability;
   sourceCompletionRequired: boolean;
 } {
-  const issued = sourceCompletionCapability(workspace, session);
-  const sourceCompletionRequired = existsSync(sessionLogPath(workspace, session.id))
-    && (session.provider === "codex-cli" || session.provider === "claude-code-cli");
+  const sourceCompletionRequired = session.completion_capability_mode !== "legacy";
+  // Interactive and pre-contract Sessions stay on their established path even
+  // if an incidental Session record exists. Only a persisted managed mode can
+  // make a contract mandatory at reconciliation.
+  const issued = sourceCompletionRequired ? sourceCompletionCapability(workspace, session) : null;
   const providerLog = (() => {
     try { return readFileSync(sessionLogPath(workspace, session.id), "utf8"); } catch { return null; }
   })();

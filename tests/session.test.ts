@@ -269,6 +269,7 @@ describe("tmux-backed Sessions", () => {
     expect(args).toEqual(expect.arrayContaining(["--print", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--settings", "--setting-sources", ""]));
     expect(args.indexOf("--verbose")).toBeGreaterThan(args.indexOf("stream-json"));
     expect(tmux.launches[0].record).toMatchObject({ sessionId: result.data.session!.id });
+    expect(result.data.session!.completion_capability_mode).toBe("source_only");
     // The tmux pane streams the same output the log records, so reattaching still shows the run.
     expect(sessionView(result.data.session!, tmux).reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
   });
@@ -276,13 +277,14 @@ describe("tmux-backed Sessions", () => {
   it("keeps the interactive TUI behind the explicit --interactive opt-in, with no log or exit recording", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
-    launch(fixture, tmux, "launch", { interactive: true });
+    const result = launch(fixture, tmux, "launch", { interactive: true });
 
     const args = tmux.launches[0].args;
     expect(args).not.toContain("--print");
     expect(args).not.toContain("--output-format");
     expect(args).not.toContain("--settings");
     expect(tmux.launches[0].record).toBeUndefined();
+    expect(result.data.session!.completion_capability_mode).toBe("legacy");
   });
 
   it("refuses --interactive without --launch", () => {

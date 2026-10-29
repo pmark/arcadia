@@ -99,7 +99,7 @@ describe("parsing the probe from a Session log", () => {
       const workspace = path.join(root, "ws");
       const worktree = path.join(root, "worktree");
       mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
-      const session = { id: "s1", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, provider: "codex-cli" };
+      const session = { id: "s1", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, completion_capability_mode: "source_only" as const };
       const issued = issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "unavailable" });
       const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
         { name: "workspace_write", ok: false, required: false, unavailable: true },
@@ -109,6 +109,39 @@ describe("parsing the probe from a Session log", () => {
       expect(observeSessionCapability(readFileSync(sessionLogPath(workspace, session.id), "utf8"), { command: issued.command, contract: issued.contractDigest }))
         .toMatchObject({ provenance: "session_probe", status: "clear", walls: [] });
       expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true, completionCapability: { directWorkspaceWrite: "unavailable", localAskTransport: "ready" } });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("fails closed for a persisted source-only Session when its log or contract is absent", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-managed-missing-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const session = { id: "s2", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, completion_capability_mode: "source_only" as const };
+      const withoutContract = completionCapabilityForReconciliation(workspace, session);
+      expect(withoutContract).toEqual({ sourceCompletionRequired: true, completionCapability: undefined });
+      issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "unavailable" });
+      const withoutLog = completionCapabilityForReconciliation(workspace, session);
+      expect(withoutLog).toMatchObject({ sourceCompletionRequired: true, completionCapability: { localAskTransport: "unavailable" } });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("keeps legacy Sessions compatible while direct-required Sessions still fail closed", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-managed-modes-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const base = { id: "s3", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree };
+      issueSessionProbe({ workspace, sessionId: base.id, packetId: base.packet_id, packetSha256: base.packet_sha256,
+        worktreePath: worktree, directWorkspaceWrite: "required" });
+      expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "legacy" })).toEqual({
+        sourceCompletionRequired: false, completionCapability: undefined
+      });
+      expect(completionCapabilityForReconciliation(workspace, { ...base, completion_capability_mode: "direct_required" })).toEqual({
+        sourceCompletionRequired: true, completionCapability: undefined
+      });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

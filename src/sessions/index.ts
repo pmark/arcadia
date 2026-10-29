@@ -132,6 +132,8 @@ export interface AgentSession {
   stop_reason: string | null;
   /** 1 only for a Session launched under the deterministic fixture provider (`fixture-cli`); see `FIXTURE_PROVIDER`. */
   is_simulated: number;
+  /** Host-owned launch requirement; legacy rows predate source-only completion contracts. */
+  completion_capability_mode: "legacy" | "source_only" | "direct_required";
 }
 
 export type SessionAgent = "codex" | "claude" | "opencode";
@@ -679,7 +681,8 @@ export function prepareSession(input: {
       created_at: timestamp, updated_at: timestamp,
       last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null,
       admission_request_id: null, time_limit_ms: input.timeLimitMs ?? null, stop_reason: null,
-      is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0
+      is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0,
+      completion_capability_mode: "legacy"
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     if (handoff) {
@@ -776,12 +779,22 @@ export function launchPreparedSession(
   } = {}
 ): AgentSession {
   const headless = session.provider === FIXTURE_PROVIDER || !options.interactive;
+  const completionCapabilityMode: AgentSession["completion_capability_mode"] = !headless
+    ? "legacy"
+    : session.provider === "codex-cli" || session.provider === "claude-code-cli"
+      ? "source_only"
+      : "direct_required";
   if (headless && !workspace) {
     failPreparedSession(db, session.id);
     throw validationError("A headless Session launch needs its workspace to record the Session's log and exit status.", {
       sessionId: session.id
     });
   }
+  // Bind the requirement before building provider argv or creating the
+  // recording wrapper. A failed launch retains the same host-owned posture.
+  db.prepare("UPDATE agent_sessions SET completion_capability_mode = ?, updated_at = ? WHERE id = ? AND status = 'prepared'")
+    .run(completionCapabilityMode, new Date().toISOString(), session.id);
+  session.completion_capability_mode = completionCapabilityMode;
   // `launch_revision` (falling back to `base_revision` for a row from before
   // that column existed) is the worktree HEAD this exact launch expects --
   // distinct from `base_revision` itself, which `reconcileSessionExit` and
