@@ -4,7 +4,7 @@ type: decision
 id: "0146"
 slug: should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465
 project: arcadia
-status: open
+status: approved
 question: Should Arcadia add the bounded host-completion repair before retrying R465, while keeping the live workspace protected?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
-updated: 2026-10-29
+updated: 2026-10-28
+answer: Bounded repair; keep workspace protected
+decided: 2026-10-28
 ---
 
 # Decision 0146: Should Arcadia add the bounded host-completion repair before retrying R465, while keeping the live workspace protected?
