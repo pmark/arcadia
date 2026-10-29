@@ -9,6 +9,7 @@ import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
 import { sessionLogPath } from "./sessionRecording.js";
+import { completionCapabilityForSessionReconciliation, type SourceCompletionCapability } from "../production/sessionCapability.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
 import { clearPreservationRefusal, fingerprintPreservationRefusal, MAX_IDENTICAL_PRESERVATION_REFUSALS, recordPreservationRefusal } from "./preservationRefusalBudget.js";
 import { attemptAutoSettlePendingCompletion, AUTO_SETTLE_EVIDENCE_INCOMPLETE, AUTO_SETTLE_NO_DRAFT, AUTO_SETTLE_REVISION_CHANGED, AUTO_SETTLE_STALE_REVISION, AUTO_SETTLE_VALIDATION_REFUSED } from "../ask/autoSettleBeforeDispatch.js";
@@ -804,7 +805,7 @@ export interface ReconcileSessionExitInput {
   /** The workspace, so the Session's provider log can be read to name a provider sign-in failure. */
   workspace?: string;
   /** Host-owned completion capability bound at launch; never supplied by the Session/model. */
-  completionCapability?: { sessionId: string; packetId: string; packetSha256: string; directWorkspaceWrite: "required" | "unavailable"; localAskTransport: "ready" | "unavailable"; freshHostValidationAtSettlement: "required" };
+  completionCapability?: SourceCompletionCapability;
   /** A trusted headless Codex/Claude launch requires its host capability even when its record is absent. */
   sourceCompletionRequired?: boolean;
   /** Bounds and dependency root for the pre-acceptance validation of a drafted completion (Issue #1599); defaults apply when omitted. */
@@ -864,7 +865,31 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     // Issue #1615: a completion the Session settled itself faces the same scope and named-test checks a host-settled draft does.
     const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions) : null;
-    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions, input.completionCapability, input.sourceCompletionRequired);
+    // Persisted managed launch mode is authoritative at the one canonical
+    // settlement boundary. A public CLI caller can omit, falsify, or spoof its
+    // optional transport fields, but cannot downgrade source_only/direct_required.
+    const durableCapability = input.workspace
+      ? completionCapabilityForSessionReconciliation(input.workspace, session)
+      : { completionCapability: undefined, sourceCompletionRequired: session.completion_capability_mode !== "legacy" };
+    const sourceCompletionRequired = durableCapability.sourceCompletionRequired || Boolean(input.sourceCompletionRequired);
+    const suppliedCapability = input.completionCapability;
+    const canonicalCapability = durableCapability.completionCapability;
+    const suppliedConflicts = Boolean(suppliedCapability && canonicalCapability && (
+      suppliedCapability.sessionId !== canonicalCapability.sessionId
+      || suppliedCapability.packetId !== canonicalCapability.packetId
+      || suppliedCapability.packetSha256 !== canonicalCapability.packetSha256
+      || suppliedCapability.probeContractDigest !== canonicalCapability.probeContractDigest
+      || suppliedCapability.directWorkspaceWrite !== canonicalCapability.directWorkspaceWrite
+      || suppliedCapability.localAskTransport !== canonicalCapability.localAskTransport
+      || suppliedCapability.freshHostValidationAtSettlement !== canonicalCapability.freshHostValidationAtSettlement
+    ));
+    // Legacy callers retain their historical optional contract. For persisted
+    // managed rows the fresh canonical evidence is required, and a supplied
+    // mismatch only tightens the result into a refusal.
+    const completionCapability = durableCapability.sourceCompletionRequired
+      ? (suppliedConflicts ? undefined : canonicalCapability)
+      : suppliedCapability;
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions, completionCapability, sourceCompletionRequired);
     const attempt = settledRefusal
       ? { completed: false, reason: settledRefusal }
       : settled

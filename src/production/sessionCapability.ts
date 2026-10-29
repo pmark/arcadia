@@ -1,4 +1,4 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { LAUNCH_PREFLIGHT_JITTER_MS, agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
 import { readSessionCompletionContract, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../sessions/sessionProbeCommand.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
 
 
 /**
@@ -53,6 +54,38 @@ export function sourceCompletionCapability(workspace: string, session: { id: str
   const probeCommand = `node ${SESSION_PROBE_SCRIPT_PATH} --workspace ${quote(workspace)} --worktree ${quote(session.worktree_path)} --nonce ${nonce} --contract ${probeContractDigest} --workspace-write ${contract.requirements.directWorkspaceWrite}`;
   return { sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, probeContractDigest,
     directWorkspaceWrite: contract.requirements.directWorkspaceWrite, localAskTransport, freshHostValidationAtSettlement: "required", probeCommand };
+}
+
+/** Persisted launch mode is host-owned; this narrow shape avoids coupling the
+ * canonical settlement path to production tick scheduling. */
+export type CompletionCapabilitySession = {
+  id: string; packet_id: string; packet_sha256: string; worktree_path: string;
+  completion_capability_mode: "legacy" | "source_only" | "direct_required";
+};
+
+/**
+ * Resolve the only capability evidence a managed Session may use at settlement.
+ * A missing or unpaired provider record deliberately produces no capability;
+ * callers cannot supply a weaker substitute for a persisted managed launch.
+ */
+export function completionCapabilityForSessionReconciliation(workspace: string, session: CompletionCapabilitySession): {
+  completionCapability?: SourceCompletionCapability;
+  sourceCompletionRequired: boolean;
+} {
+  const sourceCompletionRequired = session.completion_capability_mode !== "legacy";
+  const issued = sourceCompletionRequired ? sourceCompletionCapability(workspace, session) : null;
+  const providerLog = (() => {
+    try { return readFileSync(sessionLogPath(workspace, session.id), "utf8"); } catch { return null; }
+  })();
+  const observation = issued
+    ? observeSessionCapability(providerLog, { command: issued.probeCommand, contract: issued.probeContractDigest })
+    : null;
+  const completionCapability = issued && observation?.provenance === "session_probe" && observation.status === "clear"
+    ? issued
+    : issued
+      ? { ...issued, localAskTransport: "unavailable" as const }
+      : undefined;
+  return { completionCapability, sourceCompletionRequired };
 }
 
 const WALL_REMEDY: Record<EnvironmentWallClass, string> = {

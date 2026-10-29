@@ -47,3 +47,22 @@ pnpm fast-rehearsal
 ```
 
 Then perform independent current-head review and separately governed adoption before any fresh R465 attempt. No live R465 success is claimed.
+
+## R4 canonical reconciliation repair — pending host proof
+
+Independent R3 reproduced a public-CLI bypass: `reconcileSessionExit` accepted optional caller transport, while `arcadia session reconcile` supplied none. A durable `source_only` Session could therefore settle after its contract/log were removed. The shared capability resolver now lives in `src/production/sessionCapability.ts`; both the tick compatibility export and canonical reconciliation use it. At reconciliation, persisted `source_only` and `direct_required` modes require fresh contract, nonce, exact provider command/result, and local Ask transport evidence. Omitted fields, an explicit `sourceCompletionRequired: false`, and a spoofed supplied capability cannot weaken that Session. Legacy rows keep the established optional caller behavior.
+
+The reconciliation regressions now call the public CLI for the successful source-only path and missing-contract refusal, while direct API cases omit transport fields and cover corrupt, missing-log, swapped-contract, explicit-false, spoofed-capability, and direct-required denial paths. Sandbox checks passed: `pnpm exec tsc --noEmit`; focused ESLint on the four R4 files; probe/attribution `23 passed`; and focused reconciliation `3 passed, 50 skipped`. The successful source-only CLI case remains host-only because it intentionally stops after `preview_blocked` under `CODEX_SANDBOX`; no host settlement, CI, rehearsal, adoption, or live R465 success is claimed.
+
+A single disposable host-issued source-only probe was executed as its exact issued `node` command. Its session/packet/nonce/contract binding, fixture path, command, and JSON result are retained at `/private/tmp/rowan-r465-r3-native-probe-binding.json`; it uses no live workspace or credentials.
+
+Rowan must run outside the coding sandbox:
+
+```sh
+pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capability-attribution.test.ts tests/session-capability-probe.test.ts --no-file-parallelism
+pnpm build
+pnpm check:session-ledger
+pnpm fast-rehearsal
+```
+
+Then obtain independent R4 delta review and current-head CI before any separately governed adoption.

@@ -23,7 +23,6 @@ import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { completionEvidenceForReview, getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
 import { issueSessionProbe, sessionCompletionContractPath } from "../src/sessions/sessionProbeCommand.js";
-import { completionCapabilityForReconciliation } from "../src/production/tick.js";
 import { ensureCandidatePreservationTable, refreshPreservedPullRequestBody, type CandidatePreservationReceipt } from "../src/sessions/candidatePreservation.js";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -571,10 +570,10 @@ describe("reconcileSessionExit automatic production completion", () => {
     git(worktreePath, ["add", "."]);
     git(worktreePath, ["commit", "-m", "preserve candidate"]);
 
-    const result = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted", repoRoot: fixture.repo,
-        workspace: fixture.workspace, ...completionCapabilityForReconciliation(fixture.workspace, getSession(db, sessionId)!) })
-    );
+    // The public reconciliation entrypoint supplies no transport fields. The
+    // canonical settlement boundary must resolve the durable Session contract.
+    const result = runSessionReconcileCommand({ workspace: fixture.workspace, repo: fixture.repo,
+      session: sessionId, requestId: "reconcile-drafted" }).data;
 
     expect(result.receipt.outcome).toBe("accepted_completion");
     expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
@@ -602,11 +601,17 @@ describe("reconcileSessionExit automatic production completion", () => {
       const contractPath = sessionCompletionContractPath(fixture.workspace, sessionId);
       if (condition === "corrupt-contract") writeFileSync(contractPath, "{not-json}\n");
       if (condition === "missing-contract") rmSync(contractPath);
-      const result = withDatabase(fixture.workspace, (db) => {
-        const transport = completionCapabilityForReconciliation(fixture.workspace, getSession(db, sessionId)!);
-        return reconcileSessionExit({ db, sessionId, requestId: `reconcile-source-${condition}`, repoRoot: fixture.repo,
-          workspace: fixture.workspace, ...transport });
-      });
+      const result = condition === "missing-contract"
+        ? runSessionReconcileCommand({ workspace: fixture.workspace, repo: fixture.repo,
+          session: sessionId, requestId: `reconcile-source-${condition}` }).data
+        : withDatabase(fixture.workspace, (db) =>
+          // Omitted caller transport is deliberate: persisted source_only must
+          // still refuse missing or corrupt host-owned evidence.
+          reconcileSessionExit({ db, sessionId, requestId: `reconcile-source-${condition}`, repoRoot: fixture.repo,
+            workspace: fixture.workspace,
+            // An explicit false cannot downgrade the persisted source_only mode.
+            ...(condition === "corrupt-contract" ? { sourceCompletionRequired: false } : {}) })
+        );
       expect(result.receipt.outcome).toBe("incomplete_resumable");
       expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
     }
@@ -626,11 +631,14 @@ describe("reconcileSessionExit automatic production completion", () => {
     const contract = JSON.parse(readFileSync(contractPath, "utf8")) as { packetId: string };
     contract.packetId = "other-packet";
     writeFileSync(contractPath, `${JSON.stringify(contract)}\n`);
-    const result = withDatabase(fixture.workspace, (db) => {
-      const transport = completionCapabilityForReconciliation(fixture.workspace, getSession(db, sessionId)!);
-      return reconcileSessionExit({ db, sessionId, requestId: "reconcile-source-contract-swapped", repoRoot: fixture.repo,
-        workspace: fixture.workspace, ...transport });
-    });
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-source-contract-swapped", repoRoot: fixture.repo,
+        workspace: fixture.workspace,
+        // A caller-provided capability cannot replace a swapped durable contract.
+        completionCapability: { sessionId, packetId: "other-packet", packetSha256: "0".repeat(64),
+          probeContractDigest: "0".repeat(64), directWorkspaceWrite: "unavailable", localAskTransport: "ready",
+          freshHostValidationAtSettlement: "required", probeCommand: "node spoofed-probe" } })
+    );
     expect(result.receipt.outcome).toBe("incomplete_resumable");
     expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
   });
@@ -658,11 +666,10 @@ describe("reconcileSessionExit automatic production completion", () => {
     writeFileSync(sessionLogPath(fixture.workspace, sessionId), JSON.stringify({ type: "item.completed", item: {
       type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output
     } }) + "\n");
-    const result = withDatabase(fixture.workspace, (db) => {
-      const transport = completionCapabilityForReconciliation(fixture.workspace, getSession(db, sessionId)!);
-      return reconcileSessionExit({ db, sessionId, requestId: "reconcile-direct-required", repoRoot: fixture.repo,
-        workspace: fixture.workspace, ...transport });
-    });
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-direct-required", repoRoot: fixture.repo,
+        workspace: fixture.workspace })
+    );
     expect(result.receipt.outcome).toBe("incomplete_resumable");
     expect(result.receipt.reason).toContain("requires direct workspace writes");
   });

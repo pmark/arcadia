@@ -44,6 +44,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { appendJourneyLog, ensureActionJourneyLogTable } from "./journeyLog.js";
 import { enforceSessionLifetime } from "./sessionLifetime.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
 import {
   BUDGET_EXHAUSTED_ESCALATION_KIND,
   decideTokenCeilingBreach,
@@ -51,7 +52,6 @@ import {
   resolveSessionTokenCeiling,
   sessionTokenCeilingBreach
 } from "./sessionTokenCeiling.js";
-import { sessionLogPath } from "../sessions/sessionRecording.js";
 import {
   describeEnvironmentWalls,
   observeSessionCapability,
@@ -61,6 +61,7 @@ import {
   sessionTokensFromLog,
   type EnvironmentWall,
   sourceCompletionCapability,
+  completionCapabilityForSessionReconciliation,
   type SourceCompletionCapability
 } from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
@@ -1843,23 +1844,7 @@ export function completionCapabilityForReconciliation(workspace: string, session
   completionCapability?: SourceCompletionCapability;
   sourceCompletionRequired: boolean;
 } {
-  const sourceCompletionRequired = session.completion_capability_mode !== "legacy";
-  // Interactive and pre-contract Sessions stay on their established path even
-  // if an incidental Session record exists. Only a persisted managed mode can
-  // make a contract mandatory at reconciliation.
-  const issued = sourceCompletionRequired ? sourceCompletionCapability(workspace, session) : null;
-  const providerLog = (() => {
-    try { return readFileSync(sessionLogPath(workspace, session.id), "utf8"); } catch { return null; }
-  })();
-  const observation = issued
-    ? observeSessionCapability(providerLog, { command: issued.probeCommand, contract: issued.probeContractDigest })
-    : null;
-  const completionCapability = issued && observation?.provenance === "session_probe" && observation.status === "clear"
-    ? issued
-    : issued
-      ? { ...issued, localAskTransport: "unavailable" as const }
-      : undefined;
-  return { completionCapability, sourceCompletionRequired };
+  return completionCapabilityForSessionReconciliation(workspace, session);
 }
 
 /**

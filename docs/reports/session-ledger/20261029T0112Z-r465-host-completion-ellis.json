@@ -14,17 +14,36 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 2,
+  "review_rounds": 4,
   "blocking_findings": [
-    { "class": "host-only-fixture", "caught_by": "CODEX_SANDBOX guard" },
-    { "class": "R2-01 durable launch requirement", "caught_by": "independent current-head review" }
+    {
+      "class": "host-only-fixture",
+      "caught_by": "CODEX_SANDBOX guard"
+    },
+    {
+      "class": "R2-01 durable launch requirement",
+      "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R3-01 canonical reconciliation omitted-input bypass",
+      "caught_by": "independent current-head review"
+    }
   ],
   "operator_touches": 0,
   "host_touches": 0,
   "frictions": [
-    { "id": "host-only-session-reconciliation", "cost_min": null, "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md" }
+    {
+      "id": "host-only-session-reconciliation",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "canonical-source-capability-bypass",
+      "cost_min": null,
+      "fix_ref": "/tmp/arcadia-pr1867-r3-direct-reconcile-repro.log"
+    }
   ],
   "outcome": "stopped",
-  "stop_reason": "R2 bounded repair complete; fresh protected-host reconciliation, launch-mode checks, build and rehearsal remain for Rowan.",
-  "notes": "R1 fixes optional unavailable probe wall. R2 persists host-selected Session mode and repairs CI fixtures to use paired host-issued probe evidence. Sandbox evidence is partial; no live action."
+  "stop_reason": "R4 canonical reconciliation repair prepared; protected-host direct CLI/reconciliation, build, current-head CI, rehearsal, and independent R4 review remain for Rowan.",
+  "notes": "R1 optional-unavailable wall; R2 persisted host mode and paired fixture probe. R4 canonical reconciliation rejects omitted, false, or spoofed caller capability. Sandbox-only evidence; no live action."
 }
