@@ -1,0 +1,36 @@
+{
+  "session_id": "01a18667-c693-7062-a59b-dcf59c38c99e",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:pr1867-approval-preparation",
+  "pr": 1879,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 3,
+  "blocking_findings": [
+    {
+      "class": "approval-clock-custody-not-automatic",
+      "caught_by": "independent-process-critic"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-decision-validator-base-scope",
+      "cost_min": null,
+      "fix_ref": "docs/reports/pr1867-bounded-repair-approval-preparation-2026-10-29.md"
+    },
+    {
+      "id": "unpublished-canonical-repair-pointer",
+      "cost_min": null,
+      "fix_ref": "1502c0bdfc565f9aed4e1e1e378cec749fe70b6a; docs/reports/pr1867-bounded-repair-approval-preparation-2026-10-29.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "PR1879: open Decision0147, preserved canonical pointer and proof report. No repair/R7, answer or custody transfer. Initial base CI failure retained; final proof remains distinct."
+}
