@@ -1,0 +1,37 @@
+---
+arcadia: v1
+type: decision
+id: "0147"
+slug: should-arcadia-authorize-one-bounded-r6-binding-repair-pass-and-exactly-one
+project: arcadia
+status: approved
+question: Should Arcadia authorize one bounded R6 binding-repair pass and exactly one additional R7 review for PR 1867 before the existing expiry?
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Authorize one bounded binding repair and R7
+options:
+  - label: Authorize one bounded binding repair and R7
+    consequence: "Conditionally authorize one repair pass on existing PR 1867, pinned starting head 63aaf6ffacd9ceb70720d3a021b92824f2e71874, solely closing R6-01 result-to-contract and R6-02 contract-to-durable-mode bindings while retaining all four current Action criteria and R1-R6 history. Scope: src/production/sessionCapability.ts and focused capability/attribution/reconciliation tests; sessionProbeCommand.ts and reconciliation.ts only as necessary for those two bindings, candidate handoff/ledger and truthful START_HERE guidance. No wider source/policy/schema/guard/acceptance change without a new decision. One published product head, exactly one independent R7 delta, fresh required CI and required behavioral/static/build/preservation/isolated rehearsal proof. Any new CI/R7 blocker needing a code change stops this allowance; no R8 or attempt reset. Before start require published canonical A answer, separately acknowledged coordinator handoff, verified sole existing writer 01a18521-0f07-75b0-9bc1-d9d8d9ced915 or explicit release/governed replacement, current reservation and clean pinned candidate, current main/authority checkpoint and Production Off. Record one immutable start receipt no later than 2026-10-29T20:01:53Z. Deadline=min(start+3 hours,2026-10-29T23:01:53Z); last 15 minutes only preservation/closeout. No new implementation/review/acceptance work in that final interval; no post-expiry grace. Writer one pass at configured standard/medium, <=90 minutes; independent R7 configured sufficient standard/high, <=45 minutes. Token targets 32000 writer/12000 reviewer are advisory when unmetered; elapsed time/pass/round limits remain hard. Coordinator must verify these preconditions before every execution/publication boundary; the current Decision UI does not enforce them automatically. If preconditions or enforcement cannot be established, hold and report. No merge, installation/adoption, restart, live R465 retry, credentials/provider probe, paid fallback, Production START, automatic wakeup or changes to other held PRs. Source delivery is not managed live acceptance. End at reviewed exact-head PR/evidence or preserved blocker; a fresh explicitly bounded decision is required to revive expired/exhausted work."
+    recommended: true
+  - label: Hold the repair
+    consequence: Keep PR 1867 and its candidate preserved at the existing head. Do not edit source, resume the writer, run R7, transfer custody, merge, adopt or retry R465. Production stays Off; retain consumed attempts and all R1-R6 findings. End the repair session after evidence/preservation. Revival requires a fresh explicit bounded authority decision and verified custody, expiry and sole-writer preconditions; no automatic wakeup.
+    recommended: false
+confidence: high
+plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
+updated: 2026-10-29
+answer: Authorize one bounded binding repair and R7
+decided: 2026-10-29
+---
+
+# Decision 0147: Should Arcadia authorize one bounded R6 binding-repair pass and exactly one additional R7 review for PR 1867 before the existing expiry?
+
+## Options
+
+- **Authorize one bounded binding repair and R7** (recommended): Conditionally authorize one repair pass on existing PR 1867, pinned starting head 63aaf6ffacd9ceb70720d3a021b92824f2e71874, solely closing R6-01 result-to-contract and R6-02 contract-to-durable-mode bindings while retaining all four current Action criteria and R1-R6 history. Scope: src/production/sessionCapability.ts and focused capability/attribution/reconciliation tests; sessionProbeCommand.ts and reconciliation.ts only as necessary for those two bindings, candidate handoff/ledger and truthful START_HERE guidance. No wider source/policy/schema/guard/acceptance change without a new decision. One published product head, exactly one independent R7 delta, fresh required CI and required behavioral/static/build/preservation/isolated rehearsal proof. Any new CI/R7 blocker needing a code change stops this allowance; no R8 or attempt reset. Before start require published canonical A answer, separately acknowledged coordinator handoff, verified sole existing writer 01a18521-0f07-75b0-9bc1-d9d8d9ced915 or explicit release/governed replacement, current reservation and clean pinned candidate, current main/authority checkpoint and Production Off. Record one immutable start receipt no later than 2026-10-29T20:01:53Z. Deadline=min(start+3 hours,2026-10-29T23:01:53Z); last 15 minutes only preservation/closeout. No new implementation/review/acceptance work in that final interval; no post-expiry grace. Writer one pass at configured standard/medium, <=90 minutes; independent R7 configured sufficient standard/high, <=45 minutes. Token targets 32000 writer/12000 reviewer are advisory when unmetered; elapsed time/pass/round limits remain hard. Coordinator must verify these preconditions before every execution/publication boundary; the current Decision UI does not enforce them automatically. If preconditions or enforcement cannot be established, hold and report. No merge, installation/adoption, restart, live R465 retry, credentials/provider probe, paid fallback, Production START, automatic wakeup or changes to other held PRs. Source delivery is not managed live acceptance. End at reviewed exact-head PR/evidence or preserved blocker; a fresh explicitly bounded decision is required to revive expired/exhausted work.
+- **Hold the repair**: Keep PR 1867 and its candidate preserved at the existing head. Do not edit source, resume the writer, run R7, transfer custody, merge, adopt or retry R465. Production stays Off; retain consumed attempts and all R1-R6 findings. End the repair session after evidence/preservation. Revival requires a fresh explicit bounded authority decision and verified custody, expiry and sole-writer preconditions; no automatic wakeup.
+
+## Rationale
+
+R6-01 and R6-02 remain blocking at head 63aaf6ffacd9ceb70720d3a021b92824f2e71874. Registered proposal agentask_848cf989dd610057c9 and independent Process Critic recommend preparing this precise choice; no repair or R7 has started. See docs/reports/pr1867-bounded-repair-approval-preparation-2026-10-29.md for the independent critique, route audit, exact scope, tests, ownership and enforcement limitations. Opening or merging this unanswered Decision does not select A, grant an exception, transfer custody or resume a writer. Existing remote Decision answers write canonical records locally and do not automatically publish them or enforce repair-clock/custody admission; retain exact answer receipt/commit and publish through the supported reviewed path before claiming publicly recorded authority. Existing pinned settlement card is intake-only and must not be reused as a repair grant. Production remains Off. The old NOT READY R5 card remains unusable. This Decision does not renew Decision 0146 or reset any consumed attempt.
+
+Proposed by Agent Ask decide-pr1867-r7-bounded-binding-repair-20261029.
