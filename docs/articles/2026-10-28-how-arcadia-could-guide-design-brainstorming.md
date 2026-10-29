@@ -228,6 +228,11 @@ persona, one game persona) then "passed with changes", leading to revision 4:
   game ideas. A website field guide follows, then a game field guide.
 - **Revision 5 itself is untested.** Its new rules came from round 2 findings;
   no run has used them yet.
+- **Two gaps in the revision 5 draft are unresolved.** It does not say which
+  rule wins when an energizing item is parked out of view until a date (the
+  Visible rule or the park), and it does not say whether a "thinking out loud"
+  idea, which has no position, still needs a next move. Both are the operator's
+  to decide in the next revision.
 - **Five Decisions are open and none has been opened or answered:**
   the architecture (core only, core plus guides as data, built-in fields or a
   plugin system); a design-facilitation role; who writes field guides; how
